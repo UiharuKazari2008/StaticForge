@@ -55,7 +55,6 @@ function initializeCreateTextReplacementModal() {
 // Initialize text replacement manager
 function initializeTextReplacementManager() {
     const textReplacementManagerBtn = document.getElementById('textReplacementManagerBtn');
-    const manualTextReplacementManagerBtn = document.getElementById('manualTextReplacementManagerBtn');
     const closeTextReplacementManagerBtn = document.getElementById('closeTextReplacementManagerBtn');
     const toggleTextReplacementSearchBtn = document.getElementById('toggleTextReplacementSearchBtn');
     const textReplacementSearch = document.getElementById('textReplacementSearch');
@@ -65,10 +64,6 @@ function initializeTextReplacementManager() {
     // Event listeners
     if (textReplacementManagerBtn) {
         textReplacementManagerBtn.addEventListener('click', showTextReplacementManager);
-    }
-
-    if (manualTextReplacementManagerBtn) {
-        manualTextReplacementManagerBtn.addEventListener('click', showTextReplacementManager);
     }
     
     if (closeTextReplacementManagerBtn) {
@@ -315,13 +310,13 @@ function createTextReplacementItem(key, value, isArray, isModified, isNew) {
             <div class="text-replacement-name">!${key}</div>
             <div class="text-replacement-actions">
                 <div class="text-replacement-type ${isArray ? 'random' : ''}">${isArray ? '<i class="fas fa-dice"></i>' : '<i class="fas fa-input-text"></i>'}</div>
-                <button type="button" class="btn-small btn-secondary edit-btn" onclick="toggleEditMode('${key}')" title="Edit">
+                <button type="button" class="btn-small btn-secondary edit-btn" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button type="button" class="btn-small btn-primary save-btn hidden" onclick="saveTextReplacementItem('${key}')" title="Save">
+                <button type="button" class="btn-small btn-primary save-btn hidden" title="Save">
                     <i class="fas fa-save"></i>
                 </button>
-                <button type="button" class="btn-small btn-danger delete-btn" onclick="deleteTextReplacement('${key}')" title="Delete">
+                <button type="button" class="btn-small btn-danger delete-btn" title="Delete">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>
@@ -332,6 +327,29 @@ function createTextReplacementItem(key, value, isArray, isModified, isNew) {
             </div>
         </div>
     `;
+    
+    // Add event listeners for header buttons
+    const editBtn = item.querySelector('.edit-btn');
+    const saveBtn = item.querySelector('.save-btn');
+    const deleteBtn = item.querySelector('.delete-btn');
+    
+    if (editBtn) {
+        editBtn.addEventListener('click', () => toggleTextReplacementEditMode(key));
+    }
+    
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => saveTextReplacementItem(key));
+    }
+    
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => deleteTextReplacement(key));
+    }
+    
+    // Add event listener for the "Add Item" button
+    const addItemBtn = item.querySelector('.text-replacement-add-item button');
+    if (addItemBtn) {
+        addItemBtn.addEventListener('click', () => addArrayItem(key));
+    }
     
     return item;
 }
@@ -346,7 +364,7 @@ function renderStringValue(key, value) {
                 </div>
             </div>
             <div class="text-replacement-add-item">
-                <button class="btn-primary" type="button" onclick="addArrayItem('${key}')" title="Add Item">
+                <button class="btn-primary" type="button" title="Add Item">
                     <i class="fas fa-plus"></i> Add Item
                 </button>
             </div>
@@ -368,7 +386,7 @@ function renderArrayValue(key, value) {
         <div class="text-replacement-array-items">
             ${items}
             <div class="text-replacement-add-item">
-                <button class="btn-primary" type="button" onclick="addArrayItem('${key}')" title="Add Item">
+                <button class="btn-primary" type="button" title="Add Item">
                     <i class="fas fa-plus"></i> Add Item
                 </button>
             </div>
@@ -377,7 +395,7 @@ function renderArrayValue(key, value) {
 }
 
 // Toggle edit mode for a text replacement
-function toggleEditMode(key) {
+function toggleTextReplacementEditMode(key) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
 
@@ -385,22 +403,22 @@ function toggleEditMode(key) {
 
     if (isEditing) {
         // Exit edit mode and revert changes
-        exitEditMode(key, true); // true = revert changes
+        exitTextReplacementEditMode(key, true); // true = revert changes
     } else {
         // Enter edit mode
-        enterEditMode(key);
+        enterTextReplacementEditMode(key);
     }
 }
 
 // Enter edit mode
-function enterEditMode(key) {
+function enterTextReplacementEditMode(key) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
     
     item.classList.add('editing');
     
     // Convert display mode to edit mode
-    convertToEditMode(key);
+    convertTextReplacementToEditMode(key);
     
     // Update button icons and show/hide buttons
     const editBtn = item.querySelector('.edit-btn');
@@ -425,7 +443,7 @@ function enterEditMode(key) {
 }
 
 // Convert display mode to edit mode
-function convertToEditMode(key) {
+function convertTextReplacementToEditMode(key) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
     
@@ -467,7 +485,6 @@ function convertToEditMode(key) {
                         <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
                             <i class="fas fa-lightbulb"></i>
                         </button>
-                        <div class="divider"></div>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                             <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
@@ -507,7 +524,7 @@ function convertToEditMode(key) {
 }
 
 // Convert edit mode to display mode
-function convertToDisplayMode(key) {
+function convertTextReplacementToDisplayMode(key) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
     
@@ -537,114 +554,8 @@ function convertToDisplayMode(key) {
 
 // Setup text replacement textarea with prompt textarea features
 function setupTextReplacementTextarea(textarea) {
-    if (!textarea || !textarea.matches('.character-prompt-textarea')) return;
-    
-    // Cache DOM elements to avoid repeated queries
-    const container = textarea.closest('.character-prompt-textarea-container');
-    const toolbar = container?.querySelector('.prompt-textarea-toolbar');
-    
-    // Add event listeners for focus/blur to show/hide toolbar
-    addSafeEventListener(textarea, 'focus', () => {
-        if (toolbar) {
-            toolbar.classList.remove('hidden');
-            updateTextReplacementTokenCount(textarea);
-        }
-        
-        if (container) {
-            container.classList.add('textarea-focused');
-        }
-    }, 'toolbar');
-    
-    addSafeEventListener(textarea, 'blur', () => {
-        if (toolbar) {
-            toolbar.classList.add('hidden');
-        }
-        
-        if (container) {
-            container.classList.remove('textarea-focused');
-        }
-    }, 'toolbar');
-    
-    // Add input event listener for token count updates with debouncing
-    const debouncedTokenUpdate = debounce(() => {
-        updateTextReplacementTokenCount(textarea);
-    }, 150); // 150ms debounce for token counting
-    
-    addSafeEventListener(textarea, 'input', debouncedTokenUpdate, 'tokenCount');
-    
-    // Add character autocomplete events
-    addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-    addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-    addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'focus');
-    addSafeEventListener(textarea, 'blur', () => {
-        applyFormattedText(textarea, true);
-        updateEmphasisHighlighting(textarea);
-        stopEmphasisHighlighting();
-    }, 'blur');
-    
-    // Setup toolbar button event listeners
-    const toolbarElement = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-    if (toolbarElement) {
-        setupTextReplacementToolbar(toolbarElement, textarea);
-    }
-    
-    // Initial token count
-    updateTextReplacementTokenCount(textarea);
-}
-
-// Setup text replacement toolbar functionality
-function setupTextReplacementToolbar(toolbar, textarea) {
-    if (!toolbar || !textarea) return;
-    
-    // Handle toolbar button clicks
-    const buttons = toolbar.querySelectorAll('.toolbar-btn');
-    
-    buttons.forEach((button, index) => {
-        const action = button.dataset.action;
-        
-        // Remove any existing listeners first
-        button.removeEventListener('click', button._textReplacementClickHandler);
-        
-        // Create new handler
-        button._textReplacementClickHandler = (e) => {
-            e.preventDefault();
-            handleTextReplacementToolbarAction(action, textarea, toolbar, e);
-        };
-        
-        button.addEventListener('click', button._textReplacementClickHandler);
-    });
-    
-    // Sync autofill button state with global system
-    const autofillBtn = toolbar.querySelector('[data-action="autofill"]');
-    if (autofillBtn) {
-        // Force enable the button if it's disabled
-        if (autofillBtn.disabled) {
-            autofillBtn.disabled = false;
-            autofillBtn.removeAttribute('disabled');
-        }
-        
-                if (window.toggleAutofill) {
-            try {
-                // Get current global state using the correct function
-                let globalState = false;
-                if (window.isAutofillEnabled) {
-                    globalState = window.isAutofillEnabled();
-                } else {
-                    globalState = window.autofillEnabled || false;
-                }
-                
-                // Update button to match global state
-                autofillBtn.setAttribute('data-state', globalState ? 'on' : 'off');
-                
-                const icon = autofillBtn.querySelector('i');
-                if (icon) {
-                    icon.className = globalState ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
-                }
-            } catch (error) {
-                console.error('Error syncing autofill state:', error);
-            }
-        }
-    }
+    // Use shared utility with custom toolbar handler
+    setupEditableTextarea(textarea, handleTextReplacementToolbarAction);
 }
 
 // Handle text replacement toolbar actions
@@ -661,37 +572,6 @@ function handleTextReplacementToolbarAction(action, textarea, toolbar, event) {
             // The button click will be handled automatically
             break;
     }
-}
-
-// Update token count for text replacement textarea
-function updateTextReplacementTokenCount(textarea) {
-    const toolbar = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
-    if (!toolbar) return;
-
-    const tokenCountElement = toolbar.querySelector('.token-count');
-    if (!tokenCountElement) return;
-
-    const text = textarea.value;
-    const tokenCount = calculateTextReplacementTokenCount(text);
-    tokenCountElement.textContent = `${tokenCount} tokens`;
-}
-
-// Calculate token count for text replacement
-function calculateTextReplacementTokenCount(text) {
-    if (!text || text.trim() === '') return 0;
-    
-    // Simple token estimation - roughly 4 characters per token
-    const words = text.trim().split(/\s+/);
-    let tokenCount = 0;
-    
-    for (const word of words) {
-        if (word.length > 0) {
-            // Basic token estimation
-            tokenCount += Math.ceil(word.length / 4);
-        }
-    }
-    
-    return Math.max(1, tokenCount);
 }
 
 // Text replacement toolbar action functions
@@ -739,7 +619,7 @@ function closeTextReplacementEmphasisMode(toolbar) {
 }
 
 // Exit edit mode
-function exitEditMode(key, revertChanges = false) {
+function exitTextReplacementEditMode(key, revertChanges = false) {
     const item = document.querySelector(`[data-key="${key}"]`);
     if (!item) return;
     
@@ -761,7 +641,7 @@ function exitEditMode(key, revertChanges = false) {
         item.replaceWith(newItem);
     } else {
         // Convert edit mode to display mode
-        convertToDisplayMode(key);
+        convertTextReplacementToDisplayMode(key);
         
         // Update button icons and show/hide buttons
         const editBtn = item.querySelector('.edit-btn');
@@ -828,7 +708,7 @@ async function saveTextReplacementItem(key) {
                 originalTextReplacementData[key] = JSON.parse(JSON.stringify(textReplacementData[key]));
                 
                 // Exit edit mode
-                exitEditMode(key, false);
+                exitTextReplacementEditMode(key, false);
                 
                 // Re-render to remove modified indicator
                 renderTextReplacementList();
@@ -870,7 +750,7 @@ function addArrayItem(key) {
 
         if (wasEditing) {
             newItem.classList.add('editing');
-            convertToEditMode(key);
+            convertTextReplacementToEditMode(key);
 
             // Update button states for edit mode
             const editBtn = newItem.querySelector('.edit-btn');
@@ -921,7 +801,7 @@ function removeArrayItem(key, index) {
 
         if (wasEditing) {
             newItem.classList.add('editing');
-            convertToEditMode(key);
+            convertTextReplacementToEditMode(key);
 
             // Update button states for edit mode
             const editBtn = newItem.querySelector('.edit-btn');
@@ -1094,7 +974,6 @@ function addCreateArrayItem() {
                         <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle Autofill">
                             <i class="fas fa-lightbulb-slash"></i>
                         </button>
-                        <div class="divider"></div>
                         <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
                             <i class="fas fa-scale-unbalanced-flip"></i>
                         </button>
@@ -1114,12 +993,18 @@ function addCreateArrayItem() {
                 </div>
             </div>
         </div>
-        <button class="btn-secondary remove-array-item" type="button" onclick="removeCreateArrayItem(${itemIndex})" title="Remove">
+        <button class="btn-secondary remove-array-item" type="button" title="Remove">
             <i class="fas fa-trash-alt"></i>
         </button>
     `;
     
     container.appendChild(itemElement);
+    
+    // Add event listener for the remove button
+    const removeBtn = itemElement.querySelector('.remove-array-item');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => removeCreateArrayItem(itemIndex));
+    }
     
     // Focus the new textarea
     const newTextarea = itemElement.querySelector('textarea');
@@ -1149,9 +1034,13 @@ function removeCreateArrayItem(index) {
             if (textarea) {
                 textarea.dataset.index = newIndex;
             }
-            const removeBtn = item.querySelector('button');
+            const removeBtn = item.querySelector('.remove-array-item');
             if (removeBtn) {
-                removeBtn.onclick = () => removeCreateArrayItem(newIndex);
+                // Remove old event listener by cloning and replacing
+                const newRemoveBtn = removeBtn.cloneNode(true);
+                removeBtn.parentNode.replaceChild(newRemoveBtn, removeBtn);
+                // Add new event listener with correct index
+                newRemoveBtn.addEventListener('click', () => removeCreateArrayItem(newIndex));
             }
         });
         
@@ -1469,7 +1358,7 @@ function createFavoriteTextReplacementItem(textReplacement, index) {
     item.innerHTML = `
         <div class="favorites-item-content">
             <div class="favorites-item-icon">
-                <i class="fas fa-language"></i>
+                <i class="fas fa-lambda"></i>
             </div>
             <div class="favorites-item-details">
                 <div class="favorites-item-name">
@@ -1556,6 +1445,605 @@ async function removeFavorite(type, index) {
             showGlassToast('error', null, 'Error removing favorite', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
         }
     }
+}
+
+// Validate if a dynamic replacement can be applied client-side
+function validateDynamicReplacementCanApply(replacement) {
+    const action = replacement.action || 'replace';
+    
+    // For append without select_text, always can apply
+    if (action === 'append' && !replacement.select_text) {
+        return true;
+    }
+
+    // For other actions, need to check if select_text exists in the target
+    const targetText = getDynamicReplacementTargetText(replacement);
+    if (!targetText) {
+        return false; // Can't access target
+    }
+
+    const selectText = (replacement.select_text || '').trim();
+    if (!selectText && action !== 'append') {
+        return false; // No text to find for delete/replace
+    }
+
+    // Check if select_text exists in target
+    if (selectText && targetText.indexOf(selectText) !== -1) {
+        return true;
+    }
+
+    // Check fallback_select_text
+    if (replacement.fallback_select_text) {
+        const fallbackText = replacement.fallback_select_text.trim();
+        if (targetText.indexOf(fallbackText) !== -1) {
+            return true;
+        }
+    }
+
+    // For optional replacements with alternative_text, can always apply (will append)
+    if (!replacement.is_critical && replacement.alternative_text) {
+        return true;
+    }
+
+    return false;
+}
+
+// Get the target text for a dynamic replacement
+function getDynamicReplacementTargetText(replacement) {
+    if (replacement.targetType === 'prompt') {
+        const textarea = document.getElementById('manualPrompt');
+        return textarea ? textarea.value : null;
+    } else if (replacement.targetType === 'uc') {
+        const textarea = document.getElementById('manualUc');
+        return textarea ? textarea.value : null;
+    } else if (replacement.targetType === 'character') {
+        // Access character prompt by index
+        const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+        if (!characterPromptsContainer) return null;
+        
+        const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+        const characterIndex = replacement.targetSource;
+        
+        if (characterIndex < 0 || characterIndex >= characterItems.length) {
+            return null; // Invalid character index
+        }
+        
+        const characterItem = characterItems[characterIndex];
+        const characterId = characterItem.id;
+        const field = replacement.targetField || 'input'; // 'input' or 'uc'
+        
+        const textarea = document.getElementById(`${characterId}_${field === 'input' ? 'prompt' : 'uc'}`);
+        return textarea ? textarea.value : null;
+    }
+    return null;
+}
+
+// Apply a dynamic replacement client-side (mimics server logic)
+function applyDynamicReplacementClientSide(replacement) {
+    const action = replacement.action || 'replace';
+    const targetType = replacement.targetType;
+    
+    // Get the target textarea
+    let textarea = null;
+    if (targetType === 'prompt') {
+        textarea = document.getElementById('manualPrompt');
+    } else if (targetType === 'uc') {
+        textarea = document.getElementById('manualUc');
+    } else if (targetType === 'character') {
+        // Access character prompt by index
+        const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+        if (!characterPromptsContainer) {
+            return { success: false, error: 'Character prompts container not found' };
+        }
+        
+        const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+        const characterIndex = replacement.targetSource;
+        
+        if (characterIndex < 0 || characterIndex >= characterItems.length) {
+            return { success: false, error: `Character ${characterIndex + 1} not found` };
+        }
+        
+        const characterItem = characterItems[characterIndex];
+        const characterId = characterItem.id;
+        const field = replacement.targetField || 'input'; // 'input' or 'uc'
+        
+        textarea = document.getElementById(`${characterId}_${field === 'input' ? 'prompt' : 'uc'}`);
+    }
+
+    if (!textarea) {
+        return { success: false, error: 'Could not find target textarea' };
+    }
+
+    let result = textarea.value;
+    const selectText = (replacement.select_text || '').trim();
+    const replaceText = replacement.replace_text || '';
+    const fallbackSelectText = replacement.fallback_select_text ? replacement.fallback_select_text.trim() : null;
+    const alternativeText = replacement.alternative_text || null;
+    const isCritical = replacement.is_critical !== false; // Default to true
+    const count = replacement.count;
+
+    let method = 'direct';
+    let appliedSuccessfully = false;
+
+    if (action === 'delete') {
+        // Delete action
+        let deleteCount = 0;
+        let textToDelete = selectText;
+        let usedFallback = false;
+
+        // Try primary select_text
+        if (selectText && result.includes(selectText)) {
+            if (count !== undefined && count !== null) {
+                // Delete specific number of occurrences
+                for (let i = 0; i < count; i++) {
+                    const index = result.indexOf(textToDelete);
+                    if (index === -1) break;
+                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
+                    deleteCount++;
+                }
+            } else {
+                // Delete all occurrences
+                result = result.split(textToDelete).join('');
+                deleteCount = 1; // Mark as successful
+            }
+            appliedSuccessfully = deleteCount > 0;
+        }
+
+        // Try fallback if primary failed
+        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
+            textToDelete = fallbackSelectText;
+            usedFallback = true;
+            if (count !== undefined && count !== null) {
+                for (let i = 0; i < count; i++) {
+                    const index = result.indexOf(textToDelete);
+                    if (index === -1) break;
+                    result = result.substring(0, index) + result.substring(index + textToDelete.length);
+                    deleteCount++;
+                }
+            } else {
+                result = result.split(textToDelete).join('');
+                deleteCount = 1;
+            }
+            appliedSuccessfully = deleteCount > 0;
+            if (appliedSuccessfully) method = 'fallback';
+        }
+
+        if (!appliedSuccessfully) {
+            return { success: false, error: `Could not find text to delete: "${selectText}"` };
+        }
+
+    } else if (action === 'replace') {
+        // Replace action
+        let textToReplace = selectText;
+        let usedFallback = false;
+
+        // Try primary select_text
+        if (selectText && result.includes(selectText)) {
+            result = result.replace(selectText, replaceText);
+            appliedSuccessfully = true;
+        }
+
+        // Try fallback if primary failed
+        if (!appliedSuccessfully && fallbackSelectText && result.includes(fallbackSelectText)) {
+            textToReplace = fallbackSelectText;
+            result = result.replace(fallbackSelectText, replaceText);
+            appliedSuccessfully = true;
+            method = 'fallback';
+        }
+
+        // Try alternative if both failed and replacement is optional
+        if (!appliedSuccessfully && !isCritical && alternativeText) {
+            // Append alternative text to end
+            const needsComma = result.trim() && !result.trim().endsWith(',') && !result.trim().endsWith('::');
+            result = result.trimEnd() + (needsComma ? ', ' : ' ') + alternativeText;
+            appliedSuccessfully = true;
+            method = 'alternative';
+        }
+
+        if (!appliedSuccessfully) {
+            return { success: false, error: `Could not find text to replace: "${selectText}"` };
+        }
+
+    } else if (action === 'append') {
+        // Append action
+        let textToAppend = replaceText;
+        let insertPosition = result.length;
+
+        if (selectText && selectText.trim()) {
+            // Try to find select_text and append after it
+            const index = result.indexOf(selectText);
+            if (index !== -1) {
+                insertPosition = index + selectText.length;
+                appliedSuccessfully = true;
+            } else if (fallbackSelectText && result.includes(fallbackSelectText)) {
+                // Try fallback
+                const fallbackIndex = result.indexOf(fallbackSelectText);
+                insertPosition = fallbackIndex + fallbackSelectText.length;
+                appliedSuccessfully = true;
+                method = 'fallback';
+            } else if (!isCritical && alternativeText) {
+                // Use alternative text at end
+                textToAppend = alternativeText;
+                method = 'alternative';
+            }
+        }
+
+        // Insert at determined position
+        const needsComma = insertPosition > 0 && result[insertPosition - 1] !== ',' && result[insertPosition - 1] !== ' ';
+        const separator = needsComma ? ', ' : '';
+        result = result.substring(0, insertPosition) + separator + textToAppend + result.substring(insertPosition);
+        appliedSuccessfully = true;
+    }
+
+    if (!appliedSuccessfully) {
+        return { success: false, error: 'Failed to apply replacement' };
+    }
+
+    // Update the textarea
+    textarea.value = result;
+
+    // Trigger input event to update any dependent UI
+    const inputEvent = new Event('input', { bubbles: true });
+    textarea.dispatchEvent(inputEvent);
+
+    // Trigger other updates (auto-resize, highlighting, etc.)
+    if (typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(textarea);
+    }
+    if (typeof updateEmphasisHighlighting === 'function') {
+        updateEmphasisHighlighting(textarea);
+    }
+
+    return { success: true, method: method };
+}
+
+
+// Create a dynamic replacement item for the lock modal (matches existing layout)
+function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
+    const item = document.createElement('div');
+    const action = replacement.action || 'replace';
+    item.className = `text-replacement-lock-item dynamic-replacement-type dynamic-action-${action}`;
+    item.dataset.globalIndex = globalIndex;
+
+    const actionDisplay = action === 'replace' ? 'Replace' : action === 'append' ? 'Append' : 'Delete';
+    const actionIcon = action === 'replace' ? 'fa-arrows-rotate' : action === 'append' ? 'fa-plus' : 'fa-trash';
+    
+    // Helper function to get category icon (based on schema-defined categories)
+    const getCategoryIconLocal = (category) => {
+        const categoryLower = (category || '').toLowerCase();
+        
+        // Schema-defined categories from dynamicGenerationHandlers.js:
+        // 'Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Dialog', 
+        // 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere'
+        
+        if (categoryLower.includes('weather')) {
+            return '<i class="fas fa-cloud-rain"></i>';
+        } else if (categoryLower.includes('time of day') || categoryLower.includes('time')) {
+            return '<i class="fas fa-clock"></i>';
+        } else if (categoryLower.includes('seasonal')) {
+            return '<i class="fas fa-leaf"></i>';
+        } else if (categoryLower.includes('holiday')) {
+            return '<i class="fas fa-calendar-star"></i>';
+        } else if (categoryLower.includes('spelling')) {
+            return '<i class="fas fa-spell-check"></i>';
+        } else if (categoryLower.includes('text overlay') || categoryLower.includes('overlay')) {
+            return '<i class="fas fa-comment-dots"></i>';
+        } else if (categoryLower.includes('conflict resolution') || categoryLower.includes('conflict')) {
+            return '<i class="fas fa-wrench"></i>';
+        } else if (categoryLower.includes('enhancement') || categoryLower.includes('enhance')) {
+            return '<i class="fas fa-sparkles"></i>';
+        } else if (categoryLower.includes('lighting') || categoryLower.includes('light')) {
+            return '<i class="fas fa-lightbulb"></i>';
+        } else if (categoryLower.includes('atmosphere')) {
+            return '<i class="fas fa-cloud-sun"></i>';
+        } else if (categoryLower.includes('action verb') || categoryLower.includes('action')) {
+            return '<i class="fas fa-running"></i>';
+        } else if (categoryLower.includes('directive')) {
+            return '<i class="fas fa-bullseye"></i>';
+        }
+        
+        return '<i class="fas fa-tag"></i>';
+    };
+    
+    // Determine target label (for location badge)
+    let targetLabel = '';
+    let locationBadgeClass = '';
+    if (replacement.targetType === 'prompt') {
+        targetLabel = 'Prompt';
+        locationBadgeClass = 'location-prompt';
+    } else if (replacement.targetType === 'uc') {
+        targetLabel = 'Negative';
+        locationBadgeClass = 'location-uc';
+    } else if (replacement.targetType === 'character') {
+        targetLabel = `Character ${replacement.targetSource + 1} ${replacement.targetField === 'input' ? 'Prompt' : 'Negative'}`;
+        locationBadgeClass = replacement.targetField === 'input' ? 'location-prompt' : 'location-uc';
+    }
+
+    // Get application method for type badge
+    let applicationMethod = 'Direct';
+    if (replacement.used_fallback || replacement.application_method === 'fallback') {
+        applicationMethod = 'Fallback';
+    } else if (replacement.used_alternative || replacement.application_method === 'alternative') {
+        applicationMethod = 'Alternative';
+    }
+
+    // Get application method icon and label for status icon
+    let statusIcon = '';
+    let statusClass = '';
+    let statusTitle = '';
+    
+    if (replacement.used_fallback || replacement.application_method === 'fallback') {
+        statusIcon = '<i class="fas fa-exclamation-triangle"></i>';
+        statusClass = 'status-fallback';
+        statusTitle = 'Applied using fallback text';
+    } else if (replacement.used_alternative || replacement.application_method === 'alternative') {
+        statusIcon = '<i class="fas fa-rotate"></i>';
+        statusClass = 'status-alternative';
+        statusTitle = 'Applied using alternative text';
+    } else if (replacement.select_text || action !== 'append') {
+        statusIcon = '<i class="fas fa-check"></i>';
+        statusClass = 'status-direct';
+        statusTitle = 'Applied successfully';
+    }
+
+    // Helper function to convert category to CSS class name
+    const getCategoryClass = (category) => {
+        if (!category) return '';
+        return 'category-' + category.toLowerCase().replace(/\s+/g, '-');
+    };
+
+    // Check if locked
+    const isLocked = replacement.locked === true;
+    item.classList.toggle('selected', isLocked);
+
+    // Build the pattern display (matching existing layout)
+    let selectTextPattern = '';
+    if (replacement.select_text) {
+        selectTextPattern = `"${escapeHtml(replacement.select_text)}"`;
+    } else if (action === 'append') {
+        selectTextPattern = '<i>append to end</i>';
+    } else {
+        selectTextPattern = '<i>N/A</i>';
+    }
+
+    // Build the replacement display
+    let replaceTextPattern = '';
+    if (action === 'delete') {
+        replaceTextPattern = replacement.count 
+            ? `<i>Delete ${replacement.count} occurrence(s)</i>` 
+            : '<i>Delete all</i>';
+    } else {
+        replaceTextPattern = replacement.replace_text 
+            ? `"${escapeHtml(replacement.replace_text)}"` 
+            : '<i>N/A</i>';
+    }
+
+    // Build status indicator icons
+    let statusIndicators = '';
+    if (replacement.used_fallback && replacement.actual_select_text) {
+        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-warning" title="Used fallback: ${escapeHtml(replacement.actual_select_text)}"><i class="fas fa-exclamation-triangle"></i> Fallback</span>`;
+    }
+    if (replacement.used_alternative && replacement.alternative_text_used) {
+        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Used alternative: ${escapeHtml(replacement.alternative_text_used)}"><i class="fas fa-rotate"></i> Alternative</span>`;
+    }
+
+    // Validate if can be applied client-side
+    const canApply = validateDynamicReplacementCanApply(replacement);
+
+    // Create unique ID for feedback
+    const repId = `dynamic_lock_${globalIndex}_${Math.random().toString(36).substr(2, 9)}`;
+
+    item.innerHTML = `
+        <div class="text-replacement-lock-content">
+            <div class="text-replacement-lock-info">
+                <div class="text-replacement-lock-row">
+                    <div class="text-replacement-lock-pattern">
+                        ${statusIcon ? `<span class="status-icon ${statusClass}" title="${statusTitle}">${statusIcon}</span>` : ''}
+                        ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${getCategoryClass(replacement.replacement_category)}">${getCategoryIconLocal(replacement.replacement_category)} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
+                    </div>
+                    <div class="text-replacement-lock-badges">
+                        <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${targetLabel}</span>
+                        <span class="text-replacement-badge text-replacement-badge-type"><i class="fas ${actionIcon}"></i> ${actionDisplay}</span>
+                        ${statusIndicators}
+                    </div>
+                </div>
+                ${replacement.select_text || action !== 'delete' ? `<div class="text-replacement-full-value">
+                    <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">Find:</div>
+                    ${selectTextPattern}
+                </div>` : ''}
+                ${action !== 'delete' || replacement.replace_text ? `<div class="text-replacement-full-value">
+                    <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">${action === 'delete' ? 'Action:' : (action === 'append' ? 'Insert:' : 'Replace with:')}</div>
+                    ${replaceTextPattern}
+                </div>` : ''}
+                ${replacement.reason ? `<div style="color: var(--text-secondary); font-size: 0.75em; padding: var(--spacing-xs) 0; line-height: 1.3;">
+                    <i class="fas fa-info-circle"></i> ${escapeHtml(replacement.reason)}
+                </div>` : ''}
+            </div>
+            <div class="text-replacement-lock-actions">
+                <button type="button" class="btn-danger btn-small feedback-btn btn-small" data-rep-id="${repId}" data-select-text="${escapeHtml(replacement.select_text || '')}" data-replace-text="${escapeHtml(replacement.replace_text || '')}" data-action="${action}" data-reason="${escapeHtml(replacement.reason || '')}" title="Report Issue">
+                    <i class="fas fa-flag"></i>
+                </button>
+                ${canApply ? `<button type="button" class="text-replacement-replace-btn btn-secondary btn-small" data-global-index="${globalIndex}" title="Apply to Prompt">
+                    <i class="fas fa-pen-field"></i>
+                </button>` : ''}
+                <button type="button" class="text-replacement-lock-btn btn-secondary btn-small btn-toggle" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
+                    <i class="fas fa-lock"></i>
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Add event listeners
+    const applyBtn = item.querySelector('.text-replacement-replace-btn');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyDynamicReplacementFromLockModal(globalIndex);
+        });
+    }
+
+    const lockBtn = item.querySelector('.text-replacement-lock-btn');
+    if (lockBtn) {
+        lockBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
+        });
+    }
+
+    const feedbackBtn = item.querySelector('.feedback-btn');
+    if (feedbackBtn) {
+        feedbackBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const selectText = feedbackBtn.dataset.selectText;
+            const replaceText = feedbackBtn.dataset.replaceText;
+            const action = feedbackBtn.dataset.action;
+            const reason = feedbackBtn.dataset.reason;
+            if (typeof showDirectorFeedbackModal === 'function') {
+                showDirectorFeedbackModal(selectText, replaceText, action, reason);
+            }
+        });
+    }
+
+    return item;
+}
+
+// Apply dynamic replacement from lock modal
+function applyDynamicReplacementFromLockModal(globalIndex) {
+    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        showGlassToast('error', null, 'No dynamic generation data available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Find the replacement in the data structure
+    const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    let replacement = null;
+    let replacementArrayRef = null;
+    let replacementArrayIndex = -1;
+    let currentIndex = 0;
+
+    const arrays = [
+        { arr: textReplacements.prompt, type: 'prompt' },
+        { arr: textReplacements.uc, type: 'uc' }
+    ];
+
+    if (textReplacements.character_prompts) {
+        textReplacements.character_prompts.forEach((char, charIndex) => {
+            if (char?.input) arrays.push({ arr: char.input, type: 'character' });
+            if (char?.uc) arrays.push({ arr: char.uc, type: 'character' });
+        });
+    }
+
+    for (const { arr } of arrays) {
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) {
+            if (currentIndex === globalIndex) {
+                replacement = arr[i];
+                replacementArrayRef = arr;
+                replacementArrayIndex = i;
+                break;
+            }
+            currentIndex++;
+        }
+        if (replacement) break;
+    }
+
+    if (!replacement) {
+        console.error('Could not find replacement at index', globalIndex);
+        showGlassToast('error', null, 'Could not find replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Apply the replacement using client-side logic
+    const result = applyDynamicReplacementClientSide(replacement);
+    
+    if (result.success) {
+        // Mark as applied
+        replacement.applied = true;
+        replacement.application_method = result.method;
+
+        // Remove from the array
+        if (replacementArrayRef && replacementArrayIndex !== -1) {
+            replacementArrayRef.splice(replacementArrayIndex, 1);
+        }
+
+        // Re-render the lock modal list
+        if (typeof renderTextReplacementLockList === 'function') {
+            renderTextReplacementLockList();
+        }
+
+        // Update the main lock button state
+        if (typeof updateMainLockButtonState === 'function') {
+            updateMainLockButtonState();
+        }
+
+        showGlassToast('success', null, `Applied replacement${result.method !== 'direct' ? ` (using ${result.method})` : ''} and removed from list`, false, 3000, '<i class="fas fa-check"></i>');
+    } else {
+        showGlassToast('error', null, result.error || 'Failed to apply replacement', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Toggle dynamic replacement lock in the lock modal
+function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
+    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        return;
+    }
+
+    // Find the replacement in the data structure
+    const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    let replacement = null;
+    let currentIndex = 0;
+
+    const arrays = [
+        { arr: textReplacements.prompt, type: 'prompt' },
+        { arr: textReplacements.uc, type: 'uc' }
+    ];
+
+    if (textReplacements.character_prompts) {
+        textReplacements.character_prompts.forEach((char, charIndex) => {
+            if (char?.input) arrays.push({ arr: char.input, type: 'character' });
+            if (char?.uc) arrays.push({ arr: char.uc, type: 'character' });
+        });
+    }
+
+    for (const { arr } of arrays) {
+        if (!arr) continue;
+        for (let i = 0; i < arr.length; i++) {
+            if (currentIndex === globalIndex) {
+                replacement = arr[i];
+                break;
+            }
+            currentIndex++;
+        }
+        if (replacement) break;
+    }
+
+    if (!replacement) {
+        console.error('Could not find replacement at index', globalIndex);
+        return;
+    }
+
+    // Toggle the locked state
+    replacement.locked = !replacement.locked;
+
+    // Update the UI
+    const isLocked = replacement.locked;
+    lockBtn.setAttribute('data-state', isLocked ? 'on' : 'off');
+    if (isLocked) {
+        lockBtn.classList.add('active');
+        item.classList.add('selected');
+    } else {
+        lockBtn.classList.remove('active');
+        item.classList.remove('selected');
+    }
+
+    // Update the main lock button state
+    if (typeof updateMainLockButtonState === 'function') {
+        updateMainLockButtonState();
+    }
+
+    // Show feedback
+    const statusText = isLocked ? 'locked for AI maintenance' : 'unlocked';
+    showGlassToast('success', null, `Replacement ${statusText}`, false, 2000, '<i class="fas fa-lock"></i>');
 }
 
 

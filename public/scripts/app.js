@@ -15,8 +15,111 @@ const presetAutocompleteList = document.querySelector('.preset-autocomplete-list
 
 let bypassConfirmation = false;
 let previewRatio = 1;
+
+// T5 Tokenizer global instance
+let t5Tokenizer = null;
 // Function to calculate and set previewRatio based on container dimensions
 
+/**
+ * Get the appropriate FontAwesome clock icon for the given time (client-side)
+ * @param {number} hour - Hour (0-23)
+ * @param {number} minute - Minute (0-59)
+ * @returns {string} FontAwesome icon class
+ */
+function getAnalogClockIcon(hour, minute) {
+    // Use FontAwesome clock icons that correspond to specific times
+    const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+
+    // FontAwesome has specific clock icons for different times
+    // Map to the closest available clock icon based on hour and minute
+    if (minute >= 45) {
+        // Round up to next hour when close to the hour
+        const nextHour = hour12 === 12 ? 1 : hour12 + 1;
+        switch (nextHour) {
+            case 1: return 'fa-clock-one';
+            case 2: return 'fa-clock-two';
+            case 3: return 'fa-clock-three';
+            case 4: return 'fa-clock-four';
+            case 5: return 'fa-clock-five';
+            case 6: return 'fa-clock-six';
+            case 7: return 'fa-clock-seven';
+            case 8: return 'fa-clock-eight';
+            case 9: return 'fa-clock-nine';
+            case 10: return 'fa-clock-ten';
+            case 11: return 'fa-clock-eleven';
+            case 12: return 'fa-clock-twelve';
+        }
+    } else if (minute >= 15 && minute < 45) {
+        // Use thirty-minute marks (half-hour positions)
+        switch (hour12) {
+            case 1: return 'fa-clock-one-thirty';
+            case 2: return 'fa-clock-two-thirty';
+            case 3: return 'fa-clock-three-thirty';
+            case 4: return 'fa-clock-four-thirty';
+            case 5: return 'fa-clock-five-thirty';
+            case 6: return 'fa-clock-six-thirty';
+            case 7: return 'fa-clock-seven-thirty';
+            case 8: return 'fa-clock-eight-thirty';
+            case 9: return 'fa-clock-nine-thirty';
+            case 10: return 'fa-clock-ten-thirty';
+            case 11: return 'fa-clock-eleven-thirty';
+            case 12: return 'fa-clock-twelve-thirty';
+        }
+    } else {
+        // Use hour marks (top of the hour)
+        switch (hour12) {
+            case 1: return 'fa-clock-one';
+            case 2: return 'fa-clock-two';
+            case 3: return 'fa-clock-three';
+            case 4: return 'fa-clock-four';
+            case 5: return 'fa-clock-five';
+            case 6: return 'fa-clock-six';
+            case 7: return 'fa-clock-seven';
+            case 8: return 'fa-clock-eight';
+            case 9: return 'fa-clock-nine';
+            case 10: return 'fa-clock-ten';
+            case 11: return 'fa-clock-eleven';
+            case 12: return 'fa-clock-twelve';
+        }
+    }
+}
+
+/**
+ * Format timezone information (client-side using Intl API)
+ * @param {string} timezone - Timezone string (e.g., "America/New_York")
+ * @returns {Object} Timezone info with name and offset
+ */
+function formatTimezoneInfo(timezone) {
+    if (!timezone) return null;
+
+    try {
+        // Get timezone name and offset using Intl API
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('en', {
+            timeZone: timezone,
+            timeZoneName: 'short'
+        });
+
+        const parts = formatter.formatToParts(now);
+        const tzName = parts.find(part => part.type === 'timeZoneName')?.value || timezone;
+
+        // Calculate offset in hours
+        const offsetMs = now.toLocaleString('en', { timeZone: timezone, timeZoneName: 'short' }).match(/GMT([+-]\d{1,2}):?(\d{2})?/);
+        const offsetHours = offsetMs ? parseInt(offsetMs[1]) + (parseInt(offsetMs[2] || 0) / 60) : 0;
+
+        return {
+            name: tzName,
+            offset: offsetHours,
+            formatted: tzName  // Just use the name as-is, it already includes the offset
+        };
+    } catch (error) {
+        return {
+            name: 'UTC',
+            offset: 0,
+            formatted: 'UTC+0'
+        };
+    }
+}
 
 /**
  * Handles click events for toast notification buttons
@@ -563,7 +666,7 @@ function updateManualPresetPlaceholder() {
 // Dynamic Generation Functions
 function updateDynamicGenerationToggleBtn() {
     const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
-    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'actionBtn', 'creativeBtn']
+    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn', 'optimizeBtn']
         .some(btnId => {
             const btn = document.getElementById(btnId);
             return btn && btn.dataset.state === 'on' && btn.getAttribute('data-override');
@@ -573,24 +676,346 @@ function updateDynamicGenerationToggleBtn() {
     let state = 'off'; // default
 
     dynamicGenerationLockedBtn.classList.remove('hidden');
-    if (hasCompiledPrompt) {
-        state = 'compiled'; // has compiled prompt available
-    } else if (hasActiveOverrides) {
-        state = 'on'; // has active overrides
-    } else if (isOpen) {
+    if (isOpen) {
         state = 'open'; // group is open but no active overrides
+    } else if (hasActiveOverrides && hasCompiledPrompt) {
+        state = 'on'; // has active overrides
     } else {
         dynamicGenerationLockedBtn.classList.add('hidden');
     }
 
     // Update button state
     dynamicGenerationToggleBtn.setAttribute('data-state', state);
+    
+    // Sync creative tab button state
+    const creativeTabDynamicBtn = document.getElementById('creativeTabDynamicGenerationBtn');
+    if (creativeTabDynamicBtn) {
+        creativeTabDynamicBtn.setAttribute('data-state', state);
+    }
 
     if (hasCompiledPrompt) {
         if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = '';
     } else {
         if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = 'true';
     }
+}
+
+// Dynamic Generation Carousel
+let carouselData = [];
+let carouselCurrentIndex = 0;
+let carouselInterval = null;
+let carouselPaused = false;
+
+function formatCarouselItems(data) {
+    const items = [];
+
+    // Time with timezone and analog clock icon
+    if (data.time) {
+        // Compute analog clock icon on client
+        const analogIcon = getAnalogClockIcon(data.time.hour, data.time.minute);
+
+        // Compute timezone info on client
+        const timezoneInfo = data.time.timezone ? formatTimezoneInfo(data.time.timezone) : null;
+
+        const timeText = timezoneInfo && timezoneInfo.offset !== 0
+            ? `${data.time.formatted} <span class="timezone-dimmed">${timezoneInfo.formatted}</span>`
+            : data.time.formatted;
+
+        items.push({
+            icon: 'fa-solid ' + analogIcon,
+            text: timeText
+        });
+    }
+
+    // Time of day as separate item
+    if (data.timeOfDay) {
+        // Determine icon based on time period
+        let todIcon = 'fa-regular fa-sun';
+        const timePeriod = data.timeOfDay.name.toLowerCase();
+
+        if (timePeriod.includes('dawn') || timePeriod.includes('sunrise')) {
+            todIcon = 'fa-regular fa-sunrise';
+        } else if (timePeriod.includes('morning')) {
+            todIcon = 'fa-regular fa-coffee-pot';
+        } else if (timePeriod.includes('daytime')) {
+            todIcon = 'fa-regular fa-sun';
+        } else if (timePeriod.includes('afternoon')) {
+            todIcon = 'fa-regular fa-mug-tea-saucer';
+        } else if (timePeriod.includes('evening')) {
+            todIcon = 'fa-regular fa-sun-haze';
+        } else if (timePeriod.includes('dusk') || timePeriod.includes('sunset')) {
+            todIcon = 'fa-regular fa-sunset';
+        } else if (timePeriod.includes('night') || timePeriod.includes('midnight')) {
+            todIcon = 'fa-regular fa-moon';
+        }
+
+        items.push({
+            icon: todIcon,
+            text: data.timeOfDay.name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
+            description: data.timeOfDay.description
+        });
+    }
+
+    // Season with season-specific icon
+    if (data.season) {
+        let seasonIcon = 'fas fa-leaf-maple'; // default
+        const season = data.season.toLowerCase();
+
+        if (season.includes('spring')) {
+            seasonIcon = 'fas fa-flower-tulip';
+        } else if (season.includes('summer')) {
+            seasonIcon = 'fas fa-hat-beach';
+        } else if (season.includes('autumn') || season.includes('fall')) {
+            seasonIcon = 'fas fa-leaf';
+        } else if (season.includes('winter')) {
+            seasonIcon = 'fas fa-snowflake';
+        }
+
+        items.push({
+            icon: seasonIcon,
+            text: data.season.charAt(0).toUpperCase() + data.season.slice(1)
+        });
+    }
+
+    // Holiday
+    if (data.holiday) {
+        items.push({
+            icon: 'fa-solid fa-gifts',
+            text: data.holiday
+        });
+    }
+
+    // Date - only shown if overridden (handled server-side)
+    if (data.date?.formatted) {
+        items.push({
+            icon: 'fa-regular fa-calendar',
+            text: data.date.formatted
+        });
+    }
+
+    // Weather with condition-specific icon
+    if (data.weather) {
+        // Use feelsLike temperature with proper unit conversion
+        const tempData = formatTemperature(data.weather.feelsLike);
+        const weatherText = `${tempData.number}<span class="weather-unit">${tempData.unit}</span> <span class="weather-condition">${data.weather.condition}</span>`;
+
+        // Use the same weather icon mapping as the overlay
+        let weatherIcon = 'wi wi-day-sunny'; // default
+
+        if (data.weather.condition) {
+            const iconMap = {
+                'clear sky': 'wi wi-day-sunny',
+                'mainly clear': 'wi wi-day-sunny-overcast',
+                'partly cloudy': 'wi wi-day-cloudy',
+                'overcast': 'wi wi-cloudy',
+                'fog': 'wi wi-fog',
+                'depositing rime fog': 'wi wi-fog',
+                'light drizzle': 'wi wi-day-showers',
+                'moderate drizzle': 'wi wi-day-showers',
+                'dense drizzle': 'wi wi-day-showers',
+                'light freezing drizzle': 'wi wi-day-snow',
+                'dense freezing drizzle': 'wi wi-day-snow',
+                'slight rain': 'wi wi-day-rain',
+                'moderate rain': 'wi wi-day-rain',
+                'heavy rain': 'wi wi-day-rain',
+                'light freezing rain': 'wi wi-day-snow',
+                'heavy freezing rain': 'wi wi-day-snow',
+                'slight snow fall': 'wi wi-day-snow',
+                'moderate snow fall': 'wi wi-snow',
+                'heavy snow fall': 'wi wi-snow',
+                'snow grains': 'wi wi-snow',
+                'slight rain showers': 'wi wi-day-showers',
+                'moderate rain showers': 'wi wi-day-rain',
+                'violent rain showers': 'wi wi-day-storm-showers',
+                'slight snow showers': 'wi wi-day-snow',
+                'heavy snow showers': 'wi wi-snow',
+                'thunderstorm': 'wi wi-day-thunderstorm',
+                'thunderstorm with slight hail': 'wi wi-day-thunderstorm',
+                'thunderstorm with heavy hail': 'wi wi-day-thunderstorm'
+            };
+            weatherIcon = iconMap[data.weather.condition.toLowerCase()] || 'wi wi-day-sunny';
+        }
+
+        items.push({
+            icon: weatherIcon,
+            text: weatherText
+        });
+    }
+
+    // Location (if available)
+    if (data.location && (data.location.city || data.location.country)) {
+        const locationText = [data.location.city, data.location.country].filter(Boolean).join(', ');
+        items.push({
+            icon: 'fa-solid fa-location-dot',
+            text: locationText
+        });
+    }
+
+    return items;
+}
+
+function updateDynamicCarousel(data) {
+    if (!data) return;
+
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel) return;
+
+    carouselData = formatCarouselItems(data);
+    
+    if (carouselData.length === 0) {
+        carouselData = [{
+            icon: 'fa-regular fa-circle-info',
+            text: 'Select Options...'
+        }];
+    }
+
+    carouselCurrentIndex = 0;
+    showCarouselItem(0);
+    startCarousel();
+}
+
+function showCarouselItem(index) {
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel || carouselData.length === 0) return;
+
+    const item = carouselData[index];
+    
+    // Get or create the active carousel item
+    let activeItem = carousel.querySelector('.carousel-item.active');
+    if (!activeItem) {
+        activeItem = carousel.querySelector('.carousel-item');
+    }
+
+    if (activeItem) {
+        // Update content
+        const iconEl = activeItem.querySelector('.carousel-icon');
+        const textEl = activeItem.querySelector('.carousel-text');
+        
+        iconEl.className = `carousel-icon ${item.icon}`;
+        textEl.innerHTML = item.text;
+    }
+}
+
+function advanceCarousel() {
+    if (carouselPaused || carouselData.length <= 1) return;
+
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel) return;
+
+    const currentItem = carousel.querySelector('.carousel-item.active');
+    if (!currentItem) return;
+
+    // Move to next index
+    carouselCurrentIndex = (carouselCurrentIndex + 1) % carouselData.length;
+    const nextData = carouselData[carouselCurrentIndex];
+
+    // Start exit animation
+    currentItem.classList.add('exiting');
+
+    // After fade out, update content and fade back in
+    setTimeout(() => {
+        const iconEl = currentItem.querySelector('.carousel-icon');
+        const textEl = currentItem.querySelector('.carousel-text');
+        
+        if (iconEl) iconEl.className = `carousel-icon ${nextData.icon}`;
+        if (textEl) textEl.innerHTML = nextData.text;
+
+        currentItem.classList.remove('exiting');
+    }, 500); // Match transition time
+}
+
+function startCarousel() {
+    stopCarousel();
+    
+    if (carouselData.length > 1) {
+        carouselInterval = setInterval(advanceCarousel, 4000);
+    }
+}
+
+function stopCarousel() {
+    if (carouselInterval) {
+        clearInterval(carouselInterval);
+        carouselInterval = null;
+    }
+}
+
+function pauseCarousel() {
+    carouselPaused = true;
+}
+
+function resumeCarousel() {
+    carouselPaused = false;
+}
+
+function initDynamicCarousel() {
+    const carousel = document.getElementById('dynamicCarousel');
+    if (!carousel) return;
+
+    // Add hover listeners for pause/resume
+    carousel.addEventListener('mouseenter', pauseCarousel);
+    carousel.addEventListener('mouseleave', resumeCarousel);
+}
+
+async function requestDynamicContextResolution() {
+    try {
+        if (!wsClient || !wsClient.isConnected()) {
+            console.warn('⚠️ WebSocket not connected, cannot resolve dynamic context');
+            return;
+        }
+
+        // Collect current button states
+        const todBtn = document.getElementById('todBtn');
+        const weatherBtn = document.getElementById('weatherBtn');
+        const seasonBtn = document.getElementById('seasonBtn');
+        const creativeBtn = document.getElementById('creativeBtn');
+
+        const dynamicConfig = {
+            tod: collectDynamicButtonState(todBtn),
+            weather: collectDynamicButtonState(weatherBtn),
+            season: collectDynamicButtonState(seasonBtn),
+            creative: creativeBtn?.dataset.state === 'on'
+        };
+
+        // Add location if available
+        if (weatherBtn && dynamicConfig.weather && weatherBtn.getAttribute('data-location')) {
+            dynamicConfig.location = weatherBtn.getAttribute('data-location');
+        }
+
+        // Add disable_holiday if season is enabled and holiday toggle is false
+        if (seasonBtn && dynamicConfig.season) {
+            const observeHoliday = seasonBtn.dataset.toggleHoliday !== 'false';
+            dynamicConfig.disable_holiday = !observeHoliday;
+        }
+
+        // Check if any dynamic values are enabled
+        const hasAnyEnabled = Object.values(dynamicConfig).some(v => v !== false && v !== null && v !== undefined && v !== '');
+        
+        if (!hasAnyEnabled) {
+            // Show empty state
+            updateDynamicCarousel({});
+            return;
+        }
+
+        const response = await wsClient.resolveDynamicContext(dynamicConfig);
+        if (response) {
+            updateDynamicCarousel(response);
+        }
+    } catch (error) {
+        console.error('❌ Error resolving dynamic context:', error);
+    }
+}
+
+// Debounced version to prevent excessive server requests
+let debouncedRequestDynamicContextResolution = null;
+function createDebouncedContextResolution() {
+    // Create debounced function if it doesn't exist
+    if (!debouncedRequestDynamicContextResolution) {
+        debouncedRequestDynamicContextResolution = debounce(() => {
+            requestDynamicContextResolution();
+        }, 2500);
+    }
+    // Call the debounced function
+    return debouncedRequestDynamicContextResolution();
 }
 
 // Holiday mapping from client values to server holiday names
@@ -678,7 +1103,6 @@ function getHolidayDateClient(holidayValue) {
 function openTimeDateModal() {
     const modal = document.getElementById('timeDateModal');
     if (!modal) {
-        console.error('Time/Date modal not found in HTML');
         return;
     }
 
@@ -697,8 +1121,13 @@ function openTimeDateModal() {
         if (currentOverride.includes('_')) {
             // TIME_DATE format
             const parts = currentOverride.split('_');
-            const timePart = parts[0];
+            let timePart = parts[0];
             const datePart = parts[1];
+
+            // Strip % prefix if present
+            if (timePart.startsWith('%')) {
+                timePart = timePart.substring(1);
+            }
 
             // Handle time part
             if (timePart && timePart.length === 4 && /^\d{4}$/.test(timePart)) {
@@ -713,12 +1142,18 @@ function openTimeDateModal() {
             if (datePart) {
                 if (datePart === 'tomorrow') {
                     targetDate.setDate(targetDate.getDate() + 1);
+                } else if (datePart.length === 4 && /^\d{4}$/.test(datePart)) {
+                    // MMDD numeric format
+                    const month = parseInt(datePart.substring(0, 2));
+                    const day = parseInt(datePart.substring(2, 4));
+                    targetDate.setMonth(month - 1); // JavaScript months are 0-based
+                    targetDate.setDate(day);
                 } else if (CLIENT_HOLIDAY_MAP[datePart]) {
                     // Holiday date
                     const holidayDate = getHolidayDateClient('true_' + datePart);
                     if (holidayDate) {
                         targetDate = holidayDate;
-                        // Preserve time from timePart if it was set
+                        // Preserve time from timePart if it was set (already stripped of % prefix above)
                         if (timePart && timePart.length === 4 && /^\d{4}$/.test(timePart)) {
                             const hour = parseInt(timePart.substring(0, 2));
                             const minute = parseInt(timePart.substring(2, 4));
@@ -802,7 +1237,6 @@ function saveTimeDateModal() {
 function openWeatherLocationModal() {
     const modal = document.getElementById('weatherLocationModal');
     if (!modal) {
-        console.error('Weather location modal not found in HTML');
         return;
     }
 
@@ -914,6 +1348,8 @@ function saveWeatherLocation() {
 
         // Update status icons to reflect the location change
         updatePromptStatusIcons();
+
+        createDebouncedContextResolution();
     }
 
     // Close the modal
@@ -931,6 +1367,8 @@ function clearWeatherLocation() {
 
         if (hadLocation) {
             updatePromptStatusIcons();
+            updateDynamicGenerationToggleBtn();
+            createDebouncedContextResolution();
         }
     }
 }
@@ -942,24 +1380,6 @@ function setCurrentLocation() {
     }
 
     showGlassToast('info', null, 'Getting current location...', false, undefined, '<i class="fas fa-location-dot"></i>');
-
-    // Fallback to server-side IP geolocation
-    function fallbackToServerIP() {
-        const weatherBtn = document.getElementById('weatherBtn');
-        if (weatherBtn) {
-            weatherBtn.setAttribute('data-location', 'CLIENT');
-            weatherBtn.dataset.locationDisplay = 'Current Location (Server IP)';
-
-            // Also set it as active if not already
-            weatherBtn.dataset.state = 'on';
-            weatherBtn.classList.add('active');
-
-            showGlassToast('warning', null, 'Location will be determined by your IP', undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
-
-            // Update status icons to reflect the location change
-            updatePromptStatusIcons();
-        }
-    }
 
     // Try GPS/network location first, then fallback to server IP lookup
     function tryGPSLocation(options) {
@@ -987,6 +1407,8 @@ function setCurrentLocation() {
 
                 // Update status icons to reflect the location change
                 updatePromptStatusIcons();
+
+                createDebouncedContextResolution();
             }
         };
 
@@ -1000,14 +1422,14 @@ function setCurrentLocation() {
                 case error.POSITION_UNAVAILABLE:
                 case error.TIMEOUT:
                     // Browser geolocation failed, use server-side IP lookup
-                    fallbackToServerIP();
+                    setIPLocation();
                     break;
             }
         };
 
         // Set a timeout to handle silent failures (some browsers don't call error callback)
         timeoutId = setTimeout(() => {
-            fallbackToServerIP();
+            setIPLocation();
         }, options.timeout + 1000);
 
         navigator.geolocation.getCurrentPosition(successCallback, errorCallback, options);
@@ -1021,6 +1443,26 @@ function setCurrentLocation() {
     });
 }
 
+// Set location using server-side IP geolocation (skip GPS)
+function setIPLocation() {
+    const weatherBtn = document.getElementById('weatherBtn');
+    if (weatherBtn) {
+        weatherBtn.setAttribute('data-location', 'CLIENT');
+        weatherBtn.dataset.locationDisplay = 'Current Location (GeoIP)';
+
+        // Also set it as active if not already
+        weatherBtn.dataset.state = 'on';
+        weatherBtn.classList.add('active');
+
+        showGlassToast('success', null, 'Location set to IP-based geolocation', undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
+
+        // Update status icons to reflect the location change
+        updatePromptStatusIcons();
+
+        createDebouncedContextResolution();
+    }
+}
+
 // TEXT REPLACEMENT LOCK MODAL FUNCTIONS
 let currentTextReplacementSeeds = [];
 
@@ -1028,7 +1470,7 @@ let currentTextReplacementSeeds = [];
 function getReplacementTypeDisplay(type) {
     switch (type) {
         case 'incrementing':
-            return 'incrementing';
+            return 'Incrementing';
         case 'bracketed_incrementing':
         case 'bracketed_expanded':
         case 'bracketed_prefix':
@@ -1037,10 +1479,83 @@ function getReplacementTypeDisplay(type) {
         case 'bracketed_expanded_combine':
         case 'bracketed_prefix_combine':
         case 'combine':
-            return 'pick';
+            return 'Random';
+        case 'regular':
+            return 'Static';
         default:
-            return type;
+            return type.charAt(0).toUpperCase() + type.slice(1);
     }
+}
+
+// Get icon for replacement type
+function getReplacementTypeIcon(type) {
+    switch (type) {
+        case 'incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return '<i class="fas fa-dice"></i>';
+        case 'regular':
+            return '<i class="fas fa-arrows-rotate"></i>';
+        default:
+            return '<i class="fas fa-tag"></i>';
+    }
+}
+
+// Get location badge class based on source
+function getLocationBadgeClass(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return 'location-prompt';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+        return 'location-uc';
+    } else if (sourceLower.includes('character')) {
+        return 'location-character';
+    }
+    return '';
+}
+
+// Get icon for dynamic replacement category (based on schema-defined categories)
+function getCategoryIcon(category) {
+    const categoryLower = (category || '').toLowerCase();
+    
+    // Schema-defined categories from dynamicGenerationHandlers.js:
+    // 'Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Dialog', 
+    // 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere'
+    
+    if (categoryLower.includes('weather')) {
+        return '<i class="fas fa-cloud-rain"></i>';
+    } else if (categoryLower.includes('time of day') || categoryLower.includes('time')) {
+        return '<i class="fas fa-clock"></i>';
+    } else if (categoryLower.includes('seasonal')) {
+        return '<i class="fas fa-leaf"></i>';
+    } else if (categoryLower.includes('holiday')) {
+        return '<i class="fas fa-calendar-star"></i>';
+    } else if (categoryLower.includes('spelling')) {
+        return '<i class="fas fa-spell-check"></i>';
+    } else if (categoryLower.includes('text overlay') || categoryLower.includes('overlay')) {
+        return '<i class="fas fa-comment-dots"></i>';
+    } else if (categoryLower.includes('conflict resolution') || categoryLower.includes('conflict')) {
+        return '<i class="fas fa-wrench"></i>';
+    } else if (categoryLower.includes('enhancement') || categoryLower.includes('enhance')) {
+        return '<i class="fas fa-sparkles"></i>';
+    } else if (categoryLower.includes('lighting') || categoryLower.includes('light')) {
+        return '<i class="fas fa-lightbulb"></i>';
+    } else if (categoryLower.includes('atmosphere')) {
+        return '<i class="fas fa-cloud-sun"></i>';
+    } else if (categoryLower.includes('action verb') || categoryLower.includes('action')) {
+        return '<i class="fas fa-running"></i>';
+    } else if (categoryLower.includes('directive')) {
+        return '<i class="fas fa-bullseye"></i>';
+    }
+    
+    return '<i class="fas fa-tag"></i>';
 }
 
 // Open the text replacement lock modal
@@ -1049,7 +1564,6 @@ function openTextReplacementLockModal() {
     const listContainer = document.getElementById('textReplacementLockList');
 
     if (!modal || !listContainer) {
-        console.error('Text replacement lock modal elements not found');
         return;
     }
 
@@ -1145,13 +1659,35 @@ function updateLockStatusText() {
 
 // Update the main lock button indicator state
 function updateMainLockButtonState() {
-    if (!dynamicGenerationLockedBtn) return;
+    // Get the button elements directly
+    const textReplacementLockBtn = document.getElementById('textReplacementLockBtn');
+    
+    if (!textReplacementLockBtn) return;
 
     const lockedCount = window.lockedTextReplacements ? window.lockedTextReplacements.length : 0;
-    const availableCount = window.lastGenerationTextReplacements ?
+    
+    // Count ALL text replacement seeds (not just lockable)
+    const allSeedsCount = window.lastGenerationTextReplacements ? window.lastGenerationTextReplacements.length : 0;
+    const lockableSeedsCount = window.lastGenerationTextReplacements ?
         window.lastGenerationTextReplacements.filter(r => r.can_lock !== undefined ? r.can_lock !== false : true).length : 0;
 
-    if (availableCount === 0) {
+    // Check for dynamic generation text replacements
+    let dynamicReplacementsCount = 0;
+    if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        const dtr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+        if (dtr.prompt) dynamicReplacementsCount += dtr.prompt.length;
+        if (dtr.uc) dynamicReplacementsCount += dtr.uc.length;
+        if (dtr.character_prompts) {
+            dtr.character_prompts.forEach(char => {
+                if (char?.input) dynamicReplacementsCount += char.input.length;
+                if (char?.uc) dynamicReplacementsCount += char.uc.length;
+            });
+        }
+    }
+
+    const totalReplacementsAvailable = allSeedsCount + dynamicReplacementsCount;
+
+    if (totalReplacementsAvailable === 0) {
         // No replacements available, hide button
         textReplacementLockBtn.classList.add('hidden');
         textReplacementLockBtn.setAttribute('data-state', 'off');
@@ -1163,15 +1699,22 @@ function updateMainLockButtonState() {
         if (lockedCount === 0) {
             // None locked, button is off
             textReplacementLockBtn.setAttribute('data-state', 'off');
-            textReplacementLockBtn.title = 'Click to lock text replacements';
-        } else if (lockedCount === availableCount) {
-            // All locked, button is on
+            const tooltipParts = [];
+            if (allSeedsCount > 0) tooltipParts.push(`${allSeedsCount} text replacement${allSeedsCount !== 1 ? 's' : ''}`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} dynamic replacement${dynamicReplacementsCount !== 1 ? 's' : ''}`);
+            textReplacementLockBtn.title = tooltipParts.length > 0 ? tooltipParts.join(' + ') + ' available' : 'Click to view text replacements';
+        } else if (lockedCount === lockableSeedsCount && lockableSeedsCount > 0 && dynamicReplacementsCount === 0) {
+            // All lockable seeds are locked, button is on (only if no dynamic replacements)
             textReplacementLockBtn.setAttribute('data-state', 'on');
-            textReplacementLockBtn.title = 'All text replacements locked';
+            textReplacementLockBtn.title = 'All lockable text replacements locked';
         } else {
-            // Some locked, button is partial
+            // Some locked or dynamic replacements present, button is partial
             textReplacementLockBtn.setAttribute('data-state', 'partial');
-            textReplacementLockBtn.title = `${lockedCount} of ${availableCount} replacements locked`;
+            const tooltipParts = [];
+            if (lockedCount > 0) tooltipParts.push(`${lockedCount} locked`);
+            if (lockableSeedsCount - lockedCount > 0) tooltipParts.push(`${lockableSeedsCount - lockedCount} unlocked`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} dynamic`);
+            textReplacementLockBtn.title = tooltipParts.join(', ');
         }
     }
 }
@@ -1208,7 +1751,6 @@ async function openTextReplacementManualSelectionModal(seed, index) {
     const menuElement = document.getElementById('manualSelectionDropdownMenu');
 
     if (!modal || !selectedElement || !menuElement) {
-        console.error('Manual selection modal elements not found');
         return;
     }
 
@@ -1235,7 +1777,6 @@ async function openTextReplacementManualSelectionModal(seed, index) {
             menuElement.innerHTML = '<div class="custom-dropdown-option">No options available</div>';
         }
     } catch (error) {
-        console.error('Error getting text replacement options:', error);
         selectedElement.textContent = 'Error loading options';
         menuElement.innerHTML = '<div class="custom-dropdown-option">Error loading options</div>';
     }
@@ -1462,7 +2003,15 @@ function renderTextReplacementLockList() {
 
     listContainer.innerHTML = '';
 
-    if (currentTextReplacementSeeds.length === 0) {
+    // Check if we have any replacements (text seeds or dynamic)
+    let hasDynamicReplacements = false;
+    if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        const tr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+        hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) || 
+            (tr.character_prompts?.some(char => char?.input?.length > 0 || char?.uc?.length > 0));
+    }
+
+    if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
         listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No text replacements available. Generate an image first to see replacement options.</div>';
         updateLockStatusText();
         return;
@@ -1488,33 +2037,37 @@ function renderTextReplacementLockList() {
             }
         }
 
+        const isStatic = seed.type === 'regular';
+        const locationBadgeClass = getLocationBadgeClass(seed.source);
+        const typeIcon = getReplacementTypeIcon(seed.type);
+        
         itemDiv.innerHTML = `
             <div class="text-replacement-lock-content">
                 <div class="text-replacement-lock-info">
                     <div class="text-replacement-lock-row">
                         <div class="text-replacement-lock-pattern">
-                            <span class="text-replacement-original">${originalPattern}</span>
+                            ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
                             <i class="fas fa-arrow-right text-replacement-arrow"></i>
-                            <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>
+                            <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
                         </div>
                         <div class="text-replacement-lock-badges">
-                            <span class="text-replacement-badge text-replacement-badge-location">${seed.source}</span>
-                            <span class="text-replacement-badge text-replacement-badge-type">${getReplacementTypeDisplay(seed.type)}</span>
+                            <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${seed.source}</span>
+                            <span class="text-replacement-badge text-replacement-badge-type">${typeIcon} ${getReplacementTypeDisplay(seed.type)}</span>
                         </div>
                     </div>
                     <div class="text-replacement-full-value">${seed.value}</div>
                 </div>
                 <div class="text-replacement-lock-actions">
-                    <button type="button" class="text-replacement-manual-select-btn btn-secondary" title="Manual Selection" id="tr-manual-${index}">
+                    <button type="button" class="text-replacement-manual-select-btn btn-secondary btn-small" title="Manual Selection" id="tr-manual-${index}">
                         <i class="fas fa-list"></i>
                     </button>
-                    <button type="button" class="text-replacement-random-btn btn-secondary" title="Random Selection" id="tr-random-${index}">
+                    <button type="button" class="text-replacement-random-btn btn-secondary btn-small" title="Random Selection" id="tr-random-${index}">
                         <i class="fas fa-dice"></i>
                     </button>
-                    <button type="button" class="text-replacement-replace-btn btn-secondary" title="Replace in Prompt" id="tr-replace-${index}">
-                        <i class="fas fa-floppy-disk-circle-arrow-right"></i>
+                    <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
+                        <i class="fas fa-pen-field"></i>
                     </button>
-                    <button type="button" class="text-replacement-lock-btn btn-secondary indicator" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
+                    <button type="button" class="text-replacement-lock-btn btn-secondary btn-small btn-toggle" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
                         <i class="fas fa-lock"></i>
                     </button>
                 </div>
@@ -1565,25 +2118,29 @@ function renderTextReplacementLockList() {
         } else {
             // For non-lockable replacements, show info only
             const originalPattern = seed.pattern || `!${seed.key}`;
+            const isStatic = seed.type === 'regular';
+            const locationBadgeClass = getLocationBadgeClass(seed.source);
+            const typeIcon = getReplacementTypeIcon(seed.type);
+            
             itemDiv.innerHTML = `
                 <div class="text-replacement-lock-content">
                     <div class="text-replacement-lock-info">
                         <div class="text-replacement-lock-row">
                             <div class="text-replacement-lock-pattern">
-                                <span class="text-replacement-original">${originalPattern}</span>
+                                ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
                                 <i class="fas fa-arrow-right text-replacement-arrow"></i>
-                                <span class="text-replacement-selected">!${seed.key}</span>
+                                <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
                             </div>
                             <div class="text-replacement-lock-badges">
-                                <span class="text-replacement-badge text-replacement-badge-location">${seed.source}</span>
-                                <span class="text-replacement-badge text-replacement-badge-type">${getReplacementTypeDisplay(seed.type)}</span>
+                                <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${seed.source}</span>
+                                <span class="text-replacement-badge text-replacement-badge-type">${typeIcon} ${getReplacementTypeDisplay(seed.type)}</span>
                             </div>
                         </div>
                         <div class="text-replacement-full-value">${seed.value}</div>
                     </div>
                     <div class="text-replacement-lock-actions">
-                        <button type="button" class="text-replacement-replace-btn btn-secondary" title="Replace in Prompt" id="tr-replace-${index}">
-                            <i class="fas fa-floppy-disk-circle-arrow-right"></i>
+                        <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
+                            <i class="fas fa-pen-field"></i>
                         </button>
                     </div>
                 </div>
@@ -1599,6 +2156,58 @@ function renderTextReplacementLockList() {
 
         listContainer.appendChild(itemDiv);
     });
+
+    const dtr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    const replacements = [];
+
+    // Collect all replacements from different sources
+    if (dtr.prompt && dtr.prompt.length > 0) {
+        dtr.prompt.forEach((rep, index) => {
+            replacements.push({ ...rep, targetType: 'prompt', targetSource: 'base', index });
+        });
+    }
+
+    if (dtr.uc && dtr.uc.length > 0) {
+        dtr.uc.forEach((rep, index) => {
+            replacements.push({ ...rep, targetType: 'uc', targetSource: 'base', index });
+        });
+    }
+
+    if (dtr.character_prompts && dtr.character_prompts.length > 0) {
+        dtr.character_prompts.forEach((char, charIndex) => {
+            if (char && char.input && char.input.length > 0) {
+                char.input.forEach((rep, index) => {
+                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'input', index });
+                });
+            }
+            if (char && char.uc && char.uc.length > 0) {
+                char.uc.forEach((rep, index) => {
+                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'uc', index });
+                });
+            }
+        });
+    }
+
+    if (replacements.length > 0) {
+        // Add section header
+        const sectionHeader = document.createElement('div');
+        sectionHeader.className = 'dynamic-replacements-section-header';
+        sectionHeader.innerHTML = `
+            <div class="section-title">
+                <i class="ri-pencil-ai-2-fill"></i>
+                <span>Dynamic Replacements</span>
+            </div>
+        `;
+        listContainer.appendChild(sectionHeader);
+
+        // Render each replacement (reuse the same function from textReplacementManager.js)
+        replacements.forEach((replacement, globalIndex) => {
+            if (typeof createDynamicReplacementItemForLockModal === 'function') {
+                const itemElement = createDynamicReplacementItemForLockModal(replacement, globalIndex);
+                listContainer.appendChild(itemElement);
+            }
+        });
+    }
 
     updateLockStatusText();
 }
@@ -1628,13 +2237,18 @@ function updateTextReplacementLockItem(index, updatedSeed) {
 }
 
 // Show compiled prompt modal
-function showCompiledPromptModal() {
-    if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
-        showGlassToast('warning', null, 'No compiled prompt available to view.', false, undefined, '<i class="fas fa-file-slash"></i>');
-        return;
-    }
+function showCompiledPromptModal(compiledPromptData = null) {
+    let compiled;
 
-    const compiled = window.dynamicGenerationData.compiled_prompt;
+    if (compiledPromptData) {
+        compiled = compiledPromptData;
+    } else {
+        if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
+            showGlassToast('warning', null, 'No compiled prompt available to view.', false, undefined, '<i class="fas fa-glasses-round"></i>');
+            return;
+        }
+        compiled = window.dynamicGenerationData.compiled_prompt;
+    }
     const modal = document.getElementById('compiledPromptModal');
     const content = document.getElementById('compiledPromptContent');
 
@@ -2255,10 +2869,12 @@ function showCompiledPromptModal() {
         }
 
         // Time and season information
+        // timePeriod is stored at context.timePeriod, not context.time.timePeriod
+        const timePeriodInfo = context.timePeriod || {};
         const timeItems = [
-            createInfoItem('Time Period', time.period, '<i class="fa-solid fa-clock"></i>'),
-            createInfoItem('Lighting', time.lighting, '<i class="fa-solid fa-lightbulb"></i>'),
-            createInfoItem('Atmosphere', time.atmosphere, '<i class="fa-solid fa-smog"></i>'),
+            createInfoItem('Time Period', timePeriodInfo.period, '<i class="fa-solid fa-clock"></i>'),
+            createInfoItem('Lighting', timePeriodInfo.lighting, '<i class="fa-solid fa-lightbulb"></i>'),
+            createInfoItem('Atmosphere', timePeriodInfo.atmosphere, '<i class="fa-solid fa-smog"></i>'),
             createInfoItem('Season', context.season, '<i class="fa-solid fa-leaf"></i>'),
             createInfoItem('Hour', time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : null, '<i class="fa-solid fa-clock"></i>'),
             createInfoItem('Timezone', time.timezone, '<i class="fa-solid fa-globe"></i>')
@@ -2266,14 +2882,14 @@ function showCompiledPromptModal() {
 
         // Create period information card
         let periodCardHtml = '';
-        if (context.season && time.period) {
+        if (context.season && timePeriodInfo.period) {
             // Determine background class based on season + time period + lighting/atmosphere
             let periodBgClass = 'period-default';
 
             const season = context.season.toLowerCase();
-            const period = time.period ? time.period.toLowerCase() : '';
-            const lighting = time.lighting ? time.lighting.toLowerCase() : '';
-            const atmosphere = time.atmosphere ? time.atmosphere.toLowerCase() : '';
+            const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
+            const lighting = timePeriodInfo.lighting ? timePeriodInfo.lighting.toLowerCase() : '';
+            const atmosphere = timePeriodInfo.atmosphere ? timePeriodInfo.atmosphere.toLowerCase() : '';
 
             // Combine factors for background selection
             if (season.includes('spring')) {
@@ -2331,8 +2947,8 @@ function showCompiledPromptModal() {
 
             // Convert periodKey to pretty display name
             let shortTitle = 'Time';
-            if (time.periodKey) {
-                shortTitle = time.periodKey
+            if (timePeriodInfo.periodKey) {
+                shortTitle = timePeriodInfo.periodKey
                     .split('_')
                     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                     .join(' ');
@@ -2345,9 +2961,9 @@ function showCompiledPromptModal() {
                             <div class="period-title">${shortTitle}</div>
                             <div class="period-details">
                                 ${context.season ? `<div class="period-detail"><i class="fa-solid fa-leaf"></i><div class="detail-content"><div class="detail-label">Season</div><div class="detail-value">${context.season}</div></div></div>` : ''}
-                                ${time.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${time.period}</div></div></div>` : ''}
-                                ${time.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${time.lighting}</div></div></div>` : ''}
-                                ${time.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${time.atmosphere}</div></div></div>` : ''}
+                                ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
+                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
+                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -2377,92 +2993,6 @@ function showCompiledPromptModal() {
         modificationsContent = `<div class="info-list compact">${modItems}</div>`;
     }
 
-    // Build text replacements section with individual cards per replacement
-    let replacementsContent = '';
-    if (compiled.text_replacements) {
-        const replacements = [];
-
-        const createReplacementCard = (rep, type, source) => {
-            const typeBadge = type === 'prompt' ? 'Prompt' : type === 'uc' ? 'Negative' : 'Character';
-            const sourceBadge = source === 'base' ? 'Base' : `Character ${source + 1}`;
-
-            return `
-                <div class="replacement-info-card">
-                    <div class="replacement-info-content">
-                        <div class="period-main-info">
-                            <div class="period-title">
-                                <div class="replacement-header">
-                                    <span class="find-text">"${rep.select_text}"</span>
-                                    <div class="replacement-badges">
-                                        <span class="replacement-badge ${source}">${sourceBadge}</span>
-                                        <span class="replacement-badge ${type}">${typeBadge}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="replacement-content">
-                                <div class="replacement-text">"${rep.replace_text}"</div>
-                                ${rep.reason ? `<div class="replacement-reason">${rep.reason}</div>` : ''}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        };
-
-        // Add prompt replacements
-        if (compiled.text_replacements.prompt && compiled.text_replacements.prompt.length > 0) {
-            compiled.text_replacements.prompt.forEach(rep => {
-                replacements.push(createReplacementCard(rep, 'prompt', 'base'));
-            });
-        }
-
-        // Add negative prompt replacements
-        if (compiled.text_replacements.uc && compiled.text_replacements.uc.length > 0) {
-            compiled.text_replacements.uc.forEach(rep => {
-                replacements.push(createReplacementCard(rep, 'uc', 'base'));
-            });
-        }
-
-        // Add character replacements
-        if (compiled.text_replacements.character_prompts && compiled.text_replacements.character_prompts.length > 0) {
-            compiled.text_replacements.character_prompts.forEach((char, charIndex) => {
-                if (char && char.input && char.input.length > 0) {
-                    char.input.forEach(rep => {
-                        replacements.push(createReplacementCard(rep, 'prompt', charIndex));
-                    });
-                }
-                if (char && char.uc && char.uc.length > 0) {
-                    char.uc.forEach(rep => {
-                        replacements.push(createReplacementCard(rep, 'uc', charIndex));
-                    });
-                }
-            });
-        }
-
-        if (replacements.length > 0) {
-            replacementsContent = replacements.join('');
-        } else {
-            replacementsContent = `
-                <div class="period-info-card">
-                    <div class="period-info-content">
-                        <div class="period-main-info">
-                            <div class="period-title">Text Replacements</div>
-                            <div class="period-details">
-                                <div class="period-detail">
-                                    <i class="fas fa-info-circle"></i>
-                                    <div class="detail-content">
-                                        <div class="detail-label">Status</div>
-                                        <div class="detail-value">No text replacements were applied</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-    }
-
     // Build reasoning section
     let reasoningContent = '';
     if (compiled.reasoning) {
@@ -2473,8 +3003,6 @@ function showCompiledPromptModal() {
     let metadataContent = '';
     const metadataItems = [
         { label: 'Timestamp', value: compiled.timestamp ? new Date(compiled.timestamp).toLocaleString() : null, icon: 'fa-clock' },
-        { label: 'AI Processed', value: compiled.ai_processed ? 'Yes' : 'No', icon: 'fa-robot' },
-        { label: 'Cache Status', value: compiled.prompt_hash ? 'Cached' : 'Fresh', icon: 'fa-database' }
     ].filter(item => item.value !== null);
 
     if (metadataItems.length > 0) {
@@ -2494,7 +3022,6 @@ function showCompiledPromptModal() {
     // Combine all sections
     content.innerHTML = [
         contextContent,
-        replacementsContent,
         metadataContent
     ].filter(section => section).join('');
 
@@ -2508,18 +3035,18 @@ function showCompiledPromptModal() {
 // Clear compiled prompt
 async function clearCompiledPrompt() {
     if (!window.dynamicGenerationData || !window.dynamicGenerationData.compiled_prompt) {
-        showGlassToast('warning', null, 'No compiled prompt to clear.', false, undefined, '<i class="fas fa-file-slash"></i>');
+        showGlassToast('warning', null, 'No compiled prompt to erase.', false, undefined, '<i class="fas fa-file-slash"></i>');
         return;
     }
 
     // Confirm deletion using confirmationDialog.js
     const confirmed = await showConfirmationDialog(
-        'Are you sure you want to clear the compiled prompt?',
+        'Are you sure you want to erase the compiled prompt?',
         [
             {
-                text: 'Clear Prompt',
+                text: 'Erase',
                 value: true,
-                className: 'btn-warning',
+                className: 'btn-danger',
                 icon: 'fas fa-trash'
             },
             {
@@ -2541,6 +3068,270 @@ async function clearCompiledPrompt() {
     updateDynamicGenerationToggleBtn();
 }
 
+// Director Feedback Modal Functions
+function showDirectorFeedbackModal(selectText, replaceText, action, reason) {
+    const modal = document.getElementById('directorFeedbackModal');
+    if (!modal) {
+        console.error('Director feedback modal not found');
+        return;
+    }
+    
+    // Populate the form
+    document.getElementById('feedbackSelectText').value = selectText || '';
+    document.getElementById('feedbackReplaceText').value = replaceText || '';
+    document.getElementById('feedbackAction').value = action || 'replace';
+    document.getElementById('feedbackReason').value = reason || '';
+    document.getElementById('feedbackDescription').value = '';
+    
+    // Show the modal
+    openModal(modal);
+    
+    // Focus on the description textarea
+    setTimeout(() => {
+        document.getElementById('feedbackDescription').focus();
+    }, 100);
+}
+
+async function saveDirectorFeedback() {
+    const selectText = document.getElementById('feedbackSelectText').value;
+    const replaceText = document.getElementById('feedbackReplaceText').value;
+    const action = document.getElementById('feedbackAction').value;
+    const reason = document.getElementById('feedbackReason').value;
+    const description = document.getElementById('feedbackDescription').value.trim();
+    
+    // Validate description
+    if (!description) {
+        showGlassToast('error', null, 'Please describe what went wrong with this replacement.', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+    
+    // Send via WebSocket
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.sendMessage('director_save_feedback', {
+            select_text: selectText,
+            replace_text: replaceText,
+            action: action,
+            ai_reason: reason,
+            user_feedback: description,
+            timestamp: new Date().toISOString()
+        });
+        
+        if (result && result.data && result.data.success) {
+            showGlassToast('success', null, 'Feedback saved successfully. The AI will learn from this.', false, undefined, '<i class="fas fa-check"></i>');
+            closeDirectorFeedbackModal();
+        } else {
+            throw new Error(result?.data?.message || 'Failed to save feedback');
+        }
+    } catch (error) {
+        console.error('Error saving feedback:', error);
+        showGlassToast('error', null, `Failed to save feedback: ${error.message}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+function closeDirectorFeedbackModal() {
+    const modal = document.getElementById('directorFeedbackModal');
+    if (modal) {
+        closeModal(modal);
+        // Clear the form
+        document.getElementById('feedbackDescription').value = '';
+    }
+}
+
+// Director Rules Manager Functions
+let directorRules = [];
+
+async function showDirectorRulesManager() {
+    const modal = document.getElementById('directorRulesModal');
+    if (!modal) {
+        console.error('Director rules modal not found');
+        return;
+    }
+    
+    // Load rules
+    await loadDirectorRules();
+    
+    // Render the list
+    renderDirectorRulesList();
+    
+    // Show modal
+    openModal(modal);
+}
+
+async function loadDirectorRules() {
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.sendMessage('director_load_rules', {});
+        
+        if (result && result.data && result.data.success) {
+            directorRules = result.data.rules || [];
+        } else {
+            directorRules = [];
+        }
+    } catch (error) {
+        console.error('Error loading director rules:', error);
+        directorRules = [];
+        showGlassToast('error', null, `Failed to load rules: ${error.message}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+function renderDirectorRulesList() {
+    const list = document.getElementById('directorRulesList');
+    if (!list) return;
+    
+    if (directorRules.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-book-open"></i>
+                <p>No rules defined yet.</p>
+                <p class="text-muted">Click the <i class="fas fa-plus"></i> button above to add your first rule.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    list.innerHTML = directorRules.map((rule, index) => `
+        <div class="director-rule-item" data-rule-id="${rule.id}">
+            <div class="director-rule-content">
+                <div class="director-rule-text" contenteditable="true" data-rule-index="${index}">${escapeHtml(rule.text)}</div>
+                <div class="director-rule-actions">
+                    <button type="button" class="btn-danger btn-small delete-rule-btn" data-rule-id="${rule.id}" title="Delete Rule">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    // Add event listeners for inline editing
+    list.querySelectorAll('.director-rule-text').forEach(element => {
+        element.addEventListener('blur', handleDirectorRuleEdit);
+        element.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                element.blur();
+            }
+        });
+    });
+    
+    // Add event listeners for delete buttons
+    list.querySelectorAll('.delete-rule-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteDirectorRule(btn.dataset.ruleId));
+    });
+}
+
+async function handleDirectorRuleEdit(e) {
+    const element = e.target;
+    const index = parseInt(element.dataset.ruleIndex);
+    const newText = element.textContent.trim();
+    
+    if (!newText) {
+        showGlassToast('error', null, 'Rule text cannot be empty.', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+        renderDirectorRulesList();
+        return;
+    }
+    
+    // Update local array
+    directorRules[index].text = newText;
+    
+    // Save to backend
+    await saveDirectorRules();
+}
+
+async function addDirectorRule() {
+    const newRule = {
+        id: `rule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        text: 'New rule - click to edit',
+        created: new Date().toISOString()
+    };
+    
+    directorRules.push(newRule);
+    renderDirectorRulesList();
+    
+    // Focus on the new rule
+    setTimeout(() => {
+        const newElement = document.querySelector(`[data-rule-id="${newRule.id}"] .director-rule-text`);
+        if (newElement) {
+            newElement.focus();
+            // Select all text
+            const range = document.createRange();
+            range.selectNodeContents(newElement);
+            const selection = getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }
+    }, 100);
+    
+    // Save to backend
+    await saveDirectorRules();
+}
+
+async function deleteDirectorRule(ruleId) {
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to delete this rule?',
+        [
+            {
+                text: 'Delete',
+                value: true,
+                className: 'btn-danger',
+                icon: 'fas fa-trash'
+            },
+            {
+                text: 'Cancel',
+                value: false,
+                className: 'btn-secondary'
+            }
+        ]
+    );
+    
+    if (!confirmed) return;
+    
+    // Remove from array
+    directorRules = directorRules.filter(rule => rule.id !== ruleId);
+    
+    // Re-render list
+    renderDirectorRulesList();
+    
+    // Save to backend
+    await saveDirectorRules();
+    
+    showGlassToast('success', null, 'Rule deleted successfully.', false, undefined, '<i class="fas fa-check"></i>');
+}
+
+async function saveDirectorRules() {
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.sendMessage('director_save_rules', {
+            rules: directorRules
+        });
+        
+        if (result && result.data && result.data.success) {
+            console.log('✅ Director rules saved successfully');
+        } else {
+            throw new Error(result?.data?.message || 'Failed to save rules');
+        }
+    } catch (error) {
+        console.error('Error saving director rules:', error);
+        showGlassToast('error', null, `Failed to save rules: ${error.message}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+function closeDirectorRulesModal() {
+    const modal = document.getElementById('directorRulesModal');
+    if (modal) {
+        closeModal(modal);
+    }
+}
+
 function collectDynamicButtonState(btn) {
     if (!btn) {
         return false;
@@ -2553,23 +3344,13 @@ function collectDynamicButtonState(btn) {
     if (state === 'on') {
         // Special handling for season button
         if (btn.id === 'seasonBtn') {
-            // If override is 'true', return true (Seasonal Decor - smart mode)
-            if (override === 'true') {
-                return true;
-            }
-
-            // If override is 'nearest', return 'nearest' (Nearest Holiday)
-            if (override === 'nearest') {
-                return 'nearest';
-            }
-
-            // If there's a numeric override (season/holiday index), return it as number
+            // If there's a numeric override (season index 1-4), return it as number
             const numValue = parseInt(override);
             if (!isNaN(numValue)) {
                 return numValue;
             }
 
-            // Fallback
+            // No override means auto-detect current season
             return true;
         }
 
@@ -2615,11 +3396,11 @@ function getCurrentTodDisplay() {
             } else {
                 // Named time value
                 const timeNames = {
-                    'dawn': 'Dawn', 'sunrise': 'Sunrise', 'early_morning': 'Early Morning',
-                    'morning': 'Morning', 'late_morning': 'Late Morning', 'daytime': 'Daytime',
-                    'afternoon': 'Afternoon', 'late_afternoon': 'Late Afternoon', 'golden_hour': 'Golden Hour',
-                    'sunset': 'Sunset', 'dusk': 'Dusk', 'early_evening': 'Early Evening',
-                    'evening': 'Evening', 'late_evening': 'Late Evening', 'midnight': 'Midnight'
+                    'dawn': 'Dawn', 'sunrise': 'Sunrise', 'earlymorning': 'Early Morning',
+                    'morning': 'Morning', 'latemorning': 'Late Morning', 'daytime': 'Daytime',
+                    'afternoon': 'Afternoon', 'lateafternoon': 'Late Afternoon', 'goldenhour': 'Golden Hour',
+                    'sunset': 'Sunset', 'dusk': 'Dusk', 'earlyevening': 'Early Evening',
+                    'evening': 'Evening', 'lateevening': 'Late Evening', 'midnight': 'Midnight'
                 };
                 timeDisplay = timeNames[timePart] || timePart;
             }
@@ -2672,11 +3453,11 @@ function getCurrentTodDisplay() {
     } else {
         // Single value without underscore
         const timeNames = {
-            'dawn': 'Dawn', 'sunrise': 'Sunrise', 'early_morning': 'Early Morning',
-            'morning': 'Morning', 'late_morning': 'Late Morning', 'daytime': 'Daytime',
-            'afternoon': 'Afternoon', 'late_afternoon': 'Late Afternoon', 'golden_hour': 'Golden Hour',
-            'sunset': 'Sunset', 'dusk': 'Dusk', 'early_evening': 'Early Evening',
-            'evening': 'Evening', 'late_evening': 'Late Evening', 'midnight': 'Midnight'
+            'dawn': 'Dawn', 'sunrise': 'Sunrise', 'earlymorning': 'Early Morning',
+            'morning': 'Morning', 'latemorning': 'Late Morning', 'daytime': 'Daytime',
+            'afternoon': 'Afternoon', 'lateafternoon': 'Late Afternoon', 'goldenhour': 'Golden Hour',
+            'sunset': 'Sunset', 'dusk': 'Dusk', 'earlyevening': 'Early Evening',
+            'evening': 'Evening', 'lateevening': 'Late Evening', 'midnight': 'Midnight'
         };
 
         if (timeNames[currentOverride]) {
@@ -2744,18 +3525,18 @@ function setupDynamicGenerationContextMenus() {
                         submenu: [
                             { text: 'Dawn - Pre-sunrise soft light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'dawn' },
                             { text: 'Sunrise - Sun rising, golden light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'sunrise' },
-                            { text: 'Early Morning - Post-sunrise fresh air', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'early_morning' },
+                            { text: 'Early Morning - Post-sunrise fresh air', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'earlymorning' },
                             { text: 'Morning - Mid-morning bright light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'morning' },
-                            { text: 'Late Morning - Approaching noon', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'late_morning' },
+                            { text: 'Late Morning - Approaching noon', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'latemorning' },
                             { text: 'Daytime - Sun at highest point', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'daytime' },
                             { text: 'Afternoon - Full warm sunlight', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'afternoon' },
-                            { text: 'Late Afternoon - Golden hour approaching', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'late_afternoon' },
-                            { text: 'Golden Hour - Warm magical light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'golden_hour' },
+                            { text: 'Late Afternoon - Golden hour approaching', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'lateafternoon' },
+                            { text: 'Golden Hour - Warm magical light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'goldenhour' },
                             { text: 'Sunset - Sun setting, dramatic colors', icon: 'fas fa-sunset', action: 'setTodTimeOverride', value: 'sunset' },
                             { text: 'Dusk - Fading light to twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'dusk' },
-                            { text: 'Early Evening - Residual twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'early_evening' },
+                            { text: 'Early Evening - Residual twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'earlyevening' },
                             { text: 'Evening - Full night atmosphere', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'evening' },
-                            { text: 'Late Evening - Deep night darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'late_evening' },
+                            { text: 'Late Evening - Deep night darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'lateevening' },
                             { text: 'Midnight - Complete darkness', icon: 'fas fa-star', action: 'setTodTimeOverride', value: 'midnight' },
                         ]
                     },
@@ -2800,11 +3581,13 @@ function setupDynamicGenerationContextMenus() {
                     return locationDisplay ? `Weather (${locationDisplay})` : 'Weather';
                 },
                 items: [
-                    { text: 'Forecast', icon: 'fas fa-calendar', action: 'setWeatherOverride', value: 'forecast' },
-                    { text: 'Set Location', icon: 'fas fa-map-marker-alt', action: 'openWeatherLocationModal' },
-                    { text: 'Current Location', icon: 'fas fa-location-arrow', action: 'setCurrentLocation' },
+                    { text: 'Use Forecast', icon: 'fas fa-calendar', action: 'setWeatherOverride', value: 'forecast' },
+                    { separator: true },
+                    { text: 'Auto Location (IP)', icon: 'fas fa-globe-wifi', action: 'setIPLocation' },
+                    { text: 'Static Location (Lookup)', icon: 'fa-plane-departure', action: 'openWeatherLocationModal' },
+                    { text: 'Static Location (GPS)', icon: 'fas fa-location-crosshairs', action: 'setCurrentLocation' },
                     {
-                        text: 'Clear Location',
+                        text: 'Static Location (Server)',
                         icon: 'fas fa-times',
                         action: 'clearWeatherLocation',
                         loadfn: function(item) {
@@ -2870,7 +3653,17 @@ function setupDynamicGenerationContextMenus() {
                 type: 'list',
                 title: 'Season',
                 items: [
-                    { text: 'Seasonal Decor', icon: 'fas fa-magic-wand-sparkles', action: 'setSeasonOverride', value: true },
+                    {
+                        text: 'Observe Holidays',
+                        icon: 'fas fa-calendar-star',
+                        action: 'toggleObserveHoliday',
+                        keepMenuOpen: true,
+                        loadfn: function(item, target) {
+                            const observeHolidayEnabled = target.dataset.toggleHoliday === 'true';
+                            item.icon = observeHolidayEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                            item.className = observeHolidayEnabled ? 'text-success' : '';
+                        }
+                    },
                     { separator: true },
                     { text: 'Spring', icon: 'fas fa-leaf', action: 'setSeasonOverride', value: 1 },
                     { text: 'Summer', icon: 'fas fa-sun', action: 'setSeasonOverride', value: 2 },
@@ -2932,27 +3725,162 @@ function setupDynamicGenerationContextMenus() {
             },
             items: [
                 {
-                    text: 'Use Cache Response',
-                    action: 'toggleUseCache',
-                    icon: 'fas fa-floppy-disk',
+                    text: 'Freeze Context',
+                    action: 'toggleLockContext',
+                    icon: 'fas fa-brain',
+                    keepMenuOpen: true,
                     loadfn: function(item) {
-                        const hasCache = window.dynamicGenerationData?.compiled_prompt;
-                        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
+                        const lockBtn = document.getElementById('lockBtn');
+                        const isContextLocked = lockBtn?.dataset.contextLocked === 'true';
+                        const hasContext = Boolean(window.dynamicGenerationData?.compiled_prompt) && 
+                                            Boolean(window.dynamicGenerationData?.compiled_prompt?.context);
 
-                        item.disabled = !hasCache;
-                        item.icon = useCache ? 'fas fa-gear-code' : 'fas fa-floppy-disk';
-                        item.text = useCache ? 'Regenerate Data' : 'Use Cache Response';
-                        item.className = useCache ? 'text-success' : 'text-danger';
+                        item.disabled = !hasContext;
+                        item.icon = isContextLocked ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = isContextLocked ? 'text-primary' : '';
                     }
                 },
                 {
-                    text: 'Erase Cache',
+                    text: 'Freeze Changes',
+                    action: 'toggleLockResults',
+                    icon: 'fas fa-lock',
+                    keepMenuOpen: true,
+                    loadfn: function(item) {
+                        const lockBtn = document.getElementById('lockBtn');
+                        const isResultsLocked = lockBtn?.dataset.state === 'on';
+                        const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
+
+                        item.disabled = !hasCache;
+                        item.icon = isResultsLocked ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = isResultsLocked ? 'text-warning' : '';
+                    }
+                },
+                { separator: true },
+                {
+                    text: 'Use Cache',
+                    action: 'toggleUseCache',
+                    icon: 'fas fa-floppy-disk',
+                    keepMenuOpen: true,
+                    loadfn: function(item) {
+                        const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
+                        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
+
+                        item.disabled = !hasCache;
+                        item.icon = useCache ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = useCache ? 'text-success' : 'text-danger';
+                    },
+                },
+                {
+                    text: 'Preview Cache',
+                    action: 'toggleExpirePreview',
+                    keepMenuOpen: true,
+                    icon: 'fas fa-clock',
+                    loadfn: function(item) {
+                        const lockBtn = document.getElementById('lockBtn');
+                        const expirePreview = lockBtn?.dataset.expirePreview === 'true';
+                        const hasPreview = Boolean(window.dynamicGenerationData?.compiled_prompt?.preview_image);
+                        
+                        item.disabled = !hasPreview;
+                        item.icon = !expirePreview ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = !expirePreview ? 'text-warning' : '';
+                    }
+                },
+                {
+                    text: 'Clear Cache',
                     action: 'clearCompiledPrompt',
                     className: 'text-danger',
-                    icon: 'fas fa-recycle',
+                    icon: 'fas fa-fire',
                     loadfn: function(item) {
-                        const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                        const compiledPrompt = Boolean(window.dynamicGenerationData?.compiled_prompt);
                         item.disabled = !compiledPrompt;
+                    }
+                }
+            ]
+        }]
+    };
+
+    // Optimize button options
+    const optimizeMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Optimization',
+            items: [
+                {
+                    text: 'Optimize Tokens',
+                    icon: 'fas fa-hashtag',
+                    action: 'toggleTokenCount',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const tokenCountEnabled = target.dataset.tokenCount === 'true';
+                        item.icon = tokenCountEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = tokenCountEnabled ? 'text-success' : '';
+                    }
+                },
+                {
+                    text: 'Lock Subject',
+                    icon: 'fas fa-lock',
+                    action: 'toggleLockSubject',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const lockSubjectEnabled = target.dataset.lockSubject === 'true';
+                        item.icon = lockSubjectEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = lockSubjectEnabled ? 'text-success' : '';
+                    }
+                },
+                { separator: true },
+                {
+                    text: 'Pass Pipeline Stage Preview',
+                    icon: 'fas fa-layer-group',
+                    keepMenuOpen: true,
+                    action: 'togglePipelineAware',
+                    loadfn: function(item, target) {
+                        const pipelineAwareEnabled = target.dataset.pipelineAware === 'true';
+                        item.icon = pipelineAwareEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = pipelineAwareEnabled ? 'text-success' : '';
+                        item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
+                    }
+                },
+                {
+                    text: 'Provide Initial Prompt Preview',
+                    icon: 'fas fa-image-polaroid',
+                    keepMenuOpen: true,
+                    action: 'toggleInitialPromptAware',
+                    loadfn: function(item, target) {
+                        const initialPromptAwareEnabled = target.dataset.initialPromptAware === 'true';
+                        item.icon = initialPromptAwareEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = initialPromptAwareEnabled ? 'text-success' : '';
+                    }
+                }
+            ]
+        }]
+    };
+
+    // Creative button options
+    const creativeMenuConfig = {
+        sections: [{
+            type: 'list',
+            title: 'Creative Options',
+            items: [
+                {
+                    text: 'Adapt Clothing',
+                    icon: 'fas fa-shirt',
+                    action: 'toggleClothing',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const toggleClothingEnabled = target.dataset.toggleClothing === 'true';
+                        item.icon = toggleClothingEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = toggleClothingEnabled ? 'text-success' : '';
+                    }
+                },
+                {
+                    text: 'Adapt Action Verbs',
+                    icon: 'fa-regular fa-person-running',
+                    action: 'toggleAction',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const toggleActionEnabled = target.dataset.toggleAction === 'true';
+                        item.icon = toggleActionEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.className = toggleActionEnabled ? 'text-success' : '';
                     }
                 }
             ]
@@ -2964,6 +3892,8 @@ function setupDynamicGenerationContextMenus() {
     window.contextMenu.attachToElement(document.getElementById('weatherBtn'), weatherMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('seasonBtn'), seasonMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('lockBtn'), lockMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('optimizeBtn'), optimizeMenuConfig);
+    window.contextMenu.attachToElement(document.getElementById('creativeBtn'), creativeMenuConfig);
 }
 
 // Handle TOD override (preserves existing date/time or sets preset values)
@@ -3064,6 +3994,8 @@ document.addEventListener('contextMenuAction', (e) => {
         clearWeatherLocation();
     } else if (action === 'setCurrentLocation') {
         setCurrentLocation();
+    } else if (action === 'setIPLocation') {
+        setIPLocation();
     } else if (action === 'setSeasonOverride') {
         setSeasonOverride(document.getElementById('seasonBtn'), e.detail.item.value);
     } else if (action === 'clearCompiledPrompt') {
@@ -3072,6 +4004,46 @@ document.addEventListener('contextMenuAction', (e) => {
         const currentUseCache = dynamicGenerationLockedBtn.getAttribute('data-use-cache') === 'true';
         const newUseCache = !currentUseCache;
         dynamicGenerationLockedBtn.setAttribute('data-use-cache', newUseCache.toString());
+    } else if (action === 'toggleTokenCount') {
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const tokenCountEnabled = optimizeBtn.dataset.tokenCount === 'true';
+        optimizeBtn.dataset.tokenCount = tokenCountEnabled ? 'false' : 'true';
+    } else if (action === 'toggleLockSubject') {
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const lockSubjectEnabled = optimizeBtn.dataset.lockSubject === 'true';
+        optimizeBtn.dataset.lockSubject = lockSubjectEnabled ? 'false' : 'true';
+    } else if (action === 'toggleClothing') {
+        const creativeBtn = document.getElementById('creativeBtn');
+        const toggleClothingEnabled = creativeBtn.dataset.toggleClothing === 'true';
+        creativeBtn.dataset.toggleClothing = toggleClothingEnabled ? 'false' : 'true';
+    } else if (action === 'toggleAction') {
+        const creativeBtn = document.getElementById('creativeBtn');
+        const toggleActionEnabled = creativeBtn.dataset.toggleAction === 'true';
+        creativeBtn.dataset.toggleAction = toggleActionEnabled ? 'false' : 'true';
+    } else if (action === 'toggleObserveHoliday') {
+        const seasonBtn = document.getElementById('seasonBtn');
+        const observeHolidayEnabled = seasonBtn.dataset.toggleHoliday === 'true';
+        seasonBtn.dataset.toggleHoliday = observeHolidayEnabled ? 'false' : 'true';
+    } else if (action === 'togglePipelineAware') {
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const pipelineAwareEnabled = optimizeBtn.dataset.pipelineAware === 'true';
+        optimizeBtn.dataset.pipelineAware = pipelineAwareEnabled ? 'false' : 'true';
+    } else if (action === 'toggleInitialPromptAware') {
+        const optimizeBtn = document.getElementById('optimizeBtn');
+        const initialPromptAwareEnabled = optimizeBtn.dataset.initialPromptAware === 'true';
+        optimizeBtn.dataset.initialPromptAware = initialPromptAwareEnabled ? 'false' : 'true';
+    } else if (action === 'toggleLockContext') {
+        const lockBtn = document.getElementById('lockBtn');
+        const isContextLocked = lockBtn.dataset.contextLocked === 'true';
+        lockBtn.dataset.contextLocked = isContextLocked ? 'false' : 'true';
+    } else if (action === 'toggleLockResults') {
+        const lockBtn = document.getElementById('lockBtn');
+        const isResultsLocked = lockBtn.dataset.state === 'on';
+        lockBtn.dataset.state = isResultsLocked ? 'off' : 'on';
+    } else if (action === 'toggleExpirePreview') {
+        const lockBtn = document.getElementById('lockBtn');
+        const expirePreview = lockBtn.dataset.expirePreview === 'true';
+        lockBtn.dataset.expirePreview = expirePreview ? 'false' : 'true';
     }
 });
 
@@ -3090,20 +4062,13 @@ function setDynamicOverride(btn, value) {
 }
 
 function setSeasonOverride(btn, value) {
-    // Handle different seasonal override types
-    if (value === true) {
-        // Seasonal Decor (smart mode)
-        btn.setAttribute('data-override', 'true');
-        btn.dataset.state = 'on';
-        btn.classList.add('active');
-    // 'nearest' removed - holidays now handled through TOD system
-    } else if (value === false || value === null) {
+    if (value === false || value === null) {
         // Disable seasonal
         btn.dataset.state = 'off';
         btn.removeAttribute('data-override');
         btn.classList.remove('active');
     } else {
-        // Season index (1-4) - holiday indices removed, holidays now handled through TOD system
+        // Season index (1-4)
         btn.setAttribute('data-override', value);
         btn.dataset.state = 'on';
         btn.classList.add('active');
@@ -3111,13 +4076,8 @@ function setSeasonOverride(btn, value) {
 
     updateDynamicGenerationToggleBtn();
     updatePromptStatusIcons();
+    createDebouncedContextResolution();
 }
-
-// TRANSFORMATION SYSTEM - Move to transformationManager.js
-// This system handles image transformations (reroll, variation, browse, upload)
-// Includes functions: renderTransformationDropdown, selectTransformation, handleTransformationTypeChange,
-// openTransformationDropdown, closeTransformationDropdown, setupTransformationDropdownListeners,
-// updateTransformationDropdownState, etc.
 
 // Transformation Dropdown Functions
 
@@ -3288,7 +4248,7 @@ async function removeFromScraps(image) {
         
         await window.wsClient.removeScrap(activeWorkspace, filename);
 
-        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="fas fa-undo"></i>');
+        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -3489,42 +4449,6 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 throw new Error('WebSocket not connected - server not ready');
             }
 
-            // Quick server health check - fail fast if server appears unresponsive
-            let pingRequestId = null;
-            const pingPromise = window.wsClient.pingWithAuth().catch(error => {
-                // If ping fails, store the request ID for cleanup if race times out
-                if (error.requestId) {
-                    pingRequestId = error.requestId;
-                }
-                throw error;
-            });
-
-            await Promise.race([
-                pingPromise,
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('Server health check timeout')), 2000)
-                )
-            ]).catch((error) => {
-                // Clean up any lingering ping request
-                let cleanedUp = false;
-                if (pingRequestId && window.wsClient.pendingRequests?.has(pingRequestId)) {
-                    window.wsClient.pendingRequests.delete(pingRequestId);
-                    window.wsClient.decrementPendingRequests();
-                    console.log(`🧹 Cleaned up timed out ping request: ${pingRequestId}`);
-                    cleanedUp = true;
-                }
-
-                // Backup: Clear any other pending ping requests
-                if (!cleanedUp) {
-                    const clearedCount = window.wsClient.clearPendingRequestsByType('ping');
-                    if (clearedCount > 0) {
-                        console.log(`🧹 Backup cleanup cleared ${clearedCount} ping requests`);
-                    }
-                }
-
-                throw new Error('Server not responding to health check - failing fast');
-            });
-
             // If health check passes, proceed with get_app_options
             const options = await window.wsClient.getAppOptions();
             
@@ -3542,10 +4466,11 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             
             window.optionsData = options;
 
-            // Initialize datasetBias dynamically from config
+            // Initialize datasetBias dynamically from config with default values
             if (window.optionsData?.datasets) {
                 window.optionsData.datasets.forEach(dataset => {
-                    datasetBias[dataset.value] = 1.0;
+                    // Use default value from config, fallback to 1.0
+                    datasetBias[dataset.value] = dataset.default !== undefined ? dataset.default : 1.0;
                 });
             }
 
@@ -3641,11 +4566,12 @@ function setupEventListeners() {
     loadBlurPreference();
 
     // GENERATE BUTTON POPOVER SYSTEM - Move to generateButtonPopoverManager.js
-    if (manualGenerateBtn) {
-        manualGenerateBtn.addEventListener('mouseenter', showGenerateButtonPopover);
-        manualGenerateBtn.addEventListener('mouseleave', hideGenerateButtonPopover);
-        //manualGenerateBtn.addEventListener('click', handleManualGeneration);
-    }
+    const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
+    generateButtons.forEach(button => {
+        button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target));
+        button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target));
+        //button.addEventListener('click', handleManualGeneration);
+    });
 
     // MANUAL MODAL SYSTEM - Core modal show/hide events
     openGenEditorBtn.addEventListener('click', (e) => {
@@ -3719,9 +4645,54 @@ function setupEventListeners() {
             openTextReplacementLockModal();
         });
 
-        // Add context menu for lock/unlock all options
+        // Add context menu for lock/unlock all options and individual text replacements
         const lockBtnContextMenu = {
             sections: [
+                {
+                    type: 'list',
+                    title: 'Text Replacements',
+                    items: [], // Initialize as empty array
+                    initfn: function(section, target) {
+                        // Clear and repopulate items dynamically
+                        section.items.length = 0;
+                        
+                        // Get all text replacements (excluding dynamic generation ones)
+                        const textReplacements = window.lastGenerationTextReplacements || [];
+                        
+                        if (textReplacements.length === 0) {
+                            section.items.push({
+                                text: 'No Expanders',
+                                icon: 'fas fa-info-circle',
+                                disabled: true
+                            });
+                        } else {
+                            textReplacements.forEach((seed, index) => {
+                                const isLocked = seed.locked === true;
+                                const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+                                const displayKey = seed.key ? `!${seed.key}` : 'Unknown';
+                                
+                                section.items.push({
+                                    text: displayKey,
+                                    icon: isLocked ? 'fas fa-lock' : 'fas fa-unlock',
+                                    className: isLocked ? 'text-success' : '',
+                                    disabled: !canLock,
+                                    keepMenuOpen: true,
+                                    action: canLock ? `toggleTextReplacementLock_${index}` : null,
+                                    loadfn: function(item, target) {
+                                        // Update icon and className based on current lock state
+                                        const allReplacements = window.lastGenerationTextReplacements || [];
+                                        const currentSeed = allReplacements[index];
+                                        if (currentSeed) {
+                                            const currentlyLocked = currentSeed.locked === true;
+                                            item.icon = currentlyLocked ? 'fas fa-lock' : 'fas fa-unlock';
+                                            item.className = currentlyLocked ? 'text-success' : '';
+                                        }
+                                    }
+                                });
+                            });
+                        }
+                    }
+                },
                 {
                     type: 'list',
                     items: [
@@ -3769,6 +4740,28 @@ function setupEventListeners() {
         applyTextReplacementLocksBtn.addEventListener('click', (e) => {
             e.preventDefault();
             applyTextReplacementLocks();
+        });
+    }
+
+    // Text Replacement Lock Modal footer buttons
+    const openRequestBodyReplacementsBtn = document.getElementById('openRequestBodyReplacementsBtn');
+    const openGlobalReplacementsBtn = document.getElementById('openGlobalReplacementsBtn');
+
+    if (openRequestBodyReplacementsBtn) {
+        openRequestBodyReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof showRequestBodyReplacementsModal === 'function') {
+                showRequestBodyReplacementsModal();
+            }
+        });
+    }
+
+    if (openGlobalReplacementsBtn) {
+        openGlobalReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof showTextReplacementManager === 'function') {
+                showTextReplacementManager();
+            }
         });
     }
 
@@ -3939,13 +4932,13 @@ function setupEventListeners() {
                 }
                 
                 // Show success notification with size
-                if (window.showGlassToast) {
-                    window.showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
+                if (showGlassToast) {
+                    showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
                 }
             } catch (error) {
                 console.error('Failed to copy image to clipboard:', error);
-                if (window.showGlassToast) {
-                    window.showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
+                if (showGlassToast) {
+                    showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                 }
             }
         }
@@ -3957,6 +4950,40 @@ function setupEventListeners() {
             upscaleImage(window.currentManualPreviewImage, e);
         } else {
             showGlassToast('error', 'Upscale Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
+        }
+    });
+
+    manualPreviewExpandBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (window.currentManualPreviewImage) {
+            try {
+                // Check if WebSocket is connected
+                if (!wsClient || !wsClient.isConnected()) {
+                    throw new Error('WebSocket not connected. Please check your connection.');
+                }
+
+                const filename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
+                
+                // Use existing metadata and dimensions from currentManualPreviewImage
+                const imageDimensions = {
+                    width: window.currentManualPreviewImage.width,
+                    height: window.currentManualPreviewImage.height,
+                    resPreset: window.currentManualPreviewImage.metadata?.resPreset || window.currentManualPreviewImage.metadata?.resolution
+                };
+
+                // Open the expansion modal
+                if (typeof openImageExpansionModal === 'function') {
+                    openImageExpansionModal(filename, imageDimensions);
+                } else {
+                    console.error('openImageExpansionModal function not found');
+                    showGlassToast('error', 'Error', 'Image expansion feature not available', false, 5000, '<i class="nai-cross"></i>');
+                }
+            } catch (error) {
+                console.error('Expand error:', error);
+                showGlassToast('error', 'Error', error.message || 'Failed to open expansion modal', false, 5000, '<i class="nai-cross"></i>');
+            }
+        } else {
+            showGlassToast('error', 'Expand Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
         }
     });
 
@@ -4021,9 +5048,6 @@ function setupEventListeners() {
                 // Update percentage overlays after setting default values
                 updatePercentageOverlays();
 
-                // Set transformation type to variation
-                updateTransformationDropdownState('variation');
-
                 // Show transformation section content
                 if (transformationRow) {
                     transformationRow.classList.add('display-image');
@@ -4049,6 +5073,55 @@ function setupEventListeners() {
         e.preventDefault();
         deleteManualPreviewImage();
     });
+
+    manualPreviewCompiledPromptBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (window.currentManualPreviewImage) {
+            const compiledPrompt = window.currentManualPreviewImage.metadata?.dynamic_generation?.compiled_prompt;
+            if (compiledPrompt) {
+                showCompiledPromptModal(compiledPrompt);
+            } else {
+                showGlassToast('warning', null, 'No compiled prompt data available for this image.', false, undefined, '<i class="fas fa-glasses-round"></i>');
+            }
+        } else {
+            showGlassToast('warning', null, 'No image selected.', false, undefined, '<i class="fas fa-image-slash"></i>');
+        }
+    });
+
+    const manualPreviewToggleDialogsBtn = document.getElementById('manualPreviewToggleDialogsBtn');
+    if (manualPreviewToggleDialogsBtn) {
+        // Load saved state from localStorage
+        const savedState = localStorage.getItem('dialogsVisible');
+        if (savedState !== null) {
+            manualPreviewToggleDialogsBtn.dataset.state = savedState;
+        }
+        
+        manualPreviewToggleDialogsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const currentState = manualPreviewToggleDialogsBtn.dataset.state;
+            const newState = currentState === 'on' ? 'off' : 'on';
+            manualPreviewToggleDialogsBtn.dataset.state = newState;
+            
+            // Save to localStorage
+            localStorage.setItem('dialogsVisible', newState);
+            
+            // Update dialog visibility
+            const dialogContainer = document.getElementById('manualPreviewDialogs');
+            if (dialogContainer) {
+                if (newState === 'off') {
+                    dialogContainer.classList.add('hidden');
+                } else {
+                    // Re-render dialogs if they exist
+                    if (window.currentManualPreviewImage) {
+                        const allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage.metadata);
+                        if (allDialogs.length > 0) {
+                            dialogContainer.classList.remove('hidden');
+                        }
+                    }
+                }
+            }
+        });
+    }
 
     manualPresetManagerBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -4141,11 +5214,6 @@ function setupEventListeners() {
         }   
     });
 
-    qualityToggleBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleQuality();
-    });
-
     vibeNormalizeToggle.addEventListener('click', (e) => {
         e.preventDefault();
         const currentState = vibeNormalizeToggle.getAttribute('data-state') === 'on';
@@ -4163,6 +5231,7 @@ function setupEventListeners() {
         autoResizeTextarea(manualPrompt);
         stopEmphasisHighlighting();
     }, 'blur');
+    
     addSafeEventListener(manualUc, 'input', handleCharacterAutocompleteInput, 'autocomplete');
     addSafeEventListener(manualUc, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
     addSafeEventListener(manualUc, 'focus', () => startEmphasisHighlighting(manualUc), 'focus');
@@ -4523,27 +5592,336 @@ function setupEventListeners() {
         toggleManualUpscale();
     });
 
+    // CUSTOM RESOLUTION SYSTEM - Area limit toggle
+    if (resolutionAreaToggle) {
+        resolutionAreaToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleResolutionAreaLimit();
+        });
+    }
+
     // CUSTOM RESOLUTION SYSTEM - Custom resolution button and dimension input events
     if (manualCustomResolutionBtn) {
         manualCustomResolutionBtn.addEventListener('click', (e) => {
             e.preventDefault();
             if (manualSelectedResolution === 'custom') {
                 // Switch back to dropdown mode
-                selectManualResolution('normal_portrait', 'Normal');
+                // Try to find a matching preset resolution based on current custom dimensions
+                const currentWidth = parseInt(manualWidth.value) || 1024;
+                const currentHeight = parseInt(manualHeight.value) || 1024;
+                
+                // Look for an exact match in RESOLUTIONS
+                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+                
+                if (matchingResolution) {
+                    // Found a matching preset, select it
+                    const matchingGroup = RESOLUTION_GROUPS.find(g => 
+                        g.options.some(opt => opt.value === matchingResolution.value)
+                    );
+                    selectManualResolution(matchingResolution.value, matchingGroup?.group || 'Normal');
+                } else {
+                    // No match found, default to normal portrait
+                    selectManualResolution('normal_portrait', 'Normal');
+                }
             }
         });
     }
 
     // CUSTOM RESOLUTION SYSTEM - Update hidden resolution value when custom dimensions change
+
     if (manualWidth) {
-        manualWidth.addEventListener('input', updateCustomResolutionValue);
-        manualWidth.addEventListener('blur', sanitizeCustomDimensions);
-        manualWidth.addEventListener('input', updateManualPriceDisplay);
+        manualWidth.addEventListener('input', () => {
+            // Update the hidden resolution value immediately when input changes
+            updateCustomResolutionValue();
+            updateManualPriceDisplay();
+            updateManualUpscaleToggleState();
+        });
+        // Blur events for validating dimensions with timeout and maintaining aspect ratio
+        let manualBlurTimeout;
+        const validateManualDimensionsWithTimeout = () => {
+            if (manualSelectedResolution !== 'custom') return;
+
+            // Clear any existing timeout
+            if (manualBlurTimeout) clearTimeout(manualBlurTimeout);
+
+            // Set a 100ms timeout
+            manualBlurTimeout = setTimeout(() => {
+                // Check that neither input is currently the active element
+                if (document.activeElement === manualWidth || document.activeElement === manualHeight) {
+                    return; // One of the inputs is still active, don't validate yet
+                }
+
+                // Get current values
+                const originalWidth = parseInt(manualWidth.value) || 1024;
+                const originalHeight = parseInt(manualHeight.value) || 1024;
+                let width = originalWidth;
+                let height = originalHeight;
+                let currentArea = width * height;
+
+                // First, ensure both dimensions are multiples of 64
+                const widthRemainder = width % 64;
+                const heightRemainder = height % 64;
+                let widthChanged = false;
+                let heightChanged = false;
+
+                if (widthRemainder !== 0) {
+                    width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
+                    width = Math.max(64, width);
+                    widthChanged = true;
+                }
+                if (heightRemainder !== 0) {
+                    height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
+                    height = Math.max(64, height);
+                    heightChanged = true;
+                }
+
+                // Recalculate area after stepping
+                currentArea = width * height;
+
+                // If area exceeds max, scale both dimensions down while maintaining aspect ratio
+                if (currentArea > currentMaxArea) {
+                    const scaleFactor = Math.sqrt(currentMaxArea / currentArea);
+
+                    // Calculate new dimensions
+                    width = Math.round(width * scaleFactor);
+                    height = Math.round(height * scaleFactor);
+
+                    // Ensure they're still multiples of 64
+                    width = Math.floor(width / 64) * 64;
+                    height = Math.floor(height / 64) * 64;
+
+                    // Ensure minimum size
+                    width = Math.max(64, width);
+                    height = Math.max(64, height);
+
+                    widthChanged = true;
+                    heightChanged = true;
+                }
+
+                // Update inputs only if values changed
+                if (widthChanged || heightChanged) {
+                    if (width !== originalWidth) {
+                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
+                    }
+                    if (height !== originalHeight) {
+                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
+                    }
+
+                    // Update hidden resolution value
+                    const manualResolutionHidden = document.getElementById('manualResolution');
+                    if (manualResolutionHidden) {
+                        manualResolutionHidden.value = `custom_${width}x${height}`;
+                    }
+
+                    // Update price display and other dependent functions
+                    updateManualPriceDisplay();
+                    updateManualUpscaleToggleState();
+
+                    // Use debounced cropping for custom dimension changes
+                    if (typeof debouncedCropImageToResolution === 'function') {
+                        debouncedCropImageToResolution();
+                    }
+
+                    // Show feedback about the adjustment
+                    if (currentArea > currentMaxArea) {
+                        showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
+                    } else if (widthChanged || heightChanged) {
+                        showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
+                    }
+                }
+            }, 100);
+        };
+
+        manualWidth.addEventListener('blur', () => {
+            validateManualDimensionsWithTimeout();
+        });
+        
+        // Add scroll wheel functionality for width input (maintains area, adjusts ratio)
+        // Use a flag to prevent input event handlers from firing during wheel updates
+        let isWheelUpdating = false;
+        manualWidth.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+            
+            isWheelUpdating = true;
+            
+            const currentWidth = parseInt(this.value) || 1024;
+            const currentHeight = parseInt(manualHeight.value) || 1024;
+            const currentArea = currentWidth * currentHeight;
+            
+            // Adjust width by 64 pixels (step size) based on scroll direction
+            const delta = e.deltaY > 0 ? -64 : 64;
+            const newWidth = currentWidth + delta;
+            
+            // Calculate new height to maintain area
+            const newHeight = Math.round(currentArea / newWidth);
+            
+            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+            
+            // Update inputs without triggering input events (set directly)
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
+            
+            // Directly update hidden resolution value to avoid re-sanitization
+            const manualResolutionHidden = document.getElementById('manualResolution');
+            if (manualResolutionHidden) {
+                manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+            }
+            
+            // Update price display
+            updateManualPriceDisplay();
+            
+            // Use debounced cropping for custom dimension changes
+            if (typeof debouncedCropImageToResolution === 'function') {
+                debouncedCropImageToResolution();
+            }
+            
+            isWheelUpdating = false;
+        });
+
+        // Add keyboard support for width input (maintains area, adjusts ratio)
+        manualWidth.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+
+                isWheelUpdating = true;
+
+                const currentWidth = parseInt(this.value) || 1024;
+                const currentHeight = parseInt(manualHeight.value) || 1024;
+                const currentArea = currentWidth * currentHeight;
+
+                // Adjust width by 64 pixels (step size) based on arrow direction
+                const delta = e.key === 'ArrowUp' ? 64 : -64;
+                const newWidth = currentWidth + delta;
+
+                // Calculate new height to maintain area
+                const newHeight = Math.round(currentArea / newWidth);
+
+                // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+                const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+
+                // Update inputs without triggering input events (set directly)
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.width);
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
+
+                // Directly update hidden resolution value to avoid re-sanitization
+                const manualResolutionHidden = document.getElementById('manualResolution');
+                if (manualResolutionHidden) {
+                    manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+                }
+
+                // Update price display
+                updateManualPriceDisplay();
+
+                // Use debounced cropping for custom dimension changes
+                if (typeof debouncedCropImageToResolution === 'function') {
+                    debouncedCropImageToResolution();
+                }
+
+                isWheelUpdating = false;
+            }
+        });
     }
     if (manualHeight) {
-        manualHeight.addEventListener('input', updateCustomResolutionValue);
-        manualHeight.addEventListener('blur', sanitizeCustomDimensions);
-        manualHeight.addEventListener('input', updateManualPriceDisplay);
+        manualHeight.addEventListener('input', () => {
+            // Update the hidden resolution value immediately when input changes
+            updateCustomResolutionValue();
+            updateManualPriceDisplay();
+            updateManualUpscaleToggleState();
+        });
+        manualHeight.addEventListener('blur', () => {
+            validateManualDimensionsWithTimeout();
+        });
+        
+        // Add scroll wheel functionality for height input (maintains area, adjusts ratio)
+        // Use a flag to prevent input event handlers from firing during wheel updates
+        let isWheelUpdating = false;
+        manualHeight.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+            
+            isWheelUpdating = true;
+            
+            const currentWidth = parseInt(manualWidth.value) || 1024;
+            const currentHeight = parseInt(this.value) || 1024;
+            const currentArea = currentWidth * currentHeight;
+            
+            // Adjust height by 64 pixels (step size) based on scroll direction
+            const delta = e.deltaY > 0 ? -64 : 64;
+            const newHeight = currentHeight + delta;
+            
+            // Calculate new width to maintain area
+            const newWidth = Math.round(currentArea / newHeight);
+            
+            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+            
+            // Update inputs without triggering input events (set directly)
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.height);
+            
+            // Directly update hidden resolution value to avoid re-sanitization
+            const manualResolutionHidden = document.getElementById('manualResolution');
+            if (manualResolutionHidden) {
+                manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+            }
+            
+            // Update price display
+            updateManualPriceDisplay();
+            
+            // Use debounced cropping for custom dimension changes
+            if (typeof debouncedCropImageToResolution === 'function') {
+                debouncedCropImageToResolution();
+            }
+            
+            isWheelUpdating = false;
+        });
+
+        // Add keyboard support for height input (maintains area, adjusts ratio)
+        manualHeight.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+
+                isWheelUpdating = true;
+
+                const currentWidth = parseInt(manualWidth.value) || 1024;
+                const currentHeight = parseInt(this.value) || 1024;
+                const currentArea = currentWidth * currentHeight;
+
+                // Adjust height by 64 pixels (step size) based on arrow direction
+                const delta = e.key === 'ArrowUp' ? 64 : -64;
+                const newHeight = currentHeight + delta;
+
+                // Calculate new width to maintain area
+                const newWidth = Math.round(currentArea / newHeight);
+
+                // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+                const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
+
+                // Update inputs without triggering input events (set directly)
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.height);
+
+                // Directly update hidden resolution value to avoid re-sanitization
+                const manualResolutionHidden = document.getElementById('manualResolution');
+                if (manualResolutionHidden) {
+                    manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+                }
+
+                // Update price display
+                updateManualPriceDisplay();
+
+                // Use debounced cropping for custom dimension changes
+                if (typeof debouncedCropImageToResolution === 'function') {
+                    debouncedCropImageToResolution();
+                }
+
+                isWheelUpdating = false;
+            }
+        });
     }
 
     // BASE IMAGE MANAGEMENT SYSTEM - Delete and preview base image events
@@ -4668,7 +6046,12 @@ function setupEventListeners() {
 
     // PRICE CALCULATION SYSTEM - Price calculation event listeners
     if (manualSteps) {
-        manualSteps.addEventListener('input', updateManualPriceDisplay);
+        manualSteps.addEventListener('input', () => {
+            updateManualPriceDisplay();
+            if (typeof updateAllStagesInheritedValues === 'function') {
+                updateAllStagesInheritedValues();
+            }
+        });
     }
 
     if (manualStrengthValue) {
@@ -4745,11 +6128,36 @@ function setupEventListeners() {
 
     // Bulk action event listeners removed - now handled by context menu
 
-    // Character prompts event listeners
-    if (addCharacterBtn) {
-        addCharacterBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            addCharacterPrompt(e);
+    // Add Item dropdown setup (combines character and stage options)
+    if (addItemDropdown && addItemDropdownBtn && addItemDropdownMenu) {
+        setupDropdown(
+            addItemDropdown,
+            addItemDropdownBtn,
+            addItemDropdownMenu,
+            renderAddItemDropdown,
+            () => null,
+            { preventFocusTransfer: true }
+        );
+    }
+
+    // Save Stage 0 button toggle
+    if (saveStage0Btn) {
+        saveStage0Btn.addEventListener('click', () => {
+            const newState = saveStage0Btn.dataset.state === 'on' ? 'off' : 'on';
+            saveStage0Btn.dataset.state = newState;
+            // Update manual upscale visibility based on new state
+            updateManualUpscaleVisibility();
+        });
+    }
+
+    // Enable Stage Generation button toggle
+    if (enableStageGenerationBtn) {
+        enableStageGenerationBtn.addEventListener('click', () => {
+            const newState = enableStageGenerationBtn.dataset.state === 'on' ? 'off' : 'on';
+            enableStageGenerationBtn.dataset.state = newState;
+            
+            // Update buttons next to manual resolution based on new state
+            updateSaveStage0BtnVisibility();
         });
     }
 
@@ -4822,6 +6230,7 @@ function setupEventListeners() {
                 this.value = newValue;
             }
             updateManualPriceDisplay();
+            updateAllStagesInheritedValues();
         });
     }
 
@@ -4831,6 +6240,14 @@ function setupEventListeners() {
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
             this.value = newValue.toFixed(1);
+            if (typeof updateAllStagesInheritedValues === 'function') {
+                updateAllStagesInheritedValues();
+            }
+        });
+        manualGuidance.addEventListener('input', () => {
+            if (typeof updateAllStagesInheritedValues === 'function') {
+                updateAllStagesInheritedValues();
+            }
         });
     }
 
@@ -4842,9 +6259,17 @@ function setupEventListeners() {
             this.value = newValue.toFixed(2);
             if (manualRescaleOverlay)
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
+            if (typeof updateAllStagesInheritedValues === 'function') {
+                updateAllStagesInheritedValues();
+            }
         });
         if (manualRescaleOverlay) {
-            manualRescale.addEventListener('input', () => updatePercentageOverlay(manualRescale, manualRescaleOverlay));
+            manualRescale.addEventListener('input', () => {
+                updatePercentageOverlay(manualRescale, manualRescaleOverlay);
+                if (typeof updateAllStagesInheritedValues === 'function') {
+                    updateAllStagesInheritedValues();
+                }
+            });
             manualRescale.addEventListener('blur', () => updatePercentageOverlay(manualRescale, manualRescaleOverlay));
             updatePercentageOverlay(manualRescale, manualRescaleOverlay);
         }
@@ -4921,6 +6346,26 @@ function setupEventListeners() {
             toggleManualShowBoth();
         });
     }
+    
+    // Creative tab toolbar buttons - sync with main buttons
+    const creativeTabDynamicGenerationBtn = document.getElementById('creativeTabDynamicGenerationBtn');
+    const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
+    
+    if (creativeTabDynamicGenerationBtn) {
+        creativeTabDynamicGenerationBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Trigger the main button's click
+            dynamicGenerationToggleBtn.click();
+        });
+    }
+    
+    if (creativeTabShowBothBtn) {
+        creativeTabShowBothBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Trigger the main button's click
+            showBothBtn.click();
+        });
+    }
 
 
 
@@ -4967,7 +6412,8 @@ function setupEventListeners() {
     // Dynamic Generation toggle button click handler
     dynamicGenerationToggleBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (dynamicGenerationGroup.classList.contains('hidden')) {
+        const wasHidden = dynamicGenerationGroup.classList.contains('hidden');
+        if (wasHidden) {
             dynamicGenerationGroup.classList.remove('hidden');
         } else {
             dynamicGenerationGroup.classList.add('hidden');
@@ -4976,10 +6422,13 @@ function setupEventListeners() {
         updateDynamicGenerationToggleBtn();
         // Refresh status icons after toggle (will automatically hide them if controls are visible)
         updatePromptStatusIcons();
+        createDebouncedContextResolution();
     });
 
     // Dynamic Generation button click handlers
-    [todBtn, weatherBtn, seasonBtn, clothingBtn, actionBtn, dynamicGenerationLockedBtn, creativeBtn].forEach(btn => {
+    // Buttons that affect carousel: todBtn, weatherBtn, seasonBtn, creativeBtn
+    // Buttons that don't affect carousel: dynamicGenerationLockedBtn, optimizeBtn
+    [todBtn, weatherBtn, seasonBtn, dynamicGenerationLockedBtn, creativeBtn, optimizeBtn].forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const state = btn.dataset.state === 'on' ? 'off' : 'on';
@@ -4989,6 +6438,10 @@ function setupEventListeners() {
             // Clear override when turning off
             if (state === 'off') {
                 btn.removeAttribute('data-override');
+                btn.removeAttribute('data-location');
+                btn.removeAttribute('data-context-locked');
+            } else if (btn.id === 'lockBtn') {
+                btn.setAttribute('data-context-locked', 'true');
             }
 
             // Update TOD button icon if this is the TOD button
@@ -4998,6 +6451,29 @@ function setupEventListeners() {
 
             // Update status icons to reflect the button state change
             updatePromptStatusIcons();
+            
+            // Only reload context for buttons that affect the carousel
+            const carouselButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn'];
+            if (carouselButtons.includes(btn.id)) {
+                createDebouncedContextResolution();
+            }
+
+
+            // Toggle main creative directive row visibility when creative button changes
+            if (btn.id === 'creativeBtn') {
+                // Update main creative directive visibility
+                if (typeof updateCreativeDirectiveVisibility === 'function') {
+                    updateCreativeDirectiveVisibility();
+                }
+
+                // Update all stage creative directive visibility
+                const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+                if (stageItems) {
+                    stageItems.forEach(stageItem => {
+                        updateStageCreativeDirectiveVisibility(stageItem.id);
+                    });
+                }
+            }
         });
     });
 
@@ -5021,8 +6497,45 @@ function setupEventListeners() {
         });
     }
 
+    // Director Feedback Modal event listeners
+    const closeDirectorFeedbackBtn = document.getElementById('closeDirectorFeedbackBtn');
+    if (closeDirectorFeedbackBtn) {
+        closeDirectorFeedbackBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeDirectorFeedbackModal();
+        });
+    }
+
+    const saveFeedbackBtn = document.getElementById('saveFeedbackBtn');
+    if (saveFeedbackBtn) {
+        saveFeedbackBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            saveDirectorFeedback();
+        });
+    }
+
+    // Director Rules Modal event listeners
+    const closeDirectorRulesBtn = document.getElementById('closeDirectorRulesBtn');
+    if (closeDirectorRulesBtn) {
+        closeDirectorRulesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeDirectorRulesModal();
+        });
+    }
+
+    const addDirectorRuleBtn = document.getElementById('addDirectorRuleBtn');
+    if (addDirectorRuleBtn) {
+        addDirectorRuleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            addDirectorRule();
+        });
+    }
+
     // Setup context menus for dynamic generation buttons
     setupDynamicGenerationContextMenus();
+
+    // Initialize dynamic generation carousel
+    initDynamicCarousel();
 
     // GALLERY COLUMN CONTROLS SYSTEM - Move to galleryColumnManager.js
     // This system handles gallery column adjustment via scroll wheel and buttons
@@ -5144,6 +6657,8 @@ function setupEventListeners() {
 
     // Set up preset generation handlers
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
+    window.contextMenu.attachToElement(document.getElementById('sproutSeedBtn'), getSproutSeedContextMenuConfig());
+    
     loadSeedBtn.addEventListener('click', loadSeedFromPreview);
     updateSproutSeedButton();
     if (varietyBtn) {
@@ -5155,6 +6670,9 @@ function setupEventListeners() {
             } else {
                 this.setAttribute('data-state', 'off');
             }
+            
+            // Update pipeline stages inherited values
+            updateAllStagesInheritedValues();
         });
     }
     
@@ -5170,9 +6688,7 @@ function setupEventListeners() {
     setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
     
     setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
-    
-    setupDropdown(transformationDropdown, transformationDropdownBtn, transformationDropdownMenu, renderTransformationDropdown, () => document.getElementById('transformationType').value, { preventFocusTransfer: true });
-    
+
     setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
 
     setupDropdown(subTogglesDropdown, subTogglesBtn, subTogglesDropdownMenu, renderSubTogglesDropdown, () => selectedDatasets, { preventFocusTransfer: true });
@@ -5192,8 +6708,6 @@ function setupEventListeners() {
 
     updatePresetLoadSaveState();
     updateManualPresetPlaceholder();
-
-    setupTransformationDropdownListeners();
 
     // Exit confirmation system - intercept page exits, refresh, and tab/window closing
     let isExiting = false;
@@ -5428,6 +6942,8 @@ function switchManualTab(targetTab, previouslyFocused = null) {
                 focusTarget = document.getElementById('manualPrompt');
             } else if (targetTab === 'uc') {
                 focusTarget = document.getElementById('manualUc');
+            } else if (targetTab === 'creative') {
+                focusTarget = document.getElementById('creativeDirectiveInput');
             }
 
         }
@@ -5437,6 +6953,8 @@ function switchManualTab(targetTab, previouslyFocused = null) {
             focusTarget = document.getElementById('manualPrompt');
         } else if (targetTab === 'uc') {
             focusTarget = document.getElementById('manualUc');
+        } else if (targetTab === 'creative') {
+            focusTarget = document.getElementById('creativeDirectiveInput');
         }
 
     }
@@ -5540,6 +7058,7 @@ function syncCharacterPromptTabsShowBoth() {
 
 function toggleManualShowBoth() {
     const showBothBtn = document.getElementById('showBothBtn');
+    const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
     
     const isShowingBoth = promptTabs.classList.contains('show-both');
@@ -5549,6 +7068,12 @@ function toggleManualShowBoth() {
         promptTabs.classList.remove('show-both');
         showBothBtn.dataset.state = 'off';
         showBothBtn.classList.remove('active');
+        
+        // Sync creative tab button
+        if (creativeTabShowBothBtn) {
+            creativeTabShowBothBtn.dataset.state = 'off';
+            creativeTabShowBothBtn.classList.remove('active');
+        }
 
         // Set Base Prompt as default when returning from show both mode
         syncCharacterPromptTabs('prompt');
@@ -5557,6 +7082,12 @@ function toggleManualShowBoth() {
         promptTabs.classList.add('show-both');
         showBothBtn.dataset.state = 'on';
         showBothBtn.classList.add('active');
+        
+        // Sync creative tab button
+        if (creativeTabShowBothBtn) {
+            creativeTabShowBothBtn.dataset.state = 'on';
+            creativeTabShowBothBtn.classList.add('active');
+        }
 
         // Sync character prompts to show both tabs
         syncCharacterPromptTabsShowBoth();
@@ -5564,6 +7095,7 @@ function toggleManualShowBoth() {
     
     // Update prompt status icons after toggling show both
     updatePromptStatusIcons();
+    createDebouncedContextResolution();
 }
 
 function toggleSubMenu() {
@@ -6042,10 +7574,20 @@ async function rerollImageWithEdit(image) {
 }
 // Upscale an image
 async function upscaleImage(image, event = null) {
+    // Calculate upscale cost and output resolution based on image dimensions
+    const width = image.width || 1024;
+    const height = image.height || 1024;
+    const upscaleInfo = calculateUpscaleInfo(width, height);
+    
+    // Check if upscaling is available
+    if (!upscaleInfo.available) {
+        showGlassToast('error', 'Upscale Failed', upscaleInfo.reason || 'Upscaling not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+    
     // Check if user has already allowed paid requests
-    const cost = 7; // Upscaling cost
-    if (!forcePaidRequest) {
-        const confirmed = await showCreditCostDialog(cost, event);
+    if (!forcePaidRequest && upscaleInfo.cost > 0) {
+        const confirmed = await showCreditCostDialog(upscaleInfo.cost, event, upscaleInfo.outputResolution);
         
         if (!confirmed) {
             return;
@@ -6310,6 +7852,7 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
         const baseName = filename
             .replace(/\.(png|jpg|jpeg)$/i, '')
             .replace(/_upscaled$/, '');
+
         
         // Get the blurred preview URL - encode the baseName to handle spaces and special characters
         const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
@@ -6400,6 +7943,159 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
     }
 }
 
+// Render dialogs on image preview
+function renderManualPreviewDialogs(dialogs, isGenerating = false) {
+    const dialogContainer = document.getElementById('manualPreviewDialogs');
+    if (!dialogContainer) return;
+    
+    // Clear existing dialogs
+    dialogContainer.innerHTML = '';
+    
+    // If no dialogs, hide container and return
+    if (!dialogs || dialogs.length === 0) {
+        console.log('💬 No dialogs to render, hiding container');
+        dialogContainer.classList.add('hidden');
+        return;
+    }
+    
+    console.log(`💬 Rendering ${dialogs.length} dialogs (${isGenerating ? 'generating' : 'navigating'} animation)`);
+    
+    // Show container
+    dialogContainer.classList.remove('hidden');
+    
+    // Create dialog bubbles
+    dialogs.forEach((dialog, index) => {
+        const bubble = document.createElement('div');
+        bubble.className = `dialog-bubble dialog-${dialog.type} align-${dialog.alignment}`;
+        bubble.style.setProperty('--dialog-top', `${dialog.top}%`);
+        bubble.style.setProperty('--dialog-left', `${dialog.left}%`);
+        bubble.textContent = dialog.text;
+        
+        console.log(`💬 Dialog ${index + 1}: "${dialog.text}" at (${dialog.top}%, ${dialog.left}%) - ${dialog.type}`);
+        
+        // Add animation class based on context
+        if (isGenerating) {
+            bubble.classList.add('generating');
+            // Stagger animation delays for generation
+            bubble.style.animationDelay = `${index * 0.3}s`;
+        } else {
+            bubble.classList.add('navigating');
+            // Faster stagger for navigation
+            bubble.style.animationDelay = `${index * 0.1}s`;
+        }
+        
+        dialogContainer.appendChild(bubble);
+    });
+    
+    console.log(`💬 Successfully rendered ${dialogs.length} dialog bubbles`);
+}
+
+// Clear dialogs from preview
+function clearManualPreviewDialogs() {
+    const dialogContainer = document.getElementById('manualPreviewDialogs');
+    if (dialogContainer) {
+        dialogContainer.innerHTML = '';
+        dialogContainer.classList.add('hidden');
+    }
+}
+
+// Collect dialogs from metadata (main + pipeline stages)
+function collectDialogsFromMetadata(metadata) {
+    if (!metadata) return [];
+    
+    const allDialogs = [];
+    const seenTimestamps = new Set();
+    
+    // Collect from main compiled_prompt
+    const mainDialogs = metadata?.dynamic_generation?.compiled_prompt?.dialogs;
+    const mainTimestamp = metadata?.dynamic_generation?.compiled_prompt?.timestamp;
+    if (mainDialogs && mainDialogs.length > 0 && mainTimestamp) {
+        allDialogs.push(...mainDialogs);
+        seenTimestamps.add(mainTimestamp);
+    }
+    
+    // Collect from pipeline stage seeds
+    const stageSeeds = metadata?.forge_data?.stage_seeds;
+    if (stageSeeds && Array.isArray(stageSeeds)) {
+        stageSeeds.forEach((stageSeed) => {
+            const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
+            const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
+            
+            if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
+                if (!seenTimestamps.has(stageTimestamp)) {
+                    allDialogs.push(...stageDialogs);
+                    seenTimestamps.add(stageTimestamp);
+                }
+            }
+        });
+    }
+    
+    return allDialogs;
+}
+
+// Process dialog positions: force strict left/right columns with vertical stacking
+function processDialogPositions(dialogs) {
+    if (!dialogs || dialogs.length === 0) return [];
+    
+    // Simple column-based layout - no clustering allowed
+    // Left column: 18%, Right column: 82%
+    const leftColumn = 18;
+    const rightColumn = 82;
+    
+    // Vertical spacing - account for bubble height (~8% per bubble with padding)
+    const bubbleHeight = 8; // Approximate height percentage including padding
+    const minVerticalGap = 2; // Minimum gap between bubbles
+    const totalSlotHeight = bubbleHeight + minVerticalGap;
+    
+    // Split dialogs into two columns
+    const leftDialogs = [];
+    const rightDialogs = [];
+    
+    dialogs.forEach((dialog, index) => {
+        if (index % 2 === 0) {
+            leftDialogs.push(dialog);
+        } else {
+            rightDialogs.push(dialog);
+        }
+    });
+    
+    // Process left column
+    const processedLeft = leftDialogs.map((dialog, index) => {
+        // Stack vertically with proper spacing
+        const verticalPosition = 10 + (index * totalSlotHeight);
+        
+        return {
+            ...dialog,
+            top: Math.min(90 - bubbleHeight, verticalPosition), // Don't exceed 90%
+            left: leftColumn,
+            alignment: 'left'
+        };
+    });
+    
+    // Process right column
+    const processedRight = rightDialogs.map((dialog, index) => {
+        // Stack vertically with proper spacing
+        const verticalPosition = 10 + (index * totalSlotHeight);
+        
+        return {
+            ...dialog,
+            top: Math.min(90 - bubbleHeight, verticalPosition), // Don't exceed 90%
+            left: rightColumn,
+            alignment: 'right'
+        };
+    });
+    
+    // Interleave back together to maintain original order
+    const result = [];
+    const maxLength = Math.max(processedLeft.length, processedRight.length);
+    for (let i = 0; i < maxLength; i++) {
+        if (i < processedLeft.length) result.push(processedLeft[i]);
+        if (i < processedRight.length) result.push(processedRight[i]);
+    }
+    
+    return result;
+}
+
 // Function to update manual modal preview
 async function updateManualPreview(index = 0, response = null, metadata = null) {
     const previewImage = document.getElementById('manualPreviewImage');
@@ -6408,6 +8104,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -6597,7 +8294,22 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+            
+            // Show upscale button only if upscaling is available for this resolution
+            if (upscaleBtn) {
+                if (imageData.width && imageData.height) {
+                    const upscaleInfo = calculateUpscaleInfo(imageData.width, imageData.height);
+                    if (upscaleInfo.available) {
+                        upscaleBtn.classList.remove('hidden');
+                    } else {
+                        upscaleBtn.classList.add('hidden');
+                    }
+                } else {
+                    upscaleBtn.classList.remove('hidden'); // Default to shown if dimensions unknown
+                }
+            }
+            
+            if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
@@ -6618,7 +8330,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 scrapBtn.classList.remove('hidden');
                 // Update scrap button based on current view
                 if (currentGalleryView === 'scraps') {
-                    scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
+                    scrapBtn.innerHTML = '<i class="nai-dot-reset"></i>';
                     scrapBtn.title = 'Remove from scraps';
                 } else {
                     scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
@@ -6626,6 +8338,97 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
             }
             if (deleteBtn) deleteBtn.classList.remove('hidden');
+
+            // Show compiled prompt button if image has compiled prompt data
+            const compiledPromptBtn = document.getElementById('manualPreviewCompiledPromptBtn');
+            const toggleDialogsBtn = document.getElementById('manualPreviewToggleDialogsBtn');
+            if (compiledPromptBtn) {
+                if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata?.dynamic_generation?.compiled_prompt) {
+                    compiledPromptBtn.classList.remove('hidden');
+                } else {
+                    compiledPromptBtn.classList.add('hidden');
+                }
+            }
+            
+            // Show toggle dialogs button if image has dialogs
+            if (toggleDialogsBtn) {
+                const hasDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage?.metadata).length > 0;
+                if (hasDialogs) {
+                    toggleDialogsBtn.classList.remove('hidden');
+                } else {
+                    toggleDialogsBtn.classList.add('hidden');
+                }
+            }
+
+            // Render character dialogs if available
+            // Collect dialogs from BOTH main and all pipeline stages (they add up!)
+            let allDialogs = [];
+            const dialogSources = [];
+            const seenTimestamps = new Set(); // Track timestamps to deduplicate
+            
+            // Collect from main compiled_prompt
+            const mainDialogs = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
+            const mainTimestamp = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
+            if (mainDialogs && mainDialogs.length > 0 && mainTimestamp) {
+                allDialogs = allDialogs.concat(mainDialogs);
+                seenTimestamps.add(mainTimestamp);
+                dialogSources.push(`main(${mainDialogs.length})`);
+            }
+            
+            // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
+            // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
+            const stageSeeds = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
+            if (stageSeeds && Array.isArray(stageSeeds)) {
+                // Iterate through ALL stage seeds to collect their dialogs
+                stageSeeds.forEach((stageSeed, i) => {
+                    const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
+                    const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
+                    
+                    if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
+                        // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
+                        if (!seenTimestamps.has(stageTimestamp)) {
+                            allDialogs = allDialogs.concat(stageDialogs);
+                            seenTimestamps.add(stageTimestamp);
+                            dialogSources.push(`stage_${i}(${stageDialogs.length})`);
+                        }
+                    }
+                });
+            }
+            
+            // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
+            allDialogs = processDialogPositions(allDialogs);
+            
+            console.log('💬 Checking for dialogs in updateManualPreview:', {
+                hasImage: !!window.currentManualPreviewImage,
+                hasMetadata: !!window.currentManualPreviewImage?.metadata,
+                hasDynamicGen: !!window.currentManualPreviewImage?.metadata?.dynamic_generation,
+                hasCompiledPrompt: !!window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt,
+                hasStageSeeds: !!stageSeeds,
+                stageSeedsCount: stageSeeds?.length || 0,
+                totalDialogs: allDialogs.length,
+                dialogSources: dialogSources.join(', '),
+                isResponse: !!response
+            });
+            
+            if (allDialogs.length > 0) {
+                // Check if dialogs should be visible (from toggle button state)
+                const toggleDialogsBtnCheck = document.getElementById('manualPreviewToggleDialogsBtn');
+                const dialogsVisible = toggleDialogsBtnCheck ? toggleDialogsBtnCheck.dataset.state === 'on' : true;
+                
+                if (dialogsVisible) {
+                    // Check if this is a fresh generation (response parameter indicates new generation)
+                    const isGenerating = !!response;
+                    console.log(`💬 Found ${allDialogs.length} total dialogs from [${dialogSources.join(', ')}], rendering with isGenerating:`, isGenerating);
+                    renderManualPreviewDialogs(allDialogs, isGenerating);
+                } else {
+                    console.log('💬 Dialogs hidden by toggle button');
+                    clearManualPreviewDialogs();
+                }
+            } else {
+                // Clear any existing dialogs
+                console.log('💬 No dialogs found, clearing');
+                clearManualPreviewDialogs();
+            }
 
             // Initialize lightbox functionality
             setTimeout(() => {
@@ -6636,11 +8439,16 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             manualPreviewImage.style.width = '';
             manualPreviewImage.style.height = '';
             
-            // Update seed display
+            // Update seed display and add to history
             if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
-                window.lastGeneratedSeed = window.currentManualPreviewImage.metadata.seed;
+                const seed = window.currentManualPreviewImage.metadata.seed;
+                window.lastGeneratedSeed = seed;
                 sproutSeedBtn.classList.add('available');
                 updateSproutSeedButtonFromPreviewSeed();
+                // Add seed to history if addSeedToHistory function exists
+                if (typeof addSeedToHistory === 'function') {
+                    addSeedToHistory(seed);
+                }
             } else {
                 window.lastGeneratedSeed = null;
                 sproutSeedBtn.classList.remove('available');
@@ -6677,6 +8485,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -6769,7 +8578,22 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            if (upscaleBtn) upscaleBtn.classList.remove('hidden');
+            
+            // Show upscale button only if upscaling is available for this resolution
+            if (upscaleBtn) {
+                if (imageObj.width && imageObj.height) {
+                    const upscaleInfo = calculateUpscaleInfo(imageObj.width, imageObj.height);
+                    if (upscaleInfo.available) {
+                        upscaleBtn.classList.remove('hidden');
+                    } else {
+                        upscaleBtn.classList.add('hidden');
+                    }
+                } else {
+                    upscaleBtn.classList.remove('hidden'); // Default to shown if dimensions unknown
+                }
+            }
+            
+            if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
@@ -6790,7 +8614,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 scrapBtn.classList.remove('hidden');
                 // Update scrap button based on current view
                 if (currentGalleryView === 'scraps') {
-                    scrapBtn.innerHTML = '<i class="fas fa-undo"></i>';
+                    scrapBtn.innerHTML = '<i class="nai-dot-reset"></i>';
                     scrapBtn.title = 'Remove from scraps';
                 } else {
                     scrapBtn.innerHTML = '<i class="fas fa-bin-recycle"></i>';
@@ -6798,6 +8622,58 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 }
             }
             if (deleteBtn) deleteBtn.classList.remove('hidden');
+
+            // Render character dialogs if available (for direct preview updates)
+            // Collect dialogs from BOTH main and all pipeline stages (they add up!)
+            let allDialogsDirect = [];
+            const seenTimestampsDirect = new Set(); // Track timestamps to deduplicate
+            
+            // Collect from main compiled_prompt
+            const mainDialogsDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
+            const mainTimestampDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
+            if (mainDialogsDirect && mainDialogsDirect.length > 0 && mainTimestampDirect) {
+                allDialogsDirect = allDialogsDirect.concat(mainDialogsDirect);
+                seenTimestampsDirect.add(mainTimestampDirect);
+            }
+            
+            // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
+            // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
+            const stageSeedsDirect = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
+            if (stageSeedsDirect && Array.isArray(stageSeedsDirect)) {
+                // Iterate through ALL stage seeds to collect their dialogs
+                stageSeedsDirect.forEach((stageSeed, i) => {
+                    const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
+                    const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
+                    
+                    if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
+                        // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
+                        if (!seenTimestampsDirect.has(stageTimestamp)) {
+                            allDialogsDirect = allDialogsDirect.concat(stageDialogs);
+                            seenTimestampsDirect.add(stageTimestamp);
+                        }
+                    }
+                });
+            }
+            
+            // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
+            // Reuse the same processDialogPositions function
+            allDialogsDirect = processDialogPositions(allDialogsDirect);
+            
+            if (allDialogsDirect.length > 0) {
+                // Check if dialogs should be visible (from toggle button state)
+                const toggleDialogsBtnCheckDirect = document.getElementById('manualPreviewToggleDialogsBtn');
+                const dialogsVisibleDirect = toggleDialogsBtnCheckDirect ? toggleDialogsBtnCheckDirect.dataset.state === 'on' : true;
+                
+                if (dialogsVisibleDirect) {
+                    // Use navigating animation for direct updates (not fresh generation)
+                    renderManualPreviewDialogs(allDialogsDirect, false);
+                } else {
+                    clearManualPreviewDialogs();
+                }
+            } else {
+                // Clear any existing dialogs
+                clearManualPreviewDialogs();
+            }
 
             // Initialize lightbox functionality
             setTimeout(() => {
@@ -6910,6 +8786,7 @@ function resetManualPreview() {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -6938,6 +8815,7 @@ function resetManualPreview() {
         if (downloadBtn) downloadBtn.classList.add('hidden');
         if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.add('hidden');
         if (upscaleBtn) upscaleBtn.classList.add('hidden');
+        if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.add('hidden');
         if (rerollBtn) rerollBtn.classList.add('hidden');
         if (variationBtn) variationBtn.classList.add('hidden');
         if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.add('hidden');
@@ -6945,6 +8823,8 @@ function resetManualPreview() {
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) scrapBtn.classList.add('hidden');
         if (deleteBtn) deleteBtn.classList.add('hidden');
+        const compiledPromptBtn = document.getElementById('manualPreviewCompiledPromptBtn');
+        if (compiledPromptBtn) compiledPromptBtn.classList.add('hidden');
         hideManualPreview();
 
         // Clear stored seed and current image
@@ -7337,6 +9217,30 @@ async function handleManualSave() {
         ...requestBody
     };
     
+    // Remove skip_pipeline_stages from preset - this is a runtime flag only
+    delete generationParams.skip_pipeline_stages;
+
+    // Check if a seed value is set and ask user if they want to save it
+    if (generationParams.seed && generationParams.seed !== '') {
+        const seedChoice = await showConfirmationDialog(
+            `A seed value "${generationParams.seed}" is currently set. Do you want to save this preset with a static seed or make it automatic?`,
+            [
+                { text: 'Static Seed', value: 'static', className: 'btn-secondary', icon: 'fas fa-lock' },
+                { text: 'Automatic', value: 'automatic', className: 'btn-primary' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+            ]
+        );
+
+        if (seedChoice === 'cancel' || seedChoice === null) {
+            return; // User cancelled
+        }
+
+        if (seedChoice === 'automatic') {
+            // Remove seed for automatic generation
+            delete generationParams.seed;
+        }
+        // If 'static', keep the seed as is
+    }
 
     await saveManualPreset(presetName, generationParams);
 }
@@ -8238,7 +10142,7 @@ function toggleManualUpscale() {
     const newState = currentState === 'on' ? 'off' : 'on';
 
     manualUpscale.setAttribute('data-state', newState);
-
+    updateManualPriceDisplay();
 }
 
 // Metadata dialog functions
@@ -8467,8 +10371,8 @@ function clearSeed() {
         manualSeed.focus();
         
         // Reset sprout seed button state if it was active
-        if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'off') {
-            sproutSeedBtn.setAttribute('data-state', 'on');
+        if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'on') {
+            sproutSeedBtn.setAttribute('data-state', 'off');
             manualSeed.disabled = false;
         }
         
@@ -8478,9 +10382,8 @@ function clearSeed() {
         } else {
             manualSeed.placeholder = 'Randomize';
         }
-    } else {
-        clearSeedBtn?.classList.add('hidden');
     }
+    manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function updateSproutSeedButton() {
@@ -8494,7 +10397,7 @@ function updateSproutSeedButton() {
         } else {
             sproutSeedBtn.classList.add('hidden');
             // Reset toggle state when no seed is available
-            sproutSeedBtn.setAttribute('data-state', 'on');
+            sproutSeedBtn.setAttribute('data-state', 'off');
             // Update placeholder to show "Random"
             if (manualSeed) {
                 manualSeed.placeholder = 'Randomize';
@@ -8518,7 +10421,7 @@ function updateSproutSeedButtonFromPreviewSeed() {
 
             // Check if the button is currently in 'on' state
             const currentState = sproutSeedBtn.getAttribute('data-state');
-            if (currentState === 'off') {
+            if (currentState === 'on') {
                 // If randomize seed is off, check if current input value matches preview seed
                 const currentInputValue = manualSeed ? parseInt(manualSeed.value) || '' : '';
 
@@ -8530,13 +10433,13 @@ function updateSproutSeedButtonFromPreviewSeed() {
                 // Don't auto-update the input field when there's a mismatch
             } else {
                 // Reset button state to off initially and hide load seed button
-                sproutSeedBtn.setAttribute('data-state', 'on');
+                sproutSeedBtn.setAttribute('data-state', 'off');
                 loadSeedBtn.classList.add('hidden');
             }
         } else {
             // Hide the buttons when no seed is available
             sproutSeedBtn.classList.add('hidden');
-            sproutSeedBtn.setAttribute('data-state', 'on');
+            sproutSeedBtn.setAttribute('data-state', 'off');
             loadSeedBtn.classList.add('hidden');
             // Clear the lastLoadedSeed
             window.lastLoadedSeed = null;
@@ -8561,39 +10464,32 @@ function loadSeedFromPreview() {
     // Hide the load seed button since the seed has been loaded
     loadSeedBtn.classList.add('hidden');
 
-    // Show the clear seed button since there's now a value
-    if (clearSeedBtn && manualSeed && manualSeed.value) {
-        clearSeedBtn.classList.remove('hidden');
-    }
-
-    // Set the sprout seed button to "off" state (locked) since we loaded a specific seed
+    // Set the sprout seed button to "on" state (unlocked) since we loaded a specific seed
     if (sproutSeedBtn) {
-        sproutSeedBtn.setAttribute('data-state', 'off');
+        sproutSeedBtn.setAttribute('data-state', 'on');
     }
 
     // Update the sprout seed button to reflect the new state
     updateSproutSeedButtonFromPreviewSeed();
+    manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function toggleSproutSeed() {
     if (!sproutSeedBtn || !window.lastLoadedSeed) return;
 
     const currentState = sproutSeedBtn.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
+    const newState = currentState === 'off' ? 'on' : 'off';
 
     sproutSeedBtn.setAttribute('data-state', newState);
 
-    if (newState === 'off') {
+    if (newState === 'on') {
         // Set the seed value and disable the field
         manualSeed.value = window.lastLoadedSeed;
         if (window.lastLoadedSeed) {
             sproutSeedBtn?.classList.remove('hidden');
         }
 
-        // Hide the clear seed button
-        if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
         manualSeed.disabled = true;
-        // Update placeholder to show the seed value
         if (manualSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
         }
@@ -8621,13 +10517,11 @@ function toggleSproutSeed() {
         // Clear the seed value and enable the field, but don't hide the sprout button
         manualSeed.value = '';
         manualSeed.disabled = false;
-        // Show the clear seed button
-        if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
-        // Update placeholder to show the seed value (since it's still available)
         if (manualSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
         }
     }
+    manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 // Add event listener for manualSampler to auto-set noise scheduler
@@ -8665,9 +10559,92 @@ async function handleImageUpload(event) {
 
 // Handle clipboard paste
 async function handleClipboardPaste(event) {
+    // Check if user is typing in an input field - don't intercept paste in that case
+    const activeElement = document.activeElement;
+    const isTypingInField = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable
+    );
+    
+    // If user is typing, let the default paste behavior happen
+    if (isTypingInField) {
+        return;
+    }
+    
     const items = event.clipboardData?.items;
     if (!items) return;
 
+    // First check for text/JSON data (blueprint)
+    for (let item of items) {
+        if (item.type === 'text/plain') {
+            event.preventDefault();
+            item.getAsString(async (text) => {
+                try {
+                    // Try to parse as JSON
+                    const data = JSON.parse(text);
+                    
+                    // Check if it's NovelAI metadata (blueprint)
+                    // Multiple ways to detect NovelAI data:
+                    // 1. Has explicit source field
+                    // 2. Has v4_prompt structure (NovelAI v4 specific)
+                    // 3. Has signed_hash field (NovelAI specific)
+                    // 4. Has request_type field (NovelAI API specific)
+                    const isNovelAI = data && (
+                        (data.source && data.source.includes('NovelAI')) ||
+                        data.v4_prompt ||
+                        data.signed_hash ||
+                        data.request_type === 'PromptGenerateRequest' ||
+                        data.request_type === 'Img2ImgRequest'
+                    );
+                    
+                    if (isNovelAI) {
+                        const toastId = showGlassToast('info', 'Loading Blueprint', 'Loading blueprint from clipboard...', true, false, '<i class="nai-import"></i>');
+                        
+                        try {
+                            // Add source field if missing for compatibility
+                            if (!data.source) {
+                                data.source = 'NovelAI';
+                            }
+                            
+                            // Transform metadata to the format expected by the manual form
+                            const transformedMetadata = window.transformMetadataForEditor(data);
+                            
+                            // Open manual modal and load the metadata
+                            showManualModal();
+                            await loadIntoManualForm(transformedMetadata);
+                            
+                            updateGlassToastComplete(toastId, {
+                                type: 'success',
+                                title: 'Blueprint Loaded',
+                                message: 'Successfully loaded blueprint from clipboard',
+                                customIcon: '<i class="nai-check"></i>',
+                                showProgress: false
+                            });
+                        } catch (error) {
+                            console.error('Error loading blueprint:', error);
+                            updateGlassToastComplete(toastId, {
+                                type: 'error',
+                                title: 'Blueprint Load Failed',
+                                message: 'Failed to load blueprint: ' + error.message,
+                                customIcon: '<i class="nai-cross"></i>',
+                                showProgress: false
+                            });
+                        }
+                    } else {
+                        // Not a NovelAI blueprint, ignore
+                        console.log('Clipboard text is not a NovelAI blueprint');
+                    }
+                } catch (e) {
+                    // Not valid JSON, ignore
+                    console.log('Clipboard text is not valid JSON');
+                }
+            });
+            return;
+        }
+    }
+
+    // If no text data found, check for images
     for (let item of items) {
         if (item.type.startsWith('image/')) {
             event.preventDefault();
@@ -8846,9 +10823,6 @@ async function handleManualImageUploadInternal(file) {
         if (imageBiasHidden != null) imageBiasHidden.value = biasToUse.toString();
         await renderImageBiasDropdown(biasToUse.toString());
     
-        // Set transformation type to upload (successful)
-        updateTransformationDropdownState('upload', 'Upload');
-
         // Show transformation section content
         if (transformationRow) {
             transformationRow.classList.add('display-image');
@@ -8904,8 +10878,6 @@ function handleDeleteBaseImage() {
     updateInpaintButtonState();
     
     updateMaskPreview();
-
-    updateTransformationDropdownState();
 }
 
 // Update upload/delete button visibility based on whether an image is uploaded
@@ -9378,6 +11350,9 @@ function addCharacterPrompt() {
     characterItem.innerHTML = `
             <div class="character-prompt-tabs">
                 <div class="tab-header">
+                    <div class="workspace-drag-handle" title="Drag to reorder">
+                        <i class="fas fa-grip-dots-vertical"></i>
+                    </div>
                     <div class="left-controls">
                     <div class="character-name-editable">
                         <input type="text" class="character-name-input hover-show" value="Character ${characterPromptCounter}" placeholder="Enter character name...">
@@ -9390,12 +11365,6 @@ function addCharacterPrompt() {
                     <div class="character-prompt-controls">
                         <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
-                        </button>
-                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'up')" style="display: inline-flex;">
-                            <i class="nai-directional-arrow-up"></i>
-                        </button>
-                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'down')" style="display: inline-flex;">
-                            <i class="nai-directional-arrow-down"></i>
                         </button>
                         <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-crosshairs"></i>
@@ -9415,7 +11384,16 @@ function addCharacterPrompt() {
                             <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                             <div class="prompt-textarea-toolbar hidden">
                                 <div class="toolbar-left">
-                                    <span class="token-count">0 tokens</span>
+                                    <div class="token-info-container">
+                                        <div class="token-info-top">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="token-progress-bar">
+                                            <div class="token-progress-fill">
+                                                <div class="token-progress-inner"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <!-- Search Mode Elements (Hidden by default) -->
                                     <div class="toolbar-search-elements">
                                         <div class="text-search-label">Search</div>
@@ -9428,19 +11406,16 @@ function addCharacterPrompt() {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
-                                        <div class="divider"></div>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-scale-unbalanced-flip"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-font"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-search"></i>
-                                        </button>
+                                        <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
+                                                <i class="fas fa-toolbox"></i>
+                                            </button>
+                                            <div id="characterActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
+                                            </div>
+                                        </div>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
                                     <div class="toolbar-search-buttons">
@@ -9458,7 +11433,16 @@ function addCharacterPrompt() {
                             <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                             <div class="prompt-textarea-toolbar hidden">
                                 <div class="toolbar-left">
-                                    <span class="token-count">0 tokens</span>
+                                    <div class="token-info-container">
+                                        <div class="token-info-top">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="token-progress-bar">
+                                            <div class="token-progress-fill">
+                                                <div class="token-progress-inner"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <!-- Search Mode Elements (Hidden by default) -->
                                     <div class="toolbar-search-elements">
                                         <div class="text-search-label">Search</div>
@@ -9471,19 +11455,16 @@ function addCharacterPrompt() {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
-                                        <div class="divider"></div>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-scale-unbalanced-flip"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-font"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-search"></i>
-                                        </button>
+                                        <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
+                                                <i class="fas fa-toolbox"></i>
+                                            </button>
+                                            <div id="characterUCActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
+                                            </div>
+                                        </div>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
                                     <div class="toolbar-search-buttons">
@@ -9502,6 +11483,7 @@ function addCharacterPrompt() {
     // Store character name in dataset
     characterItem.dataset.charaName = `Character ${characterPromptCounter}`;
 
+    characterPromptsContainer.classList.remove('hidden');
     characterPromptsContainer.appendChild(characterItem);
 
     // Add autocomplete event listeners for prompt and UC fields
@@ -9518,15 +11500,13 @@ function addCharacterPrompt() {
                 autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
             }, 'blur');
+            
             // Add auto-resize functionality
             const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
-addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
+            addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
+            
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
-            // Initialize toolbar for dynamic textarea
-            if (window.handleDynamicTextarea) {
-                window.handleDynamicTextarea(promptField);
-            }
         }
 
             if (ucField) {
@@ -9539,14 +11519,12 @@ addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
                 autoResizeTextarea(ucField);
                 stopEmphasisHighlighting();
             }, 'blur');
+            
             // Add auto-resize functionality
             const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
-addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
+            addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
+            
             initializeEmphasisOverlay(ucField);
-            // Initialize toolbar for dynamic textarea
-            if (window.handleDynamicTextarea) {
-                window.handleDynamicTextarea(ucField);
-            }
         }
 
     // Add preview textarea click handler
@@ -9601,6 +11579,15 @@ addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
 
     // Update auto position toggle visibility
     updateAutoPositionToggle();
+
+    // Initialize dropdowns for the newly created character
+    promptTextareaToolbar.initializeCharacterDropdowns(characterId);
+    
+    // Update text overlay target dropdowns
+    updateAllTextOverlayTargetDropdowns();
+    
+    // Initialize drag and drop functionality
+    initializeCharacterPromptDragAndDrop();
 }
 
 function deleteCharacterPrompt(characterId) {
@@ -9619,6 +11606,15 @@ function deleteCharacterPrompt(characterId) {
         
         characterItem.remove();
         updateAutoPositionToggle();
+        
+        // Update text overlay target dropdowns
+        updateAllTextOverlayTargetDropdowns();
+        
+        // Reinitialize drag and drop functionality
+        initializeCharacterPromptDragAndDrop();
+    }
+    if (characterPromptsContainer.querySelectorAll('.character-prompt-item').length === 0) {
+        characterPromptsContainer.classList.add('hidden');
     }
 }
 
@@ -9651,6 +11647,171 @@ function moveCharacterPrompt(characterId, direction) {
 
     // Update button states after reordering
     updateAutoPositionToggle();
+}
+
+// Initialize drag and drop functionality for character prompt reordering
+function initializeCharacterPromptDragAndDrop() {
+    const list = characterPromptsContainer;
+    if (!list) {
+        return;
+    }
+
+    let draggedItem = null;
+    let draggedIndex = null;
+
+    // Add event listeners to drag handles
+    const dragHandles = list.querySelectorAll('.workspace-drag-handle');
+    
+    dragHandles.forEach((handle, index) => {
+        handle.addEventListener('mousedown', startDrag);
+        handle.addEventListener('touchstart', startDrag, { passive: false });
+        handle.addEventListener('touchmove', onDrag, { passive: false });
+        handle.addEventListener('touchend', endDrag);
+    });
+
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const item = e.target.closest('.character-prompt-item');
+        if (!item) {
+            return;
+        }
+
+        draggedItem = item;
+        draggedIndex = Array.from(list.children).indexOf(item);
+
+        // Add dragging class
+        draggedItem.classList.add('dragging');
+
+        // Add event listeners for drag movement - only mouse events on document
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('mouseup', endDrag);
+
+        // Prevent text selection during drag
+        document.body.style.userSelect = 'none';
+    }
+
+    function onDrag(e) {
+        if (!draggedItem) {
+            return;
+        }
+
+        e.preventDefault();
+
+        // Handle both mouse and touch events
+        let clientY;
+        if (e.type === 'mousemove') {
+            clientY = e.clientY;
+        } else if (e.type === 'touchmove' && e.touches.length > 0) {
+            clientY = e.touches[0].clientY;
+        } else {
+            return; // No valid input
+        }
+
+        const rect = list.getBoundingClientRect();
+        const mouseY = clientY - rect.top;
+
+        // Find the item under the mouse and determine if we're in top or bottom half
+        const items = Array.from(list.children);
+        let targetIndex = null;
+        let insertAfter = false;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item === draggedItem) continue;
+            
+            const itemRect = item.getBoundingClientRect();
+            const itemTop = itemRect.top - rect.top;
+            const itemBottom = itemTop + itemRect.height;
+            const itemMiddle = itemTop + (itemRect.height / 2);
+
+            if (mouseY >= itemTop && mouseY <= itemBottom) {
+                targetIndex = i;
+                insertAfter = mouseY > itemMiddle;
+                break;
+            }
+        }
+
+        // If no item found, check if we're below all items
+        if (targetIndex === null && items.length > 0) {
+            const lastItem = items[items.length - 1];
+            const lastItemRect = lastItem.getBoundingClientRect();
+            const lastItemBottom = lastItemRect.top - rect.top + lastItemRect.height;
+            
+            if (mouseY > lastItemBottom) {
+                targetIndex = items.length - 1;
+                insertAfter = true;
+            }
+        }
+
+        // Move the dragged item to new position
+        if (targetIndex !== null) {
+            const currentIndex = Array.from(list.children).indexOf(draggedItem);
+            let finalTargetIndex = targetIndex;
+            
+            // Adjust target index if we're moving down and should insert after
+            if (insertAfter) {
+                finalTargetIndex = targetIndex + 1;
+            }
+            
+            // Only move if the position actually changes
+            if (finalTargetIndex !== currentIndex) {
+                // Remove drag-over class from all items
+                items.forEach(item => item.classList.remove('drag-over'));
+                
+                // Actually move the item in the DOM
+                const targetItem = items[targetIndex];
+                if (insertAfter && targetItem) {
+                    // Insert after the target item
+                    if (targetItem.nextSibling) {
+                        list.insertBefore(draggedItem, targetItem.nextSibling);
+                    } else {
+                        list.appendChild(draggedItem);
+                    }
+                } else if (targetItem) {
+                    // Insert before the target item
+                    list.insertBefore(draggedItem, targetItem);
+                } else {
+                    // Append to end if no target
+                    list.appendChild(draggedItem);
+                }
+                
+                // Add drag-over class to new position
+                draggedItem.classList.add('drag-over');
+                
+                // Update draggedIndex
+                draggedIndex = Array.from(list.children).indexOf(draggedItem);
+            }
+        }
+    }
+
+    function endDrag(e) {
+        if (!draggedItem) {
+            return;
+        }
+
+        e.preventDefault();
+
+        // Remove document event listeners
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', endDrag);
+
+        // Remove dragging classes
+        draggedItem.classList.remove('dragging');
+        const items = Array.from(list.children);
+        items.forEach(item => item.classList.remove('drag-over'));
+
+        // Restore text selection
+        document.body.style.userSelect = '';
+
+        // Update auto position toggle after reordering
+        updateAutoPositionToggle();
+
+        // Reset draggedItem
+        draggedItem = null;
+        draggedIndex = null;
+    }
 }
 
 function toggleCharacterPromptEnabled(characterId) {
@@ -9817,8 +11978,7 @@ function getCharacterPrompts() {
 }
 
 function clearCharacterPrompts() {
-    const characterPromptsContainer = document.getElementById('characterPromptsContainer');
-    
+    characterPromptsContainer.classList.add('hidden');
     // Clean up event listeners for all character prompt textareas before clearing
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     characterItems.forEach(item => {
@@ -9833,7 +11993,6 @@ function clearCharacterPrompts() {
             cleanupSafeEventListeners(ucField);
         }
     });
-    
     characterPromptsContainer.innerHTML = '';
     characterPromptCounter = 0;
 }
@@ -9851,6 +12010,10 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
     // Update counter to match the number of characters
     characterPromptCounter = characterPrompts.length;
+
+    if (characterPrompts.length > 0) {
+        characterPromptsContainer.classList.remove('hidden');
+    }
 
     characterPrompts.forEach((character, index) => {
         const characterId = `character_${index}`;
@@ -9886,6 +12049,9 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         characterItem.innerHTML = `
             <div class="character-prompt-tabs">
                 <div class="tab-header">
+                    <div class="workspace-drag-handle" title="Drag to reorder">
+                        <i class="fas fa-grip-dots-vertical"></i>
+                    </div>
                     <div class="left-controls">
                     <div class="character-name-editable">
                         <input type="text" class="character-name-input hover-show" value="${character.chara_name || `Character ${index + 1}`}" placeholder="Enter character name...">
@@ -9898,12 +12064,6 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                     <div class="character-prompt-controls">
                         <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
-                        </button>
-                        <button type="button" class="btn-secondary move-up-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'up')" style="display: inline-flex;">
-                            <i class="nai-directional-arrow-up"></i>
-                        </button>
-                        <button type="button" class="btn-secondary move-down-btn" onclick="moveCharacterPrompt('${escapeHtmlAttribute(characterId)}', 'down')" style="display: inline-flex;">
-                            <i class="nai-directional-arrow-down"></i>
                         </button>
                         <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''}" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             ${positionBtnText}
@@ -9923,7 +12083,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                             <textarea id="${characterId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.prompt || ''}</textarea>
                             <div class="prompt-textarea-toolbar hidden">
                                 <div class="toolbar-left">
-                                    <span class="token-count">0 tokens</span>
+                                    <div class="token-info-container">
+                                        <div class="token-info-top">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="token-progress-bar">
+                                            <div class="token-progress-fill">
+                                                <div class="token-progress-inner"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <!-- Search Mode Elements (Hidden by default) -->
                                     <div class="toolbar-search-elements">
                                         <div class="text-search-label">Search</div>
@@ -9936,19 +12105,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
-                                        <div class="divider"></div>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-scale-unbalanced-flip"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-font"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-search"></i>
-                                        </button>
+                                        <div id="characterActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
+                                                <i class="fas fa-toolbox"></i>
+                                            </button>
+                                            <div id="characterActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
+                                            </div>
+                                        </div>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
                                     <div class="toolbar-search-buttons">
@@ -9966,7 +12132,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                             <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.uc || ''}</textarea>
                             <div class="prompt-textarea-toolbar hidden">
                                 <div class="toolbar-left">
-                                    <span class="token-count">0 tokens</span>
+                                    <div class="token-info-container">
+                                        <div class="token-info-top">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="token-progress-bar">
+                                            <div class="token-progress-fill">
+                                                <div class="token-progress-inner"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <!-- Search Mode Elements (Hidden by default) -->
                                     <div class="toolbar-search-elements">
                                         <div class="text-search-label">Search</div>
@@ -9979,19 +12154,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
-                                        <div class="divider"></div>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                            <i class="fas fa-scale-unbalanced-flip"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                            <i class="fas fa-book-font"></i>
-                                        </button>
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                            <i class="fas fa-search"></i>
-                                        </button>
+                                        <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
+                                                <i class="fas fa-toolbox"></i>
+                                            </button>
+                                            <div id="characterUCActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
+                                            </div>
+                                        </div>
                                     </div>
                                     <!-- Search Mode Buttons (Hidden by default) -->
                                     <div class="toolbar-search-buttons">
@@ -10035,18 +12207,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
             }, 'blur');
+            
             // Add auto-resize functionality
             const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
             addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
+            
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
             // Apply initial resizing and highlighting after content is set
             autoResizeTextarea(promptField);
             updateEmphasisHighlighting(promptField);
-            // Initialize toolbar for dynamic textarea
-            if (window.handleDynamicTextarea) {
-                window.handleDynamicTextarea(promptField);
-            }
         }
 
         if (ucField) {
@@ -10059,18 +12229,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 autoResizeTextarea(ucField);
                 stopEmphasisHighlighting();
             }, 'blur');
+            
             // Add auto-resize functionality
             const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
             addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
+            
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(ucField);
             // Apply initial resizing and highlighting after content is set
             autoResizeTextarea(ucField);
             updateEmphasisHighlighting(ucField);
-            // Initialize toolbar for dynamic textarea
-            if (window.handleDynamicTextarea) {
-                window.handleDynamicTextarea(ucField);
-            }
         }
 
         // Add preview textarea click handler
@@ -10125,6 +12293,6023 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
 
     // Update auto position toggle after loading
     updateAutoPositionToggle();
+}
+
+// ============================================================================
+// TEXT OVERLAY SYSTEM
+// ============================================================================
+
+function addTextOverlay() {
+    const textOverlayId = `text_overlay_${textOverlayCounter++}`;
+    
+    const textOverlayItem = document.createElement('div');
+    textOverlayItem.className = 'text-overlay-item';
+    textOverlayItem.id = textOverlayId;
+    textOverlayItem.dataset.stages = '00'; // Initialize with base stage
+    textOverlayItem.dataset.targetIndex = '0';
+    textOverlayItem.dataset.textType = 'speech';
+    
+    textOverlayItem.innerHTML = `
+        <div class="prompt-textarea-container text-overlay-prompt">
+            <div class="prompt-textarea-background"></div>
+            <textarea id="${textOverlayId}_text" class="form-control prompt-textarea" placeholder="Enter text to overlay..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+            <div class="prompt-status-icons">
+                <div class="text-overlay-status-left">
+                    <i id="${textOverlayId}_status_type_icon" class="fas fa-comment-lines"></i>
+                    <span class="text-overlay-label">Text Overlay</span>
+                </div>
+                <div class="text-overlay-status-right">
+                    <i id="${textOverlayId}_status_target_icon" class="fas fa-user" style="display: none;" title="Target"></i>
+                    <i id="${textOverlayId}_status_stage_icon" class="fas fa-layer-group" style="display: none;" title="Pipeline Stage"></i>
+                </div>
+            </div>
+            <div class="prompt-textarea-toolbar hidden">
+                <div class="toolbar-left">
+                </div>
+                <div class="toolbar-right">
+                    <div class="toolbar-regular-buttons">
+                        <div id="${textOverlayId}_target_dropdown" class="custom-dropdown dark dropright" style="display: none;">
+                            <button type="button" id="${textOverlayId}_target_btn" class="btn-secondary btn-small toolbar-btn" title="Target">
+                                <span id="${textOverlayId}_target_display">Base</span>
+                            </button>
+                            <div id="${textOverlayId}_target_menu" class="custom-dropdown-menu min-dropdown-width hidden"></div>
+                        </div>
+                        <div id="${textOverlayId}_stage_dropdown" class="custom-dropdown dark dropright" style="display: none;">
+                            <button type="button" id="${textOverlayId}_stage_btn" class="btn-secondary btn-small toolbar-btn" title="Pipeline Stage">
+                                <span id="${textOverlayId}_stage_display">Base</span>
+                            </button>
+                            <div id="${textOverlayId}_stage_menu" class="custom-dropdown-menu min-dropdown-width hidden"></div>
+                        </div>
+                        <div id="${textOverlayId}_type_dropdown" class="custom-dropdown dark dropright">
+                            <button type="button" id="${textOverlayId}_type_btn" class="btn-secondary btn-small toolbar-btn" title="Text Type">
+                                <i class="fas fa-comment-lines"></i>
+                            </button>
+                            <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <div class="divider"></div>
+                        <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="${textOverlayId}_enabled" data-state="on" title="Enable/Disable">
+                            <i class="fas fa-power-off"></i>
+                        </button>
+                        <button type="button" class="btn-danger btn-small toolbar-btn" id="${textOverlayId}_delete" title="Delete">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    textOverlaysContainer.appendChild(textOverlayItem);
+    textOverlaysContainer.classList.remove('hidden');
+    
+    // Setup dropdowns
+    setupTextOverlayDropdowns(textOverlayId);
+    
+    // Setup click handlers for toolbar displays
+    setupTextOverlayToolbarHandlers(textOverlayId);
+    
+    // Update all text overlay target dropdowns to reflect current characters
+    updateAllTextOverlayTargetDropdowns();
+    // Ensure stage dropdown visibility reflects current pipeline
+    updateTextOverlayStageVisibility();
+}
+
+function setupTextOverlayDropdowns(textOverlayId) {
+    // Target dropdown
+    const targetDropdown = document.getElementById(`${textOverlayId}_target_dropdown`);
+    const targetBtn = document.getElementById(`${textOverlayId}_target_btn`);
+    const targetMenu = document.getElementById(`${textOverlayId}_target_menu`);
+    
+    if (targetDropdown && targetBtn && targetMenu) {
+        setupDropdown(
+            targetDropdown,
+            targetBtn,
+            targetMenu,
+            () => renderTextOverlayTargetDropdown(textOverlayId),
+            () => {
+                const item = document.getElementById(textOverlayId);
+                return item ? (item.dataset.targetIndex || '0') : '0';
+            },
+            { preventFocusTransfer: true }
+        );
+    }
+    
+    // Stage dropdown
+    const stageDropdown = document.getElementById(`${textOverlayId}_stage_dropdown`);
+    const stageBtn = document.getElementById(`${textOverlayId}_stage_btn`);
+    const stageMenu = document.getElementById(`${textOverlayId}_stage_menu`);
+    
+    if (stageDropdown && stageBtn && stageMenu) {
+        setupDropdown(
+            stageDropdown,
+            stageBtn,
+            stageMenu,
+            () => renderTextOverlayStageDropdown(textOverlayId),
+            () => {
+                const item = document.getElementById(textOverlayId);
+                const stages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['0'];
+                return stages.join(',');
+            },
+            { preventFocusTransfer: true, multiSelect: true }
+        );
+    }
+    
+    // Text type dropdown
+    const typeDropdown = document.getElementById(`${textOverlayId}_type_dropdown`);
+    const typeBtn = document.getElementById(`${textOverlayId}_type_btn`);
+    const typeMenu = document.getElementById(`${textOverlayId}_type_menu`);
+    
+    if (typeDropdown && typeBtn && typeMenu) {
+        setupDropdown(
+            typeDropdown,
+            typeBtn,
+            typeMenu,
+            () => renderTextOverlayTypeDropdown(textOverlayId),
+            () => {
+                const item = document.getElementById(textOverlayId);
+                return item ? (item.dataset.textType || 'speech') : 'speech';
+            },
+            { preventFocusTransfer: true }
+        );
+    }
+}
+
+function renderTextOverlayTargetDropdown(textOverlayId) {
+    const menu = document.getElementById(`${textOverlayId}_target_menu`);
+    const item = document.getElementById(textOverlayId);
+    if (!menu || !item) return;
+    
+    const selectedValue = item.dataset.targetIndex || '0';
+    menu.innerHTML = '';
+    
+    // Base option
+    const baseOption = document.createElement('div');
+    baseOption.className = 'custom-dropdown-option' + (selectedValue === '0' ? ' selected' : '');
+    baseOption.dataset.value = '0';
+    baseOption.textContent = 'Base';
+    baseOption.addEventListener('click', () => {
+        selectTextOverlayTarget(textOverlayId, '0', 'Base');
+        closeDropdown(menu, document.getElementById(`${textOverlayId}_target_btn`));
+    });
+    menu.appendChild(baseOption);
+    
+    // Character options
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+    characterItems.forEach((charItem, index) => {
+        const charName = charItem.dataset.charaName || `Character ${index + 1}`;
+        const targetIndex = (index + 1).toString();
+        
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedValue === targetIndex ? ' selected' : '');
+        option.dataset.value = targetIndex;
+        option.textContent = charName;
+        option.addEventListener('click', () => {
+            selectTextOverlayTarget(textOverlayId, targetIndex, charName);
+            closeDropdown(menu, document.getElementById(`${textOverlayId}_target_btn`));
+        });
+        menu.appendChild(option);
+    });
+}
+
+function renderTextOverlayStageDropdown(textOverlayId) {
+    const menu = document.getElementById(`${textOverlayId}_stage_menu`);
+    const item = document.getElementById(textOverlayId);
+    if (!menu || !item) return;
+    
+    const selectedStages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
+    menu.innerHTML = '';
+    
+    // All Stages option
+    const allStagesOption = document.createElement('div');
+    allStagesOption.className = 'custom-dropdown-option' + (selectedStages.includes('all') ? ' active' : '');
+    allStagesOption.dataset.value = 'all';
+    allStagesOption.innerHTML = `<span>All Stages</span><i class="fas fa-layer-group" style="margin-left: auto;"></i>`;
+    allStagesOption.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleTextOverlayStage(textOverlayId, 'all');
+        // Re-render to update active states
+        renderTextOverlayStageDropdown(textOverlayId);
+    });
+    menu.appendChild(allStagesOption);
+    
+    // Base option (00)
+    const baseOption = document.createElement('div');
+    baseOption.className = 'custom-dropdown-option' + (selectedStages.includes('00') ? ' active' : '');
+    baseOption.dataset.value = '00';
+    baseOption.innerHTML = `<span>00</span><i class="fas fa-egg" style="margin-left: auto;"></i>`;
+    baseOption.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleTextOverlayStage(textOverlayId, '00');
+        // Re-render to update active states
+        renderTextOverlayStageDropdown(textOverlayId);
+    });
+    menu.appendChild(baseOption);
+    
+    // Pipeline stage options - include all stages with hex IDs
+    const allStageElements = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+    if (allStageElements) {
+        allStageElements.forEach((stageElement, index) => {
+            const hexId = calculateStageHexId(stageElement);
+            const stageType = stageElement.dataset.stageType;
+            const stageIcon = stageType === STAGE_TYPES.EXPAND_CANVAS ? 'mdi mdi-1-25 mdi-relative-scale' : 'fas fa-diagram-venn';
+            
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (selectedStages.includes(hexId) ? ' active' : '');
+            option.dataset.value = hexId;
+            option.innerHTML = `<span>${hexId}</span><i class="${stageIcon}" style="margin-left: auto;"></i>`;
+            option.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleTextOverlayStage(textOverlayId, hexId);
+                // Re-render to update active states
+                renderTextOverlayStageDropdown(textOverlayId);
+            });
+            menu.appendChild(option);
+        });
+    }
+}
+
+function renderTextOverlayTypeDropdown(textOverlayId) {
+    const menu = document.getElementById(`${textOverlayId}_type_menu`);
+    const item = document.getElementById(textOverlayId);
+    if (!menu || !item) return;
+    
+    const selectedValue = item.dataset.textType || 'speech';
+    menu.innerHTML = '';
+    
+    // Get text tags from config (fallback if not loaded)
+    const textTags = {
+        'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
+        'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
+        'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
+    };
+    
+    Object.keys(textTags).forEach(key => {
+        const type = textTags[key];
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedValue === key ? ' selected' : '');
+        option.dataset.value = key;
+        option.textContent = type.name;
+        option.addEventListener('click', () => {
+            selectTextOverlayType(textOverlayId, key, type.name);
+            closeDropdown(menu, document.getElementById(`${textOverlayId}_type_btn`));
+        });
+        menu.appendChild(option);
+    });
+}
+
+function setupTextOverlayToolbarHandlers(textOverlayId) {
+    const item = document.getElementById(textOverlayId);
+    const textarea = document.getElementById(`${textOverlayId}_text`);
+
+    // Enable/disable button handler
+    const enableBtn = document.getElementById(`${textOverlayId}_enabled`);
+    if (enableBtn) {
+        enableBtn.addEventListener('click', () => {
+            toggleTextOverlayEnabled(textOverlayId);
+        });
+    }
+
+    // Delete button handler
+    const deleteBtn = document.getElementById(`${textOverlayId}_delete`);
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+            deleteTextOverlay(textOverlayId);
+        });
+    }
+
+    // Auto-resize functionality
+    if (textarea) {
+        autoResizeTextarea(textarea, 10);
+        textarea.addEventListener('input', () => {
+            autoResizeTextarea(textarea, 10);
+        });
+        
+        // Store original value with actual newlines before any conversion
+        if (!textarea.dataset.originalValue) {
+            textarea.dataset.originalValue = textarea.value;
+        }
+        
+        // Convert newlines to display character when losing focus
+        textarea.addEventListener('blur', () => {
+            const currentValue = textarea.value;
+            // Store the original value with actual newlines
+            textarea.dataset.originalValue = currentValue;
+            // Convert newlines to display character (⏎)
+            const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
+            if (displayValue !== currentValue) {
+                textarea.value = displayValue;
+            }
+        });
+        
+        // Convert display character back to newlines when gaining focus
+        textarea.addEventListener('focus', () => {
+            const currentValue = textarea.value;
+            // Convert display character back to newlines
+            const originalValue = currentValue.replace(/ ⏎ /g, '\n');
+            if (originalValue !== currentValue) {
+                // Restore cursor position as much as possible
+                const cursorPosition = textarea.selectionStart;
+                textarea.value = originalValue;
+                // Try to maintain approximate cursor position
+                const originalLength = currentValue.length;
+                const newLength = originalValue.length;
+                if (originalLength > 0) {
+                    const ratio = cursorPosition / originalLength;
+                    const newPosition = Math.floor(ratio * newLength);
+                    textarea.setSelectionRange(newPosition, newPosition);
+                }
+            }
+            // Update stored original value
+            textarea.dataset.originalValue = originalValue;
+        });
+        
+        // Initialize: convert newlines to display character if not focused
+        if (document.activeElement !== textarea) {
+            const currentValue = textarea.value;
+            if (currentValue.includes('\n')) {
+                const displayValue = currentValue.replace(/\n/g, ' ⏎ ');
+                textarea.value = displayValue;
+                textarea.dataset.originalValue = currentValue;
+            }
+        }
+    }
+}
+
+function selectTextOverlayTarget(textOverlayId, targetIndex, targetName) {
+    const item = document.getElementById(textOverlayId);
+    const targetDisplay = document.getElementById(`${textOverlayId}_target_display`);
+    
+    if (item && targetDisplay) {
+        item.dataset.targetIndex = targetIndex;
+        targetDisplay.textContent = targetName;
+    }
+}
+
+function toggleTextOverlayStage(textOverlayId, stageId) {
+    const item = document.getElementById(textOverlayId);
+    
+    if (item) {
+        // Get current stages as array
+        const currentStages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
+        
+        let newStages;
+        if (stageId === 'all') {
+            // All Stages - if selecting all, clear everything else and set to *
+            newStages = ['all'];
+        } else {
+            // Remove "All Stages" if it exists and we're selecting specific stages
+            newStages = currentStages.filter(s => s !== 'all');
+            
+            // Toggle the selected stage
+            if (newStages.includes(stageId)) {
+                newStages = newStages.filter(s => s !== stageId);
+                // If no stages left, default to base (00)
+                if (newStages.length === 0) {
+                    newStages = ['00'];
+                }
+            } else {
+                newStages.push(stageId);
+            }
+        }
+        
+        // Store as comma-separated string
+        item.dataset.stages = newStages.join(',');
+        
+        // Update display text
+        updateTextOverlayStageDisplay(textOverlayId);
+    }
+}
+
+function updateTextOverlayStageDisplay(textOverlayId) {
+    const item = document.getElementById(textOverlayId);
+    const stageDisplay = document.getElementById(`${textOverlayId}_stage_display`);
+    
+    if (item && stageDisplay) {
+        const stages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
+        
+        let displayText;
+        if (stages.length === 1 && stages[0] === 'all') {
+            displayText = 'All Stages';
+        } else if (stages.length === 1 && stages[0] === '00') {
+            displayText = '00';
+        } else {
+            // Group sequential stages into ranges
+            displayText = groupSequentialStages(stages);
+        }
+        
+        stageDisplay.textContent = displayText;
+    }
+}
+
+/**
+ * Groups sequential hex stage IDs into ranges
+ * Example: ['00', '01', '02', '05', '06'] -> '00-02, 05-06'
+ * Example: ['01', '03', '05'] -> '01, 03, 05'
+ */
+function groupSequentialStages(stages) {
+    if (stages.length === 0) return '';
+    if (stages.length === 1) return stages[0];
+    
+    // Sort stages by their hex value
+    const sorted = stages.slice().sort((a, b) => {
+        // Handle special cases
+        if (a === 'all') return -1;
+        if (b === 'all') return 1;
+        
+        // Convert hex to number for comparison
+        const aVal = parseInt(a, 16);
+        const bVal = parseInt(b, 16);
+        return aVal - bVal;
+    });
+    
+    const ranges = [];
+    let rangeStart = sorted[0];
+    let rangeEnd = sorted[0];
+    
+    for (let i = 1; i < sorted.length; i++) {
+        const current = sorted[i];
+        const prev = sorted[i - 1];
+        
+        // Check if current is sequential to previous
+        const currentVal = parseInt(current, 16);
+        const prevVal = parseInt(prev, 16);
+        
+        if (currentVal === prevVal + 1) {
+            // Continue the range
+            rangeEnd = current;
+        } else {
+            // End current range and start new one
+            if (rangeStart === rangeEnd) {
+                ranges.push(rangeStart);
+            } else {
+                ranges.push(`${rangeStart}-${rangeEnd}`);
+            }
+            rangeStart = current;
+            rangeEnd = current;
+        }
+    }
+    
+    // Add the last range
+    if (rangeStart === rangeEnd) {
+        ranges.push(rangeStart);
+    } else {
+        ranges.push(`${rangeStart}-${rangeEnd}`);
+    }
+    
+    return ranges.join(', ');
+}
+
+function selectTextOverlayType(textOverlayId, typeKey, typeName) {
+    const item = document.getElementById(textOverlayId);
+    const typeBtn = document.getElementById(`${textOverlayId}_type_btn`);
+    const statusTypeIcon = document.getElementById(`${textOverlayId}_status_type_icon`);
+
+    if (item && typeBtn) {
+        item.dataset.textType = typeKey;
+
+        // Determine icon class based on type
+        const typeIconClass = typeKey === 'thought' ? 'fas fa-thought-bubble' :
+                              typeKey === 'caption' ? 'fas fa-closed-captioning' :
+                              'fas fa-comment-lines';
+
+        // Update toolbar button icon
+        const icon = typeBtn.querySelector('i');
+        if (icon) {
+            icon.className = typeIconClass;
+        }
+
+        // Update status icon
+        if (statusTypeIcon) {
+            statusTypeIcon.className = typeIconClass;
+        }
+    }
+}
+
+function toggleTextOverlayEnabled(textOverlayId) {
+    const enabledBtn = document.getElementById(`${textOverlayId}_enabled`);
+    const item = document.getElementById(textOverlayId);
+    
+    if (enabledBtn && item) {
+        const currentState = enabledBtn.getAttribute('data-state');
+        const newState = currentState === 'on' ? 'off' : 'on';
+        enabledBtn.setAttribute('data-state', newState);
+        
+        if (newState === 'off') {
+            item.classList.add('text-overlay-disabled');
+        } else {
+            item.classList.remove('text-overlay-disabled');
+        }
+    }
+}
+
+function deleteTextOverlay(textOverlayId) {
+    const item = document.getElementById(textOverlayId);
+    if (item) {
+        item.remove();
+        
+        // Hide container if no more text overlays
+        const remainingItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+        if (remainingItems.length === 0) {
+            textOverlaysContainer.classList.add('hidden');
+        }
+    }
+}
+
+function clearTextOverlays() {
+    textOverlaysContainer.innerHTML = '';
+    textOverlaysContainer.classList.add('hidden');
+    textOverlayCounter = 0;
+}
+
+function updateAllTextOverlayTargetDropdowns() {
+    const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+    const hasCharacters = characterPromptsContainer.querySelectorAll('.character-prompt-item').length > 0;
+
+    textOverlayItems.forEach(item => {
+        const textOverlayId = item.id;
+        const targetDropdown = document.getElementById(`${textOverlayId}_target_dropdown`);
+        const targetDisplay = document.getElementById(`${textOverlayId}_target_display`);
+        const targetStatusIcon = document.getElementById(`${textOverlayId}_status_target_icon`);
+
+        if (targetDropdown) {
+            if (hasCharacters) {
+                targetDropdown.style.display = '';
+                if (targetStatusIcon) {
+                    targetStatusIcon.style.display = '';
+                }
+            } else {
+                targetDropdown.style.display = 'none';
+                if (targetStatusIcon) {
+                    targetStatusIcon.style.display = 'none';
+                }
+                // Reset to base if hidden
+                item.dataset.targetIndex = '0';
+                if (targetDisplay) {
+                    targetDisplay.textContent = 'Base';
+                }
+            }
+        }
+    });
+}
+
+function updateTextOverlayStageVisibility() {
+    const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+    const pipelineStages = getPipelineStages();
+    // Show stage dropdown if there are any pipeline stages
+    const hasStages = pipelineStages && pipelineStages.length > 0;
+
+    textOverlayItems.forEach(item => {
+        const textOverlayId = item.id;
+        const stageDropdown = document.getElementById(`${textOverlayId}_stage_dropdown`);
+        const stageDisplay = document.getElementById(`${textOverlayId}_stage_display`);
+        const stageStatusIcon = document.getElementById(`${textOverlayId}_status_stage_icon`);
+
+        if (stageDropdown) {
+            if (hasStages) {
+                stageDropdown.style.display = '';
+                if (stageStatusIcon) {
+                    stageStatusIcon.style.display = '';
+                }
+            } else {
+                stageDropdown.style.display = 'none';
+                if (stageStatusIcon) {
+                    stageStatusIcon.style.display = 'none';
+                }
+                // Reset to base stage if hidden
+                item.dataset.stages = '00';
+                if (stageDisplay) {
+                    stageDisplay.textContent = '00';
+                }
+            }
+        }
+    });
+}
+
+function getTextOverlayData() {
+    const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+    const textOverlays = [];
+    
+    textOverlayItems.forEach(item => {
+        const textOverlayId = item.id;
+        const textArea = document.getElementById(`${textOverlayId}_text`);
+        if (!textArea) return;
+        
+        // Get the original text with actual newlines
+        // Use stored original value if available, otherwise convert display version back
+        let text = '';
+        if (textArea.dataset.originalValue !== undefined) {
+            text = textArea.dataset.originalValue.trim();
+        } else {
+            // If no stored original, check if current value is display version and convert
+            const currentValue = textArea.value;
+            if (currentValue.includes(' ⏎ ')) {
+                text = currentValue.replace(/ ⏎ /g, '\n').trim();
+            } else {
+                text = currentValue.trim();
+            }
+        }
+        
+        const enabled = document.getElementById(`${textOverlayId}_enabled`).getAttribute('data-state') === 'on';
+        
+        // Skip empty overlays unless both the overlay AND dynamic generation are enabled
+        if (!text) {
+            const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
+            const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'on';
+            
+            // Only include empty text if both overlay is enabled AND dynamic generation is enabled
+            if (!isDynamicGenerationEnabled) {
+                return; // Skip this empty overlay
+            }
+        }
+        const targetIndex = parseInt(item.dataset.targetIndex || '0');
+        const stagesRaw = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
+        // Keep '00' (base stage) in the array - server explicitly handles it
+        const stages = stagesRaw.includes('all') ? ['all'] : stagesRaw;
+        const textType = item.dataset.textType || 'speech';
+        
+        textOverlays.push({
+            text: text,
+            target: targetIndex,
+            stages: stages,
+            type: textType,
+            disabled: !enabled
+        });
+    });
+    
+    return textOverlays;
+}
+
+function loadTextOverlays(textOverlays) {
+    clearTextOverlays();
+    
+    if (!textOverlays || !Array.isArray(textOverlays) || textOverlays.length === 0) {
+        return;
+    }
+    
+    textOverlays.forEach(overlayData => {
+        const textOverlayId = `text_overlay_${textOverlayCounter++}`;
+        
+        const textOverlayItem = document.createElement('div');
+        textOverlayItem.className = 'text-overlay-item';
+        if (overlayData.disabled) {
+            textOverlayItem.classList.add('text-overlay-disabled');
+        }
+        textOverlayItem.id = textOverlayId;
+        textOverlayItem.dataset.targetIndex = (overlayData.target || 0).toString();
+        // Initialize stages - for backward compatibility, convert single stage to stages array
+        const stageValue = overlayData.stage || 0;
+        const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
+        textOverlayItem.dataset.stages = stagesArray.length === 0 ? '00' : stagesArray.join(',');
+        textOverlayItem.dataset.textType = overlayData.type || 'speech';
+        
+        const textTags = {
+            'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
+            'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
+            'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
+        };
+        
+        const typeName = textTags[overlayData.type]?.name || 'Speech Bubble';
+        const targetIndex = overlayData.target || 0;
+        
+        // Get target name
+        let targetName = 'Base';
+        if (targetIndex > 0) {
+            const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+            const charItem = characterItems[targetIndex - 1];
+            if (charItem) {
+                targetName = charItem.dataset.charaName || `Character ${targetIndex}`;
+            }
+        }
+        
+        // Determine icon based on text type
+        const typeIcon = overlayData.type === 'thought' ? 'fas fa-thought-bubble' :
+                        overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
+                        'fas fa-comment-lines';
+
+        // Determine stage display text
+        const stages = stagesArray.length === 0 ? ['00'] : stagesArray;
+        let stageDisplayText = '00';
+        if (stages.length === 1 && stages[0] === 'all') {
+            stageDisplayText = 'All Stages';
+        } else if (stages.length === 1) {
+            stageDisplayText = stages[0];
+        } else {
+            stageDisplayText = groupSequentialStages(stages);
+        }
+
+        textOverlayItem.innerHTML = `
+            <div class="prompt-textarea-container text-overlay-prompt">
+                <div class="prompt-textarea-background"></div>
+                <textarea id="${textOverlayId}_text" class="form-control prompt-textarea" placeholder="Enter text to overlay..." autocapitalize="false" autocorrect="false" spellcheck="false" rows="1" data-ms-editor="false">${escapeHtml(overlayData.text || '')}</textarea>
+                <div class="prompt-status-icons">
+                    <div class="text-overlay-status-left">
+                        <i id="${textOverlayId}_status_type_icon" class="${typeIcon}"></i>
+                        <span class="text-overlay-label">Text Overlay</span>
+                    </div>
+                    <div class="text-overlay-status-right">
+                        <i id="${textOverlayId}_status_target_icon" class="fas fa-user" style="display: none;" title="Target"></i>
+                        <i id="${textOverlayId}_status_stage_icon" class="fas fa-layer-group" style="display: none;" title="Pipeline Stage"></i>
+                    </div>
+                </div>
+                <div class="prompt-textarea-toolbar hidden">
+                    <div class="toolbar-left">
+                    </div>
+                    <div class="toolbar-right">
+                        <div class="toolbar-regular-buttons">
+                            <div id="${textOverlayId}_target_dropdown" class="custom-dropdown dark dropright" style="display: none;">
+                                <button type="button" id="${textOverlayId}_target_btn" class="btn-secondary btn-small toolbar-btn" title="Target">
+                                    <span id="${textOverlayId}_target_display">${targetName}</span>
+                                </button>
+                                <div id="${textOverlayId}_target_menu" class="custom-dropdown-menu min-dropdown-width hidden"></div>
+                            </div>
+                            <div id="${textOverlayId}_stage_dropdown" class="custom-dropdown dark dropright" style="display: none;">
+                                <button type="button" id="${textOverlayId}_stage_btn" class="btn-secondary btn-small toolbar-btn" title="Pipeline Stage">
+                                    <span id="${textOverlayId}_stage_display">${stageDisplayText}</span>
+                                </button>
+                                <div id="${textOverlayId}_stage_menu" class="custom-dropdown-menu min-dropdown-width hidden"></div>
+                            </div>
+                            <div id="${textOverlayId}_type_dropdown" class="custom-dropdown dark dropright">
+                                <button type="button" id="${textOverlayId}_type_btn" class="btn-secondary btn-small toolbar-btn" title="Text Type">
+                                    <i class="${typeIcon}"></i>
+                                </button>
+                                <div id="${textOverlayId}_type_menu" class="custom-dropdown-menu hidden"></div>
+                            </div>
+                            <div class="divider"></div>
+                            <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="${textOverlayId}_enabled" data-state="${overlayData.disabled ? 'off' : 'on'}" title="Enable/Disable">
+                                <i class="fas fa-power-off"></i>
+                            </button>
+                            <button type="button" class="btn-danger btn-small toolbar-btn" id="${textOverlayId}_delete" title="Delete">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        textOverlaysContainer.appendChild(textOverlayItem);
+        setupTextOverlayDropdowns(textOverlayId);
+        setupTextOverlayToolbarHandlers(textOverlayId);
+        // Update the stage display for loaded overlays
+        updateTextOverlayStageDisplay(textOverlayId);
+    });
+    
+    if (textOverlays.length > 0) {
+        textOverlaysContainer.classList.remove('hidden');
+    }
+    
+    // Update visibility of target and stage dropdowns
+    updateAllTextOverlayTargetDropdowns();
+    updateTextOverlayStageVisibility();
+}
+
+function extractTextFromPrompt(prompt) {
+    if (!prompt) return null;
+    
+    // Look for ", Text: " pattern at the end of the prompt
+    const textPattern = /,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i;
+    const match = prompt.match(textPattern);
+    
+    if (match && match[1]) {
+        return match[1].trim();
+    }
+    
+    return null;
+}
+
+// ============================================================================
+// PIPELINE STAGES SYSTEM
+// ============================================================================
+
+// Stage types available
+const STAGE_TYPES = {
+    EXPAND_CANVAS: 'expand-canvas',
+    ENHANCE: 'enhance', // legacy, kept for backward-compat load paths
+    VARIATION: 'variation'
+};
+
+// Magnitude to strength/noise mapping for enhance stage
+const MAGNITUDE_PRESETS = {
+    1.0: { strength: 0.2, noise: 0.0 },
+    1.5: { strength: 0.3, noise: 0.0 },
+    2.0: { strength: 0.4, noise: 0.0 },
+    2.5: { strength: 0.45, noise: 0.0 },
+    3.0: { strength: 0.5, noise: 0.0 },
+    3.5: { strength: 0.55, noise: 0.0 },
+    4.0: { strength: 0.6, noise: 0.0 },
+    4.5: { strength: 0.65, noise: 0.0 },
+    5.0: { strength: 0.7, noise: 0.1 },
+    5.5: { strength: 0.75, noise: 0.15 }
+};
+
+// Render add item dropdown (combines character and stage options)
+function renderAddItemDropdown() {
+    const menu = addItemDropdownMenu;
+    if (!menu) return;
+
+    menu.innerHTML = '';
+
+    // Content section header
+    const contentHeader = document.createElement('div');
+    contentHeader.className = 'custom-dropdown-group';
+    contentHeader.textContent = 'Component';
+    menu.appendChild(contentHeader);
+
+    // Character option
+    const characterOption = document.createElement('div');
+    characterOption.className = 'custom-dropdown-option';
+    characterOption.dataset.value = 'character';
+    characterOption.innerHTML = '<i class="fas fa-user"></i> Character';
+    characterOption.addEventListener('click', () => {
+        addCharacterPrompt();
+        closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
+    });
+    menu.appendChild(characterOption);
+
+    // Text Overlay option
+    const textOverlayOption = document.createElement('div');
+    textOverlayOption.className = 'custom-dropdown-option';
+    textOverlayOption.dataset.value = 'text-overlay';
+    textOverlayOption.innerHTML = '<i class="fas fa-text"></i> Text Overlay';
+    textOverlayOption.addEventListener('click', () => {
+        addTextOverlay();
+        closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
+    });
+    menu.appendChild(textOverlayOption);
+
+    // References section header
+    const referencesHeader = document.createElement('div');
+    referencesHeader.className = 'custom-dropdown-group';
+    referencesHeader.textContent = 'Reference';
+    menu.appendChild(referencesHeader);
+
+    // Transformation options
+    const transformationOptions = [
+        { value: 'base-image', name: 'Base Image', icon: 'nai-img2img' },
+        { value: 'vibe-transfer', name: 'Vibe Transfer', icon: 'nai-vibe-transfer' },
+        { value: 'character-reference', name: 'Character', icon: 'nai-image-tool-line-art' },
+        { value: 'upload', name: 'Upload', icon: 'nai-import' }
+    ];
+
+    // Add dynamic options based on image availability
+    const hasValidImage = window.currentEditImage && window.currentEditMetadata;
+    const hasBaseImage = hasValidImage && (
+        window.currentEditMetadata.original_filename ||
+        (window.currentEditImage.filename || window.currentEditImage.original)
+    );
+    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
+    const shouldShowReroll = hasValidImage && isImg2Img;
+
+    if (shouldShowReroll) {
+        transformationOptions.splice(3, 0, { value: 'reroll', name: 'Previous Image', icon: 'fas fa-history' });
+    }
+
+    if (hasBaseImage) {
+        transformationOptions.splice(shouldShowReroll ? 4 : 3, 0, { value: 'variation', name: 'Current Image', icon: 'fa-regular fa-image' });
+    }
+
+    transformationOptions.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option';
+        optionElement.dataset.value = option.value;
+        optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.name}`;
+
+        optionElement.addEventListener('click', () => {
+            selectTransformation(option.value);
+            closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
+        });
+
+        menu.appendChild(optionElement);
+    });
+
+    // Actions section header
+    const actionsHeader = document.createElement('div');
+    actionsHeader.className = 'custom-dropdown-group';
+    actionsHeader.textContent = 'Pipeline Stage';
+    menu.appendChild(actionsHeader);
+
+    // Stage options
+    const stageTypes = [
+        { value: STAGE_TYPES.EXPAND_CANVAS, name: 'Expand Canvas', icon: 'mdi mdi-1-25 mdi-relative-scale' },
+        { value: STAGE_TYPES.VARIATION, name: 'Enhance', icon: 'fas fa-diagram-venn', presetUseBaseImage: true },
+        { value: STAGE_TYPES.VARIATION, name: 'Variation', icon: 'ri-image-ai-fill', presetUseBaseImage: false },
+    ];
+    
+    stageTypes.forEach(type => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option';
+        option.dataset.value = type.value;
+        option.innerHTML = `<i class="${type.icon}"></i> ${type.name}`;
+        
+        option.addEventListener('click', () => {
+            addPipelineStage(type.value, { useBaseImage: !!type.presetUseBaseImage });
+            closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
+        });
+        
+        menu.appendChild(option);
+    });
+}
+
+/**
+ * Calculate stage hex ID based on position and branch state
+ * Format: [Chain][Stage] where:
+ * - Chain: 0 for main pipeline, A-F for branches
+ * - Stage: 0-F incremental within each chain
+ * 
+ * Rules:
+ * - Main pipeline starts at 01, 02, 03, etc.
+ * - When a stage is marked as branch, it starts a new chain (A, B, C...) at 0
+ * - Branch stages continue: A0, A1, A2, etc.
+ * - Returning to main pipeline continues from where it left off
+ */
+function calculateStageHexId(stageElement) {
+    if (!pipelineStagesContainer) return '00';
+    
+    const allStages = Array.from(pipelineStagesContainer.querySelectorAll('.pipeline-stage-item'));
+    const stageIndex = allStages.indexOf(stageElement);
+    
+    if (stageIndex === -1) return '00';
+    
+    let mainStageCounter = 0; // Counter for main pipeline (0 chain)
+    let currentChain = '0'; // Current chain identifier
+    let currentChainCounter = 0; // Counter within current chain
+    const branchChains = ['A', 'B', 'C', 'D', 'E', 'F'];
+    let nextBranchIndex = 0; // Index for next branch chain letter
+    let inBranch = false; // Track if we're currently in a branch
+    
+    for (let i = 0; i <= stageIndex; i++) {
+        const stage = allStages[i];
+        const branchToggle = document.getElementById(`${stage.id}_branchToggle`);
+        const isBranch = branchToggle?.dataset.state === 'on';
+        
+        if (i === stageIndex) {
+            // This is the stage we're calculating for
+            if (isBranch) {
+                // This stage is marked as branch
+                if (!inBranch) {
+                    // Entering a new branch
+                    currentChain = branchChains[nextBranchIndex] || 'F';
+                    nextBranchIndex++;
+                    currentChainCounter = 0;
+                    inBranch = true;
+                } else {
+                    // Already in branch, continue
+                    currentChainCounter++;
+                }
+            } else {
+                // This stage is not marked as branch
+                if (inBranch) {
+                    // Exiting branch, return to main pipeline
+                    currentChain = '0';
+                    mainStageCounter++; // Increment first
+                    currentChainCounter = mainStageCounter;
+                    inBranch = false;
+                } else {
+                    // Continue in main pipeline
+                    mainStageCounter++; // Increment first
+                    currentChainCounter = mainStageCounter;
+                }
+            }
+            
+            // Format the hex ID
+            const stageNum = currentChainCounter.toString(16).toUpperCase();
+            return currentChain + stageNum;
+        } else {
+            // Process previous stages to track counters
+            if (isBranch) {
+                if (!inBranch) {
+                    // Entering a new branch
+                    currentChain = branchChains[nextBranchIndex] || 'F';
+                    nextBranchIndex++;
+                    currentChainCounter = 0;
+                    inBranch = true;
+                } else {
+                    // Continue in branch
+                    currentChainCounter++;
+                }
+            } else {
+                if (inBranch) {
+                    // Exiting branch
+                    currentChain = '0';
+                    mainStageCounter++; // Increment first
+                    currentChainCounter = mainStageCounter;
+                    inBranch = false;
+                } else {
+                    // Continue in main pipeline
+                    mainStageCounter++;
+                }
+            }
+        }
+    }
+    
+    return '00'; // Fallback
+}
+
+/**
+ * Update all stage hex ID displays
+ */
+function updateAllStageHexIds() {
+    if (!pipelineStagesContainer) return;
+    
+    const allStages = pipelineStagesContainer.querySelectorAll('.pipeline-stage-item');
+    allStages.forEach(stage => {
+        const hexId = calculateStageHexId(stage);
+        const hexIdSpan = stage.querySelector('.stage-hex-id');
+        if (hexIdSpan) {
+            hexIdSpan.textContent = hexId;
+            hexIdSpan.title = `Stage ID: ${hexId}`;
+        }
+    });
+}
+
+/**
+ * Calculate stage hex IDs from stage data array (for generation requests)
+ * @param {Array} stagesData - Array of stage data objects
+ * @returns {Array} Array of hex IDs corresponding to each stage
+ */
+function calculateStageHexIdsFromData(stagesData) {
+    if (!stagesData || !Array.isArray(stagesData)) return [];
+    
+    let mainStageCounter = 0;
+    const branchChains = ['A', 'B', 'C', 'D', 'E', 'F'];
+    let nextBranchIndex = 0;
+    let inBranch = false;
+    let currentChain = '0';
+    let currentChainCounter = 0;
+    
+    return stagesData.map((stageData, index) => {
+        const isBranch = stageData.branch === true;
+        
+        if (isBranch) {
+            if (!inBranch) {
+                // Entering a new branch
+                currentChain = branchChains[nextBranchIndex] || 'F';
+                nextBranchIndex++;
+                currentChainCounter = 0;
+                inBranch = true;
+            } else {
+                // Continue in branch
+                currentChainCounter++;
+            }
+        } else {
+            if (inBranch) {
+                // Exiting branch
+                currentChain = '0';
+                mainStageCounter++; // Increment first
+                currentChainCounter = mainStageCounter;
+                inBranch = false;
+            } else {
+                // Continue in main pipeline
+                mainStageCounter++; // Increment first
+                currentChainCounter = mainStageCounter;
+            }
+        }
+        
+        const stageNum = currentChainCounter.toString(16).toUpperCase();
+        return currentChain + stageNum;
+    });
+}
+
+// Add pipeline stage
+function addPipelineStage(type, options = {}) {
+    if (!type || !pipelineStagesContainer) return;
+    
+    const stageId = `stage_${pipelineStageCounter++}`;
+    const stageItem = document.createElement('div');
+    stageItem.className = 'pipeline-stage-item';
+    stageItem.id = stageId;
+    stageItem.dataset.stageType = type;
+
+    const stageHolder = document.createElement('div');
+    stageHolder.className = 'pipeline-stage-holder';
+    
+    // Create stage header
+    const stageHeader = document.createElement('div');
+    stageHeader.className = 'stage-header';
+    
+    // Drag handle
+    const dragHandle = document.createElement('div');
+    dragHandle.className = 'workspace-drag-handle';
+    dragHandle.title = 'Drag to reorder';
+    dragHandle.innerHTML = '<i class="fas fa-grip-dots-vertical"></i>';
+    
+    // Stage type label
+    const stageTypeLabel = document.createElement('div');
+    stageTypeLabel.className = 'stage-type-label';
+    stageTypeLabel.id = `${stageId}_typeLabel`;
+    let typeName = 'Variation';
+    let typeIcon = 'ri-image-ai-fill';
+    if (type === STAGE_TYPES.EXPAND_CANVAS) {
+        typeName = 'Expand Canvas';
+        typeIcon = 'mdi mdi-1-25 mdi-relative-scale';
+    } else if (type === STAGE_TYPES.VARIATION) {
+        // Set based on useBaseImage option
+        if (options.useBaseImage) {
+            typeName = 'Enhance';
+            typeIcon = 'fas fa-diagram-venn';
+        } else {
+            typeName = 'Variation';
+            typeIcon = 'ri-image-ai-fill';
+        }
+    }
+    stageTypeLabel.innerHTML = `<i class="${typeIcon}"></i> ${typeName} <span class="stage-hex-id" title="Stage ID: "></span>`;
+    
+    // Stage controls
+    const stageControls = document.createElement('div');
+    stageControls.className = 'stage-controls';
+    
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-danger btn-small';
+    deleteBtn.title = 'Delete stage';
+    deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+    deleteBtn.addEventListener('click', () => deletePipelineStage(stageId));
+    
+    // Advanced toggle and reset buttons (for all stage types)
+    const resetAdvancedBtn = document.createElement('button');
+    resetAdvancedBtn.type = 'button';
+    resetAdvancedBtn.id = `${stageId}_resetAdvanced`;
+    resetAdvancedBtn.className = 'btn-secondary btn-small hidden';
+    resetAdvancedBtn.title = 'Reset to Inherited Values';
+    resetAdvancedBtn.innerHTML = '<i class="nai-dot-reset"></i>';
+    stageControls.appendChild(resetAdvancedBtn);
+    
+    const advancedToggleBtn = document.createElement('button');
+    advancedToggleBtn.type = 'button';
+    advancedToggleBtn.id = `${stageId}_advancedToggle`;
+    advancedToggleBtn.className = 'btn-secondary btn-small';
+    advancedToggleBtn.title = 'Toggle Advanced Controls';
+    advancedToggleBtn.innerHTML = '<i class="fas fa-wrench"></i>';
+    advancedToggleBtn.addEventListener('click', () => {
+        const advancedControls = document.getElementById(`${stageId}_advancedControls`);
+        if (advancedControls) {
+            const isHidden = advancedControls.classList.contains('hidden');
+            advancedControls.classList.toggle('hidden');
+            advancedToggleBtn.classList.toggle('active', !isHidden);
+            
+            // Update creative directive visibility when advanced toggles
+            updateStageCreativeDirectiveVisibility(stageId);
+        }
+    });
+    
+    // Upscale toggle button
+    const upscaleBtn = document.createElement('button');
+    upscaleBtn.type = 'button';
+    upscaleBtn.id = `${stageId}_upscaleToggle`;
+    upscaleBtn.className = 'btn-secondary btn-small toggle-btn';
+    upscaleBtn.dataset.state = 'off';
+    upscaleBtn.title = 'Enable upscaling';
+    upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
+    upscaleBtn.addEventListener('click', () => {
+        const newState = upscaleBtn.dataset.state === 'on' ? 'off' : 'on';
+        upscaleBtn.dataset.state = newState;
+        
+        // Get save results button
+        const saveResultsBtn = document.getElementById(`${stageId}_saveResultsToggle`);
+        if (!saveResultsBtn) return;
+        
+        if (newState === 'on') {
+            // Upscale turned ON → always turn on save
+            saveResultsBtn.dataset.state = 'on';
+        } else {
+            // Upscale turned OFF → turn off save if this is the last stage
+            const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+            const stageItem = document.getElementById(stageId);
+            const stageIndex = allStages.indexOf(stageItem);
+            const isLastStage = stageIndex === allStages.length - 1;
+            
+            if (isLastStage) {
+                saveResultsBtn.dataset.state = 'off';
+            }
+        }
+    });
+    
+    // Save results toggle button
+    const saveResultsBtn = document.createElement('button');
+    saveResultsBtn.type = 'button';
+    saveResultsBtn.id = `${stageId}_saveResultsToggle`;
+    saveResultsBtn.className = 'btn-secondary btn-small toggle-btn save_toggle';
+    saveResultsBtn.dataset.state = 'off';
+    saveResultsBtn.title = 'Save Results';
+    saveResultsBtn.innerHTML = '<i class="fas fa-folder-download"></i>';
+    saveResultsBtn.addEventListener('click', () => {
+        const newState = saveResultsBtn.dataset.state === 'on' ? 'off' : 'on';
+        saveResultsBtn.dataset.state = newState;
+        
+        // Update button states to properly handle upscale visibility based on resolution
+        updateStageButtonStates();
+    });
+    
+    // Branch toggle button
+    const branchBtn = document.createElement('button');
+    branchBtn.type = 'button';
+    branchBtn.id = `${stageId}_branchToggle`;
+    branchBtn.className = 'btn-secondary btn-small toggle-btn';
+    branchBtn.dataset.state = 'off';
+    branchBtn.title = 'Branch stage (independent from main pipeline)';
+    branchBtn.innerHTML = '<i class="fas fa-alt"></i>';
+    branchBtn.addEventListener('click', () => {
+        const newState = branchBtn.dataset.state === 'on' ? 'off' : 'on';
+        branchBtn.dataset.state = newState;
+        
+        // Update visual indicator - add/remove branch class
+        const stageItem = document.getElementById(stageId);
+        if (stageItem) {
+            if (newState === 'on') {
+                stageItem.classList.add('stage-branch');
+            } else {
+                stageItem.classList.remove('stage-branch');
+            }
+        }
+        
+        // Update inheritance display for all subsequent stages
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentStageIndex = allStages.findIndex(s => s.id === stageId);
+        
+        // Update current stage and all stages after it
+        for (let i = currentStageIndex; i < allStages.length; i++) {
+            updateStageInheritedDisplay(allStages[i].id);
+        }
+        
+        // Update all stage hex IDs since branching affects the IDs
+        updateAllStageHexIds();
+    });
+    
+    // Stop toggle button
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.id = `${stageId}_stopToggle`;
+    stopBtn.className = 'btn-secondary btn-small toggle-btn';
+    stopBtn.dataset.state = 'off';
+    stopBtn.title = 'Stop at this stage';
+    stopBtn.innerHTML = '<i class="fas fa-scalpel-line-dashed"></i>';
+    stopBtn.addEventListener('click', () => {
+        const newState = stopBtn.dataset.state === 'on' ? 'off' : 'on';
+        stopBtn.dataset.state = newState;
+        
+        // If turning on, turn off all other stop toggles
+        if (newState === 'on') {
+            const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+            allStages.forEach(stage => {
+                if (stage.id !== stageId) {
+                    const otherStopBtn = document.getElementById(`${stage.id}_stopToggle`);
+                    if (otherStopBtn) {
+                        otherStopBtn.dataset.state = 'off';
+                    }
+                }
+            });
+        }
+    });
+
+    stageControls.appendChild(upscaleBtn);
+    stageControls.appendChild(saveResultsBtn);
+    stageControls.appendChild(branchBtn);
+    stageControls.appendChild(advancedToggleBtn);
+    stageControls.appendChild(deleteBtn);
+    stageControls.appendChild(stopBtn);
+    
+    stageHeader.appendChild(dragHandle);
+    stageHeader.appendChild(stageTypeLabel);
+    stageHeader.appendChild(stageControls);
+    stageHolder.appendChild(stageHeader);
+    
+    // Create stage body
+    const stageBody = document.createElement('div');
+    stageBody.className = 'stage-body';
+    stageBody.id = `${stageId}_body`;
+    stageHolder.appendChild(stageBody);
+    
+    // Append to container
+    stageItem.appendChild(stageHolder);
+    pipelineStagesContainer.appendChild(stageItem);
+    
+    // Render stage-specific content
+    if (type === STAGE_TYPES.EXPAND_CANVAS) {
+        renderExpandCanvasStage(stageId);
+        // Update all stages starting from manual
+        updatePipelineStages();
+    } else if (type === STAGE_TYPES.VARIATION) {
+        renderEnhanceStage(stageId, options);
+    }
+    
+    // Update saveStage0Btn visibility
+    updateSaveStage0BtnVisibility();
+    
+    // Update pipeline stages header visibility
+    updatePipelineStagesHeaderVisibility();
+    
+    // Update button states for all stages
+    updateStageButtonStates();
+    
+    // Update text overlay stage visibility
+    updateTextOverlayStageVisibility();
+    
+    // Update all stage hex IDs
+    updateAllStageHexIds();
+    
+    // Initialize drag and drop functionality
+    initializePipelineStageDragAndDrop();
+}
+
+// Delete pipeline stage
+function deletePipelineStage(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (stageItem) {
+        const stageType = stageItem.dataset.stageType;
+        stageItem.remove();
+        // Update all stages if deleting an expand canvas stage
+        if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            updatePipelineStages();
+        }
+        // Update saveStage0Btn visibility
+        updateSaveStage0BtnVisibility();
+        // Update pipeline stages header visibility
+        updatePipelineStagesHeaderVisibility();
+        // Update button states for remaining stages
+        updateStageButtonStates();
+        // Update text overlay stage visibility
+        updateTextOverlayStageVisibility();
+        // Update all stage hex IDs
+        updateAllStageHexIds();
+        // Reinitialize drag and drop functionality
+        initializePipelineStageDragAndDrop();
+    }
+}
+
+// Move pipeline stage up
+function movePipelineStageUp(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return;
+    
+    const previousStage = stageItem.previousElementSibling;
+    if (previousStage) {
+        pipelineStagesContainer.insertBefore(stageItem, previousStage);
+        // Update all stages after reordering
+        updatePipelineStages();
+        // Update all stage hex IDs
+        updateAllStageHexIds();
+    }
+}
+
+// Move pipeline stage down
+function movePipelineStageDown(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return;
+    
+    const nextStage = stageItem.nextElementSibling;
+    if (nextStage) {
+        pipelineStagesContainer.insertBefore(nextStage, stageItem);
+        // Update all stages after reordering
+        updatePipelineStages();
+        // Update all stage hex IDs
+        updateAllStageHexIds();
+    }
+}
+
+// Initialize drag and drop functionality for pipeline stage reordering
+function initializePipelineStageDragAndDrop() {
+    const list = pipelineStagesContainer;
+    if (!list) {
+        return;
+    }
+
+    let draggedItem = null;
+    let draggedIndex = null;
+
+    // Add event listeners to drag handles
+    const dragHandles = list.querySelectorAll('.workspace-drag-handle');
+    
+    dragHandles.forEach((handle, index) => {
+        handle.addEventListener('mousedown', startDrag);
+        handle.addEventListener('touchstart', startDrag, { passive: false });
+        handle.addEventListener('touchmove', onDrag, { passive: false });
+        handle.addEventListener('touchend', endDrag);
+    });
+
+    function startDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const item = e.target.closest('.pipeline-stage-item');
+        if (!item) {
+            return;
+        }
+
+        draggedItem = item;
+        draggedIndex = Array.from(list.children).indexOf(item);
+
+        // Add dragging class
+        draggedItem.classList.add('dragging');
+
+        // Add event listeners for drag movement - only mouse events on document
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('mouseup', endDrag);
+
+        // Prevent text selection during drag
+        document.body.style.userSelect = 'none';
+    }
+
+    function onDrag(e) {
+        if (!draggedItem) {
+            return;
+        }
+
+        e.preventDefault();
+
+        // Handle both mouse and touch events
+        let clientY;
+        if (e.type === 'mousemove') {
+            clientY = e.clientY;
+        } else if (e.type === 'touchmove' && e.touches.length > 0) {
+            clientY = e.touches[0].clientY;
+        } else {
+            return; // No valid input
+        }
+
+        const rect = list.getBoundingClientRect();
+        const mouseY = clientY - rect.top;
+
+        // Find the item under the mouse and determine if we're in top or bottom half
+        const items = Array.from(list.children);
+        let targetIndex = null;
+        let insertAfter = false;
+
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item === draggedItem) continue;
+            
+            const itemRect = item.getBoundingClientRect();
+            const itemTop = itemRect.top - rect.top;
+            const itemBottom = itemTop + itemRect.height;
+            const itemMiddle = itemTop + (itemRect.height / 2);
+
+            if (mouseY >= itemTop && mouseY <= itemBottom) {
+                targetIndex = i;
+                insertAfter = mouseY > itemMiddle;
+                break;
+            }
+        }
+
+        // If no item found, check if we're below all items
+        if (targetIndex === null && items.length > 0) {
+            const lastItem = items[items.length - 1];
+            const lastItemRect = lastItem.getBoundingClientRect();
+            const lastItemBottom = lastItemRect.top - rect.top + lastItemRect.height;
+            
+            if (mouseY > lastItemBottom) {
+                targetIndex = items.length - 1;
+                insertAfter = true;
+            }
+        }
+
+        // Move the dragged item to new position
+        if (targetIndex !== null) {
+            const currentIndex = Array.from(list.children).indexOf(draggedItem);
+            let finalTargetIndex = targetIndex;
+            
+            // Adjust target index if we're moving down and should insert after
+            if (insertAfter) {
+                finalTargetIndex = targetIndex + 1;
+            }
+            
+            // Only move if the position actually changes
+            if (finalTargetIndex !== currentIndex) {
+                // Remove drag-over class from all items
+                items.forEach(item => item.classList.remove('drag-over'));
+                
+                // Actually move the item in the DOM
+                const targetItem = items[targetIndex];
+                if (insertAfter && targetItem) {
+                    // Insert after the target item
+                    if (targetItem.nextSibling) {
+                        list.insertBefore(draggedItem, targetItem.nextSibling);
+                    } else {
+                        list.appendChild(draggedItem);
+                    }
+                } else if (targetItem) {
+                    // Insert before the target item
+                    list.insertBefore(draggedItem, targetItem);
+                } else {
+                    // Append to end if no target
+                    list.appendChild(draggedItem);
+                }
+                
+                // Add drag-over class to new position
+                draggedItem.classList.add('drag-over');
+                
+                // Update draggedIndex
+                draggedIndex = Array.from(list.children).indexOf(draggedItem);
+            }
+        }
+    }
+
+    function endDrag(e) {
+        if (!draggedItem) {
+            return;
+        }
+
+        e.preventDefault();
+
+        // Remove document event listeners
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('mouseup', endDrag);
+
+        // Remove dragging classes
+        draggedItem.classList.remove('dragging');
+        const items = Array.from(list.children);
+        items.forEach(item => item.classList.remove('drag-over'));
+
+        // Restore text selection
+        document.body.style.userSelect = '';
+
+        // Update all stages after reordering
+        updatePipelineStages();
+        
+        // Update all stage hex IDs
+        updateAllStageHexIds();
+
+        // Reset draggedItem
+        draggedItem = null;
+        draggedIndex = null;
+    }
+}
+
+/**
+ * Master function to update pipeline stages
+ * @param {string|null} startFromStageId - null or 'manual' to start from manual resolution, or specific stage ID
+ * @description Unified function that handles all pipeline stage updates including:
+ *              - Dropdown rendering
+ *              - Resolution cascade
+ *              - Display updates  
+ *              - Bias orientation
+ *              - Inherited values
+ *              - Button states (up/down/upscale)
+ */
+function updatePipelineStages(startFromStageId = null) {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    if (allStages.length === 0) return;
+    
+    const fromManual = !startFromStageId || startFromStageId === 'manual';
+        
+    // Step 1: Re-render all expand canvas stage dropdowns to update available options
+    allStages.forEach(stage => {
+        if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            const stageId = stage.id;
+            const resolutionInput = document.getElementById(`${stageId}_resolution`);
+            if (resolutionInput && resolutionInput.value) {
+                renderStageResolutionDropdown(stageId, resolutionInput.value);
+            }
+        }
+    });
+    
+    // Step 2: Cascade resolution changes
+    if (fromManual) {
+        // Starting from manual: cascade to ALL stages
+        const manualRes = manualSelectedResolution || 'normal_square';
+        updateDownstreamStageResolutions(null, manualRes, true);
+    } else {
+        // Starting from a specific stage: cascade to downstream stages only
+        const startStage = allStages.find(s => s.id === startFromStageId);
+        if (startStage && startStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            const resolutionInput = document.getElementById(`${startFromStageId}_resolution`);
+            if (resolutionInput && resolutionInput.value) {
+                updateDownstreamStageResolutions(startFromStageId, resolutionInput.value, false);
+                // Also refresh this stage's display
+                refreshStageResolutionDisplay(startFromStageId);
+            }
+        }
+    }
+    
+    // Step 3: Update bias orientation for all expand canvas stages
+    allStages.forEach(stage => {
+        if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            const stageId = stage.id;
+            const resolutionInput = document.getElementById(`${stageId}_resolution`);
+            if (resolutionInput && resolutionInput.value) {
+                updateStageBiasOrientation(stageId, resolutionInput.value);
+            }
+        }
+    });
+    
+    // Step 4: Update inherited value displays for all stages
+    allStages.forEach(stage => {
+        updateStageInheritedDisplay(stage.id);
+    });
+    
+    // Step 5: Update button states (up/down/upscale) for all stages
+    updateStageButtonStates();
+}
+
+/**
+ * Get actual pixel dimensions for a stage's output
+ * @param {string} stageId - The stage ID
+ * @returns {Object|null} {width, height} or null if can't determine
+ */
+function getStageDimensions(stageId) {
+    const stage = document.getElementById(stageId);
+    if (!stage) return null;
+    
+    const stageType = stage.dataset.stageType;
+    
+    // Get dimensions helper - used by all stage types
+    const getInputDimensions = () => {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentIndex = allStages.findIndex(s => s.id === stageId);
+        
+        if (currentIndex > 0) {
+            const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+            const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
+            
+            for (let i = currentIndex - 1; i >= 0; i--) {
+                const prevStage = allStages[i];
+                const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
+                const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
+                
+                if (!isCurrentBranch && isPrevBranch) continue;
+                
+                const prevDimensions = getStageDimensions(prevStage.id);
+                if (prevDimensions) return prevDimensions;
+            }
+        }
+        
+        if (manualSelectedResolution === 'custom') {
+            const manualWidth = document.getElementById('manualWidth');
+            const manualHeight = document.getElementById('manualHeight');
+            if (manualWidth && manualHeight) {
+                return {
+                    width: parseInt(manualWidth.value) || 1024,
+                    height: parseInt(manualHeight.value) || 1024
+                };
+            }
+        } else if (manualSelectedResolution) {
+            return getDimensionsFromResolution(manualSelectedResolution);
+        }
+        return null;
+    };
+    
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    if (!resolutionInput || !resolutionInput.value) {
+        return getInputDimensions();
+    }
+    
+    // Check if area-based resolution (normal/large/xlarge without underscore)
+    if (!resolutionInput.value.includes('_') && resolutionInput.value !== 'custom') {
+        // Area-based: calculate from input dimensions
+        const inputDimensions = getInputDimensions();
+        if (inputDimensions) {
+            const w = inputDimensions.width;
+            const h = inputDimensions.height;
+            const aspectRatio = Math.abs(w / h - 1.0) < 0.1 ? 'square' : (h > w ? 'portrait' : 'landscape');
+            const newResolution = `${resolutionInput.value}_${aspectRatio}`;
+            return getDimensionsFromResolution(newResolution) || inputDimensions;
+        }
+        return inputDimensions;
+    }
+    
+    // Full preset or custom: same for all types
+    if (resolutionInput.value === 'custom') {
+        const widthInput = document.getElementById(`${stageId}_width`);
+        const heightInput = document.getElementById(`${stageId}_height`);
+        if (widthInput && heightInput) {
+            return {
+                width: parseInt(widthInput.value) || 1024,
+                height: parseInt(heightInput.value) || 1024
+            };
+        }
+    }
+    
+    return getDimensionsFromResolution(resolutionInput.value);
+}
+
+// Update up/down button disabled states based on position
+function updateStageButtonStates() {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    const stageCount = allStages.length;
+    
+    allStages.forEach((stage, index) => {
+        const stageId = stage.id;
+        const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
+        const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+        
+        const isLastStage = index === stageCount - 1;
+        
+        // Handle stop toggle - disable/hide for last stage
+        if (stopToggle) {
+            if (isLastStage) {
+                stopToggle.disabled = true;
+                // If it was on, turn it off
+                if (stopToggle.dataset.state === 'on') {
+                    stopToggle.dataset.state = 'off';
+                }
+            } else {
+                stopToggle.disabled = false;
+            }
+        }
+        
+        // Handle upscale toggle visibility and disabled state
+        const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
+        if (isLastStage) {
+            // Final stage: show upscale only if available for resolution (save is enforced by server)
+            if (upscaleToggle) {
+                // Check if upscaling is available for this stage's resolution
+                const stageDimensions = getStageDimensions(stageId);
+                if (stageDimensions) {
+                    const upscaleInfo = calculateUpscaleInfo(stageDimensions.width, stageDimensions.height);
+                    if (upscaleInfo.available) {
+                        upscaleToggle.disabled = false;
+                        upscaleToggle.title = 'Enable upscaling';
+                    } else {
+                        upscaleToggle.disabled = true;
+                        upscaleToggle.title = 'Upscaling not available';
+                        if (upscaleToggle.dataset.state === 'on') {
+                            upscaleToggle.dataset.state = 'off';
+                        }
+                    }
+                } else {
+                    // Can't determine dimensions, default to shown and enabled
+                    upscaleToggle.disabled = true;
+                    upscaleToggle.title = 'Upscaling not available';
+                }
+            }
+        } else {
+            // Non-final stages: show upscale only if save is enabled AND upscaling is available
+            if (upscaleToggle && saveResultsToggle) {
+                if (saveResultsToggle.dataset.state === 'on') {
+                    // Check if upscaling is available for this stage's resolution
+                    const stageDimensions = getStageDimensions(stageId);
+                    if (stageDimensions) {
+                        const upscaleInfo = calculateUpscaleInfo(stageDimensions.width, stageDimensions.height);
+                        if (upscaleInfo.available) {
+                            upscaleToggle.disabled = false;
+                            upscaleToggle.title = 'Enable upscaling';
+                        } else {
+                            upscaleToggle.disabled = true;
+                            upscaleToggle.title = 'Upscaling not available';
+                            // Turn off the toggle if it was on
+                            if (upscaleToggle.dataset.state === 'on') {
+                                upscaleToggle.dataset.state = 'off';
+                            }
+                        }
+                    } else {
+                        // Can't determine dimensions, default to shown and enabled
+                        upscaleToggle.disabled = true;
+                        upscaleToggle.title = 'Upscaling not available';
+                    }
+                } else {
+                    upscaleToggle.disabled = true;
+                    upscaleToggle.title = 'Upscaling not available';
+                }
+            }
+        }
+    });
+}
+
+// Update all pipeline stages' inherited values when manual controls change
+let updateStagesInheritedTimeout = null;
+function updateAllStagesInheritedValues() {
+    // Debounce to avoid excessive updates
+    if (updateStagesInheritedTimeout) {
+        clearTimeout(updateStagesInheritedTimeout);
+    }
+    
+    updateStagesInheritedTimeout = setTimeout(() => {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        
+        // Update all stages (both expand canvas and enhance have advanced controls)
+        allStages.forEach(stage => {
+            updateStageInheritedDisplay(stage.id);
+        });
+        
+        updateStagesInheritedTimeout = null;
+    }, 100);
+}
+
+// Update downstream stages' inherited values when a stage's values change
+let updateDownstreamInheritedTimeout = null;
+function updateDownstreamStagesInheritedValues(stageId) {
+    // Debounce to avoid excessive updates
+    if (updateDownstreamInheritedTimeout) {
+        clearTimeout(updateDownstreamInheritedTimeout);
+    }
+    
+    updateDownstreamInheritedTimeout = setTimeout(() => {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentIndex = allStages.findIndex(s => s.id === stageId);
+        
+        if (currentIndex === -1) return;
+        
+        // Update all downstream stages (both expand canvas and enhance have advanced controls)
+        for (let i = currentIndex + 1; i < allStages.length; i++) {
+            const stage = allStages[i];
+            updateStageInheritedDisplay(stage.id);
+        }
+        
+        updateDownstreamInheritedTimeout = null;
+    }, 100);
+}
+
+// Consolidated function to update stage seed input display
+function updateStageSeedDisplay(stageId, inheritedValues = null) {
+    const seedInput = document.getElementById(`${stageId}_seed`);
+    const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+    const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+    
+    if (!seedInput) return;
+    
+    const isInheritMode = inheritSeedToggle?.dataset.state === 'on';
+    const isAutoMode = autoSeedToggle?.dataset.state === 'on';
+    const loadedSeed = seedInput.dataset.loadedSeed;
+    
+    // Priority: loadedSeed from generation > inherited value from previous stage
+    let seedToDisplay = loadedSeed;
+    
+    // Only calculate inherited value if no loadedSeed AND in inherit mode
+    if (!seedToDisplay && isInheritMode) {
+        if (!inheritedValues) {
+            inheritedValues = getStageInheritedValues(stageId);
+        }
+        seedToDisplay = inheritedValues.seed;
+    }
+        
+    if (isInheritMode) {
+        // INHERIT MODE: Show seed in placeholder, keep input disabled and empty
+        seedInput.disabled = true;
+        seedInput.value = '';
+        if (seedToDisplay !== null && seedToDisplay !== undefined) {
+            seedInput.placeholder = seedToDisplay.toString();
+        } else {
+            seedInput.placeholder = 'Inherited';
+        }
+    } else if (isAutoMode) {
+        // AUTO MODE: Show loaded seed in placeholder, keep input enabled and empty
+        seedInput.disabled = false;
+        seedInput.value = '';
+        if (loadedSeed) {
+            seedInput.placeholder = loadedSeed;
+        } else {
+            seedInput.placeholder = 'Random';
+        }
+    } else {
+        // LOCKED MODE: Show loaded seed in value, keep input disabled
+        seedInput.disabled = true;
+        if (loadedSeed) {
+            seedInput.value = loadedSeed;
+            seedInput.placeholder = loadedSeed;
+        } else {
+            // No loaded seed: check if there's an inherited seed to show
+            if (!inheritedValues) {
+                inheritedValues = getStageInheritedValues(stageId);
+            }
+            if (inheritedValues.seed !== null && inheritedValues.seed !== undefined) {
+                seedInput.value = inheritedValues.seed.toString();
+                seedInput.placeholder = inheritedValues.seed.toString();
+            } else {
+                seedInput.value = '';
+                seedInput.placeholder = 'Random';
+            }
+        }
+    }
+}
+
+// Update inherited display for a specific stage
+function updateStageInheritedDisplay(stageId) {
+    const inheritedValues = getStageInheritedValues(stageId);
+    
+    // Update placeholders
+    const stepsInput = document.getElementById(`${stageId}_steps`);
+    const guidanceInput = document.getElementById(`${stageId}_guidance`);
+    const rescaleInput = document.getElementById(`${stageId}_rescale`);
+    const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
+    
+    if (stepsInput && stepsInput.value === '') {
+        stepsInput.placeholder = inheritedValues.steps.toString();
+    }
+    if (guidanceInput && guidanceInput.value === '') {
+        guidanceInput.placeholder = inheritedValues.guidance.toFixed(2);
+    }
+    if (rescaleInput && rescaleInput.value === '' && rescaleOverlay) {
+        rescaleOverlay.textContent = `${(inheritedValues.rescale * 100).toFixed(0)}%`;
+        const rescaleContainer = rescaleInput.parentElement;
+        if (rescaleContainer) rescaleContainer.classList.add('inherited');
+    }
+    
+    // Update variety button if not custom
+    const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+    
+    // Only update variety if using inherited values
+    if (varietyBtn) {
+        varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
+    }
+    
+    // Update background focus inherited state
+    const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+    if (bgFocusToggle) {
+        const currentState = bgFocusToggle.dataset.state;
+        if (currentState === '') {
+            // Currently inheriting - show inherited state
+            updateStageBackgroundFocusVisuals(stageId, inheritedValues.backgroundFocus, true);
+        } else if (currentState === 'on') {
+            // Explicitly enabled
+            updateStageBackgroundFocusVisuals(stageId, true, false);
+        } else {
+            // Explicitly disabled (off)
+            updateStageBackgroundFocusVisuals(stageId, false, false);
+        }
+    }
+    
+    // Update seed input display - consolidated function
+    updateStageSeedDisplay(stageId, inheritedValues);
+    
+    // Update dropdown inherited state
+    updateStageDropdownInheritedState(stageId);
+    
+    // Update reset button visibility
+    updateStageResetButtonVisibility(stageId);
+}
+
+// Get inherited values for a stage from manual modal or previous stage
+function getStageInheritedValues(stageId) {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    const currentIndex = allStages.findIndex(s => s.id === stageId);
+    
+    if (currentIndex === -1) {
+        // Fallback to manual modal values
+        return getManualModalValues();
+    }
+    
+    // First stage inherits from manual modal
+    if (currentIndex === 0) {
+        const manualValues = getManualModalValues();
+        
+        // Check if this stage has its own loaded seed (from generation) - override manual modal seed
+        const currentSeedInput = document.getElementById(`${stageId}_seed`);
+        if (currentSeedInput?.dataset.loadedSeed) {
+            manualValues.seed = parseInt(currentSeedInput.dataset.loadedSeed);
+        }
+        
+        // Ensure isFirstStage is set (getManualModalValues already sets it, but make it explicit)
+        manualValues.isFirstStage = true;
+        
+        return manualValues;
+    }
+    
+    // Check if current stage is a branch
+    const currentStage = allStages[currentIndex];
+    const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+    const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
+    
+    // Find previous stage with advanced controls (expand canvas or enhance)
+    // If current stage is NOT a branch, skip over any branch stages to find the last non-branch stage
+    for (let i = currentIndex - 1; i >= 0; i--) {
+        const prevStage = allStages[i];
+        const prevStageType = prevStage.dataset.stageType;
+        
+        // Check if previous stage is a branch
+        const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
+        const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
+        
+        // If current stage is NOT a branch, skip branch stages when looking for inheritance
+        if (!isCurrentBranch && isPrevBranch) {
+            continue; // Skip this branch stage
+        }
+        
+        // Both expand canvas and enhance can provide advanced values
+        if (prevStageType === STAGE_TYPES.EXPAND_CANVAS || prevStageType === STAGE_TYPES.ENHANCE || prevStageType === STAGE_TYPES.VARIATION) {
+            const prevStageId = prevStage.id;
+            
+            // Get effective values from previous stage (custom or its inherited)
+            const prevInherited = getStageInheritedValues(prevStageId);
+            
+            // Helper to get value or inherited (handles 0 properly)
+            const getValueOrInherited = (element, parser, inheritedValue) => {
+                if (!element || element.value === '') return inheritedValue;
+                return parser ? parser(element.value) : element.value;
+            };
+            
+            // Extract resolution size from full resolution string (e.g., "normal_square" -> "normal")
+            const extractResolutionSize = (resolutionString, widthInput, heightInput) => {
+                if (!resolutionString) return 'normal';
+                
+                // Handle custom resolution by calculating area
+                if (resolutionString === 'custom' && widthInput && heightInput) {
+                    const width = parseInt(widthInput.value) || 1024;
+                    const height = parseInt(heightInput.value) || 1024;
+                    const area = width * height;
+                    
+                    // Map area to resolution size based on actual preset maximums
+                    if (area <= 1048576) return 'normal';      // ≤ 1MP (normal_square: 1024×1024)
+                    if (area <= 2166784) return 'large';       // ≤ 2.16MP (large_square: 1472×1472)
+                    return 'xlarge';                           // > 2.16MP
+                }
+                
+                const parts = resolutionString.toLowerCase().split('_');
+                return parts[0] || 'normal'; // Return prefix (normal, large, xlarge, wallpaper, etc.)
+            };
+            
+            // Get resolution from previous stage
+            let inheritedResolution = prevInherited.resolution;
+            
+            // Read unified resolution value
+            const resolutionInput = document.getElementById(`${prevStageId}_resolution`);
+            const prevStageType = prevStage.dataset.stageType;
+            const isPrevEnhanceStage = (prevStageType === STAGE_TYPES.ENHANCE || prevStageType === STAGE_TYPES.VARIATION);
+            
+            // Check if previous stage is in enhance mode (using area-based resolution)
+            if (isPrevEnhanceStage) {
+                const prevUseBaseToggle = document.getElementById(`${prevStageId}_useBaseImageToggle`);
+                const isPrevEnhanceMode = prevUseBaseToggle && prevUseBaseToggle.dataset.state === 'on';
+                
+                if (isPrevEnhanceMode) {
+                    let areaName;
+                    if (resolutionInput && resolutionInput.value !== '' && resolutionInput.value !== 'custom') {
+                        areaName = resolutionInput.value; // e.g., "normal"
+                    } else {
+                        if (prevInherited.resolution) {
+                            if (prevInherited.resolution.includes('_')) {
+                                areaName = prevInherited.resolution.split('_')[0];
+                            } else if (['normal', 'large', 'xlarge'].includes(prevInherited.resolution)) {
+                                areaName = prevInherited.resolution;
+                            } else {
+                                areaName = 'normal'; // Fallback
+                            }
+                        } else {
+                            areaName = 'normal'; // Default fallback
+                        }
+                    }
+                    
+                    // Get the actual dimensions that the previous stage produced
+                    const prevDimensions = getStageDimensions(prevStageId);
+                    if (prevDimensions) {
+                        // Determine aspect ratio from those dimensions
+                        const w = prevDimensions.width;
+                        const h = prevDimensions.height;
+                        let aspectRatio = 'square';
+                        if (Math.abs(w / h - 1.0) < 0.1) {
+                            aspectRatio = 'square';
+                        } else if (h > w) {
+                            aspectRatio = 'portrait';
+                        } else {
+                            aspectRatio = 'landscape';
+                        }
+                        // Return full resolution string with orientation
+                        inheritedResolution = `${areaName}_${aspectRatio}`;
+                    } else {
+                        // Fallback to just area name if we can't get dimensions
+                        inheritedResolution = areaName;
+                    }
+                } else {
+                    // Previous stage is in variation mode
+                    if (resolutionInput && resolutionInput.value !== '') {
+                        // Has custom value - use directly
+                        inheritedResolution = resolutionInput.value;
+                    } else if (prevInherited.resolution) {
+                        // Using inherited value - use it directly (full preset or custom)
+                        inheritedResolution = prevInherited.resolution;
+                    }
+                    // If no value at all, inheritedResolution stays as prevInherited.resolution
+                }
+            } else {
+                // Previous stage is expand canvas or other type
+                if (resolutionInput && resolutionInput.value !== '') {
+                    // Has custom value - use directly
+                    inheritedResolution = resolutionInput.value;
+                } else if (prevInherited.resolution) {
+                    // Using inherited value - extract size prefix for area-based inheritance
+                    // This is used when current stage is enhance and needs area from expand canvas
+                    const widthInput = document.getElementById(`${prevStageId}_width`);
+                    const heightInput = document.getElementById(`${prevStageId}_height`);
+                    inheritedResolution = extractResolutionSize(prevInherited.resolution, widthInput, heightInput);
+                }
+                // If no value at all, inheritedResolution stays as prevInherited.resolution
+            }
+            
+            // Get seed value from previous stage
+            const prevSeedInput = document.getElementById(`${prevStageId}_seed`);
+            const prevInheritSeedToggle = document.getElementById(`${prevStageId}_inheritSeedToggle`);
+            let inheritedSeed = null;
+            
+            // Priority order: explicit value > loaded seed > inherited seed
+            if (prevSeedInput) {
+                if (prevSeedInput.value) {
+                    // Has explicit value (locked seed) - highest priority
+                    inheritedSeed = parseInt(prevSeedInput.value);
+                } else if (prevSeedInput.dataset.loadedSeed) {
+                    // Has loaded seed from generation - use this even if stage is inheriting
+                    inheritedSeed = parseInt(prevSeedInput.dataset.loadedSeed);
+                } else if (prevInheritSeedToggle?.dataset.state === 'on') {
+                    // No explicit or loaded seed, but is inheriting - use its inherited value
+                    inheritedSeed = prevInherited.seed;
+                } else if (prevSeedInput.placeholder && prevSeedInput.placeholder !== 'Random' && prevSeedInput.placeholder !== 'Inherited' && !isNaN(parseInt(prevSeedInput.placeholder))) {
+                    // Has seed in placeholder
+                    inheritedSeed = parseInt(prevSeedInput.placeholder);
+                }
+            }
+            
+            // Get background focus from previous stage
+            const prevBgFocusToggle = document.getElementById(`${prevStageId}_bgFocusToggle`);
+            const inheritedBackgroundFocus = prevBgFocusToggle?.dataset.state === 'on' || prevInherited.backgroundFocus || false;
+            
+            return {
+                model: getValueOrInherited(document.getElementById(`${prevStageId}_model`), null, prevInherited.model),
+                steps: getValueOrInherited(document.getElementById(`${prevStageId}_steps`), parseInt, prevInherited.steps),
+                guidance: getValueOrInherited(document.getElementById(`${prevStageId}_guidance`), parseFloat, prevInherited.guidance),
+                rescale: getValueOrInherited(document.getElementById(`${prevStageId}_rescale`), parseFloat, prevInherited.rescale),
+                sampler: getValueOrInherited(document.getElementById(`${prevStageId}_sampler`), null, prevInherited.sampler),
+                noiseScheduler: getValueOrInherited(document.getElementById(`${prevStageId}_noiseScheduler`), null, prevInherited.noiseScheduler),
+                variety: document.getElementById(`${prevStageId}_varietyBtn`)?.dataset.state === 'on',
+                resolution: inheritedResolution,
+                seed: inheritedSeed,
+                backgroundFocus: inheritedBackgroundFocus,
+                isFirstStage: currentIndex === 0 // Include stage position info
+            };
+        }
+    }
+    
+    // Fallback to manual modal values
+    return getManualModalValues();
+}
+
+// Get values from manual modal
+function getManualModalValues() {
+    // Extract resolution size from full resolution string (e.g., "normal_square" -> "normal")
+    const extractResolutionSize = (resolutionString) => {
+        if (!resolutionString) return 'normal';
+        
+        // Handle custom resolution by calculating area
+        if (resolutionString === 'custom' && manualWidth && manualHeight) {
+            const width = parseInt(manualWidth.value) || 1024;
+            const height = parseInt(manualHeight.value) || 1024;
+            const area = width * height;
+            
+            // Map area to resolution size based on actual preset maximums
+            if (area <= 1048576) return 'normal';      // ≤ 1MP (normal_square: 1024×1024)
+            if (area <= 2166784) return 'large';       // ≤ 2.16MP (large_square: 1472×1472)
+            return 'xlarge';                           // > 2.16MP
+        }
+        
+        const parts = resolutionString.toLowerCase().split('_');
+        return parts[0] || 'normal'; // Return prefix (normal, large, xlarge, wallpaper, etc.)
+    };
+    
+    // Get seed value from manual modal
+    let manualSeedValue = null;
+    if (manualSeed) {
+        if (manualSeed.value) {
+            manualSeedValue = parseInt(manualSeed.value);
+        } else if (manualSeed.dataset.loadedSeed) {
+            manualSeedValue = parseInt(manualSeed.dataset.loadedSeed);
+        } else if (manualSeed.placeholder && manualSeed.placeholder !== 'Randomize' && !isNaN(parseInt(manualSeed.placeholder))) {
+            manualSeedValue = parseInt(manualSeed.placeholder);
+        }
+    }
+    
+    return {
+        model: manualSelectedModel || 'v4_5',
+        steps: parseInt(manualSteps?.value) || 25,
+        guidance: parseFloat(manualGuidance?.value) || 5.0,
+        rescale: parseFloat(manualRescale?.value) || 0.0,
+        sampler: manualSelectedSampler || 'k_euler_ancestral',
+        noiseScheduler: manualSelectedNoiseScheduler || 'karras',
+        variety: varietyEnabled || false,
+        resolution: extractResolutionSize(manualSelectedResolution), // Extract size from resolution
+        seed: manualSeedValue,
+        backgroundFocus: false, // Manual modal doesn't have background focus
+        isFirstStage: true // When inheriting from manual, treat as first stage
+    };
+}
+
+// Clear all pipeline stages
+function clearPipelineStages() {
+    if (pipelineStagesContainer) {
+        pipelineStagesContainer.innerHTML = '';
+    }
+    pipelineStageCounter = 0;
+    
+    // Hide and reset saveStage0Btn
+    if (saveStage0Btn) {
+        saveStage0Btn.classList.add('hidden');
+        saveStage0Btn.dataset.state = 'off';
+    }
+}
+
+// Update saveStage0Btn visibility based on whether there are stages
+function updateSaveStage0BtnVisibility() {
+    if (!saveStage0Btn) return;
+    
+    const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
+    const stageGenerationEnabled = enableStageGenerationBtn?.dataset.state !== 'off';
+    
+    // Treat as no stages if stage generation is disabled
+    if (hasStages && stageGenerationEnabled) {
+        saveStage0Btn.classList.remove('hidden');
+        // Update manual upscale visibility based on saveStage0Btn state
+        updateManualUpscaleVisibility();
+    } else {
+        saveStage0Btn.classList.add('hidden');
+        // No stages - always show manual upscale
+        const manualUpscale = document.getElementById('manualUpscale');
+        if (manualUpscale) {
+            manualUpscale.classList.remove('hidden');
+        }
+    }
+}
+
+// Update pipeline stages header visibility
+function updatePipelineStagesHeaderVisibility() {
+    if (!pipelineStagesHeader) return;
+    
+    const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
+    
+    if (hasStages) {
+        pipelineStagesHeader.classList.remove('hidden');
+        enableStageGenerationBtn.classList.remove('hidden');
+    } else {
+        pipelineStagesHeader.classList.add('hidden');
+        enableStageGenerationBtn.classList.add('hidden');
+        enableStageGenerationBtn.dataset.state = 'on';
+    }
+}
+
+// Update manual upscale button visibility based on pipeline state
+function updateManualUpscaleVisibility() {
+    const manualUpscale = document.getElementById('manualUpscale');
+    if (!manualUpscale || !saveStage0Btn) return;
+    
+    const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
+    const stageGenerationEnabled = enableStageGenerationBtn?.dataset.state !== 'off';
+    
+    // Get current dimensions for upscale availability check
+    let width = 1024;
+    let height = 1024;
+    const selectedRes = manualSelectedResolution;
+    
+    if (selectedRes === 'custom') {
+        const manualWidth = document.getElementById('manualWidth');
+        const manualHeight = document.getElementById('manualHeight');
+        width = manualWidth ? parseInt(manualWidth.value) || 1024 : 1024;
+        height = manualHeight ? parseInt(manualHeight.value) || 1024 : 1024;
+    } else if (selectedRes) {
+        const dimensions = getDimensionsFromResolution(selectedRes);
+        if (dimensions) {
+            width = dimensions.width;
+            height = dimensions.height;
+        }
+    }
+
+    // Check upscale availability
+    const upscaleInfo = calculateUpscaleInfo(width, height);
+    
+    // Treat as no stages if stage generation is disabled
+    if (hasStages && stageGenerationEnabled) {
+        // Has stages - show upscale only if saveStage0Btn is on AND upscaling is available
+        if (saveStage0Btn.dataset.state === 'on' && upscaleInfo.available) {
+            manualUpscale.classList.remove('hidden');
+        } else {
+            manualUpscale.classList.add('hidden');
+        }
+    } else {
+        // No stages - show upscale only if upscaling is available for current resolution
+        if (upscaleInfo.available) {
+            manualUpscale.classList.remove('hidden');
+        } else {
+            manualUpscale.classList.add('hidden');
+        }
+    }
+}
+
+// Get pipeline stages data
+function getPipelineStages() {
+    const stages = [];
+    const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+    
+    if (!stageItems) return stages;
+    
+    stageItems.forEach(stageItem => {
+        const stageId = stageItem.id;
+        const stageType = stageItem.dataset.stageType;
+        
+        if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            stages.push(getExpandCanvasStageData(stageId));
+        } else if (stageType === STAGE_TYPES.ENHANCE) {
+            // Legacy: map to variation useBaseImage=true
+            const data = getEnhanceStageData(stageId);
+            if (data) {
+                data.type = STAGE_TYPES.VARIATION;
+                data.useBaseImage = true;
+            }
+            stages.push(data);
+        } else if (stageType === STAGE_TYPES.VARIATION) {
+            stages.push(getEnhanceStageData(stageId));
+        }
+    });
+    
+    return stages;
+}
+
+// Load pipeline stages from data
+function loadPipelineStages(stagesArray, stageSeeds = null) {
+    clearPipelineStages();
+    
+    if (!stagesArray || !Array.isArray(stagesArray)) return;
+    
+    stagesArray.forEach((stageData, index) => {
+        if (stageData.type === STAGE_TYPES.EXPAND_CANVAS) {
+            addPipelineStage(STAGE_TYPES.EXPAND_CANVAS);
+            const stageId = `stage_${pipelineStageCounter - 1}`; // Calculate after adding stage
+            
+            // Pass the seed from stage_seeds array
+            const stageSeed = stageSeeds && stageSeeds[index] ? stageSeeds[index] : null;
+            loadExpandCanvasStageData(stageId, stageData, stageSeed);
+        } else if (stageData.type === STAGE_TYPES.ENHANCE || stageData.type === STAGE_TYPES.VARIATION) {
+            // Migrate legacy enhance to variation with useBaseImage=true
+            const useBaseImage = stageData.type === STAGE_TYPES.ENHANCE ? true : (stageData.useBaseImage !== false);
+            addPipelineStage(STAGE_TYPES.VARIATION, { useBaseImage });
+            const stageId = `stage_${pipelineStageCounter - 1}`; // Calculate after adding stage
+            
+            // Pass the seed from stage_seeds array
+            const stageSeed = stageSeeds && stageSeeds[index] ? stageSeeds[index] : null;
+            loadEnhanceStageData(stageId, { ...stageData, type: STAGE_TYPES.VARIATION, useBaseImage }, stageSeed);
+        }
+    });
+    
+    // Ensure only one stage has stopAtStage enabled (keep the last one that was marked)
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    let lastStopStageId = null;
+    allStages.forEach(stage => {
+        const stopToggle = document.getElementById(`${stage.id}_stopToggle`);
+        if (stopToggle && stopToggle.dataset.state === 'on') {
+            lastStopStageId = stage.id;
+        }
+    });
+    
+    // Turn off all stop toggles except the last one found
+    if (lastStopStageId) {
+        allStages.forEach(stage => {
+            const stopToggle = document.getElementById(`${stage.id}_stopToggle`);
+            if (stopToggle && stage.id !== lastStopStageId) {
+                stopToggle.dataset.state = 'off';
+            }
+        });
+    }
+    
+    // Update button states after loading all stages
+    updateStageButtonStates();
+}
+
+// Update existing stages with seeds from stage_seeds array
+function updateStagesWithSeeds(stageSeeds) {
+    if (!stageSeeds || !Array.isArray(stageSeeds) || stageSeeds.length === 0) {
+        console.log('⚠️ No stage seeds provided');
+        return;
+    }
+    
+    const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+    if (!stageItems || stageItems.length === 0) {
+        console.log('⚠️ No pipeline stages found in UI');
+        return;
+    }
+    
+    // First pass: Load all seeds into dataset and update non-inherited stages
+    stageItems.forEach((stageItem, index) => {
+        const stageId = stageItem.id;
+        // stageSeeds array contains ONLY pipeline stage seeds (NO base generation)
+        // stageSeeds[0] = first pipeline stage, stageSeeds[1] = second pipeline stage, etc.
+        const stageSeed = stageSeeds[index];
+        
+        if (stageSeed && stageSeed.seed !== undefined) {
+            const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+            const seedInput = document.getElementById(`${stageId}_seed`);
+
+            if (autoSeedToggle && seedInput) {
+                // Store loaded seed in dataset (always, regardless of inherit mode)
+                seedInput.dataset.loadedSeed = stageSeed.seed.toString();
+
+                // Check if we're in inherit mode
+                const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+                const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
+                
+                if (!isInheritMode) {
+                    // Only update seed controls if not in inherit mode
+                    autoSeedToggle.classList.remove('hidden');
+                    
+                    // Check current auto seed toggle state to maintain consistency with manual seed behavior
+                    const currentAutoSeedState = autoSeedToggle.dataset.state;
+                    
+                    if (currentAutoSeedState === 'off') {
+                        // Locked mode: set value, keep disabled, update placeholder
+                        seedInput.value = stageSeed.seed.toString();
+                        seedInput.disabled = true;
+                        seedInput.placeholder = stageSeed.seed.toString();
+                    } else {
+                        // Auto mode: clear value, make editable, show seed in placeholder
+                        seedInput.value = '';
+                        seedInput.disabled = false;
+                        seedInput.placeholder = stageSeed.seed.toString();
+                    }
+                }
+            } else {
+                console.log(`🌱 ❌ Could not find seed controls for ${stageId}`);
+            }
+        } else {
+            // No seed data for this stage (e.g., generation stopped before this stage)
+            // Clear the dataset.loadedSeed since this stage didn't run
+            const seedInput = document.getElementById(`${stageId}_seed`);
+            if (seedInput) {
+                delete seedInput.dataset.loadedSeed;
+            }
+            console.log(`🌱 ⚠️ No seed data for ${stageId} at index ${index}`);
+        }
+    });
+    
+    stageItems.forEach((stageItem) => {
+        const stageId = stageItem.id;
+        updateStageInheritedDisplay(stageId);
+    });
+}
+
+// Render expand canvas stage
+function renderExpandCanvasStage(stageId) {
+    const stageBody = document.getElementById(`${stageId}_body`);
+    if (!stageBody) return;
+    
+    stageBody.innerHTML = `
+        <div class="stage-controls-section stage-expand">
+            <div class="form-row justify-spaced">
+                <div class="group-controls-container">
+                    <div class="form-group group-resolution">
+                        <label for="${stageId}_resolution">
+                            <span>Resolution</span>
+                            <span id="${stageId}_resolutionAreaToggle" class="label-right-toggle hidden" title="Toggle between Normal (1MP) and Large (3MP) area limit">Normal</span>
+                        </label>
+                        <div class="resolution-group">
+                            <div id="${stageId}_resolutionDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="${stageId}_resolutionDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="${stageId}_resolutionSelected">---</span>
+                                </button>
+                                <div id="${stageId}_resolutionDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                            </div>
+                            <input type="hidden" id="${stageId}_resolution" value="">
+                            <div id="${stageId}_customResolution" class="custom-resolution-inputs hidden">
+                                <button type="button" id="${stageId}_customResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
+                                    <i class="fas fa-ruler-combined"></i>
+                                </button>
+                                <input type="number" id="${stageId}_width" class="colored form-control hover-show width-value" placeholder="Width" min="64" step="64">
+                                <span class="x-seperator">
+                                    <i class="fa-xmark-large fas"></i>
+                                </span>
+                                <input type="number" id="${stageId}_height" class="colored form-control hover-show height-value" placeholder="Height" min="64" step="64">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group group-bias">
+                        <label for="${stageId}_bias">Position</label>
+                        <div id="${stageId}_biasDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="${stageId}_biasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <div class="mask-bias-button-content">
+                                    <div class="mask-bias-grid" id="${stageId}_biasGrid" data-bias="2" data-orientation="landscape">
+                                        ${Array(22).fill('<div class="grid-cell"></div>').join('')}
+                                    </div>
+                                    <i id="${stageId}_bgFocusIcon" class="fas fa-tree-city hidden"></i>
+                                    <span id="${stageId}_biasSelected">Center</span>
+                                </div>
+                            </button>
+                            <div id="${stageId}_biasDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="${stageId}_bgFocusToggle" data-state="">
+                    </div>
+                </div>
+                <div class="form-group group-seed">
+                    <input type="hidden" id="${stageId}_bias" value="2">
+                    <label for="${stageId}_seed">Seed</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" id="${stageId}_seed" class="form-control hover-show colored right" placeholder="Inherited" style="flex: 1; width: 120px;" disabled>
+                        <button type="button" id="${stageId}_autoSeedToggle" class="btn-secondary toggle-btn toggle_seed hidden" data-state="on">
+                            <i class="fas fa-seedling"></i>
+                        </button>
+                        <button type="button" id="${stageId}_inheritSeedToggle" class="btn-secondary toggle-btn toggle_inherit_seed" data-state="on" title="Inherit seed from previous stage">
+                            <i class="fas fa-link-simple"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="${stageId}_advancedControls" class="stage-advanced-controls hidden">
+                <div class="form-row">
+                    <div class="form-group group-steps">
+                        <label for="${stageId}_steps">Steps</label>
+                        <input type="number" id="${stageId}_steps" class="form-control hover-show colored" min="1" max="50" placeholder="25">
+                    </div>
+                    <div class="form-group group-guidance">
+                        <label for="${stageId}_guidance">Guidance</label>
+                        <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" placeholder="5.0">
+                            <button type="button" id="${stageId}_varietyBtn" class="btn-secondary toggle-btn toggle_variety" title="Enable Variety+" data-state="off">
+                                <i class="fas fa-sparkle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group group-rescale">
+                        <label for="${stageId}_rescale">Rescale</label>
+                        <div class="percentage-input-container hover-show colored">
+                            <span id="${stageId}_rescaleOverlay" class="percentage-input-overlay">0%</span>
+                            <input type="number" id="${stageId}_rescale" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group group-sampler">
+                        <label for="${stageId}_sampler">Sampler</label>
+                        <div id="${stageId}_samplerDropdown" class="custom-dropdown dropup dropright">
+                            <button type="button" id="${stageId}_samplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="${stageId}_samplerSelected">Select sampler...</span>
+                            </button>
+                            <div id="${stageId}_samplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="${stageId}_sampler" value="">
+                        <input type="hidden" id="${stageId}_noiseScheduler" value="">
+                    </div>
+                    <div class="form-group group-model">
+                        <label for="${stageId}_model">Model</label>
+                        <div id="${stageId}_modelDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="${stageId}_modelSelected">Select model...</span>
+                            </button>
+                            <div id="${stageId}_modelDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="${stageId}_model" value="">
+                    </div>
+                </div>
+                <div class="form-group group-creative-directive hidden">
+                    <div class="form-group">
+                        <textarea id="${stageId}_creativeDirective" class="form-control hover-show colored" placeholder="Dear Kamisama..." rows="1" autocapitalize="false"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Setup dropdowns and event listeners
+    setupExpandCanvasStageEvents(stageId);
+}
+
+// Setup expand canvas stage events
+function setupExpandCanvasStageEvents(stageId) {
+    const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+    const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+    const seedInput = document.getElementById(`${stageId}_seed`);
+    
+    // Inherit seed toggle
+    if (inheritSeedToggle && seedInput && autoSeedToggle) {
+        inheritSeedToggle.addEventListener('click', () => {
+            const currentState = inheritSeedToggle.dataset.state;
+            const newState = currentState === 'on' ? 'off' : 'on';
+            inheritSeedToggle.dataset.state = newState;
+            
+            if (newState === 'on') {
+                // Inherit mode: hide auto seed toggle
+                autoSeedToggle.classList.add('hidden');
+            } else {
+                // Manual mode: show auto seed toggle if we have a loaded seed
+                if (seedInput.dataset.loadedSeed) {
+                    autoSeedToggle.classList.remove('hidden');
+                }
+            }
+            
+            // Use consolidated function to update seed display
+            updateStageSeedDisplay(stageId);
+        });
+    }
+    
+    // Auto seed toggle (match manual modal pattern)
+    if (autoSeedToggle && seedInput) {
+        autoSeedToggle.addEventListener('click', () => {
+            const currentState = autoSeedToggle.dataset.state;
+            const newState = currentState === 'on' ? 'off' : 'on';
+            autoSeedToggle.dataset.state = newState;
+            
+            // Use consolidated function to update seed display
+            updateStageSeedDisplay(stageId);
+        });
+    }
+    
+    // Setup resolution dropdown
+    const resolutionDropdown = document.getElementById(`${stageId}_resolutionDropdown`);
+    const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
+    const resolutionMenu = document.getElementById(`${stageId}_resolutionDropdownMenu`);
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    if (resolutionDropdown && resolutionBtn && resolutionMenu && resolutionInput) {
+        setupDropdown(
+            resolutionDropdown,
+            resolutionBtn,
+            resolutionMenu,
+            (selectedValue) => renderStageResolutionDropdown(stageId, selectedValue),
+            () => resolutionInput.value || '',
+            { preventFocusTransfer: true }
+        );
+        
+        // Add scroll wheel support for resolution cycling (skip custom)
+        resolutionBtn.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            // Get all available resolutions (filter like the dropdown does)
+            const baseResolutionValue = getStageBaseResolution(stageId);
+            const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
+            const isLastStage = isLastExpandCanvasStage(stageId);
+            
+            let isPortrait = false, isLandscape = false, isSquare = false;
+            if (currentResolution) {
+                isPortrait = currentResolution.height > currentResolution.width;
+                isLandscape = currentResolution.width > currentResolution.height;
+                isSquare = currentResolution.width === currentResolution.height;
+            }
+            
+            // Build filtered list of resolutions
+            const availableResolutions = [];
+            RESOLUTION_GROUPS.forEach(group => {
+                group.options.forEach(opt => {
+                    if (opt.value === 'custom') return; // Skip custom
+                    if (opt.value.startsWith('small_')) return; // Skip small
+                    
+                    const optIsPortrait = opt.value.includes('_portrait');
+                    const optIsLandscape = opt.value.includes('_landscape');
+                    const optIsSquare = opt.value.includes('_square');
+                    
+                    if (isPortrait && optIsPortrait) return;
+                    if (isLandscape && optIsLandscape) return;
+                    if (isSquare && optIsSquare) return;
+                    
+                    availableResolutions.push({ value: opt.value, name: opt.name, group: group.group });
+                });
+            });
+            
+            if (availableResolutions.length === 0) return;
+            
+            // Find current index - use inherited value if input is empty
+            let currentValue = resolutionInput.value;
+            if (!currentValue) {
+                const inheritedValues = getStageInheritedValues(stageId);
+                if (inheritedValues.resolution) {
+                    // Construct full preset with orientation for expand canvas
+                    if (currentResolution) {
+                        let orientation = 'square';
+                        if (currentResolution.height > currentResolution.width * 1.05) orientation = 'portrait';
+                        else if (currentResolution.width > currentResolution.height * 1.05) orientation = 'landscape';
+                        currentValue = `${inheritedValues.resolution}_${orientation}`;
+                    } else {
+                        currentValue = inheritedValues.resolution + '_square'; // Default fallback
+                    }
+                }
+            }
+            const currentIndex = availableResolutions.findIndex(r => r.value === currentValue);
+            
+            // Calculate new index
+            const delta = e.deltaY > 0 ? 1 : -1;
+            let newIndex = currentIndex + delta;
+            
+            // Wrap around
+            if (newIndex < 0) newIndex = availableResolutions.length - 1;
+            if (newIndex >= availableResolutions.length) newIndex = 0;
+            
+            // Select new resolution
+            const newResolution = availableResolutions[newIndex];
+            
+            // Update the input value
+            resolutionInput.value = newResolution.value;
+            
+            // Update button display
+            const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+            if (resolutionSelected) {
+                const groupObj = RESOLUTION_GROUPS.find(g => g.group === newResolution.group);
+                const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
+                resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
+            }
+            
+            // Update bias orientation and cascade downstream
+            updateStageBiasOrientation(stageId, newResolution.value);
+            updateDownstreamStageResolutions(stageId);
+        });
+    }
+    
+    // Setup custom resolution controls (shared function)
+    setupStageCustomResolutionControls(stageId, resolutionDropdown, resolutionInput);
+    
+    // Setup bias dropdown
+    const biasDropdown = document.getElementById(`${stageId}_biasDropdown`);
+    const biasBtn = document.getElementById(`${stageId}_biasDropdownBtn`);
+    const biasMenu = document.getElementById(`${stageId}_biasDropdownMenu`);
+    const biasInput = document.getElementById(`${stageId}_bias`);
+    if (biasDropdown && biasBtn && biasMenu && biasInput) {
+        setupDropdown(
+            biasDropdown,
+            biasBtn,
+            biasMenu,
+            (selectedValue) => renderStageBiasDropdown(stageId, selectedValue),
+            () => biasInput.value !== '' ? biasInput.value : '2',
+            { preventFocusTransfer: true }
+        );
+        
+        // Add scroll wheel support for bias/position cycling
+        biasBtn.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            // Bias has 5 positions: 0, 1, 2, 3, 4
+            const currentValue = biasInput.value !== '' ? parseInt(biasInput.value) : 2;
+            const delta = e.deltaY > 0 ? 1 : -1;
+            let newValue = currentValue + delta;
+            
+            // Wrap around
+            if (newValue < 0) newValue = 4;
+            if (newValue > 4) newValue = 0;
+            
+            // Get current resolution to determine orientation
+            const resolutionInput = document.getElementById(`${stageId}_resolution`);
+            const resolution = resolutionInput ? RESOLUTIONS.find(r => r.value === resolutionInput.value) : null;
+            const isPortrait = resolution ? resolution.height > resolution.width : false;
+            
+            // Get bias name for the new value
+            const biasName = getBiasName(newValue.toString(), isPortrait);
+            
+            // Select new bias with all required parameters
+            selectStageBias(stageId, newValue.toString(), biasName, isPortrait);
+        });
+    }
+    
+    // Setup advanced controls (shared function)
+    setupStageAdvancedControls(stageId);
+}
+
+// Setup custom resolution controls (shared between expand canvas and variation stages)
+function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolutionInput) {
+    // Setup area toggle for custom resolution
+    const areaToggle = document.getElementById(`${stageId}_resolutionAreaToggle`);
+    if (areaToggle) {
+        areaToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleStageResolutionAreaLimit(stageId);
+        });
+    }
+    
+    // Setup custom resolution controls
+    const customResolutionBtn = document.getElementById(`${stageId}_customResolutionBtn`);
+    const customResolution = document.getElementById(`${stageId}_customResolution`);
+    const widthInput = document.getElementById(`${stageId}_width`);
+    const heightInput = document.getElementById(`${stageId}_height`);
+    
+    if (!customResolutionBtn || !customResolution || !widthInput || !heightInput) return;
+    
+        // Custom resolution button toggle
+        customResolutionBtn.addEventListener('click', () => {
+            const currentState = customResolutionBtn.dataset.state;
+            
+            if (currentState === 'on') {
+                // Switch back to dropdown
+                customResolution.classList.add('hidden');
+                resolutionDropdown.classList.remove('hidden');
+                customResolutionBtn.setAttribute('data-state', 'off');
+            if (areaToggle) areaToggle.classList.add('hidden');
+                
+                // Try to find a matching preset resolution based on current custom dimensions
+                const currentWidth = parseInt(widthInput.value) || 1024;
+                const currentHeight = parseInt(heightInput.value) || 1024;
+                
+                // Look for an exact match in RESOLUTIONS
+                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+                
+                if (matchingResolution) {
+                    // Found a matching preset, select it
+                    const matchingGroup = RESOLUTION_GROUPS.find(g => 
+                        g.options.some(opt => opt.value === matchingResolution.value)
+                    );
+                    selectStageResolution(stageId, matchingResolution.value, matchingGroup?.group || 'Normal');
+                } else {
+                    // No match found, default to normal square
+                    selectStageResolution(stageId, 'normal_square', 'Normal');
+                }
+            }
+        });
+        
+        // Dimension input change handlers
+        let blurTimeout;
+        const validateDimensionsWithTimeout = () => {
+            if (resolutionInput.value !== 'custom') return;
+
+            // Clear any existing timeout
+            if (blurTimeout) clearTimeout(blurTimeout);
+
+            // Set a 100ms timeout
+            blurTimeout = setTimeout(() => {
+                // Check that neither input is currently the active element
+                if (document.activeElement === widthInput || document.activeElement === heightInput) {
+                    return; // One of the inputs is still active, don't validate yet
+                }
+
+                // Get current values
+                const originalWidth = parseInt(widthInput.value) || 1024;
+                const originalHeight = parseInt(heightInput.value) || 1024;
+                let width = originalWidth;
+                let height = originalHeight;
+                let currentArea = width * height;
+
+                // Get max area for validation
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+
+                // First, ensure both dimensions are multiples of 64
+                const widthRemainder = width % 64;
+                const heightRemainder = height % 64;
+                let widthChanged = false;
+                let heightChanged = false;
+
+                if (widthRemainder !== 0) {
+                    width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
+                    width = Math.max(64, width);
+                    widthChanged = true;
+                }
+                if (heightRemainder !== 0) {
+                    height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
+                    height = Math.max(64, height);
+                    heightChanged = true;
+                }
+
+                // Recalculate area after stepping
+                currentArea = width * height;
+
+                // If area exceeds max, scale both dimensions down while maintaining aspect ratio
+                if (currentArea > maxArea) {
+                    const scaleFactor = Math.sqrt(maxArea / currentArea);
+
+                    // Calculate new dimensions
+                    width = Math.round(width * scaleFactor);
+                    height = Math.round(height * scaleFactor);
+
+                    // Ensure they're still multiples of 64
+                    width = Math.floor(width / 64) * 64;
+                    height = Math.floor(height / 64) * 64;
+
+                    // Ensure minimum size
+                    width = Math.max(64, width);
+                    height = Math.max(64, height);
+
+                    widthChanged = true;
+                    heightChanged = true;
+                }
+
+                // Update inputs only if values changed
+                if (widthChanged || heightChanged) {
+                    if (width !== originalWidth) {
+                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, width);
+                    }
+                    if (height !== originalHeight) {
+                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, height);
+                    }
+
+                    // Update bias orientation and cascade
+                    updateStageBiasOrientation(stageId, 'custom');
+                    updatePipelineStages(stageId);
+                }
+            }, 100);
+        };
+        
+        const handleDimensionInput = () => {
+            if (resolutionInput.value === 'custom') {
+                updateStageBiasOrientation(stageId, 'custom');
+            }
+        };
+        
+        // Input events for immediate feedback
+        widthInput.addEventListener('input', handleDimensionInput);
+        heightInput.addEventListener('input', handleDimensionInput);
+        
+        // Blur events for validating dimensions with timeout
+        widthInput.addEventListener('blur', () => {
+            validateDimensionsWithTimeout();
+        });
+        heightInput.addEventListener('blur', () => {
+            validateDimensionsWithTimeout();
+        });
+        
+        // Mouse wheel and keyboard support for width - maintains area while adjusting ratio
+        let isWheelUpdating = false;
+
+        const updateWidthDimension = (delta) => {
+            if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+
+            isWheelUpdating = true;
+
+            const currentWidth = parseInt(widthInput.value) || 1024;
+            const currentHeight = parseInt(heightInput.value) || 1024;
+            const currentArea = currentWidth * currentHeight;
+
+            // Adjust width by 64 pixels (step size)
+        let newWidth = currentWidth + delta;
+        newWidth = Math.floor(newWidth / 64) * 64; // Snap to 64
+        newWidth = Math.max(64, Math.min(2048, newWidth)); // Clamp to valid range
+
+        // Calculate new height to maintain area, then clamp
+        let newHeight = Math.round(currentArea / newWidth);
+        newHeight = Math.floor(newHeight / 64) * 64; // Snap to 64
+        newHeight = Math.max(64, Math.min(2048, newHeight)); // Clamp to valid range
+
+            // Get max area for validation
+        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+
+        // Recalculate area after snapping and clamping
+        let adjustedArea = newWidth * newHeight;
+        
+        // If area exceeds max, scale down while maintaining aspect ratio
+        if (adjustedArea > maxArea) {
+            const scaleFactor = Math.sqrt(maxArea / adjustedArea);
+            newWidth = Math.floor((newWidth * scaleFactor) / 64) * 64;
+            newHeight = Math.floor((newHeight * scaleFactor) / 64) * 64;
+            newWidth = Math.max(64, newWidth);
+            newHeight = Math.max(64, newHeight);
+        }
+
+        // Final validation with correctDimensions to ensure everything is correct
+            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+
+            // Update inputs without triggering input events
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+
+            // Update bias orientation
+            updateStageBiasOrientation(stageId, 'custom');
+
+            // Update downstream stages
+            updatePipelineStages(stageId);
+
+            isWheelUpdating = false;
+        };
+
+        widthInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -64 : 64;
+            updateWidthDimension(delta);
+        });
+
+        widthInput.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const delta = e.key === 'ArrowUp' ? 64 : -64;
+                updateWidthDimension(delta);
+            }
+        });
+        
+        // Mouse wheel and keyboard support for height - maintains area while adjusting ratio
+        const updateHeightDimension = (delta) => {
+            if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+
+            isWheelUpdating = true;
+
+            const currentWidth = parseInt(widthInput.value) || 1024;
+            const currentHeight = parseInt(heightInput.value) || 1024;
+            const currentArea = currentWidth * currentHeight;
+
+            // Adjust height by 64 pixels (step size)
+        let newHeight = currentHeight + delta;
+        newHeight = Math.floor(newHeight / 64) * 64; // Snap to 64
+        newHeight = Math.max(64, Math.min(2048, newHeight)); // Clamp to valid range
+
+        // Calculate new width to maintain area, then clamp
+        let newWidth = Math.round(currentArea / newHeight);
+        newWidth = Math.floor(newWidth / 64) * 64; // Snap to 64
+        newWidth = Math.max(64, Math.min(2048, newWidth)); // Clamp to valid range
+
+            // Get max area for validation
+        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+
+        // Recalculate area after snapping and clamping
+        let adjustedArea = newWidth * newHeight;
+        
+        // If area exceeds max, scale down while maintaining aspect ratio
+        if (adjustedArea > maxArea) {
+            const scaleFactor = Math.sqrt(maxArea / adjustedArea);
+            newWidth = Math.floor((newWidth * scaleFactor) / 64) * 64;
+            newHeight = Math.floor((newHeight * scaleFactor) / 64) * 64;
+            newWidth = Math.max(64, newWidth);
+            newHeight = Math.max(64, newHeight);
+        }
+
+        // Final validation with correctDimensions to ensure everything is correct
+            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+
+            // Update inputs without triggering input events
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+
+            // Update bias orientation
+            updateStageBiasOrientation(stageId, 'custom');
+
+            // Update downstream stages
+            updatePipelineStages(stageId);
+
+            isWheelUpdating = false;
+        };
+
+        heightInput.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -64 : 64;
+            updateHeightDimension(delta);
+        });
+
+        heightInput.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                const delta = e.key === 'ArrowUp' ? 64 : -64;
+                updateHeightDimension(delta);
+            }
+        });
+}
+
+// Check if stage has any custom advanced values and update reset button visibility
+function updateStageResetButtonVisibility(stageId) {
+    const resetBtn = document.getElementById(`${stageId}_resetAdvanced`);
+    if (!resetBtn) return;
+    
+    const inheritedValues = getStageInheritedValues(stageId);
+    const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+
+    // Check for custom resolution (both expand-canvas and variation/enhance stages have resolution inputs)
+    const stageItem = document.getElementById(stageId);
+    const stageType = stageItem?.dataset.stageType;
+    const isStageWithResolution = stageType === STAGE_TYPES.EXPAND_CANVAS || stageType === STAGE_TYPES.VARIATION;
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const hasResolutionCustom = isStageWithResolution && resolutionInput && resolutionInput.value !== '';
+    
+    // Check for background focus override
+    const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+    const bgFocusState = bgFocusToggle?.dataset.state || '';
+    // Only consider it custom if there's an explicit state that differs from inherited
+    // Convert string state to boolean for comparison
+    const bgFocusExplicitValue = bgFocusState === 'on';
+    
+    // Only show reset if:
+    // - Has explicit state AND differs from inherited
+    // - AND (not first stage OR inherited value is true - meaning a previous stage had it enabled)
+    const hasBgFocusCustom = bgFocusState !== '' && 
+                             (bgFocusExplicitValue !== inheritedValues.backgroundFocus) &&
+                             (!inheritedValues.isFirstStage || inheritedValues.backgroundFocus === true);
+
+    const hasCustomValues = 
+        document.getElementById(`${stageId}_model`)?.value !== '' ||
+        document.getElementById(`${stageId}_sampler`)?.value !== '' ||
+        document.getElementById(`${stageId}_steps`)?.value !== '' ||
+        document.getElementById(`${stageId}_guidance`)?.value !== '' ||
+        document.getElementById(`${stageId}_rescale`)?.value !== '' ||
+        hasResolutionCustom ||
+        hasBgFocusCustom ||
+        (varietyBtn && ((varietyBtn.dataset.state === 'on') !== inheritedValues.variety));
+        
+    if (hasCustomValues) {
+        resetBtn.classList.remove('hidden');
+    } else {
+        resetBtn.classList.add('hidden');
+    }
+
+    // Auto-resize creative directive textarea and set initial visibility
+    const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
+    if (stageDirective && typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(stageDirective, 23);
+        
+        // Add input event listener for continuous auto-resizing
+        stageDirective.addEventListener('input', () => {
+            autoResizeTextarea(stageDirective, 23);
+        });
+    }
+    
+    // Set initial visibility based on creative mode
+    updateStageCreativeDirectiveVisibility(stageId);
+}
+
+// Update stage creative directive visibility based on creative mode and advanced state
+function updateStageCreativeDirectiveVisibility(stageId) {
+    const creativeDirectiveGroup = document.querySelector(`#${stageId}_advancedControls .group-creative-directive`);
+    if (!creativeDirectiveGroup) return;
+    
+    const creativeBtn = document.getElementById('creativeBtn');
+    const isCreativeOn = creativeBtn && creativeBtn.dataset.state === 'on';
+    
+    if (isCreativeOn) {
+        creativeDirectiveGroup.classList.remove('hidden');
+    } else {
+        creativeDirectiveGroup.classList.add('hidden');
+    }
+}
+
+// Update inherited state for dropdowns
+function updateStageDropdownInheritedState(stageId) {
+    const inheritedValues = getStageInheritedValues(stageId);
+    
+    const modelInput = document.getElementById(`${stageId}_model`);
+    const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
+    const samplerInput = document.getElementById(`${stageId}_sampler`);
+    const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
+    
+    // Update model dropdown
+    if (modelInput && modelBtn) {
+        if (modelInput.value === '') {
+            // Using inherited value - add inherited class and show inherited value
+            modelBtn.classList.add('inherited');
+            selectStageModel(stageId, inheritedValues.model, null, true);
+        } else {
+            // Has custom value - remove inherited class
+            modelBtn.classList.remove('inherited');
+        }
+    }
+    
+    // Update sampler dropdown
+    if (samplerInput && samplerBtn) {
+        const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+        
+        if (samplerInput.value === '') {
+            // Using inherited value - add inherited class and show inherited value
+            samplerBtn.classList.add('inherited');
+            
+            // Temporarily set values to display inherited, then clear
+            const tempSampler = inheritedValues.sampler;
+            const tempNoise = inheritedValues.noiseScheduler;
+            samplerInput.value = tempSampler;
+            if (noiseSchedulerInput) noiseSchedulerInput.value = tempNoise;
+            
+            updateStageSamplerDisplay(stageId);
+            
+            // Clear the actual values to maintain inherited state
+            samplerInput.value = '';
+            if (noiseSchedulerInput) noiseSchedulerInput.value = '';
+        } else {
+            // Has custom value - remove inherited class
+            samplerBtn.classList.remove('inherited');
+        }
+    }
+    
+    // Update resolution dropdown (works generically for all stage types)
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
+
+    if (resolutionInput && resolutionBtn && inheritedValues.resolution) {
+        const currentValue = resolutionInput.value || '';
+        
+        // Use inherited if input is empty (never set for inherited items)
+        if (currentValue === '') {
+            // Using inherited value - determine if it's area-based or full preset
+            resolutionBtn.classList.add('inherited');
+            
+            // Check if resolution is area name (no underscore) or full preset
+            const isAreaName = !inheritedValues.resolution.includes('_') && 
+                              inheritedValues.resolution !== 'custom' &&
+                              ['normal', 'large', 'xlarge'].includes(inheritedValues.resolution);
+            
+            if (isAreaName) {
+                // Area-based: show area name
+                selectStageEnhanceResolution(stageId, inheritedValues.resolution, true);
+            } else {
+                // Full preset: use directly (inheritedValues.resolution already has orientation)
+                selectStageResolution(stageId, inheritedValues.resolution, null, true);
+            }
+        } else {
+            // Has custom value - remove inherited class
+            resolutionBtn.classList.remove('inherited');
+        }
+    }
+    
+    updateStageResetButtonVisibility(stageId);
+}
+
+// Render enhance/variation stage. Supports Enhance toggle (useBaseImage)
+function renderEnhanceStage(stageId, options = {}) {
+    const stageBody = document.getElementById(`${stageId}_body`);
+    if (!stageBody) return;
+    const initialUseBaseImage = options.useBaseImage === true;
+    
+    stageBody.innerHTML = `
+        <div class="stage-controls-section enhance-stage">
+            <div class="form-row justify-spaced">
+                <div class="group-controls-container">
+                    <div class="form-group group-use-base-image">
+                        <label for="${stageId}_useBaseImageToggle">Enhance</label>
+                        <div>
+                            <button type="button" id="${stageId}_useBaseImageToggle" class="btn-secondary toggle-btn" data-state="${initialUseBaseImage ? 'on' : 'off'}">
+                                <i class="fas fa-diagram-venn"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group group-magnitude${initialUseBaseImage ? '' : ' hidden'}">
+                        <label for="${stageId}_magnitude">Level</label>
+                        <input type="number" id="${stageId}_magnitude" class="form-control hover-show colored" min="1.0" max="5.5" step="0.5">
+                    </div>
+                    <div class="form-group group-strength${initialUseBaseImage ? '' : ' hidden'}">
+                        <label for="${stageId}_strength">Strength</label>
+                        <div class="percentage-input-container hover-show colored">
+                            <span id="${stageId}_strengthOverlay" class="percentage-input-overlay">50%</span>
+                            <input type="number" id="${stageId}_strength" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group group-noise${initialUseBaseImage ? '' : ' hidden'}">
+                        <label for="${stageId}_noise">Noise</label>
+                        <div class="percentage-input-container hover-show colored">
+                            <span id="${stageId}_noiseOverlay" class="percentage-input-overlay">0%</span>
+                            <input type="number" id="${stageId}_noise" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group group-resolution">
+                        <label for="${stageId}_resolution">
+                            <span>Resolution</span>
+                            <span id="${stageId}_resolutionAreaToggle" class="label-right-toggle hidden" title="Toggle between Normal (1MP) and Large (3MP) area limit">Normal</span>
+                        </label>
+                        <div class="resolution-group">
+                            <div id="${stageId}_resolutionDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="${stageId}_resolutionDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="${stageId}_resolutionSelected">---</span>
+                            </button>
+                                <div id="${stageId}_resolutionDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                            <input type="hidden" id="${stageId}_resolution" value="">
+                            <div id="${stageId}_customResolution" class="custom-resolution-inputs hidden">
+                                <button type="button" id="${stageId}_customResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
+                                    <i class="fas fa-ruler-combined"></i>
+                                </button>
+                                <input type="number" id="${stageId}_width" class="colored form-control hover-show width-value" placeholder="Width" min="64" step="64">
+                                <span class="x-seperator">
+                                    <i class="fa-xmark-large fas"></i>
+                                </span>
+                                <input type="number" id="${stageId}_height" class="colored form-control hover-show height-value" placeholder="Height" min="64" step="64">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group group-seed">
+                    <label for="${stageId}_seed">Seed</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" id="${stageId}_seed" class="form-control hover-show colored right" placeholder="Inherited" style="flex: 1; width: 120px;" disabled>
+                        <button type="button" id="${stageId}_autoSeedToggle" class="btn-secondary toggle-btn toggle_seed hidden" data-state="on">
+                            <i class="fas fa-seedling"></i>
+                        </button>
+                        <button type="button" id="${stageId}_inheritSeedToggle" class="btn-secondary toggle-btn toggle_inherit_seed" data-state="on" title="Inherit seed from previous stage">
+                            <i class="fas fa-link-simple"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="${stageId}_advancedControls" class="stage-advanced-controls hidden">
+                <div class="form-row">
+                    <div class="form-group group-steps">
+                        <label for="${stageId}_steps">Steps</label>
+                        <input type="number" id="${stageId}_steps" class="form-control hover-show colored" min="1" max="50" placeholder="25">
+                    </div>
+                    <div class="form-group group-guidance">
+                        <label for="${stageId}_guidance">Guidance</label>
+                        <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
+                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" placeholder="5.0">
+                            <button type="button" id="${stageId}_varietyBtn" class="btn-secondary toggle-btn toggle_variety" title="Enable Variety+" data-state="off">
+                                <i class="fas fa-sparkle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group group-rescale">
+                        <label for="${stageId}_rescale">Rescale</label>
+                        <div class="percentage-input-container hover-show colored">
+                            <span id="${stageId}_rescaleOverlay" class="percentage-input-overlay">0%</span>
+                            <input type="number" id="${stageId}_rescale" class="form-control" min="0.00" max="1.00" step="0.01">
+                        </div>
+                    </div>
+                    <div class="form-group group-sampler">
+                        <label for="${stageId}_sampler">Sampler</label>
+                        <div id="${stageId}_samplerDropdown" class="custom-dropdown dropup dropright">
+                            <button type="button" id="${stageId}_samplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="${stageId}_samplerSelected">Select sampler...</span>
+                            </button>
+                            <div id="${stageId}_samplerDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="${stageId}_sampler" value="">
+                        <input type="hidden" id="${stageId}_noiseScheduler" value="">
+                    </div>
+                    <div class="form-group group-model">
+                        <label for="${stageId}_model">Model</label>
+                        <div id="${stageId}_modelDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="${stageId}_modelSelected">Select model...</span>
+                            </button>
+                            <div id="${stageId}_modelDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <input type="hidden" id="${stageId}_model" value="">
+                    </div>
+                </div>
+                <div class="form-group group-creative-directive hidden">
+                    <div class="form-group">
+                        <textarea id="${stageId}_creativeDirective" class="form-control hover-show colored" placeholder="Dear Kamisama..." rows="1" autocapitalize="false" autocorrect="false"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Setup event listeners
+    setupEnhanceStageEvents(stageId, initialUseBaseImage);
+}
+
+// Setup enhance stage events
+function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
+    const magnitudeInput = document.getElementById(`${stageId}_magnitude`);
+    const strengthInput = document.getElementById(`${stageId}_strength`);
+    const noiseInput = document.getElementById(`${stageId}_noise`);
+    const strengthOverlay = document.getElementById(`${stageId}_strengthOverlay`);
+    const noiseOverlay = document.getElementById(`${stageId}_noiseOverlay`);
+    const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+    const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+    const seedInput = document.getElementById(`${stageId}_seed`);
+    const useBaseImageToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const groupMagnitude = document.querySelector(`#${stageId}_body .group-magnitude`);
+    const groupStrength = document.querySelector(`#${stageId}_body .group-strength`);
+    const groupNoise = document.querySelector(`#${stageId}_body .group-noise`);
+    
+    // Inherit seed toggle
+    if (inheritSeedToggle && seedInput && autoSeedToggle) {
+        inheritSeedToggle.addEventListener('click', () => {
+            const currentState = inheritSeedToggle.dataset.state;
+            const newState = currentState === 'on' ? 'off' : 'on';
+            inheritSeedToggle.dataset.state = newState;
+            
+            if (newState === 'on') {
+                // Inherit mode: hide auto seed toggle
+                autoSeedToggle.classList.add('hidden');
+            } else {
+                // Manual mode: show auto seed toggle if we have a loaded seed
+                if (seedInput.dataset.loadedSeed) {
+                    autoSeedToggle.classList.remove('hidden');
+                }
+            }
+            
+            // Use consolidated function to update seed display
+            updateStageSeedDisplay(stageId);
+        });
+    }
+
+    // Auto-resize creative directive textarea and set initial visibility
+    const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
+    if (stageDirective && typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(stageDirective, 23);
+        
+        // Add input event listener for continuous auto-resizing
+        stageDirective.addEventListener('input', () => {
+            autoResizeTextarea(stageDirective, 23);
+        });
+    }
+    
+    // Set initial visibility based on creative mode
+    updateStageCreativeDirectiveVisibility(stageId);
+    
+    // Magnitude change handler
+    if (magnitudeInput) {
+        magnitudeInput.addEventListener('input', () => {
+            const magnitude = parseFloat(magnitudeInput.value);
+            if (magnitude && MAGNITUDE_PRESETS[magnitude]) {
+                const preset = MAGNITUDE_PRESETS[magnitude];
+                
+                // Clear strength and noise values (using magnitude preset - like rescale)
+                strengthInput.value = '';
+                noiseInput.value = '';
+                
+                // Update overlays to show preset values
+                strengthOverlay.textContent = `${(preset.strength * 100).toFixed(0)}%`;
+                noiseOverlay.textContent = `${(preset.noise * 100).toFixed(0)}%`;
+                
+                // Add inherited class to show it's using magnitude preset
+                const strengthContainer = strengthInput.parentElement;
+                const noiseContainer = noiseInput.parentElement;
+                if (strengthContainer) strengthContainer.classList.add('inherited');
+                if (noiseContainer) noiseContainer.classList.add('inherited');
+                
+                // Clear magnitude placeholder (it's now active)
+                magnitudeInput.placeholder = '';
+            }
+        });
+        
+        magnitudeInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.5 : 0.5;
+            const currentVal = magnitudeInput.value !== '' ? parseFloat(magnitudeInput.value) : 3.0;
+            const newValue = Math.max(1.0, Math.min(5.5, currentVal + delta));
+            magnitudeInput.value = newValue.toFixed(1);
+            magnitudeInput.dispatchEvent(new Event('input'));
+        });
+    }
+    
+    // Strength input handlers (same pattern as rescale)
+    if (strengthInput && strengthOverlay) {
+        strengthInput.addEventListener('input', () => {
+            // Check if there's an actual value (including 0)
+            if (strengthInput.value !== '') {
+                const value = parseFloat(strengthInput.value);
+                strengthOverlay.textContent = `${(value * 100).toFixed(0)}%`;
+                
+                // Remove inherited class from both strength and noise
+                const strengthContainer = strengthInput.parentElement;
+                const noiseContainer = noiseInput.parentElement;
+                if (strengthContainer) strengthContainer.classList.remove('inherited');
+                if (noiseContainer) noiseContainer.classList.remove('inherited');
+                
+                // Set magnitude to placeholder if it has a value
+                if (magnitudeInput && magnitudeInput.value !== '') {
+                    magnitudeInput.placeholder = magnitudeInput.value;
+                    magnitudeInput.value = '';
+                }
+            } else {
+                // Show default values when empty (if both are empty)
+                if (noiseInput.value === '') {
+                    strengthOverlay.textContent = '50%';
+                    noiseOverlay.textContent = '0%';
+                }
+            }
+        });
+        
+        strengthInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            // Use custom value if set (including 0), otherwise parse from overlay or use default
+            let currentVal;
+            if (strengthInput.value !== '') {
+                currentVal = parseFloat(strengthInput.value);
+            } else {
+                // Parse from overlay percentage (e.g., "50%" -> 0.5) or use default
+                const overlayText = strengthOverlay.textContent.replace('%', '');
+                currentVal = parseFloat(overlayText) / 100 || 0.5;
+            }
+            const newValue = Math.max(0, Math.min(1, currentVal + delta));
+            strengthInput.value = newValue.toFixed(2);
+            strengthOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
+            
+            // Remove inherited class from both strength and noise
+            const strengthContainer = strengthInput.parentElement;
+            const noiseContainer = noiseInput.parentElement;
+            if (strengthContainer) strengthContainer.classList.remove('inherited');
+            if (noiseContainer) noiseContainer.classList.remove('inherited');
+            
+            // Set magnitude to placeholder if it has a value
+            if (magnitudeInput && magnitudeInput.value !== '') {
+                magnitudeInput.placeholder = magnitudeInput.value;
+                magnitudeInput.value = '';
+            }
+        });
+    }
+    
+    // Noise input handlers (same pattern as rescale)
+    if (noiseInput && noiseOverlay) {
+        noiseInput.addEventListener('input', () => {
+            // Check if there's an actual value (including 0)
+            if (noiseInput.value !== '') {
+                const value = parseFloat(noiseInput.value);
+                noiseOverlay.textContent = `${(value * 100).toFixed(0)}%`;
+                
+                // Remove inherited class from both strength and noise
+                const strengthContainer = strengthInput.parentElement;
+                const noiseContainer = noiseInput.parentElement;
+                if (strengthContainer) strengthContainer.classList.remove('inherited');
+                if (noiseContainer) noiseContainer.classList.remove('inherited');
+                
+                // Set magnitude to placeholder if it has a value
+                if (magnitudeInput && magnitudeInput.value !== '') {
+                    magnitudeInput.placeholder = magnitudeInput.value;
+                    magnitudeInput.value = '';
+                }
+            } else {
+                // Show default values when empty (if both are empty)
+                if (strengthInput.value === '') {
+                    strengthOverlay.textContent = '50%';
+                    noiseOverlay.textContent = '0%';
+                }
+            }
+        });
+        
+        noiseInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            // Use custom value if set (including 0), otherwise parse from overlay or use default
+            let currentVal;
+            if (noiseInput.value !== '') {
+                currentVal = parseFloat(noiseInput.value);
+            } else {
+                // Parse from overlay percentage (e.g., "0%" -> 0.0) or use default
+                const overlayText = noiseOverlay.textContent.replace('%', '');
+                currentVal = parseFloat(overlayText) / 100 || 0.0;
+            }
+            const newValue = Math.max(0, Math.min(1, currentVal + delta));
+            noiseInput.value = newValue.toFixed(2);
+            noiseOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
+            
+            // Remove inherited class from both strength and noise
+            const strengthContainer = strengthInput.parentElement;
+            const noiseContainer = noiseInput.parentElement;
+            if (strengthContainer) strengthContainer.classList.remove('inherited');
+            if (noiseContainer) noiseContainer.classList.remove('inherited');
+            
+            // Set magnitude to placeholder if it has a value
+            if (magnitudeInput && magnitudeInput.value !== '') {
+                magnitudeInput.placeholder = magnitudeInput.value;
+                magnitudeInput.value = '';
+            }
+        });
+    }
+    
+    // Auto seed toggle (match manual modal pattern)
+    if (autoSeedToggle && seedInput) {
+        autoSeedToggle.addEventListener('click', () => {
+            const currentState = autoSeedToggle.dataset.state;
+            const newState = currentState === 'on' ? 'off' : 'on';
+            autoSeedToggle.dataset.state = newState;
+            
+            // Use consolidated function to update seed display
+            updateStageSeedDisplay(stageId);
+        });
+    }
+    
+    // Initialize with default magnitude (3.0)
+    if (magnitudeInput && magnitudeInput.value === '') {
+        magnitudeInput.value = '3.0';
+        magnitudeInput.dispatchEvent(new Event('input'));
+    }
+    
+    // Setup expand-style resolution dropdown
+    const resolutionDropdown = document.getElementById(`${stageId}_resolutionDropdown`);
+    const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
+    const resolutionMenu = document.getElementById(`${stageId}_resolutionDropdownMenu`);
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    if (resolutionDropdown && resolutionBtn && resolutionMenu && resolutionInput) {
+        setupDropdown(
+            resolutionDropdown,
+            resolutionBtn,
+            resolutionMenu,
+            (selectedValue) => renderStageResolutionDropdown(stageId, selectedValue),
+            () => resolutionInput.value || '',
+            { preventFocusTransfer: true }
+        );
+        
+        // Add scroll wheel support for resolution cycling (skip custom)
+        resolutionBtn.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+            const isEnhanceMode = useBaseToggle?.dataset.state === 'on';
+            
+            if (isEnhanceMode) {
+                // Enhance mode: cycle through area options
+                const areas = ['normal', 'large', 'xlarge'];
+                let currentValue = resolutionInput.value;
+                if (!currentValue) {
+                    const inheritedValues = getStageInheritedValues(stageId);
+                    currentValue = inheritedValues.resolution || 'normal';
+                }
+                const currentIndex = areas.findIndex(a => a === currentValue);
+                if (currentIndex === -1) return;
+                
+                const delta = e.deltaY > 0 ? 1 : -1;
+                let newIndex = currentIndex + delta;
+                if (newIndex < 0) newIndex = areas.length - 1;
+                if (newIndex >= areas.length) newIndex = 0;
+                
+                selectStageEnhanceResolution(stageId, areas[newIndex]);
+                return;
+            }
+            
+            // Variation mode: use same logic as expand canvas
+            const baseResolutionValue = getStageBaseResolution(stageId);
+            const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
+            
+            let isPortrait = false, isLandscape = false, isSquare = false;
+            if (currentResolution) {
+                isPortrait = currentResolution.height > currentResolution.width;
+                isLandscape = currentResolution.width > currentResolution.height;
+                isSquare = currentResolution.width === currentResolution.height;
+            }
+            
+            // Build filtered list of resolutions
+            const availableResolutions = [];
+            RESOLUTION_GROUPS.forEach(group => {
+                group.options.forEach(opt => {
+                    if (opt.value === 'custom') return; // Skip custom
+                    if (opt.value.startsWith('small_')) return; // Skip small
+                    
+                    const optIsPortrait = opt.value.includes('_portrait');
+                    const optIsLandscape = opt.value.includes('_landscape');
+                    const optIsSquare = opt.value.includes('_square');
+                    
+                    if (isPortrait && optIsPortrait) return;
+                    if (isLandscape && optIsLandscape) return;
+                    if (isSquare && optIsSquare) return;
+                    
+                    availableResolutions.push({ value: opt.value, name: opt.name, group: group.group });
+                });
+            });
+            
+            if (availableResolutions.length === 0) return;
+            
+            // Find current index - use inherited value if input is empty
+            let currentValue = resolutionInput.value;
+            if (!currentValue) {
+                const inheritedValues = getStageInheritedValues(stageId);
+                if (inheritedValues.resolution) {
+                    // Construct full preset with orientation for variation
+                    if (currentResolution) {
+                        let orientation = 'square';
+                        if (currentResolution.height > currentResolution.width * 1.05) orientation = 'portrait';
+                        else if (currentResolution.width > currentResolution.height * 1.05) orientation = 'landscape';
+                        currentValue = `${inheritedValues.resolution}_${orientation}`;
+                    } else {
+                        currentValue = inheritedValues.resolution + '_square'; // Default fallback
+                    }
+                }
+            }
+            const currentIndex = availableResolutions.findIndex(r => r.value === currentValue);
+            
+            // Calculate new index
+            const delta = e.deltaY > 0 ? 1 : -1;
+            let newIndex = currentIndex + delta;
+            
+            // Wrap around
+            if (newIndex < 0) newIndex = availableResolutions.length - 1;
+            if (newIndex >= availableResolutions.length) newIndex = 0;
+            
+            // Select new resolution
+            const newResolution = availableResolutions[newIndex];
+            
+            // Update the input value
+            resolutionInput.value = newResolution.value;
+            
+            // Update button display
+            const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+            if (resolutionSelected) {
+                const groupObj = RESOLUTION_GROUPS.find(g => g.group === newResolution.group);
+                const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
+                resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
+            }
+            
+            // Update bias orientation and cascade downstream
+            updateStageBiasOrientation(stageId, newResolution.value);
+            updateDownstreamStageResolutions(stageId);
+        });
+    }
+    
+    // Setup custom resolution controls (shared function)
+    setupStageCustomResolutionControls(stageId, resolutionDropdown, resolutionInput);
+
+    // Toggle behavior between enhance (img2img) and normal (text2img-like)
+    const applyToggleVisibility = (on) => {
+        if (groupMagnitude) groupMagnitude.classList.toggle('hidden', !on);
+        if (groupStrength) groupStrength.classList.toggle('hidden', !on);
+        if (groupNoise) groupNoise.classList.toggle('hidden', !on);
+    };
+    applyToggleVisibility(initialUseBaseImage);
+
+    const mapAreaFromResolution = () => {
+        const resInput = document.getElementById(`${stageId}_resolution`);
+        const widthInput = document.getElementById(`${stageId}_width`);
+        const heightInput = document.getElementById(`${stageId}_height`);
+        if (!resInput) return 'normal';
+        const val = (resInput.value || '').toLowerCase();
+        if (val === 'custom' && widthInput && heightInput && widthInput.value && heightInput.value) {
+            const w = parseInt(widthInput.value) || 1024;
+            const h = parseInt(heightInput.value) || 1024;
+            const area = w * h;
+            if (area <= 1048576) return 'normal';
+            if (area <= 2166784) return 'large';
+            return 'xlarge';
+        }
+        const parts = val.split('_');
+        return parts[0] || 'normal';
+    };
+
+    const computeInheritedOrientation = () => {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentIndex = allStages.findIndex(s => s.id === stageId);
+        let baseW = 1024, baseH = 1024;
+        if (currentIndex > 0) {
+            const prevId = allStages[currentIndex - 1].id;
+            const dims = getStageDimensions(prevId);
+            if (dims && dims.width && dims.height) { baseW = dims.width; baseH = dims.height; }
+        } else {
+            const resVal = typeof manualSelectedResolution !== 'undefined' ? manualSelectedResolution : 'normal_square';
+            const dims = getDimensionsFromResolution(resVal) || { width: 1024, height: 1024 };
+            baseW = dims.width; baseH = dims.height;
+        }
+        if (baseH > baseW * 1.05) return 'portrait';
+        if (baseW > baseH * 1.05) return 'landscape';
+        return 'square';
+    };
+
+    const switchToEnhance = () => {
+        const resolutionInput = document.getElementById(`${stageId}_resolution`);
+        const hasCustom = resolutionInput && resolutionInput.value !== '';
+        let area;
+        if (hasCustom) {
+            area = mapAreaFromResolution();
+        } else {
+            // Get inherited value and extract area name
+            const inheritedValues = getStageInheritedValues(stageId);
+            if (inheritedValues.resolution) {
+                if (inheritedValues.resolution.includes('_')) {
+                    area = inheritedValues.resolution.split('_')[0];
+                } else if (['normal', 'large', 'xlarge'].includes(inheritedValues.resolution)) {
+                    area = inheritedValues.resolution;
+                } else {
+                    area = 'normal';
+                }
+            } else {
+                area = 'normal';
+            }
+        }
+        selectStageEnhanceResolution(stageId, area, !hasCustom);
+        // Re-render dropdown menu for enhance mode (area options)
+        const currentValue = resolutionInput?.value || area;
+        renderStageResolutionDropdown(stageId, currentValue);
+        applyToggleVisibility(true);
+        updateDownstreamStagesInheritedValues(stageId);
+    };
+
+    const switchToStageResolution = () => {
+        const resolutionInput = document.getElementById(`${stageId}_resolution`);
+        const hasCustom = resolutionInput && resolutionInput.value !== '';
+        
+        let target;
+        if (hasCustom) {
+            // Has custom value - process it (might be area name from enhance mode, convert to full preset)
+            const currentValue = resolutionInput.value;
+            if (['normal', 'large', 'xlarge'].includes(currentValue) && !currentValue.includes('_') && currentValue !== 'custom') {
+                // Area name from enhance mode - convert to full preset with orientation
+                const orientation = computeInheritedOrientation();
+                target = `${currentValue}_${orientation}`;
+            } else {
+                // Already a full preset or custom - use as is
+                target = currentValue;
+            }
+            // Process the value (not inherited, this is a custom selection)
+            selectStageResolution(stageId, target, null, false);
+        } else {
+            // No custom value - use inherited
+            const inheritedValues = getStageInheritedValues(stageId);
+            if (inheritedValues.resolution && !inheritedValues.resolution.includes('_') && inheritedValues.resolution !== 'custom') {
+                const orientation = computeInheritedOrientation();
+                target = `${inheritedValues.resolution}_${orientation}`;
+            } else {
+                target = inheritedValues.resolution || 'normal_square';
+            }
+            selectStageResolution(stageId, target, null, true);
+        }
+        
+        // Re-render dropdown menu for variation mode (full resolution options)
+        const currentValue = resolutionInput?.value || target;
+        renderStageResolutionDropdown(stageId, currentValue);
+        applyToggleVisibility(false);
+        updateDownstreamStagesInheritedValues(stageId);
+    };
+
+    if (useBaseImageToggle) {
+        useBaseImageToggle.addEventListener('click', () => {
+            const newState = useBaseImageToggle.dataset.state === 'on' ? 'off' : 'on';
+            useBaseImageToggle.dataset.state = newState;
+            
+            // Update header name and icon
+            const typeLabel = document.getElementById(`${stageId}_typeLabel`);
+            if (typeLabel) {
+                const hexIdSpan = typeLabel.querySelector('.stage-hex-id');
+                const hexIdHtml = hexIdSpan ? hexIdSpan.outerHTML : '';
+                if (newState === 'on') {
+                    typeLabel.innerHTML = `<i class="fas fa-diagram-venn"></i> Enhance ${hexIdHtml}`;
+                } else {
+                    typeLabel.innerHTML = `<i class="ri-image-ai-fill"></i> Variation ${hexIdHtml}`;
+                }
+            }
+            
+            if (newState === 'on') switchToEnhance(); else switchToStageResolution();
+        });
+    }
+    
+    // Setup advanced controls (same as expand canvas)
+    setupStageAdvancedControls(stageId);
+}
+
+// Setup advanced controls for any stage type (shared by expand canvas and enhance)
+function setupStageAdvancedControls(stageId) {
+    const inheritedValues = getStageInheritedValues(stageId);
+    
+    const stepsInput = document.getElementById(`${stageId}_steps`);
+    const guidanceInput = document.getElementById(`${stageId}_guidance`);
+    const rescaleInput = document.getElementById(`${stageId}_rescale`);
+    const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
+    const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+    
+    // Set placeholders for advanced controls
+    if (stepsInput) stepsInput.placeholder = inheritedValues.steps.toString();
+    if (guidanceInput) guidanceInput.placeholder = inheritedValues.guidance.toFixed(2);
+    
+    // Variety toggle
+    if (varietyBtn) {
+        varietyBtn.addEventListener('click', () => {
+            varietyBtn.dataset.state = varietyBtn.dataset.state === 'on' ? 'off' : 'on';
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+        // Set initial state from inherited
+        varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
+    }
+    
+    // Rescale percentage overlay
+    if (rescaleInput && rescaleOverlay) {
+        const rescaleContainer = rescaleInput.parentElement;
+        
+        // Set initial overlay from inherited value
+        rescaleOverlay.textContent = `${(inheritedValues.rescale * 100).toFixed(0)}%`;
+        
+        // Update inherited state (check for empty string, not falsy value)
+        if (rescaleInput.value === '') {
+            if (rescaleContainer) rescaleContainer.classList.add('inherited');
+        }
+        
+        // Add blur validation for rescale
+        rescaleInput.addEventListener('blur', () => {
+            let value = parseFloat(rescaleInput.value);
+            if (isNaN(value) || value < 0) value = 0;
+            if (value > 1) value = 1;
+            if (rescaleInput.value !== '') {
+                rescaleInput.value = value.toFixed(2);
+                rescaleOverlay.textContent = `${(value * 100).toFixed(0)}%`;
+            }
+        });
+        
+        rescaleInput.addEventListener('input', () => {
+            // Check if there's an actual value (including 0)
+            if (rescaleInput.value !== '') {
+                const value = parseFloat(rescaleInput.value);
+                rescaleOverlay.textContent = `${(value * 100).toFixed(0)}%`;
+                if (rescaleContainer) rescaleContainer.classList.remove('inherited');
+            } else {
+                // Show inherited value when empty
+                const currentInherited = getStageInheritedValues(stageId);
+                rescaleOverlay.textContent = `${(currentInherited.rescale * 100).toFixed(0)}%`;
+                if (rescaleContainer) rescaleContainer.classList.add('inherited');
+            }
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+        rescaleInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            // Use custom value if set (including 0), otherwise use inherited
+            const currentVal = rescaleInput.value !== '' ? parseFloat(rescaleInput.value) : inheritedValues.rescale;
+            const newValue = Math.max(0, Math.min(1, currentVal + delta));
+            rescaleInput.value = newValue.toFixed(2);
+            rescaleOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
+            if (rescaleContainer) rescaleContainer.classList.remove('inherited');
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+    }
+    
+    // Setup model dropdown
+    const modelDropdown = document.getElementById(`${stageId}_modelDropdown`);
+    const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
+    const modelMenu = document.getElementById(`${stageId}_modelDropdownMenu`);
+    if (modelDropdown && modelBtn && modelMenu) {
+        setupDropdown(
+            modelDropdown,
+            modelBtn,
+            modelMenu,
+            (selectedValue) => renderStageModelDropdown(stageId, selectedValue),
+            () => document.getElementById(`${stageId}_model`)?.value || '',
+            { preventFocusTransfer: true }
+        );
+    }
+    
+    // Setup sampler dropdown
+    const samplerDropdown = document.getElementById(`${stageId}_samplerDropdown`);
+    const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
+    const samplerMenu = document.getElementById(`${stageId}_samplerDropdownMenu`);
+    if (samplerDropdown && samplerBtn && samplerMenu) {
+        setupDropdown(
+            samplerDropdown,
+            samplerBtn,
+            samplerMenu,
+            (selectedValue) => renderStageSamplerDropdown(stageId, selectedValue),
+            () => document.getElementById(`${stageId}_sampler`)?.value || '',
+            { preventFocusTransfer: true }
+        );
+        
+        // Initialize with inherited state
+        updateStageDropdownInheritedState(stageId);
+        
+        // Initial reset button visibility check
+        updateStageResetButtonVisibility(stageId);
+    }
+    
+    // Special handling for steps input with 28-step block
+    let stepsWheelTimeout = false;
+    if (stepsInput) {
+        // Add blur validation for steps
+        stepsInput.addEventListener('blur', () => {
+            let value = parseInt(stepsInput.value);
+            if (isNaN(value) || value < 1) value = 1;
+            if (value > 50) value = 50;
+            if (stepsInput.value !== '') {
+                stepsInput.value = value;
+            }
+        });
+        
+        stepsInput.addEventListener('input', () => {
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+        stepsInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            // Use inherited value if no custom value set
+            const currentValue = stepsInput.value ? parseInt(stepsInput.value) : parseInt(stepsInput.placeholder || 25);
+            const delta = e.deltaY > 0 ? -1 : 1;
+            
+            if (currentValue < 28) {
+                if (!stepsWheelTimeout) {
+                    const nextValue = currentValue + delta;
+                    if (nextValue >= 28) {
+                        stepsInput.value = 28;
+                        stepsWheelTimeout = true;
+                        setTimeout(() => {
+                            stepsWheelTimeout = false;
+                        }, 1000);
+                    } else {
+                        stepsInput.value = Math.max(1, nextValue);
+                    }
+                }
+            } else if (currentValue === 28) {
+                if (!stepsWheelTimeout && delta > 0) {
+                    stepsInput.value = 29;
+                    stepsWheelTimeout = true;
+                    setTimeout(() => {
+                        stepsWheelTimeout = false;
+                    }, 1000);
+                } else if (delta < 0) {
+                    stepsInput.value = 27;
+                }
+            } else {
+                const newValue = Math.max(1, Math.min(50, currentValue + delta));
+                stepsInput.value = newValue;
+            }
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+    }
+    
+    // Guidance input
+    if (guidanceInput) {
+        // Add blur validation for guidance
+        guidanceInput.addEventListener('blur', () => {
+            let value = parseFloat(guidanceInput.value);
+            if (isNaN(value) || value < 0) value = 0;
+            if (value > 10) value = 10;
+            if (guidanceInput.value !== '') {
+                guidanceInput.value = value >= 10 ? value.toString() : value.toFixed(1);
+            }
+        });
+        
+        guidanceInput.addEventListener('input', () => {
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+        guidanceInput.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const step = 0.01; // Use consistent step for guidance
+            const delta = e.deltaY > 0 ? -step : step;
+            // Use inherited value if no custom value set (handle 0 properly)
+            const currentVal = guidanceInput.value !== '' ? parseFloat(guidanceInput.value) : parseFloat(guidanceInput.placeholder || 5.0);
+            const newValue = Math.max(0.0, Math.min(10.0, currentVal + delta));
+            guidanceInput.value = newValue.toFixed(2);
+            updateStageResetButtonVisibility(stageId);
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+    }
+    
+    // Reset button handler
+    const resetBtn = document.getElementById(`${stageId}_resetAdvanced`);
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            // Get current inherited values
+            const currentInherited = getStageInheritedValues(stageId);
+            
+            // Clear all custom values
+            const modelInput = document.getElementById(`${stageId}_model`);
+            const samplerInput = document.getElementById(`${stageId}_sampler`);
+            const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+            const stepsInput = document.getElementById(`${stageId}_steps`);
+            const guidanceInput = document.getElementById(`${stageId}_guidance`);
+            const rescaleInput = document.getElementById(`${stageId}_rescale`);
+            const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+            
+            if (modelInput) modelInput.value = '';
+            if (samplerInput) samplerInput.value = '';
+            if (noiseSchedulerInput) noiseSchedulerInput.value = '';
+            if (stepsInput) stepsInput.value = '';
+            if (guidanceInput) guidanceInput.value = '';
+            if (rescaleInput) {
+                rescaleInput.value = '';
+                const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
+                const rescaleContainer = rescaleInput.parentElement;
+                if (rescaleOverlay) {
+                    rescaleOverlay.textContent = `${(currentInherited.rescale * 100).toFixed(0)}%`;
+                }
+                if (rescaleContainer) {
+                    rescaleContainer.classList.add('inherited');
+                }
+            }
+            if (varietyBtn) {
+                varietyBtn.dataset.state = currentInherited.variety ? 'on' : 'off';
+            }
+            
+            // Reset resolution if it has a custom value
+            const resolutionInput = document.getElementById(`${stageId}_resolution`);
+            if (resolutionInput && resolutionInput.value !== '') {
+                resolutionInput.value = '';
+            }
+            
+            // Reset background focus to inherited state
+            const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+            if (bgFocusToggle) {
+                bgFocusToggle.dataset.state = ''; // Clear to inherit
+                updateStageBackgroundFocusVisuals(stageId, currentInherited.backgroundFocus, true);
+            }
+            
+            // Update inherited state for dropdowns
+            updateStageDropdownInheritedState(stageId);
+            
+            // Update reset button visibility
+            updateStageResetButtonVisibility(stageId);
+            
+            // Update downstream stages
+            updateDownstreamStagesInheritedValues(stageId);
+        });
+    }
+}
+
+// Get the base resolution for a stage (first stage uses manual, others use previous stage)
+function getStageBaseResolution(stageId) {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    const currentIndex = allStages.findIndex(s => s.id === stageId);
+    
+    if (currentIndex === -1) return manualSelectedResolution || 'normal_square';
+    
+    // First expand canvas stage uses manual resolution
+    if (currentIndex === 0) {
+        return manualSelectedResolution || 'normal_square';
+    }
+    
+    // Check if current stage is a branch
+    const currentStage = allStages[currentIndex];
+    const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+    const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
+    
+    // Find previous expand canvas stage
+    for (let i = currentIndex - 1; i >= 0; i--) {
+        const prevStage = allStages[i];
+        
+        // Check if previous stage is a branch
+        const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
+        const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
+        
+        // If current stage is NOT a branch, skip branch stages
+        if (!isCurrentBranch && isPrevBranch) {
+            continue;
+        }
+        
+        if (prevStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            const prevResolutionInput = document.getElementById(`${prevStage.id}_resolution`);
+            if (prevResolutionInput && prevResolutionInput.value) {
+                return prevResolutionInput.value;
+            }
+        }
+    }
+    
+    // Fallback to manual resolution
+    return manualSelectedResolution || 'normal_square';
+}
+
+// Check if this is the last expand canvas stage
+function isLastExpandCanvasStage(stageId) {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    const currentIndex = allStages.findIndex(s => s.id === stageId);
+    
+    if (currentIndex === -1) return true;
+    
+    // Check if current stage is a branch
+    const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+    const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
+    
+    // Check if there are any expand canvas stages after this one (in the same chain)
+    for (let i = currentIndex + 1; i < allStages.length; i++) {
+        const stage = allStages[i];
+        
+        // Check if this stage is a branch
+        const stageBranchToggle = document.getElementById(`${stage.id}_branchToggle`);
+        const isStageBranch = stageBranchToggle?.dataset.state === 'on';
+        
+        // If current is branch, only look for more branches
+        if (isCurrentBranch && !isStageBranch) {
+            break; // Exited branch chain, stop looking
+        }
+        
+        // If current is not branch, skip branches
+        if (!isCurrentBranch && isStageBranch) {
+            continue;
+        }
+        
+        if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+            return false; // Found another expand canvas stage after this one in the same chain
+        }
+    }
+    
+    return true; // This is the last expand canvas stage in its chain
+}
+
+// Stage dropdown render functions
+function renderStageResolutionDropdown(stageId, selectedValue) {
+    const menu = document.getElementById(`${stageId}_resolutionDropdownMenu`);
+    if (!menu) return;
+
+    // If this stage is Variation with Enhance ON, render area options using grouped dropdown (preserves keyboard nav/inherited UX)
+    const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    if (useBaseToggle && useBaseToggle.dataset.state === 'on') {
+        const groups = [
+            {
+                group: 'Area',
+                options: [
+                    { value: 'normal', name: 'Normal' },
+                    { value: 'large', name: 'Large' },
+                    { value: 'xlarge', name: 'Maximum' }
+                ]
+            }
+        ];
+        renderGroupedDropdown(
+            menu,
+            groups,
+            (value) => selectStageEnhanceResolution(stageId, value),
+            () => closeDropdown(menu, document.getElementById(`${stageId}_resolutionDropdownBtn`)),
+            selectedValue,
+            (opt) => `<span>${opt.name}</span>`
+        );
+        return;
+    }
+
+    // Check if this is a variation stage (not enhance mode) - should show all resolutions
+    const isVariationMode = useBaseToggle && useBaseToggle.dataset.state === 'off';
+
+    // Get base resolution for this stage
+    const baseResolutionValue = getStageBaseResolution(stageId);
+    const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
+
+    // Check if this is the last expand canvas stage
+    const isLastStage = isLastExpandCanvasStage(stageId);
+
+    // Determine current image characteristics and base dimensions
+    let isPortrait = false;
+    let isLandscape = false;
+    let isSquare = false;
+    let baseWidth = 0;
+    let baseHeight = 0;
+
+    // Handle custom resolution from previous stage or manual modal
+    if (baseResolutionValue === 'custom') {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentIndex = allStages.findIndex(s => s.id === stageId);
+
+        // Check if this is the first expand canvas stage
+        const isFirstStage = currentIndex === 0 || !allStages.slice(0, currentIndex).some(s => s.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS);
+
+        if (isFirstStage) {
+            // Get custom dimensions from manual modal
+            const manualWidth = document.getElementById('manualWidth');
+            const manualHeight = document.getElementById('manualHeight');
+            if (manualWidth && manualHeight) {
+                baseWidth = parseInt(manualWidth.value) || 1024;
+                baseHeight = parseInt(manualHeight.value) || 1024;
+            }
+        } else {
+            // Check if current stage is a branch
+            const currentStageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+            const isCurrentStageBranch = currentStageBranchToggle?.dataset.state === 'on';
+            
+            // Look for previous expand canvas stage with custom resolution
+            for (let i = currentIndex - 1; i >= 0; i--) {
+                const prevStage = allStages[i];
+                
+                // Check if previous stage is a branch
+                const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
+                const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
+                
+                // If current stage is NOT a branch, skip branch stages
+                if (!isCurrentStageBranch && isPrevBranch) {
+                    continue;
+                }
+                
+                if (prevStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+                    const prevResolutionInput = document.getElementById(`${prevStage.id}_resolution`);
+                    if (prevResolutionInput && prevResolutionInput.value === 'custom') {
+                        const widthInput = document.getElementById(`${prevStage.id}_width`);
+                        const heightInput = document.getElementById(`${prevStage.id}_height`);
+                        if (widthInput && heightInput) {
+                            baseWidth = parseInt(widthInput.value) || 1024;
+                            baseHeight = parseInt(heightInput.value) || 1024;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        isPortrait = baseHeight > baseWidth;
+        isLandscape = baseWidth > baseHeight;
+        isSquare = baseWidth === baseHeight;
+    } else if (currentResolution) {
+        isPortrait = currentResolution.height > currentResolution.width;
+        isLandscape = currentResolution.width > currentResolution.height;
+        isSquare = currentResolution.width === currentResolution.height;
+        baseWidth = currentResolution.width;
+        baseHeight = currentResolution.height;
+    }
+
+    // Helper function to check if resolution is too close to base dimensions
+    const isTooClose = (width, height) => {
+        if (!baseWidth || !baseHeight) return false;
+
+        // Calculate aspect ratios
+        const baseAspect = baseWidth / baseHeight;
+        const optAspect = width / height;
+
+        // Calculate aspect ratio difference (percentage)
+        const aspectDiff = Math.abs(baseAspect - optAspect) / baseAspect;
+
+        // Calculate dimension differences (percentage)
+        const widthDiff = Math.abs(width - baseWidth) / baseWidth;
+        const heightDiff = Math.abs(height - baseHeight) / baseHeight;
+
+        // Consider resolution too close if:
+        // 1. Aspect ratio is within 5% AND
+        // 2. Both dimensions are within 15% of base dimensions
+        return aspectDiff < 0.05 && widthDiff < 0.15 && heightDiff < 0.15;
+    };
+    
+    // Filter RESOLUTION_GROUPS based on current resolution (same logic as expand canvas modal)
+    const filteredGroups = RESOLUTION_GROUPS.map(group => {
+        const filteredOptions = group.options.filter(opt => {
+            // Keep custom resolution option
+            if (opt.value === 'custom') return true;
+            
+            // Variation mode: no filtering, show all resolutions
+            if (isVariationMode) return true;
+            
+            // Always exclude small resolutions
+            if (opt.value.startsWith('small_')) {
+                return false;
+            }
+            
+            // Only allow large and wallpaper resolutions on the last expand canvas stage
+            // if (!isLastStage && (opt.value.startsWith('large_') || opt.value.startsWith('xlarge_') || opt.value.startsWith('wallpaper_'))) {
+            //     return false;
+            // }
+            
+            // Get option characteristics
+            const optIsPortrait = opt.value.includes('_portrait');
+            const optIsLandscape = opt.value.includes('_landscape');
+            const optIsSquare = opt.value.includes('_square');
+            
+            // If current image is portrait, exclude all portrait resolutions
+            if (isPortrait && optIsPortrait) {
+                return false;
+            }
+            
+            // If current image is landscape, exclude all landscape resolutions
+            if (isLandscape && optIsLandscape) {
+                return false;
+            }
+            
+            // If current image is square, exclude all square resolutions
+            if (isSquare && optIsSquare) {
+                return false;
+            }
+
+            // Exclude resolutions that are too close to the base resolution
+            if (baseWidth && baseHeight && opt.width && opt.height) {
+                if (isTooClose(opt.width, opt.height)) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+        
+        return {
+            ...group,
+            options: filteredOptions
+        };
+    }).filter(group => group.options.length > 0); // Remove empty groups
+    
+    renderGroupedDropdown(
+        menu,
+        filteredGroups,
+        (value, group) => selectStageResolution(stageId, value, group),
+        () => closeDropdown(menu, document.getElementById(`${stageId}_resolutionDropdownBtn`)),
+        selectedValue,
+        (opt, group) => `<span>${opt.name}${opt.dims ? ' <span style="opacity:0.7;font-size:0.95em;">(' + opt.dims + ')</span>' : ''}</span>`
+    );
+}
+
+function selectStageResolution(stageId, value, group, isInheritedDisplay = false) {
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+    const resolutionDropdown = document.getElementById(`${stageId}_resolutionDropdown`);
+    const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
+    const customResolution = document.getElementById(`${stageId}_customResolution`);
+    const customResolutionBtn = document.getElementById(`${stageId}_customResolutionBtn`);
+    const widthInput = document.getElementById(`${stageId}_width`);
+    const heightInput = document.getElementById(`${stageId}_height`);
+    const areaToggle = document.getElementById(`${stageId}_resolutionAreaToggle`);
+    
+    if (!resolutionInput || !resolutionSelected) return;
+
+    // Check if this is a variation stage in enhance mode (enhance mode shows area names)
+    const stageItem = document.getElementById(stageId);
+    const isVariationStage = stageItem?.dataset.stageType === STAGE_TYPES.VARIATION;
+    const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const isEnhanceMode = isVariationStage && useBaseToggle && useBaseToggle.dataset.state === 'on';
+
+    // For inherited display, do NOT set value, just mark as inherited
+    if (isInheritedDisplay) {
+        if (resolutionBtn) resolutionBtn.classList.add('inherited');
+        
+        // Enhance mode should show area name (only variation stages in enhance mode)
+        if (isEnhanceMode && value.includes('_') && value !== 'custom') {
+            const areaName = value.split('_')[0];
+            const displayMap = { normal: 'Normal', large: 'Large', xlarge: 'Maximum' };
+            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[areaName] || 'Normal'}</span>`;
+            return;
+        }
+        
+        // Find group and option for display
+        if (!group) {
+            for (const g of RESOLUTION_GROUPS) {
+                const found = g.options.find(o => o.value === value.toLowerCase());
+                if (found) {
+                    group = g.group;
+                    break;
+                }
+            }
+        }
+
+        const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
+        const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
+        if (optObj) {
+            const badge = groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
+            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${optObj.name}</span>${badge}`;
+        } else {
+            resolutionSelected.textContent = '---';
+        }
+        return;
+    }
+    
+    // Handle custom resolution mode
+    if (value === 'custom') {
+        resolutionDropdown.classList.add('hidden');
+        customResolution.classList.remove('hidden');
+        customResolutionBtn.setAttribute('data-state', 'on');
+        if (areaToggle) areaToggle.classList.remove('hidden');
+        
+        // Initialize stage max area if not set (using dataset)
+        if (!areaToggle.dataset.maxArea) {
+            areaToggle.dataset.maxArea = '1048576'; // Default to Normal (1MP)
+        }
+        
+        // Update toggle display
+        if (areaToggle) {
+            const maxArea = parseInt(areaToggle.dataset.maxArea);
+            if (maxArea === 3047424) {
+                areaToggle.textContent = 'Max';
+            } else if (maxArea === 2166784) {
+                areaToggle.textContent = 'Large';
+            } else {
+                areaToggle.textContent = 'Normal';
+            }
+        }
+        
+        // Only convert from previous resolution if width/height are not already set
+        // This preserves loaded values when loading from saved pipeline stages
+        const hasExistingValues = widthInput.value && heightInput.value;
+        
+        if (!hasExistingValues) {
+            // Get current stage dimensions (handles inherited values too)
+            const currentDimensions = getStageDimensions(stageId);
+            if (currentDimensions) {
+                widthInput.value = currentDimensions.width;
+                heightInput.value = currentDimensions.height;
+            } else {
+                // Fallback: try to get from current resolution value
+            const currentResolution = resolutionInput.value;
+                if (currentResolution && currentResolution !== 'custom') {
+                    const dimensions = getDimensionsFromResolution(currentResolution);
+            if (dimensions) {
+                widthInput.value = dimensions.width;
+                heightInput.value = dimensions.height;
+                    }
+                }
+                
+                // Final fallback to 1024x1024
+                if (!widthInput.value || !heightInput.value) {
+                widthInput.value = '1024';
+                heightInput.value = '1024';
+                }
+            }
+        }
+        
+        resolutionInput.value = 'custom';
+        if (resolutionBtn) resolutionBtn.classList.remove('inherited');
+        
+        // Update functions
+        updateStageResetButtonVisibility(stageId);
+        updateStageDropdownInheritedState(stageId);
+        updateStageBiasOrientation(stageId, value);
+        
+        // Update this stage and all downstream stages
+        updatePipelineStages(stageId);
+        return;
+    }
+    
+    // Find group if not provided
+    if (!group) {
+        for (const g of RESOLUTION_GROUPS) {
+            const found = g.options.find(o => o.value === value.toLowerCase());
+            if (found) {
+                group = g.group;
+                break;
+            }
+        }
+    }
+    
+    // Update button display
+    // Enhance mode should show area name (only variation stages in enhance mode)
+    if (isEnhanceMode && value.includes('_') && value !== 'custom') {
+        const areaName = value.split('_')[0];
+        const displayMap = { normal: 'Normal', large: 'Large', xlarge: 'Maximum' };
+        resolutionInput.value = value.toLowerCase();
+        resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[areaName] || 'Normal'}</span>`;
+    } else {
+    const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
+    const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
+    
+    // ALWAYS set the value - critical for updateStageResetButtonVisibility to detect custom value
+    resolutionInput.value = value.toLowerCase();
+    
+    if (optObj) {
+            const badge = groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
+            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${optObj.name}</span>${badge}`;
+    } else {
+        resolutionSelected.textContent = '---';
+        }
+    }
+    
+    // Remove inherited class since we're setting a custom value
+    if (resolutionBtn) resolutionBtn.classList.remove('inherited');
+    
+    updateStageDropdownInheritedState(stageId);
+    updateStageBiasOrientation(stageId, value);
+    
+    // Update this stage and all downstream stages
+    updatePipelineStages(stageId);
+}
+
+// Toggle resolution area limit for a stage between normal (1MP) and large (3MP)
+function toggleStageResolutionAreaLimit(stageId) {
+    const areaToggle = document.getElementById(`${stageId}_resolutionAreaToggle`);
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const widthInput = document.getElementById(`${stageId}_width`);
+    const heightInput = document.getElementById(`${stageId}_height`);
+    
+    if (!areaToggle || !resolutionInput || resolutionInput.value !== 'custom') return;
+    
+    // Initialize stage max area if not set (using dataset)
+    if (!areaToggle.dataset.maxArea) {
+        areaToggle.dataset.maxArea = '1048576'; // Default to Normal (1MP)
+    }
+    
+    const currentMaxArea = parseInt(areaToggle.dataset.maxArea);
+    
+    // Only recalculate if custom resolution is selected and has valid dimensions
+    if (widthInput && heightInput && widthInput.value && heightInput.value) {
+        const currentWidth = parseInt(widthInput.value) || 1024;
+        const currentHeight = parseInt(heightInput.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
+        const aspectRatio = currentWidth / currentHeight;
+        
+        let newMaxArea;
+        let newAreaName;
+        
+        // Toggle between Normal (1MP) → Large (2MP) → Max (3MP)
+        if (currentMaxArea === 1048576) {
+            newMaxArea = 2166784; // Large (2MP)
+            newAreaName = 'Large';
+        } else if (currentMaxArea === 2166784) {
+            newMaxArea = 3047424; // Max (3MP)
+            newAreaName = 'Max';
+        } else {
+            newMaxArea = 1048576; // Normal (1MP)
+            newAreaName = 'Normal';
+        }
+        
+        // Calculate new dimensions proportionally based on area ratio
+        const areaRatio = Math.sqrt(newMaxArea / currentArea);
+        let newWidth = Math.round(currentWidth * areaRatio);
+        let newHeight = Math.round(currentHeight * areaRatio);
+        
+        // Apply step 64 snapping and area constraints
+        const result = correctDimensions(newWidth, newHeight, {
+            step: 64,
+            maxArea: newMaxArea
+        });
+        
+        // Update the max area in dataset AFTER calculation but BEFORE updating inputs
+        areaToggle.dataset.maxArea = newMaxArea.toString();
+        areaToggle.textContent = newAreaName;
+        
+        // Update inputs without triggering input events
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+        
+        // Update bias orientation based on new dimensions
+        updateStageBiasOrientation(stageId, 'custom');
+        
+        // Update downstream stages to reflect new custom dimensions
+        updatePipelineStages(stageId);
+        
+        // Show feedback about the change
+        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
+    } else {
+        // No custom resolution selected, just toggle the limit
+        if (currentMaxArea === 1048576) {
+            areaToggle.dataset.maxArea = '2166784'; // Large (2MP)
+            areaToggle.textContent = 'Large';
+        } else if (currentMaxArea === 2166784) {
+            areaToggle.dataset.maxArea = '3047424'; // Max (3MP)
+            areaToggle.textContent = 'Max';
+        } else {
+            areaToggle.dataset.maxArea = '1048576'; // Normal (1MP)
+            areaToggle.textContent = 'Normal';
+        }
+    }
+}
+
+// Update downstream stage resolutions based on cascade rules
+function updateDownstreamStageResolutions(changedStageId, newResolution, fromManual = false) {
+    const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    let changedIndex = allStages.findIndex(s => s.id === changedStageId);
+    
+    // Special case: if cascading from manual resolution, treat all stages as downstream
+    if (fromManual) {
+        changedIndex = -1; // Start before the first stage
+    } else if (changedIndex === -1) {
+        return; // Stage not found and not from manual
+    }
+    
+    // Get aspect ratio and orientation for a resolution (handles both custom and preset)
+    const getResolutionInfo = (stageId, resValue) => {
+        if (resValue === 'custom') {
+            // Check if this is from manual (use manual inputs) or from a stage
+            const widthInput = fromManual ? 
+                document.getElementById('manualWidth') : 
+                document.getElementById(`${stageId}_width`);
+            const heightInput = fromManual ? 
+                document.getElementById('manualHeight') : 
+                document.getElementById(`${stageId}_height`);
+                
+            if (widthInput && heightInput && widthInput.value && heightInput.value) {
+                const width = parseInt(widthInput.value);
+                const height = parseInt(heightInput.value);
+                const aspectRatio = width / height;
+                let orientation = 'square';
+                if (height > width * 1.05) orientation = 'portrait'; // 5% threshold
+                else if (width > height * 1.05) orientation = 'landscape';
+                return { width, height, aspectRatio, orientation, isCustom: true };
+            }
+            return null;
+        } else {
+            const res = RESOLUTIONS.find(r => r.value === resValue);
+            if (!res) return null;
+            const aspectRatio = res.width / res.height;
+            let orientation = 'square';
+            if (res.height > res.width) orientation = 'portrait';
+            else if (res.width > res.height) orientation = 'landscape';
+            return { width: res.width, height: res.height, aspectRatio, orientation, isCustom: false };
+        }
+    };
+    
+    // Determine next orientation based on current (flip logic)
+    const getNextOrientation = (currentOrientation) => {
+        if (currentOrientation === 'portrait') return 'square';
+        if (currentOrientation === 'square') return 'landscape';
+        if (currentOrientation === 'landscape') return 'square';
+        return null;
+    };
+    
+    // Find a resolution with the target orientation (prefer same group, then normal, then any)
+    const findResolutionByOrientation = (targetOrientation, preferredGroup = 'Normal') => {
+        const suffix = targetOrientation === 'portrait' ? '_portrait' : 
+                      targetOrientation === 'landscape' ? '_landscape' : '_square';
+        
+        // Try preferred group first
+        let found = RESOLUTIONS.find(r => r.value.startsWith(preferredGroup.toLowerCase() + suffix));
+        if (found) return found.value;
+        
+        // Try normal group
+        found = RESOLUTIONS.find(r => r.value.startsWith('normal' + suffix));
+        if (found) return found.value;
+        
+        // Try any group
+        found = RESOLUTIONS.find(r => r.value.endsWith(suffix) && !r.value.startsWith('small_'));
+        if (found) return found.value;
+        
+        return null;
+    };
+    
+    // Get info for the changed stage's resolution
+    let previousInfo = getResolutionInfo(changedStageId, newResolution);
+    if (!previousInfo) return;
+    
+    let previousOrientation = previousInfo.orientation;
+    let previousAspectRatio = previousInfo.aspectRatio;
+    
+    // Check if the changed stage is a branch (or if we're cascading from manual)
+    const changedBranchToggle = changedStageId ? document.getElementById(`${changedStageId}_branchToggle`) : null;
+    const isChangedBranch = changedBranchToggle?.dataset.state === 'on';
+    
+    // Process each downstream expand canvas stage
+    for (let i = changedIndex + 1; i < allStages.length; i++) {
+        const stage = allStages[i];
+        
+        // Only update expand canvas stages
+        if (stage.dataset.stageType !== STAGE_TYPES.EXPAND_CANVAS) continue;
+        
+        const stageId = stage.id;
+        
+        // Check if this downstream stage is a branch
+        const stageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+        const isStageBranch = stageBranchToggle?.dataset.state === 'on';
+        
+        // Skip branch cascade rules:
+        // - If changed stage is a branch, only affect other branch stages
+        // - If changed stage is NOT a branch (or manual), skip branch stages
+        if (fromManual) {
+            // From manual: skip branch stages
+            if (isStageBranch) continue;
+        } else if (isChangedBranch && !isStageBranch) {
+            // Branch stage changed: don't affect non-branch stages
+            break; // Stop cascading once we hit a non-branch
+        } else if (!isChangedBranch && isStageBranch) {
+            // Non-branch stage changed: skip branch stages
+            continue;
+        }
+        const resolutionInput = document.getElementById(`${stageId}_resolution`);
+        const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+        
+        if (!resolutionInput || !resolutionSelected || !previousOrientation) {
+            // Conflict: clear this and all downstream resolutions
+            clearStageResolution(stageId);
+            previousOrientation = null;
+            continue;
+        }
+        
+        // Calculate next orientation
+        const nextOrientation = getNextOrientation(previousOrientation);
+        if (!nextOrientation) {
+            clearStageResolution(stageId);
+            previousOrientation = null;
+            continue;
+        }
+        
+        // Check if current downstream stage is custom
+        const isDownstreamCustom = resolutionInput.value === 'custom';
+        
+        if (isDownstreamCustom) {
+            // Swap width and height for custom resolution (rotate aspect ratio)
+            const widthInput = document.getElementById(`${stageId}_width`);
+            const heightInput = document.getElementById(`${stageId}_height`);
+            
+            if (widthInput && heightInput && widthInput.value && heightInput.value) {
+                const currentWidth = parseInt(widthInput.value);
+                const currentHeight = parseInt(heightInput.value);
+                const currentAspectRatio = currentWidth / currentHeight;
+                
+                // Check if aspect ratio difference is at least 5%
+                const aspectRatioDiff = Math.abs(currentAspectRatio - previousAspectRatio) / previousAspectRatio;
+                
+                if (aspectRatioDiff < 0.05) {
+                    // Not enough separation, swap width and height
+                    const temp = currentWidth;
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, currentHeight);
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, temp);
+                    
+                    // Update previous info for next iteration
+                    previousAspectRatio = currentHeight / temp; // Swapped
+                    previousOrientation = nextOrientation;
+                    
+                    // Update bias orientation
+                    updateStageBiasOrientation(stageId, 'custom');
+                } else {
+                    // Keep current dimensions, update previous info
+                    previousAspectRatio = currentAspectRatio;
+                    previousOrientation = nextOrientation;
+                }
+            }
+        } else {
+            // Check current resolution orientation
+            const currentRes = RESOLUTIONS.find(r => r.value === resolutionInput.value);
+            
+            if (currentRes) {
+                // Determine current resolution's orientation
+                let currentOrientation = 'square';
+                if (currentRes.height > currentRes.width) {
+                    currentOrientation = 'portrait';
+                } else if (currentRes.width > currentRes.height) {
+                    currentOrientation = 'landscape';
+                }
+                
+                // Check if current resolution already matches the required orientation
+                if (currentOrientation === nextOrientation) {
+                    // Current resolution is valid - keep it!
+                    previousAspectRatio = currentRes.width / currentRes.height;
+                    previousOrientation = nextOrientation;
+                    continue; // Don't change this stage's resolution
+                }
+            }
+            
+            // Current resolution doesn't match - find a suitable one
+            const preferredGroup = currentRes ? currentRes.value.split('_')[0] : 'normal';
+            const newValue = findResolutionByOrientation(nextOrientation, preferredGroup);
+            
+            if (!newValue) {
+                // No suitable resolution found - clear this and downstream
+                clearStageResolution(stageId);
+                previousOrientation = null;
+                continue;
+            }
+            
+            // Update this stage's resolution
+            resolutionInput.value = newValue;
+            const newRes = RESOLUTIONS.find(r => r.value === newValue);
+            if (newRes) {
+                // Find group for display
+                let displayGroup = null;
+                for (const g of RESOLUTION_GROUPS) {
+                    if (g.options.find(o => o.value === newValue)) {
+                        displayGroup = g;
+                        break;
+                    }
+                }
+                
+                const opt = displayGroup?.options.find(o => o.value === newValue);
+                if (opt && displayGroup) {
+                    resolutionSelected.innerHTML = `${opt.name}${displayGroup.badge ? '<span class="custom-dropdown-badge' + (displayGroup.free ? ' free-badge' : '') + '">' + displayGroup.badge + '</span>' : ''}`;
+                }
+                
+                // Update bias orientation
+                updateStageBiasOrientation(stageId, newValue);
+                
+                // Update previous info for next iteration
+                previousAspectRatio = newRes.width / newRes.height;
+            }
+            
+            previousOrientation = nextOrientation;
+        }
+    }
+}
+
+/**
+ * Refresh the displayed resolution text for a stage without triggering cascades
+ * @param {string} stageId - The stage ID
+ */
+function refreshStageResolutionDisplay(stageId) {
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+    const currentValue = resolutionInput?.value;
+    
+    if (!currentValue || !resolutionSelected) {
+        return;
+    }
+    
+    // Check if this is a variation stage in enhance mode (enhance mode shows area name)
+    const stageItem = document.getElementById(stageId);
+    const isVariationStage = stageItem?.dataset.stageType === STAGE_TYPES.VARIATION;
+    const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const isEnhanceMode = isVariationStage && useBaseToggle && useBaseToggle.dataset.state === 'on';
+    
+    if (currentValue === 'custom') {
+        resolutionSelected.innerHTML = '<span class="custom-dropdown-text">Custom</span>';
+    } else if (isEnhanceMode && currentValue.includes('_') && currentValue !== 'custom') {
+        // Enhance mode shows area name
+        const areaName = currentValue.split('_')[0];
+        const displayMap = { normal: 'Normal', large: 'Large', xlarge: 'Maximum' };
+        resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[areaName] || 'Normal'}</span>`;
+    } else {
+        // Find the resolution group and option
+        let displayGroup = null;
+        for (const g of RESOLUTION_GROUPS) {
+            if (g.options.find(o => o.value === currentValue)) {
+                displayGroup = g;
+                break;
+            }
+        }
+        
+        const opt = displayGroup?.options.find(o => o.value === currentValue);
+        if (opt && displayGroup) {
+            const badge = displayGroup.badge ? `<span class="custom-dropdown-badge${displayGroup.free ? ' free-badge' : ''}">${displayGroup.badge}</span>` : '';
+            resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${opt.name}</span>${badge}`;
+        }
+    }
+}
+
+// Clear a stage's resolution
+function clearStageResolution(stageId) {
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+    
+    if (resolutionInput) resolutionInput.value = '';
+    if (resolutionSelected) resolutionSelected.textContent = '---';
+}
+
+// Helper function to get orientation for a stage
+function getStageOrientation(stageId) {
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    if (!resolutionInput) return false;
+
+    if (resolutionInput.value === 'custom') {
+        // Get custom dimensions from this stage's inputs
+        const widthInput = document.getElementById(`${stageId}_width`);
+        const heightInput = document.getElementById(`${stageId}_height`);
+        if (widthInput && heightInput) {
+            const width = parseInt(widthInput.value) || 1024;
+            const height = parseInt(heightInput.value) || 1024;
+            return height > width;
+        }
+    } else {
+        // Use preset resolution
+        const resolution = RESOLUTIONS.find(r => r.value === resolutionInput.value.toLowerCase());
+        return resolution ? resolution.height > resolution.width : false;
+    }
+    return false;
+}
+
+function renderStageBiasDropdown(stageId, selectedValue) {
+    const menu = document.getElementById(`${stageId}_biasDropdownMenu`);
+    if (!menu) return;
+
+    menu.innerHTML = '';
+
+    // Get current background focus state
+    const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+    const currentState = bgFocusToggle?.dataset.state || '';
+    
+    // Check if inherited
+    const inheritedValues = getStageInheritedValues(stageId);
+    const isInheriting = currentState === '';
+    const isExplicitlyEnabled = currentState === 'on';
+    const actualState = isInheriting ? inheritedValues.backgroundFocus : isExplicitlyEnabled;
+    
+    // Determine label based on state
+    let label = 'Background Focus';
+    if (isInheriting && inheritedValues.backgroundFocus) {
+        label += '*'; // Inherited ON
+    }
+    
+    // Add background focus toggle at the top
+    const bgFocusOption = document.createElement('div');
+    bgFocusOption.className = 'custom-dropdown-option' + (actualState ? ' active' : '');
+    bgFocusOption.innerHTML = `
+        <i class="fas fa-tree-city" style="margin-right: 8px;"></i>
+        <span>${label}</span>
+    `;
+    bgFocusOption.style.display = 'flex';
+    bgFocusOption.style.alignItems = 'center';
+    
+    bgFocusOption.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleStageBackgroundFocus(stageId);
+        // Re-render to update the active state
+        renderStageBiasDropdown(stageId, selectedValue);
+    });
+    
+    menu.appendChild(bgFocusOption);
+    
+    // Add separator
+    const separator = document.createElement('div');
+    separator.className = 'custom-dropdown-separator';
+    menu.appendChild(separator);
+
+    // Determine orientation based on resolution
+    const isPortrait = getStageOrientation(stageId);
+    
+    // Create 5 bias options based on resolution orientation (like image bias dropdown)
+    const biasOptions = [
+        { value: '0', name: isPortrait ? 'Top' : 'Left' },
+        { value: '1', name: isPortrait ? 'Mid-Top' : 'Mid-Left' },
+        { value: '2', name: 'Center' },
+        { value: '3', name: isPortrait ? 'Mid-Bottom' : 'Mid-Right' },
+        { value: '4', name: isPortrait ? 'Bottom' : 'Right' }
+    ];
+    
+    biasOptions.forEach(opt => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedValue === opt.value ? ' selected' : '');
+        option.dataset.value = opt.value;
+        option.textContent = opt.name;
+        
+        option.addEventListener('click', () => {
+            selectStageBias(stageId, opt.value, opt.name, isPortrait);
+            closeDropdown(menu, document.getElementById(`${stageId}_biasDropdownBtn`));
+        });
+        
+        menu.appendChild(option);
+    });
+}
+
+// Toggle background focus for a stage
+function toggleStageBackgroundFocus(stageId) {
+    const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+    if (!bgFocusToggle) return;
+    
+    const currentState = bgFocusToggle.dataset.state;
+    const inheritedValues = getStageInheritedValues(stageId);
+    
+    let newState;
+    if (currentState === '') {
+        // Currently inheriting → check inherited value and toggle opposite
+        if (inheritedValues.backgroundFocus) {
+            // Inherited ON → set explicit OFF
+            newState = 'off';
+        } else {
+            // Inherited OFF → set explicit ON
+            newState = 'on';
+        }
+    } else {
+        // Has explicit state → toggle it
+        newState = currentState === 'on' ? 'off' : 'on';
+        
+        // If toggling back to match inherited value, clear explicit state
+        if ((newState === 'on' && inheritedValues.backgroundFocus) || 
+            (newState === 'off' && !inheritedValues.backgroundFocus)) {
+            newState = ''; // Clear to inherit
+        }
+    }
+    
+    bgFocusToggle.dataset.state = newState;
+    
+    // Determine actual state for visuals
+    const actualState = newState === '' ? inheritedValues.backgroundFocus : (newState === 'on');
+    const isInherited = newState === '';
+    
+    // Update visual indicators
+    updateStageBackgroundFocusVisuals(stageId, actualState, isInherited);
+    
+    // Update reset button visibility
+    updateStageResetButtonVisibility(stageId);
+    
+    // Update downstream stages to reflect the change
+    updateDownstreamStagesInheritedValues(stageId);
+}
+
+// Update visual indicators for background focus
+function updateStageBackgroundFocusVisuals(stageId, isOn, isInherited = false) {
+    const bgFocusIcon = document.getElementById(`${stageId}_bgFocusIcon`);
+    const biasGrid = document.getElementById(`${stageId}_biasGrid`);
+    
+    if (bgFocusIcon) {
+        // Toggle icon visibility
+        if (isOn) {
+            bgFocusIcon.classList.remove('hidden');
+            // Add inherited class if it's inherited
+            if (isInherited) {
+                bgFocusIcon.classList.add('inherited');
+            } else {
+                bgFocusIcon.classList.remove('inherited');
+            }
+        } else {
+            bgFocusIcon.classList.add('hidden');
+            bgFocusIcon.classList.remove('inherited');
+        }
+    }
+    
+    if (biasGrid) {
+        // Set theme to green when on
+        if (isOn) {
+            biasGrid.classList.add('theme-green');
+        } else {
+            biasGrid.classList.remove('theme-green');
+        }
+    }
+}
+
+function selectStageBias(stageId, value, name, isPortrait) {
+    const biasInput = document.getElementById(`${stageId}_bias`);
+    const biasSelected = document.getElementById(`${stageId}_biasSelected`);
+    const biasGrid = document.getElementById(`${stageId}_biasGrid`);
+
+    if (biasInput) biasInput.value = value;
+    if (biasSelected) biasSelected.textContent = name;
+    if (biasGrid) {
+        biasGrid.dataset.bias = value;
+    }
+
+    // Update orientation using the centralized function
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    if (resolutionInput) {
+        updateStageBiasOrientation(stageId, resolutionInput.value);
+    }
+}
+
+function updateStageBiasOrientation(stageId, resolutionValue) {
+    const biasSelected = document.getElementById(`${stageId}_biasSelected`);
+    const biasInput = document.getElementById(`${stageId}_bias`);
+    const biasGrid = document.getElementById(`${stageId}_biasGrid`);
+
+    if (!biasSelected || !biasInput || !biasGrid) return;
+
+    // Determine orientation using the helper function
+    const isPortrait = getStageOrientation(stageId);
+
+    // Set orientation: portrait or landscape (square images treated as landscape)
+    biasGrid.dataset.orientation = isPortrait ? 'portrait' : 'landscape';
+
+    // Update the label based on current bias value and new orientation
+    const currentBias = biasInput.value !== '' ? biasInput.value : '2';
+    const biasName = getBiasName(currentBias, isPortrait);
+    biasSelected.textContent = biasName;
+}
+
+function renderStageModelDropdown(stageId, selectedValue) {
+    const menu = document.getElementById(`${stageId}_modelDropdownMenu`);
+    if (!menu) return;
+    
+    renderGroupedDropdown(
+        menu,
+        modelGroups,
+        (value, group) => selectStageModel(stageId, value, group),
+        () => closeDropdown(menu, document.getElementById(`${stageId}_modelDropdownBtn`)),
+        selectedValue,
+        (opt, group) => `<span>${opt.name}</span>`,
+        { preventFocusTransfer: true }
+    );
+}
+
+function selectStageModel(stageId, value, group, isInheritedDisplay = false) {
+    const modelInput = document.getElementById(`${stageId}_model`);
+    const modelSelected = document.getElementById(`${stageId}_modelSelected`);
+    const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
+    
+    if (!modelInput || !modelSelected) return;
+    
+    // If group is not provided, find it automatically
+    if (!group) {
+        for (const g of modelGroups) {
+            const found = g.options.find(o => o.value === value.toLowerCase());
+            if (found) {
+                group = g.group;
+                break;
+            }
+        }
+    }
+    
+    // Update button display (exact same as manual modal)
+    const groupObj = modelGroups.find(g => g.group === group);
+    const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
+    if (optObj) {
+        // Only set actual value if not inherited display
+        if (!isInheritedDisplay) {
+            modelInput.value = value.toLowerCase();
+            // Remove inherited class when custom value set
+            if (modelBtn) modelBtn.classList.remove('inherited');
+            // Update inherited state (which also updates reset button visibility)
+            updateStageDropdownInheritedState(stageId);
+            // Update downstream stages
+            updateDownstreamStagesInheritedValues(stageId);
+        }
+        
+        modelSelected.innerHTML = [
+            `<span class="custom-dropdown-text">${optObj.display}</span>`,
+            (optObj.badge_full || optObj.badge) ? `<span class="custom-dropdown-badge ${optObj.badge_class}">${optObj.badge_full || optObj.badge}</span>` : ''
+        ].filter(Boolean).join(' ');
+    } else {
+        modelSelected.textContent = 'Select model...';
+    }
+}
+
+function renderStageSamplerDropdown(stageId, selectedValue) {
+    const menu = document.getElementById(`${stageId}_samplerDropdownMenu`);
+    const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+    if (!menu) return;
+    
+    const selectedNoiseScheduler = noiseSchedulerInput?.value || 'karras';
+    
+    menu.innerHTML = '';
+    
+    // Add sampler section header
+    const samplerHeader = document.createElement('div');
+    samplerHeader.className = 'custom-dropdown-group';
+    samplerHeader.textContent = 'Sampler';
+    menu.appendChild(samplerHeader);
+    
+    // Add sampler options
+    SAMPLER_MAP.forEach(sampler => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedValue === sampler.meta ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = sampler.meta;
+        option.innerHTML = `<span>${sampler.display}</span>`;
+        
+        option.addEventListener('click', () => {
+            selectStageSampler(stageId, sampler.meta);
+            closeDropdown(menu, document.getElementById(`${stageId}_samplerDropdownBtn`));
+        });
+        
+        menu.appendChild(option);
+    });
+    
+    // Add noise scheduler section header
+    const noiseHeader = document.createElement('div');
+    noiseHeader.className = 'custom-dropdown-group';
+    noiseHeader.textContent = 'Noise Scheduler';
+    menu.appendChild(noiseHeader);
+    
+    // Add noise scheduler options
+    NOISE_MAP.forEach(noise => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (selectedNoiseScheduler === noise.meta ? ' selected' : '');
+        option.tabIndex = 0;
+        option.dataset.value = noise.meta;
+        option.dataset.group = 'noise';
+        option.innerHTML = `<span>${noise.display}</span>`;
+        
+        option.addEventListener('click', () => {
+            selectStageNoiseScheduler(stageId, noise.meta);
+            closeDropdown(menu, document.getElementById(`${stageId}_samplerDropdownBtn`));
+        });
+        
+        menu.appendChild(option);
+    });
+}
+
+function selectStageSampler(stageId, value) {
+    const samplerInput = document.getElementById(`${stageId}_sampler`);
+    const samplerSelected = document.getElementById(`${stageId}_samplerSelected`);
+    const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
+    
+    if (!samplerInput || !samplerSelected) return;
+    
+    samplerInput.value = value;
+    
+    // Remove inherited class when custom value set
+    if (samplerBtn) samplerBtn.classList.remove('inherited');
+    
+    // Auto-set noise scheduler based on sampler selection (same rules as manual modal)
+    if (value === 'k_dpmpp_2m') {
+        selectStageNoiseScheduler(stageId, 'exponential');
+    } else {
+        selectStageNoiseScheduler(stageId, 'karras');
+    }
+    
+    updateStageSamplerDisplay(stageId);
+    
+    updateStageDropdownInheritedState(stageId);
+    updateDownstreamStagesInheritedValues(stageId);
+}
+
+function selectStageNoiseScheduler(stageId, value) {
+    const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+    if (!noiseSchedulerInput) return;
+    
+    noiseSchedulerInput.value = value;
+    updateStageSamplerDisplay(stageId);
+    updateStageResetButtonVisibility(stageId);
+    updateDownstreamStagesInheritedValues(stageId);
+}
+
+function updateStageSamplerDisplay(stageId) {
+    const samplerInput = document.getElementById(`${stageId}_sampler`);
+    const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+    const samplerSelected = document.getElementById(`${stageId}_samplerSelected`);
+    
+    if (!samplerInput || !samplerSelected) return;
+    
+    const samplerValue = samplerInput.value || 'k_euler_ancestral';
+    const noiseValue = noiseSchedulerInput?.value || 'karras';
+    
+    const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === samplerValue.toLowerCase());
+    const n = NOISE_MAP.find(n => n.meta.toLowerCase() === noiseValue.toLowerCase());
+    
+    if (s) {
+        // Map full noise scheduler names to short versions (exact same as manual modal)
+        const noiseShortMap = {
+            'karras': 'Karras',
+            'exponential': 'Expo',
+            'polyexponential': 'PolyEx'
+        };
+        const noiseShort = noiseShortMap[n?.meta] || n?.display || '';
+        
+        // Determine if noise scheduler badge should be shown (exact same as manual modal)
+        // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
+        const showNoiseBadge = (samplerValue === 'k_dpmpp_2m' && noiseValue !== 'exponential') ||
+                              (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras');
+        
+        // Build display exactly like manual modal
+        samplerSelected.innerHTML = [
+            `<span class="custom-dropdown-text">${s.display_short_full || s.display_short || s.display}</span>`,
+            (s.badge || s.full_badge) ? `<span class="custom-dropdown-badge ${s.badge_class || ''}">${s.badge || s.full_badge}</span>` : '',
+            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge noise-scheduler-badge">${noiseShort}</span>` : ''
+        ].filter(Boolean).join(' ');
+    } else {
+        samplerSelected.innerHTML = 'Select sampler...';
+    }
+}
+
+// Select enhance resolution
+function selectStageEnhanceResolution(stageId, value, isInheritedDisplay = false) {
+    const resolutionInput = document.getElementById(`${stageId}_resolution`);
+    const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
+    const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
+    if (!resolutionInput || !resolutionSelected) return;
+
+    if (!isInheritedDisplay) {
+        // Set value only for custom selections
+        resolutionInput.value = value;
+        if (resolutionBtn) resolutionBtn.classList.remove('inherited');
+        updateStageResetButtonVisibility(stageId);
+        updateStageDropdownInheritedState(stageId);
+        updateDownstreamStagesInheritedValues(stageId);
+        updateStageButtonStates();
+    } else {
+        if (resolutionBtn) resolutionBtn.classList.add('inherited');
+    }
+
+    const displayMap = { normal: 'Normal', large: 'Large', xlarge: 'Maximum' };
+    resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[value] || 'Normal'}</span>`;
+}
+
+// Get expand canvas stage data
+function getExpandCanvasStageData(stageId) {
+    const biasValue = document.getElementById(`${stageId}_bias`)?.value;
+    const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
+    const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
+    const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+    const resolutionValue = document.getElementById(`${stageId}_resolution`)?.value || null;
+    
+    // Get background focus - handle three states: '' (inherit), 'on' (explicit), 'off' (explicit)
+    const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+    const currentState = bgFocusToggle?.dataset.state || '';
+    
+    let backgroundFocus;
+    if (currentState === '') {
+        // Inheriting - get inherited value
+        const inheritedValues = getStageInheritedValues(stageId);
+        backgroundFocus = inheritedValues.backgroundFocus || false;
+    } else {
+        // Explicit state set
+        backgroundFocus = currentState === 'on';
+    }
+    
+    const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+    
+    const data = {
+        type: STAGE_TYPES.EXPAND_CANVAS,
+        resolution: resolutionValue,
+        bias: biasValue !== '' && biasValue !== undefined ? parseInt(biasValue) : 2,
+        saveResults: saveResultsToggle?.dataset.state === 'on',
+        upscale: upscaleToggle?.dataset.state === 'on',
+        stopAtStage: stopToggle?.dataset.state === 'on',
+        backgroundFocus: backgroundFocus,
+        branch: branchToggle?.dataset.state === 'on'
+    };
+    
+    // Save custom resolution dimensions if resolution is custom
+    if (resolutionValue === 'custom') {
+        const widthInput = document.getElementById(`${stageId}_width`);
+        const heightInput = document.getElementById(`${stageId}_height`);
+        if (widthInput && heightInput) {
+            data.width = parseInt(widthInput.value) || 1024;
+            data.height = parseInt(heightInput.value) || 1024;
+        }
+    }
+    
+    // Check seed inheritance toggle (always collect, not just when advanced is visible)
+    const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+    const seedInput = document.getElementById(`${stageId}_seed`);
+    if (inheritSeedToggle?.dataset.state === 'on' || (seedInput && seedInput.value !== '')) {
+        if (!data.advanced) data.advanced = {};
+        if (inheritSeedToggle?.dataset.state === 'on') {
+            data.advanced.inheritSeed = true;
+        }
+        if (seedInput && seedInput.value !== '') {
+            data.advanced.seed = parseInt(seedInput.value);
+        }
+    }
+    
+    // Check if advanced controls are visible and have values
+    const advancedControls = document.getElementById(`${stageId}_advancedControls`);
+    const directiveVal = document.getElementById(`${stageId}_creativeDirective`)?.value || '';
+    const model = document.getElementById(`${stageId}_model`)?.value;
+    const steps = document.getElementById(`${stageId}_steps`)?.value;
+    const guidance = document.getElementById(`${stageId}_guidance`)?.value;
+    const rescale = document.getElementById(`${stageId}_rescale`)?.value;
+    const sampler = document.getElementById(`${stageId}_sampler`)?.value;
+    const noiseScheduler = document.getElementById(`${stageId}_noiseScheduler`)?.value;
+    const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+    
+    if (!data.advanced) data.advanced = {};
+    
+    if (directiveVal !== '') data.advanced.directive = directiveVal;
+    if (model !== '') data.advanced.model = model;
+    if (steps !== '') data.advanced.steps = parseInt(steps);
+    if (guidance !== '') data.advanced.guidance = parseFloat(guidance);
+    if (rescale !== '') data.advanced.rescale = parseFloat(rescale);
+    if (sampler !== '') data.advanced.sampler = sampler;
+    if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
+    if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
+    
+    return data;
+}
+
+// Get enhance stage data
+function getEnhanceStageData(stageId) {
+    const strengthInput = document.getElementById(`${stageId}_strength`);
+    const noiseInput = document.getElementById(`${stageId}_noise`);
+    const strengthOverlay = document.getElementById(`${stageId}_strengthOverlay`);
+    const noiseOverlay = document.getElementById(`${stageId}_noiseOverlay`);
+    const magnitudeInput = document.getElementById(`${stageId}_magnitude`);
+    const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+    const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+    const seedInput = document.getElementById(`${stageId}_seed`);
+    const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
+    const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
+    const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+    const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const resInput = document.getElementById(`${stageId}_resolution`);
+    
+    const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+    
+    const useBaseImage = useBaseToggle?.dataset.state === 'on';
+    
+    const data = {
+        type: STAGE_TYPES.VARIATION,
+        useBaseImage,
+        saveResults: saveResultsToggle?.dataset.state === 'on',
+        upscale: upscaleToggle?.dataset.state === 'on',
+        stopAtStage: stopToggle?.dataset.state === 'on',
+        branch: branchToggle?.dataset.state === 'on'
+    };
+
+    if (useBaseImage) {
+    // Get values - check if using magnitude preset or custom values
+    if (magnitudeInput?.value !== '') {
+        const magnitude = parseFloat(magnitudeInput.value);
+        const preset = MAGNITUDE_PRESETS[magnitude];
+        if (preset) {
+            data.strength = preset.strength;
+            data.noise = preset.noise;
+        } else {
+            data.strength = 0.5;
+            data.noise = 0.0;
+        }
+    } else {
+        data.strength = strengthInput?.value !== '' ? parseFloat(strengthInput.value) : 0.5;
+        data.noise = noiseInput?.value !== '' ? parseFloat(noiseInput.value) : 0.0;
+    }
+    
+        const areaValue = resInput?.value || '';
+        if (areaValue !== '') {
+            data.resolution = areaValue;
+        }
+    } else {
+        // Normal resolution path like expand-canvas (no strength/noise included)
+        const resolutionValue = resInput?.value || null;
+        if (resolutionValue) data.resolution = resolutionValue;
+        if (resolutionValue === 'custom') {
+            const widthInput = document.getElementById(`${stageId}_width`);
+            const heightInput = document.getElementById(`${stageId}_height`);
+            if (widthInput && heightInput) {
+                data.width = parseInt(widthInput.value) || 1024;
+                data.height = parseInt(heightInput.value) || 1024;
+            }
+        }
+    }
+    
+    // Check seed inheritance toggle (always collect, not just when advanced is visible)
+    if (inheritSeedToggle?.dataset.state === 'on' || (seedInput && seedInput.value !== '')) {
+        if (!data.advanced) data.advanced = {};
+        if (inheritSeedToggle?.dataset.state === 'on') {
+            data.advanced.inheritSeed = true;
+        } else if (seedInput && seedInput.value !== '') {
+            data.advanced.seed = parseInt(seedInput.value);
+        }
+    }
+    
+    // Check if advanced controls are visible and have values (same as expand canvas)
+    const advancedControls = document.getElementById(`${stageId}_advancedControls`);
+    const directiveVal = document.getElementById(`${stageId}_creativeDirective`)?.value || '';
+    const model = document.getElementById(`${stageId}_model`)?.value;
+    const steps = document.getElementById(`${stageId}_steps`)?.value;
+    const guidance = document.getElementById(`${stageId}_guidance`)?.value;
+    const rescale = document.getElementById(`${stageId}_rescale`)?.value;
+    const sampler = document.getElementById(`${stageId}_sampler`)?.value;
+    const noiseScheduler = document.getElementById(`${stageId}_noiseScheduler`)?.value;
+    const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+    
+    if (!data.advanced) data.advanced = {};
+    
+    if (directiveVal !== '') data.advanced.directive = directiveVal;
+    if (model !== '') data.advanced.model = model;
+    if (steps !== '') data.advanced.steps = parseInt(steps);
+    if (guidance !== '') data.advanced.guidance = parseFloat(guidance);
+    if (rescale !== '') data.advanced.rescale = parseFloat(rescale);
+    if (sampler !== '') data.advanced.sampler = sampler;
+    if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
+    if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
+    
+    return data;
+}
+
+// Load expand canvas stage data
+function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
+    if (!stageData) return;
+    
+    // Load basic data
+    if (stageData.resolution) {
+        // Handle custom resolution
+        if (stageData.resolution === 'custom') {
+            // First, load custom dimensions before calling selectStageResolution
+            const widthInput = document.getElementById(`${stageId}_width`);
+            const heightInput = document.getElementById(`${stageId}_height`);
+            
+            if (widthInput && stageData.width) {
+                widthInput.value = stageData.width;
+            }
+            if (heightInput && stageData.height) {
+                heightInput.value = stageData.height;
+            }
+            
+            // Now call the selection function which will handle the UI updates
+            selectStageResolution(stageId, 'custom', null);
+            
+            // Update bias grid orientation
+            if (widthInput && heightInput) {
+                const width = parseInt(widthInput.value) || 1024;
+                const height = parseInt(heightInput.value) || 1024;
+                const biasGrid = document.getElementById(`${stageId}_biasGrid`);
+                if (biasGrid) {
+                    if (width > height) {
+                        biasGrid.dataset.orientation = 'landscape';
+                    } else if (height > width) {
+                        biasGrid.dataset.orientation = 'portrait';
+                    } else {
+                        biasGrid.dataset.orientation = 'square';
+                    }
+                }
+            }
+        } else {
+            // Find the group for this resolution
+            let group = null;
+            for (const g of RESOLUTION_GROUPS) {
+                const found = g.options.find(o => o.value === stageData.resolution);
+                if (found) {
+                    group = g.group;
+                    break;
+                }
+            }
+
+            // Call the proper selection function
+            selectStageResolution(stageId, stageData.resolution, group);
+        }
+    }
+    
+    if (stageData.bias !== undefined) {
+        // Determine orientation from loaded resolution for correct bias name
+        const loadedResolution = stageData.resolution ? RESOLUTIONS.find(r => r.value === stageData.resolution) : null;
+        const isPortrait = loadedResolution ? loadedResolution.height > loadedResolution.width : false;
+        selectStageBias(stageId, stageData.bias, getBiasName(stageData.bias, isPortrait), isPortrait);
+    }
+    
+    // Load background focus toggle state
+    if (stageData.backgroundFocus !== undefined) {
+        const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
+        if (bgFocusToggle) {
+            // Check if the saved value matches the inherited value
+            const inheritedValues = getStageInheritedValues(stageId);
+            if (stageData.backgroundFocus === inheritedValues.backgroundFocus) {
+                // Matches inherited - use inherit mode
+                bgFocusToggle.dataset.state = '';
+                updateStageBackgroundFocusVisuals(stageId, stageData.backgroundFocus, true);
+            } else {
+                // Differs from inherited - use explicit state
+                bgFocusToggle.dataset.state = stageData.backgroundFocus ? 'on' : 'off';
+                updateStageBackgroundFocusVisuals(stageId, stageData.backgroundFocus, false);
+            }
+        }
+    }
+    
+    // Load advanced controls if present
+    if (stageData.advanced) {
+        const advancedToggle = document.getElementById(`${stageId}_advancedToggle`);
+        const advancedControls = document.getElementById(`${stageId}_advancedControls`);
+
+        if (advancedToggle && advancedControls) {
+
+            const adv = stageData.advanced;
+            // Load directive
+            if (adv.directive !== undefined) {
+                const dir = document.getElementById(`${stageId}_creativeDirective`);
+                if (dir) {
+                    dir.value = adv.directive;
+                    if (typeof autoResizeTextarea === 'function') autoResizeTextarea(dir);
+                }
+            }
+            
+            if (adv.model) {
+                selectStageModel(stageId, adv.model);
+            }
+            if (adv.steps) document.getElementById(`${stageId}_steps`).value = adv.steps;
+            if (adv.guidance) document.getElementById(`${stageId}_guidance`).value = adv.guidance;
+            if (adv.rescale) {
+                const rescaleInput = document.getElementById(`${stageId}_rescale`);
+                const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
+                if (rescaleInput) rescaleInput.value = adv.rescale;
+                if (rescaleOverlay) rescaleOverlay.textContent = `${(adv.rescale * 100).toFixed(0)}%`;
+            }
+            if (adv.sampler) {
+                // Don't use selectStageSampler here to avoid auto-setting noise scheduler
+                // We want to preserve the saved noise scheduler value
+                const samplerInput = document.getElementById(`${stageId}_sampler`);
+                const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
+                if (samplerInput) samplerInput.value = adv.sampler;
+                if (noiseSchedulerInput && adv.noiseScheduler) noiseSchedulerInput.value = adv.noiseScheduler;
+                
+                // Update display
+                updateStageSamplerDisplay(stageId);
+            }
+            
+            const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+            if (varietyBtn && adv.variety) {
+                varietyBtn.dataset.state = 'on';
+            }
+            
+            const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+            const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+            const seedInput = document.getElementById(`${stageId}_seed`);
+            
+            // Handle inherit seed toggle
+            if (inheritSeedToggle) {
+                const isInheriting = adv.inheritSeed === true;
+                inheritSeedToggle.dataset.state = isInheriting ? 'on' : 'off';
+                if (isInheriting) {
+                    seedInput.disabled = true;
+                    seedInput.placeholder = 'Inherited';
+                    if (autoSeedToggle) autoSeedToggle.classList.add('hidden');
+                } else {
+                    // Not inheriting: enable seed input
+                    seedInput.disabled = false;
+                    seedInput.placeholder = 'Random';
+                }
+            }
+            
+            if (autoSeedToggle && seedInput) {
+                // Store loaded seed in dataset (check stageData.seed first, then adv.seed)
+                if (stageData.seed) {
+                    seedInput.dataset.loadedSeed = stageData.seed.toString();
+                } else if (adv.seed) {
+                    seedInput.dataset.loadedSeed = adv.seed.toString();
+                }
+                if (!adv.inheritSeed) {
+                    autoSeedToggle.classList.remove('hidden');
+                }
+
+                if (adv.autoSeed !== undefined) {
+                    autoSeedToggle.dataset.state = adv.autoSeed ? 'on' : 'off';
+
+                    if (!adv.autoSeed) {
+                        // Locked state: set value and make read-only (don't set placeholder since value is shown)
+                        seedInput.value = adv.seed;
+                        seedInput.disabled = true;
+                    } else {
+                        // Auto state: clear value, make editable, and show loaded seed as placeholder
+                        seedInput.value = '';
+                        seedInput.disabled = false;
+                        if (adv.seed) {
+                            seedInput.placeholder = adv.seed.toString();
+                        }
+                    }
+                } else {
+                    // No autoSeed state saved, default to auto mode
+                    autoSeedToggle.dataset.state = 'on';
+                    seedInput.value = '';
+                    seedInput.disabled = false;
+                    if (adv.seed) {
+                        seedInput.placeholder = adv.seed.toString();
+                    }
+                }
+            }
+        }
+    }
+    
+    // Load save results toggle
+    if (stageData.saveResults !== undefined) {
+        const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
+        if (saveResultsToggle) {
+            saveResultsToggle.dataset.state = stageData.saveResults ? 'on' : 'off';
+        }
+    }
+    
+    // Load upscale toggle
+    const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
+    if (upscaleToggle) {
+        if (stageData.upscale !== undefined) {
+            upscaleToggle.dataset.state = stageData.upscale ? 'on' : 'off';
+        }
+        // Show upscale toggle only if save is enabled
+        if (stageData.saveResults) {
+            upscaleToggle.disabled = false;
+            upscaleToggle.title = 'Enable Upscaling';
+            upscaleToggle.classList.remove('hidden');
+        } else {
+            upscaleToggle.disabled = true;
+            upscaleToggle.title = 'Upscaling not available';
+        }
+    }
+    
+    // Load stop toggle
+    if (stageData.stopAtStage !== undefined) {
+        const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+        if (stopToggle) {
+            stopToggle.dataset.state = stageData.stopAtStage ? 'on' : 'off';
+        }
+    }
+    
+    // Load branch toggle
+    if (stageData.branch !== undefined) {
+        const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+        if (branchToggle) {
+            branchToggle.dataset.state = stageData.branch ? 'on' : 'off';
+            
+            // Update visual indicator
+            const stageItem = document.getElementById(stageId);
+            if (stageItem) {
+                if (stageData.branch) {
+                    stageItem.classList.add('stage-branch');
+                } else {
+                    stageItem.classList.remove('stage-branch');
+                }
+            }
+        }
+    }
+
+    // Populate seed from stage_seeds if provided (updates dataset.loadedSeed for display)
+    if (stageSeed && stageSeed.seed !== undefined) {
+        const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+        const seedInput = document.getElementById(`${stageId}_seed`);
+
+        if (autoSeedToggle && seedInput) {
+            // Store loaded seed in dataset (for auto mode display)
+            seedInput.dataset.loadedSeed = stageSeed.seed.toString();
+
+            // Check if we're in inherit mode
+            const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+            const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
+            
+            if (!isInheritMode) {
+                // Only update UI if not in inherit mode
+                autoSeedToggle.classList.remove('hidden');
+                
+                // Check if there's already a value set (from advanced config)
+                if (!seedInput.value) {
+                    // No explicit value - update placeholder based on current auto seed state
+                    const currentAutoSeedState = autoSeedToggle.dataset.state;
+                    if (currentAutoSeedState === 'on') {
+                        // Auto mode: show seed in placeholder
+                        seedInput.placeholder = stageSeed.seed.toString();
+                    }
+                }
+                // If seedInput.value exists, it means a locked seed was loaded from advanced config - don't override
+            }
+        }
+    }
+}
+
+// Load enhance stage data
+function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
+    if (!stageData) return;
+    
+    // Setup toggle state (default true for legacy enhance, respect useBaseImage for variation)
+    const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const useBase = stageData.useBaseImage === undefined ? (stageData.type === STAGE_TYPES.ENHANCE) : !!stageData.useBaseImage;
+    if (useBaseToggle) {
+        useBaseToggle.dataset.state = useBase ? 'on' : 'off';
+        // Apply visibility
+        const groupMagnitude = document.querySelector(`#${stageId}_body .group-magnitude`);
+        const groupStrength = document.querySelector(`#${stageId}_body .group-strength`);
+        const groupNoise = document.querySelector(`#${stageId}_body .group-noise`);
+        if (groupMagnitude) groupMagnitude.classList.toggle('hidden', !useBase);
+        if (groupStrength) groupStrength.classList.toggle('hidden', !useBase);
+        if (groupNoise) groupNoise.classList.toggle('hidden', !useBase);
+    }
+    
+    const strengthInput = document.getElementById(`${stageId}_strength`);
+    const noiseInput = document.getElementById(`${stageId}_noise`);
+    const strengthOverlay = document.getElementById(`${stageId}_strengthOverlay`);
+    const noiseOverlay = document.getElementById(`${stageId}_noiseOverlay`);
+    const magnitudeInput = document.getElementById(`${stageId}_magnitude`);
+    
+    // Provide default values if missing
+    const strength = stageData.strength !== undefined ? stageData.strength : 0.5;
+    const noise = stageData.noise !== undefined ? stageData.noise : 0.0;
+    
+    // Check if values match a magnitude preset
+    let matchedMagnitude = null;
+    for (const [mag, preset] of Object.entries(MAGNITUDE_PRESETS)) {
+        if (Math.abs(strength - preset.strength) < 0.01 && 
+            Math.abs(noise - preset.noise) < 0.01) {
+            matchedMagnitude = parseFloat(mag);
+            break;
+        }
+    }
+    
+    if (matchedMagnitude) {
+        // Set magnitude and clear strength/noise (inherited state - like rescale)
+        if (magnitudeInput) {
+            magnitudeInput.value = matchedMagnitude.toFixed(1);
+            magnitudeInput.placeholder = '';
+        }
+        // Clear values, overlay shows the preset (no dataset needed)
+        if (strengthInput) strengthInput.value = '';
+        if (noiseInput) noiseInput.value = '';
+        if (strengthOverlay) strengthOverlay.textContent = `${(strength * 100).toFixed(0)}%`;
+        if (noiseOverlay) noiseOverlay.textContent = `${(noise * 100).toFixed(0)}%`;
+        
+        // Add inherited class (dimmed appearance)
+        const strengthContainer = strengthInput?.parentElement;
+        const noiseContainer = noiseInput?.parentElement;
+        if (strengthContainer) strengthContainer.classList.add('inherited');
+        if (noiseContainer) noiseContainer.classList.add('inherited');
+    } else {
+        // Set values directly, magnitude becomes placeholder
+        if (magnitudeInput) {
+            magnitudeInput.value = '';
+            magnitudeInput.placeholder = '3.0'; // Default placeholder when custom
+        }
+        if (strengthInput) strengthInput.value = strength.toFixed(2);
+        if (noiseInput) noiseInput.value = noise.toFixed(2);
+        if (strengthOverlay) strengthOverlay.textContent = `${(strength * 100).toFixed(0)}%`;
+        if (noiseOverlay) noiseOverlay.textContent = `${(noise * 100).toFixed(0)}%`;
+        
+        // Remove inherited class (custom values)
+        const strengthContainer = strengthInput?.parentElement;
+        const noiseContainer = noiseInput?.parentElement;
+        if (strengthContainer) strengthContainer.classList.remove('inherited');
+        if (noiseContainer) noiseContainer.classList.remove('inherited');
+    }
+    
+    // Load resolution based on mode
+    if (useBase) {
+    if (stageData.resolution && stageData.resolution !== 'custom' && !stageData.resolution.includes('_')) {
+        // Area value directly into unified resolution input
+        const resolutionInput = document.getElementById(`${stageId}_resolution`);
+        if (resolutionInput) resolutionInput.value = stageData.resolution;
+        selectStageEnhanceResolution(stageId, stageData.resolution);
+        }
+    } else if (stageData.resolution) {
+        if (stageData.resolution === 'custom') {
+            const widthInput = document.getElementById(`${stageId}_width`);
+            const heightInput = document.getElementById(`${stageId}_height`);
+            if (widthInput && stageData.width) widthInput.value = stageData.width;
+            if (heightInput && stageData.height) heightInput.value = stageData.height;
+            selectStageResolution(stageId, 'custom', null);
+        } else {
+            let group = null;
+            for (const g of RESOLUTION_GROUPS) {
+                const found = g.options.find(o => o.value === stageData.resolution);
+                if (found) { group = g.group; break; }
+            }
+            selectStageResolution(stageId, stageData.resolution, group);
+        }
+    }
+    
+    // Load advanced controls if present (same as expand canvas)
+    if (stageData.advanced) {
+        const adv = stageData.advanced;
+        const advancedControls = document.getElementById(`${stageId}_advancedControls`);
+        const advancedToggleBtn = document.getElementById(`${stageId}_advancedToggle`);
+
+        // Set model
+        if (adv.model) {
+            const modelInput = document.getElementById(`${stageId}_model`);
+            if (modelInput) {
+                modelInput.value = adv.model;
+                selectStageModel(stageId, adv.model);
+            }
+        }
+        
+        // Set steps
+        const stepsInput = document.getElementById(`${stageId}_steps`);
+        if (stepsInput && adv.steps !== null && adv.steps !== undefined) {
+            stepsInput.value = adv.steps;
+        }
+        
+        // Set guidance
+        const guidanceInput = document.getElementById(`${stageId}_guidance`);
+        if (guidanceInput && adv.guidance !== null && adv.guidance !== undefined) {
+            guidanceInput.value = adv.guidance.toFixed(2);
+        }
+        
+        // Set rescale
+        const rescaleInput = document.getElementById(`${stageId}_rescale`);
+        const rescaleOverlay2 = document.getElementById(`${stageId}_rescaleOverlay`);
+        if (rescaleInput && adv.rescale !== null && adv.rescale !== undefined) {
+            rescaleInput.value = adv.rescale.toFixed(2);
+            if (rescaleOverlay2) {
+                rescaleOverlay2.textContent = `${(adv.rescale * 100).toFixed(0)}%`;
+            }
+            const rescaleContainer = rescaleInput.parentElement;
+            if (rescaleContainer) rescaleContainer.classList.remove('inherited');
+        }
+        
+        // Set sampler
+        if (adv.sampler) {
+            const samplerInput = document.getElementById(`${stageId}_sampler`);
+            if (samplerInput) {
+                samplerInput.value = adv.sampler;
+                selectStageSampler(stageId, adv.sampler, adv.noiseScheduler || 'native');
+            }
+        }
+        
+        // Set variety
+        const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
+        if (varietyBtn && adv.variety !== undefined) {
+            varietyBtn.dataset.state = adv.variety ? 'on' : 'off';
+        }
+        
+        // Set seed toggle and value
+        const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+        const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+        const seedInputAdv = document.getElementById(`${stageId}_seed`);
+        
+        // Handle inherit seed toggle
+        if (inheritSeedToggle) {
+            const isInheriting = adv.inheritSeed === true;
+            inheritSeedToggle.dataset.state = isInheriting ? 'on' : 'off';
+            if (isInheriting) {
+                seedInputAdv.disabled = true;
+                seedInputAdv.placeholder = 'Inherited';
+                if (autoSeedToggle) autoSeedToggle.classList.add('hidden');
+            } else {
+                // Not inheriting: enable seed input
+                seedInputAdv.disabled = false;
+                seedInputAdv.placeholder = 'Random';
+            }
+        }
+        
+        if (autoSeedToggle && seedInputAdv) {
+            // Store loaded seed in dataset (check stageData.seed first, then adv.seed)
+            if (stageData.seed) {
+                seedInputAdv.dataset.loadedSeed = stageData.seed.toString();
+            } else if (adv.seed) {
+                seedInputAdv.dataset.loadedSeed = adv.seed.toString();
+
+                // Show the toggle button since we have a seed (only if not inheriting)
+                if (!adv.inheritSeed) {
+                    autoSeedToggle.classList.remove('hidden');
+                }
+
+            if (adv.autoSeed !== undefined) {
+                    autoSeedToggle.dataset.state = adv.autoSeed ? 'on' : 'off';
+
+                    if (!adv.autoSeed) {
+                        // Locked state: set value and make read-only (don't set placeholder since value is shown)
+                        seedInputAdv.value = seedInputAdv.dataset.loadedSeed;
+                        seedInputAdv.disabled = true;
+                    } else {
+                        // Auto state: clear value, make editable, and show loaded seed as placeholder
+                        seedInputAdv.value = '';
+                        seedInputAdv.disabled = false;
+                        seedInputAdv.placeholder = seedInputAdv.dataset.loadedSeed;
+                    }
+                } else {
+                    // No autoSeed state saved, default to auto mode
+                    autoSeedToggle.dataset.state = 'on';
+                    seedInputAdv.value = '';
+                    seedInputAdv.disabled = false;
+                    seedInputAdv.placeholder = seedInputAdv.dataset.loadedSeed;
+                }
+            } else {
+                // No seed loaded - keep button hidden
+                autoSeedToggle.classList.add('hidden');
+                autoSeedToggle.dataset.state = 'on';
+            }
+        }
+    }
+    
+    // Load save results toggle
+    if (stageData.saveResults !== undefined) {
+        const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
+        if (saveResultsToggle) {
+            saveResultsToggle.dataset.state = stageData.saveResults ? 'on' : 'off';
+        }
+    }
+    
+    // Load upscale toggle
+    const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
+    if (upscaleToggle) {
+        if (stageData.upscale !== undefined) {
+            upscaleToggle.dataset.state = stageData.upscale ? 'on' : 'off';
+        }
+        // Show upscale toggle only if save is enabled
+        if (stageData.saveResults) {
+            upscaleToggle.disabled = false;
+            upscaleToggle.title = 'Enable Upscaling';
+        } else {
+            upscaleToggle.disabled = true;
+            upscaleToggle.title = 'Upscaling not available';
+        }
+    }
+    
+    // Load stop toggle
+    if (stageData.stopAtStage !== undefined) {
+        const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+        if (stopToggle) {
+            stopToggle.dataset.state = stageData.stopAtStage ? 'on' : 'off';
+        }
+    }
+    
+    // Load branch toggle
+    if (stageData.branch !== undefined) {
+        const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+        if (branchToggle) {
+            branchToggle.dataset.state = stageData.branch ? 'on' : 'off';
+            
+            // Update visual indicator
+            const stageItem = document.getElementById(stageId);
+            if (stageItem) {
+                if (stageData.branch) {
+                    stageItem.classList.add('stage-branch');
+                } else {
+                    stageItem.classList.remove('stage-branch');
+                }
+            }
+        }
+    }
+    
+    // Populate seed from stage_seeds if provided (updates dataset.loadedSeed for display)
+    if (stageSeed && stageSeed.seed !== undefined) {
+        const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
+        const seedInput = document.getElementById(`${stageId}_seed`);
+
+        if (autoSeedToggle && seedInput) {
+            // Store loaded seed in dataset (for auto mode display)
+            seedInput.dataset.loadedSeed = stageSeed.seed.toString();
+
+            // Check if we're in inherit mode
+            const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
+            const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
+            
+            if (!isInheritMode) {
+                // Only update UI if not in inherit mode
+                autoSeedToggle.classList.remove('hidden');
+                
+                // Check if there's already a value set (from advanced config)
+                if (!seedInput.value) {
+                    // No explicit value - update placeholder based on current auto seed state
+                    const currentAutoSeedState = autoSeedToggle.dataset.state;
+                    if (currentAutoSeedState === 'on') {
+                        // Auto mode: show seed in placeholder
+                        seedInput.placeholder = stageSeed.seed.toString();
+                    }
+                }
+                // If seedInput.value exists, it means a locked seed was loaded from advanced config - don't override
+            }
+        }
+    }
+    
+    // Initialize inherited states
+    updateStageDropdownInheritedState(stageId);
+    updateStageResetButtonVisibility(stageId);
+}
+
+// Helper function to get bias name (for 5-position system, orientation-agnostic)
+function getBiasName(value, isPortrait = false) {
+    // Map to the 5-position system names based on orientation
+    const portraitNames = ['Top', 'Mid-Top', 'Center', 'Mid-Bottom', 'Bottom'];
+    const landscapeNames = ['Left', 'Mid-Left', 'Center', 'Mid-Right', 'Right'];
+    
+    const names = isPortrait ? portraitNames : landscapeNames;
+    const numValue = parseInt(value);
+    
+    // Handle both 0-4 range and legacy 0-8 range by mapping to 0-4
+    if (numValue >= 0 && numValue <= 4) {
+        return names[numValue] || 'Center';
+    }
+    // If legacy value, just return Center
+    return 'Center';
 }
 
 // Cell Label Functions - Do not remove or modify this function
@@ -10199,9 +18384,13 @@ function updateCharacterPromptPreview(characterId) {
 }
 
 // Generate button hover popover functions
-function showGenerateButtonPopover() {
+function showGenerateButtonPopoverFor(button) {
     const counter = imageCount || '0';
     const popover = createGenerateButtonPopover(counter);
+    showGenerateButtonPopoverForButton(button, popover);
+}
+
+function showGenerateButtonPopoverForButton(button, popover) {
     
     // Add to DOM first to get dimensions
     document.body.appendChild(popover);
@@ -10211,7 +18400,7 @@ function showGenerateButtonPopover() {
     const viewportHeight = window.innerHeight;
     
     // Position the popover above the button
-    const buttonRect = manualGenerateBtn.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
     popover.style.position = 'fixed';
     
     // Calculate initial position (above the button)
@@ -10247,13 +18436,13 @@ function showGenerateButtonPopover() {
     popover.style.left = `${left}px`;
     
     // Store reference for cleanup
-    manualGenerateBtn.popoverElement = popover;
+    button.popoverElement = popover;
 }
 
-function hideGenerateButtonPopover() {
-    if (manualGenerateBtn.popoverElement) {
-        manualGenerateBtn.popoverElement.remove();
-        manualGenerateBtn.popoverElement = null;
+function hideGenerateButtonPopoverFor(button) {
+    if (button && button.popoverElement) {
+        button.popoverElement.remove();
+        button.popoverElement = null;
     }
 }
 
@@ -10365,7 +18554,23 @@ function handleServerPing(data) {
     // Set timeout for next ping (15 seconds)
     pingTimeoutId = setTimeout(() => {
         if (!connectionToastId) {
-            connectionToastId = showGlassToast('warning', 'Connection Status', 'Waiting for server response...', false, undefined, '<i class="fas fa-phone-arrow-up-right fa-fade"></i>');
+            const reconnectButton = {
+                text: 'Reconnect',
+                type: 'primary',
+                onClick: () => {
+                    console.log('User initiated reconnection');
+                    if (window.wsClient) {
+                        window.wsClient.reconnect();
+                    }
+                    if (connectionToastId) {
+                        removeGlassToast(connectionToastId);
+                        connectionToastId = null;
+                    }
+                },
+                closeOnClick: false
+            };
+            
+            connectionToastId = showGlassToast('warning', 'Connection Status', 'Waiting for server response...', false, false, '<i class="fas fa-phone-arrow-up-right fa-fade"></i>', [reconnectButton]);
         }
     }, 15000);
 }
@@ -10447,15 +18652,11 @@ async function handleBulkMoveToWorkspace() {
         if (typeof triggerGalleryMoveWithSelection === 'function') {
             triggerGalleryMoveWithSelection();
         } else {
-            // Fallback to old modal if function not available
             showError('Gallery move functionality not available');
-            // Clear selection even if modal fails to prevent stuck state
             clearSelection();
         }
     } catch (error) {
-        console.error('Error in handleBulkMoveToWorkspace:', error);
         showError('Failed to open move modal: ' + error.message);
-        // Clear selection on error to prevent stuck state
         clearSelection();
     }
 }
@@ -10501,7 +18702,6 @@ async function moveBulkImagesToWorkspace(workspaceId) {
     } catch (error) {
         console.error('Error moving items to workspace:', error);
         showError('Failed to move items: ' + error.message);
-        // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
         showManualLoading(false);
@@ -10564,7 +18764,6 @@ async function handleBulkDelete(event = null) {
     } catch (error) {
         console.error('Bulk delete error:', error);
         showError('Bulk delete failed: ' + error.message);
-        // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
         showManualLoading(false);
@@ -10630,12 +18829,10 @@ async function handleBulkSequenzia(event = null) {
     } catch (error) {
         console.error('Send to Sequenzia error:', error);
         showError('Send to Sequenzia failed: ' + error.message);
-        // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
         showManualLoading(false);
 
-        // Clear selection and remove images from gallery
         clearSelection();
         switchGalleryView(currentGalleryView, true);
     }
@@ -10771,6 +18968,113 @@ async function clearAllCachesAndReload() {
         if (typeof showGlassToast === 'function') {
             showGlassToast('error', 'Cache Clear Failed', 'Failed to clear caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
         }
+    }
+}
+
+// Handle metadata cache rebuild
+async function handleRefreshMetadataCache() {
+    try {
+        // Show confirmation dialog
+        const confirmed = await showConfirmationDialog(
+            'This will rebuild the metadata cache for all images. This may take a while depending on the number of images. Continue?',
+            [
+                { text: 'Rebuild Cache', value: true, className: 'btn-danger' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+        
+        if (!confirmed) return;
+
+        // Show loading toast with progress
+        let progressToastId = null;
+        
+        // Send websocket message
+        const requestId = Date.now().toString();
+        wsClient.send({
+            type: 'rebuild_metadata_cache',
+            requestId: requestId
+        });
+
+        // Set up response handler
+        let lastPercentage = 0;
+        const handleResponse = (message) => {
+            if (message.requestId === requestId) {
+                if (message.type === 'rebuild_metadata_cache_progress') {
+                    // Show progress updates
+                    const percentage = message.data.percentage || 0;
+                    
+                    // Update toast if percentage changed
+                    if (Math.floor(percentage) !== Math.floor(lastPercentage)) {
+                        if (progressToastId) {
+                            // Update existing toast with new progress and message
+                            if (typeof updateGlassToastComplete === 'function') {
+                                updateGlassToastComplete(progressToastId, {
+                                    type: 'info',
+                                    title: 'Metadata Cache',
+                                    message: `Rebuilding: ${message.data.current}/${message.data.total} files processed`
+                                });
+                            }
+                            // Update progress bar
+                            if (typeof updateGlassToastProgress === 'function') {
+                                updateGlassToastProgress(progressToastId, percentage);
+                            }
+                        } else {
+                            // Create initial toast with progress bar
+                            progressToastId = showGlassToast(
+                                'info',
+                                'Metadata Cache',
+                                'Starting rebuild...',
+                                true, // showProgress
+                                false, // no timeout
+                                '<i class="fa-light fa-rotate fa-spin"></i>'
+                            );
+                        }
+                        lastPercentage = percentage;
+                    }
+                } else if (message.type === 'rebuild_metadata_cache_response') {
+                    // Remove handler
+                    wsClient.off('message', handleResponse);
+                    
+                    // Close progress toast
+                    if (progressToastId && typeof removeGlassToast === 'function') {
+                        removeGlassToast(progressToastId);
+                    }
+
+                    if (message.data.success) {
+                        showGlassToast(
+                            'success',
+                            'Metadata Cache Rebuilt',
+                            `${message.data.updatedCount} files updated successfully`,
+                            false,
+                            5000,
+                            '<i class="fas fa-check-circle"></i>'
+                        );
+                    } else {
+                        showGlassToast(
+                            'error',
+                            'Rebuild Failed',
+                            message.data.error || 'Failed to rebuild metadata cache',
+                            false,
+                            5000,
+                            '<i class="fas fa-exclamation-circle"></i>'
+                        );
+                    }
+                }
+            }
+        };
+
+        wsClient.on('message', handleResponse);
+
+    } catch (error) {
+        console.error('Error rebuilding metadata cache:', error);
+        showGlassToast(
+            'error',
+            'Rebuild Error',
+            'Failed to rebuild metadata cache: ' + error.message,
+            false,
+            5000,
+            '<i class="fas fa-exclamation-circle"></i>'
+        );
     }
 }
 
@@ -10920,15 +19224,20 @@ function setupMainMenuContextMenus() {
                             action: 'cache-manager'
                         },
                         {
-                            icon: 'fa-light fa-language',
+                            icon: 'fa-light fa-book-font',
                             text: 'Expanders',
                             action: 'text-replacement-manager'
                         },
-                        /* {
+                        {
+                            icon: 'fa-light fa-rotate',
+                            text: 'Refresh Metadata',
+                            action: 'refresh-metadata-cache'
+                        },
+                        {
                             icon: 'fa-light fa-messages',
                             text: 'Chat Persona',
                             action: 'chat-manager'
-                        },
+                        }/*,
                         {
                             icon: 'fa-light fa-ban',
                             text: 'Blocked Clients',
@@ -11120,6 +19429,7 @@ function setupMainMenuContextMenus() {
                             icon: 'fa-light fa-droplet',
                             tooltip: 'Liquid Glass',
                             action: 'toggle-glass',
+                            keepMenuOpen: true,
                             loadfn: (icon, target) => {
                                 const isOn = document.documentElement.classList.contains('disable-blur');
                                 icon.dataState = !isOn ? 'on' : 'off';
@@ -11129,6 +19439,7 @@ function setupMainMenuContextMenus() {
                             icon: 'fa-light fa-blinds',
                             tooltip: 'Focus Cover',
                             action: 'toggle-privacy-mode',
+                            keepMenuOpen: true,
                             loadfn: (icon, target) => {
                                 icon.dataState = focusCoverEnabled ? 'on' : 'off';
                             },
@@ -11232,6 +19543,11 @@ function setupMainMenuContextMenus() {
                 showTextReplacementManager();
                 break;
                 
+            case 'refresh-metadata-cache':
+                // Rebuild metadata cache
+                await handleRefreshMetadataCache();
+                break;
+                
             case 'upload':
                 // Open upload modal directly
                 unifiedUploadModalManager.show();
@@ -11294,10 +19610,242 @@ function setupMainMenuContextMenus() {
                     handleLogout();
                 }
                 break;
+
+            default:
+                // Handle individual text replacement lock toggles
+                if (action.startsWith('toggleTextReplacementLock_')) {
+                    const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
+                    const allReplacements = window.lastGenerationTextReplacements || [];
+                    
+                    if (!isNaN(index) && allReplacements[index]) {
+                        const seed = allReplacements[index];
+                        const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+                        
+                        if (canLock) {
+                            // Toggle the locked state
+                            seed.locked = !seed.locked;
+                            
+                            // Update the global lock state
+                            const lockedSeeds = allReplacements.filter(s => s.locked === true);
+                            window.lockedTextReplacements = lockedSeeds;
+                            updateMainLockButtonState();
+                        }
+                    }
+                }
+                break;
         }
     });
 
 }
+
+
+/**
+ * Calculate generation progress percentage based on phase and data
+ * @param {Object} progressData - Progress data from server
+ * @returns {number} Progress percentage (0-100)
+ */
+function calculateGenerationProgress(progressData) {
+    const { phase, currentStep, totalSteps, currentKey, totalKeys, hasDynamicGen, isUpscaling, totalStages, currentStage } = progressData;
+
+    // Handle staged generation
+    if (totalStages && currentStage !== undefined) {
+        switch (phase) {
+            case 'generating':
+                // Calculate progress per stage: (currentStage / totalStages) + (stepProgress / totalStages)
+                const stageProgress = ((currentStage - 1) / totalStages) * 100; // -1 because currentStage is 1-based
+                if (totalSteps && totalSteps > 0) {
+                    const stepProgress = (currentStep / totalSteps) * (100 / totalStages);
+                    return Math.min(stageProgress + stepProgress, 95);
+                }
+                return Math.min(stageProgress, 95);
+
+            case 'stage_delay':
+                // During delay, show progress for current stage
+                return (currentStage / totalStages) * 100;
+
+            case 'upscaling':
+                return 96;
+
+            case 'previews':
+                return 98;
+
+            case 'complete':
+                return 100;
+
+            default:
+                return (currentStage / totalStages) * 100;
+        }
+    }
+
+    // Handle no-dynamic-gen path (skip 0-25% phases)
+    if (hasDynamicGen === false) {
+        switch (phase) {
+            case 'generating':
+                // 15-95%: Image generation steps (start from 15% instead of 26%)
+                if (totalSteps && totalSteps > 0) {
+                    const baseProgress = 15;
+                    const rangeSize = isUpscaling ? 60 : 80; // 75% or 95% end point from 15%
+                    const stepProgress = (currentStep / totalSteps) * rangeSize;
+                    return Math.min(baseProgress + stepProgress, isUpscaling ? 75 : 95);
+                }
+                return 15;
+
+            case 'upscaling':
+                // 76-95%: Upscaling (client-side timer)
+                return 76;
+
+            case 'previews':
+                // 97%: Preview generation starting
+                return 97;
+
+            case 'complete':
+                // 100%: Complete
+                return 100;
+
+            default:
+                return 15; // Default to 15% for non-dynamic generation
+        }
+    }
+
+    // Normal path with dynamic generation
+    switch (phase) {
+        case 'initializing':
+            // 0-15%: AI processing starting (client-side timer)
+            return 0;
+
+        case 'ai_streaming':
+            // 16-25%: AI streaming progress
+            if (totalKeys && totalKeys > 0) {
+                const baseProgress = 16;
+                const keyProgress = (currentKey / totalKeys) * 9; // 9% range for keys
+                return Math.min(baseProgress + keyProgress, 25);
+            }
+            return 16;
+
+        case 'ai_complete':
+            // 25%: AI processing complete
+            return 25;
+
+        case 'generating':
+            // 26-95%: Image generation steps
+            if (totalSteps && totalSteps > 0) {
+                const baseProgress = 26;
+                const rangeSize = isUpscaling ? 49 : 69; // 75% or 95% end point
+                const stepProgress = (currentStep / totalSteps) * rangeSize;
+                return Math.min(baseProgress + stepProgress, isUpscaling ? 75 : 95);
+            }
+            return 26;
+
+        case 'upscaling':
+            // 76-95%: Upscaling (client-side timer)
+            return 76;
+
+        case 'previews':
+            // 97%: Preview generation starting
+            return 97;
+
+        case 'complete':
+            // 100%: Complete
+            return 100;
+
+        default:
+            return 0;
+    }
+}
+
+/**
+ * Initialize stage indicators for manual modal generation
+ * @param {number} totalStages - Total number of stages in the generation
+ */
+function initializeStageIndicators(totalStages) {
+    const container = document.getElementById('manualStageIndicators');
+    if (!container || totalStages <= 1) {
+        if (container) {
+            container.classList.add('hidden');
+        }
+        return;
+    }
+
+    container.innerHTML = '';
+    container.classList.remove('hidden');
+
+    for (let i = 0; i < totalStages; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'manual-stage-indicator-dot';
+        dot.dataset.stage = i + 1;
+        container.appendChild(dot);
+    }
+}
+
+/**
+ * Update stage indicators based on generation progress
+ * @param {Object} progressData - Progress data from server
+ */
+function updateStageIndicators(progressData) {
+    const container = document.getElementById('manualStageIndicators');
+    if (!container || container.classList.contains('hidden')) {
+        return;
+    }
+
+    const { phase, currentStage, totalStages, currentStep, totalSteps } = progressData;
+    
+    if (!totalStages || !currentStage) {
+        return;
+    }
+
+    const dots = container.querySelectorAll('.manual-stage-indicator-dot');
+    if (dots.length !== totalStages) {
+        // Re-initialize if mismatch
+        initializeStageIndicators(totalStages);
+        return;
+    }
+
+    dots.forEach((dot, index) => {
+        const dotStage = index + 1;
+        
+        // Remove all state classes
+        dot.classList.remove('completed', 'active', 'delay', 'generating');
+        dot.style.removeProperty('--stage-progress');
+
+        if (dotStage < currentStage) {
+            // Completed stages
+            dot.classList.add('completed');
+        } else if (dotStage === currentStage) {
+            // Current stage
+            if (phase === 'stage_delay') {
+                // Pulsing during delay
+                dot.classList.add('active', 'delay');
+            } else if (phase === 'generating') {
+                // Generating phase
+                if (totalSteps && currentStep) {
+                    // Show progress within stage (streaming with steps)
+                    dot.classList.add('active');
+                    const stageProgress = currentStep / totalSteps;
+                    dot.style.setProperty('--stage-progress', stageProgress);
+                } else {
+                    // No step info - pulse background (non-streaming like img2img/enhance)
+                    dot.classList.add('active', 'generating');
+                }
+            } else {
+                // Active but no specific progress (other phases)
+                dot.classList.add('active');
+            }
+        }
+        // Future stages remain in default state
+    });
+}
+
+/**
+ * Hide stage indicators
+ */
+function hideStageIndicators() {
+    const container = document.getElementById('manualStageIndicators');
+    if (container) {
+        container.classList.add('hidden');
+        container.innerHTML = '';
+    }
+}
+
 // Register main app initialization steps with WebSocket client
 if (window.wsClient) {
     wsClient.on('disconnected', (event) => {
@@ -11568,7 +20116,6 @@ if (window.wsClient) {
         } catch (error) {
             console.error('❌ Critical: Failed to load application data:', error);
             
-            // Show critical error and provide recovery options
             const confirmed = await showConfirmationDialog(
                 'Failed to load application data. This may be due to a server issue or connection problem.',
                 [
@@ -11589,6 +20136,22 @@ if (window.wsClient) {
         }
     }, true);
 
+    window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
+        try {
+            t5Tokenizer = new T5Tokenizer();
+            
+            // Load tokenizer configuration from protected folder
+            const response = await fetch('/protected/t5_tokenizer.json');
+            const config = await response.json();
+            await t5Tokenizer.loadFromJSON(config);
+            
+            console.log('✅ T5 Tokenizer loaded successfully');
+            return true;
+        } catch (error) {
+            console.error('❌ Failed to load T5 tokenizer:', error);
+            return false;
+        }
+    }, true);
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
         // Handle queue status
@@ -11623,6 +20186,8 @@ if (window.wsClient) {
         updateSubTogglesButtonState();
         renderUcPresetsDropdown();
         selectUcPreset(0);
+        setupUcDropdownContextMenu();
+        setupDatasetDropdownContextMenu();
 
         galleryRows = calculateGalleryRows();
         const galleryToggleGroup = document.getElementById('galleryToggleGroup');
@@ -11643,6 +20208,7 @@ if (window.wsClient) {
         await setupEventListeners();
 
         setupMainMenuContextMenus();
+        setupDynamicGenerationContextMenus();
         
         initializeSessionValidation();
         
@@ -11654,6 +20220,7 @@ if (window.wsClient) {
 
 // Window Controls Overlay API - OS Detection and class addition
 document.addEventListener('DOMContentLoaded', () => {
+    
     // Function to update window controls overlay classes
     function updateWindowControlsOverlayClasses() {
 
@@ -11840,3 +20407,5 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+

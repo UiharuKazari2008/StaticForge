@@ -96,6 +96,9 @@ const RESOLUTIONS = [
     { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
     { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
     { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+    { value: 'xlarge_portrait', display: 'Max Portrait', width: 1408, height: 2112, aspect: 0.667 },
+    { value: 'xlarge_landscape', display: 'Max Landscape', width: 2112, height: 1408, aspect: 1.5 },
+    { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
     { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
     { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
 ];
@@ -128,7 +131,9 @@ const RESOLUTION_GROUPS = [
         options: RESOLUTIONS.filter(r => r.value.startsWith('normal_')).map(r => ({
             value: r.value,
             name: r.display.replace('Normal ', ''),
-            dims: `${r.width}x${r.height}`
+            dims: `${r.width}x${r.height}`,
+            width: r.width,
+            height: r.height
         })),
         free: true
     },
@@ -138,7 +143,9 @@ const RESOLUTION_GROUPS = [
         options: RESOLUTIONS.filter(r => r.value.startsWith('large_')).map(r => ({
             value: r.value,
             name: r.display.replace('Large ', ''),
-            dims: `${r.width}x${r.height}`
+            dims: `${r.width}x${r.height}`,
+            width: r.width,
+            height: r.height
         }))
     },
     {
@@ -147,7 +154,20 @@ const RESOLUTION_GROUPS = [
         options: RESOLUTIONS.filter(r => r.value.startsWith('wallpaper_')).map(r => ({
             value: r.value,
             name: r.display.replace('Wallpaper ', ''),
-            dims: `${r.width}x${r.height}`
+            dims: `${r.width}x${r.height}`,
+            width: r.width,
+            height: r.height
+        }))
+    },
+    {
+        group: 'Maximum',
+        badge: 'XL',
+        options: RESOLUTIONS.filter(r => r.value.startsWith('xlarge_')).map(r => ({
+            value: r.value,
+            name: r.display.replace('Max ', ''),
+            dims: `${r.width}x${r.height}`,
+            width: r.width,
+            height: r.height
         }))
     },
     {
@@ -156,7 +176,9 @@ const RESOLUTION_GROUPS = [
         options: RESOLUTIONS.filter(r => r.value.startsWith('small_')).map(r => ({
             value: r.value,
             name: r.display.replace('Small ', ''),
-            dims: `${r.width}x${r.height}`
+            dims: `${r.width}x${r.height}`,
+            width: r.width,
+            height: r.height
         })),
         free: true
     },
@@ -440,7 +462,7 @@ function updateV3ModelVisibility() {
 
     // Use window references to access DOM elements defined in app.js
     const datasetDropdownEl = window.datasetDropdown || datasetDropdown;
-    const addCharacterBtnEl = window.addCharacterBtn || addCharacterBtn;
+    const addItemDropdownEl = window.addItemDropdown || addItemDropdown;
     const characterPromptsContainerEl = window.characterPromptsContainer || characterPromptsContainer;
 
     if (datasetDropdownEl) {
@@ -451,12 +473,12 @@ function updateV3ModelVisibility() {
         }
     }
 
-    // Hide/show character prompts for V3 models
-    if (addCharacterBtnEl) {
+    // Hide/show add item dropdown for V3 models
+    if (addItemDropdownEl) {
         if (isV3Selected) {
-            addCharacterBtnEl.classList.add('hidden');
+            addItemDropdownEl.classList.add('hidden');
         } else {
-            addCharacterBtnEl.classList.remove('hidden');
+            addItemDropdownEl.classList.remove('hidden');
         }
     }
     if (characterPromptsContainerEl) {
@@ -527,7 +549,7 @@ function getResolutionFromDisplay(displayText) {
  * @param {number} [options.minH=UTILS_CONFIG.MIN_DIMENSION] - Minimum height
  * @param {number} [options.maxH=UTILS_CONFIG.MAX_DIMENSION] - Maximum height
  * @param {number} [options.step=64] - Step size for dimension snapping
- * @param {number} [options.maxArea=4194304] - Maximum allowed area (width × height)
+ * @param {number} [options.maxArea=1048576] - Maximum allowed area (width × height)
  * @returns {Object} Corrected dimensions with change information
  * @returns {number} .width - Corrected width value
  * @returns {number} .height - Corrected height value
@@ -543,8 +565,8 @@ function getResolutionFromDisplay(displayText) {
  * // { width: 2048, height: 1875, changed: 'width', reason: 'max_limit' }
  *
  * // Area constraint
- * const result = correctDimensions('2000', '3000', { maxArea: 4194304 });
- * // { width: 2000, height: 2048, changed: 'height', reason: 'max_area' }
+ * const result = correctDimensions('2000', '3000', { maxArea: 1048576 });
+ * // { width: 640, height: 1600, changed: 'both', reason: 'max_area' }
  */
 function correctDimensions(rawW, rawH, {
     minW = UTILS_CONFIG.MIN_DIMENSION,
@@ -552,7 +574,7 @@ function correctDimensions(rawW, rawH, {
     minH = UTILS_CONFIG.MIN_DIMENSION,
     maxH = UTILS_CONFIG.MAX_DIMENSION,
     step = 64,
-    maxArea = 4194304
+    maxArea = 1048576
 } = {}) {
     // Input validation
     if (rawW == null || rawH == null) {
@@ -817,6 +839,82 @@ function updatePercentageOverlays() {
 }
 
 /**
+ * Calculate upscale availability, cost, and output resolution
+ * @param {number} width - Input image width in pixels
+ * @param {number} height - Input image height in pixels
+ * @returns {Object} Upscale information
+ * @returns {boolean} returns.available - Whether upscale is available for this image
+ * @returns {number} returns.cost - Cost in Anlas (0 if free or unavailable)
+ * @returns {Object} returns.outputResolution - Expected output dimensions
+ * @returns {number} returns.outputResolution.width - Output width in pixels
+ * @returns {number} returns.outputResolution.height - Output height in pixels
+ * @returns {string|null} returns.reason - Reason if unavailable, null otherwise
+ * @example
+ * const upscaleInfo = calculateUpscaleInfo(512, 512, true);
+ * if (upscaleInfo.available) {
+ *     console.log(`Cost: ${upscaleInfo.cost} Anlas → ${upscaleInfo.outputResolution.width}×${upscaleInfo.outputResolution.height}`);
+ * }
+ */
+function calculateUpscaleInfo(width, height) {
+    // Constants from the codebase
+    const MAX_PIXELS = 1048576; // 1024 × 1024 maximum input
+    const SCALE_FACTOR = 4; // Fixed 4x upscale
+    const OPUS_FREE_LIMIT = 409600; // 640 × 640 pixels
+    
+    // Pricing tiers: [maxPixels, cost]
+    const PRICING_TIERS = [
+        [1048576, 7],  // Up to 1024×1024: 7 Anlas
+        [786432, 5],   // Up to ~886×886: 5 Anlas
+        [524288, 3],   // Up to ~724×724: 3 Anlas
+        [409600, 2],   // Up to 640×640: 2 Anlas
+        [262144, 1]    // Up to 512×512: 1 Anlas
+    ];
+    
+    // Calculate total pixels
+    const totalPixels = width * height;
+    
+    // Check if image is too large
+    if (totalPixels > MAX_PIXELS) {
+        return {
+            available: false,
+            cost: 0,
+            outputResolution: { width: 0, height: 0 },
+            reason: `Image too large. Maximum resolution is 1024×1024 pixels (${totalPixels.toLocaleString()} > ${MAX_PIXELS.toLocaleString()})`
+        };
+    }
+    
+    // Calculate cost based on tier
+    let cost = -1; // Default if no tier matches (should never happen)
+    for (const [maxPixels, tierCost] of PRICING_TIERS) {
+        if (totalPixels <= maxPixels) {
+            cost = tierCost;
+        }
+    }
+    
+    // Apply Opus free tier
+    // Whether the user has an Opus (Tier 3) subscription
+    if ((window.optionsData?.user?.subscription?.active && 
+        window.optionsData?.user?.subscription?.tier === 3) 
+        && totalPixels <= OPUS_FREE_LIMIT) {
+        cost = 0;
+    }
+    
+    // Calculate output resolution
+    const outputWidth = width * SCALE_FACTOR;
+    const outputHeight = height * SCALE_FACTOR;
+    
+    return {
+        available: true,
+        cost: cost,
+        outputResolution: {
+            width: outputWidth,
+            height: outputHeight
+        },
+        reason: null
+    };
+}
+
+/**
  * Helper function to calculate and update price display for manual generation
  * @param {boolean} bypass
  */
@@ -895,12 +993,22 @@ function updateManualPriceDisplay(bypass = false) {
             // Calculate cost using the more accurate function
             const cost = calculateCreditCost(requestBody);
 
+            // Add upscale cost if upscale toggle is enabled
+            let totalCost = cost.isFree ? cost.opus : cost.list;
+            const manualUpscale = document.getElementById('manualUpscale');
+            if (manualUpscale && manualUpscale.getAttribute('data-state') === 'on') {
+                const upscaleInfo = calculateUpscaleInfo(width, height);
+                if (upscaleInfo.available) {
+                    totalCost += upscaleInfo.cost;
+                }
+            }
+
             // Update display
             priceIcon.className = 'nai-anla';
             const paidRequestToggle = document.getElementById('paidRequestToggle');
-            if (!cost.isFree || (cost.isFree && cost.opus > 0)) {
+            if (!cost.isFree || (cost.isFree && cost.opus > 0) || totalCost > 0) {
                 // Paid request
-                priceList.textContent = `${cost.isFree ? cost.opus : cost.list}`;
+                priceList.textContent = `${totalCost}`;
                 priceDisplay.classList.remove('free');
                 if (paidRequestToggle) paidRequestToggle.classList.add('active');
             } else {
@@ -920,6 +1028,48 @@ function updateManualPriceDisplay(bypass = false) {
         }
     }, bypass ? 5 : 1000);
     manualPriceDisplayTimeout = newTimeout;
+}
+
+/**
+ * Update manual upscale toggle disabled state based on resolution
+ * @description Checks if upscaling is available for the current resolution and updates button state
+ */
+function updateManualUpscaleToggleState() {
+    const manualUpscale = document.getElementById('manualUpscale');
+    if (!manualUpscale) return;
+
+    // Get current dimensions
+    let width = 1024;
+    let height = 1024;
+    const selectedRes = manualSelectedResolution;
+    
+    if (selectedRes === 'custom') {
+        const manualWidth = document.getElementById('manualWidth');
+        const manualHeight = document.getElementById('manualHeight');
+        width = manualWidth ? parseInt(manualWidth.value) || 1024 : 1024;
+        height = manualHeight ? parseInt(manualHeight.value) || 1024 : 1024;
+    } else if (selectedRes) {
+        const dimensions = getDimensionsFromResolution(selectedRes);
+        if (dimensions) {
+            width = dimensions.width;
+            height = dimensions.height;
+        }
+    }
+
+    // Check upscale availability
+    const upscaleInfo = calculateUpscaleInfo(width, height);
+    
+    if (upscaleInfo.available) {
+        manualUpscale.disabled = false;
+        manualUpscale.title = 'Enable upscaling';
+    } else {
+        manualUpscale.disabled = true;
+        manualUpscale.title = upscaleInfo.reason || 'Upscaling not available';
+        // Turn off the toggle if it was on
+        if (manualUpscale.getAttribute('data-state') === 'on') {
+            manualUpscale.setAttribute('data-state', 'off');
+        }
+    }
 }
 
 /**
@@ -962,21 +1112,24 @@ function calculateCreditCost(requestBody) {
  * Auto-resize textarea to fit content
  * @param {HTMLTextAreaElement} textarea
  */
-function autoResizeTextarea(textarea) {
+function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0) {
     if (!textarea) return;
 
+    let minHeight = _minHeight || 70;
     // Reset height to auto to get the correct scrollHeight
     textarea.style.height = 'auto';
 
     // Calculate new height based on content, accounting for padding
     const computedStyle = window.getComputedStyle(textarea);
-    const paddingTop = parseFloat(computedStyle.paddingTop);
-    const paddingBottom = parseFloat(computedStyle.paddingBottom);
-    const borderTop = parseFloat(computedStyle.borderTopWidth);
-    const borderBottom = parseFloat(computedStyle.borderBottomWidth);
-    const totalPadding = paddingTop + paddingBottom + borderTop + borderBottom;
+    const isDirectorPrompt = textarea.closest('.prompt-textarea-container.director-prompt');
+    const isTextOverlayPrompt = textarea.closest('.prompt-textarea-container.text-overlay-prompt');
+    let totalPadding = 0;
 
-    const minHeight = 70;
+    // For director prompts and text overlay prompts, use the CSS min-height instead of the passed parameter
+    if (isDirectorPrompt || isTextOverlayPrompt) {
+        const cssMinHeight = parseFloat(computedStyle.minHeight) || 24;
+        minHeight = cssMinHeight;
+    }
 
     // Ensure scrollHeight is calculated correctly
     let scrollHeight = textarea.scrollHeight;
@@ -986,20 +1139,24 @@ function autoResizeTextarea(textarea) {
             textarea.style.height = 'auto';
             const newScrollHeight = textarea.scrollHeight;
             if (newScrollHeight > 0) {
-                const newHeight = parseInt(Math.max(newScrollHeight + totalPadding, minHeight).toFixed(0)) - 1;
+                let calculatedHeight = parseInt(Math.max(newScrollHeight + totalPadding, minHeight).toFixed(0)) - 1;
+                // Round up to even number
+                const newHeight = Math.ceil(calculatedHeight / 2) * 2;
                 textarea.style.height = newHeight + 'px';
 
                 // Update container height if it exists
                 const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
                 if (container) {
-                    container.style.height = newHeight + 'px';
+                    container.style.setProperty('--textarea-height', newHeight + 'px');
                 }
             }
         }, 5);
         return;
     }
 
-    const newHeight = (parseInt(Math.max(scrollHeight + totalPadding, minHeight).toFixed(0)) - 1);
+    let calculatedHeight = (parseInt(Math.max(scrollHeight + totalPadding, minHeight).toFixed(0)) - 1);
+    // Round up to even number
+    const newHeight = Math.ceil(calculatedHeight / 2) * 2;
 
     // Set the new height
     textarea.style.height = newHeight + 'px';
@@ -1009,8 +1166,10 @@ function autoResizeTextarea(textarea) {
     if (container) {
         const toolbar = container.querySelector('.prompt-textarea-toolbar');
         const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? 50 : 0; // 10px for margin-top
-        const totalHeight = newHeight + toolbarHeight;
-        container.style.height = totalHeight + 'px';
+
+        // Set CSS variables for calc() to use
+        container.style.setProperty('--textarea-height', (newHeight + toolbarHeight) + 'px');
+        container.style.setProperty('--extra-height', (extraContainerHeight || 0) + 'px');
     }
 }
 
@@ -1036,9 +1195,7 @@ function updatePromptStatusIcons() {
         
         // Quality icon
         if (qualityIcon) {
-            const qualityBtn = window.qualityToggleBtn || qualityToggleBtn;
-            const qualityState = qualityBtn ? qualityBtn.getAttribute('data-state') : 'off';
-            qualityIcon.classList.toggle('hidden', qualityState !== 'on');
+            qualityIcon.classList.toggle('hidden', !appendQuality);
         }
 
         // Dataset icon - always show, use default sakura when none selected
@@ -1153,17 +1310,17 @@ function updatePromptStatusIcons() {
         // Clothing icon
         const clothingIcon = mainPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
         if (clothingIcon) {
-            const clothingBtn = window.clothingBtn || clothingBtn;
-            const clothingState = clothingBtn ? clothingBtn.getAttribute('data-state') : 'off';
-            clothingIcon.classList.toggle('hidden', clothingState !== 'on');
+            const creativeBtn = document.getElementById('creativeBtn');
+            const clothingEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-clothing') === 'true' : false;
+            clothingIcon.classList.toggle('hidden', !clothingEnabled);
         }
 
         // Activity icon
         const activityIcon = mainPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
         if (activityIcon) {
-            const actionBtn = window.actionBtn || actionBtn;
-            const actionState = actionBtn ? actionBtn.getAttribute('data-state') : 'off';
-            activityIcon.classList.toggle('hidden', actionState !== 'on');
+            const creativeBtn = document.getElementById('creativeBtn');
+            const actionEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-action') === 'true' : false;
+            activityIcon.classList.toggle('hidden', !actionEnabled);
         }
 
         // Creative icon
@@ -1205,9 +1362,7 @@ function updatePromptStatusIcons() {
         
         // Quality icon
         if (qualityIcon) {
-            const qualityBtn = window.qualityToggleBtn || qualityToggleBtn;
-            const qualityState = qualityBtn ? qualityBtn.getAttribute('data-state') : 'off';
-            qualityIcon.classList.toggle('hidden', qualityState !== 'on');
+            qualityIcon.classList.toggle('hidden', !appendQuality);
         }
 
         // Dataset icon - always show, use default sakura when none selected
@@ -1322,17 +1477,17 @@ function updatePromptStatusIcons() {
         // Clothing icon
         const clothingIcon = ucPromptContainer.querySelector('.prompt-status-icon.clothing-enabled');
         if (clothingIcon) {
-            const clothingBtn = window.clothingBtn || clothingBtn;
-            const clothingState = clothingBtn ? clothingBtn.getAttribute('data-state') : 'off';
-            clothingIcon.classList.toggle('hidden', clothingState !== 'on');
+            const creativeBtn = document.getElementById('creativeBtn');
+            const clothingEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-clothing') === 'true' : false;
+            clothingIcon.classList.toggle('hidden', !clothingEnabled);
         }
 
         // Activity icon
         const activityIcon = ucPromptContainer.querySelector('.prompt-status-icon.activity-enabled');
         if (activityIcon) {
-            const actionBtn = window.actionBtn || actionBtn;
-            const actionState = actionBtn ? actionBtn.getAttribute('data-state') : 'off';
-            activityIcon.classList.toggle('hidden', actionState !== 'on');
+            const creativeBtn = document.getElementById('creativeBtn');
+            const actionEnabled = creativeBtn ? creativeBtn.getAttribute('data-toggle-action') === 'true' : false;
+            activityIcon.classList.toggle('hidden', !actionEnabled);
         }
 
         // Creative icon
@@ -1369,7 +1524,7 @@ function updatePromptStatusIcons() {
     const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup');
     const isDynamicGenVisible = dynamicGenerationGroup && !dynamicGenerationGroup.classList.contains('hidden');
 
-    if (isDynamicGenVisible) {
+    if (isDynamicGenVisible && dynamicGenerationToggleBtn?.getAttribute('data-state') !== 'off') {
         // Hide dynamic generation feature icons when controls are visible
         const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
 
@@ -1434,6 +1589,20 @@ function applyFormattedText(textarea, lostFocus) {
     const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
 
     let text = textarea.value;
+    
+    // Step 1: Protect special blocks from processing
+    const protectedBlocks = [];
+    const disableBlocks = [];
+
+    // Protect disable blocks (!/content/)
+    text = text.replace(/!\/[^\/]+\//g, (match) => {
+        const blockId = `__DISABLE_BLOCK_${disableBlocks.length}__`;
+        disableBlocks.push({
+            id: blockId,
+            original: match
+        });
+        return blockId;
+    });
 
     // Process text based on focus state
     if (lostFocus) {
@@ -1525,6 +1694,15 @@ function applyFormattedText(textarea, lostFocus) {
         // Remove extra spaces after cleanup
         text = text.replace(/,\s+/g, ', ');
         text = text.replace(/\s+,/g, ',');
+
+        // Add spaces before :: terminators (but not before numeric emphasis patterns)
+        // Only apply to text that's not in disable blocks
+        text = text.replace(/(?<!\d+(?:\.\d+)?)(?<!\s)::/g, ' ::');
+
+        // Step 2: Restore disable blocks
+        disableBlocks.forEach(block => {
+            text = text.replace(block.id, block.original);
+        });
     }
 
     textarea.value = text;
@@ -1542,29 +1720,34 @@ function applyFormattedText(textarea, lostFocus) {
  * Update manual generate button state - MOVED FROM app.js
  */
 function updateManualGenerateBtnState() {
-    const button = document.getElementById('manualGenerateBtn');
-    if (!button) return;
+    const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
 
-    const icon = document.getElementById('manualGenerateBtnIcon');
-    if (!icon) return;
+    generateButtons.forEach(button => {
+        if (!button) return;
 
-    if (window.isGenerating) {
-        // Generating state - show sparkles icon and rainbow animation
-        icon.className = 'nai-sparkles fa-bounce';
-        button.classList.add('generating-effect');
-    } else if (window.isQueueStopped) {
-        // Queue stopped state - show pause icon and remove rainbow animation
-        icon.className = 'fas fa-pause';
-        button.classList.remove('generating-effect');
-    } else if (window.isQueueProcessing) {
-        // Queue processing state - show warning icon and remove rainbow animation
-        icon.className = 'fas fa-exclamation-triangle';
-        button.classList.remove('generating-effect');
-    } else {
-        // Normal state - show sparkles icon and remove rainbow animation
-        icon.className = 'nai-sparkles';
-        button.classList.remove('generating-effect');
-    }
+        // Get the corresponding icon for this button
+        const iconId = button.id === 'manualGenerateBtn' ? 'manualGenerateBtnIcon' : 'manualGenerateBtnIconAlt';
+        const icon = document.getElementById(iconId);
+        if (!icon) return;
+
+        if (window.isGenerating) {
+            // Generating state - show sparkles icon and rainbow animation
+            icon.className = 'nai-sparkles fa-bounce';
+            button.classList.add('generating-effect');
+        } else if (window.isQueueStopped) {
+            // Queue stopped state - show pause icon and remove rainbow animation
+            icon.className = 'fas fa-pause';
+            button.classList.remove('generating-effect');
+        } else if (window.isQueueProcessing) {
+            // Queue processing state - show warning icon and remove rainbow animation
+            icon.className = 'fas fa-exclamation-triangle';
+            button.classList.remove('generating-effect');
+        } else {
+            // Normal state - show sparkles icon and remove rainbow animation
+            icon.className = 'nai-sparkles';
+            button.classList.remove('generating-effect');
+        }
+    });
 }
 
 /**
@@ -1678,6 +1861,175 @@ function getNoiseMeta(meta) {
  * - Global scope access maintained
  * - No breaking changes to existing code
  */
+
+// ============================================================================
+// PNG METADATA UTILITIES
+// ============================================================================
+
+/**
+ * Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer
+ * @param {ArrayBuffer} buffer - PNG image buffer
+ * @returns {ArrayBuffer} PNG buffer without text chunks
+ */
+function stripPngTextChunks(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
+        return buffer; // Not a PNG
+    }
+    
+    const PNG_HEADER = bytes.slice(0, 8);
+    let offset = 8;
+    const outChunks = [PNG_HEADER];
+    
+    while (offset < bytes.length - 8) {
+        const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+        const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+        const chunkStart = offset;
+        const chunkEnd = offset + 12 + length;
+        
+        // Strip all text chunks
+        if (type !== 'tEXt' && type !== 'iTXt' && type !== 'zTXt') {
+            outChunks.push(bytes.slice(chunkStart, chunkEnd));
+        }
+        
+        if (type === 'IEND') break;
+        offset = chunkEnd;
+    }
+    
+    const result = new Uint8Array(outChunks.reduce((acc, chunk) => acc + chunk.length, 0));
+    let pos = 0;
+    for (const chunk of outChunks) {
+        result.set(chunk, pos);
+        pos += chunk.length;
+    }
+    return result.buffer;
+}
+
+/**
+ * Insert a tEXt chunk into a PNG buffer
+ * @param {ArrayBuffer} buffer - PNG image buffer
+ * @param {string} keyword - Chunk keyword (e.g., 'Comment')
+ * @param {string} text - Text content to insert
+ * @returns {ArrayBuffer} PNG buffer with inserted chunk
+ */
+function insertPngTextChunk(buffer, keyword, text) {
+    const bytes = new Uint8Array(buffer);
+    
+    // Find IEND position
+    let iendPos = -1;
+    let offset = 8;
+    while (offset < bytes.length - 8) {
+        const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+        const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+        if (type === 'IEND') {
+            iendPos = offset;
+            break;
+        }
+        offset += 12 + length;
+    }
+    
+    if (iendPos === -1) return buffer;
+    
+    // Create tEXt chunk
+    const keywordBytes = new TextEncoder().encode(keyword);
+    const textBytes = new TextEncoder().encode(text);
+    const chunkData = new Uint8Array(keywordBytes.length + 1 + textBytes.length);
+    chunkData.set(keywordBytes, 0);
+    chunkData[keywordBytes.length] = 0;
+    chunkData.set(textBytes, keywordBytes.length + 1);
+    
+    const typeBytes = new TextEncoder().encode('tEXt');
+    const chunkLength = chunkData.length;
+    
+    // Calculate CRC
+    const crcData = new Uint8Array(4 + chunkLength);
+    crcData.set(typeBytes, 0);
+    crcData.set(chunkData, 4);
+    const crc = calculateCRC32(crcData);
+    
+    // Build full chunk
+    const fullChunk = new Uint8Array(12 + chunkLength);
+    fullChunk[0] = (chunkLength >>> 24) & 0xFF;
+    fullChunk[1] = (chunkLength >>> 16) & 0xFF;
+    fullChunk[2] = (chunkLength >>> 8) & 0xFF;
+    fullChunk[3] = chunkLength & 0xFF;
+    fullChunk.set(typeBytes, 4);
+    fullChunk.set(chunkData, 8);
+    fullChunk[8 + chunkLength] = (crc >>> 24) & 0xFF;
+    fullChunk[8 + chunkLength + 1] = (crc >>> 16) & 0xFF;
+    fullChunk[8 + chunkLength + 2] = (crc >>> 8) & 0xFF;
+    fullChunk[8 + chunkLength + 3] = crc & 0xFF;
+    
+    // Combine: before IEND + new chunk + IEND onwards
+    const result = new Uint8Array(iendPos + fullChunk.length + (bytes.length - iendPos));
+    result.set(bytes.slice(0, iendPos), 0);
+    result.set(fullChunk, iendPos);
+    result.set(bytes.slice(iendPos), iendPos + fullChunk.length);
+    
+    return result.buffer;
+}
+
+/**
+ * Calculate CRC32 checksum for PNG chunks
+ * @param {Uint8Array} data - Data to calculate CRC for
+ * @returns {number} CRC32 checksum
+ */
+function calculateCRC32(data) {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) {
+            c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        }
+        table[i] = c;
+    }
+    
+    let crc = 0xFFFFFFFF;
+    for (let i = 0; i < data.length; i++) {
+        crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
+    }
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+/**
+ * Read PNG metadata from buffer
+ * @param {ArrayBuffer} buffer - PNG image buffer
+ * @returns {Object|null} Parsed metadata object or null
+ */
+function readPngMetadata(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4E || bytes[3] !== 0x47) {
+        return null;
+    }
+    
+    let offset = 8;
+    while (offset < bytes.length - 8) {
+        const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+        const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+        
+        if (type === 'tEXt' || type === 'iTXt') {
+            const chunkData = bytes.slice(offset + 8, offset + 8 + length);
+            const nullIndex = chunkData.indexOf(0);
+            if (nullIndex !== -1) {
+                const keyword = new TextDecoder().decode(chunkData.slice(0, nullIndex));
+                if (keyword === 'Comment') {
+                    const text = new TextDecoder().decode(chunkData.slice(nullIndex + 1));
+                    try {
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.error('Failed to parse PNG Comment metadata:', e);
+                        return null;
+                    }
+                }
+            }
+        }
+        
+        if (type === 'IEND') break;
+        offset += 12 + length;
+    }
+    
+    return null;
+}
 
 // These will remain global for now to avoid breaking existing code
 // TODO: Move actual implementations from app.js here

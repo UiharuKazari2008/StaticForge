@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 // Tag suggestions cache system with new format
 class TagSuggestionsCache {
@@ -36,10 +37,10 @@ class TagSuggestionsCache {
                 if (loaded.n_idx) this.cache.n_idx = { ...this.cache.n_idx, ...loaded.n_idx };
                 if (loaded.tag_idx) this.cache.tag_idx = { ...this.cache.tag_idx, ...loaded.tag_idx };
                 
-                console.log(`📋 Loaded tag suggestions cache: ${Object.keys(this.cache.query_idx).length} queries, ${this.getTotalTags()} tags`);
+                logger.bootSubStep(`Tag cache loaded: ${Object.keys(this.cache.query_idx).length} queries, ${this.getTotalTags()} tags`);
             }
         } catch (error) {
-            console.error('Failed to load tag suggestions cache:', error);
+            logger.error('Failed to load tag suggestions cache:', error);
         }
     }
     
@@ -57,9 +58,9 @@ class TagSuggestionsCache {
             this.isDirty = false;
             this.lastSaveTime = Date.now();
             
-            console.log(`💾 Saved tag suggestions cache: ${Object.keys(this.cache.query_idx).length} queries, ${this.getTotalTags()} tags`);
+            logger.info(`Saved tag cache: ${Object.keys(this.cache.query_idx).length} queries, ${this.getTotalTags()} tags`);
         } catch (error) {
-            console.error('Failed to save tag suggestions cache:', error);
+            logger.error('Failed to save tag suggestions cache:', error);
         }
     }
     

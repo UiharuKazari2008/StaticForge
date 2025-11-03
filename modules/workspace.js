@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const logger = require('./logger');
 const { getBaseName } = require('./pngMetadata');
 const { createJSONCheckpointManager } = require('./jsonCheckpoint');
 
@@ -902,7 +903,6 @@ function organizeOrphanedFiles() {
 
 // Initialize workspaces on module load
 function initializeWorkspaces() {
-    console.log('🔧 Initializing workspace system...');
     loadWorkspaces();
     
     // Initialize scraps arrays for all existing workspaces
@@ -916,7 +916,7 @@ function initializeWorkspaces() {
     syncWorkspaceFiles(); // Sync and add new files (already sorted)
     organizeOrphanedFiles(); // Organize orphaned upscaled files
 
-    console.log(`✅ Workspace system initialized with ${Object.keys(workspaces).length} workspaces`);
+    logger.bootSubStep(`Workspace system loaded (${Object.keys(workspaces).length} workspaces)`);
 }
 
 // Get scraps for active workspace (only that workspace)
@@ -1089,6 +1089,15 @@ function addToWorkspaceArray(type, items, workspaceId = null) {
 
     if (addedCount > 0) {
         saveWorkspaces();
+        
+        // Broadcast image addition via WebSocket if type is 'files' (images)
+        if (type === 'files') {
+            const { getGlobalWsServer } = require('./websocket');
+            const wsServer = getGlobalWsServer();
+            if (wsServer) {
+                wsServer.broadcastWorkspaceImageAdded(targetId, validItems);
+            }
+        }
     }
 
     return addedCount;
@@ -1391,8 +1400,6 @@ function syncWorkspacePinnedScraps() {
     if (!workspaces) {
         loadWorkspaces();
     }
-
-    console.log('🔄 Syncing pinned files across workspaces...');
     
     let correctionsMade = 0;
     const allFiles = new Set();

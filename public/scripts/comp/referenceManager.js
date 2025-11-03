@@ -811,11 +811,22 @@ async function refreshVibeReferencesDisplay() {
         // Store current IE, strength, and toggle values before replacing
         const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
         const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
-        const toggleBtn = item.querySelector('.toggle-btn');
-        
+        const allIndicators = item.querySelectorAll('.vibe-reference-controls .indicator');
+
+        let mainToggleBtn = null;
+        let textInjectionToggleBtn = null;
+        allIndicators.forEach(indicator => {
+            if (indicator.querySelector('.fa-power-off')) {
+                mainToggleBtn = indicator;
+            } else if (indicator.querySelector('.fa-indent')) {
+                textInjectionToggleBtn = indicator;
+            }
+        });
+
         const currentIe = ieDropdownBtn?.dataset.selectedIe || null;
         const currentStrength = ratioInput?.value || null;
-        const currentToggleState = toggleBtn?.getAttribute('data-state') || 'on';
+        const currentToggleState = mainToggleBtn?.getAttribute('data-state') || 'on';
+        const currentTextInjectionState = textInjectionToggleBtn?.getAttribute('data-state') || 'on';
         
         // Find the vibe reference data
         let vibeRef = null;
@@ -831,7 +842,7 @@ async function refreshVibeReferencesDisplay() {
         
         if (vibeRef) {
             // Create new item with preserved IE, strength, and toggle values
-            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength, currentToggleState);
+            const newItem = createVibeReferenceItem(vibeRef, currentIe, currentStrength, currentToggleState, currentTextInjectionState);
             item.parentNode.replaceChild(newItem, item);
         }
     });
@@ -871,7 +882,7 @@ async function refreshReferenceManagerAfterVibeOperation() {
     }
 }
 
-function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, toggleState = 'on') {
+function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, toggleState = 'on', textInjectionState = 'on') {
     const item = document.createElement('div');
     item.className = 'vibe-reference-item';
     item.setAttribute('data-vibe-id', vibeRef.id);
@@ -973,6 +984,33 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
         }
     });
     controls.appendChild(toggleBtn);
+
+    // Create text injection toggle button
+    const textInjectionToggle = document.createElement('button');
+    textInjectionToggle.type = 'button';
+    textInjectionToggle.className = 'indicator btn-secondary blur';
+    textInjectionToggle.setAttribute('data-state', textInjectionState);
+    textInjectionToggle.innerHTML = '<i class="fas fa-indent"></i>';
+    textInjectionToggle.title = textInjectionState === 'on' ? 'Text injection enabled' : 'Text injection disabled';
+    if (textInjectionState === 'off') {
+        textInjectionToggle.classList.add('disabled');
+    }
+    textInjectionToggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentState = textInjectionToggle.getAttribute('data-state');
+        const newState = currentState === 'on' ? 'off' : 'on';
+
+        textInjectionToggle.setAttribute('data-state', newState);
+        if (newState === 'on') {
+            textInjectionToggle.title = 'Text injection enabled';
+            textInjectionToggle.classList.remove('disabled');
+        } else {
+            textInjectionToggle.title = 'Text injection disabled';
+            textInjectionToggle.classList.add('disabled');
+        }
+    });
+    controls.appendChild(textInjectionToggle);
 
     // Create delete button
     const deleteBtn = document.createElement('button');
@@ -1287,7 +1325,7 @@ async function addAsVibeReference(cacheImage) {
     }
 }
 
-async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
+async function addVibeReferenceToContainer(vibeId, selectedIe, strength, textInjectionState = 'on') {
     // Check if inpainting is enabled (mask is present)
     if (window.currentMaskData) {
         console.warn('Cannot add vibe references during inpainting');
@@ -1339,7 +1377,7 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength) {
     }
 
     // Create item with the specific IE and strength values
-    const item = createVibeReferenceItem(vibeRef, selectedIe, strength);
+    const item = createVibeReferenceItem(vibeRef, selectedIe, strength, 'on', textInjectionState);
 
     vibeReferencesContainer.appendChild(item);
 
@@ -1384,9 +1422,9 @@ function removeVibeReference(vibeId) {
     updateTransformationDropdownForVibes();
 }
 
-// Function to update transformation dropdown button active state based on vibe presence
+// Function to update add item dropdown button active state based on vibe presence
 function updateTransformationDropdownForVibes() {
-    if (!transformationDropdownBtn) return;
+    if (!addItemDropdownBtn) return;
 
     const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
     if (!vibeReferencesContainer) return;
@@ -1395,9 +1433,9 @@ function updateTransformationDropdownForVibes() {
 
     // Add active class if there are vibes present, remove it if there are none
     if (vibeItems.length > 0) {
-        transformationDropdownBtn.classList.add('active');
+        addItemDropdownBtn.classList.add('active');
     } else {
-        transformationDropdownBtn.classList.remove('active');
+        addItemDropdownBtn.classList.remove('active');
     }
 }
 
@@ -1466,9 +1504,6 @@ async function selectCacheImageInternal(cacheImage) {
         // Update image bias orientation after setting image dimensions
         updateImageBiasOrientation();
 
-        // Set transformation type to browse (successful)
-        updateTransformationDropdownState('browse');
-
         // Update mask preview and button visibility
         updateUploadDeleteButtonVisibility();
         updateInpaintButtonState();
@@ -1496,8 +1531,8 @@ async function deleteReferenceImage(cacheImage, workspace = null, refreshCallbac
         const deleteOptions = await showConfirmationDialog(
             'What would you like to delete?',
             [
-                { text: 'Base Image', value: 'base', className: 'btn-warning' },
-                { text: 'Vibe Encoding(s)', value: 'vibes', className: 'btn-warning' },
+                { text: 'Base Image', value: 'base', className: 'btn-danger' },
+                { text: 'Vibe Encoding(s)', value: 'vibes', className: 'btn-danger' },
                 { text: 'All', value: 'both', className: 'btn-danger' },
                 { text: 'Cancel', value: null, className: 'btn-secondary' }
             ]
@@ -3374,10 +3409,10 @@ async function handleUnifiedUploadOpenInEditor() {
             
             // Open manual modal directly without img2img functionality
             // This is a blueprint edit, not an image variation edit
-            window.showManualModal();
+            showManualModal();
             
             // Load the blueprint metadata into the manual form
-            await window.loadIntoManualForm(finalMetadata);
+            await loadIntoManualForm(finalMetadata);
 
         } else {
             showError('Open in Editor is only available for blueprint mode');
@@ -3722,6 +3757,9 @@ function transformMetadataForEditor(metadata) {
         }
         if (transformed.forge_data.chara_reference_fidelity !== undefined) {
             transformed.chara_reference_fidelity = transformed.forge_data.chara_reference_fidelity;
+        }
+        if (transformed.forge_data.text_overlays !== undefined) {
+            transformed.text_overlays = transformed.forge_data.text_overlays;
         }
     }
     
@@ -6949,11 +6987,171 @@ function initializeCacheManager() {
         });
     }
 
+    // Vibe prepend toggle handlers
+    const vibeAppendPromptPrependToggle = document.getElementById('cacheVibeAppendPromptPrependToggle');
+    if (vibeAppendPromptPrependToggle) {
+        vibeAppendPromptPrependToggle.addEventListener('click', () => {
+            const currentState = vibeAppendPromptPrependToggle.getAttribute('data-state');
+            const newState = currentState === 'on' ? 'off' : 'on';
+            vibeAppendPromptPrependToggle.setAttribute('data-state', newState);
+        });
+    }
+
+    const vibeAppendUcPrependToggle = document.getElementById('cacheVibeAppendUcPrependToggle');
+    if (vibeAppendUcPrependToggle) {
+        vibeAppendUcPrependToggle.addEventListener('click', () => {
+            const currentState = vibeAppendUcPrependToggle.getAttribute('data-state');
+            const newState = currentState === 'on' ? 'off' : 'on';
+            vibeAppendUcPrependToggle.setAttribute('data-state', newState);
+        });
+    }
+
+    // Initialize toolbar dropdowns for cache metadata modal textareas
+    initializeCacheMetadataToolbarDropdowns();
+
     // Initialize context menu for reference manager items
     initializeReferenceManagerContextMenu();
 
     // Initialize context menu for reference browser items
     initializeReferenceBrowserContextMenu();
+}
+
+// Initialize toolbar dropdowns for cache metadata modal textareas
+function initializeCacheMetadataToolbarDropdowns() {
+    // Initialize prompt textarea actions dropdown
+    const cachePromptDropdown = document.getElementById('cachePromptActionsDropdown');
+    const cachePromptDropdownBtn = document.getElementById('cachePromptActionsDropdownBtn');
+    const cachePromptDropdownMenu = document.getElementById('cachePromptActionsDropdownMenu');
+
+    if (cachePromptDropdown && cachePromptDropdownBtn && cachePromptDropdownMenu) {
+        setupDropdown(
+            cachePromptDropdown,
+            cachePromptDropdownBtn,
+            cachePromptDropdownMenu,
+            () => renderCachePromptActionsDropdown('cachePromptActionsDropdownMenu', [
+                { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+                { value: 'text-replacement-manager', display: 'Text Expanders', icon: 'fas fa-book-font' }
+            ]),
+            () => null,
+            {
+                enableKeyboardNav: false,
+                preventFocusTransfer: true
+            }
+        );
+    }
+
+    // Initialize UC textarea actions dropdown
+    const cacheUcDropdown = document.getElementById('cacheUcActionsDropdown');
+    const cacheUcDropdownBtn = document.getElementById('cacheUcActionsDropdownBtn');
+    const cacheUcDropdownMenu = document.getElementById('cacheUcActionsDropdownMenu');
+
+    if (cacheUcDropdown && cacheUcDropdownBtn && cacheUcDropdownMenu) {
+        setupDropdown(
+            cacheUcDropdown,
+            cacheUcDropdownBtn,
+            cacheUcDropdownMenu,
+            () => renderCacheUcActionsDropdown('cacheUcActionsDropdownMenu', [
+                { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
+            ]),
+            () => null,
+            {
+                enableKeyboardNav: false,
+                preventFocusTransfer: true
+            }
+        );
+    }
+}
+
+// Render function for cache prompt actions dropdown
+function renderCachePromptActionsDropdown(dropdownMenuId, options) {
+    const dropdownMenu = document.getElementById(dropdownMenuId);
+    if (!dropdownMenu) return;
+
+    dropdownMenu.innerHTML = '';
+
+    options.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option';
+        optionElement.dataset.value = option.value;
+        optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
+
+        // Add click handler
+        optionElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Find the active textarea (cacheVibeAppendPromptTextarea)
+            const activeTextarea = document.getElementById('cacheVibeAppendPromptTextarea');
+            if (!activeTextarea) return;
+
+            const toolbar = activeTextarea.closest('.prompt-textarea-container').querySelector('.prompt-textarea-toolbar');
+            if (!toolbar) return;
+
+            // Close the dropdown
+            const dropdown = dropdownMenu.closest('.custom-dropdown');
+            if (dropdown) {
+                const button = dropdown.querySelector('.custom-dropdown-btn');
+                if (button) {
+                    closeDropdown(dropdownMenu, button);
+                }
+            }
+
+            // Call handleToolbarAction if promptTextareaToolbar is available
+            if (window.promptTextareaToolbar && window.promptTextareaToolbar.handleToolbarAction) {
+                window.promptTextareaToolbar.handleToolbarAction(option.value, activeTextarea, toolbar, e);
+            }
+        });
+
+        dropdownMenu.appendChild(optionElement);
+    });
+}
+
+// Render function for cache UC actions dropdown
+function renderCacheUcActionsDropdown(dropdownMenuId, options) {
+    const dropdownMenu = document.getElementById(dropdownMenuId);
+    if (!dropdownMenu) return;
+
+    dropdownMenu.innerHTML = '';
+
+    options.forEach(option => {
+        const optionElement = document.createElement('div');
+        optionElement.className = 'custom-dropdown-option';
+        optionElement.dataset.value = option.value;
+        optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
+
+        // Add click handler
+        optionElement.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Find the active textarea (cacheVibeAppendUcTextarea)
+            const activeTextarea = document.getElementById('cacheVibeAppendUcTextarea');
+            if (!activeTextarea) return;
+
+            const toolbar = activeTextarea.closest('.prompt-textarea-container').querySelector('.prompt-textarea-toolbar');
+            if (!toolbar) return;
+
+            // Close the dropdown
+            const dropdown = dropdownMenu.closest('.custom-dropdown');
+            if (dropdown) {
+                const button = dropdown.querySelector('.custom-dropdown-btn');
+                if (button) {
+                    closeDropdown(dropdownMenu, button);
+                }
+            }
+
+            // Call handleToolbarAction if promptTextareaToolbar is available
+            if (window.promptTextareaToolbar && window.promptTextareaToolbar.handleToolbarAction) {
+                window.promptTextareaToolbar.handleToolbarAction(option.value, activeTextarea, toolbar, e);
+            }
+        });
+
+        dropdownMenu.appendChild(optionElement);
+    });
 }
 
 // Helper function to format resolution with aspect ratio matching
@@ -8187,6 +8385,8 @@ function showManageReferenceModal(reference) {
     const displayNameInput = document.getElementById('cacheDisplayNameInput');
     const vibeAppendPromptTextarea = document.getElementById('cacheVibeAppendPromptTextarea');
     const vibeAppendUcTextarea = document.getElementById('cacheVibeAppendUcTextarea');
+    const vibeAppendPromptPrependToggle = document.getElementById('cacheVibeAppendPromptPrependToggle');
+    const vibeAppendUcPrependToggle = document.getElementById('cacheVibeAppendUcPrependToggle');
     
     if (!modal) {
         console.error('Cache metadata modal not found');
@@ -8213,6 +8413,10 @@ function showManageReferenceModal(reference) {
         // Vibe append fields
         vibeAppendPromptTextarea.value = metadata.vibe_append_prompt || '';
         vibeAppendUcTextarea.value = metadata.vibe_append_uc || '';
+
+        // Vibe prepend toggles
+        vibeAppendPromptPrependToggle.setAttribute('data-state', metadata.vibe_prepend_prompt ? 'on' : 'off');
+        vibeAppendUcPrependToggle.setAttribute('data-state', metadata.vibe_prepend_uc ? 'on' : 'off');
     } else {
         // Reset form if no metadata
         characterToggle.setAttribute('data-state', 'off');
@@ -8221,6 +8425,8 @@ function showManageReferenceModal(reference) {
         displayNameInput.value = '';
         vibeAppendPromptTextarea.value = '';
         vibeAppendUcTextarea.value = '';
+        vibeAppendPromptPrependToggle.setAttribute('data-state', 'off');
+        vibeAppendUcPrependToggle.setAttribute('data-state', 'off');
     }
     
     // Show modal
@@ -8257,6 +8463,8 @@ async function saveReferenceMetadata() {
         const displayNameInput = document.getElementById('cacheDisplayNameInput');
         const vibeAppendPromptTextarea = document.getElementById('cacheVibeAppendPromptTextarea');
         const vibeAppendUcTextarea = document.getElementById('cacheVibeAppendUcTextarea');
+        const vibeAppendPromptPrependToggle = document.getElementById('cacheVibeAppendPromptPrependToggle');
+        const vibeAppendUcPrependToggle = document.getElementById('cacheVibeAppendUcPrependToggle');
         
         // Build tags array
         const tags = [];
@@ -8276,7 +8484,9 @@ async function saveReferenceMetadata() {
             tags: tags,
             comment: commentTextarea.value.trim() || null,
             vibeAppendPrompt: vibeAppendPromptTextarea.value.trim() || null,
-            vibeAppendUc: vibeAppendUcTextarea.value.trim() || null
+            vibeAppendUc: vibeAppendUcTextarea.value.trim() || null,
+            vibePrependPrompt: vibeAppendPromptPrependToggle.getAttribute('data-state') === 'on',
+            vibePrependUc: vibeAppendUcPrependToggle.getAttribute('data-state') === 'on'
         };
         
         // Send update request
@@ -8309,6 +8519,7 @@ window.addAsBaseImage = addAsBaseImage;
 window.refreshCacheBrowser = refreshCacheBrowser;
 window.createDirectorSessionWithImage = createDirectorSessionWithImage;
 window.showManageReferenceModal = showManageReferenceModal;
+window.transformMetadataForEditor = transformMetadataForEditor;
 
 window.wsClient.registerInitStep(40, 'Initializing reference manager', async () => {
     await initializeCacheManager();

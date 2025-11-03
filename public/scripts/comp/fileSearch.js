@@ -472,7 +472,6 @@ class FileSearch {
     getBaseName(filename) {
         return filename
             .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
-            .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
             .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
             .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
             .replace(/@lq(?=\.)/, '')  // Remove @lq suffix

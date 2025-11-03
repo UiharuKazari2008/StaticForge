@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const logger = require('./logger');
 const SpellChecker = require('./spellChecker');
 const FurryTagSearch = require('./furryTagSearch');
 const AnimeTagSearch = require('./animeTagSearch');
@@ -18,9 +19,7 @@ try {
     if (fs.existsSync(characterDataPath)) {
         const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
         characterDataArray = data.data || [];
-        console.log(`✅ Loaded ${characterDataArray.length} characters for auto-complete`);
-    } else {
-        console.log('⚠️  Character data file not found, auto-complete disabled');
+        logger.bootSubStep(`Loaded ${characterDataArray.length} characters for auto-complete`);
     }
 } catch (error) {
     console.error('❌ Error loading character data:', error.message);
@@ -69,6 +68,51 @@ function loadPromptConfig() {
                     savePromptConfig(promptConfig);
                 }
             }
+
+            // Ensure all preset groups have UUIDs and validate preset references
+            if (promptConfig.preset_group) {
+                let configChanged = false;
+                Object.keys(promptConfig.preset_group).forEach(groupName => {
+                    const group = promptConfig.preset_group[groupName];
+                    if (!group.uuid) {
+                        group.uuid = generateUUID();
+                        configChanged = true;
+                    }
+                    if (!group.name) {
+                        group.name = groupName;
+                        configChanged = true;
+                    }
+                    if (!group.presets) {
+                        group.presets = [];
+                        configChanged = true;
+                    }
+                    
+                    // Validate that all referenced presets exist
+                    if (group.presets && Array.isArray(group.presets)) {
+                        const validPresets = group.presets.filter(presetUuid => {
+                            const presetExists = Object.values(promptConfig.presets || {}).some(preset => preset.uuid === presetUuid);
+                            if (!presetExists) {
+                                console.warn(`⚠️ Preset group "${groupName}" references non-existent preset UUID: ${presetUuid}`);
+                            }
+                            return presetExists;
+                        });
+                        
+                        if (validPresets.length !== group.presets.length) {
+                            group.presets = validPresets;
+                            configChanged = true;
+                        }
+                    }
+                });
+                
+                // Save the updated config if changes were made
+                if (configChanged) {
+                    savePromptConfig(promptConfig);
+                }
+            } else {
+                // Initialize preset_group if it doesn't exist
+                promptConfig.preset_group = {};
+                savePromptConfig(promptConfig);
+            }
         } catch (error) {
             console.error('❌ Error reloading prompt config:', error.message);
             if (!promptConfig) {
@@ -101,6 +145,35 @@ function savePromptConfig(config) {
 
 // Utility function for random selection
 const getReplacementValue = value => Array.isArray(value) ? value[Math.floor(Math.random() * value.length)] : value;
+
+// Helper function to resolve preset or preset group by UUID
+function resolvePresetOrGroup(uuid) {
+    const currentPromptConfig = loadPromptConfig();
+    
+    // First check if it's a preset group
+    if (currentPromptConfig.preset_group) {
+        const foundGroup = Object.values(currentPromptConfig.preset_group).find(group => group.uuid === uuid);
+        if (foundGroup && foundGroup.presets && foundGroup.presets.length > 0) {
+            // Randomly select a preset from the group
+            const randomIndex = Math.floor(Math.random() * foundGroup.presets.length);
+            const selectedPresetUuid = foundGroup.presets[randomIndex];
+            
+            // Find the actual preset by UUID
+            const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === selectedPresetUuid);
+            if (foundPreset) {
+                return { preset: foundPreset[1], presetName: foundPreset[0], isFromGroup: true, groupName: foundGroup.name };
+            }
+        }
+    }
+    
+    // If not a group or group resolution failed, check regular presets
+    const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === uuid);
+    if (foundPreset) {
+        return { preset: foundPreset[1], presetName: foundPreset[0], isFromGroup: false };
+    }
+    
+    return null;
+}
 
 // Handle incrementing index for queries ending with #
 function getIncrementingIndex(key, presetName, locked = false, allValuesLength = null) {
@@ -160,10 +233,40 @@ function getArrayLengthForKey(key, config) {
     return 1; // Single values have length 1
 }
 
+// Helper function to determine if a replacement should be applied to the current stage
+const shouldApplyReplacement = (replacement, currentStage) => {
+    if (!replacement.stages) {
+        // No stage configuration means apply to all stages
+        return true;
+    }
+    
+    if (Array.isArray(replacement.stages)) {
+        // Specific stages array
+        return replacement.stages.includes(currentStage);
+    }
+    
+    if (typeof replacement.stages === 'object') {
+        // Range configuration
+        const { start, end } = replacement.stages;
+        
+        if (start !== undefined && end !== undefined) {
+            return currentStage >= start && currentStage <= end;
+        } else if (start !== undefined) {
+            return currentStage >= start;
+        } else if (end !== undefined) {
+            return currentStage <= end;
+        }
+    }
+    
+    // Default to applying if no valid stage configuration
+    return true;
+};
+
 // Text replacement functions
-const applyTextReplacements = (text, presetName, model = null, periodKey = null, lockedReplacements = null) => {
-    const currentPromptConfig = loadPromptConfig();
-    if (!text || !currentPromptConfig.text_replacements) return { text: text, replacements: [] };
+const applyTextReplacements = (text, presetName, model = null, periodKey = null, lockedReplacements = null, stageData = null) => {
+    const _currentPromptConfig = loadPromptConfig();
+    let textReplacements = { ..._currentPromptConfig?.text_replacements };
+    if (!text || !textReplacements) return { text: text, replacements: [] };
 
     let result = text.replace(/!PRESET_NAME/g, presetName);
     const replacements = [];
@@ -173,6 +276,102 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
         // Remove the entire match and trim surrounding whitespace
         return '';
     });
+
+    // Track which body replacement configs apply to current stage (for metadata preservation)
+    const currentStageBodyReplacements = new Map();
+    
+    // Merge request body replacements with prompt.config.json replacements
+    if (stageData && stageData.text_replacements && Array.isArray(stageData.text_replacements)) {
+        const currentStage = stageData.stageIndex || 0;
+        const filteredReplacements = stageData.text_replacements.filter(replacement => 
+            shouldApplyReplacement(replacement, currentStage)
+        );
+        
+        // Store metadata about which body replacements apply to this stage
+        filteredReplacements.forEach(replacement => {
+            if (!currentStageBodyReplacements.has(replacement.name)) {
+                currentStageBodyReplacements.set(replacement.name, []);
+            }
+            currentStageBodyReplacements.get(replacement.name).push({
+                stages: replacement.stages,
+                value: replacement.value,
+                extend: replacement.extend,
+                persist: replacement.persist // Track if value should persist across applicable stages
+            });
+        });
+        
+        // Create a temporary merged config
+        const mergedConfig = { ...textReplacements };
+        
+        // Group replacements by name to handle duplicates
+        const groupedReplacements = {};
+        filteredReplacements.forEach(replacement => {
+            if (!groupedReplacements[replacement.name]) {
+                groupedReplacements[replacement.name] = [];
+            }
+            groupedReplacements[replacement.name].push(replacement);
+        });
+        
+        // Process each group of replacements
+        Object.entries(groupedReplacements).forEach(([name, replacements]) => {
+            if (replacements.length === 1) {
+                // Single replacement - use existing logic
+                const replacement = replacements[0];
+                if (replacement.extend) {
+                    // Extend mode: append to existing array or convert string to array
+                    const existingValue = mergedConfig[replacement.name];
+                    if (Array.isArray(existingValue)) {
+                        mergedConfig[replacement.name] = [...existingValue, ...(Array.isArray(replacement.value) ? replacement.value : [replacement.value])];
+                    } else if (existingValue !== undefined) {
+                        mergedConfig[replacement.name] = [existingValue, ...(Array.isArray(replacement.value) ? replacement.value : [replacement.value])];
+                    } else {
+                        mergedConfig[replacement.name] = replacement.value;
+                    }
+                } else {
+                    // Replace mode: override existing or add new
+                    mergedConfig[replacement.name] = replacement.value;
+                }
+            } else {
+                // Multiple replacements with the same name - auto-merge them
+                const existingValue = mergedConfig[name];
+                const allValues = [];
+                let hasArrayValue = false;
+                
+                // Collect all values from replacements
+                replacements.forEach(replacement => {
+                    if (Array.isArray(replacement.value)) {
+                        hasArrayValue = true;
+                        allValues.push(...replacement.value);
+                    } else {
+                        allValues.push(replacement.value);
+                    }
+                });
+                
+                // Check if existing value from prompt.config.json needs to be included
+                const shouldIncludeExisting = replacements.some(r => r.extend);
+                if (shouldIncludeExisting && existingValue !== undefined) {
+                    if (Array.isArray(existingValue)) {
+                        hasArrayValue = true;
+                        allValues.unshift(...existingValue);
+                    } else {
+                        allValues.unshift(existingValue);
+                    }
+                }
+                
+                // Merge based on value types
+                if (hasArrayValue) {
+                    // If any value is an array (random select), combine all into array
+                    mergedConfig[name] = allValues;
+                } else {
+                    // All are single strings - merge with ", "
+                    mergedConfig[name] = allValues.join(', ');
+                }
+            }
+        });
+        
+        // Use the merged config for replacements
+        textReplacements = mergedConfig;
+    }
 
     // Handle incrementing queries ending with # (processed after bracketed syntax)
     result = result.replace(/!([a-zA-Z0-9_]+)#/g, (match, key) => {
@@ -189,7 +388,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             currentIndex = getIncrementingIndex(key, presetName, isLocked);
         }
 
-        const replacementValue = currentPromptConfig.text_replacements[key];
+        const replacementValue = textReplacements[key];
 
         if (!replacementValue) {
             throw new Error(`No replacement found for incrementing key: ${key}`);
@@ -254,12 +453,12 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
                 // First calculate allValues to get the length
                 const tempAllValues = [];
                 expandedKeys.forEach(expandedKey => {
-                    const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                    const matchingKeys = Object.keys(textReplacements).filter(k =>
                         baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
                     );
 
                     matchingKeys.forEach(key => {
-                        const replacementValue = currentPromptConfig.text_replacements[key];
+                        const replacementValue = textReplacements[key];
                         if (Array.isArray(replacementValue)) {
                             tempAllValues.push(...replacementValue);
                         } else {
@@ -273,12 +472,12 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             // For incrementing, we cycle through all possible values from the expanded keys
             const allValues = [];
             expandedKeys.forEach(expandedKey => {
-                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                const matchingKeys = Object.keys(textReplacements).filter(k =>
                     baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
                 );
 
                 matchingKeys.forEach(key => {
-                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    const replacementValue = textReplacements[key];
                     if (Array.isArray(replacementValue)) {
                         allValues.push(...replacementValue);
                     } else {
@@ -312,7 +511,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
         if (!suffix) {
             // No suffix - pick one expanded key/prefix randomly and find a matching key
             const selectedPrefix = expandedKeys[Math.floor(Math.random() * expandedKeys.length)];
-            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+            const matchingKeys = Object.keys(textReplacements).filter(k =>
                 baseKey ? (k === selectedPrefix) : k.startsWith(selectedPrefix)
             );
 
@@ -321,7 +520,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             }
 
             const selectedKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
-            const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+            const replacementValue = textReplacements[selectedKey];
             const resolvedValue = getReplacementValue(replacementValue);
 
             replacements.push({
@@ -340,7 +539,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
         if (suffix === '~') {
             // Pick one expanded key/prefix and find a matching key
             const selectedPrefix = expandedKeys[Math.floor(Math.random() * expandedKeys.length)];
-            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+            const matchingKeys = Object.keys(textReplacements).filter(k =>
                 baseKey ? (k === selectedPrefix) : k.startsWith(selectedPrefix)
             );
 
@@ -349,7 +548,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             }
 
             const selectedKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
-            const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+            const replacementValue = textReplacements[selectedKey];
             const resolvedValue = getReplacementValue(replacementValue);
 
             replacements.push({
@@ -370,12 +569,12 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             const combinedPool = [];
 
             expandedKeys.forEach(expandedKey => {
-                const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(k =>
+                const matchingKeys = Object.keys(textReplacements).filter(k =>
                     baseKey ? (k === expandedKey) : k.startsWith(expandedKey)
                 );
 
                 matchingKeys.forEach(key => {
-                    const replacementValue = currentPromptConfig.text_replacements[key];
+                    const replacementValue = textReplacements[key];
                     if (Array.isArray(replacementValue)) {
                         replacementValue.forEach((item, index) => {
                             combinedPool.push({
@@ -436,7 +635,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
 
     // Handle PICK replacements (using ~ and ~+ suffixes)
     result = result.replace(/!([a-zA-Z0-9_]+)(~\+|~)/g, (match, name, suffix) => {
-        const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
+        const matchingKeys = Object.keys(textReplacements).filter(key =>
             key.startsWith(name) || key === name
         );
         if (matchingKeys.length === 0) throw new Error(`No text replacements found starting with: ${name}`);
@@ -445,7 +644,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             // Combine all items into a fair pool, then pick one (like ~ but from combined pool)
             const combinedPool = [];
             matchingKeys.forEach(key => {
-                const replacementValue = currentPromptConfig.text_replacements[key];
+                const replacementValue = textReplacements[key];
                 if (Array.isArray(replacementValue)) {
                     replacementValue.forEach((item, index) => {
                         combinedPool.push({
@@ -505,7 +704,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
                 const lockedMatch = lockedReplacements.find(lr => lr.key === name || matchingKeys.includes(lr.key));
                 if (lockedMatch) {
                     selectedKey = lockedMatch.key;
-                    const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+                    const replacementValue = textReplacements[selectedKey];
                     if (replacementValue) {
                         // Use the specified index if it's an array, otherwise use the single value
                         if (Array.isArray(replacementValue)) {
@@ -524,7 +723,7 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
             if (!selectedKey) {
                 const selectedKeyIndex = Math.floor(Math.random() * matchingKeys.length);
                 selectedKey = matchingKeys[selectedKeyIndex];
-                const replacementValue = currentPromptConfig.text_replacements[selectedKey];
+                const replacementValue = textReplacements[selectedKey];
                 selectedValue = getReplacementValue(replacementValue);
 
                 // Track the replacement details
@@ -533,6 +732,8 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
                     const originalValue = getReplacementValue(replacementValue);
                     replacementIndex = replacementValue.indexOf(originalValue);
                     if (replacementIndex === -1) replacementIndex = 0; // fallback
+                } else {
+                    replacementIndex = 0;
                 }
             }
 
@@ -566,23 +767,23 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
         // Check for replacements in priority order: Period+Model > Period > Model > Base
         let replacementValue = null;
         let actualKey = baseKey;
-        if (periodKey && model && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
-            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
+        if (periodKey && model && textReplacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`]) {
+            replacementValue = textReplacements[`${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`];
             actualKey = `${baseKey}_${periodKey.toUpperCase()}_${model.toUpperCase()}`;
         }
         // Check for periodKey-specific replacement
-        else if (periodKey && currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
-            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${periodKey.toUpperCase()}`];
+        else if (periodKey && textReplacements[`${baseKey}_${periodKey.toUpperCase()}`]) {
+            replacementValue = textReplacements[`${baseKey}_${periodKey.toUpperCase()}`];
             actualKey = `${baseKey}_${periodKey.toUpperCase()}`;
         }
         // Then check for model-specific replacement
-        else if (model && currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`]) {
-            replacementValue = currentPromptConfig.text_replacements[`${baseKey}_${model.toUpperCase()}`];
+        else if (model && textReplacements[`${baseKey}_${model.toUpperCase()}`]) {
+            replacementValue = textReplacements[`${baseKey}_${model.toUpperCase()}`];
             actualKey = `${baseKey}_${model.toUpperCase()}`;
         }
         // Finally fall back to base replacement
-        else if (currentPromptConfig.text_replacements[baseKey]) {
-            replacementValue = currentPromptConfig.text_replacements[baseKey];
+        else if (textReplacements[baseKey]) {
+            replacementValue = textReplacements[baseKey];
             actualKey = baseKey;
         }
 
@@ -636,7 +837,23 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
         throw new Error(`Invalid text replacement: ${remainingReplacements.join(', ')}`);
     }
 
-    return { text: result, replacements: replacements };
+    // Enrich replacements with body replacement metadata for stage-aware locking
+    const enrichedReplacements = replacements.map(replacement => {
+        const bodyReplacementInfo = currentStageBodyReplacements.get(replacement.key);
+        if (bodyReplacementInfo && bodyReplacementInfo.length > 0) {
+            // This replacement came from a body replacement with stage configuration
+            // Use the first matching config (in case of multiple merged replacements)
+            const config = bodyReplacementInfo[0];
+            return {
+                ...replacement,
+                body_replacement_stages: config.stages,
+                body_replacement_persist: config.persist
+            };
+        }
+        return replacement;
+    });
+
+    return { text: result, replacements: enrichedReplacements };
 };
 
 // Get all possible options for a text replacement pattern
@@ -2511,6 +2728,7 @@ module.exports = {
     loadPromptConfig,
     savePromptConfig,
     getReplacementValue,
+    resolvePresetOrGroup,
     applyTextReplacements,
     getTextReplacementOptions,
     generateUUID,

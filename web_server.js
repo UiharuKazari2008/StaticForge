@@ -15,15 +15,24 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 
+// Scheduled preset generation data structures
+const pendingRequests = new Map(); // requestId -> { requestId, presetUuid, scheduledTime, status, filename, filenames, retrievedAt, startedAt, completedAt, errorMessage, queryParams, workspaceId, timeoutId, name, breakPoint }
+const namedRequests = new Map(); // name -> requestId (for named request lookups)
+const scheduledQueue = []; // Array of requestIds in FIFO order
+let processingScheduled = false; // Flag to prevent concurrent processing
+let lastScheduledCompletion = 0; // Timestamp of last scheduled request completion
+
 // Import modules
+const logger = require('./modules/logger');
 const { authMiddleware, devAuthMiddleware } = require('./modules/auth');
-const { loadPromptConfig } = require('./modules/textReplacements');
+const { loadPromptConfig, resolvePresetOrGroup } = require('./modules/textReplacements');
 const { tagSuggestionsCache } = require('./modules/cache');
 const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
 const { WebSocketServer, setGlobalWsServer, getGlobalWsServer } = require('./modules/websocket');
 const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
-const { getBaseName } = require('./modules/pngMetadata');
+const { getBaseName, stripPngTextChunks, readMetadata, insertTextChunk } = require('./modules/pngMetadata');
 const { processDynamicImage } = require('./modules/imageTools');
+const tracing = require('./modules/tracing');
 const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceArray } = require('./modules/workspace');
 const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification, getImageMetadata } = require('./modules/metadataDatabase');
 const { initializeChatDatabase } = require('./modules/chatDatabase');
@@ -31,7 +40,7 @@ const { initializeDirectorDatabase } = require('./modules/directorDatabase');
 const imageCounter = require('./modules/imageCounter');
 const { generateMobilePreviews } = require('./modules/previewUtils');
 const ParallelPreviewGenerator = require('./modules/parallelPreviewGenerator');
-const { setContext: setImageGenContext, handleGeneration, buildOptions, handleRerollGeneration } = require('./modules/imageGeneration');
+const { setContext: setImageGenContext, handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const { setContext: setUpscaleContext } = require('./modules/imageUpscaling');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
 
@@ -63,7 +72,7 @@ function updateServerStage(stage, isReady = false) {
     serverReadiness.stage = stage;
     serverReadiness.isReady = isReady;
     serverReadiness.lastUpdate = Date.now();
-    console.log(`📊 Server stage: ${serverReadiness.stages[stage]}`);
+    // Logging now handled by boot tree system
 }
 
 // Server readiness middleware - blocks access to endpoints when server is not ready
@@ -287,17 +296,14 @@ function logSecurityEvent(eventType, ip, details = {}) {
     ...details
   };
 
-  // Log to console with structured format
-  console.log(`🔐 SECURITY [${eventType}]: IP ${ip}`, details);
+  // Log security events using logger
+  logger.security(`[${eventType}] IP ${ip}`, details);
 
   // In production, you might want to:
   // - Write to security log file
   // - Send to SIEM system
   // - Store in security database
   // - Send alerts for suspicious activity
-
-  // For now, we'll just log to console, but this function can be enhanced
-  // to integrate with your security monitoring system
 }
 
 // Get rolling key system statistics
@@ -394,7 +400,7 @@ function initializeRollingKeySystem() {
     }, 60000); // Check every minute
 
   } catch (error) {
-    console.error('❌ Failed to initialize rolling key system:', error);
+    logger.error('Failed to initialize rolling key system:', error);
     logSecurityEvent('ROLLING_KEY_INIT_FAILED', 'system', {
       error: error.message
     });
@@ -615,6 +621,11 @@ function isProtectedResource(url) {
         url.startsWith('/cache/')) {
         return true;
     }
+    
+    // Protect tokenizer and other authenticated assets
+    if (url.startsWith('/protected/')) {
+        return true;
+    }
 
     // Don't require auth for basic HTML pages and static assets
     return false;
@@ -749,7 +760,6 @@ async function initializeAccountData(force = false) {
     try {
         const now = Date.now();
         if (now - lastAccountDataCheck >= ACCOUNT_DATA_REFRESH_INTERVAL || force) {
-            console.log('🔄 Initializing account data...');
             const userData = await getUserData();
             if (userData.ok) {
                 accountData = userData;
@@ -764,16 +774,18 @@ async function initializeAccountData(force = false) {
                     purchasedTrainingSteps,
                     totalCredits
                 };
+                
+                logger.bootSubStep(`Account loaded: ${totalCredits} total credits`);
             }
 
             lastAccountDataCheck = Date.now();
             
             if (!accountBalance.totalCredits) {
-                console.error('❌ Failed to load account data');
+                logger.error('Failed to load account data');
             }
         }
     } catch (error) {
-        console.error('❌ Error initializing account data:', error.message);
+        logger.error('Error initializing account data:', error.message);
     }
 }
 
@@ -787,9 +799,10 @@ async function initializeCacheData(force = false) {
             
             globalCacheData = cacheData;
             lastCacheCheck = Date.now();
+            logger.bootSubStep(`Cached ${cacheData.length} assets`);
         }
     } catch (error) {
-        console.error('❌ Error initializing cache data:', error.message);
+        logger.error('Error initializing cache data:', error.message);
     }
 }
 
@@ -1347,11 +1360,8 @@ async function generateCombinedSpriteSheet(images, outputPath, width, height) {
 
 // On startup: generate missing previews and clean up orphans
 async function syncCachePreviews() {
-    console.log('🔄 Checking cache previews...');
-
     // Ensure upload cache and preview cache directories exist
     if (!fs.existsSync(uploadCacheDir)) {
-        console.log('📁 Upload cache directory does not exist, skipping cache preview sync');
         return;
     }
     if (!fs.existsSync(previewCacheDir)) {
@@ -1361,7 +1371,7 @@ async function syncCachePreviews() {
     // Get all files in upload cache
     const cacheFiles = fs.readdirSync(uploadCacheDir);
 
-    console.log(`📊 Found ${cacheFiles.length} cache files`);
+    logger.bootSubStep(`Found ${cacheFiles.length} cache files`);
 
     // Find cache files that don't have previews
     let missingPreviews = 0;
@@ -1374,7 +1384,6 @@ async function syncCachePreviews() {
         if (!fs.existsSync(previewPath)) {
             try {
                 missingPreviews++;
-                console.log(`📸 Generating cache preview for: ${cacheFile}`);
 
                 await sharp(cachePath)
                     .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
@@ -1382,17 +1391,16 @@ async function syncCachePreviews() {
                     .toFile(previewPath);
 
                 generatedPreviews++;
-                console.log(`✅ Generated cache preview: ${cacheFile}.webp`);
             } catch (error) {
-                console.error(`❌ Failed to generate cache preview for ${cacheFile}:`, error);
+                logger.error(`Failed to generate cache preview for ${cacheFile}:`, error);
             }
         }
     }
 
     if (missingPreviews === 0) {
-        console.log('✅ All cache previews are up to date');
+        logger.bootSubStep('All cache previews are up to date');
     } else {
-        console.log(`📸 Generated ${generatedPreviews}/${missingPreviews} missing cache previews`);
+        logger.bootSubStep(`Generated ${generatedPreviews}/${missingPreviews} cache previews`);
     }
 
     // Remove orphan cache previews (previews without corresponding cache files)
@@ -1422,15 +1430,13 @@ async function syncCachePreviews() {
 }
 
 async function syncPreviews() {
-    console.log('🔄 Starting preview synchronization...');
-    
     const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
     const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.webp'));
     const baseMap = {};
     
-    console.log(`📊 Found ${files.length} images and ${previews.length} existing previews`);
+    logger.bootSubStep(`Found ${files.length} images and ${previews.length} existing previews`);
     
-    // Pair originals and upscales
+    // Build baseMap - each unique base name gets its own entry
     for (const file of files) {
         const base = getBaseName(file);
         if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
@@ -1443,7 +1449,7 @@ async function syncPreviews() {
     const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
     
     for (const base in baseMap) {
-        const imgFile = baseMap[base].original || baseMap[base].upscaled;
+        const imgFile = baseMap[base].original ||  baseMap[base].upscaled;
         if (imgFile) {
             for (const type of previewTypes) {
                 const previewPath = path.join(previewsDir, `${base}${type}`);
@@ -1456,7 +1462,7 @@ async function syncPreviews() {
     }
     
     if (missingPreviews > 0) {
-        console.log(`📸 Generating ${missingPreviews} missing preview sets using parallel processing...`);
+        logger.bootSubStep(`Generating ${missingPreviews} missing preview sets`);
         
         // Prepare images that need preview generation
         const imagesToProcess = [];
@@ -1465,7 +1471,7 @@ async function syncPreviews() {
             if (imgFile) {
                 const imgPath = path.join(imagesDir, imgFile);
                 let needsGeneration = false;
-                
+
                 // Check if any preview type is missing
                 for (const type of previewTypes) {
                     const previewPath = path.join(previewsDir, `${base}${type}`);
@@ -1474,7 +1480,7 @@ async function syncPreviews() {
                         break;
                     }
                 }
-                
+
                 if (needsGeneration) {
                     imagesToProcess.push({
                         imagePath: imgPath,
@@ -1491,16 +1497,16 @@ async function syncPreviews() {
             skipExisting: false,
             forceRegenerate: false,
             onProgress: (processed, total, progress) => {
-                console.log(`📸 Progress: ${processed}/${total} (${progress}%)`);
+                // Silent during boot
             },
             onComplete: (results) => {
-                console.log(`✅ Preview generation complete: ${results.processed} preview sets generated`);
+                logger.bootSubStep(`Generated ${results.processed} preview sets`);
                 if (results.errors > 0) {
-                    console.log(`⚠️  ${results.errors} images failed to process`);
+                    logger.bootSubStep(`${results.errors} images failed to process`);
                 }
             },
             onError: (basename, error) => {
-                console.error(`❌ Failed to generate previews for ${basename}:`, error);
+                logger.error(`Failed to generate previews for ${basename}:`, error);
             }
         });
         
@@ -1511,7 +1517,7 @@ async function syncPreviews() {
             previewsDir
         );
     } else {
-        console.log('✅ All previews are up to date');
+        logger.bootSubStep('All previews are up to date');
     }
     
     // Remove orphan previews
@@ -1541,20 +1547,15 @@ async function syncPreviews() {
             const previewPath = path.join(previewsDir, preview);
             fs.unlinkSync(previewPath);
             orphanCount++;
-            console.log(`🧹 Removed orphan preview: ${preview}`);
         }
     }
     
     if (orphanCount > 0) {
-        console.log(`🧹 Cleanup complete: ${orphanCount} orphan previews removed`);
-    } else {
-        console.log('🧹 No orphan previews found');
+        logger.bootSubStep(`Removed ${orphanCount} orphan previews`);
     }
     
     // Also ensure all .cache/upload files have previews in .cache/preview
     await syncCachePreviews();
-
-    console.log('✅ Preview synchronization complete');
 }
 
 async function getBalance() {
@@ -1716,6 +1717,127 @@ async function getUserData() {
     }
 }
 
+// Validate preset query parameters for pending requests
+function validatePresetQueryParameters(queryParams) {
+    const errors = [];
+    const { Resolution } = require('nekoai-js');
+
+    // Validate steps
+    if (queryParams.steps !== undefined) {
+        const steps = parseInt(queryParams.steps);
+        if (isNaN(steps) || steps <= 0) {
+            errors.push('steps must be a positive integer');
+        }
+    }
+
+    // Validate guidance
+    if (queryParams.guidance !== undefined) {
+        const guidance = parseFloat(queryParams.guidance);
+        if (isNaN(guidance) || guidance <= 0) {
+            errors.push('guidance must be a positive number');
+        }
+    }
+
+    // Validate rescale
+    if (queryParams.rescale !== undefined) {
+        const rescale = parseFloat(queryParams.rescale);
+        if (isNaN(rescale)) {
+            errors.push('rescale must be a number');
+        }
+    }
+
+    // Validate resolution
+    if (queryParams.resolution !== undefined) {
+        const upperResolution = queryParams.resolution.toUpperCase();
+        if (!Resolution[upperResolution]) {
+            errors.push(`resolution "${queryParams.resolution}" must be a valid named resolution preset`);
+        }
+    }
+
+    // Validate seed
+    if (queryParams.seed !== undefined) {
+        const seed = parseInt(queryParams.seed);
+        if (isNaN(seed)) {
+            errors.push('seed must be an integer');
+        }
+    }
+
+    // Validate variety
+    if (queryParams.variety !== undefined) {
+        if (queryParams.variety !== 'true' && queryParams.variety !== 'false') {
+            errors.push('variety must be "true" or "false"');
+        }
+    }
+
+    // Validate dynamic generation parameters
+    if (queryParams.dyna_tod !== undefined) {
+        // dyna_tod can be boolean or string, no specific validation needed
+    }
+
+    if (queryParams.dyna_weather !== undefined) {
+        // dyna_weather can be boolean or string, no specific validation needed
+    }
+
+    if (queryParams.dyna_season !== undefined) {
+        const season = queryParams.dyna_season;
+        if (season !== 'true' && season !== 'false' && season !== 'nearest' && isNaN(parseInt(season))) {
+            errors.push('dyna_season must be boolean ("true"/"false"), "nearest", or numeric index');
+        }
+    }
+
+    if (queryParams.dyna_action !== undefined) {
+        if (queryParams.dyna_action !== 'true' && queryParams.dyna_action !== 'false') {
+            errors.push('dyna_action must be "true" or "false"');
+        }
+    }
+
+    if (queryParams.dyna_location !== undefined) {
+        if (typeof queryParams.dyna_location !== 'string' || queryParams.dyna_location.trim() === '') {
+            errors.push('dyna_location must be a non-empty string');
+        }
+    }
+
+    if (queryParams.dyna_creative !== undefined) {
+        if (queryParams.dyna_creative !== 'true' && queryParams.dyna_creative !== 'false') {
+            errors.push('dyna_creative must be "true" or "false"');
+        }
+    }
+
+    if (queryParams.dyna_no_cache !== undefined) {
+        if (queryParams.dyna_no_cache !== 'true' && queryParams.dyna_no_cache !== 'false') {
+            errors.push('dyna_no_cache must be "true" or "false"');
+        }
+    }
+
+    // Validate other parameters
+    if (queryParams.optimize !== undefined) {
+        if (queryParams.optimize !== 'true' && queryParams.optimize !== 'false') {
+            errors.push('optimize must be "true" or "false"');
+        }
+    }
+
+    if (queryParams.download !== undefined) {
+        if (queryParams.download !== 'true' && queryParams.download !== 'false') {
+            errors.push('download must be "true" or "false"');
+        }
+    }
+
+    if (queryParams.workspace !== undefined) {
+        if (typeof queryParams.workspace !== 'string' || queryParams.workspace.trim() === '') {
+            errors.push('workspace must be a non-empty string');
+        }
+    }
+
+    // Validate name (for named requests)
+    if (queryParams.name !== undefined) {
+        if (typeof queryParams.name !== 'string' || queryParams.name.trim() === '' || queryParams.name.includes(':')) {
+            errors.push('name must be a non-empty string without colons');
+        }
+    }
+
+    return errors;
+}
+
 app.get('/internal/*', (req, res) => {
     try {
         res.setHeader('Cache-Control', 'blocked, no-cache, no-store, must-revalidate, private, max-age=0');
@@ -1837,7 +1959,7 @@ app.use((req, res, next) => {
     
     next();
 });
-app.use('/images/:filename', authMiddleware, (req, res) => {
+app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(imagesDir, filename);
     
@@ -1857,6 +1979,43 @@ app.use('/images/:filename', authMiddleware, (req, res) => {
     // Handle download request
     if (req.query.download === 'true') {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    }
+
+    // Handle stripContext query parameter for PNG files
+    if (req.query.stripContext === 'true' && path.extname(filename).toLowerCase() === '.png') {
+        try {
+            const imageBuffer = fs.readFileSync(filePath);
+            const metadata = readMetadata(imageBuffer);
+            
+            if (metadata.tEXt && metadata.tEXt.Comment) {
+                try {
+                    const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
+                    
+                    // Remove dynamic_generation context data
+                    if (parsedMetadata.dynamic_generation && parsedMetadata.dynamic_generation.compiled_prompt) {
+                        delete parsedMetadata.dynamic_generation.compiled_prompt.context;
+                    }
+                    
+                    const cleanedBuffer = stripPngTextChunks(imageBuffer);
+                    const finalBuffer = insertTextChunk(cleanedBuffer, 'Comment', JSON.stringify(parsedMetadata));
+
+                    console.log(`[/images stripContext] Processed ${filename}, stripped context, size: ${finalBuffer.length} bytes`);
+                    
+                    // Ensure Content-Type is set for the modified buffer
+                    res.setHeader('Content-Type', 'image/png');
+                    res.setHeader('Content-Length', finalBuffer.length);
+                    return res.send(finalBuffer);
+                } catch (parseError) {
+                    // If parsing fails, fall through to normal file sending
+                    console.error('Failed to parse metadata for context stripping:', parseError);
+                }
+            } else {
+                console.log(`[/images stripContext] ${filename} has no Comment metadata to process`);
+            }
+        } catch (error) {
+            console.error('Error processing stripContext:', error);
+            // Fall through to normal file sending
+        }
     }
     
     // Send the file
@@ -1882,11 +2041,16 @@ app.use('/image/slim/:filename', authMiddleware, async (req, res) => {
             })
             .toBuffer();
         
-        // Set headers for PNG download
+        // Set headers for PNG
         const baseName = path.parse(filename).name;
         res.setHeader('Content-Type', 'image/png');
-        res.setHeader('Content-Disposition', `attachment; filename="${baseName}_slim.png"`);
+        res.setHeader('Content-Length', processedImage.length);
         res.setHeader('Cache-Control', 'private, max-age=3600');
+        
+        // Only set Content-Disposition if download is requested
+        if (req.query.download === 'true') {
+            res.setHeader('Content-Disposition', `attachment; filename="${baseName}_slim.png"`);
+        }
         
         res.send(processedImage);
     } catch (error) {
@@ -1919,8 +2083,13 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
         // Set headers for JPEG download
         const baseName = path.parse(filename).name;
         res.setHeader('Content-Type', 'image/jpeg');
-        res.setHeader('Content-Disposition', `attachment; filename="${baseName}_optimized.jpg"`);
+        res.setHeader('Content-Length', processedImage.length);
         res.setHeader('Cache-Control', 'private, max-age=3600');
+        
+        // Only set Content-Disposition if download is requested
+        if (req.query.download === 'true') {
+            res.setHeader('Content-Disposition', `attachment; filename="${baseName}_optimized.jpg"`);
+        }
         
         res.send(processedImage);
     } catch (error) {
@@ -2189,6 +2358,38 @@ app.options('/app', authMiddleware, (req, res) => {
 app.get('/app', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
 });
+// Traces viewer page
+app.get('/traces', authMiddleware, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'traces.html'));
+});
+
+// Traces API
+app.get('/traces/list', authMiddleware, (req, res) => {
+    try {
+        const list = tracing.listTraces();
+        console.log(`📋 listTraces() returned ${list.length} traces`);
+        res.json({ success: true, traces: list });
+    } catch (e) {
+        console.error('❌ Error in /traces/list:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+app.get('/traces/:id', authMiddleware, (req, res) => {
+    try {
+        const trace = tracing.loadTrace(req.params.id);
+        if (!trace) return res.status(404).json({ success: false, error: 'Trace not found' });
+        res.json({ success: true, trace });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// Serve trace attachments
+app.use('/traces/files', authMiddleware, (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    next();
+}, express.static(tracing.tracesDir));
 app.get('/launch', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'launch.html'));
 });
@@ -2725,26 +2926,106 @@ app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req,
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
-        
+
         const currentPromptConfig = loadPromptConfig();
-        // Find preset by UUID instead of name
-        const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === req.params.uuid);
-        if (!foundPreset) {
-            return res.status(404).json({ success: false, error: 'Preset not found' });
+        // Resolve preset or preset group by UUID (transparently handles chapters)
+        const resolution = resolvePresetOrGroup(req.params.uuid);
+        if (!resolution) {
+            return res.status(404).json({ success: false, error: 'Preset or preset group not found' });
         }
-        const p = {...foundPreset[1], name: foundPreset[0]};
-        const opts = await buildOptions(p, null, req.query);
-        // Use target_workspace from preset if no workspace specified (for REST API calls)
-        const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
-        let result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
+
+        const { preset, presetName, isFromGroup, groupName } = resolution;
+
+        // Validate query parameters
+        const validationErrors = validatePresetQueryParameters(req.query);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid query parameters',
+                details: validationErrors
+            });
+        }
+        const p = {...preset, name: presetName};
+        
+        // Check if this preset has pipeline configuration for staged generation
+        let result;
+        if (p.pipeline && Array.isArray(p.pipeline) && p.pipeline.length > 0) {
+            console.log(`🎬 Preset has pipeline with ${p.pipeline.length} stages`);
+            
+            // Use target_workspace from preset if no workspace specified
+            const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
+            
+            // Build body for staged generation (similar to WebSocket flow)
+            const bodyData = {
+                ...p,
+                workspace: workspaceId,
+                preset: p.name,
+                presetName: p.name,
+                // Apply query parameter overrides
+                ...(req.query.steps && { steps: parseInt(req.query.steps) }),
+                ...(req.query.guidance && { guidance: parseFloat(req.query.guidance) }),
+                ...(req.query.rescale && { rescale: parseFloat(req.query.rescale) }),
+                ...(req.query.seed && { seed: parseInt(req.query.seed) }),
+                ...(req.query.variety !== undefined && { variety: req.query.variety === 'true' }),
+                ...(req.query.upscale && { upscale: req.query.upscale === 'true' ? true : parseFloat(req.query.upscale) })
+            };
+            
+            // Call handleStagedGeneration with a mock session ID
+            const sessionId = crypto.randomUUID();
+            result = await handleStagedGeneration(bodyData, sessionId, null, null, null, null);
+        } else {
+            // Regular single generation
+            const opts = await buildOptions(p, null, req.query);
+            // Use target_workspace from preset if no workspace specified (for REST API calls)
+            const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
+            result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
+        }
+        
+        // Handle staged generation results with multiple saved images
+        let targetFilename = result.filename;
+        
+        if (result.filenames && Array.isArray(result.filenames) && result.filenames.length > 0) {
+            // Multiple saved images from staged generation
+            const numParam = req.query.num;
+            
+            if (numParam !== undefined) {
+                const numIndex = parseInt(numParam);
+                if (isNaN(numIndex) || numIndex < 0 || numIndex >= result.filenames.length) {
+                    return res.status(404).json({
+                        success: false,
+                        error: `Invalid num parameter. Valid range: 0-${result.filenames.length - 1}`,
+                        total_saved: result.filenames.length
+                    });
+                }
+                targetFilename = result.filenames[numIndex];
+                console.log(`📸 Returning staged result ${numIndex} of ${result.filenames.length}: ${targetFilename}`);
+            } else {
+                // Default to last image
+                targetFilename = result.filenames[result.filenames.length - 1];
+                console.log(`📸 Returning last staged result (${result.filenames.length - 1} of ${result.filenames.length}): ${targetFilename}`);
+            }
+        }
+        
+        // Read the target image file
+        let finalBuffer;
+        if (targetFilename && targetFilename !== result.filename) {
+            // Need to read from disk
+            const imagePath = path.join(imagesDir, targetFilename);
+            if (!fs.existsSync(imagePath)) {
+                return res.status(404).json({ success: false, error: 'Generated image file not found' });
+            }
+            finalBuffer = fs.readFileSync(imagePath);
+        } else {
+            // Use buffer from result
+            finalBuffer = result.buffer;
+        }
         
         // Check if optimization is requested
         const optimize = req.query.optimize === 'true';
-        let finalBuffer = result.buffer;
         let contentType = 'image/png';
         if (optimize) {
             try {
-                finalBuffer = await sharp(result.buffer)
+                finalBuffer = await sharp(finalBuffer)
                     .jpeg({ quality: 75 })
                     .toBuffer();
                 contentType = 'image/jpeg';
@@ -2754,15 +3035,16 @@ app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req,
             }
         }
         res.setHeader('Content-Type', contentType);
-        res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename');
-        if (result && result.filename) {
-            res.setHeader('X-Generated-Filename', result.filename);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Total-Saved');
+        res.setHeader('X-Generated-Filename', targetFilename);
+        if (result.filenames && Array.isArray(result.filenames)) {
+            res.setHeader('X-Total-Saved', result.filenames.length.toString());
         }
         res.setHeader('X-Preset-UUID', p.uuid);
         res.setHeader('X-Preset-Name', p.name);
         if (req.query.download === 'true') {
             const extension = optimize ? 'jpg' : 'png';
-            const optimizedFilename = result.filename.replace('.png', `.${extension}`);
+            const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
             res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
         }
         res.send(finalBuffer);
@@ -2771,6 +3053,322 @@ app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req,
         res.status(500).json({ success: false, error: e.message });
     }
 });
+
+// Scheduled preset generation endpoint
+app.get('/pending/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req, res) => {
+    try {
+        res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        const currentPromptConfig = loadPromptConfig();
+        // Resolve preset or preset group by UUID (transparently handles chapters)
+        const resolution = resolvePresetOrGroup(req.params.uuid);
+        if (!resolution) {
+            return res.status(401).json({ success: 'not_possible', error: 'Invalid preset or preset group UUID' });
+        }
+
+        const { preset, presetName, isFromGroup, groupName } = resolution;
+
+        // Validate query parameters
+        const validationErrors = validatePresetQueryParameters(req.query);
+        if (validationErrors.length > 0) {
+            return res.status(400).json({
+                success: 'not_possible',
+                error: 'Invalid query parameters',
+                details: validationErrors
+            });
+        }
+
+        const windowParam = req.query.window;
+        let scheduledTime = Date.now();
+        let successStatus = 'success';
+
+        // Handle scheduling with window parameter
+        if (windowParam) {
+            const window = parseInt(windowParam);
+            if (isNaN(window) || window < 60) {
+                return res.status(400).json({
+                    success: 'not_possible',
+                    error: 'Window must be at least 60 seconds to account for generation time'
+                });
+            }
+
+            // Schedule at random time within window, leaving 60 seconds for generation
+            const maxDelay = window - 60;
+            if (maxDelay <= 0) {
+                return res.status(400).json({
+                    success: 'not_possible',
+                    error: 'Window too small to account for generation time (60 seconds)'
+                });
+            }
+
+            scheduledTime = Date.now() + (Math.random() * maxDelay * 1000);
+            successStatus = 'pending';
+        }
+
+        // Handle named requests
+        const requestName = req.query.name;
+        if (requestName) {
+            const existingRequestId = namedRequests.get(requestName);
+            if (existingRequestId) {
+                const existingRequest = pendingRequests.get(existingRequestId);
+                if (existingRequest && !existingRequest.retrievedAt) {
+                    // Request exists and hasn't been retrieved yet - fail
+                    return res.status(409).json({
+                        success: 'not_possible',
+                        error: `Named request "${requestName}" already exists and has not been retrieved yet`
+                    });
+                }
+                // Request exists but has been retrieved - we can overwrite it
+                // Clean up the old request
+                cancelScheduledTimeout(existingRequestId);
+                const queueIndex = scheduledQueue.indexOf(existingRequestId);
+                if (queueIndex !== -1) {
+                    scheduledQueue.splice(queueIndex, 1);
+                }
+                pendingRequests.delete(existingRequestId);
+                console.log(`♻️ Overwriting completed named request "${requestName}"`);
+            }
+        }
+
+        // Generate unique request ID
+        const requestId = crypto.randomUUID();
+
+        // Handle breakPoint parameter for pipeline stage breakpoints
+        const breakPoint = req.query.breakPoint || null;
+        if (breakPoint && !/^[0-9a-fA-F]{2}$/.test(breakPoint)) {
+            return res.status(400).json({
+                success: 'not_possible',
+                error: 'breakPoint must be a valid 2-character hex ID (e.g., "3f", "a2")'
+            });
+        }
+
+        // Store request data
+        const requestData = {
+            requestId,
+            presetUuid: req.params.uuid,
+            scheduledTime,
+            status: 'waiting',
+            filename: null,
+            filenames: null,
+            retrievedAt: null,
+            startedAt: null,
+            completedAt: null,
+            errorMessage: null,
+            queryParams: req.query,
+            workspaceId: req.query.workspace || preset?.target_workspace || 'default',
+            timeoutId: null,
+            name: requestName || null,
+            breakPoint: breakPoint
+        };
+
+        // Store in named requests map if name provided
+        if (requestName) {
+            namedRequests.set(requestName, requestId);
+        }
+
+        pendingRequests.set(requestId, requestData);
+        const wasEmpty = scheduledQueue.length === 0;
+        scheduledQueue.push(requestId);
+
+        // Start queue processor only if this is the first request
+        if (wasEmpty) {
+            scheduleNextRequest();
+        }
+
+        res.json({
+            success: successStatus,
+            request_id: requestId,
+            scheduled_time: scheduledTime
+        });
+
+    } catch(e) {
+        console.error('❌ Scheduled preset request failed:', e);
+        res.status(500).json({ success: 'failed', error: e.message });
+    }
+});
+
+// Scheduled preset retrieval endpoint
+app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, res) => {
+    try {
+        res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+
+        let requestId = req.params.requestid;
+        let request = null;
+
+        // Handle named request lookups
+        if (requestId.startsWith('named:')) {
+            const requestName = requestId.substring(6); // Remove "named:" prefix
+            if (!requestName || requestName.trim() === '') {
+                return res.status(400).json({ success: false, error: 'Invalid named request format' });
+            }
+
+            const namedRequestId = namedRequests.get(requestName);
+            if (!namedRequestId) {
+                return res.status(404).json({ success: false, error: `Named request "${requestName}" not found` });
+            }
+
+            requestId = namedRequestId;
+            request = pendingRequests.get(requestId);
+        } else {
+            request = pendingRequests.get(requestId);
+        }
+
+        if (!request) {
+            return res.status(404).json({ success: false, error: 'Request not found' });
+        }
+
+        // Calculate queue position for waiting/pending requests
+        let queuePosition = null;
+        if (request.status === 'waiting' || request.status === 'pending') {
+            queuePosition = scheduledQueue.indexOf(requestId) + 1;
+        }
+
+        if (request.status === 'waiting' || request.status === 'pending') {
+            return res.json({
+                status: request.status,
+                scheduled_time: request.scheduledTime,
+                queue_position: queuePosition
+            });
+        }
+
+        if (request.status === 'error') {
+            return res.json({
+                status: 'error',
+                error: request.errorMessage
+            });
+        }
+
+        if (request.status === 'completed') {
+            // Mark as retrieved if this is the first retrieval
+            if (!request.retrievedAt) {
+                request.retrievedAt = Date.now();
+            }
+
+            // Return the image buffer directly (same as regular preset endpoint)
+            if (!request.filename) {
+                return res.status(500).json({ success: false, error: 'No filename stored for completed request' });
+            }
+
+            // Handle staged generation results with multiple saved images
+            let targetFilename = request.filename;
+            
+            if (request.filenames && Array.isArray(request.filenames) && request.filenames.length > 0) {
+                // Multiple saved images from staged generation
+                const numParam = req.query.num;
+                
+                if (numParam !== undefined) {
+                    // Check if numParam is a hex ID (2-char hex) or numeric index
+                    const isHexId = /^[0-9a-fA-F]{2}$/.test(numParam) && isNaN(numParam);
+                    
+                    if (isHexId) {
+                        // Search by stage hex ID
+                        const stageData = request.filenames.find(f => 
+                            f.stageId && f.stageId.toLowerCase() === numParam.toLowerCase()
+                        );
+                        
+                        if (!stageData) {
+                            const availableIds = request.filenames
+                                .map(f => f.stageId || 'null')
+                                .filter(id => id !== 'null');
+                            
+                            return res.status(404).json({
+                                success: false,
+                                error: `Stage ID '${numParam}' not found`,
+                                available_stage_ids: availableIds,
+                                available_indices: `0-${request.filenames.length - 1}`,
+                                total_saved: request.filenames.length
+                            });
+                        }
+                        
+                        targetFilename = stageData.filename;
+                        console.log(`📸 Returning stage by ID '${numParam}': ${targetFilename} (index ${stageData.stageIndex})`);
+                    } else {
+                        // Numeric index
+                        const numIndex = parseInt(numParam);
+                        if (isNaN(numIndex) || numIndex < 0 || numIndex >= request.filenames.length) {
+                            const availableIds = request.filenames
+                                .map(f => f.stageId || 'null')
+                                .filter(id => id !== 'null');
+                            
+                            return res.status(404).json({
+                                success: false,
+                                error: `Invalid num parameter. Valid range: 0-${request.filenames.length - 1}`,
+                                available_stage_ids: availableIds.length > 0 ? availableIds : undefined,
+                                total_saved: request.filenames.length
+                            });
+                        }
+                        
+                        // Handle both old format (string) and new format (object)
+                        targetFilename = typeof request.filenames[numIndex] === 'string' 
+                            ? request.filenames[numIndex] 
+                            : request.filenames[numIndex].filename;
+                        console.log(`📸 Returning staged result ${numIndex} of ${request.filenames.length}: ${targetFilename}`);
+                    }
+                } else {
+                    // Default to last image
+                    const lastEntry = request.filenames[request.filenames.length - 1];
+                    targetFilename = typeof lastEntry === 'string' ? lastEntry : lastEntry.filename;
+                    console.log(`📸 Returning last staged result (${request.filenames.length - 1} of ${request.filenames.length}): ${targetFilename}`);
+                }
+            }
+
+            // Read the generated image file
+            const imagePath = path.join(imagesDir, targetFilename);
+            if (!fs.existsSync(imagePath)) {
+                return res.status(404).json({ success: false, error: 'Generated image file not found' });
+            }
+
+            const imageBuffer = fs.readFileSync(imagePath);
+
+            // Set headers similar to regular preset endpoint
+            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Access-Control-Expose-Headers', 'X-Generated-Filename, X-Request-ID, X-Total-Saved');
+            res.setHeader('X-Generated-Filename', targetFilename);
+            res.setHeader('X-Request-ID', requestId);
+            if (request.filenames && Array.isArray(request.filenames)) {
+                res.setHeader('X-Total-Saved', request.filenames.length.toString());
+            }
+
+            // Handle optimization if requested
+            const optimize = req.query.optimize === 'true';
+            let finalBuffer = imageBuffer;
+            let contentType = 'image/png';
+
+            if (optimize) {
+                try {
+                    finalBuffer = await sharp(imageBuffer)
+                        .jpeg({ quality: 75 })
+                        .toBuffer();
+                    contentType = 'image/jpeg';
+                } catch (error) {
+                    console.error('❌ Image optimization failed:', error.message);
+                    // Fall back to original PNG if optimization fails
+                }
+            }
+
+            res.setHeader('Content-Type', contentType);
+            if (req.query.download === 'true') {
+                const extension = optimize ? 'jpg' : 'png';
+                const optimizedFilename = targetFilename.replace('.png', `.${extension}`);
+                res.setHeader('Content-Disposition', `attachment; filename="${optimizedFilename}"`);
+            }
+
+            return res.send(finalBuffer);
+        }
+
+        // Unknown status
+        return res.status(500).json({ success: false, error: 'Unknown request status' });
+
+    } catch(e) {
+        console.error('❌ Scheduled preset retrieval failed:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, queueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
@@ -2886,6 +3484,68 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, async (req, res) =>
     }
 });
 
+// Admin endpoint to view all pending requests
+app.get('/pending', authMiddleware, (req, res) => {
+    try {
+        // Check if user is admin (not readonly)
+        if (req.session.userType !== 'admin') {
+            return res.status(403).json({ 
+                success: false, 
+                error: 'Admin access required to view pending requests' 
+            });
+        }
+
+        // Convert pending requests map to array
+        const requests = Array.from(pendingRequests.entries()).map(([id, request]) => {
+            // Calculate duration if applicable
+            let duration = null;
+            if (request.startedAt && request.completedAt) {
+                duration = request.completedAt - request.startedAt;
+            } else if (request.startedAt) {
+                duration = Date.now() - request.startedAt;
+            }
+
+            return {
+                requestId: id,
+                name: request.name || null,
+                presetUuid: request.presetUuid,
+                workspaceId: request.workspaceId,
+                status: request.status,
+                createdAt: request.scheduledTime,
+                startedAt: request.startedAt || null,
+                completedAt: request.completedAt || null,
+                retrievedAt: request.retrievedAt || null,
+                duration: duration,
+                errorMessage: request.errorMessage || null,
+                files: request.filenames || (request.filename ? [request.filename] : []),
+                breakPoint: request.breakPoint || null,
+                queuePosition: request.status === 'waiting' || request.status === 'pending' 
+                    ? scheduledQueue.indexOf(id) + 1 
+                    : null
+            };
+        });
+
+        // Sort by creation time (newest first)
+        requests.sort((a, b) => b.createdAt - a.createdAt);
+
+        res.json({
+            success: true,
+            total: requests.length,
+            queue_length: scheduledQueue.length,
+            processing: processingScheduled,
+            requests: requests
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching pending requests:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch pending requests',
+            details: error.message 
+        });
+    }
+});
+
 // Initialize cache at startup
 async function initializeCache() {
     updateServerStage('syncing_previews');
@@ -2911,12 +3571,221 @@ async function initializeCache() {
     setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
     setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL); // Check every 5 minutes
     setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS); // Cleanup every hour
+    setInterval(() => cleanupRetrievedRequests(), 5 * 60 * 1000); // Cleanup scheduled requests every 5 minutes
 }
 
 // Cache save scheduling function
 function scheduleCacheSave() {
     if (tagSuggestionsCache.isDirty) {
         tagSuggestionsCache.markDirty();
+    }
+}
+
+// Scheduled preset generation queue processing with timeout-based scheduling
+async function scheduleNextRequest() {
+    if (scheduledQueue.length === 0) return;
+
+    // Find the next request in queue order
+    const nextRequestId = scheduledQueue[0];
+    const request = pendingRequests.get(nextRequestId);
+
+    if (!request) {
+        // Request was deleted, remove from queue
+        scheduledQueue.shift();
+        return scheduleNextRequest();
+    }
+
+    // Clear any existing timeout for this request
+    if (request.timeoutId) {
+        clearTimeout(request.timeoutId);
+        request.timeoutId = null;
+    }
+
+    const now = Date.now();
+    const delay = Math.max(0, request.scheduledTime - now);
+
+    // Schedule the timeout for this request
+    request.timeoutId = setTimeout(async () => {
+        // Double-check the request still exists and is still first in queue
+        if (!pendingRequests.has(nextRequestId) || scheduledQueue[0] !== nextRequestId) {
+            return; // Request was processed or removed by another path
+        }
+        await processScheduledRequest(nextRequestId);
+    }, delay);
+}
+
+// Process a single scheduled request
+async function processScheduledRequest(requestId) {
+    const request = pendingRequests.get(requestId);
+    if (!request) return;
+
+    // Check if we're currently processing another request
+    if (processingScheduled) {
+        console.log(`⏰ Request ${requestId} fired while busy, will wait for queue processor`);
+        // Don't reschedule - let the queue processor handle this in order
+        return;
+    }
+
+    processingScheduled = true;
+
+    try {
+        // Double-check the request is still in the queue before processing
+        const queueIndex = scheduledQueue.indexOf(requestId);
+        if (queueIndex === -1) {
+            console.log(`⚠️ Request ${requestId} was removed from queue before processing`);
+            return;
+        }
+
+        // CRITICAL: Only process if this is the first item in the queue
+        // This ensures strict FIFO ordering
+        if (queueIndex !== 0) {
+            console.log(`⚠️ Request ${requestId} attempted to process out of order (position ${queueIndex + 1}), skipping`);
+            return;
+        }
+
+        // Remove from queue
+        scheduledQueue.splice(queueIndex, 1);
+
+        // Clear the timeout since we're processing now
+        if (request.timeoutId) {
+            clearTimeout(request.timeoutId);
+            request.timeoutId = null;
+        }
+
+        // Update status to pending and record start time
+        request.status = 'pending';
+        request.startedAt = Date.now();
+
+        // Load preset and build options
+        const currentPromptConfig = loadPromptConfig();
+        const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === request.presetUuid);
+        if (!foundPreset) {
+            throw new Error('Preset not found');
+        }
+        const p = {...foundPreset[1], name: foundPreset[0]};
+        
+        // Use target_workspace from preset if no workspace specified
+        const workspaceId = request.queryParams.workspace || p?.target_workspace || 'default';
+
+        // Check if this preset has pipeline configuration for staged generation
+        let result;
+        if (p.pipeline && Array.isArray(p.pipeline) && p.pipeline.length > 0) {
+            console.log(`🎬 Scheduled preset has pipeline with ${p.pipeline.length} stages`);
+            
+            // Build body for staged generation (similar to WebSocket flow)
+            const bodyData = {
+                ...p,
+                workspace: workspaceId,
+                preset: p.name,
+                presetName: p.name,
+                // Apply query parameter overrides
+                ...(request.queryParams.steps && { steps: parseInt(request.queryParams.steps) }),
+                ...(request.queryParams.guidance && { guidance: parseFloat(request.queryParams.guidance) }),
+                ...(request.queryParams.rescale && { rescale: parseFloat(request.queryParams.rescale) }),
+                ...(request.queryParams.seed && { seed: parseInt(request.queryParams.seed) }),
+                ...(request.queryParams.variety !== undefined && { variety: request.queryParams.variety === 'true' }),
+                ...(request.queryParams.upscale && { upscale: request.queryParams.upscale === 'true' ? true : parseFloat(request.queryParams.upscale) }),
+                // Add breakPoint if specified in request
+                ...(request.breakPoint && { breakPoint: request.breakPoint })
+            };
+            
+            // Call handleStagedGeneration with a mock session ID
+            const sessionId = crypto.randomUUID();
+            result = await handleStagedGeneration(bodyData, sessionId, null, null, null, null);
+        } else {
+            // Regular single generation
+            const opts = await buildOptions(p, null, request.queryParams);
+            result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
+        }
+
+        // Update request with successful result
+        request.status = 'completed';
+        request.completedAt = Date.now();
+        request.filename = result.filename;
+        
+        // Store array of filenames if this is a staged generation
+        if (result.filenames && Array.isArray(result.filenames) && result.filenames.length > 0) {
+            request.filenames = result.filenames;
+            console.log(`✅ Scheduled request ${requestId} completed with ${result.filenames.length} saved stages`);
+        } else {
+            console.log(`✅ Scheduled request ${requestId} completed successfully`);
+        }
+
+    } catch (error) {
+        console.error('❌ Scheduled generation failed:', error);
+        // Update request with error
+        request.status = 'error';
+        request.completedAt = Date.now();
+        request.errorMessage = error.message;
+    } finally {
+        processingScheduled = false;
+        lastScheduledCompletion = Date.now();
+
+        // Wait random 10-15 seconds before scheduling next request
+        // This ensures requests in the queue will be processed in order
+        const delay = Math.floor(Math.random() * 5000) + 10000;
+        setTimeout(() => {
+            scheduleNextRequest();
+        }, delay);
+    }
+}
+
+// Cancel timeout for a specific request
+function cancelScheduledTimeout(requestId) {
+    const request = pendingRequests.get(requestId);
+    if (request && request.timeoutId) {
+        clearTimeout(request.timeoutId);
+        request.timeoutId = null;
+    }
+}
+
+// Cleanup all scheduled timeouts (for server shutdown)
+function cleanupAllScheduledTimeouts() {
+    logger.info('Cleaning up all scheduled timeouts');
+    for (const [requestId, request] of pendingRequests.entries()) {
+        cancelScheduledTimeout(requestId);
+    }
+    // Clear the queues and maps
+    scheduledQueue.length = 0;
+    namedRequests.clear();
+}
+
+// Cleanup function for retrieved requests (1 hour after retrieval)
+function cleanupRetrievedRequests() {
+    const now = Date.now();
+    const oneHourAgo = now - 3600000; // 1 hour in milliseconds
+
+    // Create a list of requests to clean up to avoid modifying the map while iterating
+    const requestsToCleanup = [];
+
+    for (const [requestId, request] of pendingRequests.entries()) {
+        if (request.retrievedAt && request.retrievedAt < oneHourAgo && request.status === 'completed') {
+            requestsToCleanup.push(requestId);
+        }
+    }
+
+    // Clean up the requests
+    for (const requestId of requestsToCleanup) {
+        const request = pendingRequests.get(requestId);
+        if (!request) continue; // Request might have been deleted by another operation
+
+        // Cancel any active timeout (though there shouldn't be any for completed requests)
+        cancelScheduledTimeout(requestId);
+
+        // Remove from named requests map if it has a name
+        if (request.name) {
+            namedRequests.delete(request.name);
+        }
+
+        // Remove from queue if present (shouldn't be for completed requests, but be safe)
+        const queueIndex = scheduledQueue.indexOf(requestId);
+        if (queueIndex !== -1) {
+            scheduledQueue.splice(queueIndex, 1);
+        }
+
+        // Remove from map
+        pendingRequests.delete(requestId);
+        console.log(`🗑️ Cleaned up scheduled request ${requestId}${request.name ? ` (named: "${request.name}")` : ''} (expired after 1 hour)`);
     }
 }
 
@@ -2969,16 +3838,16 @@ function clearTempDownloads() {
                     fs.unlinkSync(filePath);
                     deletedCount++;
                 } catch (error) {
-                    console.warn(`⚠️ Failed to delete temp file ${file}:`, error.message);
+                    logger.warn(`Failed to delete temp file ${file}:`, error.message);
                 }
             }
             
             if (deletedCount > 0) {
-                console.log(`🧹 Cleared ${deletedCount} temp download files on server boot`);
+                logger.bootSubStep(`Cleared ${deletedCount} temp downloads`);
             }
         }
     } catch (error) {
-        console.warn('⚠️ Failed to clear temp downloads:', error.message);
+        logger.warn('Failed to clear temp downloads:', error.message);
     }
 }
 
@@ -3457,84 +4326,128 @@ async function handleSendCommand(data) {
 
 // Start server with early readiness tracking
 (async () => {
+    // Initialize boot tree logging
+    logger.startBoot();
+    
     // Start server early to accept connections and provide status updates
     updateServerStage('initializing');
     
     server.listen(config.port, () => {
-        console.log(`🚀 Server listening on port ${config.port} (initializing...)`);
+        // Server is listening but still initializing
     });
     
-    // Initialize cache
-    updateServerStage('cache_init');
-    console.log('🚀 Initializing cache... (Server available for status checks)');
-    await initializeCache();
-    
-    // Clear temp downloads on startup
-    clearTempDownloads();
-    
-    // Generate login sprite sheet on startup
-    try {
-        console.log('🎨 Generating login sprite sheet on startup...');
-        await generateLoginSpriteSheet();
-    } catch (error) {
-        console.error('❌ Failed to generate login sprite sheet on startup:', error.message);
-        console.log('⚠️ Server will continue without sprite sheet, it will be generated on first login access');
-    }
-    
-    // Initialize WebSocket server
-    updateServerStage('websocket_init');
-    const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
-        await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
+    // Preview Synchronization
+    await logger.bootStep('Preview Synchronization', async () => {
+        updateServerStage('syncing_previews');
+        await syncPreviews();
     });
     
-    setGlobalWsServer(wsServer);
-    
-    // Start ping interval with server data callback
-    wsServer.startPingInterval(() => {
-        return {
-            balance: accountBalance,
-            queue_status: getQueueStatus(),
-            image_count: imageCounter.getCount(),
-            server_time: Date.now().valueOf()
-        };
+    // Account & Cache Initialization
+    await logger.bootStep('Account & Cache', async () => {
+        updateServerStage('account_init');
+        await initializeAccountData();
+        
+        updateServerStage('cache_init');
+        await initializeCacheData(true);
     });
-
-    // Start queue status broadcasting
-    wsServer.startQueueStatusInterval();
-
-    // Initialize rolling key system for service worker authentication
-    initializeRollingKeySystem();
-
-    // Serve static files from public directory (after routes to avoid conflicts)
-    app.use(express.static('public', {
-        maxAge: '10s', // Cache static assets for 10 seconds
-        etag: true, // Enable ETags for cache validation
-        lastModified: true, // Enable Last-Modified headers
-        setHeaders: (res, path) => {
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-            res.setHeader('Pragma', 'no-cache');
-            res.setHeader('Expires', '0');
+    
+    // Database Setup
+    await logger.bootStep('Database Setup', async () => {
+        updateServerStage('database_init');
+        initializeChatDatabase();
+        initializeDirectorDatabase();
+    });
+    
+    // Service Initialization
+    await logger.bootStep('Service Initialization', async () => {
+        // T5 Tokenizer
+        const t5TokenizerService = require('./modules/t5-tokenizer-service');
+        await t5TokenizerService.initialize();
+        
+        // Clear temp downloads
+        clearTempDownloads();
+        
+        // Generate login sprite sheet
+        try {
+            updateServerStage('sprite_sheet_init');
+            await generateLoginSpriteSheet();
+            logger.bootSubStep('Login sprite sheet generated');
+        } catch (error) {
+            logger.warn('Sprite sheet generation failed, will generate on first access');
         }
-    }));
-
-    // 404 handler for invalid URL tracking (after routes and static files)
-    app.use('*', invalidURLHandler, (req, res) => {
-        res.status(404).json({
-            success: false,
-            error: 'Not found',
-            code: 'NOT_FOUND',
-            path: req.originalUrl
+    });
+    
+    // WebSocket Server
+    await logger.bootStep('WebSocket Server', async () => {
+        updateServerStage('websocket_init');
+        const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
+            await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
         });
+        
+        setGlobalWsServer(wsServer);
+        
+        // Start ping interval with server data callback
+        wsServer.startPingInterval(() => {
+            return {
+                balance: accountBalance,
+                queue_status: getQueueStatus(),
+                image_count: imageCounter.getCount(),
+                server_time: Date.now().valueOf()
+            };
+        });
+
+        // Start queue status broadcasting
+        wsServer.startQueueStatusInterval();
+        
+        logger.bootSubStep('WebSocket server initialized');
+    });
+    
+    // Finalize Setup
+    await logger.bootStep('Finalizing', async () => {
+        // Initialize rolling key system for service worker authentication
+        initializeRollingKeySystem();
+        logger.bootSubStep('Security system initialized');
+
+        // Serve static files from public directory (after routes to avoid conflicts)
+        app.use(express.static('public', {
+            maxAge: '10s', // Cache static assets for 10 seconds
+            etag: true, // Enable ETags for cache validation
+            lastModified: true, // Enable Last-Modified headers
+            setHeaders: (res, path) => {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            }
+        }));
+
+        // 404 handler for invalid URL tracking (after routes and static files)
+        app.use('*', invalidURLHandler, (req, res) => {
+            res.status(404).json({
+                success: false,
+                error: 'Not found',
+                code: 'NOT_FOUND',
+                path: req.originalUrl
+            });
+        });
+        
+        // Set up periodic refreshes
+        setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL);
+        setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL);
+        setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL);
+        setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
+        setInterval(() => cleanupRetrievedRequests(), 5 * 60 * 1000);
+        
+        logger.bootSubStep(`Server listening on port ${config.port}`);
     });
 
     // Server is now fully ready
     updateServerStage('ready', true);
-    console.log(`✅ Server fully ready on port ${config.port}`);
+    logger.endBoot();
 })();
 
 // Graceful shutdown handling
 function gracefulShutdown() {
-    console.log('🛑 Graceful shutdown initiated...');
+    logger.info('Graceful shutdown initiated');
     
     // Get WebSocket server from global reference
     const wsServer = getGlobalWsServer();
@@ -3545,31 +4458,36 @@ function gracefulShutdown() {
     
     // Close dev bridge server if it exists
     if (devBridgeServer) {
-        console.log('🔧 Closing dev bridge server...');
+        logger.info('Closing dev bridge server');
         devBridgeServer.close();
     }
     
     // Close Unix socket communication if it exists
     if (unixSocketCommunication) {
-        console.log('🔗 Closing Unix socket communication...');
+        logger.info('Closing Unix socket communication');
         unixSocketCommunication.close();
     }
     
     // Save tag cache immediately if dirty
     if (tagSuggestionsCache.isDirty) {
-        console.log('💾 Saving tag cache before shutdown...');
+        logger.info('Saving tag cache before shutdown');
         tagSuggestionsCache.saveCache();
     }
-    
+
+    // Clean up all scheduled timeouts
+    cleanupAllScheduledTimeouts();
+
+    logger.shutdown();
     process.exit(0);
 }
 
 // Register shutdown handlers
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
-process.on('uncaughtException', (e) => {
-    console.log(e);
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception:', error);
+    process.exit(1);
 });
-process.on('unhandledRejection', (e) => {
-    console.log(e);
+process.on('unhandledRejection', (error) => {
+    logger.error('Unhandled rejection:', error);
 });

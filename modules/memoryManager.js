@@ -3,6 +3,7 @@
  * Handles character memories and conversation summaries with database persistence
  */
 
+const logger = require('./logger');
 const { addChatMessage, getChatMessages } = require('./chatDatabase');
 
 class MemoryManager {
@@ -17,11 +18,9 @@ class MemoryManager {
      */
     async loadExistingMemories() {
         try {
-            console.log('🔄 Loading existing memories from database...');
-            // Note: We don't preload all memories, just ensure database is accessible
-            console.log('✅ Memory manager ready');
+            logger.bootSubStep('Memory manager ready');
         } catch (error) {
-            console.error('❌ Error loading existing memories:', error);
+            logger.error('Error loading existing memories:', error);
         }
     }
 

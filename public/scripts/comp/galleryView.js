@@ -931,6 +931,11 @@ function createGalleryItem(image, index) {
                             action: 'modify'
                         },
                         {
+                            icon: 'mdi mdi-1-25 mdi-relative-scale',
+                            text: 'Expand',
+                            action: 'expand-canvas'
+                        },
+                        {
                             icon: 'nai-upscale',
                             text: 'Upscale',
                             action: 'upscale',
@@ -941,16 +946,34 @@ function createGalleryItem(image, index) {
                                 const image = allImages && allImages[fileIndex];
                                 
                                 if (image) {
-                                    // Update upscale disabled state
-                                    menuItem.disabled = !!image.upscaled;
+                                    // Check if already upscaled
+                                    if (image.upscaled) {
+                                        menuItem.disabled = true;
+                                        return;
+                                    }
+                                    
+                                    // Check if dimensions are too large for upscaling
+                                    if (image.width && image.height) {
+                                        const upscaleInfo = calculateUpscaleInfo(image.width, image.height);
+                                        if (!upscaleInfo.available) {
+                                            menuItem.disabled = true;
+                                            menuItem.subtitle = 'Image too large';
+                                        } else {
+                                            menuItem.disabled = false;
+                                            menuItem.subtitle = null;
+                                        }
+                                    } else {
+                                        // Default to enabled if dimensions unknown
+                                        menuItem.disabled = false;
+                                    }
                                 }
                             }
-                        }/* ,
+                        },
                         {
                             icon: 'mdi mdi-1-5 mdi-chat',
                             text: 'Start Conversation',
                             action: 'start-chat'
-                        } */
+                        }
                     ]
                 },
                 {
@@ -983,7 +1006,7 @@ function createGalleryItem(image, index) {
                                 const currentView = window.currentGalleryView || 'images';
                                 if (currentView === 'scraps') {
                                     menuItem.tooltip = 'Restore';
-                                    menuItem.icon = 'fas fa-undo';
+                                    menuItem.icon = 'nai-dot-reset';
                                 } else {
                                     menuItem.tooltip = 'Scrap';
                                     menuItem.icon = 'mdi mdi-1-5 mdi-archive';
@@ -1121,9 +1144,26 @@ function createGalleryItem(image, index) {
 function reindexGallery() {
     const items = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     if (items.length === 0) return;
-    if (parseInt(items[items.length - 1]?.dataset?.index || '0') !== (items.length - 1)) {
+
+    // Check if any item's index doesn't match its position
+    let needsReindex = false;
+    for (let i = 0; i < items.length; i++) {
+        if (parseInt(items[i].dataset.index || '0') !== i) {
+            needsReindex = true;
+            break;
+        }
+    }
+
+    // Reindex if needed
+    if (needsReindex) {
         items.forEach((el, i) => {
             el.dataset.index = i.toString();
+            // Update fileIndex based on whether we're filtered or not
+            if (window.filteredImageIndices && window.filteredImageIndices[i] !== undefined) {
+                el.dataset.fileIndex = window.filteredImageIndices[i].toString();
+            } else {
+                el.dataset.fileIndex = i.toString();
+            }
         });
     }
 }
@@ -2558,6 +2598,73 @@ function sortGalleryData() {
     });
 }
 
+// Track current gallery refresh notification
+let galleryRefreshNotificationId = null;
+
+// Handle workspace image additions via WebSocket
+document.addEventListener('workspaceImageAdded', (event) => {
+    const { workspaceId, imageFilenames } = event.detail;
+    
+    // Check if the gallery is visible and if we're viewing the images gallery
+    if (!gallery || gallery.classList.contains('hidden') || currentGalleryView !== 'images') {
+        return;
+    }
+    
+    // Determine if we should auto-refresh or show a notification
+    const shouldShowNotification = isSelectionMode || displayedStartIndex > 0;
+    
+    if (shouldShowNotification) {
+        // Gallery is scrolled or in multi-select mode - show persistent notification
+        const count = imageFilenames.length;
+        const imageText = count === 1 ? 'image' : 'images';
+        
+        // Remove existing notification if present
+        if (galleryRefreshNotificationId) {
+            removeGlassToast(galleryRefreshNotificationId);
+        }
+        
+        // Show persistent notification with refresh button
+        galleryRefreshNotificationId = showGlassToast(
+            'info',
+            'New Images Available',
+            `${count} new ${imageText} added to workspace`,
+            false,
+            0, // No timeout - persistent
+            '<i class="fas fa-images"></i>',
+            [
+                {
+                    text: 'Refresh Gallery',
+                    className: 'btn-primary',
+                    callback: () => {
+                        // Refresh the gallery
+                        switchGalleryView(currentGalleryView, true);
+                        // Remove the notification
+                        if (galleryRefreshNotificationId) {
+                            removeGlassToast(galleryRefreshNotificationId);
+                            galleryRefreshNotificationId = null;
+                        }
+                    }
+                },
+                {
+                    text: 'Dismiss',
+                    className: 'btn-secondary',
+                    callback: () => {
+                        // Just dismiss the notification
+                        if (galleryRefreshNotificationId) {
+                            removeGlassToast(galleryRefreshNotificationId);
+                            galleryRefreshNotificationId = null;
+                        }
+                    }
+                }
+            ]
+        );
+    } else {
+        // Gallery is at the top and not in selection mode - auto-refresh
+        console.log('🔄 Auto-refreshing gallery with new images');
+        switchGalleryView(currentGalleryView, true);
+    }
+});
+
 // Display gallery starting from a specific index
 function displayGalleryFromStartIndex(startIndex) {
     if (!gallery) return;
@@ -2733,6 +2840,11 @@ function handleGalleryContextMenuAction(event) {
             }
             break;
             
+        case 'expand-canvas':
+            // Open expansion modal for this image
+            expandCanvasFromGallery(image);
+            break;
+            
         case 'create-reference':
             // Create reference from image
             createReferenceFromImage(image);
@@ -2742,6 +2854,35 @@ function handleGalleryContextMenuAction(event) {
             // Create vibe encoding from image
             createVibeEncodingFromImage(image);
             break;
+    }
+}
+
+// Expand canvas from gallery
+async function expandCanvasFromGallery(image) {
+    try {
+        const filename = image.upscaled || image.original;
+        
+        // Get metadata to determine dimensions
+        let metadata = null;
+        if (typeof getImageMetadata === 'function') {
+            metadata = await getImageMetadata(filename);
+        }
+        
+        const imageDimensions = metadata ? {
+            width: metadata.actual_width || metadata.width,
+            height: metadata.actual_height || metadata.height,
+            resPreset: metadata.actual_resolution || metadata.resolution || metadata.resPreset
+        } : null;
+        
+        // Open the expansion modal
+        if (typeof openImageExpansionModal === 'function') {
+            openImageExpansionModal(filename, imageDimensions);
+        } else {
+            showGlassToast('error', 'Error', 'Expansion feature not available', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    } catch (error) {
+        console.error('Failed to expand canvas:', error);
+        showGlassToast('error', 'Expansion Failed', error.message, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
     }
 }
 

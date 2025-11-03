@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const sharp = require('sharp');
 const https = require('https');
 const { z } = require('zod');
+const t5TokenizerService = require('./t5-tokenizer-service');
 
 /**
  * Get the current time period key based on current time
@@ -20,16 +21,16 @@ function getCurrentPeriodKey() {
     // This is a rough approximation - could be enhanced with location-based sunrise/sunset
     if (currentHour >= 5 && currentHour < 6) return 'dawn';
     if (currentHour >= 6 && currentHour < 7) return 'sunrise';
-    if (currentHour >= 7 && currentHour < 9) return 'early_morning';
+    if (currentHour >= 7 && currentHour < 9) return 'earlymorning';
     if (currentHour >= 9 && currentHour < 11) return 'morning';
-    if (currentHour >= 11 && currentHour < 12) return 'late_morning';
+    if (currentHour >= 11 && currentHour < 12) return 'latemorning';
     if (currentHour >= 12 && currentHour < 16) return 'afternoon';
-    if (currentHour >= 16 && currentHour < 18) return 'golden_hour';
+    if (currentHour >= 16 && currentHour < 18) return 'goldenhour';
     if (currentHour >= 18 && currentHour < 19) return 'sunset';
     if (currentHour >= 19 && currentHour < 20) return 'dusk';
-    if (currentHour >= 20 && currentHour < 21) return 'early_evening';
+    if (currentHour >= 20 && currentHour < 21) return 'earlyevening';
     if (currentHour >= 21 && currentHour < 23) return 'evening';
-    if (currentHour >= 23 || currentHour < 2) return 'late_evening';
+    if (currentHour >= 23 || currentHour < 2) return 'lateevening';
     // Late night/early morning before dawn
     return 'midnight';
 }

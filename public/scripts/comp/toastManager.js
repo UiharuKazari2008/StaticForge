@@ -308,6 +308,121 @@ function updateGlassToastProgress(toastId, progress) {
 }
 
 /**
+ * Update the main message line of the toast
+ * @param {string} toastId - Toast ID
+ * @param {string} message - New message text
+ */
+function updateGlassToastMessage(toastId, message) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    const messageElement = toast.querySelector('.toast-message');
+    if (messageElement) {
+        messageElement.textContent = message;
+    }
+}
+
+/**
+ * Update reasoning text in toast (3rd line)
+ * @param {string} toastId - Toast ID
+ * @param {string} reasoning - Reasoning text to display
+ */
+function updateGlassToastReasoning(toastId, reasoning) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    // Find or create reasoning element
+    let reasoningElement = toast.querySelector('.toast-reasoning');
+    if (!reasoningElement) {
+        // Create reasoning element and add it to the toast content
+        const toastContent = toast.querySelector('.toast-content');
+        if (toastContent) {
+            reasoningElement = document.createElement('div');
+            reasoningElement.className = 'toast-reasoning';
+            reasoningElement.style.cssText = `
+                font-size: 0.85em;
+                color: var(--text-secondary);
+                margin-top: 4px;
+                line-height: 1.3;
+                max-height: 3em;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            `;
+            toastContent.appendChild(reasoningElement);
+        }
+    }
+
+    if (reasoningElement) {
+        if (reasoning) {
+            // Display reasoning items, ellipsied
+            reasoningElement.textContent = reasoning;
+            reasoningElement.title = reasoning; // Show full text on hover
+        } else {
+            reasoningElement.remove();
+        }
+    }
+}
+
+/**
+ * Update image preview in toast
+ * @param {string} toastId - Toast ID
+ * @param {string} imageData - Base64 image data
+ */
+function updateGlassToastImagePreview(toastId, imageData) {
+    const toast = document.getElementById(toastId);
+    if (!toast) return;
+
+    // Find or create image preview element
+    let imageElement = toast.querySelector('.toast-image-preview');
+    if (!imageElement) {
+        // Create image element and add it above progress bar
+        const toastContent = toast.querySelector('.toast-content');
+        if (toastContent) {
+            imageElement = document.createElement('img');
+            imageElement.className = 'toast-image-preview';
+            imageElement.style.cssText = `
+                width: 100%;
+                max-width: 200px;
+                height: auto;
+                max-height: 150px;
+                object-fit: contain;
+                border-radius: 4px;
+                margin-bottom: 8px;
+                cursor: pointer;
+                display: block;
+            `;
+
+            // Insert before progress bar if it exists, otherwise at the end
+            const progressBar = toast.querySelector('.toast-progress-container');
+            if (progressBar) {
+                toastContent.insertBefore(imageElement, progressBar);
+            } else {
+                toastContent.appendChild(imageElement);
+            }
+        }
+    }
+
+    if (imageElement) {
+        imageElement.src = `data:image/png;base64,${imageData}`;
+
+        // Add click handler to open in PhotoSwipe
+        imageElement.onclick = () => {
+            if (typeof openPhotoSwipe === 'function') {
+                // Create a temporary gallery item
+                const galleryItem = {
+                    src: imageElement.src,
+                    w: imageElement.naturalWidth || 512,
+                    h: imageElement.naturalHeight || 512,
+                    title: 'Generation Preview'
+                };
+                openPhotoSwipe([galleryItem], 0);
+            }
+        };
+    }
+}
+
+/**
  * Generate HTML element for toast buttons
  * @param {Array} buttons - Array of button configuration objects
  * @param {string} toastId - Unique toast ID

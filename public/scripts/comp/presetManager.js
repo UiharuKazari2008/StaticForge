@@ -14,6 +14,7 @@ let presetPaginationInfo = {
     hasPrevPage: false
 };
 let presetSearchTerm = '';
+let updatePresetSelectedNoiseScheduler = '';
 
 // Get queue status using event system
 function getQueueStatus() {
@@ -465,15 +466,17 @@ async function createPresetItem(key, preset) {
     const modelSpan = document.createElement('span');
     modelSpan.className = 'preset-model';
     let group = null;
-    for (const g of modelGroups) {
-        const found = g.options.find(o => o.value === preset.model.toLowerCase());
-        if (found) {
-        group = g.group;
-        break;
+    if (preset.model) {
+        for (const g of modelGroups) {
+            const found = g.options.find(o => o.value === preset.model.toLowerCase());
+            if (found) {
+            group = g.group;
+            break;
+            }
         }
     }
     const groupObj = modelGroups.find(g => g.group === group);
-    const optObj = groupObj ? groupObj.options.find(o => o.value === preset.model.toLowerCase()) : null;
+    const optObj = preset.model && groupObj ? groupObj.options.find(o => o.value === preset.model.toLowerCase()) : null;
     if (optObj) {
         modelSpan.innerHTML = [
             `${optObj.display}`,
@@ -501,7 +504,7 @@ async function createPresetItem(key, preset) {
     const resolutionContent = document.createElement('div');
     resolutionContent.className = 'resolution-content';
     
-    if (preset.resolution.toLowerCase().startsWith('large_') || preset.resolution.toLowerCase().startsWith('wallpaper_')) {
+    if (preset.resolution && (preset.resolution.toLowerCase().startsWith('large_') || preset.resolution.toLowerCase().startsWith('xlarge_') || preset.resolution.toLowerCase().startsWith('wallpaper_'))) {
         const dollarIcon = document.createElement('i');
         dollarIcon.className = 'fas fa-dollar-sign';
         dollarIcon.style.marginRight = '4px';
@@ -807,6 +810,7 @@ async function loadPresetIntoUpdateModal(presetName) {
         { id: 'updatePresetClothingBtn', key: 'clothing' },
         { id: 'updatePresetActionBtn', key: 'action' },
         { id: 'updatePresetCreativeBtn', key: 'creative' },
+        { id: 'updatePresetOptimizeBtn', key: 'optimize' },
         { id: 'updatePresetUseCacheResponsesBtn', key: 'use_cache_responses' }
     ];
 
@@ -1027,7 +1031,7 @@ function initializeUpdatePresetToggleButtons() {
     const dynamicGenerationButtons = [
         'updatePresetTodBtn', 'updatePresetWeatherBtn', 'updatePresetSeasonBtn',
         'updatePresetClothingBtn', 'updatePresetActionBtn', 'updatePresetCreativeBtn',
-        'updatePresetUseCacheResponsesBtn'
+        'updatePresetOptimizeBtn', 'updatePresetUseCacheResponsesBtn'
     ];
 
     dynamicGenerationButtons.forEach(btnId => {
@@ -1185,7 +1189,8 @@ function getUpdatePresetFormData() {
         { id: 'updatePresetSeasonBtn', key: 'season' },
         { id: 'updatePresetClothingBtn', key: 'clothing' },
         { id: 'updatePresetActionBtn', key: 'action' },
-        { id: 'updatePresetCreativeBtn', key: 'creative' }
+        { id: 'updatePresetCreativeBtn', key: 'creative' },
+        { id: 'updatePresetOptimizeBtn', key: 'optimize' }
     ];
 
     const dynamic_generation = {};
@@ -1283,6 +1288,16 @@ async function updatePresetSimple(presetName, updates) {
         if (updates.request_upscale !== undefined) updateData.request_upscale = updates.request_upscale;
         if (updates.dynamic_generation !== undefined) updateData.dynamic_generation = updates.dynamic_generation;
         if (updates.use_cache_responses_preset !== undefined) updateData.use_cache_responses_preset = updates.use_cache_responses_preset;
+        
+        // Include preset-specific generation parameters (null values will remove the field)
+        if (updates.preset_resolution !== undefined) updateData.preset_resolution = updates.preset_resolution;
+        if (updates.preset_steps !== undefined) updateData.preset_steps = updates.preset_steps;
+        if (updates.preset_guidance !== undefined) updateData.preset_guidance = updates.preset_guidance;
+        if (updates.preset_variety !== undefined) updateData.preset_variety = updates.preset_variety;
+        if (updates.preset_rescale !== undefined) updateData.preset_rescale = updates.preset_rescale;
+        if (updates.preset_sampler !== undefined) updateData.preset_sampler = updates.preset_sampler;
+        if (updates.preset_noiseScheduler !== undefined) updateData.preset_noiseScheduler = updates.preset_noiseScheduler;
+        if (updates.text_replacements_seed_preset !== undefined) updateData.text_replacements_seed_preset = updates.text_replacements_seed_preset;
         
         const result = await wsClient.updatePreset(presetName, updateData);
         

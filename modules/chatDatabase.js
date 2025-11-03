@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 const { createDatabaseCheckpointManager } = require('./databaseCheckpoint');
 
 // Database file path
@@ -16,6 +17,10 @@ let db = null;
 
 // Initialize checkpoint manager for chat database
 const chatCheckpointManager = createDatabaseCheckpointManager(dbPath, 5);
+
+// Track message count for periodic checkpointing
+let messagesSinceLastCheckpoint = 0;
+const CHECKPOINT_INTERVAL = 10; // Create checkpoint every N messages
 
 /**
  * Initialize the SQLite database for chat system
@@ -36,7 +41,7 @@ function initializeChatDatabase() {
         
         return true;
     } catch (error) {
-        console.error('❌ Error initializing SQLite chat database:', error.message);
+        logger.error('Error initializing SQLite chat database:', error.message);
         return false;
     }
 }
@@ -53,8 +58,6 @@ function createChatTables() {
             profile_photo_base64 TEXT,
             backstory TEXT,
             default_verbosity INTEGER DEFAULT 3,
-            default_ai_engine TEXT DEFAULT 'grok-2',
-            default_temperature REAL DEFAULT 0.8,
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             updated_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
@@ -71,115 +74,33 @@ function createChatTables() {
             character_name TEXT,
             text_context_info TEXT,
             text_viewer_info TEXT,
+            story_context TEXT,
             verbosity_level INTEGER DEFAULT 3,
-            temperature REAL DEFAULT 0.8,
-            thought_level TEXT DEFAULT 'minimal',
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             updated_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
     `);
     
-    // Add thought_level column if it doesn't exist (migration)
+    // Add token usage tracking columns for Responses API
     try {
-        db.exec(`ALTER TABLE chat_sessions ADD COLUMN thought_level TEXT DEFAULT 'minimal'`);
+        db.exec(`ALTER TABLE chat_sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
     } catch (error) {
         // Column already exists, ignore error
     }
     
-    // Migration: Add provider and model columns, migrate from chat_model and chat_service
     try {
-        // Check if old columns exist
-        const tableInfo = db.prepare("PRAGMA table_info(chat_sessions)").all();
-        const hasOldColumns = tableInfo.some(col => col.name === 'chat_model') && tableInfo.some(col => col.name === 'chat_service');
-        const hasNewColumns = tableInfo.some(col => col.name === 'provider') && tableInfo.some(col => col.name === 'model');
-        
-        if (hasOldColumns && !hasNewColumns) {
-            console.log('🔄 Migrating chat_sessions table to new provider/model structure...');
-            
-            // Add new columns with error handling
-            try {
-                db.exec(`ALTER TABLE chat_sessions ADD COLUMN provider TEXT`);
-            } catch (error) {
-                if (!error.message.includes('duplicate column name')) {
-                    throw error;
-                }
-                console.log('⚠️ Provider column already exists, skipping...');
-            }
-            
-            try {
-                db.exec(`ALTER TABLE chat_sessions ADD COLUMN model TEXT`);
-            } catch (error) {
-                if (!error.message.includes('duplicate column name')) {
-                    throw error;
-                }
-                console.log('⚠️ Model column already exists, skipping...');
-            }
-            
-            // Migrate existing data
-            const sessions = db.prepare('SELECT id, chat_model, chat_service FROM chat_sessions').all();
-            const updateStmt = db.prepare('UPDATE chat_sessions SET provider = ?, model = ? WHERE id = ?');
-            
-            for (const session of sessions) {
-                let provider = 'grok';
-                let model = session.chat_model;
-                
-                // Determine provider from chat_service or model name
-                if (session.chat_service === 'chatgpt' || 
-                    (session.chat_model && (session.chat_model.includes('gpt') || session.chat_model.includes('o4')))) {
-                    provider = 'openai';
-                }
-                
-                // Extract clean model name (remove provider prefix if present)
-                if (model && model.includes('-')) {
-                    const parts = model.split('-');
-                    if (parts[0] === 'gpt' || parts[0] === 'o4') {
-                        model = model; // Keep full model name for OpenAI
-                    }
-                }
-                
-                updateStmt.run(provider, model, session.id);
-            }
-            
-            console.log(`✅ Migrated ${sessions.length} chat sessions to new structure`);
-        } else {
-            console.log('ℹ️ Migration not needed - new columns already exist or no old columns found');
-        }
+        db.exec(`ALTER TABLE chat_sessions ADD COLUMN last_response_usage TEXT`);
     } catch (error) {
-        console.warn('⚠️ Migration error (may be expected):', error.message);
+        // Column already exists, ignore error
     }
     
-    // Migration: Add response_id, conversation_data, and expires_at columns to chat_messages
     try {
-        const messageTableInfo = db.prepare("PRAGMA table_info(chat_messages)").all();
-        const hasResponseId = messageTableInfo.some(col => col.name === 'response_id');
-        const hasConversationData = messageTableInfo.some(col => col.name === 'conversation_data');
-        const hasExpiresAt = messageTableInfo.some(col => col.name === 'expires_at');
-        
-        if (!hasResponseId) {
-            db.exec(`ALTER TABLE chat_messages ADD COLUMN response_id TEXT`);
-            console.log('✅ Added response_id column to chat_messages');
-        }
-        
-        if (!hasConversationData) {
-            db.exec(`ALTER TABLE chat_messages ADD COLUMN conversation_data TEXT`);
-            console.log('✅ Added conversation_data column to chat_messages');
-        }
-        
-        if (!hasExpiresAt) {
-            db.exec(`ALTER TABLE chat_messages ADD COLUMN expires_at INTEGER`);
-            console.log('✅ Added expires_at column to chat_messages');
-        }
-        
-        // Add previous_message_id column for conversation continuity
-        const hasPreviousMessageId = messageTableInfo.some(col => col.name === 'previous_message_id');
-        if (!hasPreviousMessageId) {
-            db.exec(`ALTER TABLE chat_messages ADD COLUMN previous_message_id TEXT`);
-            console.log('✅ Added previous_message_id column to chat_messages');
-        }
+        db.exec(`ALTER TABLE chat_sessions ADD COLUMN story_context TEXT`);
     } catch (error) {
-        console.warn('⚠️ Migration error for chat_messages (may be expected):', error.message);
+        // Column already exists, ignore error
     }
     
+
     // Chat messages table
     db.exec(`
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -187,9 +108,13 @@ function createChatTables() {
             chat_session_id INTEGER NOT NULL,
             message_type TEXT NOT NULL, -- 'user' or 'assistant'
             content TEXT NOT NULL,
-            json_data TEXT, -- JSON response data from AI
+            json_data TEXT, -- JSON response data from AI (legacy format)
+            event_type TEXT, -- Type of event (actions, speech, memory, etc.)
+            event_metadata TEXT, -- Additional event properties (timestamp, weight, intensity, etc.)
             response_id TEXT, -- AI service response ID for conversation state
             conversation_data TEXT, -- Full conversation state data
+            reasoning_content TEXT, -- AI's reasoning/thinking process (for reasoning models)
+            response_output TEXT, -- Full response.output array for 30+ day reconstruction (Responses API)
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             expires_at INTEGER, -- Timestamp for 30-day retention
             FOREIGN KEY (chat_session_id) REFERENCES chat_sessions (id) ON DELETE CASCADE
@@ -204,7 +129,7 @@ function createChatTables() {
         CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages (created_at);
     `);
     
-    console.log('✅ Chat database tables created/verified');
+    logger.bootSubStep('Chat database ready');
 }
 
 /**
@@ -225,10 +150,7 @@ function getPersonaSettings() {
             user_name: '',
             profile_photo_base64: '',
             backstory: '',
-            default_verbosity: 3,
-            default_ai_engine: 'grok-2',
-            default_temperature: 0.8,
-            default_reasoning_level: 'medium'
+            default_verbosity: 3
         };
     } catch (error) {
         console.error('❌ Error getting persona settings:', error.message);
@@ -240,17 +162,14 @@ function savePersonaSettings(settings) {
     try {
         const stmt = db.prepare(`
             INSERT OR REPLACE INTO persona_settings 
-            (id, user_name, profile_photo_base64, backstory, default_verbosity, default_ai_engine, default_temperature, default_reasoning_level, updated_at)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
+            (id, user_name, profile_photo_base64, backstory, default_verbosity, updated_at)
+            VALUES (1, ?, ?, ?, ?, strftime('%s', 'now'))
         `);
         stmt.run(
             settings.user_name,
             settings.profile_photo_base64,
             settings.backstory,
-            settings.default_verbosity,
-            settings.default_ai_engine,
-            settings.default_temperature || 0.8,
-            settings.default_reasoning_level || 'medium'
+            settings.default_verbosity
         );
         return true;
     } catch (error) {
@@ -272,8 +191,8 @@ function createChatSession(sessionData) {
             // Include old columns for backward compatibility
             sql = `
                 INSERT INTO chat_sessions 
-                (chat_name, filename, provider, model, character_name, text_context_info, text_viewer_info, verbosity_level, temperature, thought_level, chat_model, chat_service)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (chat_name, filename, provider, model, character_name, text_context_info, text_viewer_info, story_context, verbosity_level, chat_model, chat_service)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
             params = [
                 sessionData.chat_name,
@@ -283,18 +202,17 @@ function createChatSession(sessionData) {
                 sessionData.character_name,
                 sessionData.text_context_info,
                 sessionData.text_viewer_info,
+                sessionData.story_context,
                 sessionData.verbosity_level,
-                sessionData.temperature || 0.8,
-                sessionData.thought_level || 'minimal',
                 sessionData.model, // Use model as chat_model for backward compatibility
-                sessionData.provider === 'openai' ? 'chatgpt' : 'grok' // Convert provider to old format
+                'grok' // Only Grok is supported now
             ];
         } else {
             // Use new schema only
             sql = `
                 INSERT INTO chat_sessions 
-                (chat_name, filename, provider, model, character_name, text_context_info, text_viewer_info, verbosity_level, temperature, thought_level)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (chat_name, filename, provider, model, character_name, text_context_info, text_viewer_info, story_context, verbosity_level)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             `;
             params = [
                 sessionData.chat_name,
@@ -304,9 +222,8 @@ function createChatSession(sessionData) {
                 sessionData.character_name,
                 sessionData.text_context_info,
                 sessionData.text_viewer_info,
-                sessionData.verbosity_level,
-                sessionData.temperature || 0.8,
-                sessionData.thought_level || 'minimal'
+                sessionData.story_context,
+                sessionData.verbosity_level
             ];
         }
         
@@ -405,19 +322,32 @@ function restartChatSession(chatId) {
 }
 
 // Chat Message Functions
-function addChatMessage(chatSessionId, messageType, content, jsonData = null, responseId = null, conversationData = null, previousMessageId = null) {
+function addChatMessage(chatSessionId, messageType, content, jsonData = null, responseId = null, conversationData = null, previousMessageId = null, eventType = null, eventMetadata = null, reasoningContent = null, responseOutput = null) {
     try {
         // Calculate expiration date (30 days from now)
         const expiresAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
         
         const stmt = db.prepare(`
-            INSERT INTO chat_messages (chat_session_id, message_type, content, json_data, response_id, conversation_data, expires_at, previous_message_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO chat_messages (chat_session_id, message_type, content, json_data, response_id, conversation_data, expires_at, previous_message_id, event_type, event_metadata, reasoning_content, response_output)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        const result = stmt.run(chatSessionId, messageType, content, jsonData, responseId, conversationData, expiresAt, previousMessageId);
+        const result = stmt.run(chatSessionId, messageType, content, jsonData, responseId, conversationData, expiresAt, previousMessageId, eventType, eventMetadata, reasoningContent, responseOutput);
         
         // Update chat session's updated_at timestamp
         updateChatSession(chatSessionId, {});
+        
+        // Automatic checkpointing: create checkpoint every N messages
+        messagesSinceLastCheckpoint++;
+        if (messagesSinceLastCheckpoint >= CHECKPOINT_INTERVAL) {
+            try {
+                chatCheckpointManager.createCheckpointWithBackup();
+                messagesSinceLastCheckpoint = 0;
+                console.log('💾 Auto-checkpoint created');
+            } catch (checkpointError) {
+                console.warn('⚠️  Auto-checkpoint failed:', checkpointError.message);
+                // Don't fail the message save if checkpoint fails
+            }
+        }
         
         return result.lastInsertRowid;
     } catch (error) {
@@ -470,7 +400,7 @@ function getLastChatMessage(chatSessionId) {
 function getConversationData(chatSessionId) {
     try {
         const stmt = db.prepare(`
-            SELECT response_id, conversation_data, created_at 
+            SELECT response_id, conversation_data, created_at, response_output 
             FROM chat_messages 
             WHERE chat_session_id = ? AND response_id IS NOT NULL 
             ORDER BY created_at DESC 
@@ -606,9 +536,9 @@ try {
     if (!dbInitialized) {
         throw new Error('Failed to initialize chat database');
     }
-    console.log('✅ Chat database module ready');
+    // Logging happens in createChatTables during boot
 } catch (error) {
-    console.error('❌ Failed to initialize chat database:', error.message);
+    logger.error('Failed to initialize chat database:', error.message);
     process.exit(1);
 }
 

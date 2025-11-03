@@ -5,7 +5,6 @@
 class ModelManager {
     constructor() {
         this.models = {
-            openai: [],
             grok: [],
             all: []
         };
@@ -33,10 +32,7 @@ class ModelManager {
 
         this.isLoading = true;
         try {
-            await Promise.all([
-                this.fetchOpenAIModels(),
-                this.fetchGrokModels()
-            ]);
+            await this.fetchGrokModels();
             
             this.combineModels();
             this.lastFetch = Date.now();
@@ -51,35 +47,7 @@ class ModelManager {
     }
 
     /**
-     * Fetch models from OpenAI API
-     */
-    async fetchOpenAIModels() {
-        try {
-            const response = await window.wsClient.getOpenAIModels();
-            
-            if (response.success && response.models && Array.isArray(response.models)) {
-                this.models.openai = response.models.map(model => ({
-                    id: model.id,
-                    name: this.formatModelName(model.id),
-                    provider: 'openai',
-                    model: model.id,
-                    service: 'OpenAI',
-                    isReasoning: this.isReasoningModel(model.id),
-                    capabilities: model.capabilities || {},
-                    created: model.created
-                }));
-            } else {
-                console.warn('❌ OpenAI response invalid:', response);
-            }
-        } catch (error) {
-            console.warn('Failed to fetch OpenAI models:', error);
-            // Use fallback OpenAI models
-            this.models.openai = this.getFallbackOpenAIModels();
-        }
-    }
-
-    /**
-     * Fetch models from Google API
+     * Fetch models from Grok API
      */
     async fetchGrokModels() {
         try {
@@ -110,14 +78,8 @@ class ModelManager {
      * Combine models from all services
      */
     combineModels() {
-        this.models.all = [
-            ...this.models.openai,
-            ...this.models.grok
-        ].sort((a, b) => {
-            // Sort by service first, then by name
-            if (a.service !== b.service) {
-                return a.service.localeCompare(b.service);
-            }
+        this.models.all = [...this.models.grok].sort((a, b) => {
+            // Sort by name
             return a.name.localeCompare(b.name);
         });
     }
@@ -127,19 +89,6 @@ class ModelManager {
      */
     formatModelName(modelId) {
         const nameMap = {
-            // OpenAI models
-            'gpt-4o': 'GPT-4o',
-            'gpt-4o-mini': 'GPT-4o Mini',
-            'gpt-4-turbo': 'GPT-4 Turbo',
-            'gpt-4': 'GPT-4',
-            'gpt-3.5-turbo': 'GPT-3.5 Turbo',
-            'gpt-5-nano': 'GPT-5 Nano',
-            'gpt-5': 'GPT-5',
-            'o1-preview': 'O1 Preview',
-            'o1-mini': 'O1 Mini',
-            'o4-high': 'O4 High',
-            'gpt-o4': 'GPT O4',
-            
             // Grok models
             'grok-2': 'Grok-2',
             'grok-2-1212': 'Grok-2-1212',
@@ -153,14 +102,7 @@ class ModelManager {
      * Check if a model is a reasoning model
      */
     isReasoningModel(modelId) {
-        const reasoningModels = [
-            'gpt-5-nano',
-            'gpt-5',
-            'o1-preview',
-            'o1-mini',
-            'o4-high',
-            'gpt-o4'
-        ];
+        const reasoningModels = [];
         return reasoningModels.includes(modelId);
     }
 
@@ -169,7 +111,6 @@ class ModelManager {
      */
     getServiceBadge(service) {
         const badges = {
-            'OpenAI': '<span class="model-service-badge openai">OpenAI</span>',
             'Google': '<span class="model-service-badge google">Google</span>'
         };
         return badges[service] || `<span class="model-service-badge">${service}</span>`;
@@ -208,63 +149,7 @@ class ModelManager {
      * Get fallback models if API calls fail
      */
     getFallbackModels() {
-        return [
-            ...this.getFallbackOpenAIModels(),
-            ...this.getFallbackGoogleModels()
-        ];
-    }
-
-    getFallbackOpenAIModels() {
-        return [
-            {
-                id: 'gpt-4o',
-                name: 'GPT-4o',
-                provider: 'openai',
-                model: 'gpt-4o',
-                service: 'OpenAI',
-                isReasoning: false
-            },
-            {
-                id: 'gpt-4o-mini',
-                name: 'GPT-4o Mini',
-                provider: 'openai',
-                model: 'gpt-4o-mini',
-                service: 'OpenAI',
-                isReasoning: false
-            },
-            {
-                id: 'gpt-5-nano',
-                name: 'GPT-5 Nano',
-                provider: 'openai',
-                model: 'gpt-5-nano',
-                service: 'OpenAI',
-                isReasoning: true
-            },
-            {
-                id: 'gpt-5',
-                name: 'GPT-5',
-                provider: 'openai',
-                model: 'gpt-5',
-                service: 'OpenAI',
-                isReasoning: true
-            },
-            {
-                id: 'o4-high',
-                name: 'O4 High',
-                provider: 'openai',
-                model: 'o4-high',
-                service: 'OpenAI',
-                isReasoning: true
-            },
-            {
-                id: 'gpt-o4',
-                name: 'GPT O4',
-                provider: 'openai',
-                model: 'gpt-o4',
-                service: 'OpenAI',
-                isReasoning: true
-            }
-        ];
+        return this.getFallbackGrokModels();
     }
 
     getFallbackGrokModels() {

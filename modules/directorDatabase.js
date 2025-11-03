@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 // Database file path
 const dbPath = path.join(__dirname, '..', '.cache', 'director.db');
@@ -32,7 +33,7 @@ function initializeDirectorDatabase() {
         
         return true;
     } catch (error) {
-        console.error('❌ Error initializing SQLite Director database:', error.message);
+        logger.error('Error initializing SQLite Director database:', error.message);
         return false;
     }
 }
@@ -78,7 +79,7 @@ function createDirectorTables() {
     } catch (e) {
         // Column already exists, ignore error
     }
-    
+
     // Director messages table - stores OpenAI format messages
     db.exec(`
         CREATE TABLE IF NOT EXISTS director_messages (
@@ -93,7 +94,21 @@ function createDirectorTables() {
             FOREIGN KEY (previous_message_id) REFERENCES director_messages (id) ON DELETE SET NULL
         )
     `);
-    
+
+    // Add message_type column if it doesn't exist (for existing databases)
+    try {
+        db.exec(`ALTER TABLE director_messages ADD COLUMN message_type TEXT`);
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
+    // Add user_input column if it doesn't exist (for existing databases)
+    try {
+        db.exec(`ALTER TABLE director_messages ADD COLUMN user_input TEXT`);
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
     // Create indexes for better performance
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_director_sessions_created_at ON director_sessions (created_at);
@@ -103,7 +118,7 @@ function createDirectorTables() {
         CREATE INDEX IF NOT EXISTS idx_director_messages_role ON director_messages (role);
     `);
     
-    console.log('✅ Director database tables created/verified');
+    logger.bootSubStep('Director database ready');
 }
 
 /**
@@ -474,9 +489,9 @@ try {
     if (!dbInitialized) {
         throw new Error('Failed to initialize Director database');
     }
-    console.log('✅ Director database module ready');
+    // Logging happens in createDirectorTables during boot
 } catch (error) {
-    console.error('❌ Failed to initialize Director database:', error.message);
+    logger.error('Failed to initialize Director database:', error.message);
     process.exit(1);
 }
 

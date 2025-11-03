@@ -509,7 +509,10 @@ class Director {
             const minHeight = 32; // Minimum height in pixels (matches min-height from HTML)
             const maxHeight = 320; // Maximum height to prevent excessive growth
 
-            textarea.style.height = Math.min(Math.max(scrollHeight, minHeight), maxHeight) + 'px';
+            let calculatedHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+            // Round up to even number
+            const newHeight = Math.ceil(calculatedHeight / 2) * 2;
+            textarea.style.height = newHeight + 'px';
         });
     }
 
@@ -1710,7 +1713,7 @@ class Director {
                 <div class="director-user-message-header">
                     <span class="director-request-type-badge">${requestType}</span>
                     <button type="button" class="director-rollback-btn" onclick="window.directorInstance.rollbackToMessage('${messageKey}')">
-                        <i class="fas fa-undo"></i> Rollback
+                        <i class="nai-dot-reset"></i> Rollback
                     </button>
                 </div>
                 <div class="director-user-message-input">${userInput}</div>
@@ -2092,10 +2095,6 @@ class Director {
                 // Apply quality preset setting
                 if (prompt.apply_quality_preset !== undefined) {
                     appendQuality = prompt.apply_quality_preset;
-                    const qualityToggleBtn = document.getElementById('qualityToggleBtn');
-                    if (qualityToggleBtn) {
-                        qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
-                    }
                 }
 
                 // Apply UC preset setting
@@ -5589,10 +5588,6 @@ class Director {
                 // Apply quality preset setting
                 if (prompt.apply_quality_preset !== undefined) {
                     appendQuality = prompt.apply_quality_preset;
-                    const qualityToggleBtn = document.getElementById('qualityToggleBtn');
-                    if (qualityToggleBtn) {
-                        qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
-                    }
                 }
 
                 // Apply UC preset setting

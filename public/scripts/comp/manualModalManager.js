@@ -57,6 +57,7 @@ const previewBaseImageBtn = document.getElementById('previewBaseImageBtn');
 const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
 const manualPreviewCopyBtn = document.getElementById('manualPreviewCopyBtn');
 const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
+const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
 const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
 const manualPreviewDeleteBtn = document.getElementById('manualPreviewDeleteBtn');
 const manualStrengthValue = document.getElementById('manualStrengthValue');
@@ -72,12 +73,18 @@ const manualSaveBtn = document.getElementById('manualSaveBtn');
 const manualPreviewLoadBtn = document.getElementById('manualPreviewLoadBtn');
 const manualPreviewPinBtn = document.getElementById('manualPreviewPinBtn');
 const manualPreviewScrapBtn = document.getElementById('manualPreviewScrapBtn');
-const qualityToggleBtn = document.getElementById('qualityToggleBtn');
-const addCharacterBtn = document.getElementById('addCharacterBtn');
 const characterPromptsContainer = document.getElementById('characterPromptsContainer');
+const textOverlaysContainer = document.getElementById('textOverlaysContainer');
 const vibeNormalizeToggle = document.getElementById('vibeNormalizeToggle');
 const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
 const transformationRow = document.getElementById('transformationRow');
+const addItemDropdown = document.getElementById('addItemDropdown');
+const addItemDropdownBtn = document.getElementById('addItemDropdownBtn');
+const addItemDropdownMenu = document.getElementById('addItemDropdownMenu');
+const pipelineStagesContainer = document.getElementById('pipelineStagesContainer');
+const pipelineStagesHeader = document.getElementById('pipelineStagesHeader');
+const enableStageGenerationBtn = document.getElementById('enableStageGenerationBtn');
+const saveStage0Btn = document.getElementById('saveStage0Btn');
 const manualPreviewOriginalImage = document.getElementById('manualPreviewOriginalImage');
 const sproutSeedBtn = document.getElementById('sproutSeedBtn');
 const previewSection = document.getElementById('manualPanelSection');
@@ -98,6 +105,9 @@ const closeTextReplacementLockModalBtn = document.getElementById('closeTextRepla
 const selectAllTextReplacementsBtn = document.getElementById('selectAllTextReplacementsBtn');
 const deselectAllTextReplacementsBtn = document.getElementById('deselectAllTextReplacementsBtn');
 const applyTextReplacementLocksBtn = document.getElementById('applyTextReplacementLocksBtn');
+// Creative directive elements
+const creativeDirectiveInput = document.getElementById('creativeDirectiveInput');
+const creativeDirectiveTemperature = document.getElementById('creativeDirectiveTemperature');
 
 // Dynamic Generation System
 const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
@@ -105,9 +115,8 @@ const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup')
 const todBtn = document.getElementById('todBtn');
 const weatherBtn = document.getElementById('weatherBtn');
 const seasonBtn = document.getElementById('seasonBtn');
-const clothingBtn = document.getElementById('clothingBtn');
-const actionBtn = document.getElementById('actionBtn');
 const creativeBtn = document.getElementById('creativeBtn');
+const optimizeBtn = document.getElementById('optimizeBtn');
 const dynamicGenerationUndoBtn = document.getElementById('dynamicGenerationUndoBtn');
 const dynamicGenerationViewBtn = document.getElementById('dynamicGenerationViewBtn');
 const dynamicGenerationLockedBtn = document.getElementById('lockBtn');
@@ -136,13 +145,103 @@ let generationAnimationActive = false;
 window.currentManualPreviewImage = null;
 window.currentManualPreviewIndex = null;
 let lastLoadedSeed = null;
+let manualSeedHistory = []; // Array to store seeds from generations and loaded images (never cleared)
 let varietyEnabled = false;
 let characterPromptCounter = 0;
+let textOverlayCounter = 0;
+let pipelineStageCounter = 0;
 let currentPositionCharacterId = null;
 let selectedPositionCell = null;
 let lastPromptState = null;
 let savedRandomPromptState = null;
 let forcePaidRequest = false;
+
+// ============================================================================
+// SPROUT SEED CONTEXT MENU FUNCTIONS
+// ============================================================================
+
+/**
+ * Adds a seed to the history if it's not already present
+ * Adds to the bottom of the array (newest last)
+ */
+function addSeedToHistory(seed) {
+    if (!seed || isNaN(parseInt(seed))) return;
+    
+    const seedInt = parseInt(seed);
+    if (seedInt <= 0) return;
+    
+    // Only add if not already in array
+    if (!manualSeedHistory.includes(seedInt)) {
+        // Add to the bottom (newest last)
+        manualSeedHistory.push(seedInt);
+    }
+}
+
+/**
+ * Creates the context menu configuration for sprout seed button
+ */
+function getSproutSeedContextMenuConfig() {
+    return {
+        sections: [
+            {
+                type: 'list',
+                title: 'Recent Seeds',
+                items: [], // Will be populated dynamically by loadfn
+                initfn: function(section, target) {
+                    // Generate items dynamically when menu opens
+                    const items = [];
+
+                    if (manualSeedHistory.length === 0) {
+                        items.push({
+                            icon: 'fas fa-seedling',
+                            text: 'No seed available',
+                            action: 'no-history',
+                            disabled: true
+                        });
+                    } else {
+                        // Display seeds (oldest first, so reverse the array)
+                        manualSeedHistory.slice().reverse().forEach((seed, index) => {
+                            items.push({
+                                icon: 'fas fa-seedling',
+                                text: seed.toString(),
+                                action: `select-seed-${seed}`
+                            });
+                        });
+                    }
+
+                    section.items = items;
+                }
+            }
+        ],
+        onAction: handleSproutSeedContextMenuAction
+    };
+}
+
+/**
+ * Handles context menu actions for sprout seed button
+ */
+function handleSproutSeedContextMenuAction(action, target, item) {
+    if (action.startsWith('select-seed-')) {
+        const seed = parseInt(action.replace('select-seed-', ''));
+        
+        // Set the seed value
+        if (manualSeed) {
+            manualSeed.value = seed.toString();
+        }
+
+        // Update the last generated seed to this selected seed
+        window.lastGeneratedSeed = seed;
+
+        // Update sprout seed button state if it's not already active
+        if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') !== 'on') {
+            sproutSeedBtn.setAttribute('data-state', 'on');
+            manualSeed.disabled = true;
+            if (manualSeed) {
+                manualSeed.placeholder = seed.toString();
+            }
+        }
+    }
+}
 
 // ============================================================================
 // MANUAL MODAL MANAGEMENT FUNCTIONS (MOVED FROM app.js)
@@ -172,21 +271,21 @@ function hideManualPreviewResponsive() {
     if (previewSection) {
         previewSection.classList.remove('active');
     }
-    manualModal.classList.remove('show-preview'); 
+    manualModal.classList.remove('show-preview');
 }
 
 function calculatePreviewRatio() {
     const container = document.querySelector('.manual-preview-image-container');
     if (!container) return 1;
-    
+
     const computedStyle = getComputedStyle(container);
     const width = parseFloat(computedStyle.width);
     const height = parseFloat(computedStyle.height);
-    
+
     if (width > 0 && height > 0) {
         previewRatio = width / height;
     }
-    
+
     return previewRatio;
 }
 
@@ -207,12 +306,12 @@ function sizeManualPreviewContainer(imageWidth, imageHeight) {
         manualPreviewSize.width = imageWidth;
         manualPreviewSize.height = imageHeight;
     }
-    
+
     const imageAspectRatio = imageWidth / imageHeight;
-    
+
     // Reset orientation classes
     container.classList.remove('tall', 'wide');
-    
+
     // Add orientation classes based on image aspect ratio compared to outer container
     if (imageAspectRatio > calculatePreviewRatio()) {
         // Image is wider than container ratio
@@ -225,26 +324,26 @@ function sizeManualPreviewContainer(imageWidth, imageHeight) {
 
 function registerManualPreviewEventListeners() {
     if (manualPreviewEventListenersRegistered) return;
-    
+
     const imageContainer = document.querySelector('.manual-preview-image-container');
     const image = document.getElementById('manualPreviewImage');
 
     if (!imageContainer || !image) return;
 
     // Remove zoom and pan functionality - replace with lightbox functionality
-    
+
     // Click to open lightbox
     image.addEventListener('click', handleManualPreviewClick);
-    
+
     // Scroll up to open lightbox
     image.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
-    
+
     manualPreviewEventListenersRegistered = true;
 }
 
 function deregisterManualPreviewEventListeners() {
     if (!manualPreviewEventListenersRegistered) return;
-    
+
     const imageContainer = document.querySelector('.manual-preview-image-container');
     const image = imageContainer.querySelector('.manual-preview-image-container-inner');
 
@@ -253,7 +352,7 @@ function deregisterManualPreviewEventListeners() {
     // Remove all event listeners
     image.removeEventListener('click', handleManualPreviewClick);
     image.removeEventListener('wheel', handleManualPreviewScroll);
-    
+
     manualPreviewEventListenersRegistered = false;
 }
 
@@ -298,8 +397,8 @@ function createConfetti() {
                 confetti.style.width = '0';
                 confetti.style.height = '0';
                 confetti.style.backgroundColor = 'transparent';
-                confetti.style.borderLeft = (size/2) + 'px solid transparent';
-                confetti.style.borderRight = (size/2) + 'px solid transparent';
+                confetti.style.borderLeft = (size / 2) + 'px solid transparent';
+                confetti.style.borderRight = (size / 2) + 'px solid transparent';
                 confetti.style.borderBottom = size + 'px solid ' + color;
             }
 
@@ -334,24 +433,24 @@ function createConfetti() {
 // Initialize manual block container for wave animation
 function initializeManualBlockContainer() {
     if (manualBlockContainer) return; // Already initialized
-    
+
     const container = document.getElementById('manualBlockContainer');
     if (!container) {
         console.warn('Manual block container not found');
         return;
     }
-    
+
     try {
         // Get current image dimensions from preview image if available
         let width, height;
-        
+
         if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
             width = parseInt(computedStyle.width.replace('px', '')) || 0;
             height = parseInt(computedStyle.height.replace('px', '')) || 0;
         }
-        
+
         // Fall back to resolution preset if no preview image
         if (!width || !height) {
             if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
@@ -363,20 +462,20 @@ function initializeManualBlockContainer() {
                 }
             }
         }
-        
+
         // Final fallback to manual input values
         if (!width || !height) {
             width = parseInt(manualWidth.value) || 1024;
             height = parseInt(manualHeight.value) || 1024;
         }
-        
+
         // Calculate optimal grid dimensions to get closest to 400 blocks without going over
         const aspectRatio = height / width;
         let initialRow, initialCol;
-        
+
         // Target: 400 blocks (30x30)
         const targetBlocks = 400;
-        
+
         if (Math.abs(aspectRatio - 1) < 0.1) {
             // Square: calculate dimensions to get closest to 400 blocks
             const dimension = Math.floor(Math.sqrt(targetBlocks));
@@ -387,7 +486,7 @@ function initializeManualBlockContainer() {
             // Calculate optimal dimensions maintaining aspect ratio
             const maxCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
             const maxRow = Math.floor(maxCol * aspectRatio);
-            
+
             // Ensure we don't go over target blocks
             if (maxRow * maxCol > targetBlocks) {
                 initialRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
@@ -401,7 +500,7 @@ function initializeManualBlockContainer() {
             // Calculate optimal dimensions maintaining aspect ratio
             const maxRow = Math.floor(Math.sqrt(targetBlocks * aspectRatio));
             const maxCol = Math.floor(maxRow / aspectRatio);
-            
+
             // Ensure we don't go over target blocks
             if (maxRow * maxCol > targetBlocks) {
                 initialCol = Math.floor(Math.sqrt(targetBlocks / aspectRatio));
@@ -411,18 +510,18 @@ function initializeManualBlockContainer() {
                 initialCol = maxCol;
             }
         }
-        
+
         // Ensure minimum dimensions
         initialRow = Math.max(initialRow, 5);
         initialCol = Math.max(initialCol, 5);
-        
+
         manualBlockContainer = new BlockContainer('#manualBlockContainer', {
             row: initialRow,
             col: initialCol,
             opacityRange: [0.05, 0.3],
             waveDelay: 30
         });
-        
+
         // Initialize the container
         manualBlockContainer.init('ready');
     } catch (error) {
@@ -433,18 +532,18 @@ function initializeManualBlockContainer() {
 // Update manual block grid when starting generation
 function updateManualBlockGrid() {
     if (!manualBlockContainer) return;
-    
+
     try {
         // Get current image dimensions from preview image if available
         let width, height;
-        
+
         if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden') && manualPreviewImage.src && manualPreviewImage.src !== '') {
             // Use computed style of the preview image to get actual displayed dimensions
             const computedStyle = getComputedStyle(manualPreviewImage);
             width = parseInt(computedStyle.width.replace('px', '')) || 0;
             height = parseInt(computedStyle.height.replace('px', '')) || 0;
         }
-        
+
         // Fall back to resolution preset if no preview image
         if (!width || !height) {
             if (manualSelectedResolution && manualSelectedResolution !== 'custom') {
@@ -456,13 +555,13 @@ function updateManualBlockGrid() {
                 }
             }
         }
-        
+
         // Final fallback to manual input values
         if (!width || !height) {
             width = parseInt(manualWidth.value) || 1024;
             height = parseInt(manualHeight.value) || 1024;
         }
-        
+
         // Update the block grid dimensions based on the resolution
         manualBlockContainer.updateGridDimensions(width, height);
     } catch (error) {
@@ -472,13 +571,13 @@ function updateManualBlockGrid() {
 
 function startPreviewAnimation() {
     if (generationAnimationActive) return;
-    
+
     // Safety check: ensure all required elements exist
     if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
         console.warn('Preview animation elements not found, falling back to manual loading overlay');
         return;
     }
-    
+
     try {
         generationAnimationActive = true;
 
@@ -489,7 +588,7 @@ function startPreviewAnimation() {
             toggleBtn.innerHTML = '<i class="fas fa-stop"></i>';
             toggleBtn.title = 'Stop Preview Animation';
         }
-        
+
         /* if (manualPreviewImage && !manualPreviewImage.classList.contains('hidden')) {
             // Initialize manual block container if not already done
             if (!manualBlockContainer) {
@@ -506,21 +605,21 @@ function startPreviewAnimation() {
                 }
             }
         } */
-        
+
         previewStars.classList.remove('hidden');
         previewBackgroundLines.classList.remove('hidden');
         previewForegroundLines.classList.remove('hidden');
-        
+
         // Add active class for CSS animations
         previewContainer.classList.add('preview-animation-active');
-        
+
         // Fade in stars (0.25s)
         setTimeout(() => {
             if (previewStars) {
                 previewStars.style.opacity = '1';
             }
         }, 10);
-        
+
         // Start lines rising
         const lines = document.querySelectorAll('.preview-line');
         lines.forEach((line, index) => {
@@ -529,8 +628,9 @@ function startPreviewAnimation() {
             line.style.opacity = '1';
             line.style.visibility = 'visible';
         });
-        
-        hideDynamicGenerationProgressOverlay();
+
+        // Note: Don't hide dynamic generation progress overlay here
+        // It should manage its own visibility based on generation phases
         // Debug: ensure background lines are visible
     } catch (error) {
         console.error('Error starting preview animation:', error);
@@ -544,19 +644,20 @@ function startPreviewAnimation() {
 }
 
 async function stopPreviewAnimation() {
-    hideDynamicGenerationProgressOverlay();
+    // Note: Don't hide dynamic generation progress overlay here
+    // It should manage its own visibility based on generation phases
 
     if (!generationAnimationActive) return;
-    
+
     manualForm.classList.remove('generating');
-    
+
     // Safety check: ensure all required elements exist
     if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {
         console.warn('Preview animation elements not found during stop');
         generationAnimationActive = false;
         return;
     }
-    
+
     try {
         generationAnimationActive = false;
         const toggleBtn = document.getElementById('previewAnimationToggle');
@@ -564,21 +665,21 @@ async function stopPreviewAnimation() {
             toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
             toggleBtn.title = 'Toggle Preview Animation';
         }
-        
+
         // Add fade out class to pause animations
         previewContainer.classList.add('preview-fade-out');
-        
+
         // Fade out the entire line containers
         previewBackgroundLines.classList.add('fadeOut');
         previewForegroundLines.classList.add('fadeOut');
-        
+
         // Fade out stars after lines start fading (1.5s)
         setTimeout(() => {
             if (previewStars) {
                 previewStars.style.opacity = '0';
             }
         }, 1500);
-        
+
         // Hide everything after fade out completes (2.5s total)
         setTimeout(() => {
             if (previewContainer) {
@@ -595,7 +696,7 @@ async function stopPreviewAnimation() {
                 previewForegroundLines.classList.add('hidden');
                 previewForegroundLines.classList.remove('fadeOut');
             }
-            
+
             // Reset line states
             const lines = document.querySelectorAll('.preview-line');
             lines.forEach(line => {
@@ -603,7 +704,7 @@ async function stopPreviewAnimation() {
                 line.style.visibility = 'visible';
             });
         }, 2500);
-        
+
         /* if (manualBlockContainer) {
             try {
                 await manualBlockContainer.returnToNormalOpacity(true);
@@ -625,11 +726,6 @@ async function stopPreviewAnimation() {
     }
 }
 
-// Check if preview animation system is available
-function isPreviewAnimationAvailable() {
-    return !!(previewContainer && previewStars && previewBackgroundLines && previewForegroundLines);
-}
-
 // Force stop preview animation (utility function for emergency stops)
 async function forceStopPreviewAnimation() {
     if (generationAnimationActive) {
@@ -637,14 +733,14 @@ async function forceStopPreviewAnimation() {
     }
 
     manualForm.classList.remove('generating');
-    
+
     // Reset button state
     const toggleBtn = document.getElementById('previewAnimationToggle');
     if (toggleBtn) {
         toggleBtn.innerHTML = '<i class="fas fa-magic"></i>';
         toggleBtn.title = 'Toggle Preview Animation';
     }
-    
+
     // Force reset all animation states
     if (previewContainer) {
         previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
@@ -661,7 +757,7 @@ async function forceStopPreviewAnimation() {
         previewForegroundLines.classList.add('hidden');
         previewForegroundLines.classList.remove('fadeOut');
     }
-    
+
     // Reset line states
     const lines = document.querySelectorAll('.preview-line');
     lines.forEach(line => {
@@ -669,7 +765,7 @@ async function forceStopPreviewAnimation() {
         line.style.visibility = 'visible';
         line.style.animationPlayState = 'paused';
     });
-    
+
     // Force unload manual block container with 1.5 second delay
     /* if (manualBlockContainer) {
         try {
@@ -683,51 +779,39 @@ async function forceStopPreviewAnimation() {
 
 // Show manual modal loading overlay
 function showManualLoading(show, message = 'Generating Image...') {
-    if (!manualModal.classList.contains('hidden') && show && isPreviewAnimationAvailable()) {
-        // Start preview animation for image generation
-        startPreviewAnimation();
-        return;
-    } else if (!show && isPreviewAnimationAvailable()) {
+    if (!manualModal.classList.contains('hidden') && show) {
+        // Check if preview section is visible before starting animation
+        const previewIsVisible = previewSection && (previewSection.classList.contains('active') || previewSection.classList.contains('show'));
+        
+        if (previewIsVisible) {
+            // Preview is visible, use preview animation
+            startPreviewAnimation();
+            return;
+        } else {
+            // Preview not visible yet, show and activate it first
+            if (previewSection) {
+                previewSection.classList.add('active', 'show');
+            }
+            showManualPreview();
+            // Small delay to ensure DOM updates, then start animation
+            setTimeout(() => {
+                startPreviewAnimation();
+            }, 10);
+            return;
+        }
+    } else if (!show) {
         // Stop preview animation when generation completes (show=false), but not during streaming
         if (!manualForm || !manualForm.classList.contains('streaming')) {
             stopPreviewAnimation();
         }
         return;
     }
-
-    // FALLBACK: If animation system fails, use manual loading overlay for critical operations
-    if (!manualModal.classList.contains('hidden') && !isPreviewAnimationAvailable()) {    // Block animation disabled - always use manual loading overlay
-        if (show) {
-            // Show manual loading overlay for image generation
-            console.warn('Animation system not available, using manual loading overlay');
-            if (manualLoadingOverlay) {
-                manualLoadingOverlay.classList.remove('hidden');
-                manualLoadingOverlay.classList.remove('return');
-                const loadingText = manualLoadingOverlay.querySelector('p');
-                if (loadingText) {
-                    loadingText.textContent = message;
-                }
-            }
-            return;
-        } else {
-            // Hide manual loading overlay when generation completes
-            if (manualLoadingOverlay) {
-                manualLoadingOverlay.classList.add('return');
-                setTimeout(() => {
-                    if (manualLoadingOverlay) {
-                        manualLoadingOverlay.classList.add('hidden');
-                    }
-                }, 300);
-            }
-            return;
-        }
-    }
 }
 
 // Show manual preview navigation loading overlay
 function showManualPreviewNavigationLoading(show) {
     const navigationLoadingOverlay = document.getElementById('manualPreviewNavigationLoading');
-    
+
     if (navigationLoadingOverlay) {
         if (show) {
             navigationLoadingOverlay.classList.remove('hidden');
@@ -746,7 +830,7 @@ function clearManualForm() {
     cleanupBlobUrls();
 
     manualForm.reset();
-    
+
     manualModal.classList.remove('show-preview', 'min-controls');
 
     // Reset custom dropdowns to defaults
@@ -770,15 +854,19 @@ function clearManualForm() {
         paidRequestToggle.setAttribute('data-state', 'off');
     }
 
+    // Reset auto-clean UC toggle
+    if (ucPresetsDropdownBtn) {
+        ucPresetsDropdownBtn.dataset.autoClean = 'on';
+    }
+
     // Reset dynamic generation buttons to default states
     const dynamicGenButtons = [
         { btn: todBtn, defaultState: 'off' },
         { btn: weatherBtn, defaultState: 'off' },
         { btn: seasonBtn, defaultState: 'off' },
-        { btn: clothingBtn, defaultState: 'off' },
-        { btn: actionBtn, defaultState: 'off' },
         { btn: dynamicGenerationLockedBtn, defaultState: 'off' },
-        { btn: creativeBtn, defaultState: 'off' }
+        { btn: creativeBtn, defaultState: 'off' },
+        { btn: optimizeBtn, defaultState: 'off' }
     ];
 
     dynamicGenButtons.forEach(({ btn, defaultState }) => {
@@ -786,6 +874,7 @@ function clearManualForm() {
             btn.setAttribute('data-state', defaultState);
             btn.classList.toggle('active', defaultState === 'on');
             btn.removeAttribute('data-override'); // Clear any overrides
+            btn.removeAttribute('data-context-locked'); // Clear context lock
 
             // Clear weather location data for weather button
             if (btn === weatherBtn) {
@@ -796,6 +885,17 @@ function clearManualForm() {
             // Update TOD button icon when reset
             if (btn.id === 'todBtn') {
                 updateTodButtonIcon();
+            }
+
+            // Clear creative button options
+            if (btn.id === 'creativeBtn') {
+                btn.removeAttribute('data-toggle-clothing');
+                btn.removeAttribute('data-toggle-action');
+            }
+            
+            // Reset season button holiday toggle to default (true)
+            if (btn.id === 'seasonBtn') {
+                btn.setAttribute('data-toggle-holiday', 'true');
             }
         }
     });
@@ -825,25 +925,66 @@ function clearManualForm() {
     renderDatasetDropdown();
 
     appendQuality = true;
-    if (qualityToggleBtn) {
-        qualityToggleBtn.setAttribute('data-state', 'on');
-    }
 
     autoPositionBtn.setAttribute('data-state', 'on');
 
     selectedUcPreset = 3; // Default to "Heavy"
     selectUcPreset(3);
     renderUcPresetsDropdown();
-    
+
     // Update prompt status icons after clearing form
     updatePromptStatusIcons();
 
     // Clear generating state
     isGenerating = false;
     updateManualGenerateBtnState();
+    forceStopPreviewAnimation();
+
 
     // Reset preset name field
     manualPresetName.disabled = false;
+
+    // Reset creative directive input
+    if (creativeDirectiveInput) {
+        creativeDirectiveInput.value = '';
+    }
+    
+    // Reset temperature to default
+    if (creativeDirectiveTemperature) {
+        creativeDirectiveTemperature.value = '1.0';
+    }
+    
+    // Reset creative tab state and show-both mode
+    const creativeTabBtn = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-btn[data-tab="creative"]');
+    const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+    const creativeTab = document.getElementById('creative-tab');
+    const promptTabs = document.querySelector('#manualModal .prompt-tabs');
+    const showBothBtn = document.getElementById('showBothBtn');
+    
+    // Reset show-both mode
+    if (promptTabs) {
+        promptTabs.classList.remove('show-both');
+    }
+    if (showBothBtn) {
+        showBothBtn.dataset.state = 'off';
+        showBothBtn.classList.remove('active');
+    }
+    
+    // Hide creative tab button
+    if (creativeTabBtn) {
+        creativeTabBtn.classList.add('hidden');
+    }
+    if (toggleGroup) {
+        toggleGroup.classList.remove('three-tabs');
+    }
+    
+    // If creative tab is active, switch to prompt tab
+    if (creativeTab && creativeTab.classList.contains('active')) {
+        if (typeof switchManualTab === 'function') {
+            switchManualTab('prompt');
+        }
+    }
+    
     manualPresetName.style.opacity = '1';
 
     // Reset text replacement locks
@@ -862,12 +1003,6 @@ function clearManualForm() {
     }
 
     document.getElementById('manualImg2ImgGroup').classList.add('hidden');
-
-    const transformationDropdown = document.getElementById('transformationDropdown');
-    if (transformationDropdown) {
-        transformationDropdown.classList.remove('disabled');
-    }
-
 
     if (vibeReferencesContainer) {
         vibeReferencesContainer.classList.add('hidden');
@@ -909,9 +1044,18 @@ function clearManualForm() {
     clearCharacterPrompts();
     clearDirectorReference();
 
+    // Clear pipeline stages
+    clearPipelineStages();
+    clearTextOverlays();
+
+    // Clear request body replacements
+    if (typeof requestBodyReplacements !== 'undefined') {
+        requestBodyReplacements = [];
+    }
+
     // Reset sprout seed button state
     if (sproutSeedBtn) {
-        sproutSeedBtn.setAttribute('data-state', 'on');
+        sproutSeedBtn.setAttribute('data-state', 'off');
         manualSeed.disabled = false;
     }
     varietyBtn.setAttribute('data-state', 'off');
@@ -945,11 +1089,8 @@ function clearManualForm() {
 
     if (clearSeedBtn) clearSeedBtn.classList.add('hidden');
 
-    // Reset transformation dropdown state
-    updateTransformationDropdownState();
-
     updateUploadDeleteButtonVisibility();
-
+    updatePipelineStagesHeaderVisibility();
     // Hide autocomplete overlays
     hideCharacterAutocomplete();
     hidePresetAutocomplete();
@@ -960,17 +1101,37 @@ function clearManualForm() {
     manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
 
     // Reset dynamic generation buttons and clear stored data
-    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'actionBtn', 'creativeBtn'];
+    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn', 'optimizeBtn'];
     dynamicGenerationButtons.forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn) {
             btn.setAttribute('data-state', 'off');
+            btn.classList.remove('active');
+            btn.removeAttribute('data-override');
+            btn.removeAttribute('data-season-mode');
+            btn.removeAttribute('data-location');
+            btn.removeAttribute('data-location-display');
+            btn.removeAttribute('data-token-count');
+            btn.removeAttribute('data-lock-subject');
+            btn.removeAttribute('data-pipeline-aware');
+            btn.removeAttribute('data-initial-prompt-aware');
+            btn.removeAttribute('data-use-cache');
+            btn.removeAttribute('data-toggle-clothing');
+            btn.removeAttribute('data-toggle-action');
+            
+            // Reset season button holiday toggle to default (true)
+            if (btnId === 'seasonBtn') {
+                btn.setAttribute('data-toggle-holiday', 'true');
+            }
         }
     });
 
     // Clear stored dynamic generation data
     delete window.dynamicGenerationData;
     dynamicGenerationGroup.classList.add('hidden');
+
+    // Update creative directive visibility
+    updateCreativeDirectiveVisibility();
 
     updatePresetLoadSaveState();
 }
@@ -1000,7 +1161,10 @@ function collectManualFormValues() {
         autoPositionBtn: document.getElementById('autoPositionBtn'),
         container: characterPromptsContainer,
         characterItems: characterPromptsContainer ? characterPromptsContainer.querySelectorAll('.character-prompt-item') : [],
-        characterPrompts: getCharacterPrompts()
+        characterPrompts: getCharacterPrompts(),
+        pipelineStages: getPipelineStages(),
+        save_base_output: saveStage0Btn?.dataset.state === 'on',
+        skip_pipeline_stages: enableStageGenerationBtn?.dataset.state === 'off'
     };
 
     // Process resolution value to determine if it's custom or predefined
@@ -1017,7 +1181,6 @@ function collectManualFormValues() {
     if (window.uploadedImageData && window.uploadedImageData.image_bias) {
         values.image_bias = window.uploadedImageData.image_bias;
     } else if (imageBiasHidden && imageBiasHidden.value) {
-
         values.image_bias = parseInt(imageBiasHidden.value);
     }
 
@@ -1046,6 +1209,9 @@ function collectManualFormValues() {
         values.dataset_config.nsfw_bias = nsfwBias;
     }
     values.append_quality = appendQuality;
+    if (qualityPresetBias !== 1.0) {
+        values.quality_preset_bias = qualityPresetBias;
+    }
     values.append_uc = selectedUcPreset;
 
     // Collect vibe transfer data
@@ -1053,6 +1219,11 @@ function collectManualFormValues() {
     values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
 
     values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
+
+    // Add request body replacements
+    if (typeof requestBodyReplacements !== 'undefined' && requestBodyReplacements.length > 0) {
+        values.text_replacements = requestBodyReplacements;
+    }
 
     return values;
 }
@@ -1071,11 +1242,28 @@ function collectVibeTransferData() {
         const vibeId = item.getAttribute('data-vibe-id');
         const ieDropdownBtn = item.querySelector('.custom-dropdown-btn');
         const ratioInput = item.querySelector('input.vibe-reference-ratio-input');
-        const disabledVibe = item.querySelector('.vibe-reference-controls .indicator[data-state="off"]');
-        // Skip disabled vibe references
+        // Check if the main vibe toggle (power icon) is disabled
+        const allIndicators = item.querySelectorAll('.vibe-reference-controls .indicator');
+        let mainToggle = null;
+        let textInjectionToggle = null;
+
+        allIndicators.forEach(indicator => {
+            if (indicator.querySelector('.fa-power-off')) {
+                mainToggle = indicator;
+            } else if (indicator.querySelector('.fa-indent')) {
+                textInjectionToggle = indicator;
+            }
+        });
+
+        const disabledVibe = mainToggle && mainToggle.getAttribute('data-state') === 'off';
+
+        // Skip disabled vibe references (main toggle is off)
         if (disabledVibe) {
             return;
         }
+
+        // Get text injection toggle state
+        const textInjectionEnabled = textInjectionToggle ? textInjectionToggle.getAttribute('data-state') === 'on' : true;
 
         if (vibeId && ieDropdownBtn && ratioInput) {
             const selectedIe = ieDropdownBtn.dataset.selectedIe;
@@ -1085,13 +1273,86 @@ function collectVibeTransferData() {
                 vibeTransfers.push({
                     id: vibeId,
                     ie: selectedIe,
-                    strength: strength
+                    strength: strength,
+                    inject_text: textInjectionEnabled
                 });
             }
         }
     });
-    
+
     return vibeTransfers;
+}
+
+/**
+ * Extract locked dynamic replacements from the compiled prompt
+ * @returns {Array} Array of locked replacements
+ */
+function extractLockedDynamicReplacements() {
+    const lockedReplacements = [];
+    
+    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        return lockedReplacements;
+    }
+
+    const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+
+    // Extract locked replacements from prompt
+    if (textReplacements.prompt && Array.isArray(textReplacements.prompt)) {
+        textReplacements.prompt.forEach(rep => {
+            if (rep.locked === true) {
+                lockedReplacements.push({
+                    ...rep,
+                    targetType: 'prompt',
+                    targetSource: 'base'
+                });
+            }
+        });
+    }
+
+    // Extract locked replacements from UC (negative prompt)
+    if (textReplacements.uc && Array.isArray(textReplacements.uc)) {
+        textReplacements.uc.forEach(rep => {
+            if (rep.locked === true) {
+                lockedReplacements.push({
+                    ...rep,
+                    targetType: 'uc',
+                    targetSource: 'base'
+                });
+            }
+        });
+    }
+
+    // Extract locked replacements from character prompts
+    if (textReplacements.character_prompts && Array.isArray(textReplacements.character_prompts)) {
+        textReplacements.character_prompts.forEach((char, charIndex) => {
+            if (char?.input && Array.isArray(char.input)) {
+                char.input.forEach(rep => {
+                    if (rep.locked === true) {
+                        lockedReplacements.push({
+                            ...rep,
+                            targetType: 'character',
+                            targetSource: charIndex,
+                            targetField: 'input'
+                        });
+                    }
+                });
+            }
+            if (char?.uc && Array.isArray(char.uc)) {
+                char.uc.forEach(rep => {
+                    if (rep.locked === true) {
+                        lockedReplacements.push({
+                            ...rep,
+                            targetType: 'character',
+                            targetSource: charIndex,
+                            targetField: 'uc'
+                        });
+                    }
+                });
+            }
+        });
+    }
+
+    return lockedReplacements;
 }
 
 /**
@@ -1143,25 +1404,42 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.normalize_vibes = values.normalize_vibes;
     }
 
+    // Add auto-clean UC setting
+    if (ucPresetsDropdownBtn) {
+        requestBody.auto_clean_uc = ucPresetsDropdownBtn.dataset.autoClean === 'on';
+    }
+
     // Collect dynamic generation data from current button states
     const todBtn = document.getElementById('todBtn');
     const weatherBtn = document.getElementById('weatherBtn');
     const seasonBtn = document.getElementById('seasonBtn');
     const creativeBtn = document.getElementById('creativeBtn');
+    const optimizeBtn = document.getElementById('optimizeBtn');
 
     // Collect current button states
     const dynamicData = {
-        locked: dynamicGenerationLockedBtn?.dataset.state === 'on',
         tod: collectDynamicButtonState(todBtn),
         weather: collectDynamicButtonState(weatherBtn),
         season: collectDynamicButtonState(seasonBtn),
-        clothing: clothingBtn?.dataset.state === 'on',
-        action: collectDynamicButtonState(actionBtn),
-        creative: creativeBtn?.dataset.state === 'on'
+        observeHoliday: seasonBtn?.dataset.toggleHoliday !== 'false', // Default true
+        clothing: creativeBtn?.dataset.toggleClothing === 'true',
+        action: creativeBtn?.dataset.toggleAction === 'true',
+        creative: creativeBtn?.dataset.state === 'on',
+        optimize: optimizeBtn?.dataset.state === 'on' ? {
+            enabled: true,
+            tokenCount: optimizeBtn.dataset.tokenCount === 'true',
+            lockSubject: optimizeBtn.dataset.lockSubject === 'true',
+            pipelineAware: optimizeBtn.dataset.pipelineAware === 'true',
+            initialPromptAware: optimizeBtn.dataset.initialPromptAware === 'true'
+        } : false,
+        cache_locked: dynamicGenerationLockedBtn?.dataset.state === 'on',
+        context_locked: dynamicGenerationLockedBtn?.dataset.contextLocked === 'true',
+        expire_preview: dynamicGenerationLockedBtn?.dataset.expirePreview === 'true',
+        use_cache_responses: dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'false' ? false : undefined
     };
 
     // Add weather location data if available
-    if (weatherBtn && weatherBtn.getAttribute('data-location')) {
+    if (weatherBtn && dynamicData.weather && weatherBtn.getAttribute('data-location')) {
         dynamicData.location = weatherBtn.getAttribute('data-location');
     }
     // Always include dynamic_generation if any button has been configured (even if turned off)
@@ -1170,15 +1448,39 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         value !== undefined && value !== false && value !== null && value !== ''
     );
 
-    if (hasAnyConfiguration) {
+    if (hasAnyConfiguration && dynamicGenerationToggleBtn?.getAttribute('data-state') !== 'off') {
         // Preserve existing compiled prompt and other data
         const existingData = window.dynamicGenerationData || {};
-        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
 
         const fullDynamicData = {
             ...dynamicData,
-            compiled_prompt: useCache ? existingData.compiled_prompt : undefined
+            compiled_prompt: existingData.compiled_prompt // Always include compiled_prompt (preserves previousResponseId for stateful conversation)
         };
+        
+        // Add creative directive if present
+        if (creativeDirectiveInput && creativeDirectiveInput.value && creativeDirectiveInput.value.trim() !== '') {
+            fullDynamicData.directive = creativeDirectiveInput.value.trim();
+        }
+        
+        // Add temperature setting from creative directive toolbar
+        if (creativeDirectiveTemperature && creativeDirectiveTemperature.value) {
+            const temperature = parseFloat(creativeDirectiveTemperature.value);
+            if (!isNaN(temperature) && temperature >= 0 && temperature <= 2) {
+                fullDynamicData.temperature = temperature;
+            }
+        }
+
+        // Add locked dynamic replacements if any exist
+        const lockedReplacements = extractLockedDynamicReplacements();
+        if (lockedReplacements.length > 0) {
+            fullDynamicData.locked_replacements = lockedReplacements;
+        }
+        
+        // Convert observeHoliday to disable_holiday for backend
+        if (fullDynamicData.season && fullDynamicData.observeHoliday !== undefined) {
+            fullDynamicData.disable_holiday = !fullDynamicData.observeHoliday;
+            console.log(`🎄 Season enabled with observeHoliday=${fullDynamicData.observeHoliday}, setting disable_holiday=${fullDynamicData.disable_holiday}`);
+        }
 
         window.dynamicGenerationData = fullDynamicData;
         requestBody.dynamic_generation = fullDynamicData;
@@ -1204,6 +1506,36 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements)) {
         requestBody.text_replacements_seed = window.lockedTextReplacements;
     }
+    
+    // Add request body replacements (for stage-specific text replacements)
+    if (values.text_replacements && Array.isArray(values.text_replacements) && values.text_replacements.length > 0) {
+        requestBody.text_replacements = values.text_replacements;
+    }
+
+    // Add locked text replacements if any are set
+    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements) && window.lockedTextReplacements.length > 0) {
+        requestBody.text_replacements_seed = window.lockedTextReplacements;
+    }
+
+    // Add pipeline stages if any exist
+    const pipelineStages = getPipelineStages();
+    if (pipelineStages && pipelineStages.length > 0) {
+        requestBody.pipeline = pipelineStages;
+        // Add saveStage0 flag if button is enabled
+        if (saveStage0Btn?.dataset.state === 'on') {
+            requestBody.save_base_output = true;
+        }
+        // Add skip_pipeline_stages flag
+        if (enableStageGenerationBtn?.dataset.state === 'off') {
+            requestBody.skip_pipeline_stages = true;
+        }
+    }
+    
+    // Add text overlay data if any exist
+    const textOverlayData = getTextOverlayData();
+    if (textOverlayData && textOverlayData.length > 0) {
+        requestBody.text_overlays = textOverlayData;
+    }
 }
 
 // Get current weather units preference from localStorage
@@ -1221,7 +1553,7 @@ function formatTemperature(celsius) {
     if (useMetric) {
         return { number: Math.round(celsius).toString(), unit: '°C' };
     } else {
-        const fahrenheit = Math.round((celsius * 9/5) + 32);
+        const fahrenheit = Math.round((celsius * 9 / 5) + 32);
         return { number: fahrenheit.toString(), unit: '°F' };
     }
 }
@@ -1349,22 +1681,22 @@ async function showManualModal(presetName = null) {
 
     // Track if we were in search mode before opening modal
     wasInSearchMode = isInSearchMode();
-    
+
     // Always return to gallery mode when opening manual modal
     if (wasInSearchMode) {
         closeSearchContainer();
     }
-    
+
     // Prevent body scrolling when modal is open
     if (!document.body.classList.contains('editor-open')) {
         document.body.classList.add('editor-open');
     }
-    
+
     // Stop any existing preview animation when opening modal
     if (generationAnimationActive) {
         stopPreviewAnimation();
     }
-    
+
     // Show loading overlay for manual modal opening
     const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
     if (manualLoadingOverlay) {
@@ -1382,7 +1714,7 @@ async function showManualModal(presetName = null) {
     manualPreviewOriginalImage.classList.add('hidden');
     openModal(manualModal);
     manualPrompt.focus();
-    
+
     // Calculate previewRatio after modal is opened and visible
     setTimeout(() => {
         calculatePreviewRatio();
@@ -1406,11 +1738,59 @@ async function showManualModal(presetName = null) {
 
     // Auto-resize textareas after modal is shown
     autoResizeTextareasAfterModalShow();
-    
+
+    // Toggle creative directive row visibility based on creative mode state
+    updateCreativeDirectiveVisibility();
+
     // Update prompt status icons
     updatePromptStatusIcons();
+}
 
-    // Update load button state
+// Update creative directive visibility based on creative mode and dynamic generation visibility
+function updateCreativeDirectiveVisibility() {
+    try {
+        const creativeBtnEl = document.getElementById('creativeBtn');
+        const isCreativeOn = creativeBtnEl && creativeBtnEl.dataset.state === 'on';
+        const isDynamicGenVisible = dynamicGenerationGroup && !dynamicGenerationGroup.classList.contains('hidden');
+        
+        // Get the creative tab button and toggle group
+        const creativeTabBtn = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-btn[data-tab="creative"]');
+        const toggleGroup = document.querySelector('#manualModal .prompt-tabs .gallery-toggle-group');
+        
+        const shouldShowCreativeTab = isCreativeOn && isDynamicGenVisible;
+        
+        if (creativeTabBtn) {
+            // Show/hide the creative tab button
+            creativeTabBtn.classList.toggle('hidden', !shouldShowCreativeTab);
+        }
+        
+        if (toggleGroup) {
+            // Add/remove three-tabs class for proper layout
+            toggleGroup.classList.toggle('three-tabs', shouldShowCreativeTab);
+        }
+        
+        // If creative tab is being hidden and it's currently active, switch to prompt tab
+        if (!shouldShowCreativeTab) {
+            const creativeTab = document.getElementById('creative-tab');
+            if (creativeTab && creativeTab.classList.contains('active')) {
+                // Switch to prompt tab using existing function
+                if (typeof switchManualTab === 'function') {
+                    switchManualTab('prompt');
+                }
+            }
+        }
+        
+        // Ensure single-line until overflow
+        if (creativeDirectiveInput && typeof autoResizeTextarea === 'function') {
+            autoResizeTextarea(creativeDirectiveInput, 23);
+        }
+    } catch (e) {
+        // no-op
+    }
+}
+
+// Update load button state
+function updateLoadButtonState() {
     updatePresetLoadSaveState();
     updateManualPresetToggleBtn();
 
@@ -1431,7 +1811,7 @@ async function showManualModal(presetName = null) {
             tabButtonsContainer.classList.add('hidden');
         }
     }
-    
+
     // Hide loading overlay after modal is fully loaded
     if (manualLoadingOverlay) {
         manualLoadingOverlay.classList.add('return');
@@ -1439,7 +1819,7 @@ async function showManualModal(presetName = null) {
             manualLoadingOverlay.classList.add('hidden');
         }, 300); // Match the transition duration
     }
-    
+
     // Save current gallery position
     const firstNonPlaceholder = document.querySelector('.gallery-item:not(.gallery-placeholder)');
     if (firstNonPlaceholder) {
@@ -1448,7 +1828,7 @@ async function showManualModal(presetName = null) {
         // If no real items found, save position 0
         savedGalleryPosition = 0;
     }
-    
+
     // Clear gallery after 5 seconds
     galleryClearTimeout = setTimeout(() => {
         if (!manualModal.classList.contains('hidden')) {
@@ -1490,7 +1870,12 @@ function hideManualModal(e, preventModalReset = false) {
 
         // Reset manual preview
         resetManualPreview();
-        
+
+        // Hide stage indicators when modal is closed
+        if (typeof hideStageIndicators === 'function') {
+            hideStageIndicators();
+        }
+
         // Deregister manual preview event listeners when modal is closed
         deregisterManualPreviewEventListeners();
 
@@ -1513,7 +1898,7 @@ function hideManualModal(e, preventModalReset = false) {
         // Reset random prompt state
         savedRandomPromptState = null;
         lastPromptState = null;
-        
+
         // Reset background update state
         backgroundUpdateState.isAnimating = false;
         backgroundUpdateState.pendingRequest = null;
@@ -1541,11 +1926,11 @@ function hideManualModal(e, preventModalReset = false) {
         }
         // Hide keyboard shortcuts overlay
         hideShortcutsOverlay();
-        
+
         // Update button state
         updateManualGenerateBtnState();
     }
-    
+
     // Always clear gallery clear timeout and restore gallery when modal is closed
     // regardless of whether preventModalReset is true or not
     clearTimeout(galleryClearTimeout);
@@ -1568,7 +1953,7 @@ function hideManualModal(e, preventModalReset = false) {
             if (mainMenuContents) {
                 mainMenuContents.classList.add('hidden');
             }
-            
+
             // Restore search results if fileSearch instance exists
             if (window.fileSearch && window.fileSearch.currentQuery) {
                 // Trigger search to restore results
@@ -1612,14 +1997,14 @@ async function loadIntoManualForm(source, image = null) {
 
             if (presetType === 'preset') {
                 type = 'preset';
-                
+
                 // Use WebSocket for preset loading
                 if (!window.wsClient || !window.wsClient.isConnected()) {
                     throw new Error('WebSocket not connected');
                 }
-                
+
                 const response = await window.wsClient.loadPreset(presetName);
-                
+
                 // Extract preset data from WebSocket response
                 // The WebSocket client returns the data directly, not wrapped in a data property
                 if (response) {
@@ -1681,6 +2066,19 @@ async function loadIntoManualForm(source, image = null) {
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
         }
+        
+        // Load creative directive if present in dynamic_generation
+        if (creativeDirectiveInput && data.dynamic_generation && data.dynamic_generation.directive) {
+            creativeDirectiveInput.value = data.dynamic_generation.directive;
+            if (typeof autoResizeTextarea === 'function') {
+                autoResizeTextarea(creativeDirectiveInput, 23);
+            }
+        }
+        
+        // Restore temperature setting from metadata
+        if (creativeDirectiveTemperature && data.dynamic_generation && data.dynamic_generation.temperature !== undefined) {
+            creativeDirectiveTemperature.value = data.dynamic_generation.temperature;
+        }
         selectManualModel(data.model || 'v4_5', '');
 
         // Handle resolution loading with proper custom dimension support
@@ -1701,40 +2099,12 @@ async function loadIntoManualForm(source, image = null) {
                     }
                 }
             } else {
-                // No exact match found, try to match by aspect ratio to normal_ presets
-                const aspectRatio = data.width / data.height;
-                
-                // Find the closest normal_ preset by aspect ratio
-                const normalPresets = RESOLUTIONS.filter(r => r.value.startsWith('normal_'));
-                let bestMatch = null;
-                let bestRatioDiff = Infinity;
-                
-                normalPresets.forEach(preset => {
-                    const presetRatio = preset.width / preset.height;
-                    const ratioDiff = Math.abs(aspectRatio - presetRatio);
-                    if (ratioDiff < bestRatioDiff) {
-                        bestRatioDiff = ratioDiff;
-                        bestMatch = preset;
-                    }
-                });
-                
-                if (bestMatch && bestRatioDiff < 0.1) { // Allow 10% tolerance for aspect ratio
-                    resolutionToSet = bestMatch.value;
-                    // Find the group for this resolution
-                    for (const group of RESOLUTION_GROUPS) {
-                        if (group.options.find(opt => opt.value === resolutionToSet)) {
-                            resolutionGroup = group.group;
-                            break;
-                        }
-                    }
-                } else {
-                    // No aspect ratio match found, use custom
-                    resolutionToSet = 'custom';
-                    resolutionGroup = 'Custom';
-                    // Set custom dimensions before calling selectManualResolution
-                    if (manualWidth) manualWidth.value = data.width;
-                    if (manualHeight) manualHeight.value = data.height;
-                }
+                // No exact match found, use custom resolution
+                resolutionToSet = 'custom';
+                resolutionGroup = 'Custom';
+                // Set custom dimensions before calling selectManualResolution
+                if (manualWidth) manualWidth.value = data.width;
+                if (manualHeight) manualHeight.value = data.height;
             }
         } else if (data.resolution) {
             // Fall back to existing resolution field if no dimensions
@@ -1744,13 +2114,36 @@ async function loadIntoManualForm(source, image = null) {
 
         // Handle custom dimensions after resolution is set
         if (data.width && data.height && resolutionToSet === 'custom') {
-            if (customWidth && customHeight) {
-                customWidth.value = data.width;
-                customHeight.value = data.height;
+            if (manualWidth && manualHeight) {
+                manualWidth.value = data.width;
+                manualHeight.value = data.height;
+                // Update the hidden resolution field immediately after setting values
+                updateCustomResolutionValue();
             }
             // Sanitize dimensions after setting
             sanitizeCustomDimensions();
         }
+
+        // Update resolution area toggle based on image area
+        if (data.width && data.height) {
+            const imageArea = data.width * data.height;
+            const resolutionAreaToggle = document.getElementById('resolutionAreaToggle');
+
+            if (resolutionAreaToggle) {
+                // Set area limit based on image size
+                if (imageArea > 2166784) {
+                    currentMaxArea = 3047424; // Max (3MP)
+                    resolutionAreaToggle.textContent = 'Max';
+                } else if (imageArea > 1048576) {
+                    currentMaxArea = 2166784; // Large (2MP)
+                    resolutionAreaToggle.textContent = 'Large';
+                } else {
+                    currentMaxArea = 1048576; // Normal (1MP)
+                    resolutionAreaToggle.textContent = 'Normal';
+                }
+            }
+        }
+
         if (manualSteps) manualSteps.value = data.steps || 25;
         if (manualGuidance) {
             // Handle both preset (guidance) and metadata (scale) formats
@@ -1762,19 +2155,20 @@ async function loadIntoManualForm(source, image = null) {
             const rescaleValue = data.rescale ?? data.cfg_rescale ?? 0.0;
             manualRescale.value = rescaleValue !== undefined ? Number(rescaleValue).toFixed(2) : '';
         }
-        
+
         if (manualSeed) manualSeed.value = ''; // Do not autofill for metadata, undefined for others
         if (data.seed) {
             // Handle both preset (seed) and metadata (layer2_seed) formats
             window.lastGeneratedSeed = data.seed;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
+            addSeedToHistory(data.seed);
         }
 
         // Ensure sampler and noiseScheduler have valid values before calling select functions
         const samplerValue = (data.sampler && data.sampler !== undefined && data.sampler !== null) ? data.sampler : 'k_euler_ancestral';
         const noiseValue = (data.noiseScheduler && data.noiseScheduler !== undefined && data.noiseScheduler !== null) ? data.noiseScheduler : 'karras';
-        
+
         selectManualSampler(samplerValue);
         selectManualNoiseScheduler(noiseValue);
 
@@ -1782,7 +2176,7 @@ async function loadIntoManualForm(source, image = null) {
             const varietyBtn = document.getElementById('varietyBtn');
             // Handle both preset (variety) and metadata (skip_cfg_above_sigma) formats
             const isVarietyEnabled = data.variety !== null && data.variety !== undefined ? data.variety :
-                                   (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
+                (data.skip_cfg_above_sigma !== null && data.skip_cfg_above_sigma !== undefined);
             varietyBtn.setAttribute('data-state', isVarietyEnabled ? 'on' : 'off');
             // Update the global varietyEnabled variable used for generation requests
             varietyEnabled = isVarietyEnabled;
@@ -1824,7 +2218,20 @@ async function loadIntoManualForm(source, image = null) {
             clearCharacterPrompts();
         }
 
-        updateAutoPositionToggle(); 
+        updateAutoPositionToggle();
+
+        // Load pipeline stages if present
+        if (data.pipeline_stages && Array.isArray(data.pipeline_stages)) {
+            loadPipelineStages(data.pipeline_stages);
+            updateTextOverlayStageVisibility();
+        } else {
+            clearPipelineStages();
+        }
+
+        // Load saveStage0 state
+        if (saveStage0Btn && data.save_base_output !== undefined) {
+            saveStage0Btn.dataset.state = data.save_base_output ? 'on' : 'off';
+        }
 
         // Load director session and message IDs from metadata if available
         if (data.director_session_id || data.director_message_id) {
@@ -1888,7 +2295,8 @@ async function loadIntoManualForm(source, image = null) {
             datasetBias = {};
             if (window.optionsData?.datasets) {
                 window.optionsData.datasets.forEach(dataset => {
-                    datasetBias[dataset.value] = 1.0;
+                    // Use default value from config, fallback to 1.0
+                    datasetBias[dataset.value] = dataset.default !== undefined ? dataset.default : 1.0;
                 });
             }
         }
@@ -1898,15 +2306,16 @@ async function loadIntoManualForm(source, image = null) {
         updateSubTogglesButtonState();
 
         if (data.append_quality !== undefined) {
-            appendQuality = data.append_quality;
-            if (qualityToggleBtn) {
-                qualityToggleBtn.setAttribute('data-state', appendQuality ? 'on' : 'off');
-            }
+            appendQuality = !!data.append_quality;
         } else {
             appendQuality = true;
-            if (qualityToggleBtn) {
-                qualityToggleBtn.setAttribute('data-state', 'on');
-            }
+        }
+
+        // Load quality preset bias if available
+        if (data.quality_preset_bias !== undefined) {
+            qualityPresetBias = parseFloat(data.quality_preset_bias);
+        } else {
+            qualityPresetBias = 1.0;
         }
 
         if (data.append_uc !== undefined) {
@@ -1973,13 +2382,14 @@ async function loadIntoManualForm(source, image = null) {
 
                 // Add each vibe transfer back to the container
                 for (const vibeTransfer of data.vibe_transfer) {
-                    await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength);
+                    const textInjectionState = vibeTransfer.inject_text !== false ? 'on' : 'off';
+                    await addVibeReferenceToContainer(vibeTransfer.id, vibeTransfer.ie, vibeTransfer.strength, textInjectionState);
                 }
-                
+
                 if (vibeNormalizeToggle) {
                     vibeNormalizeToggle.classList.remove('hidden');
                 }
-                
+
                 // Update transformation dropdown button active state
                 updateTransformationDropdownForVibes();
             }
@@ -2052,10 +2462,10 @@ async function loadIntoManualForm(source, image = null) {
                     };
                     tempImg.src = previewUrl;
                 })
-                
+
                 // Update image bias orientation after setting image dimensions
                 updateImageBiasOrientation();
-                
+
                 if (variationImage) {
                     // Set the preview image source
                     variationImage.src = previewUrl;
@@ -2111,7 +2521,7 @@ async function loadIntoManualForm(source, image = null) {
                 }
             }
 
-            if(data.image_bias !== undefined && data.image_bias !== null) {
+            if (data.image_bias !== undefined && data.image_bias !== null) {
                 // Handle both legacy (number) and dynamic (object) bias
                 if (typeof data.image_bias === 'object') {
                     await renderImageBiasDropdown('custom');
@@ -2129,7 +2539,7 @@ async function loadIntoManualForm(source, image = null) {
             if (manualNoiseValue && data.noise !== undefined && data.noise !== null) {
                 manualNoiseValue.value = data.noise;
             }
-            
+
             updateInpaintButtonState();
             // Update percentage overlays after setting values
             updatePercentageOverlays();
@@ -2150,23 +2560,23 @@ async function loadIntoManualForm(source, image = null) {
             }
             document.getElementById('manualImg2ImgGroup').classList.add('hidden');
         }
-        
+
         // Handle variation editing - show image preview without triggering img2img mode
         if (data.isVariationEdit && data.image_source && image) {
             const [imageType, identifier] = data.image_source.split(':', 2);
             let previewUrl = '';
-            
+
             if (imageType === 'file') {
                 previewUrl = `/images/${identifier}`;
             } else if (imageType === 'cache') {
                 previewUrl = `/cache/preview/${identifier}.webp`;
             }
-            
+
             if (previewUrl && variationImage) {
                 // Show the image preview for reference
                 variationImage.src = previewUrl;
                 variationImage.classList.remove('hidden');
-                
+
                 // Show transformation section content
                 if (transformationRow) {
                     transformationRow.classList.add('display-image');
@@ -2194,13 +2604,13 @@ async function loadIntoManualForm(source, image = null) {
             manualStrengthValue.value = (data.strength !== undefined && data.strength !== null) ? data.strength : 0.8;
             manualNoiseValue.value = (data.noise !== undefined && data.noise !== null) ? data.noise : 0.1;
             if (manualUpscale) manualUpscale.checked = false;
-            
+
             // Update percentage overlays after setting values
             updatePercentageOverlays();
             // Load image into preview panel when loading from metadata
             if (image) {
                 // Check if this is a temp file (from blueprint upload)
-                if (image.isTempFile) {                    
+                if (image.isTempFile) {
                     // For temp files, we need to handle them differently
                     if (image.tempFilename) {
                         // URL upload - use the temp file path
@@ -2226,7 +2636,7 @@ async function loadIntoManualForm(source, image = null) {
             }
         }
         // Restore the preset name that was entered by the user
-        if (manualPresetName && currentPresetName) { 
+        if (manualPresetName && currentPresetName) {
             manualPresetName.value = currentPresetName;
             manualPresetPlaceholderText.textContent = currentPresetName;
         }
@@ -2290,6 +2700,17 @@ async function loadIntoManualForm(source, image = null) {
                 if (Date.now() - window.dynamicGenerationData.compiled_prompt?.timestamp < 1000 * 60 * 15) {
                     dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
                 }
+
+                // Restore lock states from compiled prompt
+                const compiledPrompt = window.dynamicGenerationData.compiled_prompt;
+                if (compiledPrompt) {
+                    if (compiledPrompt.cache_locked !== undefined) {
+                        dynamicGenerationLockedBtn.setAttribute('data-state', compiledPrompt.cache_locked ? 'on' : 'off');
+                    }
+                    if (compiledPrompt.context_locked !== undefined) {
+                        dynamicGenerationLockedBtn.setAttribute('data-context-locked', compiledPrompt.context_locked ? 'true' : 'false');
+                    }
+                }
             }
 
             // Update dynamic generation button states based on loaded data
@@ -2297,15 +2718,60 @@ async function loadIntoManualForm(source, image = null) {
                 tod: 'todBtn',
                 weather: 'weatherBtn',
                 season: 'seasonBtn',
-                clothing: 'clothingBtn',
-                action: 'actionBtn',
+                observeHoliday: 'seasonBtn',
+                clothing: 'creativeBtn',
+                action: 'creativeBtn',
                 locked: 'dynamicGenerationLockedBtn',
-                creative: 'creativeBtn'
+                creative: 'creativeBtn',
+                optimize: 'optimizeBtn'
             };
 
+            let hasAnyEnabled = false;
             Object.entries(buttonMappings).forEach(([key, btnId]) => {
                 const btn = document.getElementById(btnId);
                 if (btn && window.dynamicGenerationData[key] !== undefined) {
+                    // Special handling for observeHoliday - uses dataset attribute on season button
+                    if (key === 'observeHoliday') {
+                        btn.setAttribute('data-toggle-holiday', window.dynamicGenerationData[key] ? 'true' : 'false');
+                        return;
+                    }
+                    // Special handling for clothing and action - they use dataset attributes on creative button
+                    if (key === 'clothing') {
+                        btn.setAttribute('data-toggle-clothing', window.dynamicGenerationData[key] ? 'true' : 'false');
+                        return;
+                    }
+                    if (key === 'action') {
+                        btn.setAttribute('data-toggle-action', window.dynamicGenerationData[key] ? 'true' : 'false');
+                        return;
+                    }
+
+                    // Special handling for optimize button - restore tokenCount and lockSubject attributes
+                    if (key === 'optimize' && typeof window.dynamicGenerationData[key] === 'object') {
+                        const optimizeData = window.dynamicGenerationData[key];
+                        const state = optimizeData.enabled ? 'on' : 'off';
+                        btn.setAttribute('data-state', state);
+                        btn.classList.toggle('active', state === 'on');
+                        
+                        // Restore tokenCount and lockSubject attributes
+                        if (optimizeData.tokenCount !== undefined) {
+                            btn.setAttribute('data-token-count', optimizeData.tokenCount.toString());
+                        }
+                        if (optimizeData.lockSubject !== undefined) {
+                            btn.setAttribute('data-lock-subject', optimizeData.lockSubject.toString());
+                        }
+                        if (optimizeData.pipelineAware !== undefined) {
+                            btn.setAttribute('data-pipeline-aware', optimizeData.pipelineAware.toString());
+                        }
+                        if (optimizeData.initialPromptAware !== undefined) {
+                            btn.setAttribute('data-initial-prompt-aware', optimizeData.initialPromptAware.toString());
+                        }
+                        
+                        if (state === 'on') {
+                            hasAnyEnabled = true;
+                        }
+                        return;
+                    }
+
                     const state = window.dynamicGenerationData[key] ? 'on' : 'off';
                     btn.setAttribute('data-state', state);
                     btn.classList.toggle('active', state === 'on');
@@ -2320,6 +2786,11 @@ async function loadIntoManualForm(source, image = null) {
                     if (btnId === 'todBtn') {
                         updateTodButtonIcon();
                     }
+
+                    // Track if any value is enabled
+                    if (state === 'on') {
+                        hasAnyEnabled = true;
+                    }
                 }
             });
 
@@ -2327,17 +2798,105 @@ async function loadIntoManualForm(source, image = null) {
             if (window.dynamicGenerationData.location && weatherBtn) {
                 weatherBtn.setAttribute('data-location', window.dynamicGenerationData.location);
             }
+
+            // Unhide dynamicGenerationGroup if any values are enabled
+            if (hasAnyEnabled) {
+                dynamicGenerationGroup.classList.remove('hidden');
+            } else {
+                dynamicGenerationGroup.classList.add('hidden');
+            }
+        } else {
+            dynamicGenerationGroup.classList.add('hidden');
         }
         
-        dynamicGenerationGroup.classList.add('hidden');
+        // Update creative directive visibility after dynamic generation visibility changes
+        updateCreativeDirectiveVisibility();
 
-        updateDynamicGenerationToggleBtn();        
+        // Load request body replacements from forge_data if available
+        if (data.text_replacements && Array.isArray(data.text_replacements)) {
+            if (typeof requestBodyReplacements !== 'undefined') {
+                requestBodyReplacements = data.text_replacements;
+            }
+        } else {
+            // Clear request body replacements if no data
+            if (typeof requestBodyReplacements !== 'undefined') {
+                requestBodyReplacements = [];
+            }
+        }
+
+        // Load auto-clean UC setting from forge_data
+        if (ucPresetsDropdownBtn && data.forge_data && data.forge_data.auto_clean_uc !== undefined) {
+            ucPresetsDropdownBtn.dataset.autoClean = data.forge_data.auto_clean_uc ? 'on' : 'off';
+        }
+
+        // Handle staged generation data from forge_data
+        if (data.forge_data && data.forge_data.pipeline && Array.isArray(data.forge_data.pipeline)) {
+            console.log('🎬 Loading staged generation data from forge_data');
+
+            // Load pipeline stages
+            const pipelineStages = data.forge_data.pipeline;
+            const stageSeeds = data.forge_data.stage_seeds || data.stage_seeds || null;
+            
+            if (pipelineStages.length > 0) {
+                // Clear existing stages first
+                clearPipelineStages();
+
+                // Load the pipeline stages with stage_seeds
+                loadPipelineStages(pipelineStages, stageSeeds);
+                updateTextOverlayStageVisibility();
+
+                // Set saveStage0Btn from stored value
+                if (saveStage0Btn && data.forge_data.save_base_output) {
+                    saveStage0Btn.dataset.state = data.forge_data.save_base_output ? 'on' : 'off';
+                }
+
+                // Update saveStage0Btn visibility
+                updateSaveStage0BtnVisibility();
+            }
+        } else {
+            // No staged generation data, ensure pipeline UI is clean
+            clearPipelineStages();
+            if (saveStage0Btn) {
+                saveStage0Btn.dataset.state = 'off';
+            }
+            updateSaveStage0BtnVisibility();
+        }
+        
+        // Handle text overlays from forge_data or extracted from prompt
+        if (data.text_overlays && Array.isArray(data.text_overlays)) {
+            console.log('📝 Loading text overlays from forge_data');
+            loadTextOverlays(data.text_overlays);
+        } else if (data.prompt) {
+            // Try to extract text from prompt if no text_overlays in forge data
+            const extractedText = extractTextFromPrompt(data.prompt);
+            if (extractedText) {
+                console.log('📝 Extracted text overlay from prompt:', extractedText);
+                loadTextOverlays([{
+                    text: extractedText,
+                    target: 0,
+                    stage: 0,
+                    type: 'speech',
+                    disabled: false
+                }]);
+            } else {
+                // No text overlays, ensure UI is clean
+                clearTextOverlays();
+            }
+        } else {
+            // No text overlays, ensure UI is clean
+            clearTextOverlays();
+        }
+
+        updateDynamicGenerationToggleBtn();
         updatePercentageOverlays();
         updateUploadDeleteButtonVisibility();
         updateManualPriceDisplay(true);
         updatePresetLoadSaveState();
         updateManualPresetToggleBtn();
         updatePromptStatusIcons();
+        updatePipelineStagesHeaderVisibility();
+        updateMainLockButtonState();
+        requestDynamicContextResolution();
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
@@ -2371,6 +2930,37 @@ function autoResizeTextareasAfterModalShow() {
             autoResizeTextarea(ucField);
         }
     });
+
+    // Auto-resize creative directive if present
+    if (typeof autoResizeTextarea === 'function' && creativeDirectiveInput) {
+        autoResizeTextarea(creativeDirectiveInput, 23);
+        
+        // Add input event listener for continuous auto-resizing
+        creativeDirectiveInput.addEventListener('input', () => {
+            autoResizeTextarea(creativeDirectiveInput, 23);
+        });
+    }
+    
+    // Temperature input: Add scroll-to-change and fix focus behavior
+    if (creativeDirectiveTemperature) {
+        // Allow scroll to change value
+        creativeDirectiveTemperature.addEventListener('wheel', (e) => {
+            // Only handle wheel when hovering over the input
+            if (document.activeElement !== creativeDirectiveTemperature) {
+                e.preventDefault();
+                const step = parseFloat(creativeDirectiveTemperature.step) || 0.1;
+                const currentValue = parseFloat(creativeDirectiveTemperature.value) || 1.0;
+                const min = parseFloat(creativeDirectiveTemperature.min) || 0;
+                const max = parseFloat(creativeDirectiveTemperature.max) || 2;
+                
+                // Scroll up = increase, scroll down = decrease
+                const delta = e.deltaY < 0 ? step : -step;
+                const newValue = Math.max(min, Math.min(max, currentValue + delta));
+                
+                creativeDirectiveTemperature.value = newValue.toFixed(1);
+            }
+        }, { passive: false });
+    }
 }
 
 /**
@@ -2383,6 +2973,11 @@ async function handleManualGeneration(e) {
     // Set generating state
     isGenerating = true;
     updateManualGenerateBtnState();
+
+    // Fade out existing dialogs when starting new generation
+    if (typeof clearManualPreviewDialogs === 'function') {
+        clearManualPreviewDialogs();
+    }
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
@@ -2468,13 +3063,13 @@ async function handleManualGeneration(e) {
     const cost = calculateCreditCost(requestBody);
     if ((cost.isFree ? cost.opus : cost.list) > 0 && !forcePaidRequest) {
         const confirmed = await showCreditCostDialog((cost.isFree ? cost.opus : cost.list), e);
-        
+
         if (!confirmed) {
             isGenerating = false;
             updateManualGenerateBtnState();
             return;
         }
-        
+
         // Set allow_paid to true for this request only (don't change UI)
         requestBody.allow_paid = true;
         forcePaidRequest = true;
@@ -2484,10 +3079,24 @@ async function handleManualGeneration(e) {
     // Show loading and hide modal
     hideManualModal(undefined, true);
     showManualLoading(true, 'Generating Image...');
-    
+
     // Show the manual preview when generation starts
     if (typeof showManualPreview === 'function') {
         showManualPreview();
+    }
+
+    // Initialize stage indicators if this is a staged generation
+    if (requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && !requestBody.skip_pipeline_stages) {
+        const totalStages = requestBody.pipeline.length + 1; // +1 for base generation
+        console.log(`🎬 Staged generation detected: ${totalStages} stages total`);
+        if (typeof initializeStageIndicators === 'function') {
+            initializeStageIndicators(totalStages);
+        }
+    } else {
+        // Hide stage indicators for non-staged generations
+        if (typeof hideStageIndicators === 'function') {
+            hideStageIndicators();
+        }
     }
 
     // Add "generating" class when generation starts
@@ -2498,11 +3107,6 @@ async function handleManualGeneration(e) {
         ...requestBody
     };
 
-    // Add locked text replacements if any are set
-    if (window.lockedTextReplacements && Array.isArray(window.lockedTextReplacements) && window.lockedTextReplacements.length > 0) {
-        generationParams.text_replacements_seed = window.lockedTextReplacements;
-    }
-
     // Add director session and message IDs from director button dataset
     const directorBtn = document.getElementById('directorBtn');
     if (directorBtn && directorBtn.dataset.directorSessionId) {
@@ -2511,7 +3115,7 @@ async function handleManualGeneration(e) {
     if (directorBtn && directorBtn.dataset.directorMessageId) {
         generationParams.director_message_id = directorBtn.dataset.directorMessageId;
     }
-    
+
     try {
         // Use WebSocket for image generation
         if (!window.wsClient || !window.wsClient.isConnected()) {
@@ -2522,19 +3126,37 @@ async function handleManualGeneration(e) {
 
         const result = await window.wsClient.generateImage(generationParams, null, true); // Enable streaming
 
+        // Reset expire_preview flag after request is sent (ephemeral flag)
+        const lockBtn = document.getElementById('lockBtn');
+        if (lockBtn) {
+            lockBtn.dataset.expirePreview = 'false';
+        }
+
         // Show completion phase if dynamic generation overlay is active
         if (window.dynamicGenerationData && typeof updateDynamicGenerationProgressOverlay === 'function') {
             updateDynamicGenerationProgressOverlay('completion');
         }
 
         if (result) {
-            const { image, filename, seed, compiled_prompt, text_replacements_seed } = result;
+            const { image, filename, seed, compiled_prompt, text_replacements_seed, stage_seeds } = result;
 
             // Store text replacement seeds for the lock modal
             if (text_replacements_seed && Array.isArray(text_replacements_seed)) {
                 window.lastGenerationTextReplacements = text_replacements_seed;
                 // Update the main lock button state
                 updateMainLockButtonState();
+            }
+
+            // Store stage_seeds if this was a staged generation
+            if (stage_seeds && Array.isArray(stage_seeds)) {
+                console.log('🎬 Received stage_seeds from generation:', stage_seeds);
+                window.lastGenerationStageSeeds = stage_seeds;
+                
+                // Update stages with the seeds (only after fresh generation, not when loading)
+                // Seeds are already set during loadPipelineStages when loading from metadata
+                if (typeof updateStagesWithSeeds === 'function') {
+                    updateStagesWithSeeds(stage_seeds);
+                }
             }
 
             // Store compiled prompt if it was included in the response
@@ -2545,6 +3167,14 @@ async function handleManualGeneration(e) {
                 if (dynamicGenerationLockedBtn) {
                     dynamicGenerationLockedBtn.setAttribute('data-has-cache', 'true');
                     dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
+
+                    // Restore lock states from compiled prompt
+                    if (compiled_prompt.cache_locked !== undefined) {
+                        dynamicGenerationLockedBtn.setAttribute('data-state', compiled_prompt.cache_locked ? 'on' : 'off');
+                    }
+                    if (compiled_prompt.context_locked !== undefined) {
+                        dynamicGenerationLockedBtn.setAttribute('data-context-locked', compiled_prompt.context_locked ? 'true' : 'false');
+                    }
                 }
 
                 // Update UI to reflect compiled state
@@ -2581,10 +3211,12 @@ async function handleManualGeneration(e) {
                 // Director new session functionality is always available
             }
 
-            // Extract seed if available
+            // Extract seed if available and add to history
             if (seed) {
-                window.lastGeneratedSeed = parseInt(seed);
+                const seedInt = parseInt(seed);
+                window.lastGeneratedSeed = seedInt;
                 sproutSeedBtn.classList.add('available');
+                addSeedToHistory(seedInt);
             }
 
             // Wait for all queued streaming steps to be displayed before finalizing
@@ -2604,17 +3236,29 @@ async function handleManualGeneration(e) {
                 // For streaming, just show success without processing blob again
                 console.log('✅ Streaming image generation completed');
             }
-            
+
             // Now stop the animation AFTER the image is displayed
             stopPreviewAnimation();
         } else {
             throw new Error('Invalid response from WebSocket');
         }
-            
+
     } catch (error) {
         hideManualModal(undefined, true);
         console.error(`Image generation error:`, error);
-        showError(`Image generation failed. Please try again.`);
+        
+        // Extract detailed error message
+        let errorMessage = 'Image generation failed. Please try again.';
+        if (error && error.message) {
+            errorMessage = error.message;
+            // If the error message starts with the generic prefix, use it as is
+            // Otherwise, prepend a more descriptive message
+            if (!errorMessage.includes('Image generation failed')) {
+                errorMessage = `Image generation failed: ${errorMessage}`;
+            }
+        }
+        
+        showError(errorMessage);
         stopPreviewAnimation();
     } finally {
         // Animation cleanup is handled in the success path after image display
@@ -2636,20 +3280,23 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
     // Store the seed for manual preview
     const priceList = document.getElementById('manualPriceList');
     const cost = parseInt(priceList.textContent);
-    
+
     if (seed !== null) {
         window.lastGeneratedSeed = seed;
         sproutSeedBtn.classList.add('available');
         updateSproutSeedButtonFromPreviewSeed();
+        addSeedToHistory(seed);
     }
 
     if (response && response.headers) {
         // Extract seed from response header if available
         const headerSeed = response.headers.get('X-Seed');
         if (headerSeed) {
-            window.lastGeneratedSeed = parseInt(headerSeed);
+            const seedInt = parseInt(headerSeed);
+            window.lastGeneratedSeed = seedInt;
             sproutSeedBtn.classList.add('available');
             updateSproutSeedButtonFromPreviewSeed();
+            addSeedToHistory(seedInt);
         }
         // Fetch metadata for the generated image if we have a filename
         const filename = response.headers.get('X-Generated-Filename');
@@ -2668,7 +3315,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
 
     const imageUrl = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = async function() {
+    img.onload = async function () {
         createConfetti();
         await loadGallery(true);
 
@@ -2694,7 +3341,7 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
                         base: newImage.base,
                         upscaled: newImage.upscaled
                     };
-                    
+
                     showLightbox(imageToShow);
                 }
             }, 1000);
@@ -2772,7 +3419,7 @@ function clearDirectorReference() {
 
     // Re-enable vibe references
     enableVibeReferences();
-        
+
     updateManualPriceDisplay();
 }
 
@@ -2835,25 +3482,20 @@ function resetProgressOverlay() {
         overlay.classList.remove('hidden');
     }
 
-    // Clear reasoning area and show waiting dots
-    const reasoningElement = document.getElementById('progressReasoning');
-    if (reasoningElement) {
-        reasoningElement.innerHTML = `
-            <div class="progress-reasoning-waiting" id="progressReasoningWaiting">
-                <div class="reasoning-dots">
-                    <div class="reasoning-dot"></div>
-                    <div class="reasoning-dot"></div>
-                    <div class="reasoning-dot"></div>
-                </div>
-            </div>
-        `;
+    // Clear reasoning container
+    const reasoningContainer = document.getElementById('progressReasoningContainer');
+    if (reasoningContainer) {
+        reasoningContainer.innerHTML = '';
     }
+    
+    // Clear stored positions for new session
+    reasoningPositions.length = 0;
 
-    // Reset status text
-    const statusElement = document.getElementById('progressStatusText');
-    if (statusElement) {
-        statusElement.textContent = 'Processing...';
-    }
+    // Remove fade-out classes from time and weather sections
+    const timeSection = document.querySelector('.progress-time-section');
+    const weatherSection = document.querySelector('.progress-weather-section');
+    if (timeSection) timeSection.classList.remove('fade-out');
+    if (weatherSection) weatherSection.classList.remove('fade-out');
 
     // Clear all context elements
     const elementsToClear = [
@@ -2912,7 +3554,36 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             updateProgressStatus('Reading Response...');
             addProgressReasoning(data?.reason);
             break;
+        case 'optimizing':
+            updateProgressStatus('Optimizing...');
+            // Clear existing reasoning items to make room for optimization text
+            const reasoningContainer = document.getElementById('progressReasoningContainer');
+            let existingItems = null;
+            if (reasoningContainer) {
+                // Fade out existing items quickly
+                existingItems = reasoningContainer.querySelectorAll('.progress-reasoning-item');
+                existingItems.forEach((item, index) => {
+                    setTimeout(() => {
+                        item.classList.add('fade-out');
+                        if (index === existingItems.length - 1) {
+                            // After last item starts fading, clear container and positions
+                            setTimeout(() => {
+                                reasoningContainer.innerHTML = '';
+                                reasoningPositions.length = 0;
+                            }, 400);
+                        }
+                    }, index * 50); // Quick stagger
+                });
+            }
+            // Add the optimization reason if provided
+            if (data?.reason) {
+                setTimeout(() => {
+                    addProgressReasoning(data.reason);
+                }, existingItems?.length > 0 ? (existingItems.length * 50 + 400) : 0);
+            }
+            break;
         case 'completion':
+            if (overlay?.classList?.contains('hidden')) return;
             updateProgressStatus('Starting Generation...');
             progressOverlayCompleting = true; // Prevent further shows
             // Show completion for 2 seconds then hide
@@ -2923,6 +3594,7 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             }, 2000);
             break;
         case 'error':
+            if (overlay?.classList?.contains('hidden')) return;
             updateProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
             progressOverlayCompleting = true; // Prevent further shows
             // Hide overlay after showing error for 3 seconds
@@ -3040,45 +3712,160 @@ function updateProgressStatus(status) {
     }
 }
 
-// Add reasoning text progressively as individual divs
+// Helper function to check if a position overlaps with existing reasoning items
+function checkReasoningOverlap(x, y, existingPositions, minDistance = 15) {
+    for (const pos of existingPositions) {
+        const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+        if (distance < minDistance) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Store positions of reasoning items to avoid overlaps
+const reasoningPositions = [];
+
+// Add reasoning text progressively as individual divs at random positions
 function addProgressReasoning(reason) {
     if (!reason) return;
 
-    const reasoningElement = document.getElementById('progressReasoning');
-    const waitingElement = document.getElementById('progressReasoningWaiting');
+    const reasoningContainer = document.getElementById('progressReasoningContainer');
+    if (!reasoningContainer) return;
 
-    if (reasoningElement) {
-        // Hide waiting dots when first reasoning arrives
-        if (waitingElement) {
-            waitingElement.style.display = 'none';
+    // Create new div for this reasoning
+    const reasonDiv = document.createElement('div');
+    reasonDiv.className = 'progress-reasoning-item';
+
+    const reasonSpan = document.createElement('span');
+    reasonSpan.textContent = reason.trim();
+
+    reasonDiv.appendChild(reasonSpan);
+    reasoningContainer.appendChild(reasonDiv);
+    
+    // Generate random position as percentages, avoiding center and existing text
+    // Define zones: prefer edges and corners, avoid center (30-70% range)
+    let randomXPercent, randomYPercent;
+    let attempts = 0;
+    const maxAttempts = 20;
+    
+    do {
+        // Generate position favoring edges
+        const favorEdge = Math.random() < 0.7; // 70% chance to favor edges
+        
+        if (favorEdge) {
+            // Choose a quadrant (top-left, top-right, bottom-left, bottom-right)
+            const quadrant = Math.floor(Math.random() * 4);
+            
+            switch(quadrant) {
+                case 0: // Top-left
+                    randomXPercent = Math.random() * 25 + 5; // 5-30%
+                    randomYPercent = Math.random() * 25 + 15; // 15-40%
+                    break;
+                case 1: // Top-right
+                    randomXPercent = Math.random() * 25 + 70; // 70-95%
+                    randomYPercent = Math.random() * 25 + 15; // 15-40%
+                    break;
+                case 2: // Bottom-left
+                    randomXPercent = Math.random() * 25 + 5; // 5-30%
+                    randomYPercent = Math.random() * 30 + 60; // 60-90%
+                    break;
+                case 3: // Bottom-right
+                    randomXPercent = Math.random() * 25 + 70; // 70-95%
+                    randomYPercent = Math.random() * 30 + 60; // 60-90%
+                    break;
+            }
+        } else {
+            // Random position avoiding center
+            randomXPercent = Math.random() * 90 + 5; // 5-95%
+            randomYPercent = Math.random() * 75 + 15; // 15-90%
+            
+            // If in center zone, push to edges
+            if (randomXPercent > 30 && randomXPercent < 70) {
+                randomXPercent = randomXPercent < 50 ? Math.random() * 25 + 5 : Math.random() * 25 + 70;
+            }
+            if (randomYPercent > 35 && randomYPercent < 65) {
+                randomYPercent = randomYPercent < 50 ? Math.random() * 20 + 15 : Math.random() * 30 + 60;
+            }
         }
-
-        // Create new div for this reasoning
-        const reasonDiv = document.createElement('div');
-        reasonDiv.className = 'progress-reasoning-item';
-
-        const reasonSpan = document.createElement('span');
-        reasonSpan.textContent = reason.trim();
-
-        reasonDiv.appendChild(reasonSpan);
-        reasoningElement.appendChild(reasonDiv);
-
-        // Auto-scroll to bottom
-        reasoningElement.scrollTop = reasoningElement.scrollHeight;
+        
+        attempts++;
+    } while (checkReasoningOverlap(randomXPercent, randomYPercent, reasoningPositions) && attempts < maxAttempts);
+    
+    // Store position for overlap checking
+    reasoningPositions.push({ x: randomXPercent, y: randomYPercent });
+    
+    // Switch between left/right and top/bottom based on 50% threshold
+    if (randomXPercent > 50) {
+        // Position from right edge
+        reasonDiv.style.right = `${100 - randomXPercent}%`;
+    } else {
+        // Position from left edge
+        reasonDiv.style.left = `${randomXPercent}%`;
     }
+    
+    if (randomYPercent > 50) {
+        // Position from bottom edge
+        reasonDiv.style.bottom = `${100 - randomYPercent}%`;
+    } else {
+        // Position from top edge
+        reasonDiv.style.top = `${randomYPercent}%`;
+    }
+    
+    // Trigger fade-in with slight delay
+    setTimeout(() => {
+        reasonDiv.classList.add('visible');
+    }, 50);
 }
 
-// Hide dynamic generation progress overlay
+// Hide dynamic generation progress overlay with fade-out animations
 function hideDynamicGenerationProgressOverlay() {
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
-    if (overlay) {
-        overlay.classList.add('hidden');
-    }
+    if (!overlay) return;
+
+    // Fade out time and weather sections first
+    const timeSection = document.querySelector('.progress-time-section');
+    const weatherSection = document.querySelector('.progress-weather-section');
+    
+    if (timeSection) timeSection.classList.add('fade-out');
+    if (weatherSection) weatherSection.classList.add('fade-out');
+
+    // Get all reasoning items
+    const reasoningItems = document.querySelectorAll('.progress-reasoning-item');
+    
+    // After time/weather fade out (300ms), start fading out reasoning items one by one
+    setTimeout(() => {
+        if (reasoningItems.length === 0) {
+            // No reasoning items, just hide the overlay
+            overlay.classList.add('hidden');
+            // Reset completing flag so overlay can show again
+            progressOverlayCompleting = false;
+            return;
+        }
+
+        // Fade out each reasoning item with staggered delays
+        reasoningItems.forEach((item, index) => {
+            setTimeout(() => {
+                item.classList.add('fade-out');
+                
+                // After the last item starts fading out, wait for it to complete then hide overlay
+                if (index === reasoningItems.length - 1) {
+                    setTimeout(() => {
+                        overlay.classList.add('hidden');
+                        // Clean up reasoning items
+                        const reasoningContainer = document.getElementById('progressReasoningContainer');
+                        if (reasoningContainer) {
+                            reasoningContainer.innerHTML = '';
+                        }
+                        // Reset completing flag so overlay can show again
+                        progressOverlayCompleting = false;
+                    }, 400); // Match transition duration
+                }
+            }, index * 150); // Stagger by 150ms
+        });
+    }, 300); // Wait for time/weather to fade out
 }
 
-// Make functions globally available
-window.updateDynamicGenerationProgressOverlay = updateDynamicGenerationProgressOverlay;
-window.hideDynamicGenerationProgressOverlay = hideDynamicGenerationProgressOverlay;
 
 // ============================================================================
 // MODAL MANAGEMENT FUNCTIONS

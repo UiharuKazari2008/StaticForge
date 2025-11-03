@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 const { getImageMetadata } = require('./metadataDatabase');
 const { getChatMessages } = require('./chatDatabase');
 const memoryManager = require('./memoryManager');
@@ -22,25 +23,15 @@ class PromptManager {
      */
     loadPromptTemplates() {
         try {
-            // Try to load v3 templates first (array format)
-            const chatgptPromptPathV3 = path.join(this.securePromptsDir, 'chatgpt_system_prompt_v3.json');
+            // Load v3 templates (array format)
             const grokPromptPathV3 = path.join(this.securePromptsDir, 'grok_system_prompt_v3.json');
-            
-            // Load ChatGPT template (prefer v3, then v2, then v1)
-            if (fs.existsSync(chatgptPromptPathV3)) {
-                const chatgptTemplate = JSON.parse(fs.readFileSync(chatgptPromptPathV3, 'utf8'));
-                if (chatgptTemplate.characterChat) {
-                    this.promptTemplates.set('characterChat', chatgptTemplate.characterChat);
-                    console.log('✅ Loaded characterChat prompt template from ChatGPT v3 file (array format)');
-                }
-            }
             
             // Load Grok template (prefer v3, then v2, then v1)
             if (fs.existsSync(grokPromptPathV3)) {
                 const grokTemplate = JSON.parse(fs.readFileSync(grokPromptPathV3, 'utf8'));
                 if (grokTemplate.characterChat) {
                     this.promptTemplates.set('characterChat', grokTemplate.characterChat);
-                    console.log('✅ Loaded characterChat prompt template from Grok v3 file (array format)');
+                    logger.bootSubStep('Loaded prompt template from Grok v3');
                 }
             }
         } catch (error) {
@@ -210,12 +201,14 @@ class PromptManager {
         const { getPersonaSettings } = require('./chatDatabase');
         const personaSettings = getPersonaSettings();
         const viewerAvatar = this.getViewerAvatar(personaSettings);
+        const dynamicContext = await this.getDynamicContextFromMetadata(filename);
         
         return {
             personaImage,
             userPrompt,
             viewerAvatar,
-            personaSettings
+            personaSettings,
+            dynamicContext
         };
     }
 
@@ -252,8 +245,17 @@ class PromptManager {
     /**
      * Get complete system prompt with all placeholders filled
      */
-    getCompleteSystemPrompt(promptType, sessionData, personaSettings) {
+    async getCompleteSystemPrompt(promptType, sessionData, personaSettings, filename) {
         const verbosityInstruction = this.getVerbosityInstruction(promptType, sessionData.verbosity_level);
+        
+        // Get dynamic context from image metadata
+        const dynamicContext = await this.getDynamicContextFromMetadata(filename);
+        const currentTime = dynamicContext?.time ? `${dynamicContext.time.dayOfWeekName}, ${dynamicContext.time.monthName} ${dynamicContext.time.dayOfMonth}, ${dynamicContext.time.year} at ${dynamicContext.time.hour % 12 || 12}:${String(dynamicContext.time.minute).padStart(2, '0')} ${dynamicContext.time.am_pm}` : 'this moment';
+        const currentTimeOfDay = dynamicContext?.timePeriod || 'daytime';
+        const currentWeather = dynamicContext?.weather?.condition || 'pleasant weather';
+        const currentTemperature = dynamicContext?.weather?.temperature ? `${dynamicContext.weather.temperature}°C` : 'comfortable temperature';
+        const currentLocation = dynamicContext?.location ? (dynamicContext.location.city ? `${dynamicContext.location.city}${dynamicContext.location.country ? ', ' + dynamicContext.location.country : ''}` : 'your current location') : 'where you are';
+        const currentSeason = dynamicContext?.season || 'the current season';
         
         const placeholders = {
             user_name: personaSettings.user_name || 'User',
@@ -261,10 +263,143 @@ class PromptManager {
             viewer_desires: '', // This would be filled from session data if available
             character_memories: '', // Will be maintained through conversation state
             conversation_history: '', // Will be maintained through conversation state
-            verbosity_instruction: verbosityInstruction
+            verbosity_instruction: verbosityInstruction,
+            story_context: sessionData.story_context ? `\n\n**Story So Far:**\n${sessionData.story_context}\n` : '',
+            current_time: currentTime,
+            time_of_day: currentTimeOfDay,
+            current_weather: currentWeather,
+            current_temperature: currentTemperature,
+            current_location: currentLocation,
+            current_season: currentSeason
         };
         
         return this.getSystemPrompt(promptType, placeholders);
+    }
+
+    /**
+     * Get dynamic generation context from image metadata
+     * Context includes: location, time, weather, season, timePeriod, etc.
+     */
+    async getDynamicContextFromMetadata(filename) {
+        const metadata = await getImageMetadata(filename, this.imagesDir);
+        
+        if (!metadata || !metadata.dynamic_generation) {
+            return null;
+        }
+        
+        const context = metadata.dynamic_generation.compiled_prompt?.context;
+        if (!context) return null;
+        
+        return context; // Return full context object
+    }
+
+    /**
+     * Format dynamic context for system prompt
+     */
+    formatDynamicContextForPrompt(dynamicContext) {
+        if (!dynamicContext) return '';
+        
+        const parts = [];
+        
+        // Format time from time object
+        if (dynamicContext.time) {
+            const t = dynamicContext.time;
+            const timeStr = `${t.dayOfWeekName}, ${t.monthName} ${t.dayOfMonth}, ${t.year} at ${t.hour % 12 || 12}:${String(t.minute).padStart(2, '0')} ${t.am_pm}`;
+            parts.push(`- Date & Time: ${timeStr}`);
+        }
+        
+        // Format weather from weather object
+        if (dynamicContext.weather) {
+            const w = dynamicContext.weather;
+            let weatherStr = `${w.temperature}°C, ${w.condition}`;
+            if (w.humidity) weatherStr += `, ${w.humidity}% humidity`;
+            if (w.windSpeed) weatherStr += `, wind ${w.windSpeed} m/s`;
+            if (w.feelsLike && w.feelsLike !== w.temperature) weatherStr += ` (feels like ${w.feelsLike}°C)`;
+            if (w.precipitation > 0) weatherStr += `, ${w.precipitation}mm precipitation`;
+            parts.push(`- Weather: ${weatherStr}`);
+        }
+        
+        // Format season
+        if (dynamicContext.season) {
+            const seasonStr = typeof dynamicContext.season === 'string' ? 
+                dynamicContext.season : 
+                dynamicContext.season.name || JSON.stringify(dynamicContext.season);
+            parts.push(`- Season: ${seasonStr}`);
+        }
+        
+        // Format time period
+        if (dynamicContext.timePeriod) {
+            parts.push(`- Time of Day: ${dynamicContext.timePeriod}`);
+        }
+        
+        // Format holiday info
+        if (dynamicContext.holidayInfo && dynamicContext.holidayInfo.name) {
+            parts.push(`- Holiday: ${dynamicContext.holidayInfo.name}`);
+        }
+        
+        return parts.length > 0 ? parts.join('\n') : '';
+    }
+
+    /**
+     * Get limbo state prompt
+     */
+    getLimboPrompt() {
+        const template = this.promptTemplates.get('characterChat');
+        if (!template || !template.limbo_state) {
+            throw new Error('No limbo_state template found');
+        }
+        
+        return this.replacePlaceholders(template.limbo_state, {});
+    }
+
+    /**
+     * Get introspective questions
+     */
+    getIntrospectiveQuestions() {
+        const template = this.promptTemplates.get('characterChat');
+        if (!template || !template.introspective_questions) {
+            throw new Error('No introspective_questions template found');
+        }
+        
+        return template.introspective_questions;
+    }
+
+    /**
+     * Get soul implantation prompt
+     */
+    getSoulImplantationPrompt(responses, sessionData, personaSettings) {
+        const template = this.promptTemplates.get('characterChat');
+        if (!template || !template.soul_implantation) {
+            throw new Error('No soul_implantation template found');
+        }
+        
+        const responseSummary = responses.map((r, i) => 
+            `Question ${i + 1}: ${r.answer}`
+        ).join('\n\n');
+        
+        const placeholders = {
+            introspective_summary: responseSummary,
+            story_context: sessionData.story_context ? `Story Context: ${sessionData.story_context}` : '',
+            dynamic_context: '' // Will be fetched from metadata when needed
+        };
+        
+        return this.replacePlaceholders(template.soul_implantation, placeholders);
+    }
+
+    /**
+     * Validate and sanitize user input JSON array
+     */
+    prepareUserInputMessage(messageArray) {
+        // Validate and sanitize the message array
+        if (!Array.isArray(messageArray)) {
+            messageArray = [{ type: 'speech', content: String(messageArray) }];
+        }
+        
+        return messageArray.map(msg => ({
+            type: msg.type || 'speech',
+            content: String(msg.content || ''),
+            timestamp: msg.timestamp || Date.now()
+        }));
     }
 }
 

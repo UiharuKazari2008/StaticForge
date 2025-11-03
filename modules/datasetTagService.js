@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 const FavoritesManager = require('./favorites');
 
 /**
@@ -95,7 +96,7 @@ class DatasetTagService {
                         description: '',
                         hasChildren: false,
                         path: ['allTextReplacements'],
-                        icon: 'fas fa-language',
+                        icon: 'fas fa-book-font',
                         isTagArray: true,
                         itemCount: textReplacementCount
                     });
@@ -108,7 +109,7 @@ class DatasetTagService {
                         description: 'Browse all available text replacements',
                         hasChildren: false,
                         path: ['allTextReplacements'],
-                        icon: 'fas fa-language',
+                        icon: 'fas fa-book-font',
                         isTagArray: true,
                         itemCount: 0
                     });
@@ -257,7 +258,7 @@ class DatasetTagService {
                             description: '',
                             hasChildren: false,
                             path: ['favorites', 'textReplacements'],
-                            icon: 'fas fa-language',
+                            icon: 'fas fa-book-font',
                             isTagArray: true,
                             itemCount: textReplacementFavorites.length
                         }
@@ -567,8 +568,6 @@ class DatasetTagService {
      * Initialize the service (load dataset and build index if needed)
      */
     async initialize() {
-        console.log('Initializing DatasetTagService...');
-        
         // Load dataset tag groups
         const loaded = await this.loadDatasetTagGroups();
         if (!loaded) {
@@ -579,7 +578,7 @@ class DatasetTagService {
         // Initialize tag-to-path index
         await this.getTagToPathIndex();
         
-        console.log('DatasetTagService initialized successfully');
+        logger.bootSubStep('DatasetTagService initialized');
         return true;
     }
 

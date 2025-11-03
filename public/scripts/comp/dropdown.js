@@ -6,8 +6,12 @@
  * @param {Function} closeHandler - Called to close the dropdown.
  * @param {string} selectedVal - The currently selected value.
  * @param {Function} renderOptionContent - Function to render option HTML.
+ * @param {Object} options - Optional configuration object.
+ * @param {boolean} options.preventFocusTransfer - If true, prevents focus transfer on option clicks.
  */
-function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent) {
+function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, selectedVal, renderOptionContent, options = {}) {
+    const preventFocusTransfer = options.preventFocusTransfer !== false; // Default to true
+    
     menu.innerHTML = '';
     groups.forEach(group => {
         const groupHeader = document.createElement('div');
@@ -25,6 +29,12 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
                 selectHandler(opt.value, group.group);
                 closeHandler();
             };
+            // Prevent focus transfer on mousedown if enabled
+            if (preventFocusTransfer) {
+                option.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                });
+            }
             option.addEventListener('click', action);
             option.addEventListener('keydown', e => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -74,8 +84,16 @@ function setupDropdown(container, button, menu, render, getSelectedValue, option
     const onNavigateRight = options.onNavigateRight || null;
     const onNavigateLeft = options.onNavigateLeft || null;
     const onSelectOption = options.onSelectOption || null;
+    const preventFocusTransfer = options.preventFocusTransfer !== false; // Default to true
     
     let selectedOptionIndex = -1;
+    
+    // Prevent focus transfer when clicking the button
+    if (preventFocusTransfer) {
+        button.addEventListener('mousedown', e => {
+            e.preventDefault();
+        });
+    }
     
     button.addEventListener('click', async e => {
         e.preventDefault();

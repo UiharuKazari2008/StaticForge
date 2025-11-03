@@ -13,6 +13,7 @@ class PromptTextareaToolbar {
     init() {
         this.setupEventListeners();
         this.initializeTokenCounters();
+        this.initializeDropdowns();
     }
 
     setupEventListeners() {
@@ -28,6 +29,13 @@ class PromptTextareaToolbar {
                 this.handleTextareaBlur(e.target);
             }
         }, true); // Use capture phase for better performance
+        
+        // Listen for input events on all textareas for token counting
+        document.addEventListener('input', (e) => {
+            if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
+                this.updateTokenCount(e.target);
+            }
+        }, true);
 
         // Listen for toolbar button clicks
         document.addEventListener('click', (e) => {
@@ -36,7 +44,7 @@ class PromptTextareaToolbar {
                 const action = button.dataset.action;
                 const textarea = this.getTextareaFromToolbar(button);
                 const toolbar = this.getToolbarFromTextarea(textarea);
-                
+
                 if (textarea && action) {
                     // Prevent the click from causing blur
                     e.preventDefault();
@@ -53,7 +61,7 @@ class PromptTextareaToolbar {
         });
 
         // Search mode persists until explicitly closed - no auto-close on outside clicks
-        
+
         // Listen for manual modal close events
         document.addEventListener('click', (e) => {
             // Check if clicking outside the manual modal
@@ -63,7 +71,7 @@ class PromptTextareaToolbar {
                 this.resetAllSearchStates();
             }
         });
-        
+
         // Listen for modal close button clicks
         document.addEventListener('click', (e) => {
             if (e.target.closest('.modal-close, .close-modal, [data-dismiss="modal"]')) {
@@ -168,47 +176,296 @@ class PromptTextareaToolbar {
         });
     }
 
-    // Method to handle dynamically created textareas
-    handleDynamicTextarea(textarea) {
-        if (textarea && (textarea.matches('.prompt-textarea') || textarea.matches('.character-prompt-textarea'))) {
-            this.updateTokenCount(textarea);
+    // Initialize dropdowns for character toolbars
+    initializeCharacterDropdowns(characterId = null) {
+        let characterDropdowns;
+
+        if (characterId) {
+            // Initialize dropdowns for a specific character
+            const dropdown = document.getElementById(`characterActionsDropdown_${characterId}`);
+            const ucDropdown = document.getElementById(`characterUCActionsDropdown_${characterId}`);
+            characterDropdowns = [dropdown, ucDropdown].filter(Boolean);
+        } else {
+            // Initialize all character dropdowns (for loadCharacterPrompts)
+            characterDropdowns = document.querySelectorAll('[id^="characterActionsDropdown_"], [id^="characterUCActionsDropdown_"]');
         }
+
+        characterDropdowns.forEach(dropdown => {
+            if (!dropdown || !dropdown.id) return;
+
+            const dropdownBtn = document.getElementById(`${dropdown.id.replace('Dropdown', 'DropdownBtn')}`);
+            const dropdownMenu = document.getElementById(`${dropdown.id.replace('Dropdown', 'DropdownMenu')}`);
+
+            if (dropdown && dropdown.id && dropdownBtn && dropdownMenu && !dropdown.hasAttribute('data-dropdown-initialized')) {
+                setupDropdown(
+                    dropdown,
+                    dropdownBtn,
+                    dropdownMenu,
+                    () => this.renderToolbarActionsDropdown(`${dropdown.id.replace('Dropdown', 'DropdownMenu')}`, [
+                        { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                        { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                        { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
+                    ]),
+                    () => null,
+                    {
+                        enableKeyboardNav: false,
+                        preventFocusTransfer: true
+                    }
+                );
+                dropdown.setAttribute('data-dropdown-initialized', 'true');
+            }
+        });
     }
 
     updateTokenCount(textarea) {
-        const toolbar = this.getToolbarFromTextarea(textarea);
-        if (!toolbar) return;
-
-        const tokenCountElement = toolbar.querySelector('.token-count');
-        if (!tokenCountElement) return;
-
-        const text = textarea.value;
-        const tokenCount = this.calculateTokenCount(text);
-        tokenCountElement.textContent = `${tokenCount} tokens`;
+        // Debounced version that updates all token counts
+        if (this._tokenUpdateTimeout) {
+            clearTimeout(this._tokenUpdateTimeout);
+        }
+        
+        this._tokenUpdateTimeout = setTimeout(() => {
+            this.updateAllTokenCounts();
+        }, 150);
     }
 
-    calculateTokenCount(text) {
-        // Simple token estimation - roughly 4 characters per token
-        // This is a basic approximation, actual tokenization varies by model
-        if (!text || text.trim() === '') return 0;
+    updateAllTokenCounts() {
+        if (!t5Tokenizer) {
+            console.warn('T5 Tokenizer not initialized yet');
+            return;
+        }
+
+        // Collect all prompt textareas (main + all character prompts)
+        const promptTextareas = [];
+        const ucTextareas = [];
         
-        // Count words and punctuation as separate tokens
-        const words = text.trim().split(/\s+/);
-        let tokenCount = 0;
+        const manualPrompt = document.getElementById('manualPrompt');
+        const manualUc = document.getElementById('manualUc');
         
-        for (const word of words) {
-            if (word.length === 0) continue;
+        if (manualPrompt) promptTextareas.push(manualPrompt);
+        if (manualUc) ucTextareas.push(manualUc);
+        
+        // Collect character prompts
+        const characterPrompts = document.querySelectorAll('[id$="_prompt"].character-prompt-textarea');
+        const characterUcs = document.querySelectorAll('[id$="_uc"].character-prompt-textarea');
+        
+        promptTextareas.push(...Array.from(characterPrompts));
+        ucTextareas.push(...Array.from(characterUcs));
+        
+        // Get token counts for each group (remove disabled text before tokenizing)
+        const promptTexts = promptTextareas.map(ta => (ta.value || '').replace(/!\/[^\/]*\/!/g, ''));
+        const ucTexts = ucTextareas.map(ta => (ta.value || '').replace(/!\/[^\/]*\/!/g, ''));
+        
+        const promptAnalysis = t5Tokenizer.analyzeTexts(promptTexts);
+        const ucAnalysis = t5Tokenizer.analyzeTexts(ucTexts);
+        
+        const totalPromptTokens = promptAnalysis.totalTokens;
+        const totalUcTokens = ucAnalysis.totalTokens;
+        
+        const maxTokens = 512;
+        
+        // Update individual toolbars
+        promptTextareas.forEach((textarea, index) => {
+            const result = promptAnalysis.results[index];
+            if (result) {
+                this.updateToolbarDisplay(textarea, result.tokenCount, totalPromptTokens, maxTokens);
+            }
+        });
+        
+        ucTextareas.forEach((textarea, index) => {
+            const result = ucAnalysis.results[index];
+            if (result) {
+                this.updateToolbarDisplay(textarea, result.tokenCount, totalUcTokens, maxTokens);
+            }
+        });
+        
+        // Update bottom summary
+        this.updateBottomSummary(totalPromptTokens, totalUcTokens, maxTokens);
+    }
+    
+    updateToolbarDisplay(textarea, tokenCount, groupTotal, maxTokens) {
+        const toolbar = this.getToolbarFromTextarea(textarea);
+        if (!toolbar) return;
+        
+        const tokenCountElement = toolbar.querySelector('.token-count');
+        const progressFill = toolbar.querySelector('.token-progress-fill');
+        const progressInner = toolbar.querySelector('.token-progress-inner');
+        
+        if (tokenCountElement) {
+            tokenCountElement.textContent = `${tokenCount} tokens`;
+        }
+        
+        if (progressFill && progressInner) {
+            // Outer fill: total group percentage of max
+            const groupPercentage = Math.min((groupTotal / maxTokens) * 100, 100);
+            progressFill.style.width = `${groupPercentage}%`;
             
-            // Basic token estimation
-            if (word.length <= 4) {
-                tokenCount += 1;
-            } else {
-                // Longer words get additional tokens
-                tokenCount += Math.ceil(word.length / 4);
+            // Inner fill: this textarea's percentage of group total
+            const innerPercentage = groupTotal > 0 ? (tokenCount / groupTotal) * 100 : 0;
+            progressInner.style.width = `${innerPercentage}%`;
+        }
+    }
+    
+    updateBottomSummary(promptTokens, ucTokens, maxTokens) {
+        // Update prompt progress bar (in prompt tab's status icons)
+        const promptTab = document.querySelector('#prompt-tab');
+        const promptFill = promptTab?.querySelector('.token-progress-fill.prompt-total');
+        const promptInner = promptTab?.querySelector('.token-progress-fill.prompt-total .token-progress-inner');
+        
+        if (promptFill) {
+            const percentage = Math.min((promptTokens / maxTokens) * 100, 100);
+            promptFill.style.width = `${percentage}%`;
+            if (promptInner) {
+                promptInner.style.width = '100%';
             }
         }
         
-        return Math.max(1, tokenCount);
+        // Update UC progress bar (in UC tab's status icons)
+        const ucTab = document.querySelector('#uc-tab');
+        const ucFill = ucTab?.querySelector('.token-progress-fill.uc-total');
+        const ucInner = ucTab?.querySelector('.token-progress-fill.uc-total .token-progress-inner');
+        
+        if (ucFill) {
+            const percentage = Math.min((ucTokens / maxTokens) * 100, 100);
+            ucFill.style.width = `${percentage}%`;
+            if (ucInner) {
+                ucInner.style.width = '100%';
+            }
+        }
+    }
+
+    calculateTokenCount(text) {
+        // Use T5 tokenizer if available, fallback to estimation
+        if (t5Tokenizer) {
+            // Remove disabled text before tokenizing
+            const cleanedText = (text || '').replace(/!\/[^\/]*\/!/g, '');
+            return t5Tokenizer.countTokens(cleanedText);
+        }
+        
+        // Fallback estimation
+        if (!text || text.trim() === '') return 0;
+        const cleanedText = text.replace(/!\/[^\/]*\/!/g, '');
+        const words = cleanedText.trim().split(/\s+/);
+        return Math.max(1, Math.ceil(words.length * 1.3));
+    }
+
+    initializeDropdowns() {
+        // Set up dropdown functionality exactly like the dataset dropdown
+        const dropdown = document.getElementById('promptActionsDropdown');
+        const dropdownBtn = document.getElementById('promptActionsDropdownBtn');
+        const dropdownMenu = document.getElementById('promptActionsDropdownMenu');
+
+        if (dropdown && dropdownBtn && dropdownMenu) {
+            // Use the exact same setup as dataset dropdown
+            setupDropdown(
+                dropdown,
+                dropdownBtn,
+                dropdownMenu,
+                () => this.renderToolbarActionsDropdown('promptActionsDropdownMenu', [
+                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
+                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                ]),
+                () => null, // No getSelectedValue needed
+                {
+                    enableKeyboardNav: false, // Disable keyboard nav to prevent menu focus
+                    preventFocusTransfer: true
+                }
+            );
+        }
+
+        // Also initialize UC actions dropdown
+        const ucDropdown = document.getElementById('ucActionsDropdown');
+        const ucDropdownBtn = document.getElementById('ucActionsDropdownBtn');
+        const ucDropdownMenu = document.getElementById('ucActionsDropdownMenu');
+
+        if (ucDropdown && ucDropdownBtn && ucDropdownMenu) {
+            setupDropdown(
+                ucDropdown,
+                ucDropdownBtn,
+                ucDropdownMenu,
+                () => this.renderToolbarActionsDropdown('ucActionsDropdownMenu', [
+                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                ]),
+                () => null,
+                {
+                    enableKeyboardNav: false,
+                    preventFocusTransfer: true
+                }
+            );
+        }
+        
+        // Also initialize creative tab actions dropdown
+        const creativeTabDropdown = document.getElementById('creativeTabPromptActionsDropdown');
+        const creativeTabDropdownBtn = document.getElementById('creativeTabPromptActionsDropdownBtn');
+        const creativeTabDropdownMenu = document.getElementById('creativeTabPromptActionsDropdownMenu');
+
+        if (creativeTabDropdown && creativeTabDropdownBtn && creativeTabDropdownMenu) {
+            setupDropdown(
+                creativeTabDropdown,
+                creativeTabDropdownBtn,
+                creativeTabDropdownMenu,
+                () => this.renderToolbarActionsDropdown('creativeTabPromptActionsDropdownMenu', [
+                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
+                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                ]),
+                () => null,
+                {
+                    enableKeyboardNav: false,
+                    preventFocusTransfer: true
+                }
+            );
+        }
+    }
+
+    renderToolbarActionsDropdown(dropdownMenuId, options) {
+        // Generic render function for toolbar action dropdowns
+        const dropdownMenu = document.getElementById(dropdownMenuId);
+        if (!dropdownMenu) return;
+
+        dropdownMenu.innerHTML = '';
+
+        options.forEach(option => {
+            const optionElement = document.createElement('div');
+            optionElement.className = 'custom-dropdown-option';
+            optionElement.dataset.value = option.value;
+            optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
+
+            // Add click handler - find active textarea and toolbar, then call handleToolbarAction
+            optionElement.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Find the active textarea (same logic as handleToolbarAction)
+                const activeTextarea = this.activeTextarea;
+                if (!activeTextarea) return;
+
+                const toolbar = this.getToolbarFromTextarea(activeTextarea);
+                if (!toolbar) return;
+
+                // Close the dropdown after handling the action
+                const dropdown = dropdownMenu.closest('.custom-dropdown');
+                if (dropdown) {
+                    // Find the correct button for this dropdown
+                    const button = dropdown.querySelector('.custom-dropdown-btn') || dropdown.querySelector('button');
+                    if (button) {
+                        closeDropdown(dropdownMenu, button);
+                    }
+                }
+
+                // Call handleToolbarAction with the correct parameters
+                this.handleToolbarAction(option.value, activeTextarea, toolbar, e);
+            });
+
+            dropdownMenu.appendChild(optionElement);
+        });
     }
 
     handleToolbarAction(action, textarea, toolbar, event) {
@@ -230,6 +487,12 @@ class PromptTextareaToolbar {
                 break;
             case 'search-close':
                 this.closeSearch(toolbar);
+                break;
+            case 'request-body-replacements':
+                showRequestBodyReplacementsModal();
+                break;
+            case 'manage-director-rules':
+                showDirectorRulesManager();
                 break;
             case 'autofill':
                 this.toggleAutofill(toolbar);
@@ -415,30 +678,54 @@ class PromptTextareaToolbar {
         const searchQuery = query.toLowerCase();
         const allResults = [];
         
-        // Search across textareas based on current view mode
-        const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
+        // Get the active textarea associated with this toolbar
+        const activeTextarea = this.getTextareaFromToolbar(activeToolbar);
         
-        allTextareas.forEach((textarea, textareaIndex) => {
-            // Only include textareas that should be searched based on current view mode
-            if (!this.shouldIncludeTextareaInSearch(textarea)) {
-                return;
-            }
-            
-            const text = textarea.value;
+        // Check if the active textarea is in a director-prompt or text-overlay-prompt container
+        const isDirectorOrOverlayPrompt = activeTextarea && activeTextarea.closest('.prompt-textarea-container.director-prompt, .prompt-textarea-container.text-overlay-prompt');
+        
+        // If searching in a director/overlay prompt, only search that specific textarea
+        if (isDirectorOrOverlayPrompt) {
+            const text = activeTextarea.value;
             let index = 0;
             
-            // Find all occurrences of the search term in this textarea (case insensitive)
+            // Find all occurrences of the search term in this textarea only (case insensitive)
             while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
                 allResults.push({
-                    textarea: textarea,
-                    textareaIndex: textareaIndex,
+                    textarea: activeTextarea,
+                    textareaIndex: 0,
                     start: index,
                     end: index + searchQuery.length,
                     text: text.substring(index, index + searchQuery.length)
                 });
                 index += 1; // Move to next character to avoid infinite loop
             }
-        });
+        } else {
+            // Search across textareas based on current view mode
+            const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
+            
+            allTextareas.forEach((textarea, textareaIndex) => {
+                // Only include textareas that should be searched based on current view mode
+                if (!this.shouldIncludeTextareaInSearch(textarea)) {
+                    return;
+                }
+                
+                const text = textarea.value;
+                let index = 0;
+                
+                // Find all occurrences of the search term in this textarea (case insensitive)
+                while ((index = text.toLowerCase().indexOf(searchQuery, index)) !== -1) {
+                    allResults.push({
+                        textarea: textarea,
+                        textareaIndex: textareaIndex,
+                        start: index,
+                        end: index + searchQuery.length,
+                        text: text.substring(index, index + searchQuery.length)
+                    });
+                    index += 1; // Move to next character to avoid infinite loop
+                }
+            });
+        }
 
         searchState.results = allResults;
         
@@ -1016,16 +1303,16 @@ class PromptTextareaToolbar {
         if (!window.startEmphasisEditing) {
             return;
         }
-        
+
         // Start emphasis editing
         window.startEmphasisEditing(textarea);
-        
+
         // Add emphasis mode class to show emphasis elements
         toolbar.classList.add('emphasis-mode');
-        
+
         // Initialize emphasis mode
         this.initializeEmphasisMode(textarea, toolbar);
-        
+
         // Update emphasis display immediately
         this.updateEmphasisDisplay(toolbar);
         
@@ -1294,17 +1581,15 @@ class PromptTextareaToolbar {
                 e.preventDefault();
                 
                 // Check if cursor is inside an emphasis block
-                if (window.isCursorInsideEmphasisBlock && window.splitEmphasisBlock) {
-                    const emphasisInfo = window.isCursorInsideEmphasisBlock(textarea);
-                    if (emphasisInfo) {
-                        const success = window.splitEmphasisBlock(textarea);
-                        if (success) {
-                            // Update emphasis highlighting
-                            if (window.updateEmphasisHighlighting) {
-                                window.updateEmphasisHighlighting(textarea);
-                            }
-                            return;
+                const emphasisInfo = isCursorInsideEmphasisBlock(textarea);
+                if (emphasisInfo) {
+                    const success = splitEmphasisBlock(textarea);
+                    if (success) {
+                        // Update emphasis highlighting
+                        if (window.updateEmphasisHighlighting) {
+                            window.updateEmphasisHighlighting(textarea);
                         }
+                        return;
                     }
                 }
                 return;
@@ -1322,8 +1607,6 @@ class PromptTextareaToolbar {
             
             // Check if there's selected text and apply emphasis directly
             if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
-                e.preventDefault(); // Only prevent default when we're actually doing something
-                
                 // Handle alt + number for negative values
                 const isAltPressed = e.altKey;
                 
@@ -1355,26 +1638,28 @@ class PromptTextareaToolbar {
                     }
                 }, 500);
                                 
-                if (window.applyEmphasisDirectly) {
-                    // Auto-detect emphasis mode based on context
-                    const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
-                    const result = window.applyEmphasisDirectly(textarea, numericValue, currentMode);
+                // Auto-detect emphasis mode based on context
+                const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
+                const result = applyEmphasisDirectly(textarea, numericValue, currentMode);
 
-                    if (result && result.success) {
-                        // Update the emphasis value for future use
-                        window.emphasisEditingValue = numericValue;
-                        this.updateEmphasisDisplay(toolbar);
-                        
-                        // Reselect the emphasized text so user can see what was emphasized
-                        setTimeout(() => {
-                            if (result.start !== undefined && result.end !== undefined) {
-                                textarea.setSelectionRange(result.start, result.end);
-                            }
-                        }, 10);
-                        
-                        return;
-                    }
+                if (result && result.success) {
+                    // Update the emphasis value for future use
+                    window.emphasisEditingValue = numericValue;
+                    this.updateEmphasisDisplay(toolbar);
+                    
+                    // Reselect the emphasized text so user can see what was emphasized
+                    setTimeout(() => {
+                        if (result.start !== undefined && result.end !== undefined) {
+                            textarea.setSelectionRange(result.start, result.end);
+                        }
+                    }, 10);
+                    
+                    e.preventDefault(); // Only prevent default if emphasis was successfully applied
+                    return;
                 }
+                // If emphasis application failed (e.g., selected text is a pure number),
+                // don't prevent default - allow normal typing to replace the selected text
+                return; // Exit early to allow normal typing
             }
             // If no text selected, don't prevent default - allow normal typing
         };
@@ -1427,10 +1712,27 @@ class PromptTextareaToolbar {
         }
         
         // Check if we're inside an existing emphasis block (but only within the current tag)
-        const emphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
+        // First check for auto-terminating emphasis blocks: number::text (without closing ::)
+        const autoTerminatingPattern = /(-?\d+\.\d+)::([^:]+?)(?=\s*-?\d+\.?\d*::|::|$)/g;
         let emphasisMatch;
         
-        while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
+        while ((emphasisMatch = autoTerminatingPattern.exec(value)) !== null) {
+            const emphasisStart = emphasisMatch.index;
+            const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+            
+            // Only check if emphasis block is within our current tag
+            if (emphasisStart >= tagStart && emphasisEnd <= tagEnd) {
+                // Check if our selection overlaps with this emphasis block
+                if (selectionStart < emphasisEnd && selectionEnd > emphasisStart) {
+                    return 'normal';
+                }
+            }
+        }
+        
+        // Then check for traditional emphasis blocks: number::text::
+        const traditionalEmphasisPattern = /(-?\d+\.\d+)::([^:]+)::/g;
+        
+        while ((emphasisMatch = traditionalEmphasisPattern.exec(value)) !== null) {
             const emphasisStart = emphasisMatch.index;
             const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
             
@@ -1513,13 +1815,6 @@ window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => 
             window.promptTextareaToolbar.resetAllSearchStates();
     };
 });
-
-// Expose method for handling dynamic textareas
-window.handleDynamicTextarea = (textarea) => {
-    if (window.promptTextareaToolbar) {
-        window.promptTextareaToolbar.handleDynamicTextarea(textarea);
-    }
-};
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {

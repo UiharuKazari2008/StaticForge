@@ -58,7 +58,7 @@ function updateGalleryToolbarContent(image) {
     let scrapButtonText, scrapButtonIcon, scrapButtonAction;
     if (currentGalleryView === 'scraps') {
         scrapButtonText = 'Remove from scraps';
-        scrapButtonIcon = 'fas fa-undo';
+        scrapButtonIcon = 'nai-dot-reset';
         scrapButtonAction = () => removeFromScraps(image);
     } else {
         scrapButtonText = 'Move to scraps';

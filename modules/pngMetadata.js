@@ -254,7 +254,7 @@ function calculateCRC(data) {
     return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
-// Utility: Strip all tEXt chunks from a PNG buffer
+// Utility: Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer
 function stripPngTextChunks(buffer) {
     // PNG header is 8 bytes
     if (!buffer || buffer.length < 8 || buffer.readUInt32BE(0) !== 0x89504e47) return buffer;
@@ -267,7 +267,8 @@ function stripPngTextChunks(buffer) {
         const type = buffer.toString('ascii', offset + 4, offset + 8);
         const chunkStart = offset;
         const chunkEnd = offset + 12 + length;
-        if (type !== 'tEXt') {
+        // Strip all text-related chunks: tEXt, iTXt, and zTXt
+        if (type !== 'tEXt' && type !== 'iTXt' && type !== 'zTXt') {
             outChunks.push(buffer.slice(chunkStart, chunkEnd));
         }
         offset = chunkEnd;
@@ -283,7 +284,46 @@ function extractNovelAIMetadata(filePath) {
         const metadata = readMetadata(buffer);
         
         if (metadata.tEXt && metadata.tEXt.Comment) {
-            const _metadata = JSON.parse(metadata.tEXt.Comment);
+            let _metadata = JSON.parse(metadata.tEXt.Comment);
+            let expansionData = null;
+            
+            // If this is an expanded image, load the original image's metadata
+            if (_metadata.forge_data?.expansion_source) {
+                const originalFilename = _metadata.forge_data.expansion_source;
+                const imagesDir = path.dirname(filePath);
+                const originalPath = path.join(imagesDir, originalFilename);
+                
+                // Store expansion data
+                expansionData = {
+                    expansion_source: _metadata.forge_data.expansion_source,
+                    expansion_mode: _metadata.forge_data.expansion_mode || 'unknown',
+                    expansion_resolution: _metadata.forge_data.expansion_resolution,
+                    expansion_bias: _metadata.forge_data.expansion_bias,
+                    expansion_direction: _metadata.forge_data.expansion_direction,
+                    expansion_percentages: _metadata.forge_data.expansion_percentages,
+                    expansion_prompt: _metadata.forge_data.expansion_prompt,
+                    expansion_reason: _metadata.forge_data.expansion_reason,
+                    expansion_params: _metadata.forge_data.expansion_params,
+                    generation_type: 'expanded',
+                    expansion_requested_content: _metadata.forge_data.expansion_requested_content
+                };
+                
+                console.log(`📋 Detected expanded image, loading original: ${originalFilename}`);
+                
+                if (fs.existsSync(originalPath)) {
+                    try {
+                        const originalBuffer = fs.readFileSync(originalPath);
+                        const originalMetadata = readMetadata(originalBuffer);
+                        if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
+                            _metadata = JSON.parse(originalMetadata.tEXt.Comment);
+                            console.log(`✅ Loaded original metadata from: ${originalFilename}`);
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error loading original metadata: ${error.message}`);
+                    }
+                }
+            }
+            
             const result = {
                 ..._metadata,
                 source: metadata.tEXt.Source,
@@ -326,7 +366,27 @@ function extractNovelAIMetadata(filePath) {
                     'software',
                     'history',
                     'dynamic_generation',
-                    'text_replacements_seed'
+                    'text_replacements_seed',
+                    'expansion_source',
+                    'expansion_mode',
+                    'expansion_resolution',
+                    'expansion_bias',
+                    'expansion_direction',
+                    'expansion_percentages',
+                    'expansion_prompt',
+                    'expansion_reason',
+                    'expansion_params',
+                    'generation_type',
+                    'expansion_requested_content',
+                    'stage_index',
+                    'stage_type',
+                    'stage_seeds',
+                    'pipeline',
+                    'text_replacements',
+                    'text_overlays',
+                    'save_base_output',
+                    'skip_pipeline_stages',
+                    'auto_clean_uc'
                 ];
                 
                 const filteredForgeData = {};
@@ -336,6 +396,13 @@ function extractNovelAIMetadata(filePath) {
                     }
                 }
                 result.forge_data = filteredForgeData;
+            }
+            
+            // If this was an expanded image, merge expansion data back into forge_data
+            if (expansionData) {
+                result.forge_data = result.forge_data || {};
+                Object.assign(result.forge_data, expansionData);
+                console.log(`📋 Merged expansion metadata into forge_data`);
             }
 
             delete result.reference_image_multiple;
@@ -391,7 +458,7 @@ async function extractRelevantFields(meta, filename) {
     // Extract metadata from forge_data only
     const forgeData = meta.forge_data || {};
     const upscaled = forgeData.upscale_ratio !== null && forgeData.upscale_ratio !== undefined;
-    const hasBaseImage = forgeData.image_source !== undefined;
+    const hasBaseImage = forgeData.image_source !== undefined && forgeData.image_source !== 'data:base64';
     
     // Extract character prompts from forge_data (includes disabled characters and character names)
     let characterPrompts = [];
@@ -501,7 +568,7 @@ async function extractRelevantFields(meta, filename) {
         base_image: hasBaseImage,
         history: forgeData.history,
         request_type: forgeData.request_type,
-        image_source: forgeData.image_source,
+        image_source: forgeData.image_source !== 'data:base64' ? forgeData.image_source : undefined,
         image_bias: forgeData.image_bias,
         preset_name: forgeData.preset_name,
         use_coords: hasCharacterPrompts ? (
@@ -530,9 +597,30 @@ async function extractRelevantFields(meta, filename) {
                 result.image_source_width = width;
                 result.image_source_height = height;
             }
+    
+            // Add mask bias if present in forge data
+            if (forgeData.mask_bias !== undefined) {
+                result.mask_bias = forgeData.mask_bias;
+            }
+            if (forgeData.mask_compressed !== undefined) {
+                result.mask_compressed = forgeData.mask_compressed;
+            } else if (forgeData.mask !== undefined) {
+                result.mask = forgeData.mask;
+            }
         } catch (e) {
             // Ignore errors, do not set width/height
         }
+    } else {
+        delete result.image_source_width;
+        delete result.image_source_height;
+        delete result.image_source;
+        delete result.image_source_seed;
+        delete result.image_bias;
+        delete result.mask_compressed;
+        delete result.mask;
+        delete result.mask_bias;
+        delete result.strength;
+        delete result.noise;
     }
     
     if (forgeData.layer1_seed !== undefined) {
@@ -542,22 +630,22 @@ async function extractRelevantFields(meta, filename) {
         result.seed = meta.seed;
     }
     
-    // Add mask bias if present in forge data
-    if (forgeData.mask_bias !== undefined) {
-        result.mask_bias = forgeData.mask_bias;
-    }
-    if (forgeData.mask_compressed !== undefined) {
-        result.mask_compressed = forgeData.mask_compressed;
-    } else if (forgeData.mask !== undefined) {
-        result.mask = forgeData.mask;
-    }
-    
     // Add resolution if it matches, otherwise add height and width
     if (resolution) {
         result.resolution = resolution.toUpperCase();
-    } else {
-        result.height = meta.height;
-        result.width = meta.width;
+    }
+    result.height = meta.height;
+    result.width = meta.width;
+
+    // Add actual dimensions if available (from stored metadata)
+    if (meta.actual_width && meta.actual_height) {
+        result.actual_width = meta.actual_width;
+        result.actual_height = meta.actual_height;
+    }
+
+    // Add actual resolution if available
+    if (meta.actual_resolution) {
+        result.actual_resolution = meta.actual_resolution;
     }
     
     // Handle detection and removal of append_quality and append_uc
@@ -672,6 +760,46 @@ async function extractRelevantFields(meta, filename) {
     if (forgeData.chara_reference_fidelity !== undefined) {
         result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
     }
+    
+    // Add expansion data if present
+    if (forgeData.expansion_source) {
+        result.expansion_source = forgeData.expansion_source;
+        result.expansion_mode = forgeData.expansion_mode;
+        result.expansion_resolution = forgeData.expansion_resolution;
+        result.expansion_bias = forgeData.expansion_bias;
+        result.expansion_direction = forgeData.expansion_direction;
+        result.expansion_percentages = forgeData.expansion_percentages;
+        result.expansion_prompt = forgeData.expansion_prompt;
+        result.expansion_reason = forgeData.expansion_reason;
+        result.expansion_params = forgeData.expansion_params;
+        result.expansion_requested_content = forgeData.expansion_requested_content;
+    }
+
+    // Add stage data if present
+    if (forgeData.pipeline !== undefined) {
+        result.pipeline = forgeData.pipeline;
+        result.save_base_output = forgeData.save_base_output;
+        result.skip_pipeline_stages = forgeData.skip_pipeline_stages;
+    }
+    if (forgeData.stage_index !== undefined) {
+        result.stage_index = forgeData.stage_index;
+    }
+    if (forgeData.stage_type !== undefined) {
+        result.stage_type = forgeData.stage_type;
+    }
+    if (forgeData.stage_seeds !== undefined) {
+        result.stage_seeds = forgeData.stage_seeds;
+    }
+    if (forgeData.text_replacements !== undefined) {
+        result.text_replacements = forgeData.text_replacements;
+    }
+
+    if (forgeData.text_overlays !== undefined) {
+        result.text_overlays = forgeData.text_overlays;
+    }
+    
+    // Include forge_data in result
+    result.forge_data = forgeData;
 
     return result;
 }
@@ -743,8 +871,6 @@ function getModelDisplayName(model) {
 function getBaseName(filename) {
     return filename
         .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
-        .replace(/_pipeline(?=\.)/, '')  // Remove _pipeline suffix
-        .replace(/_pipeline_upscaled(?=\.)/, '')  // Remove _pipeline_upscaled suffix
         .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
         .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
         .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
@@ -830,29 +956,34 @@ async function extractMetadataSummary(buffer, filename = null) {
                 condensedMetadata.actual_resolution_display = `${actualWidth} × ${actualHeight}`;
             }
             
-                    // Calculate scale ratio if both embedded and actual dimensions are present
-        if (condensedMetadata.width && condensedMetadata.height) {
-            const embeddedWidth = condensedMetadata.width;
-            const embeddedHeight = condensedMetadata.height;
-            
-            // Check if image was scaled up (both dimensions increased)
-            if (actualWidth > embeddedWidth && actualHeight > embeddedHeight) {
-                const scaleX = (actualWidth / embeddedWidth).toFixed(2);
-                const scaleY = (actualHeight / embeddedHeight).toFixed(2);
+            // Calculate scale ratio if both embedded and actual dimensions are present
+            if (condensedMetadata.width && condensedMetadata.height) {
+                const embeddedWidth = condensedMetadata.width;
+                const embeddedHeight = condensedMetadata.height;
                 
-                // Use the smaller scale factor for display (more conservative)
-                const displayScale = Math.min(parseFloat(scaleX), parseFloat(scaleY));
-                
-                // Add scale ratio information
-                condensedMetadata.scale_ratio = {
-                    x: parseFloat(scaleX),
-                    y: parseFloat(scaleY),
-                    display: `${displayScale % 1 === 0 ? displayScale : displayScale.toFixed(1)}×`,
-                    original_dimensions: `${embeddedWidth}×${embeddedHeight}`,
-                    current_dimensions: `${actualWidth}×${actualHeight}`
-                };
+                // Check if image was scaled up (both dimensions increased)
+                if (actualWidth > embeddedWidth && actualHeight > embeddedHeight) {
+                    const scaleX = (actualWidth / embeddedWidth).toFixed(2);
+                    const scaleY = (actualHeight / embeddedHeight).toFixed(2);
+                    
+                    // Use the smaller scale factor for display (more conservative)
+                    const displayScale = Math.min(parseFloat(scaleX), parseFloat(scaleY));
+                    
+                    // Add scale ratio information
+                    condensedMetadata.scale_ratio = {
+                        x: parseFloat(scaleX),
+                        y: parseFloat(scaleY),
+                        display: `${displayScale % 1 === 0 ? displayScale : displayScale.toFixed(1)}×`,
+                        original_dimensions: `${embeddedWidth}×${embeddedHeight}`,
+                        current_dimensions: `${actualWidth}×${actualHeight}`
+                    };
+                }
             }
-        }
+            
+            // Calculate if upscaling is available for this image
+            const MAX_UPSCALE_PIXELS = 1048576; // 1024 × 1024 maximum for upscaling
+            const totalPixels = actualWidth * actualHeight;
+            condensedMetadata.canUpscale = totalPixels <= MAX_UPSCALE_PIXELS;
         }
         
         // Return the condensed metadata with source/software info added
@@ -892,6 +1023,9 @@ function formatResolution(resolution, width, height) {
             { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
             { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
             { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'xlarge_portrait', display: 'Max Portrait', width: 1408, height: 2112, aspect: 0.667 },
+            { value: 'xlarge_landscape', display: 'Max Landscape', width: 2112, height: 1408, aspect: 1.5 },
+            { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
             { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
             { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
         ];
@@ -933,6 +1067,9 @@ function formatResolution(resolution, width, height) {
             { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
             { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
             { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+            { value: 'xlarge_portrait', display: 'Max Portrait', width: 1408, height: 2112, aspect: 0.667 },
+            { value: 'xlarge_landscape', display: 'Max Landscape', width: 2112, height: 1408, aspect: 1.5 },
+            { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
             { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
             { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
         ];
@@ -957,6 +1094,7 @@ module.exports = {
     readMetadata,
     updateMetadata,
     stripPngTextChunks,
+    insertTextChunk,
     extractNovelAIMetadata,
     extractRelevantFields,
     getModelDisplayName,

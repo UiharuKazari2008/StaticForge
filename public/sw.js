@@ -219,6 +219,44 @@ async function createServiceWorkerHeaders() {
   }
 }
 
+// Workbox plugin to add authentication headers to requests
+const authPlugin = {
+  requestWillFetch: async ({ request }) => {
+    // Only add auth headers to local server requests that need them
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) {
+      return request;
+    }
+
+    // Skip OPTIONS requests to /sw.js (rolling key endpoint)
+    if (url.pathname === '/sw.js' && request.method === 'OPTIONS') {
+      return request;
+    }
+
+    // Add authentication headers for protected resources
+    if (url.pathname.startsWith('/images/') ||
+        url.pathname.startsWith('/previews/') ||
+        url.pathname.startsWith('/cache/')) {
+      try {
+        const swHeaders = await createServiceWorkerHeaders();
+        const headers = new Headers(request.headers);
+
+        // Add rolling key headers
+        Object.entries(swHeaders).forEach(([key, value]) => {
+          headers.set(key, value);
+        });
+
+        return new Request(request, { headers });
+      } catch (error) {
+        console.warn('Failed to add auth headers:', error);
+        return request;
+      }
+    }
+
+    return request;
+  }
+};
+
 // Helper function to check if response should be cached based on server headers
 function shouldCacheResponse(response) {
   const cacheControl = response.headers.get('Cache-Control');
@@ -246,6 +284,7 @@ const staticStrategy = new strategies.CacheFirst({
 const dynamicStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
   plugins: [
+    authPlugin, // Add authentication for protected resources
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
@@ -260,6 +299,7 @@ const dynamicStrategy = new strategies.CacheFirst({
 const imageStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
   plugins: [
+    authPlugin, // Add authentication for protected resources
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
@@ -430,6 +470,10 @@ workbox.routing.registerRoute(
 // Unified route handler for all requests
 workbox.routing.registerRoute(
   ({ url, request }) => {
+    // Never handle /preset or /pending routes
+    if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
     // Always handle requests that start with /
     return url.pathname.startsWith('/');
   },
@@ -532,6 +576,10 @@ workbox.routing.registerRoute(
 // Handle SPA navigation routes - use static cache if available, otherwise redirect
 workbox.routing.registerRoute(
   ({ url, request }) => {
+    // Never handle /preset or /pending routes
+    if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
     // Check if this is an HTML request that might be a client-side route
     const acceptHeader = request.headers.get('accept');
     const isHtmlRequest = acceptHeader && acceptHeader.includes('text/html');
@@ -1051,6 +1099,11 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Never handle /preset or /pending routes - let them pass through to the server
+  if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+    return; // Do not intercept these requests at all
+  }
+
   // Handle chrome extension requests (block them)
   if (url.protocol === 'chrome-extension:') {
     event.respondWith(
@@ -1063,7 +1116,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Check if this is a local server request that needs rolling key authentication
-  if (isLocalServerRequest(url)) {
+  // Skip authentication for OPTIONS requests to /sw.js (used to fetch the rolling key)
+  // Skip protected resources that are handled by Workbox strategies with authPlugin
+  if (isLocalServerRequest(url) &&
+      !(url.pathname === '/sw.js' && request.method === 'OPTIONS') &&
+      !url.pathname.startsWith('/images/') &&
+      !url.pathname.startsWith('/previews/') &&
+      !url.pathname.startsWith('/cache/')) {
     event.respondWith((async () => {
       try {
         // Get rolling key headers

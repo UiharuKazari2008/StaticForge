@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traces</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/css/traces.css" />
+</head>
+<body>
+  <div class="container">
+    <h2>Request Traces</h2>
+
+    <div class="form-group">
+      <label for="traceDropdown">Select Trace</label>
+      <div id="traceDropdown" class="custom-dropdown">
+        <button type="button" id="traceDropdownBtn" class="custom-dropdown-btn hover-show colored">
+          <span id="traceDropdownSelected">Select trace...</span>
+        </button>
+        <div id="traceDropdownMenu" class="custom-dropdown-menu hidden"></div>
+      </div>
+      <input type="hidden" id="traceDropdownHidden" value="" />
+    </div>
+
+    <div id="traceDetails" style="margin-top:16px;"></div>
+  </div>
+
+  <script src="/scripts/comp/dropdown.js"></script>
+  <script src="/scripts/traces.js"></script>
+</body>
+</html>
+

@@ -164,9 +164,27 @@ The preset endpoint allows you to generate images directly from saved presets vi
 
 **Parameters**:
 - `:uuid` - The UUID of the preset to use for generation
-- `workspace` (query) - Target workspace ID (optional, defaults to preset's target workspace)
-- `optimize` (query) - Set to 'true' to return JPEG instead of PNG (optional)
-- `download` (query) - Set to 'true' to trigger file download (optional)
+
+**Query Parameters for Generation Overrides**:
+- `steps` - Override generation steps (integer, positive)
+- `guidance` - Override guidance scale (number, positive)
+- `rescale` - Override CFG rescale value (number)
+- `resolution` - Override resolution preset (case-insensitive named preset)
+- `upscale` - Override upscale multiplier (number > 0 or 'true' for 4x default)
+- `seed` - Override random seed (integer)
+- `variety` - Override variety toggle ('true'/'false')
+- `dyna_tod` - Override time-of-day setting (boolean or string)
+- `dyna_weather` - Override weather setting (boolean or string)
+- `dyna_season` - Override season setting (boolean, 'nearest', or numeric index)
+- `dyna_action` - Override action setting (boolean only)
+- `dyna_location` - Override location setting (string)
+- `dyna_creative` - Override creative mode setting (boolean)
+- `dyna_no_cache` - Skip dynamic generation cache ('true'/'false')
+
+**Query Parameters for Output**:
+- `workspace` - Target workspace ID (optional, defaults to preset's target workspace)
+- `optimize` - Set to 'true' to return JPEG instead of PNG (optional)
+- `download` - Set to 'true' to trigger file download (optional)
 
 **Headers Returned**:
 - `X-Generated-Filename` - Name of the generated image file
@@ -198,9 +216,6 @@ curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey
 
 **Query Parameters for Authentication**:
 - `loginKey` - Your configured login key for direct API access without session
-- `workspace` - Target workspace ID (optional, defaults to preset's target workspace)
-- `optimize` - Set to 'true' to return JPEG instead of PNG (optional)
-- `download` - Set to 'true' to trigger file download (optional)
 
 **Example Usage with loginKey**:
 ```bash
@@ -216,9 +231,57 @@ curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey
 
 # Generate in specific workspace with loginKey
 curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&workspace=my_project"
+
+# Override generation parameters
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&steps=28&guidance=6.0&seed=12345"
+
+# Override resolution and enable dynamic generation
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&resolution=normal_landscape&dyna_tod=true&dyna_weather=true&dyna_season=nearest&dyna_creative=true"
+
+# Skip dynamic generation cache for fresh AI processing
+curl "http://localhost:9220/preset/123e4567-e89b-12d3-a456-426614174000?loginKey=your_login_key&dyna_no_cache=true&dyna_weather=true"
 ```
 
 **Rate Limiting**: Subject to the same queue system as web interface
+
+**Parameter Validation**: All query parameters are validated for correct types and values. Invalid parameters will return a 400 error with detailed validation messages.
+
+### Scheduled Preset Generation Endpoint
+
+The pending preset endpoint allows you to schedule image generation from saved presets for later execution, useful for creating content at specific times or during optimal generation windows.
+
+**Endpoint**: `GET /pending/preset/:uuid`
+
+**Parameters**:
+- `:uuid` - The UUID of the preset to use for generation
+
+**Query Parameters for Scheduling**:
+- `window` - Time window in seconds for random scheduling (minimum 60 seconds)
+
+**Query Parameters for Generation Overrides** (same as preset endpoint):
+- `steps`, `guidance`, `rescale`, `resolution`, `upscale`, `seed`, `variety`
+- `tod`, `weather`, `season`, `action`, `location`, `creative`
+- `workspace`, `optimize`, `download`, `loginKey`
+
+**Response**: JSON with request ID and scheduled time
+
+**Example Usage**:
+```bash
+# Schedule preset generation for immediate execution
+curl "http://localhost:9220/pending/preset/123e4567-e89b-12d3-a456-426614174000"
+
+# Schedule preset generation within a 2-hour window (7200 seconds)
+curl "http://localhost:9220/pending/preset/123e4567-e89b-12d3-a456-426614174000?window=7200&steps=28&resolution=normal_portrait"
+
+# Check status of scheduled request
+curl "http://localhost:9220/pending/retrieval/abc123-def456"
+```
+
+**Endpoint**: `GET /pending/retrieval/:requestid`
+
+**Response**: JSON with status information or generated image when complete
+
+**Parameter Validation**: Same validation as the preset endpoint applies to all query parameters.
 
 ### Test Bias Adjustment Endpoint
 

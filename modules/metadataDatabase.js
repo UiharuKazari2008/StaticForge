@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const logger = require('./logger');
 const { extractNovelAIMetadata, updateMetadata } = require('./pngMetadata');
 const { getGlobalWsServer } = require('./websocket');
 const { isImageLarge } = require('./imageTools');
@@ -41,7 +42,7 @@ function initializeDatabase() {
         
         return true;
     } catch (error) {
-        console.error('❌ Error initializing SQLite database:', error.message);
+        logger.error('Error initializing SQLite database:', error.message);
         return false;
     }
 }
@@ -98,7 +99,7 @@ function createTables() {
         CREATE INDEX IF NOT EXISTS idx_receipts_timestamp ON receipts (timestamp);
     `);
     
-    console.log('✅ Database tables created/verified');
+    logger.bootSubStep('Metadata database ready');
 }
 
 /**
@@ -108,7 +109,7 @@ function closeDatabase() {
     if (db) {
         db.close();
         db = null;
-        console.log('✅ Database connection closed');
+        logger.info('Database connection closed');
     }
 }
 
@@ -312,6 +313,102 @@ async function scanAndUpdateMetadata(imagesDir) {
         return { updatedCount, errorCount, totalFiles: missingFiles.length };
     } catch (error) {
         console.error('❌ Error scanning metadata:', error.message);
+        return { updatedCount: 0, errorCount: 1, totalFiles: 0 };
+    }
+}
+
+/**
+ * Force rebuild metadata cache for all images
+ * This will re-extract PNG metadata from all files regardless of MD5
+ */
+async function rebuildMetadataCache(imagesDir, progressCallback = null) {
+    try {
+        console.log('🔄 Rebuilding metadata cache for all images...');
+        
+        if (!dbInitialized || !db) {
+            throw new Error('Database not initialized');
+        }
+        
+        // Get all image files from directory
+        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        
+        let updatedCount = 0;
+        let errorCount = 0;
+        const totalFiles = allFiles.length;
+        
+        for (let i = 0; i < allFiles.length; i++) {
+            const filename = allFiles[i];
+            try {
+                const filePath = path.join(imagesDir, filename);
+                
+                // Check if file exists
+                if (!fs.existsSync(filePath)) {
+                    console.warn(`⚠️ File not found: ${filePath}`);
+                    errorCount++;
+                    continue;
+                }
+                
+                // Extract new metadata
+                const stats = fs.statSync(filePath);
+                const md5 = generateMD5(filePath);
+                const imageMetadata = await extractImageMetadata(filePath);
+                
+                if (!imageMetadata) {
+                    console.error(`❌ Failed to extract metadata for ${filename}`);
+                    errorCount++;
+                    continue;
+                }
+                
+                // Extract PNG embedded metadata
+                let pngMetadata = null;
+                try {
+                    pngMetadata = extractNovelAIMetadata(filePath);
+                } catch (error) {
+                    console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
+                    pngMetadata = {};
+                }
+                
+                // Get all files to determine relationships
+                const relationships = determineImageRelationships(filename, allFiles);
+                
+                // Update in database using INSERT OR REPLACE
+                const upsertStmt = db.prepare(`
+                    INSERT OR REPLACE INTO images (filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 
+                        COALESCE((SELECT created_at FROM images WHERE filename = ?), strftime('%s', 'now')),
+                        strftime('%s', 'now'))
+                `);
+                upsertStmt.run(
+                    filename, md5, imageMetadata.width, imageMetadata.height,
+                    relationships.parent, relationships.isUpscaled ? 1 : 0,
+                    stats.size, stats.mtime.valueOf(), JSON.stringify(pngMetadata || {}),
+                    filename // For the COALESCE subquery
+                );
+                
+                updatedCount++;
+                
+                // Send progress update if callback provided
+                if (progressCallback) {
+                    progressCallback({
+                        current: i + 1,
+                        total: totalFiles,
+                        filename: filename,
+                        updatedCount,
+                        errorCount
+                    });
+                }
+                
+            } catch (error) {
+                console.error(`❌ Error processing ${filename}:`, error.message);
+                errorCount++;
+            }
+        }
+        
+        console.log(`✅ Metadata cache rebuild complete: ${updatedCount} updated, ${errorCount} errors`);
+        
+        return { updatedCount, errorCount, totalFiles };
+    } catch (error) {
+        console.error('❌ Error rebuilding metadata cache:', error.message);
         return { updatedCount: 0, errorCount: 1, totalFiles: 0 };
     }
 }
@@ -779,9 +876,9 @@ try {
     if (!dbInitialized) {
         throw new Error('Failed to initialize database');
     }
-    console.log('✅ Metadata database module ready');
+    // Logging happens in createTables during boot
 } catch (error) {
-    console.error('❌ Failed to initialize metadata database:', error.message);
+    logger.error('Failed to initialize metadata database:', error.message);
     process.exit(1);
 }
 
@@ -801,6 +898,7 @@ module.exports = {
     closeDatabase,
     getImageMetadata,
     scanAndUpdateMetadata,
+    rebuildMetadataCache,
     addReceipt,
     removeImageMetadata,
     getCachedMetadata,

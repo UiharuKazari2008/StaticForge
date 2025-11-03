@@ -12,7 +12,101 @@ class ServiceWorkerManager {
         this.swReadyTimeout = null;
         this.initialCheckDone = false;
 
+        // Client-side key caching
+        this.cachedRollingKey = null;
+        this.keyExpiresAt = 0;
+        this.keyFetchPromise = null;
+        this.lastKeyRequestTime = 0;
+        this.keyRequestCount = 0;
+        this.KEY_REFRESH_BUFFER = 60000; // Refresh 1 minute before expiry
+        this.KEY_REQUEST_COOLDOWN = 5000; // Minimum 5 seconds between requests
+        this.MAX_KEY_REQUESTS_PER_MINUTE = 10;
+
         this.init();
+    }
+
+    // Client-side key caching methods
+    async getCachedRollingKey() {
+        const now = Date.now();
+        
+        // Check if we have a valid cached key
+        if (this.cachedRollingKey && this.keyExpiresAt > 0 && now < this.keyExpiresAt - this.KEY_REFRESH_BUFFER) {
+            console.log('🔑 Using cached rolling key');
+            return this.cachedRollingKey;
+        }
+
+        // Check rate limiting
+        if (this.lastKeyRequestTime > 0 && now - this.lastKeyRequestTime < this.KEY_REQUEST_COOLDOWN) {
+            console.log('🔑 Key request in cooldown, using cached key if available');
+            return this.cachedRollingKey;
+        }
+
+        // Check if we're already fetching a key
+        if (this.keyFetchPromise) {
+            console.log('🔑 Key fetch already in progress, waiting...');
+            return this.keyFetchPromise;
+        }
+
+        // Reset request count if it's been more than a minute
+        if (now - this.lastKeyRequestTime > 60000) {
+            this.keyRequestCount = 0;
+        }
+
+        // Check if we've exceeded rate limit
+        if (this.keyRequestCount >= this.MAX_KEY_REQUESTS_PER_MINUTE) {
+            console.warn('🔑 Key request rate limit exceeded, using cached key');
+            return this.cachedRollingKey;
+        }
+
+        // Fetch new key
+        this.keyFetchPromise = this.fetchRollingKey();
+        
+        try {
+            const result = await this.keyFetchPromise;
+            return result;
+        } finally {
+            this.keyFetchPromise = null;
+        }
+    }
+
+    async fetchRollingKey() {
+        const now = Date.now();
+        this.lastKeyRequestTime = now;
+        this.keyRequestCount++;
+
+        try {
+            console.log('🔑 Fetching new rolling key...');
+            const keyResponse = await fetch('/sw.js', {
+                method: 'OPTIONS',
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!keyResponse.ok) {
+                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
+            }
+
+            const keyData = await keyResponse.json();
+            this.cachedRollingKey = keyData.key;
+            this.keyExpiresAt = keyData.expiresAt;
+
+            console.log('🔑 Rolling key cached successfully');
+            return this.cachedRollingKey;
+
+        } catch (error) {
+            console.error('🔑 Failed to fetch rolling key:', error);
+            
+            // Return cached key if available, even if expired
+            if (this.cachedRollingKey) {
+                console.log('🔑 Using expired cached key as fallback');
+                return this.cachedRollingKey;
+            }
+            
+            throw error;
+        }
     }
     
     async init() {
@@ -266,24 +360,10 @@ class ServiceWorkerManager {
     
     async checkStaticFileUpdates(noToast = false) {
         try {
-            // First fetch the current rolling key
-            const keyResponse = await fetch('/sw.js', {
-                method: 'OPTIONS',
-                cache: 'no-store',
-                headers: {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma': 'no-cache'
-                }
-            });
+            // Get cached rolling key with independent refresh logic
+            const rollingKey = await this.getCachedRollingKey();
 
-            if (!keyResponse.ok) {
-                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
-            }
-
-            const keyData = await keyResponse.json();
-            const rollingKey = keyData.key;
-
-            // Now make the actual request with the rolling key
+            // Make the actual request with the rolling key
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers: {
@@ -930,24 +1010,10 @@ class ServiceWorkerManager {
         try {
             console.log('🔍 Checking for application updates during startup...');
 
-            // First fetch the current rolling key
-            const keyResponse = await fetch('/sw.js', {
-                method: 'OPTIONS',
-                cache: 'no-store',
-                headers: {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma': 'no-cache'
-                }
-            });
+            // Get cached rolling key with independent refresh logic
+            const rollingKey = await this.getCachedRollingKey();
 
-            if (!keyResponse.ok) {
-                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
-            }
-
-            const keyData = await keyResponse.json();
-            const rollingKey = keyData.key;
-
-            // Now make the actual request with the rolling key
+            // Make the actual request with the rolling key
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers: {
@@ -1148,7 +1214,8 @@ class ServiceWorkerManager {
                     title: 'Dreamscape',
                     message: 'Updates downloaded. Restart to apply changes.',
                     customIcon: '<i class="fa-duotone fa-star-christmas"></i>',
-                    showProgress: false
+                    showProgress: false,
+                    timeout: false
                 });
             }
         } else {

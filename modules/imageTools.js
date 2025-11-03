@@ -11,6 +11,9 @@ const inverseDimensionsMap = {
     "large_portrait": "1024x1536",
     "large_landscape": "1536x1024",
     "large_square": "1472x1472",
+    "xlarge_portrait": "1408x2112",
+    "xlarge_landscape": "2112x1408",
+    "xlarge_square": "1728x1728",
     "wallpaper_portrait": "1088x1920",
     "wallpaper_landscape": "1920x1088"
 };
@@ -25,6 +28,9 @@ const dimensionsMap = {
     "1024x1536": "large_portrait",
     "1536x1024": "large_landscape",
     "1472x1472": "large_square",
+    "1408x2112": "xlarge_portrait",
+    "2112x1408": "xlarge_landscape",
+    "1728x1728": "xlarge_square",
     "1088x1920": "wallpaper_portrait",
     "1920x1088": "wallpaper_landscape"
 };
@@ -61,11 +67,25 @@ async function getImageDimensionsWithCanvas(imageBuffer) {
 // Helper: Get resolution name from dimensions
 function getResolutionFromDimensions(width, height) {
     const key = `${width}x${height}`;
-    return dimensionsMap[key] || null;
+    const exactMatch = dimensionsMap[key];
+    
+    // Return exact match if found, otherwise null
+    // Custom dimensions should be handled by the caller
+    return exactMatch || null;
 }
 
 // Helper: Get dimensions from resolution name
 function getDimensionsFromResolution(resolution) {
+    // Handle custom resolutions like "custom_1024x1024"
+    if (resolution && resolution.startsWith('custom_')) {
+        const dimensions = resolution.replace('custom_', '');
+        const [width, height] = dimensions.split('x').map(Number);
+        if (width && height) {
+            return { width, height };
+        }
+    }
+
+    // Handle predefined resolutions
     const [width, height] = inverseDimensionsMap[resolution]?.split('x').map(Number);
     if (width && height) {
         return { width, height };
@@ -182,6 +202,77 @@ async function processDynamicImage(imageBuffer, targetDims, bias = 2) {
             .png() // Ensure output is PNG
             .toBuffer();
     }
+}
+
+// Letterbox mode: Scale image to fit inside target dimensions with transparent padding
+async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2) {
+    if (!targetDims || !targetDims.width || !targetDims.height) {
+        throw new Error('Target dimensions are required');
+    }
+
+    // Get original dimensions using Sharp
+    const metadata = await sharp(imageBuffer).metadata();
+    const origDims = { width: metadata.width, height: metadata.height };
+    
+    // Calculate scaled dimensions that fit inside target while maintaining aspect ratio
+    const origAR = origDims.width / origDims.height;
+    const targetAR = targetDims.width / targetDims.height;
+    
+    let scaledWidth, scaledHeight;
+    
+    if (origAR > targetAR) {
+        // Image is wider than target, scale to match target width
+        scaledWidth = targetDims.width;
+        scaledHeight = Math.round(targetDims.width / origAR);
+    } else {
+        // Image is taller than target, scale to match target height
+        scaledHeight = targetDims.height;
+        scaledWidth = Math.round(targetDims.height * origAR);
+    }
+    
+    // Calculate positioning based on bias (0-4)
+    // Bias values: 0=top/left, 1=mid-top/mid-left, 2=center, 3=mid-bottom/mid-right, 4=bottom/right
+    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
+    const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
+    
+    let left, top;
+    
+    if (origAR > targetAR) {
+        // Wider image, position vertically based on bias
+        left = 0;
+        top = Math.round((targetDims.height - scaledHeight) * biasFrac);
+    } else {
+        // Taller image, position horizontally based on bias
+        left = Math.round((targetDims.width - scaledWidth) * biasFrac);
+        top = 0;
+    }
+    
+    // Use Sharp to resize image with high quality
+    const resizedImageBuffer = await sharp(imageBuffer)
+        .resize(scaledWidth, scaledHeight, {
+            fit: 'fill',
+            kernel: 'lanczos3' // High-quality downscaling
+        })
+        .toBuffer();
+    
+    // Create transparent background with composited image using Sharp
+    const letterboxedBuffer = await sharp({
+        create: {
+            width: targetDims.width,
+            height: targetDims.height,
+            channels: 4, // RGBA
+            background: { r: 0, g: 0, b: 0, alpha: 0 } // Transparent background
+        }
+    })
+    .composite([{
+        input: resizedImageBuffer,
+        top: top,
+        left: left
+    }])
+    .png()
+    .toBuffer();
+    
+    return letterboxedBuffer;
 }
 
 // Utility: Resize mask using Canvas (replaces Sharp operations)
@@ -399,6 +490,7 @@ module.exports = {
     getDimensionsFromResolution,
     matchOriginalResolution,
     processDynamicImage,
+    processDynamicImageLetterbox,
     getImageDimensionsWithCanvas,
     resizeMaskWithCanvas,
     isImageLarge

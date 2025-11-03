@@ -544,7 +544,7 @@ function getPerceivedTimeFactors(season, daylightHours, weather = null) {
  * @param {Object} weather - (Optional) Weather data object for adjusting lighting and atmospheric descriptions (e.g., cloudCoverage, uvIndex, temperature).
  * @returns {Object} An object containing:
  *   - period: Human-readable description of the time period (e.g., "Early Morning", "Golden Hour").
- *   - periodKey: Machine-friendly key for the period (e.g., "early_morning", "golden_hour").
+ *   - periodKey: Machine-friendly key for the period (e.g., "earlymorning", "goldenhour").
  *   - lighting: Description of lighting conditions, accounting for sun position and weather.
  *   - atmosphere: Description of atmospheric qualities, including weather and seasonal context.
  *   - season: The current season.
@@ -908,7 +908,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             lightingDescription = lightingParts.join(', ');
             atmosphericNotes = atmosphereBase;
         } else if (currentHour >= sunriseEnd && currentHour < earlyMorningEnd) {
-            periodKey = 'early_morning';
+            periodKey = 'earlymorning';
             periodDescription = 'early morning, post-sunrise, fresh morning atmosphere';
             // Build early morning lighting and atmosphere with comprehensive weather effects
             // Build lighting and atmosphere bases based on temperature
@@ -1087,9 +1087,9 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // UV effects are atmospheric, not lighting-related
         } else if (currentHour >= morningEnd && currentHour < daytimeStart) {
-            periodKey = 'late_morning';
+            periodKey = 'latemorning';
             periodDescription = 'late morning, approaching noon, intense daylight';
-            console.log(`🌅 SELECTED: late_morning (${currentHour.toFixed(2)} is between ${morningEnd.toFixed(2)} and ${daytimeStart.toFixed(2)})`);
+            console.log(`🌅 SELECTED: latemorning (${currentHour.toFixed(2)} is between ${morningEnd.toFixed(2)} and ${daytimeStart.toFixed(2)})`);
             // Build late morning lighting and atmosphere with weather effects
             // Build lighting and atmosphere bases based on temperature
             let lightingBase, atmosphereBase;
@@ -1383,7 +1383,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
             lightingDescription = lightingBase;
             atmosphericNotes = atmosphereBase;
         } else if (currentHour >= goldenHourStart && currentHour < sunsetStart) {
-            periodKey = 'golden_hour';
+            periodKey = 'goldenhour';
             periodDescription = 'golden hour, pre-sunset, warm magical light';
             // Smooth golden hour transition: warm daylight -> sunset colors building using legacy {} syntax
             const blendFactor = (currentHour - goldenHourStart) / (sunsetStart - goldenHourStart); // 0 to 1 over golden hour
@@ -1728,7 +1728,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // No UV effects for dusk (night time)
         } else if (currentHour >= duskEnd && currentHour < earlyEveningEnd) {
-            periodKey = 'early_evening';
+            periodKey = 'earlyevening';
             periodDescription = 'early evening, residual twilight, early night atmosphere';
             // Build early evening lighting and atmosphere with weather effects
             let lightingBase = 'dim twilight illumination, artificial lights emerging';
@@ -1902,7 +1902,7 @@ async function determineTimePeriod(time, season, location, weather = null) {
 
             // No UV effects for evening (night time)
         } else if (currentHour >= eveningEnd && currentHour < 24) {
-            periodKey = 'late_evening';
+            periodKey = 'lateevening';
             periodDescription = 'deep night, dark night atmosphere, deep shadows';
             // Build late evening lighting and atmosphere with weather effects
             let lightingBase = 'dim artificial lighting in nighttime darkness, deep shadows, minimal natural light';

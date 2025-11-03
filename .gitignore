@@ -14,3 +14,4 @@ config.json
 logs/
 log.txt
 securePrompts/*
+tmp/

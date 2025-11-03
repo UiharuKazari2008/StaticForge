@@ -23,10 +23,9 @@ const manualResolutionSelected = document.getElementById('manualResolutionSelect
 const manualResolutionHidden = document.getElementById('manualResolution');
 const manualCustomResolution = document.getElementById('manualCustomResolution');
 const manualCustomResolutionBtn = document.getElementById('manualCustomResolutionBtn');
+const resolutionAreaToggle = document.getElementById('resolutionAreaToggle');
 const manualWidth = document.getElementById('manualWidth');
 const manualHeight = document.getElementById('manualHeight');
-const customWidth = document.getElementById('manualCustomWidth');
-const customHeight = document.getElementById('manualCustomHeight');
 const manualResolutionGroup = document.getElementById('manualResolutionGroup');
 const manualSamplerDropdown = document.getElementById('manualSamplerDropdown');
 const manualSamplerDropdownBtn = document.getElementById('manualSamplerDropdownBtn');
@@ -55,9 +54,6 @@ const ucPresetsDropdownMenu = document.getElementById('ucPresetsDropdownMenu');
 const nsfwDropdown = document.getElementById('nsfwDropdown');
 const nsfwToggleBtn = document.getElementById('nsfwToggleBtn');
 const nsfwDropdownMenu = document.getElementById('nsfwDropdownMenu');
-const transformationDropdown = document.getElementById('transformationDropdown');
-const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
-const transformationDropdownMenu = document.getElementById('transformationDropdownMenu');
 const manualWorkspaceDropdown = document.getElementById('manualWorkspaceDropdown');
 const manualWorkspaceDropdownBtn = document.getElementById('manualWorkspaceDropdownBtn');
 const manualWorkspaceDropdownMenu = document.getElementById('manualWorkspaceDropdownMenu');
@@ -86,9 +82,13 @@ let selectedNsfwValue = 0; // Default to Neutral
 let nsfwBias = 1.0; // Default bias
 let selectedUcPreset = 3; // Default to "Heavy"
 let appendQuality = true;
+let qualityPresetBias = 1.0; // Default bias for quality preset
 let presetAutocompleteTimeout = null;
 let currentPresetAutocompleteTarget = null;
 let selectedPresetAutocompleteIndex = -1;
+let currentMaxArea = 1048576; // Default: Normal area (1MP). Large: 2166784 (2MP). Max: 3047424 (3MP)
+let widthBlurred = false; // Track if width field has been blurred
+let heightBlurred = false; // Track if height field has been blurred
 
 // ============================================================================
 // MANUAL DROPDOWN MANAGEMENT CLASS
@@ -205,6 +205,11 @@ function renderManualResolutionDropdown(selectedVal) {
  * selectManualResolution('normal_portrait', 'Normal'); // Selects normal portrait resolution
  */
 async function selectManualResolution(value, group, skipPostProcess = false) {
+    // Capture the previous resolution BEFORE updating manualSelectedResolution
+    const previousResolution = manualSelectedResolution && manualSelectedResolution !== 'custom' 
+        ? manualSelectedResolution 
+        : 'normal_square'; // Default to normal square if no previous selection
+    
     manualSelectedResolution = value.toLowerCase();
     
     if (!group) {
@@ -220,16 +225,33 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     if (value === 'custom') {
         manualResolutionDropdown.classList.add('hidden');
         manualCustomResolution.classList.remove('hidden');
+        resolutionAreaToggle.classList.remove('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'on');
         manualResolutionGroup.classList.add('expanded');
-        // Set default values if empty
-        if (!manualWidth.value) manualWidth.value = '1024';
-        if (!manualHeight.value) manualHeight.value = '1024';
-        // Sanitize the default values
+        
+        // Only convert from previous resolution if width/height are not already set
+        // This preserves loaded values when loading from presets/metadata
+        const hasExistingValues = manualWidth.value && manualHeight.value;
+        
+        if (!hasExistingValues) {
+            // Convert current resolution to custom values
+            const dimensions = getDimensionsFromResolution(previousResolution);
+            if (dimensions) {
+                manualWidth.value = dimensions.width;
+                manualHeight.value = dimensions.height;
+            } else {
+                // Fallback to 1024x1024 if unable to get dimensions
+                manualWidth.value = '1024';
+                manualHeight.value = '1024';
+            }
+        }
+        
+        // Sanitize the values
         sanitizeCustomDimensions();
     } else {
         manualResolutionDropdown.classList.remove('hidden');
         manualCustomResolution.classList.add('hidden');
+        resolutionAreaToggle.classList.add('hidden');
         manualCustomResolutionBtn.setAttribute('data-state', 'off');
         manualResolutionGroup.classList.remove('expanded');
     }
@@ -248,7 +270,10 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
     if (!skipPostProcess) {
         updateManualPriceDisplay();
         
-        // --- ADDED: Refresh preview image if in bias mode ---
+        // Update upscale toggle disabled state based on resolution
+        updateManualUpscaleToggleState();
+        
+        // Refresh preview image if in bias mode
         if (window.uploadedImageData && window.uploadedImageData.image_source && window.uploadedImageData.isBiasMode && manualModal && !manualModal.classList.contains('hidden')) {
             // Reset bias to center (2) when resolution changes
             if (imageBiasHidden != null)
@@ -259,6 +284,9 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
             await refreshImageBiasState();
         }
     }
+    
+    // Update pipeline stages cascade when manual resolution changes
+    updatePipelineStages(); // Start from manual
 }
 
 /**
@@ -280,8 +308,7 @@ async function selectManualResolution(value, group, skipPostProcess = false) {
  * renderSimpleDropdown(menu, samplers, 'meta', 'display', selectSampler, closeDropdown, 'k_euler');
  */
 function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler, closeHandler, selectedVal, options = {}) {
-    const preventFocusTransfer = options.preventFocusTransfer || false;
-    let lastActiveElement = null;
+    const preventFocusTransfer = options.preventFocusTransfer !== false; // Default to true
     
     menu.innerHTML = '';
     items.forEach(item => {
@@ -293,21 +320,15 @@ function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler
         option.dataset.value = value;
         option.innerHTML = `<span>${display}</span>`;
         const action = () => {
-            // Store the currently active element before selecting
-            if (preventFocusTransfer) {
-                lastActiveElement = document.activeElement;
-            }
-            
             selectHandler(value);
             closeHandler();
-            
-            // Restore focus to the last active element if we prevented focus transfer
-            if (preventFocusTransfer && lastActiveElement) {
-                setTimeout(() => {
-                    lastActiveElement.focus();
-                }, 10);
-            }
         };
+        // Prevent focus transfer on mousedown if enabled
+        if (preventFocusTransfer) {
+            option.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
+        }
         option.addEventListener('click', (e) => {
             e.preventDefault();
             action();
@@ -447,6 +468,9 @@ function selectManualSampler(value) {
     }
     
     updateSamplerDisplay();
+    
+    // Update pipeline stages inherited values
+    updateAllStagesInheritedValues();
 }
 
 /**
@@ -537,6 +561,9 @@ function selectManualNoiseScheduler(value) {
     
     // Update price display
     updateManualPriceDisplay();
+    
+    // Update pipeline stages inherited values
+    updateAllStagesInheritedValues();
 }
 
 /**
@@ -679,6 +706,12 @@ function selectManualModel(value, group, preventPropagation = false) {
 
     // Refresh reference browser for model changes
     refreshReferenceBrowserForModelChange();
+
+    // Update pipeline stages inherited values
+    updateAllStagesInheritedValues();
+
+    // Update UC textarea placeholder (presets are model-specific)
+    updateUcTextareaPlaceholder();
 }
 
 /**
@@ -693,63 +726,6 @@ function closeManualModelDropdown() {
     closeDropdown(manualModelDropdownMenu, manualModelDropdownBtn);
 }
 
-/**
- * Render transformation dropdown options
- * @param {string} selectedVal - Currently selected transformation value
- * @function
- * @name renderTransformationDropdown
- * @description Renders the transformation dropdown menu with options based on available image data and transformation types
- * @example
- * renderTransformationDropdown('reroll'); // Shows transformation dropdown with reroll option available
- */
-function renderTransformationDropdown(selectedVal) {
-    const hasValidImage = window.currentEditImage && window.currentEditMetadata;
-    const hasBaseImage = hasValidImage && (
-        window.currentEditMetadata.original_filename ||
-        (window.currentEditImage.filename || window.currentEditImage.original)
-    );
-
-    // Check if this is an img2img (has base image)
-    const isImg2Img = hasValidImage && window.currentEditMetadata.base_image === true;
-
-    // Show reroll button only if there's a base image available (for img2img)
-    const shouldShowReroll = hasValidImage && isImg2Img;
-
-    // Get all option elements
-    const rerollOption = transformationDropdownMenu.querySelector('[data-value="reroll"]');
-    const variationOption = transformationDropdownMenu.querySelector('[data-value="variation"]');
-    const baseImageOption = transformationDropdownMenu.querySelector('[data-value="base-image"]');
-    const vibeTransferOption = transformationDropdownMenu.querySelector('[data-value="vibe-transfer"]');
-    const characterOption = transformationDropdownMenu.querySelector('[data-value="character"]');
-    const uploadOption = transformationDropdownMenu.querySelector('[data-value="upload"]');
-
-    // Show/hide options based on availability
-    if (rerollOption) {
-        rerollOption.classList.toggle('hidden', !shouldShowReroll);
-        rerollOption.classList.toggle('selected', selectedVal === 'reroll');
-    }
-
-    if (variationOption) {
-        variationOption.classList.toggle('hidden', !hasBaseImage);
-        variationOption.classList.toggle('selected', selectedVal === 'variation');
-    }
-
-    if (baseImageOption) {
-        baseImageOption.classList.toggle('selected', selectedVal === 'base-image');
-    }
-
-    if (vibeTransferOption) {
-        vibeTransferOption.classList.toggle('selected', selectedVal === 'vibe-transfer');
-    }
-
-    if (characterOption) {
-        characterOption.classList.toggle('selected', selectedVal === 'character');
-    }
-
-    if (uploadOption) {
-        uploadOption.classList.toggle('selected', selectedVal === 'upload');
-    }
-}
 
 /**
  * Select transformation and handle the action
@@ -791,8 +767,6 @@ function selectTransformation(value) {
             }
             unifiedUploadModalManager.show();
 
-            // Close the transformation dropdown
-            closeTransformationDropdown();
             break;
         case 'reroll':
         case 'variation':
@@ -906,76 +880,6 @@ async function handleTransformationTypeChange(requestType) {
     updateUploadDeleteButtonVisibility();
 }
 
-/**
- * Open transformation dropdown
- * @function
- * @name openTransformationDropdown
- * @description Opens the transformation dropdown menu using the core dropdown system
- * @example
- * openTransformationDropdown(); // Opens the transformation dropdown menu
- */
-function openTransformationDropdown() {
-    openDropdown(transformationDropdownMenu, transformationDropdownBtn);
-}
-
-/**
- * Close transformation dropdown
- * @function
- * @name closeTransformationDropdown
- * @description Closes the transformation dropdown menu using the core dropdown system
- * @example
- * closeTransformationDropdown(); // Closes the transformation dropdown menu
- */
-function closeTransformationDropdown() {
-    closeDropdown(transformationDropdownMenu, transformationDropdownBtn);
-}
-
-/**
- * Setup transformation dropdown listeners - MOVED FROM app.js
- * TODO: Move function implementation from app.js
- */
-function setupTransformationDropdownListeners() {
-    const options = transformationDropdownMenu.querySelectorAll('.custom-dropdown-option');
-
-    options.forEach(option => {
-        option.tabIndex = 0;
-
-        option.addEventListener('click', (e) => {
-            e.preventDefault();
-            const value = option.dataset.value;
-            selectTransformation(value);
-            closeTransformationDropdown();
-        });
-
-        option.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                const value = option.dataset.value;
-                selectTransformation(value);
-                closeTransformationDropdown();
-            }
-        });
-    });
-}
-
-/**
- * Update transformation dropdown state - MOVED FROM app.js
- * TODO: Move function implementation from app.js
- */
-function updateTransformationDropdownState(type, text) {
-    const transformationType = document.getElementById('transformationType');
-
-    if (transformationType) transformationType.value = type || '';
-
-    // Update toggle button state
-    if (transformationDropdownBtn) {
-        if (type) {
-            transformationDropdownBtn.setAttribute('data-state', 'on');
-        } else {
-            transformationDropdownBtn.setAttribute('data-state', 'off');
-        }
-    }
-}
 
 /**
  * Render dataset dropdown options
@@ -989,112 +893,266 @@ function renderDatasetDropdown() {
     datasetDropdownMenu.innerHTML = '';
     
     const datasets = window.optionsData?.datasets || [
-        { value: 'anime', display: 'Anime', sub_toggles: [] },
-        { value: 'furry', display: 'Furry', sub_toggles: [] },
-        { value: 'backgrounds', display: 'Backgrounds', sub_toggles: [] }
+        { value: 'anime dataset', display: 'Anime', icon: 'nai-sakura', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
+        { value: 'furry dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
+        { value: 'backgrounds dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
     ];
 
-    datasets.forEach(dataset => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option dataset-dropdown-option';
-        option.dataset.value = dataset.value;
+    // Add quality preset as a special preset type item
+    const qualityPreset = {
+        value: '__quality__',
+        display: 'Quality',
+        icon: 'fa-crown fas',
+        type: 'preset',
+        isQualityPreset: true
+    };
 
-        const isSelected = selectedDatasets.includes(dataset.value);
-        if (isSelected) {
-            option.classList.add('selected');
-        }
+    // Combine quality with datasets
+    const allItems = [qualityPreset, ...datasets];
 
-        const biasValue = datasetBias[dataset.value] || 1.0;
-        const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+    // Group items by type
+    const itemsByType = allItems.reduce((acc, item) => {
+        const type = item.type || 'dataset';
+        if (!acc[type]) acc[type] = [];
+        acc[type].push(item);
+        return acc;
+    }, {});
 
-        option.innerHTML = `
-            <div class="dataset-option-content">
-                <div class="dataset-option-left">
-                    <span class="dataset-name">${dataset.display}</span>
-                </div>
-                <div class="dataset-option-right">
-                    ${isSelected ? `
-                        <div class="dataset-bias-controls">
-                            <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                            <span class="dataset-bias-value" data-dataset="${dataset.value}">${biasDisplay}</span>
-                            <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}">
-                                <i class="fas fa-plus"></i>
-                            </button>
+    // Render items grouped by type with headers
+    const typeOrder = ['dataset', 'preset'];
+    const typeLabels = {
+        'preset': 'Presets',
+        'dataset': 'Datasets'
+    };
+    
+    typeOrder.forEach((type, typeIndex) => {
+        if (!itemsByType[type] || itemsByType[type].length === 0) return;
+
+        // Add section header
+        const sectionHeader = document.createElement('div');
+        sectionHeader.className = 'custom-dropdown-group';
+        sectionHeader.textContent = typeLabels[type] || type.charAt(0).toUpperCase() + type.slice(1);
+        datasetDropdownMenu.appendChild(sectionHeader);
+
+        itemsByType[type].forEach(dataset => {
+            // Special handling for quality preset
+            if (dataset.isQualityPreset) {
+                const qualityToggleOption = document.createElement('div');
+                qualityToggleOption.className = 'custom-dropdown-option dataset-quality-toggle';
+                const isSelected = appendQuality;
+                if (isSelected) {
+                    qualityToggleOption.classList.add('selected');
+                }
+
+                const qualityBiasDisplay = qualityPresetBias !== 1.0 ? qualityPresetBias.toFixed(1) : '1.0';
+
+                qualityToggleOption.innerHTML = `
+                    <div class="dataset-option-content">
+                        <div class="dataset-option-left">
+                            <i class="${dataset.icon}" style="font-size: 14px;"></i>
+                            <span class="dataset-name">${dataset.display}</span>
                         </div>
-                    ` : ''}
+                        <div class="dataset-option-right">
+                            ${isSelected ? `
+                                <div class="dataset-bias-controls">
+                                    <button type="button" class="dataset-bias-decrease" title="Decrease quality bias" data-action="quality-bias-decrease">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                    <span class="dataset-bias-value" data-action="quality-bias">${qualityBiasDisplay}</span>
+                                    <button type="button" class="dataset-bias-increase" title="Increase quality bias" data-action="quality-bias-increase">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+
+                // Add click handler for the main option (toggle selection)
+                const optionLeft = qualityToggleOption.querySelector('.dataset-option-left');
+                optionLeft.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    appendQuality = !appendQuality;
+                    updatePromptStatusIcons();
+                    renderDatasetDropdown();
+                });
+
+                // Add click handlers for quality bias controls (only if selected)
+                if (isSelected) {
+                    const qualityBiasDecrease = qualityToggleOption.querySelector('[data-action="quality-bias-decrease"]');
+                    const qualityBiasIncrease = qualityToggleOption.querySelector('[data-action="quality-bias-increase"]');
+                    const qualityBiasValue = qualityToggleOption.querySelector('[data-action="quality-bias"]');
+
+                    qualityBiasDecrease.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustQualityPresetBias(-0.1);
+                    });
+
+                    qualityBiasIncrease.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustQualityPresetBias(0.1);
+                    });
+
+                    // Add wheel event for quality bias value span
+                    qualityBiasValue.addEventListener('wheel', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                        adjustQualityPresetBias(delta);
+
+                        // Add visual feedback
+                        qualityBiasValue.classList.add('scrolling');
+                        setTimeout(() => {
+                            qualityBiasValue.classList.remove('scrolling');
+                        }, 200);
+                    });
+                }
+
+                datasetDropdownMenu.appendChild(qualityToggleOption);
+                return;
+            }
+
+            // Regular dataset rendering
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option dataset-dropdown-option';
+            option.dataset.value = dataset.value;
+
+            const isSelected = selectedDatasets.includes(dataset.value);
+            if (isSelected) {
+                option.classList.add('selected');
+            }
+
+            const biasValue = datasetBias[dataset.value] !== undefined ? datasetBias[dataset.value] : (dataset.default !== undefined ? dataset.default : 1.0);
+            const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+            
+            // Use icon from config, fallback to default
+            const icon = dataset.icon || 'fa-cube fas';
+
+            option.innerHTML = `
+                <div class="dataset-option-content">
+                    <div class="dataset-option-left">
+                        <i class="${icon}" style="font-size: 14px;"></i>
+                        <span class="dataset-name">${dataset.display}</span>
+                    </div>
+                    <div class="dataset-option-right">
+                        ${isSelected ? `
+                            <div class="dataset-bias-controls">
+                                <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}">
+                                    <i class="fas fa-minus"></i>
+                                </button>
+                                <span class="dataset-bias-value" data-dataset="${dataset.value}">${biasDisplay}</span>
+                                <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
 
-        // Add click handler for the main option (toggle selection)
-        const optionLeft = option.querySelector('.dataset-option-left');
-        optionLeft.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            toggleDataset(dataset.value);
+            // Add click handler for the main option (toggle selection)
+            const optionLeft = option.querySelector('.dataset-option-left');
+            optionLeft.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleDataset(dataset.value, dataset);
+            });
+
+            // Add click handlers for bias controls (only if dataset is selected)
+            if (isSelected) {
+                const decreaseBtn = option.querySelector('.dataset-bias-decrease');
+                const increaseBtn = option.querySelector('.dataset-bias-increase');
+                const biasValueSpan = option.querySelector('.dataset-bias-value');
+
+                decreaseBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    adjustDatasetBias(dataset.value, -0.1, dataset);
+                });
+
+                increaseBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    adjustDatasetBias(dataset.value, 0.1, dataset);
+                });
+
+                // Add wheel event for bias value span
+                biasValueSpan.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                    adjustDatasetBias(dataset.value, delta, dataset);
+                    
+                    // Add visual feedback
+                    biasValueSpan.classList.add('scrolling');
+                    setTimeout(() => {
+                        biasValueSpan.classList.remove('scrolling');
+                    }, 200);
+                });
+
+                // Add click event for bias value span to make it more interactive
+                biasValueSpan.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    // Optional: could add a visual feedback here
+                });
+            }
+
+            datasetDropdownMenu.appendChild(option);
         });
-
-        // Add click handlers for bias controls (only if dataset is selected)
-        if (isSelected) {
-            const decreaseBtn = option.querySelector('.dataset-bias-decrease');
-            const increaseBtn = option.querySelector('.dataset-bias-increase');
-            const biasValueSpan = option.querySelector('.dataset-bias-value');
-
-            decreaseBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                adjustDatasetBias(dataset.value, -0.1);
-            });
-
-            increaseBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                adjustDatasetBias(dataset.value, 0.1);
-            });
-
-            // Add wheel event for bias value span
-            biasValueSpan.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                adjustDatasetBias(dataset.value, delta);
-                
-                // Add visual feedback
-                biasValueSpan.classList.add('scrolling');
-                setTimeout(() => {
-                    biasValueSpan.classList.remove('scrolling');
-                }, 200);
-            });
-
-            // Add click event for bias value span to make it more interactive
-            biasValueSpan.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // Optional: could add a visual feedback here
-            });
-        }
-
-        datasetDropdownMenu.appendChild(option);
     });
 }
 
 /**
  * Toggle dataset selection
  * @param {string} value - Dataset value to toggle ('anime', 'furry', 'backgrounds')
+ * @param {object} datasetConfig - Dataset configuration object with min, max, default values
  * @function
  * @name toggleDataset
  * @description Toggles the selection state of a dataset and updates the UI accordingly
  * @example
- * toggleDataset('furry'); // Toggles furry dataset selection on/off
+ * toggleDataset('furry', datasetConfigObj); // Toggles furry dataset selection on/off
  */
-function toggleDataset(value) {
+function toggleDataset(value, datasetConfig) {
     const index = selectedDatasets.indexOf(value);
     if (index > -1) {
+        // Disabling dataset - clear sub_toggles state
         selectedDatasets.splice(index, 1);
+        
+        // Clear sub_toggles settings for this dataset
+        if (window.datasetSettings && window.datasetSettings[value]) {
+            delete window.datasetSettings[value];
+        }
     } else {
+        // Enabling dataset - add and initialize
         selectedDatasets.push(value);
+        
+        // Initialize bias to default value if not already set
+        if (datasetBias[value] === undefined && datasetConfig && datasetConfig.default !== undefined) {
+            datasetBias[value] = datasetConfig.default;
+        }
+        
+        // Initialize default enabled sub_toggles
+        if (datasetConfig && datasetConfig.sub_toggles && datasetConfig.sub_toggles.length > 0) {
+            if (!window.datasetSettings) window.datasetSettings = {};
+            if (!window.datasetSettings[value]) window.datasetSettings[value] = {};
+            
+            datasetConfig.sub_toggles.forEach(subToggle => {
+                if (subToggle.default_enabled) {
+                    const defaultBias = subToggle.default !== undefined ? subToggle.default : 
+                                      (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+                    
+                    window.datasetSettings[value][subToggle.id] = {
+                        enabled: true,
+                        bias: defaultBias,
+                        value: subToggle.value
+                    };
+                }
+            });
+        }
     }
 
     // Update display
@@ -1184,16 +1242,22 @@ function closeDatasetDropdown() {
  * Adjust dataset bias value
  * @param {string} dataset - Dataset name to adjust bias for
  * @param {number} delta - Amount to adjust bias by (e.g., 0.1, -0.1)
+ * @param {object} datasetConfig - Dataset configuration object with min, max, default values
  * @function
  * @name adjustDatasetBias
- * @description Adjusts the bias value for a selected dataset within valid range (-3 to 5)
+ * @description Adjusts the bias value for a selected dataset within configured range
  * @example
- * adjustDatasetBias('furry', 0.1); // Increases furry dataset bias by 0.1
- * adjustDatasetBias('anime', -0.1); // Decreases anime dataset bias by 0.1
+ * adjustDatasetBias('furry', 0.1, datasetConfigObj); // Increases furry dataset bias by 0.1
+ * adjustDatasetBias('anime', -0.1, datasetConfigObj); // Decreases anime dataset bias by 0.1
  */
-function adjustDatasetBias(dataset, delta) {
-    const currentValue = datasetBias[dataset] || 1.0;
-    const newValue = Math.max(-3, Math.min(5, currentValue + delta));
+function adjustDatasetBias(dataset, delta, datasetConfig) {
+    // Get min/max from config or use defaults
+    const min = datasetConfig?.min !== undefined ? datasetConfig.min : -3;
+    const max = datasetConfig?.max !== undefined ? datasetConfig.max : 5;
+    const defaultValue = datasetConfig?.default !== undefined ? datasetConfig.default : 1.0;
+    
+    const currentValue = datasetBias[dataset] !== undefined ? datasetBias[dataset] : defaultValue;
+    const newValue = Math.max(min, Math.min(max, currentValue + delta));
     datasetBias[dataset] = Math.round(newValue * 10) / 10; // Round to 1 decimal place
     
     // Update the bias value display in the dropdown
@@ -1237,95 +1301,121 @@ function renderSubTogglesDropdown() {
         datasetHeader.textContent = dataset.display;
         datasetGroup.appendChild(datasetHeader);
 
-        dataset.sub_toggles.forEach(subToggle => {
-            const toggleOption = document.createElement('div');
-            toggleOption.className = 'custom-dropdown-option dataset-dropdown-option';
-            toggleOption.dataset.dataset = dataset.value;
-            toggleOption.dataset.toggle = subToggle.id;
+        // Group sub_toggles by type
+        const togglesByType = dataset.sub_toggles.reduce((acc, toggle) => {
+            const type = toggle.type || 'preset';
+            if (!acc[type]) acc[type] = [];
+            acc[type].push(toggle);
+            return acc;
+        }, {});
 
-            // Check if this toggle is enabled
-            const isEnabled = window.datasetSettings && 
-                            window.datasetSettings[dataset.value] && 
-                            window.datasetSettings[dataset.value][subToggle.id] ?
-                            window.datasetSettings[dataset.value][subToggle.id].enabled :
-                            (subToggle.default_enabled || false);
+        // Render sub_toggles grouped by type
+        const typeOrder = ['dataset', 'preset'];
+        typeOrder.forEach((type, typeIndex) => {
+            if (!togglesByType[type] || togglesByType[type].length === 0) return;
 
-            if (isEnabled) {
-                toggleOption.classList.add('selected');
+            // Add section separator if not first section within this dataset
+            if (typeIndex > 0) {
+                const typeDivider = document.createElement('div');
+                typeDivider.className = 'custom-dropdown-separator';
+                datasetGroup.appendChild(typeDivider);
             }
 
-            const biasValue = (window.datasetSettings && 
-                             window.datasetSettings[dataset.value] && 
-                             window.datasetSettings[dataset.value][subToggle.id]) ?
-                             window.datasetSettings[dataset.value][subToggle.id].bias : 
-                             (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+            togglesByType[type].forEach(subToggle => {
+                const toggleOption = document.createElement('div');
+                toggleOption.className = 'custom-dropdown-option dataset-dropdown-option';
+                toggleOption.dataset.dataset = dataset.value;
+                toggleOption.dataset.toggle = subToggle.id;
 
-            const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+                // Check if this toggle is enabled
+                const isEnabled = window.datasetSettings && 
+                                window.datasetSettings[dataset.value] && 
+                                window.datasetSettings[dataset.value][subToggle.id] ?
+                                window.datasetSettings[dataset.value][subToggle.id].enabled :
+                                (subToggle.default_enabled || false);
 
-            toggleOption.innerHTML = `
-                <div class="dataset-option-content">
-                    <div class="dataset-option-left">
-                        <span class="dataset-name">${subToggle.name}</span>
-                        ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+                if (isEnabled) {
+                    toggleOption.classList.add('selected');
+                }
+
+                const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+                const biasValue = (window.datasetSettings && 
+                                 window.datasetSettings[dataset.value] && 
+                                 window.datasetSettings[dataset.value][subToggle.id]) ?
+                                 window.datasetSettings[dataset.value][subToggle.id].bias : 
+                                 defaultBias;
+
+                const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
+
+                // Use icon from config, fallback to default
+                const icon = subToggle.icon || 'fas fa-toggle-on';
+
+                toggleOption.innerHTML = `
+                    <div class="dataset-option-content">
+                        <div class="dataset-option-left">
+                            <i class="${icon}" style="font-size: 14px;"></i>
+                            <span class="dataset-name">${subToggle.name}</span>
+                            ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+                        </div>
+                        <div class="dataset-option-right">
+                            ${isEnabled ? `
+                                <div class="dataset-bias-controls">
+                                    <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                        <i class="fas fa-minus"></i>
+                                    </button>
+                                    <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
+                                    <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
-                    <div class="dataset-option-right">
-                        ${isEnabled ? `
-                            <div class="dataset-bias-controls">
-                                <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                    <i class="fas fa-minus"></i>
-                                </button>
-                                <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
-                                <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                    <i class="fas fa-plus"></i>
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                </div>
-            `;
+                `;
 
-            // Add click handler for the main option (toggle selection)
-            const optionLeft = toggleOption.querySelector('.dataset-option-left');
-            optionLeft.addEventListener('click', (e) => {
-                    e.preventDefault();
-                e.stopPropagation();
-                toggleSubToggle(dataset.value, subToggle.id);
+                // Add click handler for the main option (toggle selection)
+                const optionLeft = toggleOption.querySelector('.dataset-option-left');
+                optionLeft.addEventListener('click', (e) => {
+                        e.preventDefault();
+                    e.stopPropagation();
+                    toggleSubToggle(dataset.value, subToggle.id, subToggle);
+                });
+
+                // Add click handlers for bias controls (only if toggle is enabled)
+                if (isEnabled) {
+                    const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
+                    const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
+                    const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
+
+                    decreaseBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustSubToggleBias(dataset.value, subToggle.id, -0.1, subToggle);
+                    });
+
+                    increaseBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        adjustSubToggleBias(dataset.value, subToggle.id, 0.1, subToggle);
+                    });
+
+                    // Add wheel event for bias value span
+                    biasValueSpan.addEventListener('wheel', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                        adjustSubToggleBias(dataset.value, subToggle.id, delta, subToggle);
+                        
+                        // Add visual feedback
+                        biasValueSpan.classList.add('scrolling');
+                        setTimeout(() => {
+                            biasValueSpan.classList.remove('scrolling');
+                        }, 200);
+                    });
+                }
+
+                datasetGroup.appendChild(toggleOption);
             });
-
-            // Add click handlers for bias controls (only if toggle is enabled)
-            if (isEnabled) {
-                const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
-                const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
-                const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
-
-                decreaseBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    adjustSubToggleBias(dataset.value, subToggle.id, -0.1);
-                });
-
-                increaseBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    adjustSubToggleBias(dataset.value, subToggle.id, 0.1);
-                });
-
-                // Add wheel event for bias value span
-                biasValueSpan.addEventListener('wheel', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                    adjustSubToggleBias(dataset.value, subToggle.id, delta);
-                    
-                    // Add visual feedback
-                    biasValueSpan.classList.add('scrolling');
-                    setTimeout(() => {
-                        biasValueSpan.classList.remove('scrolling');
-                    }, 200);
-                });
-            }
-
-            datasetGroup.appendChild(toggleOption);
         });
 
         subTogglesDropdownMenu.appendChild(datasetGroup);
@@ -1337,19 +1427,23 @@ function renderSubTogglesDropdown() {
  * Toggle sub-toggle selection
  * @param {string} dataset - Dataset name containing the sub-toggle
  * @param {string} subToggleId - Sub-toggle identifier to toggle
+ * @param {object} subToggleConfig - Sub-toggle configuration object with min, max, default values
  * @function
  * @name toggleSubToggle
  * @description Toggles the selection state of a dataset sub-toggle and updates the UI
  * @example
- * toggleSubToggle('furry', 'cute'); // Toggles the 'cute' sub-toggle for furry dataset
+ * toggleSubToggle('furry', 'cute', subToggleConfigObj); // Toggles the 'cute' sub-toggle for furry dataset
  */
-function toggleSubToggle(dataset, subToggleId) {
+function toggleSubToggle(dataset, subToggleId, subToggleConfig) {
     // Initialize window.datasetSettings if needed
                     if (!window.datasetSettings) window.datasetSettings = {};
                     if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
     
-    const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+    const subToggle = subToggleConfig || window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
     if (!subToggle) return;
+
+    // Get default bias value (check 'default' first, then 'default_bias', then fallback to 1.0)
+    const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
 
     // If the setting doesn't exist, create it with the opposite of default_enabled
     // This ensures the first click toggles from the default state to the opposite
@@ -1357,7 +1451,7 @@ function toggleSubToggle(dataset, subToggleId) {
         const newEnabledState = !(subToggle.default_enabled || false);
         window.datasetSettings[dataset][subToggleId] = {
             enabled: newEnabledState,
-            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
+            bias: defaultBias,
                             value: subToggle.value
                         };
     } else {
@@ -1375,29 +1469,36 @@ function toggleSubToggle(dataset, subToggleId) {
  * @param {string} dataset - Dataset name containing the sub-toggle
  * @param {string} subToggleId - Sub-toggle identifier to adjust
  * @param {number} delta - Amount to adjust bias by (e.g., 0.1, -0.1)
+ * @param {object} subToggleConfig - Sub-toggle configuration object with min, max, default values
  * @function
  * @name adjustSubToggleBias
- * @description Adjusts the bias value for a dataset sub-toggle within valid range (-3 to 5)
+ * @description Adjusts the bias value for a dataset sub-toggle within configured range
  * @example
- * adjustSubToggleBias('furry', 'cute', 0.1); // Increases cute sub-toggle bias by 0.1
+ * adjustSubToggleBias('furry', 'cute', 0.1, subToggleConfigObj); // Increases cute sub-toggle bias by 0.1
  */
-function adjustSubToggleBias(dataset, subToggleId, delta) {
+function adjustSubToggleBias(dataset, subToggleId, delta, subToggleConfig) {
                     if (!window.datasetSettings) window.datasetSettings = {};
                     if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
+    
+    const subToggle = subToggleConfig || window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
+    if (!subToggle) return;
+
+    // Get min/max from config or use defaults
+    const min = subToggle?.min !== undefined ? subToggle.min : -3;
+    const max = subToggle?.max !== undefined ? subToggle.max : 5;
+    const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+
     if (!window.datasetSettings[dataset][subToggleId]) {
-        const subToggle = window.optionsData?.datasets?.find(d => d.value === dataset)?.sub_toggles?.find(t => t.id === subToggleId);
-        if (!subToggle) return;
-        
         window.datasetSettings[dataset][subToggleId] = {
             enabled: true, // If user is adjusting bias, they want it enabled
-            bias: subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0,
+            bias: defaultBias,
                             value: subToggle.value
                         };
                     }
 
     const currentBias = window.datasetSettings[dataset][subToggleId].bias;
-    const newBias = Math.max(-3, Math.min(5, currentBias + delta));
-    window.datasetSettings[dataset][subToggleId].bias = newBias;
+    const newBias = Math.max(min, Math.min(max, currentBias + delta));
+    window.datasetSettings[dataset][subToggleId].bias = Math.round(newBias * 10) / 10; // Round to 1 decimal place
 
     renderSubTogglesDropdown();
     updateSubTogglesButtonState();
@@ -1490,20 +1591,24 @@ function closeSubTogglesDropdown() {
 }
 
 /**
- * Toggle quality preset
+ * Adjust quality preset bias
+ * @param {number} delta - The change in bias value
  * @function
- * @name toggleQuality
- * @description Toggles the quality preset on/off and updates the UI state
+ * @name adjustQualityPresetBias
+ * @description Adjusts the quality preset bias value and updates the UI
  * @example
- * toggleQuality(); // Toggles quality preset between on/off states
+ * adjustQualityPresetBias(0.1); // Increases quality bias by 0.1
  */
-function toggleQuality() {
-    const currentState = qualityToggleBtn.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-
-    qualityToggleBtn.setAttribute('data-state', newState);
-    appendQuality = newState === 'on';
-    updatePromptStatusIcons();
+function adjustQualityPresetBias(delta) {
+    qualityPresetBias = Math.max(0.0, Math.min(9.0, qualityPresetBias + delta));
+    qualityPresetBias = Math.round(qualityPresetBias * 10) / 10; // Round to 1 decimal place
+    
+    // Update the display in the dropdown
+    const qualityBiasValue = datasetDropdownMenu.querySelector('[data-action="quality-bias"]');
+    if (qualityBiasValue) {
+        const display = qualityPresetBias !== 1.0 ? qualityPresetBias.toFixed(1) : '1.0';
+        qualityBiasValue.textContent = display;
+    }
 }
 
 /**
@@ -1563,10 +1668,13 @@ function selectUcPreset(value) {
 
     // Update toggle state - on when UC preset > 0
     const ucPresetsBtn = document.querySelector('#manualModal #ucPresetsDropdownBtn');
-    if (ucPresetsBtn) { 
+    if (ucPresetsBtn) {
         ucPresetsBtn.setAttribute('data-state', value > 0 ? 'on' : 'off');
     }
     updatePromptStatusIcons();
+
+    // Update UC textarea placeholder
+    updateUcTextareaPlaceholder();
 }
 
 /**
@@ -1591,6 +1699,493 @@ function openUcPresetsDropdown() {
  */
 function closeUcPresetsDropdown() {
     closeDropdown(ucPresetsDropdownMenu, ucPresetsDropdownBtn);
+}
+
+/**
+ * Setup UC dropdown context menu
+ * @function
+ * @name setupUcDropdownContextMenu
+ * @description Sets up the context menu for the UC dropdown button with options to add preset contents and toggle auto-clean
+ */
+function setupUcDropdownContextMenu() {
+    if (!contextMenu) {
+        console.warn('Context menu system not available');
+        return;
+    }
+
+    const contextMenuConfig = {
+        sections: [
+            {
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fas fa-plus-circle',
+                        text: 'Add Preset Contents',
+                        action: 'addPresetContents',
+                        disabled: false
+                    },
+                    {
+                        icon: 'fas fa-broom',
+                        text: 'Auto Remove Phrases',
+                        action: 'toggleAutoClean',
+                        keepMenuOpen: true,
+                        disabled: false,
+                        loadfn: (item) => {
+                            // Update the icon based on current state
+                            const autoCleanState = ucPresetsDropdownBtn.dataset.autoClean === 'on';
+                            if (autoCleanState) {
+                                item.icon = 'fas fa-check-square';
+                            } else {
+                                item.icon = 'fa-regular fa-square';
+                            }
+                        }
+                    }
+                ]
+            }
+        ]
+    };
+
+    contextMenu.attachToElement(ucPresetsDropdownBtn, contextMenuConfig);
+
+    // Listen for context menu actions
+    document.addEventListener('contextMenuAction', handleUcContextMenuAction);
+}
+
+/**
+ * Handle UC context menu actions
+ * @function
+ * @name handleUcContextMenuAction
+ * @param {CustomEvent} event - Context menu action event
+ */
+function handleUcContextMenuAction(event) {
+    const { action, target } = event.detail;
+    
+    // Only handle actions for UC dropdown button
+    if (target !== ucPresetsDropdownBtn) return;
+
+    switch (action) {
+        case 'addPresetContents':
+            addUcPresetContents();
+            break;
+        case 'toggleAutoClean':
+            toggleAutoCleanUc();
+            break;
+    }
+}
+
+/**
+ * Add UC preset contents to UC input
+ * @function
+ * @name addUcPresetContents
+ * @description Gets the current UC preset value for the selected model and adds it to the start of the UC input
+ */
+function addUcPresetContents() {
+    // Get the current UC preset index
+    const currentPresetIndex = selectedUcPreset;
+    
+    // If no preset selected, show message
+    if (currentPresetIndex === 0) {
+        showGlassToast('info', null, 'No UC preset selected', false, 3000, '<i class="fas fa-info-circle"></i>');
+        return;
+    }
+
+    // Get the current model
+    const currentModel = manualSelectedModel;
+    if (!currentModel) {
+        showGlassToast('error', null, 'No model selected', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get UC presets from optionsData
+    if (!window.optionsData || !window.optionsData.uc_presets) {
+        showGlassToast('error', null, 'UC presets not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Map model value to key used in uc_presets
+    const modelKey = currentModel.toLowerCase();
+    const ucPresets = window.optionsData.uc_presets[modelKey];
+
+    if (!ucPresets || !Array.isArray(ucPresets)) {
+        showGlassToast('error', null, `No UC presets found for model ${currentModel}`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get the preset value (index is 1-based, array is 0-based)
+    const presetValue = ucPresets[currentPresetIndex - 1];
+    
+    if (!presetValue) {
+        showGlassToast('error', null, `UC preset ${currentPresetIndex} not found`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get the UC input element
+    const ucInput = document.getElementById('manualUc');
+    if (!ucInput) {
+        showGlassToast('error', null, 'UC input not found', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get current UC value
+    const currentUc = ucInput.value.trim();
+
+    // Add preset value to start of UC with ", " separator if there's existing content
+    const newUc = currentUc ? `${presetValue}, ${currentUc}` : presetValue;
+    ucInput.value = newUc;
+
+    // Trigger input event to update token count, auto-resize, and other updates
+    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+    ucInput.dispatchEvent(inputEvent);
+
+    // Update emphasis highlighting and apply formatted text
+    if (typeof updateEmphasisHighlighting === 'function') {
+        updateEmphasisHighlighting(ucInput);
+    }
+    if (typeof applyFormattedText === 'function') {
+        applyFormattedText(ucInput, true);
+    }
+    if (typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(ucInput);
+    }
+
+    // Reset to no preset
+    selectUcPreset(0);
+    renderUcPresetsDropdown();
+
+    // Update prompt status icons
+    if (typeof updatePromptStatusIcons === 'function') {
+        updatePromptStatusIcons();
+    }
+
+    // Show success message
+    const presetNames = ['None', 'Human Focus', 'Light', 'Heavy', 'Curated'];
+    showGlassToast('success', null, `Added ${presetNames[currentPresetIndex]} preset to UC`, false, 2000, '<i class="fas fa-check"></i>');
+}
+
+/**
+ * Update UC textarea placeholder based on selected UC preset
+ * @function
+ * @name updateUcTextareaPlaceholder
+ * @description Updates the placeholder text of the UC textarea to show the selected preset content or default text
+ */
+function updateUcTextareaPlaceholder() {
+    const ucInput = document.getElementById('manualUc');
+    if (!ucInput) {
+        return;
+    }
+
+    // If no UC preset selected (None), use default placeholder
+    if (selectedUcPreset === 0) {
+        ucInput.placeholder = 'Enter undesired content...';
+        return;
+    }
+
+    // Get the current model
+    const currentModel = manualSelectedModel;
+    if (!currentModel) {
+        ucInput.placeholder = 'Enter undesired content...';
+        return;
+    }
+
+    // Check if UC presets data is available
+    if (!window.optionsData || !window.optionsData.uc_presets) {
+        ucInput.placeholder = 'Enter undesired content...';
+        return;
+    }
+
+    // Map model value to key used in uc_presets
+    const modelKey = currentModel.toLowerCase();
+    const ucPresets = window.optionsData.uc_presets[modelKey];
+
+    if (!ucPresets || !Array.isArray(ucPresets)) {
+        ucInput.placeholder = 'Enter undesired content...';
+        return;
+    }
+
+    // Get the preset value (index is 1-based, array is 0-based)
+    const presetValue = ucPresets[selectedUcPreset - 1];
+
+    if (!presetValue) {
+        ucInput.placeholder = 'Enter undesired content...';
+        return;
+    }
+
+    // Set the placeholder to the preset content
+    ucInput.placeholder = presetValue;
+}
+
+/**
+ * Toggle auto-clean UC state
+ * @function
+ * @name toggleAutoCleanUc
+ * @description Toggles the auto-clean UC state which removes UC phrases that appear in the prompt
+ */
+function toggleAutoCleanUc() {
+    const currentState = ucPresetsDropdownBtn.dataset.autoClean === 'on';
+    const newState = currentState ? 'off' : 'on';
+    ucPresetsDropdownBtn.dataset.autoClean = newState;
+    
+    // Show toast with current state
+    const stateText = newState === 'on' ? 'Auto Remove Phrases from UC: when present in Prompt' : 'Auto Remove Phrases from UC: Disabled';
+    const icon = newState === 'on' ? '<i class="fas fa-check"></i>' : '<i class="fas fa-times"></i>';
+    showGlassToast('info', null, stateText, false, 2000, icon);
+}
+
+/**
+ * Apply bias to text with inner numeric emphasis
+ * @param {string} input - The text to apply bias to
+ * @param {number} bias - The bias value to apply
+ * @returns {string} The text with bias applied to inner emphasis and wrapped with main bias
+ */
+function applyBiasToText(input, bias) {
+    if (bias === 1.0 || bias === undefined) {
+        return input;
+    }
+
+    // Preprocessing: Ensure input has proper terminator if it doesn't end with "::" not preceded by a number
+    if (!input.match(/\d::$/)) {
+        input = input + '::';
+    }
+
+    // Calculate the bias adjustment (difference from 1.0)
+    const biasAdjustment = bias - 1.0;
+
+    // First, scan for numeric emphasis patterns in the input and adjust them
+    // Handle both single : and double :: terminators
+    // Content stops at commas, spaces, or other punctuation to avoid matching across multiple emphasis blocks
+    let result = input.replace(/(-?\d*\.?\d+)::([^\s:,;]+)(:*)/g, (match, innerBias, content, terminator) => {
+        const innerBiasValue = parseFloat(innerBias);
+        let newInnerBias;
+
+        // For negative inner biases, make them more negative (subtract the adjustment)
+        // For positive inner biases, add the adjustment
+        if (innerBiasValue < 0) {
+            newInnerBias = innerBiasValue - Math.abs(biasAdjustment);
+        } else {
+            newInnerBias = innerBiasValue + biasAdjustment;
+        }
+
+        newInnerBias = Math.round(newInnerBias * 10) / 10; // Round to 1 decimal place
+        // Only add terminator if the original had one
+        const terminatorPart = terminator ? ` ${bias}::` : '';
+        return `${newInnerBias}::${content}${terminatorPart}`;
+    });
+
+    // Clean up malformed emphasis patterns (number:: with no content)
+    result = result.replace(/\d+(?:\.\d+)?::(?:\s|$)/g, '');
+
+    // Wrap the entire result with the main bias
+    // If result already ends with "::", don't add another "::" to avoid double termination
+    const trailingTerminator = result.endsWith('::') ? '' : '::';
+    return `${bias}::${result}${trailingTerminator}`;
+}
+
+/**
+ * Setup dataset dropdown context menu
+ * @function
+ * @name setupDatasetDropdownContextMenu
+ * @description Sets up the context menu for the dataset dropdown button with options to add quality preset contents and reset datasets
+ */
+function setupDatasetDropdownContextMenu() {
+    if (!contextMenu) {
+        console.warn('Context menu system not available');
+        return;
+    }
+
+    const contextMenuConfig = {
+        sections: [
+            {
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fas fa-plus-circle',
+                        text: 'Add Preset Contents',
+                        action: 'addQualityPresetContents',
+                        disabled: false,
+                        loadfn: (item) => {
+                            // Disable if quality preset is off
+                            item.disabled = !appendQuality;
+                        }
+                    },
+                    {
+                        icon: 'fas fa-undo',
+                        text: 'Reset',
+                        action: 'resetDatasets',
+                        disabled: false
+                    }
+                ]
+            }
+        ]
+    };
+
+    contextMenu.attachToElement(datasetDropdownBtn, contextMenuConfig);
+
+    // Listen for context menu actions
+    document.addEventListener('contextMenuAction', handleDatasetContextMenuAction);
+}
+
+/**
+ * Handle dataset context menu actions
+ * @function
+ * @name handleDatasetContextMenuAction
+ * @param {CustomEvent} event - Context menu action event
+ */
+function handleDatasetContextMenuAction(event) {
+    const { action, target } = event.detail;
+    
+    // Only handle actions for dataset dropdown button
+    if (target !== datasetDropdownBtn) return;
+
+    switch (action) {
+        case 'addQualityPresetContents':
+            addQualityPresetContents();
+            break;
+        case 'resetDatasets':
+            resetDatasets();
+            break;
+    }
+}
+
+/**
+ * Add quality preset contents to prompt with emphasis bias
+ * @function
+ * @name addQualityPresetContents
+ * @description Gets the current quality preset value for the selected model and adds it to the start of the prompt with emphasis bias
+ */
+function addQualityPresetContents() {
+    // Check if quality preset is enabled
+    if (!appendQuality) {
+        showGlassToast('info', null, 'Quality preset is disabled', false, 3000, '<i class="fas fa-info-circle"></i>');
+        return;
+    }
+
+    // Get the current model
+    const currentModel = manualSelectedModel;
+    if (!currentModel) {
+        showGlassToast('error', null, 'No model selected', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get quality presets from optionsData
+    if (!window.optionsData || !window.optionsData.quality_presets) {
+        showGlassToast('error', null, 'Quality presets not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Map model value to key used in quality_presets
+    const modelKey = currentModel.toLowerCase();
+    const qualityPresets = window.optionsData.quality_presets[modelKey];
+
+    if (!qualityPresets || (!Array.isArray(qualityPresets) && typeof qualityPresets !== 'string')) {
+        showGlassToast('error', null, `No quality presets found for model ${currentModel}`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get the prompt input element
+    const promptInput = document.getElementById('manualPrompt');
+    if (!promptInput) {
+        showGlassToast('error', null, 'Prompt input not found', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Get current prompt value
+    const currentPrompt = promptInput.value.trim();
+    
+    // Build quality text with emphasis based on bias
+    let qualityText = '';
+    if (Array.isArray(qualityPresets)) {
+        // If array, get the first item (or flatten if needed)
+        const firstPreset = qualityPresets[0];
+        if (typeof firstPreset === 'string') {
+            qualityText = firstPreset;
+        } else if (firstPreset && firstPreset.value) {
+            qualityText = firstPreset.value;
+        } else {
+            qualityText = firstPreset;
+        }
+    } else {
+        qualityText = qualityPresets;
+    }
+
+    // Apply bias processing if not 1.0
+    if (qualityPresetBias !== 1.0) {
+        qualityText = applyBiasToText(qualityText, qualityPresetBias);
+    }
+
+    // Add quality text to start of prompt with ", " separator if there's existing content
+    const newPrompt = currentPrompt ? `${currentPrompt}, ${qualityText}` : qualityText;
+    promptInput.value = newPrompt;
+
+    // Trigger input event to update token count, auto-resize, and other updates
+    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+    promptInput.dispatchEvent(inputEvent);
+
+    // Update emphasis highlighting and apply formatted text
+    if (typeof updateEmphasisHighlighting === 'function') {
+        updateEmphasisHighlighting(promptInput);
+    }
+    if (typeof applyFormattedText === 'function') {
+        applyFormattedText(promptInput, true);
+    }
+    if (typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(promptInput);
+    }
+
+    // Disable quality preset
+    appendQuality = false;
+
+    // Re-render dropdown to update quality preset state
+    renderDatasetDropdown();
+    
+    // Update prompt status icons
+    if (typeof updatePromptStatusIcons === 'function') {
+        updatePromptStatusIcons();
+    }
+
+    // Show success message
+    const biasText = qualityPresetBias !== 1.0 ? ` with ${qualityPresetBias}x emphasis` : '';
+    showGlassToast('success', null, `Added quality preset to prompt${biasText}`, false, 2000, '<i class="fas fa-check"></i>');
+}
+
+/**
+ * Reset datasets and quality preset
+ * @function
+ * @name resetDatasets
+ * @description Disables all datasets, resets quality preset bias to 1.0, and enables quality preset
+ */
+function resetDatasets() {
+    // Disable all datasets
+    selectedDatasets = [];
+    
+    // Reset quality preset bias to 1.0
+    qualityPresetBias = 1.0;
+    
+    // Disable sub toggles
+    if (window.datasetSettings) {
+        Object.keys(window.datasetSettings).forEach(dataset => {
+            Object.keys(window.datasetSettings[dataset]).forEach(toggleId => {
+                if (window.datasetSettings[dataset][toggleId]) {
+                    window.datasetSettings[dataset][toggleId].enabled = false;
+                }
+            });
+        });
+    }
+    
+    // Enable quality preset
+    appendQuality = true;
+
+    // Update displays
+    updateDatasetDisplay();
+    renderDatasetDropdown();
+    updateSubTogglesButtonState();
+    
+    // Update prompt status icons
+    if (typeof updatePromptStatusIcons === 'function') {
+        updatePromptStatusIcons();
+    }
+    
+    // Show success message
+    showGlassToast('success', null, 'Datasets reset, quality preset enabled', false, 2000, '<i class="fas fa-check"></i>');
 }
 
 /**
@@ -1805,14 +2400,14 @@ function closeNsfwDropdown() {
 
 /**
  * Process resolution value - MOVED FROM app.js
- * @param {string} resolutionValue - Resolution value to process (may include 'custom_' prefix)
+ * @param {string} resolutionValue - Resolution value to process
  * @returns {Object} Object with width, height, and isCustom properties
  * @function
  * @name processResolutionValue
  * @description Processes a resolution value, handling both standard and custom resolution formats
  * @example
- * const result = processResolutionValue('custom_1024x768');
- * // Returns: { width: 1024, height: 768, isCustom: true }
+ * const result = processResolutionValue('custom');
+ * // Returns: { width: 1024, height: 1024, isCustom: true } (from input fields)
  */
 function processResolutionValue(resolutionValue) {
     // Check if this is a custom resolution
@@ -1825,7 +2420,78 @@ function processResolutionValue(resolutionValue) {
 }
 
 /**
- * Sanitize custom dimensions - MOVED FROM app.js
+ * Check if both dimension fields have been blurred and sanitize if ready
+ * @function
+ * @name checkAndSanitizeCustomDimensions
+ * @description Only sanitizes when both width and height have been filled and blurred
+ * @example
+ * checkAndSanitizeCustomDimensions(); // Checks blur state and sanitizes if ready
+ */
+function checkAndSanitizeCustomDimensions() {
+    // Only sanitize if both fields have been blurred
+    if (!widthBlurred || !heightBlurred || manualModal.classList.contains('initializing')) {
+        return;
+    }
+    
+    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+        const rawW = manualWidth.value;
+        const rawH = manualHeight.value;
+    
+        // Only sanitize if both inputs have values
+        if (rawW && rawH) {
+            // Enforce step 64 explicitly
+            const result = correctDimensions(rawW, rawH, {
+                step: 64,
+                maxArea: currentMaxArea
+            });
+    
+            // Update the input values with sanitized values
+            manualWidth.value = result.width;
+            manualHeight.value = result.height;
+    
+            // Show feedback if a dimension was adjusted
+            if (result.changed) {
+                let message = '';
+    
+                if (result.reason === 'max_area') {
+                    message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Area Limit)`;
+                } else if (result.reason === 'min_limit') {
+                    message = `${result.changed.toLocaleUpperCase()} was increased to ${result.changed === 'width' ? result.width : result.height} (Minimum Value)`;
+                } else if (result.reason === 'max_limit') {
+                    message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Value)`;
+                } else if (result.reason === 'step_snap') {
+                    message = `${result.changed.toLocaleUpperCase()} was snapped to ${result.changed === 'width' ? result.width : result.height} (64px Step)`;
+                } else if (result.reason === 'clamped_and_snapped') {
+                    message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height} (Limits and 64px Step)`;
+                } else {
+                    message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height}`;
+                }
+                showGlassToast('warning', null, message);
+            }
+    
+            // Directly update hidden resolution value to avoid double sanitization
+            const manualResolutionHidden = document.getElementById('manualResolution');
+            if (manualResolutionHidden) {
+                manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+            }
+            
+            // Use debounced cropping for custom dimension changes to prevent excessive CPU usage
+            if (typeof debouncedCropImageToResolution === 'function') {
+                debouncedCropImageToResolution();
+            }
+            
+            // Reset blur flags
+            widthBlurred = false;
+            heightBlurred = false;
+
+            // Update pipeline stages to reflect new custom dimensions
+            updatePipelineStages(); // Start from manual`
+        }
+    }
+}
+
+/**
+ * Sanitize custom dimensions - MOVED FROM app.js (Legacy function - now calls checkAndSanitizeCustomDimensions)
  * @function
  * @name sanitizeCustomDimensions
  * @description Sanitizes and corrects custom width/height dimensions within valid ranges
@@ -1833,59 +2499,17 @@ function processResolutionValue(resolutionValue) {
  * sanitizeCustomDimensions(); // Sanitizes current custom dimensions in input fields
  */
 function sanitizeCustomDimensions() {
-    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
-      const rawW = manualWidth.value;
-      const rawH = manualHeight.value;
-  
-      // Only sanitize if both inputs have values
-      if (rawW && rawH) {
-        // Get step value from the manual steps input
-        //const step = parseInt(manualSteps.value) || 1;
-  
-        const result = correctDimensions(rawW, rawH, {
-          //step: step
-        });
-  
-        // Update the input values with sanitized values
-        manualWidth.value = result.width;
-        manualHeight.value = result.height;
-  
-        // Show feedback if a dimension was adjusted
-        if (result.changed) {
-          let message = '';
-  
-          if (result.reason === 'max_area') {
-            message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Area Limit)`;
-          } else if (result.reason === 'min_limit') {
-            message = `${result.changed.toLocaleUpperCase()} was increased to ${result.changed === 'width' ? result.width : result.height} (Minimum Value)`;
-          } else if (result.reason === 'max_limit') {
-            message = `${result.changed.toLocaleUpperCase()} was reduced to ${result.changed === 'width' ? result.width : result.height} (Maximum Value)`;
-          } else if (result.reason === 'step_snap') {
-            message = `${result.changed.toLocaleUpperCase()} was snapped to ${result.changed === 'width' ? result.width : result.height} (Step Clamp)`;
-          } else if (result.reason === 'clamped_and_snapped') {
-            message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height} (Limits and Step Clamp)`;
-          } else {
-            message = `${result.changed.toLocaleUpperCase()} was clamped to ${result.changed === 'width' ? result.width : result.height}`;
-          }
-          showGlassToast('warning', null, message);
-        }
-  
-        // Update the hidden resolution value
-        updateCustomResolutionValue();
-        
-        // Use debounced cropping for custom dimension changes to prevent excessive CPU usage
-        if (typeof debouncedCropImageToResolution === 'function') {
-          debouncedCropImageToResolution();
-        }
-      }
-    }
+    // Mark both as blurred and sanitize immediately (for programmatic calls)
+    widthBlurred = true;
+    heightBlurred = true;
+    checkAndSanitizeCustomDimensions();
 }
 
 /**
  * Update custom resolution value - MOVED FROM app.js
  * @function
  * @name updateCustomResolutionValue
- * @description Updates the hidden resolution field with sanitized custom dimensions
+ * @description Updates the hidden resolution field with current input dimensions (no sanitization)
  * @example
  * await updateCustomResolutionValue(); // Updates hidden field with current custom dimensions
  */
@@ -1896,17 +2520,14 @@ async function updateCustomResolutionValue() {
 
         // Only update if both inputs have values
         if (rawW && rawH) {
-            // Get step value from the manual steps input
-            const step = parseInt(manualSteps.value) || 1;
+            const width = parseInt(rawW) || 1024;
+            const height = parseInt(rawH) || 1024;
 
-            const result = correctDimensions(rawW, rawH, {
-                step: step
-            });
+            // Store dimensions in the hidden field WITHOUT sanitization
+            // Sanitization only happens on blur via checkAndSanitizeCustomDimensions
+            manualResolutionHidden.value = `custom_${width}x${height}`;
 
-            // Store sanitized custom dimensions in the hidden field as a special format
-            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
-
-            // --- ADDED: Refresh preview image if in bias mode ---
+            // Refresh preview image if in bias mode
             if (window.uploadedImageData && window.uploadedImageData.isBiasMode) {
                 // Reset bias to center (2) when resolution changes
                 const resetBias = 2;
@@ -1927,16 +2548,102 @@ async function updateCustomResolutionValue() {
 }
 
 /**
- * Update transformation dropdown for vibes
+ * Toggle resolution area limit cycling through Normal (1MP), Large (2MP), and Max (3MP)
+ * @function
+ * @name toggleResolutionAreaLimit
+ * @description Cycles between 1,048,576 (Normal), 2,166,784 (Large), and 3,047,424 (Max) area limits and recalculates dimensions proportionally
+ * @example
+ * toggleResolutionAreaLimit(); // Cycles through area limits: Normal → Large → Max → Normal
+ */
+function toggleResolutionAreaLimit() {
+    const toggleBtn = document.getElementById('resolutionAreaToggle');
+    if (!toggleBtn) return;
+    
+    // Only recalculate if custom resolution is selected and has valid dimensions
+    if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
+        const currentWidth = parseInt(manualWidth.value) || 1024;
+        const currentHeight = parseInt(manualHeight.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
+        const aspectRatio = currentWidth / currentHeight;
+        
+        let newMaxArea;
+        let newAreaName;
+        
+        // Toggle between Normal (1MP) → Large (2MP) → Max (3MP)
+        if (currentMaxArea === 1048576) {
+            newMaxArea = 2166784; // Large (2MP)
+            newAreaName = 'Large';
+        } else if (currentMaxArea === 2166784) {
+            newMaxArea = 3047424; // Max (3MP)
+            newAreaName = 'Max';
+        } else {
+            newMaxArea = 1048576; // Normal (1MP)
+            newAreaName = 'Normal';
+        }
+        
+        // Calculate new dimensions proportionally based on area ratio
+        const areaRatio = Math.sqrt(newMaxArea / currentArea);
+        let newWidth = Math.round(currentWidth * areaRatio);
+        let newHeight = Math.round(currentHeight * areaRatio);
+        
+        // Apply step 64 snapping and area constraints
+        const result = correctDimensions(newWidth, newHeight, {
+            step: 64,
+            maxArea: newMaxArea
+        });
+        
+        // Update the max area AFTER calculation but BEFORE updating inputs
+        currentMaxArea = newMaxArea;
+        toggleBtn.textContent = newAreaName;
+        
+        // Update inputs without triggering input events
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
+        
+        // Directly update hidden resolution value
+        const manualResolutionHidden = document.getElementById('manualResolution');
+        if (manualResolutionHidden) {
+            manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
+        }
+        
+        // Update price display
+        updateManualPriceDisplay();
+        
+        // Use debounced cropping for custom dimension changes
+        if (typeof debouncedCropImageToResolution === 'function') {
+            debouncedCropImageToResolution();
+        }
+        
+        // Show feedback about the change
+        showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
+
+        // Update pipeline stages to reflect new custom dimensions
+        updatePipelineStages();
+    } else {
+        // No custom resolution selected, just toggle the limit
+        if (currentMaxArea === 1048576) {
+            currentMaxArea = 2166784; // Large (2MP)
+            toggleBtn.textContent = 'Large';
+        } else if (currentMaxArea === 2166784) {
+            currentMaxArea = 3047424; // Max (3MP)
+            toggleBtn.textContent = 'Max';
+        } else {
+            currentMaxArea = 1048576; // Normal (1MP)
+            toggleBtn.textContent = 'Normal';
+        }
+    }
+}
+
+/**
+ * Update add item dropdown for vibes
  * @function
  * @name updateTransformationDropdownForVibes
- * @description Updates the transformation dropdown button state based on available vibe references
+ * @description Updates the add item dropdown button state based on available vibe references
  * @example
  * updateTransformationDropdownForVibes(); // Updates button state based on current vibe references
  */
 function updateTransformationDropdownForVibes() {
-    const transformationDropdownBtn = document.getElementById('transformationDropdownBtn');
-    if (!transformationDropdownBtn) return;
+    if (!addItemDropdownBtn) return;
 
     const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
     if (!vibeReferencesContainer) return;
@@ -1945,9 +2652,9 @@ function updateTransformationDropdownForVibes() {
 
     // Add active class if there are vibes present, remove it if there are none
     if (vibeItems.length > 0) {
-        transformationDropdownBtn.classList.add('active');
+        addItemDropdownBtn.classList.add('active');
     } else {
-        transformationDropdownBtn.classList.remove('active');
+        addItemDropdownBtn.classList.remove('active');
     }
 }
 
@@ -1963,9 +2670,6 @@ function updateTransformationDropdownForVibes() {
  * openReferenceBrowserWithFilter('character'); // Opens browser showing only character references
  */
 function openReferenceBrowserWithFilter(filterMode) {
-    // Close the transformation dropdown
-    closeTransformationDropdown();
-
     // Open the reference browser with the specified filter
     if (typeof showCacheBrowserWithFilter === 'function') {
         showCacheBrowserWithFilter(filterMode);

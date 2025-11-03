@@ -530,15 +530,21 @@ function handleSearchResultsUpdate(message) {
     }
     
     // Special handling for spellcheck service
-    if (message.service === 'spellcheck' && results.length > 0) {
-        const spellCheckResult = results[0];
-        if (spellCheckResult.data && spellCheckResult.data.hasErrors && 
-            spellCheckResult.data.misspelled && spellCheckResult.data.misspelled.length > 0) {
-            // Has spelling errors
-            searchServices.set('spellcheck', 'completed');
+    if (message.service === 'spellcheck') {
+        if (results.length > 0) {
+            const spellCheckResult = results[0];
+            if (spellCheckResult.data && spellCheckResult.data.hasErrors && 
+                spellCheckResult.data.misspelled && spellCheckResult.data.misspelled.length > 0) {
+                // Has spelling errors
+                searchServices.set('spellcheck', 'completed');
+            } else {
+                // No spelling errors found - clear persistent spell check data to prevent showing stale suggestions
+                searchServices.set('spellcheck', 'completed-noerrors');
+                persistentSpellCheckData = null;
+            }
         } else {
-            // No spelling errors found
-            searchServices.set('spellcheck', 'completed-noerrors');
+            // No spell check results returned - clear persistent data
+            persistentSpellCheckData = null;
         }
     }
     
@@ -654,6 +660,9 @@ async function rebuildAndDisplayResults() {
     const allTextReplacements = getAllTextReplacementResults();
     const enhancedTextReplacements = await enhanceTextReplacementResults(allTextReplacements, lastSearchQuery);
 
+    // Get dynamic generation placeholder results
+    const dynamicGenerationPlaceholders = getDynamicGenerationPlaceholderResults(lastSearchQuery);
+
     // Get the best text replacement match for the current query
     const bestTextReplacement = getBestTextReplacementMatch(enhancedTextReplacements, lastSearchQuery);
 
@@ -696,6 +705,11 @@ async function rebuildAndDisplayResults() {
 
         topResults.push(...topTextReplacements.map(result => ({...result, _isTopTier: true})));
         bottomResults.push(...bottomTextReplacements.map(result => ({...result, _isTopTier: false})));
+
+    // Add dynamic generation placeholders to top results
+    if (dynamicGenerationPlaceholders.length > 0) {
+        topResults.push(...dynamicGenerationPlaceholders.map(result => ({...result, _isTopTier: true})));
+    }
     }
 
     // Add all tag results (no limit) - these are always in bottom tier
@@ -1002,7 +1016,7 @@ function getServiceIconClass(serviceName, status) {
         case 'cached_tags':
             return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-tag';
         case 'textReplacements':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-language';
+            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-book-font';
         case 'spellcheck':
             return ((status === 'searching' || status === 'stalled' || status === 'completed-noerrors') ? 'fa-light' : 'fas') + ' fa-spell-check';
         case 'cached':
@@ -1160,7 +1174,7 @@ function handleCharacterAutocompleteInput(e) {
                     } else {
                         hideCharacterAutocomplete();
                     }
-                }, 50);
+                }, 1000); // 1 second debounce for search requests
                 
                 return;
             } else {
@@ -1184,7 +1198,7 @@ function handleCharacterAutocompleteInput(e) {
             } else {
                 hideCharacterAutocomplete();
             }
-        }, 200); // Optimized for better responsiveness while reducing server load
+        }, 1000); // 1 second debounce for search requests
         
         return;
     }
@@ -1233,7 +1247,7 @@ function handleCharacterAutocompleteInput(e) {
                 } else {
                     hideCharacterAutocomplete();
                 }
-            }, 50);
+            }, 1000); // 1 second debounce for search requests
             
             return;
         } else {
@@ -1257,7 +1271,7 @@ function handleCharacterAutocompleteInput(e) {
         } else {
             hideCharacterAutocomplete();
         }
-    }, 200); // Optimized for better responsiveness while reducing server load
+    }, 1000); // 1 second debounce for search requests
     
 }
 
@@ -1272,19 +1286,17 @@ function handleCharacterAutocompleteKeydown(e) {
             // Check if there's selected text and apply emphasis directly (only when NOT in emphasis mode)
             if (e.target && e.target.selectionStart !== e.target.selectionEnd && !window.emphasisEditingActive) {
                 // Text is selected and NOT in emphasis mode, apply emphasis directly
-                if (window.applyEmphasisDirectly) {
-                    // Use current emphasis mode (normal, brace, or group)
-                    const currentMode = window.emphasisEditingMode || 'normal';
-                    const success = window.applyEmphasisDirectly(e.target, integerValue, currentMode);
-                    if (success) {
-                        // Update the emphasis value for future use
-                        window.emphasisEditingValue = parseFloat(integerValue.toString());
-                        // Update selection highlight to show the new emphasis value
-                        if (window.emphasisEditingTarget && window.emphasisEditingSelection) {
-                            window.addEmphasisSelectionHighlight(window.emphasisEditingTarget, window.emphasisEditingSelection);
-                        }
-                        return;
+                // Use current emphasis mode (normal, brace, or group)
+                const currentMode = window.emphasisEditingMode || 'normal';
+                const success = applyEmphasisDirectly(e.target, integerValue, currentMode);
+                if (success) {
+                    // Update the emphasis value for future use
+                    window.emphasisEditingValue = parseFloat(integerValue.toString());
+                    // Update selection highlight to show the new emphasis value
+                    if (window.emphasisEditingTarget && window.emphasisEditingSelection) {
+                        window.addEmphasisSelectionHighlight(window.emphasisEditingTarget, window.emphasisEditingSelection);
                     }
+                    return;
                 }
             }
             
@@ -1694,6 +1706,8 @@ function handleCharacterAutocompleteKeydown(e) {
                                 selectTag(firstItem.dataset.tagName);
                             } else if (type === 'textReplacement') {
                                 selectTextReplacement(firstItem.dataset.placeholder);
+                            } else if (type === 'dynamicPlaceholder') {
+                                selectDynamicPlaceholder(firstItem.dataset.placeholder);
                             } else {
                                 console.error('Unknown item type:', type);
                             }
@@ -1733,6 +1747,8 @@ function handleCharacterAutocompleteKeydown(e) {
                         selectTag(selectedItem.dataset.tagName);
                         } else if (type === 'textReplacement') {
                             selectTextReplacement(selectedItem.dataset.placeholder);
+                        } else if (type === 'dynamicPlaceholder') {
+                            selectDynamicPlaceholder(selectedItem.dataset.placeholder);
                         }
                     }
                 }
@@ -2103,6 +2119,27 @@ function createAutocompleteItem(result) {
         item.addEventListener('click', (e) => {
             e.preventDefault();
             selectTextReplacement(result.placeholder);
+        });
+    } else if (result.type === 'dynamicPlaceholder') {
+        // Handle dynamic generation placeholder results
+        item.dataset.type = 'dynamicPlaceholder';
+        item.dataset.placeholder = result.placeholder;
+
+        item.innerHTML = `
+            <div class="character-info-row">
+                <span class="character-name">${result.displayName}</span>
+                <span class="character-copyright">Dynamic</span>
+            </div>
+            <div class="character-info-row">
+                <div class="placeholder-desc">
+                    <span class="placeholder-desc-text">${result.description}</span>
+                </div>
+            </div>
+        `;
+
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            selectDynamicPlaceholder(result.placeholder);
         });
     } else if (result.type === 'tag') {
         // Handle tag results
@@ -2530,6 +2567,13 @@ function storeCurrentSelection() {
                     originalIndex: originalIndex
                 };
                 lastSelectedItemType = 'textReplacement';
+            } else if (type === 'dynamicPlaceholder') {
+                lastSelectedItemData = {
+                    type: 'dynamicPlaceholder',
+                    placeholder: selectedItem.dataset.placeholder,
+                    originalIndex: originalIndex
+                };
+                lastSelectedItemType = 'dynamicPlaceholder';
             }
         }
     }
@@ -2564,6 +2608,8 @@ function restoreSelection(displayResults) {
                 } else if (type === 'character' && lastSelectedItemData.name === JSON.parse(item.dataset.characterData).name) {
                     matches = true;
                 } else if (type === 'textReplacement' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
+                    matches = true;
+                } else if (type === 'dynamicPlaceholder' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
                     matches = true;
                 }
             } catch (e) {
@@ -2910,13 +2956,83 @@ function applySpellCorrection(target, originalWord, suggestion) {
             // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
             hideCharacterAutocomplete();
         } else {
-            // If all else fails, show an error message
-            console.error(`Could not find word "${originalWord}" to replace`);
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('error', null, `Could not find "${originalWord}" to replace`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            // Ultra-final fallback: try fuzzy matching with similar words near cursor
+            // This handles cases where the word was partially corrected or changed
+            const wordsNearCursor = currentValue.match(/\b\w+\b/g) || [];
+            let bestMatch = null;
+            let bestDistance = Infinity;
+            let bestPosition = -1;
+            
+            // Calculate Levenshtein distance for words near cursor
+            for (let i = 0; i < wordsNearCursor.length; i++) {
+                const word = wordsNearCursor[i];
+                const distance = levenshteinDistance(word.toLowerCase(), originalWord.toLowerCase());
+                
+                // Find position of this word in text
+                const wordPos = currentValue.indexOf(word, bestPosition + 1);
+                const distanceFromCursor = Math.abs(wordPos - cursorPos);
+                
+                // Prefer words close to cursor with low edit distance
+                // Only consider words with edit distance <= 2 and within reasonable distance
+                if (distance <= 2 && distance < bestDistance && distanceFromCursor < 50) {
+                    bestMatch = word;
+                    bestDistance = distance;
+                    bestPosition = wordPos;
+                }
+            }
+            
+            if (bestMatch && bestPosition !== -1) {
+                // Found a similar word, replace it
+                const beforeWord = currentValue.substring(0, bestPosition);
+                const afterWord = currentValue.substring(bestPosition + bestMatch.length);
+                const newValue = beforeWord + suggestion + afterWord;
+                
+                const lengthDifference = suggestion.length - bestMatch.length;
+                target.value = newValue;
+                
+                const newCursorPos = originalCursorPos + lengthDifference;
+                setTimeout(() => {
+                    target.setSelectionRange(newCursorPos, newCursorPos);
+                    target.focus();
+                }, 0);
+                
+                const event = new Event('input', { bubbles: true });
+                target.dispatchEvent(event);
+                hideCharacterAutocomplete();
+                
+                console.log(`Fuzzy matched "${originalWord}" to "${bestMatch}" and replaced with "${suggestion}"`);
+            } else {
+                // If all else fails, show an error message
+                console.error(`Could not find word "${originalWord}" to replace`);
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, `Could not find "${originalWord}" to replace`, false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
             }
         }
     }
+}
+
+// Helper function to calculate Levenshtein distance between two strings
+function levenshteinDistance(str1, str2) {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const matrix = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+    
+    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+    
+    for (let i = 1; i <= len1; i++) {
+        for (let j = 1; j <= len2; j++) {
+            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,      // deletion
+                matrix[i][j - 1] + 1,      // insertion
+                matrix[i - 1][j - 1] + cost // substitution
+            );
+        }
+    }
+    
+    return matrix[len1][len2];
 }
 
 async function addWordToDictionary(word) {
@@ -3029,6 +3145,88 @@ function selectCharacterItem(character) {
     }
 }
 
+function selectDynamicPlaceholder(placeholder) {
+    if (!currentCharacterAutocompleteTarget) return;
+
+    const target = currentCharacterAutocompleteTarget;
+    const currentValue = target.value;
+    const cursorPosition = target.selectionStart;
+
+    // Get the text before the cursor
+    const textBeforeCursor = currentValue.substring(0, cursorPosition);
+
+    // Find the last delimiter (:, |, ,, %) before the cursor, or start from the beginning
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(','),
+        textBeforeCursor.lastIndexOf('%')
+    );
+    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+
+    // Get the text after the cursor
+    const textAfterCursor = currentValue.substring(cursorPosition);
+
+    // Find the end of the current word/term
+    // Look for the next delimiter or end of text
+    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\[\]%]/);
+    const endOfCurrentTerm = nextDelimiterIndex >= 0 ? cursorPosition + nextDelimiterIndex : currentValue.length;
+
+    // Build the new prompt
+    let newPrompt = '';
+
+    // Keep the text before the current term (trim any trailing delimiters and spaces)
+    const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
+    newPrompt = textBefore;
+
+    // Add the placeholder as uppercase word
+    const wrappedPlaceholder = placeholder;
+    if (newPrompt) {
+        // Check if we should add a comma before the text
+        if (shouldAddCommaBefore(currentValue, startOfCurrentTerm)) {
+            newPrompt += ', ' + wrappedPlaceholder;
+        } else {
+            newPrompt += wrappedPlaceholder;
+        }
+    } else {
+        newPrompt = wrappedPlaceholder;
+    }
+
+    // Get the text after the current term (not just cursor position)
+    const textAfterTerm = currentValue.substring(endOfCurrentTerm);
+
+    // Check if we're at the end of an emphasis block or brace block
+    const textAfter = textAfterTerm.replace(/^[,\s]*/, '');
+    const isAtEndOfEmphasis = textAfter.startsWith('::');
+    const isAtEndOfBrace = textAfter.startsWith(']') || textAfter.startsWith('%');
+
+    // Add comma and space after tag unless at end of emphasis or brace block
+    if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
+        // Check if we should add a comma after the inserted text
+        if (shouldAddCommaAfter(currentValue, endOfCurrentTerm)) {
+            newPrompt += ', ' + textAfter;
+        } else {
+            newPrompt += textAfter;
+        }
+    } else if (textAfter) {
+        // At end of emphasis or brace block, don't add comma
+        newPrompt += textAfter;
+    }
+
+    // Update the target field
+    target.value = newPrompt;
+
+    // Set cursor position after the inserted placeholder
+    const newCursorPosition = newPrompt.length - textAfter.length;
+    target.setSelectionRange(newCursorPosition, newCursorPosition);
+
+    // Hide character autocomplete and mark as not expanded to fix keyboard navigation issue
+    hideCharacterAutocomplete();
+    autocompleteExpanded = false;
+}
+
 function selectTextReplacement(placeholder) {
     if (!currentCharacterAutocompleteTarget) return;
 
@@ -3039,7 +3237,7 @@ function selectTextReplacement(placeholder) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
+    // Find the last delimiter (:, |, ,, %) before the cursor, or start from the beginning
     const lastDelimiterIndex = Math.max(
         textBeforeCursor.lastIndexOf('{'),
         textBeforeCursor.lastIndexOf('}'),
@@ -3047,16 +3245,17 @@ function selectTextReplacement(placeholder) {
         textBeforeCursor.lastIndexOf(']'),
         textBeforeCursor.lastIndexOf(':'),
         textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
+        textBeforeCursor.lastIndexOf(','),
+        textBeforeCursor.lastIndexOf('%')
     );
     const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
 
     // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
-    
+
     // Find the end of the current word/term
     // Look for the next delimiter or end of text
-    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\{\}\[\]]/);
+    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\{\}\[\]%]/);
     const endOfCurrentTerm = nextDelimiterIndex >= 0 ? cursorPosition + nextDelimiterIndex : currentValue.length;
 
     // Build the new prompt
@@ -3085,8 +3284,8 @@ function selectTextReplacement(placeholder) {
     // Check if we're at the end of an emphasis block or brace block
     const textAfter = textAfterTerm.replace(/^[,\s]*/, '');
     const isAtEndOfEmphasis = textAfter.startsWith('::');
-    const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']');
-    
+    const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']') || textAfter.startsWith('%');
+
     // Add comma and space after tag unless at end of emphasis or brace block
     if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
         // Check if we should add a comma after the inserted text
@@ -3238,8 +3437,8 @@ function selectTag(tagName) {
     // Check if we're at the end of an emphasis block or brace block
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     const isAtEndOfEmphasis = textAfter.startsWith('::');
-    const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']');
-    
+    const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']') || textAfter.startsWith('%');
+
     // Add comma and space after tag unless at end of emphasis or brace block
     if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
         // Check if we should add a comma after the inserted text
@@ -4299,6 +4498,35 @@ function getAllTextReplacementResults() {
     return uniqueTextReplacements;
 }
 
+// Get dynamic generation placeholder results based on query
+function getDynamicGenerationPlaceholderResults(query) {
+    if (!query) return [];
+
+    // Define available dynamic generation placeholders
+    const placeholders = [
+        { name: 'TIME', description: 'Current time of day (morning, afternoon, evening, night)', example: 'morning sunlight, golden hour' },
+        { name: 'WEATHER', description: 'Current weather conditions', example: 'clear sky, sunny weather, light clouds' },
+        { name: 'SEASON', description: 'Current season of the year', example: 'autumn leaves, fall colors, crisp air' },
+        { name: 'CLOTHING', description: 'Weather-appropriate clothing', example: 'light jacket, summer dress, warm coat' },
+        { name: 'ACTION', description: 'Time-appropriate activities', example: 'reading a book, having breakfast, walking in park' },
+        { name: 'ENV', description: 'Environmental details', example: 'outdoor setting, indoor lighting, natural surroundings' }
+    ];
+
+    const lowerQuery = query.toLowerCase();
+
+    // Filter placeholders that match the query
+    return placeholders
+        .filter(placeholder => placeholder.name.toLowerCase().includes(lowerQuery))
+        .map(placeholder => ({
+            type: 'dynamicPlaceholder',
+            name: placeholder.name,
+            placeholder: placeholder.name,
+            description: placeholder.description,
+            replacementValue: placeholder.example,
+            displayName: placeholder.name
+        }));
+}
+
 // Clear dynamic results (spell check and text replacements)
 function clearDynamicResults() {
     spellCheckResults.clear();
@@ -5250,7 +5478,7 @@ async function showTextReplacementDialog(selectedText) {
                     requestId: `favorite_add_${Date.now()}`
                 });
                 
-                showGlassToast('success', null, `Added text replacement "!${name}" to config`, false, 3000, '<i class="fas fa-language"></i>');
+                showGlassToast('success', null, `Added text replacement "!${name}" to config`, false, 3000, '<i class="fas fa-lambda"></i>');
             } else {
                 showGlassToast('error', null, 'Unable to add to favorites: not connected to server', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }

@@ -205,7 +205,8 @@ class BannerManager {
             'workspace_reorder': 'Reorder Workspaces',
             'workspace_bulk_add_scrap': 'Bulk Add Scraps',
             'workspace_bulk_add_pinned': 'Bulk Add Pinned',
-            'get_text_replacement_options': 'Resolve Expander Placeholder',
+            'get_text_replacement_options': 'Resolve Placeholder',
+            'resolve_dynamic_context': 'Resolve Context',
 
             // Bulk operations
             'delete_images_bulk': 'Delete Images',
@@ -280,10 +281,10 @@ class BannerManager {
             'get_chat_messages': 'Get Chat Messages',
 
             // AI operations
-            'update_chat_model': 'Update Chat Model',
             'cancel_generation': 'Cancel Generation',
-            'get_openai_models': 'Get OpenAI Models',
-            'get_grok_models': 'Get Grok Models',
+            'dynamic_generation_progress_update': 'Dynamic Generation Progress Update',
+            'dynamic_generation_completed': 'Dynamic Generation Completed',
+            'dynamic_generation_failed': 'Dynamic Generation Failed',
 
             // Director operations
             'director_get_sessions': 'Get Director Sessions',
@@ -843,11 +844,6 @@ class WebSocketClient {
         navigator.serviceWorker.addEventListener('message', (event) => {
             this.handleServiceWorkerMessage(event);
         });
-
-        // Start health monitoring after initialization
-        setTimeout(() => {
-            this.startHealthMonitoring();
-        }, 5000); // Start monitoring 5 seconds after initialization
     }
 
     /**
@@ -957,9 +953,6 @@ class WebSocketClient {
                 this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
                 this.updateWebSocketStatus('connected');
 
-                // Restart health monitoring on successful connection
-                this.startHealthMonitoring();
-
                 // Trigger connection event
                 this.triggerEvent('connected');
 
@@ -998,7 +991,6 @@ class WebSocketClient {
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
                 this.isConnecting = false;
-                this.stopPingInterval();
                 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -1162,8 +1154,6 @@ class WebSocketClient {
         this.isManualClose = true;
         this.connectionLock = false; // Release connection lock
         this.initializationLock = false; // Release initialization lock
-        this.stopPingInterval();
-        this.stopHealthMonitoring(); // Stop health monitoring on disconnect
 
         // Clear and fail all pending requests
         this.clearPendingRequests();
@@ -1387,44 +1377,9 @@ class WebSocketClient {
         }
     }
 
-    ping() {
-        // Send ping as background operation (don't show in ticker)
-        this.sendMessage('ping', {}, false);
-
-        // Set ping timeout
-        this.pingTimeout = setTimeout(() => {
-            console.warn('⚠️ Ping timeout, reconnecting...');
-            this.ws?.close();
-        }, 5000);
-    }
-
-    startPingInterval() {
-        this.stopPingInterval();
-        this.pingInterval = setInterval(() => {
-            this.ping();
-        }, 30000); // Ping every 30 seconds
-    }
-
-    stopPingInterval() {
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-            this.pingInterval = null;
-        }
-        if (this.pingTimeout) {
-            clearTimeout(this.pingTimeout);
-            this.pingTimeout = null;
-        }
-    }
-
     handleMessage(message) {
-        // Clear ping timeout on pong
+        // Handle pong responses with requestId for authentication checking
         if (message.type === 'pong') {
-            if (this.pingTimeout) {
-                clearTimeout(this.pingTimeout);
-                this.pingTimeout = null;
-            }
-            
-            // Handle pong responses with requestId for authentication checking
             if (message.requestId) {
                 this.resolveRequest(message.requestId, { success: true }, null);
             }
@@ -1470,6 +1425,10 @@ class WebSocketClient {
                 switch (message.type) {
                     case 'chat_message_response':
                         window.chatSystem.handleChatMessageResponse(message);
+                        // Resolve the pending request for non-streaming responses
+                        if (message.requestId) {
+                            this.resolveRequest(message.requestId, message.data, message.error);
+                        }
                         break;
                     case 'chat_streaming_start':
                         window.chatSystem.handleStreamingStart(message);
@@ -1479,6 +1438,9 @@ class WebSocketClient {
                         break;
                     case 'chat_streaming_complete':
                         window.chatSystem.handleStreamingComplete(message);
+                        if (message.requestId) {
+                            this.resolveRequest(message.requestId, { success: true }, null);
+                        }
                         break;
                     default:
                 }
@@ -1488,6 +1450,11 @@ class WebSocketClient {
         
         // Handle all Director-related messages
         if (message.type.startsWith('director_') || message.type === 'dynamic_generation_response' || message.type === 'dynamic_generation_error') {
+            // For response messages, also resolve the pending request
+            if (message.type.endsWith('_response') && message.requestId) {
+                this.resolveRequest(message.requestId, message, null);
+            }
+            
             // Trigger custom events for Director messages
             this.triggerEvent(message.type, message);
             return;
@@ -1499,17 +1466,38 @@ class WebSocketClient {
             return;
         }
 
-        // Handle streaming image generation intermediate updates
-        if (message.type === 'image_generation_intermediate') {
-            this.handleStreamingImageUpdate(message);
+        // Handle unified image generation progress updates
+        if (message.type === 'image_generation_progress') {
+            this.handleImageGenerationProgress(message);
+            return;
+        }
+
+        // image_generation_intermediate messages are now deprecated - intermediate images come through image_generation_progress
+        
+        // Handle workspace image additions
+        if (message.type === 'workspace_image_added') {
+            this.handleWorkspaceImageAdded(message);
             return;
         }
 
         // Handle image generation errors
         if (message.type === 'image_generation_error') {
             console.error('❌ Image generation error:', message.error);
+            console.error('❌ Full error details:', message);
+            
             if (message.requestId) {
-                this.resolveRequest(message.requestId, null, new Error(message.error || 'Image generation failed'));
+                // Build detailed error message
+                let errorMsg = message.error || 'Image generation failed';
+                
+                // Include additional details if available
+                if (message.details) {
+                    errorMsg += `\nDetails: ${message.details}`;
+                }
+                if (message.stack) {
+                    console.error('❌ Error stack:', message.stack);
+                }
+                
+                this.resolveRequest(message.requestId, null, new Error(errorMsg));
             }
             
             // Reset global generation state when error occurs
@@ -1559,6 +1547,21 @@ class WebSocketClient {
             return;
         }
         
+        // Handle all error messages that should trigger resolveRequest with error
+        if (message.type.endsWith('_error')) {
+            if (message.requestId) {
+                const error = new Error(message.error || 'Operation failed');
+                error.details = message.data;
+                this.resolveRequest(message.requestId, null, error);
+            } else {
+                console.warn(`⚠️ Received error without requestId:`, {
+                    messageType: message.type,
+                    error: message.error
+                });
+            }
+            return;
+        }
+        
         // Handle cache refresh response
         if (message.type === 'refresh_server_cache_response') {
             if (message.requestId) {
@@ -1577,6 +1580,23 @@ class WebSocketClient {
                 console.error('❌ Server cache refresh failed:', message.error);
             }
             
+            return;
+        }
+        
+        // Handle metadata cache rebuild progress
+        if (message.type === 'rebuild_metadata_cache_progress') {
+            this.triggerEvent('message', message);
+            this.triggerEvent(message.type, message);
+            return;
+        }
+        
+        // Handle metadata cache rebuild response
+        if (message.type === 'rebuild_metadata_cache_response') {
+            this.triggerEvent('message', message);
+            this.triggerEvent(message.type, message);
+            if (message.requestId) {
+                this.resolveRequest(message.requestId, message.data, message.error);
+            }
             return;
         }
         
@@ -1829,24 +1849,17 @@ class WebSocketClient {
         });
         document.dispatchEvent(event);
     }
-
-    // Handle streaming image generation intermediate updates
-    handleStreamingImageUpdate(message) {
-        const { requestId, data } = message;
-
-        if (!data || !data.image) {
-            console.warn('⚠️ Received streaming update without image data');
-            return;
-        }
-
-        // Add step to the appropriate queue
-        if (!manualModal.classList.contains('hidden')) {
-            this.queueStreamingStep('manual', data);
-        }
-
-        if (window.spellbookModalManager && !window.spellbookModalManager.modal.classList.contains('hidden') && window.spellbookModalManager.isGenerating) {
-            this.queueStreamingStep('spellbook', data);
-        }
+    
+    handleWorkspaceImageAdded(message) {
+        // Dispatch custom event for workspace image addition
+        const event = new CustomEvent('workspaceImageAdded', {
+            detail: {
+                workspaceId: message.data.workspaceId,
+                imageFilenames: message.data.imageFilenames,
+                timestamp: message.timestamp
+            }
+        });
+        document.dispatchEvent(event);
     }
 
     // Queue a streaming step with 250ms minimum display time
@@ -1910,7 +1923,7 @@ class WebSocketClient {
             const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
             if (manualPreviewImage) {
                 // Convert base64 to data URL
-                const imageDataUrl = `data:image/png;base64,${data.image}`;
+                const imageDataUrl = `data:image/png;base64,${data.imageData}`;
                 manualPreviewImage.src = imageDataUrl;
                 manualPreviewImage.classList.remove('hidden');
                 previewPlaceholder.classList.add('hidden');
@@ -1932,7 +1945,7 @@ class WebSocketClient {
             const spellbookPreviewImage = window.spellbookModalManager.previewImage;
             if (spellbookPreviewImage) {
                 // Convert base64 to data URL
-                const imageDataUrl = `data:image/png;base64,${data.image}`;
+                const imageDataUrl = `data:image/png;base64,${data.imageData}`;
                 spellbookPreviewImage.src = imageDataUrl;
                 spellbookPreviewImage.classList.remove('hidden');
 
@@ -1979,13 +1992,221 @@ class WebSocketClient {
     handleDynamicGenerationProgressUpdate(message) {
         const { phase, data } = message;
 
-        // Import the progress overlay manager functions for both modals
-        if (!window.spellbookModalManager?.modal?.classList?.contains('hidden') && typeof window.updateSpellbookDynamicGenerationProgressOverlay === 'function') {
-            window.updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+        // Update carousel with context data when available
+        if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
+            updateDynamicCarousel(data.carousel);
         }
 
-        if (!manualModal.classList.contains('hidden') && typeof window.updateDynamicGenerationProgressOverlay === 'function') {
-            window.updateDynamicGenerationProgressOverlay(phase, data);
+        // Import the progress overlay manager functions for both modals
+        if (!spellbookModalManager?.modal?.classList?.contains('hidden')) {
+            updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+        }
+
+        if (!manualModal.classList.contains('hidden')) {
+            updateDynamicGenerationProgressOverlay(phase, data);
+        }
+    }
+
+    handleImageGenerationProgress(message) {
+        const { data, requestId } = message;
+
+        // Reset timeout for this request to prevent timeouts during long generations
+        // This is critical for multi-stage generations (especially enhance) that can take longer than the default timeout
+        this.resetRequestTimeout(requestId);
+
+        // Store progress state for this request
+        if (!this.progressStates) {
+            this.progressStates = new Map();
+        }
+
+        let progressState = this.progressStates.get(requestId);
+        if (!progressState) {
+            progressState = { phase: data.phase, progress: 0, timer: null };
+            this.progressStates.set(requestId, progressState);
+        }
+
+        // Clear existing timers if phase changed
+        if (progressState.timer && progressState.phase !== data.phase) {
+            clearInterval(progressState.timer);
+            progressState.timer = null;
+        }
+        if (progressState.delayTimer && progressState.phase !== data.phase) {
+            clearInterval(progressState.delayTimer);
+            progressState.delayTimer = null;
+        }
+
+        progressState.phase = data.phase;
+
+        // Calculate progress percentage using the client-side function
+        if (typeof calculateGenerationProgress === 'function') {
+            let progressPercent = calculateGenerationProgress(data);
+
+            // Handle timer-based progress for certain phases
+            if (data.phase === 'initializing' && !progressState.timer) {
+                // Start timer for 0-15% progress (1% per second)
+                progressState.progress = 0;
+                progressState.timer = setInterval(() => {
+                    progressState.progress = Math.min(progressState.progress + 1, 15);
+                    if (typeof updateGlassToastProgress === 'function' && progressToastId) {
+                        updateGlassToastProgress(progressToastId, progressState.progress);
+                    }
+                }, 1000);
+            } else if (data.phase === 'upscaling' && !progressState.timer) {
+                // Start timer for 76-95% progress (1% per second)
+                progressState.progress = 76;
+                progressState.timer = setInterval(() => {
+                    progressState.progress = Math.min(progressState.progress + 1, 95);
+                    if (typeof updateGlassToastProgress === 'function' && progressToastId) {
+                        updateGlassToastProgress(progressToastId, progressState.progress);
+                    }
+                }, 1000);
+            } else if (data.phase !== 'initializing' && data.phase !== 'upscaling') {
+                // Clear timer for non-timer phases
+                if (progressState.timer) {
+                    clearInterval(progressState.timer);
+                    progressState.timer = null;
+                }
+            }
+
+            // Update progress toast if it exists (skip for timer phases that are self-updating)
+            if (typeof updateGlassToastProgress === 'function' && progressToastId &&
+                data.phase !== 'initializing' && data.phase !== 'upscaling') {
+                updateGlassToastProgress(progressToastId, progressPercent);
+            }
+
+            // Update main message line with progress status (line 2)
+            if (typeof updateGlassToastMessage === 'function' && progressToastId) {
+                let statusMessage = '';
+                switch (data.phase) {
+                    case 'initializing':
+                        statusMessage = 'Analyzing request...';
+                        break;
+                    case 'ai_streaming':
+                        statusMessage = 'Processing AI response...';
+                        break;
+                    case 'ai_complete':
+                        statusMessage = 'AI processing complete, starting generation...';
+                        break;
+                    case 'generating':
+                        if (data.totalStages && data.currentStage !== undefined) {
+                            // Staged generation
+                            const stageType = data.stageType || 'stage';
+                            statusMessage = `Stage ${data.currentStage}/${data.totalStages}: ${stageType}`;
+                        } else {
+                            statusMessage = 'Generating image...';
+                        }
+                        break;
+                    case 'stage_delay':
+                        if (data.delayMs) {
+                            const delaySeconds = Math.ceil(data.delayMs / 1000);
+                            statusMessage = `Stage delay: ${delaySeconds}s remaining`;
+                            
+                            // Start countdown timer for stage delay
+                            if (!progressState.delayTimer) {
+                                let remainingSeconds = delaySeconds;
+                                progressState.delayTimer = setInterval(() => {
+                                    remainingSeconds--;
+                                    if (remainingSeconds > 0) {
+                                        if (typeof updateGlassToastMessage === 'function' && progressToastId) {
+                                            updateGlassToastMessage(progressToastId, `Stage delay: ${remainingSeconds}s remaining`);
+                                        }
+                                    } else {
+                                        // Clear timer when countdown reaches 0
+                                        if (progressState.delayTimer) {
+                                            clearInterval(progressState.delayTimer);
+                                            progressState.delayTimer = null;
+                                        }
+                                    }
+                                }, 1000);
+                            }
+                        } else {
+                            statusMessage = 'Stage delay...';
+                        }
+                        break;
+                    case 'upscaling':
+                        statusMessage = 'Upscaling image...';
+                        break;
+                    case 'previews':
+                        statusMessage = 'Generating previews...';
+                        break;
+                    default:
+                        statusMessage = 'Processing...';
+                }
+                updateGlassToastMessage(progressToastId, statusMessage);
+            }
+
+            // Update stage indicators for manual modal
+            if (data.totalStages && data.currentStage !== undefined) {
+                const manualModal = document.getElementById('manualModal');
+                if (manualModal && !manualModal.classList.contains('hidden')) {
+                    // Initialize indicators on first progress update with stages
+                    if (typeof initializeStageIndicators === 'function') {
+                        const container = document.getElementById('manualStageIndicators');
+                        if (container && (container.children.length === 0 || container.classList.contains('hidden'))) {
+                            initializeStageIndicators(data.totalStages);
+                        }
+                    }
+                    
+                    // Update indicators with current progress
+                    if (typeof updateStageIndicators === 'function') {
+                        updateStageIndicators(data);
+                    }
+                }
+            }
+
+            // Handle reasoning display in 3rd line (only for actual reasoning)
+            if (data.reasoning && typeof updateGlassToastReasoning === 'function') {
+                updateGlassToastReasoning(progressToastId, data.reasoning);
+            }
+
+            // Handle image preview updates
+            if (data.imageData && typeof updateGlassToastImagePreview === 'function') {
+                updateGlassToastImagePreview(progressToastId, data.imageData);
+
+                // Also handle modal streaming updates for intermediate images
+                if (data.phase === 'generating' && data.currentStep !== undefined) {
+                    // Add step to the appropriate queue
+                    if (!manualModal.classList.contains('hidden')) {
+                        this.queueStreamingStep('manual', data);
+                    }
+
+                    if (window.spellbookModalManager && !window.spellbookModalManager.modal.classList.contains('hidden') && window.spellbookModalManager.isGenerating) {
+                        this.queueStreamingStep('spellbook', data);
+                    }
+                }
+            }
+
+            // Handle completion
+            if (data.phase === 'complete') {
+                // Clear any running timers
+                if (progressState.timer) {
+                    clearInterval(progressState.timer);
+                    progressState.timer = null;
+                }
+
+                if (typeof updateGlassToastComplete === 'function') {
+                    updateGlassToastComplete(progressToastId, {
+                        type: 'success',
+                        title: 'Generation Complete',
+                        message: 'Image generated successfully!',
+                        customIcon: '<i class="nai-check"></i>',
+                        showProgress: false
+                    });
+                }
+
+                // Clear reasoning when complete
+                if (typeof updateGlassToastReasoning === 'function') {
+                    updateGlassToastReasoning(progressToastId, '');
+                }
+
+                // Hide stage indicators when complete
+                if (typeof hideStageIndicators === 'function') {
+                    hideStageIndicators();
+                }
+
+                progressToastId = null; // Clear the toast ID
+                this.progressStates.delete(requestId); // Clean up state
+            }
         }
     }
 
@@ -2024,6 +2245,36 @@ class WebSocketClient {
             return result;
         } catch (error) {
             console.error('Upscale image error:', error);
+            throw error;
+        }
+    }
+
+    // Method to request image expansion via WebSocket
+    async expandImage(expansionParams, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('expand_image', expansionParams);
+            return result;
+        } catch (error) {
+            console.error('Expand image error:', error);
+            throw error;
+        }
+    }
+
+    // Method to reroll expanded image via WebSocket
+    async rerollExpandedImage(params, requestId = null) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('reroll_expanded_image', params);
+            return result;
+        } catch (error) {
+            console.error('Reroll expanded image error:', error);
             throw error;
         }
     }
@@ -2168,6 +2419,10 @@ class WebSocketClient {
 
     async savePreset(presetName, config) {
         return this.sendMessageWithRequestId('save_preset', this.generateRequestId(), { presetName, config });
+    }
+
+    async resolveDynamicContext(dynamicConfig) {
+        return this.sendMessageWithRequestId('resolve_dynamic_context', this.generateRequestId(), { dynamicConfig });
     }
 
     async deletePreset(presetName) {
@@ -2573,10 +2828,10 @@ class WebSocketClient {
 
     async pingWithAuth() {
         return new Promise((resolve, reject) => {
-            // Enhanced connection validation
-            if (!this.isConnectionHealthy()) {
-                const error = new Error('WebSocket connection not healthy');
-                error.code = 'CONNECTION_UNHEALTHY';
+            // Basic connection validation - don't be too strict
+            if (!this.isConnected()) {
+                const error = new Error('WebSocket not connected');
+                error.code = 'NOT_CONNECTED';
                 reject(error);
                 return;
             }
@@ -2675,22 +2930,9 @@ class WebSocketClient {
         return this.sendMessage('get_chat_messages', { chatId, limit, offset });
     }
 
-    async updateChatModel(chatId, modelData) {
-        return this.sendMessage('update_chat_model', { chatId, ...modelData });
-    }
-
     // Cancel generation method
     async cancelGeneration() {
         return this.sendMessage('cancel_generation', {});
-    }
-
-    // Get available models
-    async getOpenAIModels() {
-        return this.sendMessage('get_openai_models', {}, false); // Background operation
-    }
-
-    async getGrokModels() {
-        return this.sendMessage('get_grok_models', {}, false); // Background operation
     }
 
     // IP Management methods
@@ -3357,53 +3599,6 @@ class WebSocketClient {
                !this.isConnecting && 
                this.ws.readyState === WebSocket.OPEN;
     }
-    
-    // Perform a health check by sending a ping
-    async performHealthCheck() {
-        if (!this.isConnectionHealthy()) {
-            return false;
-        }
-
-        try {
-            // Send a simple ping to test the connection
-            const response = await this.pingWithAuth();
-            return response && response.success;
-        } catch (error) {
-            console.warn('⚠️ Health check failed:', error);
-            return false;
-        }
-    }
-
-    // Enhanced health monitoring with periodic checks
-    startHealthMonitoring() {
-        if (this.healthCheckInterval) {
-            clearInterval(this.healthCheckInterval);
-        }
-
-        // Perform health check every 60 seconds
-        this.healthCheckInterval = setInterval(async () => {
-            if (!this.isConnected()) {
-                return; // Skip if not connected
-            }
-
-            const isHealthy = await this.performHealthCheck();
-
-            if (!isHealthy) {
-                console.warn('⚠️ Connection health check failed, triggering reconnection');
-                this.bannerManager.showWebSocketTicker('warning', 'Connection Lost', 'fa-exclamation-triangle', false);
-
-                // Force reconnection
-                this.forceReconnect();
-            }
-        }, 60000); // 60 second intervals
-    }
-
-    stopHealthMonitoring() {
-        if (this.healthCheckInterval) {
-            clearInterval(this.healthCheckInterval);
-            this.healthCheckInterval = null;
-        }
-    }
 
     getConnectionState() {
         if (!this.ws) return 'disconnected';
@@ -3413,6 +3608,58 @@ class WebSocketClient {
             case WebSocket.CLOSING: return 'closing';
             case WebSocket.CLOSED: return 'disconnected';
             default: return 'unknown';
+        }
+    }
+
+    // Preset Group Management Methods
+    
+    // Save a preset group
+    async savePresetGroup(groupName, groupData) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('save_preset_group', { 
+                groupName, 
+                groupData 
+            });
+            return result;
+        } catch (error) {
+            console.error('Save preset group error:', error);
+            throw error;
+        }
+    }
+
+    // Delete a preset group
+    async deletePresetGroup(groupName) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('delete_preset_group', { 
+                groupName 
+            });
+            return result;
+        } catch (error) {
+            console.error('Delete preset group error:', error);
+            throw error;
+        }
+    }
+
+    // Get all preset groups
+    async getPresetGroups() {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        try {
+            const result = await this.sendMessage('get_preset_groups', {});
+            return result;
+        } catch (error) {
+            console.error('Get preset groups error:', error);
+            throw error;
         }
     }
 }

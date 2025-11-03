@@ -329,6 +329,27 @@ class WebSocketServer {
         });
     }
 
+    // Broadcast image addition to workspace (workspace-aware)
+    broadcastWorkspaceImageAdded(workspaceId, imageFilenames) {
+        const { getActiveWorkspace } = require('./workspace');
+        
+        // Broadcast to all clients viewing the same workspace
+        this.broadcast({
+            type: 'workspace_image_added',
+            data: { 
+                workspaceId, 
+                imageFilenames: Array.isArray(imageFilenames) ? imageFilenames : [imageFilenames]
+            },
+            timestamp: new Date().toISOString()
+        }, (clientInfo) => {
+            // Filter: only send to clients viewing the same workspace
+            const clientWorkspace = getActiveWorkspace(clientInfo.sessionId);
+            return clientWorkspace === workspaceId;
+        });
+        
+        console.log(`📢 Broadcast image addition to workspace ${workspaceId}: ${Array.isArray(imageFilenames) ? imageFilenames.length : 1} image(s)`);
+    }
+
     startPingInterval(pingCallback = null) {
         // Clear any existing interval
         if (this.pingInterval) {

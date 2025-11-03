@@ -1,4 +1,5 @@
 const TextReplacements = require('./textReplacements');
+const { resolvePresetOrGroup } = require('./textReplacements');
 const geo2city = require('geo2city');
 const DatasetTagService = require('./datasetTagService');
 const FavoritesManager = require('./favorites');
@@ -41,7 +42,7 @@ const {
     getWorkspacesData, 
     getActiveWorkspaceData
 } = require('./workspace');
-const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, removeImageMetadata, addUnattributedReceipt, getImageMetadata } = require('./metadataDatabase');
+const { getCachedMetadata, getAllMetadata, getImagesMetadata, scanAndUpdateMetadata, rebuildMetadataCache, removeImageMetadata, addUnattributedReceipt, getImageMetadata } = require('./metadataDatabase');
 const { 
     getPersonaSettings, 
     savePersonaSettings, 
@@ -59,14 +60,13 @@ const {
 } = require('./chatDatabase');
 const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary, callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
 const { handleDirectorGetSessions, handleDirectorCreateSession, handleDirectorGetSession, handleDirectorDeleteSession, handleDirectorSendMessage, handleDirectorGetMessages, handleDirectorRollbackMessage } = require('./directorHandlers');
-const { createPersonaChatSession: createChatGPTSession, establishPersona: establishChatGPTPersona, continueConversation: continueChatGPTConversation, establishPersonaStreaming: establishChatGPTPersonaStreaming, continueConversationStreaming: continueChatGPTConversationStreaming, getCharacterMemories: getChatGPTMemories, addCharacterMemory: addChatGPTMemory, getConversationSummary: getChatGPTSummary, updateConversationSummary: updateChatGPTSummary } = require('./aiServices/chatgptService');
 const aiServiceManager = require('./aiServiceManager');
 const promptManager = require('./promptManager');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
 const { readMetadata, updateMetadata, extractRelevantFields, getModelDisplayName, extractMetadataSummary } = require('./pngMetadata');
 const { getStatus } = require('./queue');
 const imageCounter = require('./imageCounter');
-const { generateImageWebSocket, handleRerollGeneration } = require('./imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
 const { getTimezoneByCoordinates } = require('./dynamicGenerationHandlers');
@@ -238,10 +238,13 @@ class WebSocketMessageHandlers {
             'spellcheck_add_word',
             'generate_image',
             'upscale_image',
+            'reroll_image',
+            'expand_image',
             'director_create_session',
             'director_delete_session',
             'director_send_message',
-            'director_rollback_message'
+            'director_rollback_message',
+            'rebuild_metadata_cache',
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -287,6 +290,18 @@ class WebSocketMessageHandlers {
                 
             case 'regenerate_preset_uuid':
                 await this.handleRegeneratePresetUuid(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'save_preset_group':
+                await this.handleSavePresetGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'delete_preset_group':
+                await this.handleDeletePresetGroup(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'get_preset_groups':
+                await this.handleGetPresetGroups(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'search_dataset_tags':
@@ -630,12 +645,24 @@ class WebSocketMessageHandlers {
                 await this.handleImageUpscaling(ws, message, clientInfo, wsServer);
                 break;
                 
+            case 'expand_image':
+                await this.handleImageExpansion(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'reroll_expanded_image':
+                await this.handleImageExpansionReroll(ws, message, clientInfo, wsServer);
+                break;
+                
             case 'get_cache_manifest':
                 await this.handleGetCacheManifest(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'refresh_server_cache':
                 await this.handleRefreshServerCache(ws, message, clientInfo, wsServer);
+                break;
+                
+            case 'rebuild_metadata_cache':
+                await this.handleRebuildMetadataCache(ws, message, clientInfo, wsServer);
                 break;
                 
             case 'broadcast_resource_update':
@@ -675,24 +702,16 @@ class WebSocketMessageHandlers {
                 await this.handleSendChatMessage(ws, message, clientInfo, wsServer);
                 break;
                 
+            case 'update_chat_context':
+                await this.handleUpdateChatContext(ws, message, clientInfo, wsServer);
+                break;
+
             case 'get_chat_messages':
                 await this.handleGetChatMessages(ws, message, clientInfo, wsServer);
                 break;
                 
-            case 'update_chat_model':
-                await this.handleUpdateChatModel(ws, message, clientInfo, wsServer);
-                break;
-                
             case 'cancel_generation':
                 await this.handleCancelGeneration(ws, message, clientInfo, wsServer);
-                break;
-                
-            case 'get_openai_models':
-                await this.handleGetOpenAIModels(ws, message, clientInfo, wsServer);
-                break;
-                
-            case 'get_grok_models':
-                await this.handleGetGrokModels(ws, message, clientInfo, wsServer);
                 break;
                 
             // Director handlers
@@ -723,10 +742,26 @@ class WebSocketMessageHandlers {
             case 'director_rollback_message':
                 await handleDirectorRollbackMessage(this, ws, message, clientInfo, wsServer);
                 break;
+            
+            case 'director_save_feedback':
+                await this.handleDirectorSaveFeedback(ws, message, clientInfo, wsServer);
+                break;
+            
+            case 'director_load_rules':
+                await this.handleDirectorLoadRules(ws, message, clientInfo, wsServer);
+                break;
+            
+            case 'director_save_rules':
+                await this.handleDirectorSaveRules(ws, message, clientInfo, wsServer);
+                break;
 
             // Dynamic Generation Progress handlers
             case 'dynamic_generation_progress':
                 await this.handleDynamicGenerationProgress(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'resolve_dynamic_context':
+                await this.handleResolveDynamicContext(ws, message, clientInfo, wsServer);
                 break;
 
             // IP Management handlers
@@ -889,26 +924,40 @@ class WebSocketMessageHandlers {
 
     // Handle preset load requests
     async handleLoadPreset(ws, message, clientInfo, wsServer) {
-        const { presetName } = message;
+        const { presetName, presetUuid } = message;
         
-        if (!presetName) {
-            this.sendError(ws, 'Missing presetName parameter', 'load_preset');
+        if (!presetName && !presetUuid) {
+            this.sendError(ws, 'Missing presetName or presetUuid parameter', 'load_preset');
             return;
         }
 
         try {
             const currentPromptConfig = TextReplacements.loadPromptConfig();
-            const preset = currentPromptConfig.presets[presetName];
+            let preset, actualPresetName;
             
-            if (!preset) {
-                this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
-                return;
+            if (presetUuid) {
+                // Try to resolve by UUID (supports both presets and chapters)
+                const resolution = resolvePresetOrGroup(presetUuid);
+                if (!resolution) {
+                    this.sendError(ws, 'Preset or preset group not found', `Preset or preset group with UUID "${presetUuid}" does not exist`, message.requestId);
+                    return;
+                }
+                preset = resolution.preset;
+                actualPresetName = resolution.presetName;
+            } else {
+                // Legacy behavior - load by name
+                preset = currentPromptConfig.presets[presetName];
+                if (!preset) {
+                    this.sendError(ws, 'Preset not found', `Preset "${presetName}" does not exist`, message.requestId);
+                    return;
+                }
+                actualPresetName = presetName;
             }
 
             // Return the raw preset data without processing text replacements
             const presetData = {
                 ...preset,
-                preset_name: presetName,
+                preset_name: actualPresetName,
             };
             
             this.sendToClient(ws, {
@@ -1190,6 +1239,174 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Handle save preset group requests
+    async handleSavePresetGroup(ws, message, clientInfo, wsServer) {
+        const { groupName, groupData } = message;
+        
+        if (!groupName || !groupData) {
+            this.sendError(ws, 'Missing required parameters', 'Group name and data are required', message.requestId);
+            return;
+        }
+
+        try {
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
+            
+            // Ensure preset_group exists
+            if (!currentPromptConfig.preset_group) {
+                currentPromptConfig.preset_group = {};
+            }
+            
+            // Preserve existing UUID if group exists, otherwise generate new one
+            if (!groupData.uuid) {
+                if (currentPromptConfig.preset_group[groupName] && currentPromptConfig.preset_group[groupName].uuid) {
+                    groupData.uuid = currentPromptConfig.preset_group[groupName].uuid;
+                } else {
+                    groupData.uuid = this.generateUUID();
+                }
+            }
+            
+            // Ensure name is set
+            if (!groupData.name) {
+                groupData.name = groupName;
+            }
+            
+            // Ensure presets array exists
+            if (!groupData.presets) {
+                groupData.presets = [];
+            }
+            
+            // Validate that all referenced presets exist
+            const validPresets = groupData.presets.filter(presetUuid => {
+                const presetExists = Object.values(currentPromptConfig.presets || {}).some(preset => preset.uuid === presetUuid);
+                if (!presetExists) {
+                    console.warn(`⚠️ Preset group "${groupName}" references non-existent preset UUID: ${presetUuid}`);
+                }
+                return presetExists;
+            });
+            
+            groupData.presets = validPresets;
+            
+            currentPromptConfig.preset_group[groupName] = groupData;
+
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`💾 Saved preset group: ${groupName}`);
+            } else {
+                throw new Error('Failed to save preset group configuration');
+            }
+
+            this.sendToClient(ws, {
+                type: 'save_preset_group_response',
+                requestId: message.requestId,
+                data: { success: true, message: `Preset group "${groupName}" saved successfully` },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast preset group update to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_group_updated',
+                        data: { 
+                            action: 'saved',
+                            groupName: groupName,
+                            message: `Preset group "${groupName}" has been saved`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Preset group save error:', error);
+            this.sendError(ws, 'Failed to save preset group', error.message, message.requestId);
+        }
+    }
+
+    // Handle delete preset group requests
+    async handleDeletePresetGroup(ws, message, clientInfo, wsServer) {
+        const { groupName } = message;
+        
+        if (!groupName) {
+            this.sendError(ws, 'Missing groupName parameter', 'delete_preset_group');
+            return;
+        }
+
+        try {
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
+            
+            if (!currentPromptConfig.preset_group || !currentPromptConfig.preset_group[groupName]) {
+                this.sendError(ws, 'Preset group not found', `Preset group "${groupName}" does not exist`, message.requestId);
+                return;
+            }
+            
+            delete currentPromptConfig.preset_group[groupName];
+
+            // Save using checkpoint system
+            const success = TextReplacements.savePromptConfig(currentPromptConfig);
+            if (success) {
+                console.log(`🗑️ Deleted preset group: ${groupName}`);
+            } else {
+                throw new Error('Failed to save preset group configuration');
+            }
+
+            this.sendToClient(ws, {
+                type: 'delete_preset_group_response',
+                requestId: message.requestId,
+                data: { success: true, message: `Preset group "${groupName}" deleted successfully` },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast preset group deletion to all connected clients
+            wsServer.clients.forEach(client => {
+                if (client.readyState === 1) {
+                    this.sendToClient(client, {
+                        type: 'preset_group_updated',
+                        data: { 
+                            action: 'deleted',
+                            groupName: groupName,
+                            message: `Preset group "${groupName}" has been deleted`
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('Preset group deletion error:', error);
+            this.sendError(ws, 'Failed to delete preset group', error.message, message.requestId);
+        }
+    }
+
+    // Handle get preset groups requests
+    async handleGetPresetGroups(ws, message, clientInfo, wsServer) {
+        try {
+            const currentPromptConfig = TextReplacements.loadPromptConfig();
+            const presetGroups = currentPromptConfig.preset_group || {};
+            
+            // Convert to array format with preset counts
+            const groupsArray = Object.entries(presetGroups).map(([groupName, groupData]) => ({
+                name: groupName,
+                uuid: groupData.uuid,
+                displayName: groupData.name || groupName,
+                presetCount: groupData.presets ? groupData.presets.length : 0,
+                presets: groupData.presets || []
+            }));
+            
+            this.sendToClient(ws, {
+                type: 'get_preset_groups_response',
+                requestId: message.requestId,
+                data: {
+                    presetGroups: groupsArray,
+                    totalCount: groupsArray.length
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('Get preset groups error:', error);
+            this.sendError(ws, 'Failed to get preset groups', error.message, message.requestId);
+        }
+    }
+
     // Handle preset deletion requests
     async handleDeletePreset(ws, message, clientInfo, wsServer) {
         const { presetName } = message;
@@ -1273,7 +1490,7 @@ class WebSocketMessageHandlers {
                 streamingCallback = async (event) => {
                     if (event.type === 'intermediate') {
                         // Send intermediate image update
-                        this.sendToClient(ws, {
+                        /* this.sendToClient(ws, {
                             type: 'image_generation_intermediate',
                             requestId: message.requestId,
                             data: {
@@ -1282,7 +1499,7 @@ class WebSocketMessageHandlers {
                                 timestamp: event.timestamp
                             },
                             timestamp: new Date().toISOString()
-                        });
+                        }); */
                     }
                 };
             }
@@ -1709,6 +1926,14 @@ class WebSocketMessageHandlers {
                 return;
             }
             
+            // Ensure actual dimensions are available in metadata (for backward compatibility)
+            if (!metadata.actual_width) {
+                metadata.actual_width = cachedMetadata.width;
+            }
+            if (!metadata.actual_height) {
+                metadata.actual_height = cachedMetadata.height;
+            }
+
             // If upscaled, try to match preset using metadata dimensions
             let matchedPreset = null;
             const isUpscaled = metadata.forge_data?.upscale_ratio !== null && metadata.forge_data?.upscale_ratio !== undefined;
@@ -1849,7 +2074,9 @@ class WebSocketMessageHandlers {
                 isLarge: isLarge,
                 // Include dimensions for PhotoSwipe
                 width: metadata.width || null,
-                height: metadata.height || null
+                height: metadata.height || null,
+                // Include seed directly in the image object
+                seed: metadata.metadata.seed
             });
         }
         
@@ -6809,6 +7036,32 @@ class WebSocketMessageHandlers {
         });
     }
 
+    // Send unified image generation progress updates
+    sendGenerationProgress(ws, requestId, progressData) {
+        
+        this.sendToClient(ws, {
+            type: 'image_generation_progress',
+            requestId: requestId,
+            data: {
+                phase: progressData.phase, // 'initializing|ai_streaming|ai_complete|generating|upscaling|previews|complete|stage_delay'
+                currentStep: progressData.currentStep || 0,
+                totalSteps: progressData.totalSteps || 0,
+                currentKey: progressData.currentKey || 0,
+                totalKeys: progressData.totalKeys || 0,
+                hasDynamicGen: progressData.hasDynamicGen || false,
+                isUpscaling: progressData.isUpscaling || false,
+                reasoning: progressData.reasoning || null, // for 3rd line display
+                imageData: progressData.imageData || null, // base64 image data for preview
+                // Staged generation fields
+                totalStages: progressData.totalStages || null,
+                currentStage: progressData.currentStage || null,
+                stageType: progressData.stageType || null,
+                delayMs: progressData.delayMs || null
+            },
+            timestamp: new Date().toISOString()
+        });
+    }
+
     // Start keep-alive interval for long-running operations (starts after 10 seconds)
     startKeepAliveInterval(ws, requestId, intervalMs = 15000) {
         // Clear any existing keep-alive for this request
@@ -8082,7 +8335,7 @@ class WebSocketMessageHandlers {
             const { requestId: _, enableStreaming, ...data } = message;
 
             console.log(`🚀 Processing image generation request: ${requestId} (streaming: ${enableStreaming})`);
-            console.log('📋 Generation data:', data);
+            console.log('📋 Generation data:', JSON.stringify(data, null, 2));
 
             // Start keep-alive for long-running image generation
             this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds for image generation
@@ -8095,7 +8348,7 @@ class WebSocketMessageHandlers {
                 const streamingCallback = async (event) => {
                     if (event.type === 'intermediate') {
                         // Send intermediate image update
-                        this.sendToClient(ws, {
+                        /* this.sendToClient(ws, {
                             type: 'image_generation_intermediate',
                             requestId: requestId,
                             data: {
@@ -8104,7 +8357,7 @@ class WebSocketMessageHandlers {
                                 timestamp: event.timestamp
                             },
                             timestamp: new Date().toISOString()
-                        });
+                        }); */
                     }
                 };
 
@@ -8134,6 +8387,14 @@ class WebSocketMessageHandlers {
                 // Include text replacement seeds if available
                 if (result.text_replacements_seed) {
                     responseData.text_replacements_seed = result.text_replacements_seed;
+                }
+                
+                // Include pipeline data if this was a staged generation
+                if (result.stage_seeds) {
+                    responseData.stage_seeds = result.stage_seeds;
+                }
+                if (result.total_stages) {
+                    responseData.total_stages = result.total_stages;
                 }
 
                 this.sendToClient(ws, {
@@ -8170,6 +8431,14 @@ class WebSocketMessageHandlers {
                 // Include text replacement seeds if available
                 if (result.text_replacements_seed) {
                     responseData.text_replacements_seed = result.text_replacements_seed;
+                }
+                
+                // Include pipeline data if this was a staged generation
+                if (result.stage_seeds) {
+                    responseData.stage_seeds = result.stage_seeds;
+                }
+                if (result.total_stages) {
+                    responseData.total_stages = result.total_stages;
                 }
 
                 this.sendToClient(ws, {
@@ -8215,7 +8484,6 @@ class WebSocketMessageHandlers {
             // Call the reroll generation function with allow_paid flag
             const result = await handleRerollGeneration(
                 metadata,
-                clientInfo.userType,
                 clientInfo.sessionId,
                 workspace || null,
                 allow_paid || false
@@ -8279,6 +8547,168 @@ class WebSocketMessageHandlers {
                 requestId: message.requestId,
                 data: null,
                 error: error.message || 'Image upscaling failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle image expansion requests
+    async handleImageExpansion(ws, message, clientInfo, wsServer) {
+        const requestId = message.requestId || 'unknown';
+        
+        try {
+            const { requestId: _, enableStreaming, ...data } = message;
+            console.log(`🔍 Processing image expansion request: ${requestId}`);
+            console.log('📋 Expansion data:', data);
+
+            // Validate required parameters
+            if (!data.filename) {
+                throw new Error('Filename is required');
+            }
+            if (!data.resolution) {
+                throw new Error('Resolution is required');
+            }
+            if (data.imageBias === undefined || data.imageBias === null) {
+                throw new Error('Image bias is required');
+            }
+
+            // Start keep-alive for long-running expansion
+            this.startKeepAliveInterval(ws, requestId, 15000);
+
+            // Setup streaming callback if enabled
+            let streamingCallback = null;
+            if (enableStreaming) {
+                console.log('🎬 Starting streaming image expansion...');
+                streamingCallback = async (event) => {
+                    if (event.type === 'intermediate') {
+                        // Send intermediate image update
+                        /* this.sendToClient(ws, {
+                            type: 'image_generation_intermediate',
+                            requestId: requestId,
+                            data: {
+                                step: event.step,
+                                image: event.image.toString('base64'),
+                                timestamp: event.timestamp
+                            },
+                            timestamp: new Date().toISOString()
+                        }); */
+                    }
+                };
+            }
+
+            // Call the expansion function
+            const result = await expandImage(
+                data.filename, // The image to actually expand (target)
+                data.resolution,
+                data.imageBias,
+                data.upscaleAfterComplete || false,
+                data.overrideParams || {},
+                clientInfo.sessionId,
+                data.workspace,
+                streamingCallback,
+                ws,
+                this,
+                requestId, // Pass the requestId for consistent progress tracking
+                data.sourceFilename, // The original source image for metadata tracking
+                data.enableAI || false // Enable/disable AI processing
+            );
+
+            // Stop keep-alive
+            this.stopKeepAliveInterval(ws, requestId);
+            
+            // Send success response
+            this.sendToClient(ws, {
+                type: 'image_expansion_response',
+                requestId: requestId,
+                data: {
+                    image: result.image,
+                    filename: result.filename,
+                    seed: result.seed,
+                    expansionPrompt: result.expansionPrompt,
+                    expansionReason: result.expansionReason
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Image expansion error:', error);
+            
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(ws, requestId);
+            
+            this.sendToClient(ws, {
+                type: 'image_expansion_error',
+                requestId: requestId,
+                data: null,
+                error: error.message || 'Image expansion failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle image expansion reroll requests
+    async handleImageExpansionReroll(ws, message, clientInfo, wsServer) {
+        const requestId = message.requestId || 'unknown';
+        
+        try {
+            const { requestId: _, enableStreaming, ...data } = message;
+            console.log(`🔄 Processing image expansion reroll: ${requestId}`);
+            
+            if (!data.filename) {
+                throw new Error('Filename is required');
+            }
+            
+            // Start keep-alive for long-running reroll
+            this.startKeepAliveInterval(ws, requestId, 15000);
+            
+            // Setup streaming callback if enabled
+            let streamingCallback = null;
+            if (enableStreaming) {
+                console.log('🎬 Starting streaming image expansion reroll...');
+                streamingCallback = async (event) => {
+                };
+            }
+            
+            // Call the reroll function
+            const result = await rerollExpandedImage(
+                data.filename,
+                data.overrideParams || {},
+                clientInfo.sessionId,
+                data.workspace,
+                streamingCallback,
+                ws,
+                this,
+                requestId
+            );
+            
+            // Stop keep-alive
+            this.stopKeepAliveInterval(ws, requestId);
+            
+            // Send success response
+            this.sendToClient(ws, {
+                type: 'image_expansion_reroll_response',
+                requestId: requestId,
+                data: {
+                    image: result.image,
+                    filename: result.filename,
+                    seed: result.seed,
+                    expansionPrompt: result.expansionPrompt,
+                    expansionReason: result.expansionReason
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('❌ Image expansion reroll error:', error);
+            
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(ws, requestId);
+            
+            this.sendToClient(ws, {
+                type: 'image_expansion_reroll_error',
+                requestId: requestId,
+                data: null,
+                error: error.message || 'Image expansion reroll failed',
                 timestamp: new Date().toISOString()
             });
         }
@@ -8382,6 +8812,97 @@ class WebSocketMessageHandlers {
         }
     }
     
+    // Handle rebuilding metadata cache
+    async handleRebuildMetadataCache(ws, message, clientInfo, wsServer) {
+        try {
+            // Check if user is admin (not readonly)
+            if (clientInfo.userType !== 'admin') {
+                wsServer.sendToClient(ws, {
+                    type: 'rebuild_metadata_cache_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: false,
+                        error: 'Admin access required to rebuild metadata cache'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+                return;
+            }
+
+            console.log('🔄 Admin requested metadata cache rebuild via WebSocket...');
+
+            // Start keep-alive for metadata rebuild operation (every 10 seconds)
+            this.startKeepAliveInterval(ws, message.requestId, 10000);
+
+            // Track last sent percentage to throttle updates to every 1%
+            let lastSentPercentage = -1;
+
+            // Rebuild metadata cache with progress callback
+            const progressCallback = (progress) => {
+                const currentPercentage = parseInt((Math.floor((progress.current / progress.total) * 100)).toFixed(0));
+                
+                // Only send update if percentage increased by at least 1%
+                if (currentPercentage > lastSentPercentage) {
+                    wsServer.sendToClient(ws, {
+                        type: 'rebuild_metadata_cache_progress',
+                        requestId: message.requestId,
+                        data: {
+                            current: progress.current,
+                            total: progress.total,
+                            filename: progress.filename,
+                            updatedCount: progress.updatedCount,
+                            errorCount: progress.errorCount,
+                            percentage: currentPercentage
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                    lastSentPercentage = currentPercentage;
+                }
+            };
+
+            const result = await rebuildMetadataCache(imagesDir, progressCallback);
+
+            // Stop keep-alive when complete
+            this.stopKeepAliveInterval(message.requestId);
+            
+            console.log(`✅ Metadata cache rebuilt successfully: ${result.updatedCount} files updated, ${result.errorCount} errors`);
+            
+            wsServer.sendToClient(ws, {
+                type: 'rebuild_metadata_cache_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Metadata cache rebuilt successfully',
+                    updatedCount: result.updatedCount,
+                    errorCount: result.errorCount,
+                    totalFiles: result.totalFiles,
+                    timestamp: Date.now().valueOf()
+                },
+                timestamp: new Date().toISOString()
+            });
+
+            // Broadcast gallery update to all clients to refresh the UI
+            const galleryData = await this.buildGalleryData('images', clientInfo);
+            wsServer.broadcastGalleryUpdate(galleryData, 'images');
+            
+        } catch (error) {
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(message.requestId);
+
+            console.error('❌ Metadata cache rebuild error:', error);
+            wsServer.sendToClient(ws, {
+                type: 'rebuild_metadata_cache_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: 'Failed to rebuild metadata cache',
+                    details: error.message
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+    
     // Handle broadcasting resource updates to all clients
     async handleBroadcastResourceUpdate(ws, message, clientInfo, wsServer) {
         try {
@@ -8478,16 +8999,6 @@ class WebSocketMessageHandlers {
             const data = message.data || message;
             const { settings } = data;
             
-            // Ensure temperature is included and valid
-            if (settings.default_temperature === undefined) {
-                settings.default_temperature = 0.8;
-            }
-            
-            // Ensure reasoning level is included and valid
-            if (settings.default_reasoning_level === undefined) {
-                settings.default_reasoning_level = 'medium';
-            }
-            
             const success = savePersonaSettings(settings);
             
             this.sendToClient(ws, {
@@ -8510,7 +9021,7 @@ class WebSocketMessageHandlers {
             // Handle both message.data and direct message properties
             const data = message.data || message;
             console.log('📝 Creating chat session with data:', JSON.stringify(data, null, 2));
-            const { filename, characterName, textContextInfo, textViewerInfo, verbosityLevel } = data;
+            const { filename, characterName, textContextInfo, textViewerInfo, storyContext, verbosityLevel } = data;
             
             if (!filename) {
                 this.sendError(ws, 'Filename is required', null, message.requestId);
@@ -8519,36 +9030,16 @@ class WebSocketMessageHandlers {
 
             // Get persona settings for defaults
             const personaSettings = getPersonaSettings();
-            
-            // Use provided provider and model, or fallback to legacy detection
-            let provider = data.provider;
-            let model = data.model;
-            
-            // Fallback for legacy clients that still send aiModel
-            if (!provider || !model) {
-                const selectedModel = data.aiModel || personaSettings.default_ai_engine || 'grok-4';
-                provider = 'grok'; // Default to Grok
-                model = selectedModel;
-                
-                // Check if it's an OpenAI model
-                if (selectedModel.includes('gpt') || selectedModel.includes('o4')) {
-                    provider = 'openai';
-                } else if (selectedModel.includes('grok')) {
-                    provider = 'grok';
-                }
-            }
-            
             const sessionData = {
                 chat_name: characterName || null,
                 filename: filename,
-                provider: provider,
-                model: model,
+                provider: 'grok',
+                model: 'grok-4-fast-reasoning',
                 character_name: characterName || null,
                 text_context_info: textContextInfo || null,
                 text_viewer_info: textViewerInfo || null,
-                verbosity_level: verbosityLevel || personaSettings.default_verbosity || 3,
-                temperature: data.temperature || 0.8,
-                thought_level: data.thoughtLevel || 'minimal'
+                story_context: storyContext || null,
+                verbosity_level: verbosityLevel || personaSettings.default_verbosity || 3
             };
 
             const chatId = createChatSession(sessionData);
@@ -8603,16 +9094,10 @@ class WebSocketMessageHandlers {
                     const metadata = await getImageMetadata(data.filename, imagesDir);
                     console.log('📋 Metadata retrieved:', metadata ? 'Yes' : 'No');
                     if (metadata) {
-                        console.log('📋 Full metadata object:', JSON.stringify(metadata, null, 2));
-                        console.log('📋 Metadata keys:', Object.keys(metadata));
-                        console.log('📋 Metadata.metadata keys:', metadata.metadata ? Object.keys(metadata.metadata) : 'No metadata.metadata');
-                        console.log('📋 Full metadata.metadata:', JSON.stringify(metadata.metadata, null, 2));
-                        
                         // Check if metadata is a string that needs parsing
                         if (typeof metadata.metadata === 'string') {
                             try {
                                 const parsedMetadata = JSON.parse(metadata.metadata);
-                                console.log('📋 Parsed metadata.metadata:', JSON.stringify(parsedMetadata, null, 2));
                             } catch (e) {
                                 console.log('📋 Failed to parse metadata.metadata as JSON:', e.message);
                             }
@@ -8643,8 +9128,6 @@ class WebSocketMessageHandlers {
                     const metadata = await getImageMetadata(data.filename, imagesDir);
                     if (metadata) {
                         console.log('📋 Found metadata despite missing image file');
-                        console.log('📋 Fallback metadata keys:', Object.keys(metadata));
-                        console.log('📋 Fallback metadata.metadata keys:', metadata.metadata ? Object.keys(metadata.metadata) : 'No metadata.metadata');
                         
                         // The prompt data is always in metadata.metadata
                         if (metadata.metadata && metadata.metadata.input_prompt) {
@@ -8678,65 +9161,69 @@ class WebSocketMessageHandlers {
                     console.log('⚠️ No prompt data found, using fallback prompt');
                 }
                 
-                // Load system prompt
-                const systemPrompt = promptManager.getSystemPrompt('characterChat', {
-                    user_name: personaSettings.user_name || 'User',
-                    viewer_background: personaSettings.backstory || '',
-                    viewer_desires: '', // viewer desires
-                    verbosity_instruction: promptManager.getVerbosityInstruction(data.verbosityLevel || 3)
-                });
+                // Load system prompt with story context and dynamic context
+                const session = getChatSession(chatId);
+                const systemPrompt = await promptManager.getCompleteSystemPrompt(
+                    'characterChat',
+                    session,
+                    personaSettings,
+                    data.filename
+                );
                 
-                // Create AI service based on provider
                 let aiResponse;
-                if (provider === 'openai') {
-                    console.log('🤖 Using ChatGPT service for initial persona establishment');
-                    const sessionData = {
-                        id: chatId,
-                        provider: 'openai',
-                        model: model,
-                        temperature: data.temperature || 0.8,
-                        thoughtLevel: data.thoughtLevel || 'minimal'
-                    };
-                    const chat = createChatGPTSession(sessionData, personaSettings, systemPrompt);
+                console.log('🤖 Using Grok service for initial persona establishment');
+                const sessionData = {
+                    id: chatId,
+                    provider: 'grok',
+                    model: 'grok-4-fast-reasoning',
+                    verbosity_level: verbosityLevel || 3
+                };
+                const chat = createPersonaChatSession(sessionData, personaSettings, systemPrompt);
+                
+                // Establish persona with image
+                if (personaImage) {
+                    console.log('🎭 Establishing Grok persona with image');
+                    console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
+                    console.log('📝 User prompt length:', userPrompt.length);
+                    console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
                     
-                    // Establish persona with image
-                    if (personaImage) {
-                        console.log('🎭 Establishing ChatGPT persona with image');
-                        console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
-                        console.log('📝 User prompt length:', userPrompt.length);
-                        console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
+                    // Establish persona using streaming if enabled
+                    if (config.chat_streaming_enabled) {
+                        console.log('📡 Streaming enabled for Grok persona establishment');
+                        // Send initial streaming message (no requestId for streaming events)
+                        this.sendToClient(ws, {
+                            type: 'chat_streaming_start',
+                            chatId: chatId,
+                            message: 'Establishing persona...'
+                        });
                         
-                        if (config.chat_streaming_enabled) {
-                            console.log('📡 Streaming enabled for ChatGPT persona establishment');
-                            // Send initial streaming message
+                        const { establishPersonaStreaming } = require('./aiServices/grokService');
+                        aiResponse = await establishPersonaStreaming(chat, personaImage, userPrompt, viewerAvatar, (chunk, fullResponse, extractedEvents) => {
+                            // Send streaming update with extracted events (no requestId for streaming events)
                             this.sendToClient(ws, {
-                                type: 'chat_streaming_start',
-                                requestId: message.requestId,
+                                type: 'chat_streaming_update',
                                 chatId: chatId,
-                                message: 'Establishing persona...'
+                                events: extractedEvents || [], // Send structured events, not raw JSON
+                                fullResponse: fullResponse // Keep for final parsing if needed
                             });
-                            
-                            await establishChatGPTPersonaStreaming(chat, personaImage, userPrompt, viewerAvatar, (chunk, fullResponse, processedEvents) => {
-                                // Send streaming update with events
-                                this.sendToClient(ws, {
-                                    type: 'chat_streaming_update',
-                                    requestId: message.requestId,
-                                    chatId: chatId,
-                                    chunk: chunk,
-                                    fullResponse: fullResponse,
-                                    events: processedEvents
-                                });
-                            });
-                        } else {
-                            console.log('📡 Streaming disabled for ChatGPT persona establishment');
-                            await establishChatGPTPersona(chat, personaImage, userPrompt, viewerAvatar);
-                        }
+                        });
                     } else {
-                        console.log('❌ No persona image available, skipping persona establishment');
+                        console.log('📡 Streaming disabled for Grok persona establishment');
+                        aiResponse = await establishPersona(chat, personaImage, userPrompt, viewerAvatar);
                     }
                     
+                    // Persona establishment creates an initial character introduction response
+                    // Parse and send it to the client instead of a generic greeting
+                    console.log('✅ Persona established, parsing initial response');
+                    console.log(`🧵 Persona establishment response_id: ${chat.lastResponseId || 'not set'}`);
+                    
+                    // Use the persona establishment response as the initial message
+                    // Don't send "> START SEQUENCE" - the persona response IS the initial greeting
+                } else {
+                    console.log('❌ No persona image available, skipping persona establishment');
+                    // Only send greeting if persona establishment was skipped
                     if (config.chat_streaming_enabled) {
-                        console.log('📡 Streaming enabled for ChatGPT initial response');
+                        console.log('📡 Streaming enabled for Grok initial response');
                         // Send streaming start for initial message
                         this.sendToClient(ws, {
                             type: 'chat_streaming_start',
@@ -8745,7 +9232,8 @@ class WebSocketMessageHandlers {
                             message: 'Generating initial response...'
                         });
                         
-                        aiResponse = await continueChatGPTConversationStreaming(chat, 'Hello! I\'m ready to chat with you.', (chunk, fullResponse) => {
+                        const { continueConversationStreaming } = require('./aiServices/grokService');
+                        aiResponse = await continueConversationStreaming(chat, '> START SEQUENCE', (chunk, fullResponse) => {
                             // Send streaming update
                             this.sendToClient(ws, {
                                 type: 'chat_streaming_update',
@@ -8756,63 +9244,17 @@ class WebSocketMessageHandlers {
                             });
                         });
                     } else {
-                        console.log('📡 Streaming disabled for ChatGPT initial response');
-                        aiResponse = await continueChatGPTConversation(chat, 'Hello! I\'m ready to chat with you.');
+                        aiResponse = await continueConversation(chat, '> START SEQUENCE');
                     }
-                } else {
-                    console.log('🤖 Using Grok service for initial persona establishment');
-                    const sessionData = {
-                        id: chatId,
-                        provider: 'grok',
-                        model: model,
-                        temperature: data.temperature || 0.8
-                    };
-                    const chat = createPersonaChatSession(sessionData, personaSettings, systemPrompt);
-                    
-                    // Establish persona with image
-                    if (personaImage) {
-                        console.log('🎭 Establishing Grok persona with image');
-                        console.log('🖼️ Persona image size:', personaImage.base64.length, 'characters');
-                        console.log('📝 User prompt length:', userPrompt.length);
-                        console.log('👤 Viewer avatar:', viewerAvatar ? 'Yes' : 'No');
-                        
-                        if (config.chat_streaming_enabled) {
-                            console.log('📡 Streaming enabled for Grok persona establishment');
-                            // Send initial streaming message
-                            this.sendToClient(ws, {
-                                type: 'chat_streaming_start',
-                                requestId: message.requestId,
-                                chatId: chatId,
-                                message: 'Establishing persona...'
-                            });
-                        }
-                        
-                        await establishPersona(chat, personaImage, userPrompt, viewerAvatar);
-                    } else {
-                        console.log('❌ No persona image available, skipping persona establishment');
-                    }
-                    
-                    if (config.chat_streaming_enabled) {
-                        console.log('📡 Streaming enabled for Grok initial response');
-                        // Send streaming start for initial message
-                        this.sendToClient(ws, {
-                            type: 'chat_streaming_start',
-                            requestId: message.requestId,
-                            chatId: chatId,
-                            message: 'Generating initial response...'
-                        });
-                    }
-                    
-                    aiResponse = await continueConversation(chat, 'Hello! I\'m ready to chat with you.');
                 }
                 
                 console.log('📝 Initial AI response received, length:', aiResponse.length);
 
                 // Send streaming complete message only if streaming was enabled
+                // Don't include requestId here - create_chat_session request was already resolved
                 if (config.chat_streaming_enabled) {
                     this.sendToClient(ws, {
                         type: 'chat_streaming_complete',
-                        requestId: message.requestId,
                         chatId: chatId,
                         finalResponse: aiResponse
                     });
@@ -8834,14 +9276,40 @@ class WebSocketMessageHandlers {
                     if (jsonMatch) {
                         cleanResponse = jsonMatch[0];
                     } else {
-                        // If no array found, try to extract a single object
-                        jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
-                        if (jsonMatch) {
-                            cleanResponse = jsonMatch[0];
+                        // Check if it's multiple comma-separated objects (malformed JSON)
+                        // Pattern: { ... }, { ... }, { ... } (no array brackets)
+                        const commaSeparatedObjects = cleanResponse.match(/\{[\s\S]*?\}(?=\s*,|\s*$)/g);
+                        if (commaSeparatedObjects && commaSeparatedObjects.length > 1) {
+                            // Wrap in array brackets and fix trailing commas
+                            cleanResponse = '[' + commaSeparatedObjects.join(',') + ']';
+                            // Remove any trailing commas before closing bracket
+                            cleanResponse = cleanResponse.replace(/,(\s*\])/g, '$1');
+                        } else {
+                            // If no array found, try to extract a single object
+                            jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+                            if (jsonMatch) {
+                                cleanResponse = jsonMatch[0];
+                            }
                         }
                     }
                     
-                    const parsed = JSON.parse(cleanResponse);
+                    // Remove trailing commas before closing brackets/braces
+                    cleanResponse = cleanResponse.replace(/,(\s*[}\]])/g, '$1');
+                    
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(cleanResponse);
+                    } catch (parseErr) {
+                        // If parsing fails, try to fix common issues
+                        // Remove any remaining trailing commas
+                        cleanResponse = cleanResponse.replace(/,(\s*[}\]])/g, '$1');
+                        // Try wrapping multiple objects in array if still failing
+                        if (!cleanResponse.startsWith('[') && cleanResponse.includes('},')) {
+                            cleanResponse = '[' + cleanResponse + ']';
+                            cleanResponse = cleanResponse.replace(/,(\s*\])/g, '$1');
+                        }
+                        parsed = JSON.parse(cleanResponse);
+                    }
                     
                     // Convert to array if it's a single object
                     const events = Array.isArray(parsed) ? parsed : [parsed];
@@ -8866,8 +9334,9 @@ class WebSocketMessageHandlers {
                     parsedResponse = {
                         actions: events.filter(e => e.type === 'actions').map(e => e.content),
                         sfx: events.filter(e => e.type === 'sfx').map(e => e.content),
-                        reply: events.filter(e => e.type === 'speechdirect').map(e => e.content),
+                        speechdirect: events.filter(e => e.type === 'speechdirect').map(e => e.content),
                         speech: events.filter(e => e.type === 'speech').map(e => e.content),
+                        reply: events.filter(e => e.type === 'speechdirect' || e.type === 'reply').map(e => e.content),
                         innerspeech: events.filter(e => e.type === 'innerspeech').map(e => e.content),
                         emotion: events.filter(e => e.type === 'emotion').map(e => e.content),
                         environment: environmentEvents,
@@ -8913,9 +9382,10 @@ class WebSocketMessageHandlers {
                     };
                 }
 
-                // Add AI response to database
-                addChatMessage(chatId, 'assistant', aiResponse, JSON.stringify(parsedResponse));
-
+                // Note: establishPersona already stores the message in the database
+                // Only store again if this is NOT from persona establishment (e.g., if no persona was established)
+                // The parsed response is already stored by establishPersona, we just need to send it to the client
+                
                 // Send the AI response to the client
                 this.sendToClient(ws, {
                     type: 'chat_message_response',
@@ -9082,6 +9552,9 @@ class WebSocketMessageHandlers {
                 return;
             }
 
+            // Start keep-alive for long-running chat requests
+            this.startKeepAliveInterval(ws, message.requestId, 15000); // Every 15 seconds for chat
+
             // Prepare persona data using prompt manager
             const personaData = await promptManager.preparePersonaData(chatId, session.filename);
             
@@ -9109,14 +9582,14 @@ class WebSocketMessageHandlers {
                     });
                     
                     // Use streaming for conversation
-                    aiResponse = await aiServiceManager.continueConversation(chatId, userMessage, (chunk, fullResponse) => {
-                        // Send streaming update
+                    aiResponse = await aiServiceManager.continueConversation(chatId, userMessage, (chunk, fullResponse, extractedEvents) => {
+                        // Send streaming update with extracted events (not raw JSON)
                         this.sendToClient(ws, {
                             type: 'chat_streaming_update',
                             requestId: message.requestId,
                             chatId: chatId,
-                            chunk: chunk,
-                            fullResponse: fullResponse
+                            events: extractedEvents || [], // Send structured events, not raw JSON
+                            fullResponse: fullResponse // Keep for final parsing if needed
                         });
                     });
                 } else {
@@ -9127,64 +9600,6 @@ class WebSocketMessageHandlers {
                 
                 console.log('📝 AI response received, length:', aiResponse.length);
 
-                // Parse AI response as JSON
-                let jsonData;
-                try {
-                    // Clean up the response - remove any markdown formatting or extra text
-                    let cleanedResponse = aiResponse.trim();
-                    
-                    // Remove markdown code blocks if present
-                    if (cleanedResponse.startsWith('```json')) {
-                        cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-                    } else if (cleanedResponse.startsWith('```')) {
-                        cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
-                    }
-                    
-                    // Try to find JSON object in the response
-                    const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        cleanedResponse = jsonMatch[0];
-                    }
-                    
-                    // Try to parse as JSON
-                    jsonData = JSON.parse(cleanedResponse);
-                    
-                    // Validate that it has the required structure
-                    if (!jsonData.reply || !Array.isArray(jsonData.reply)) {
-                        throw new Error('Invalid JSON structure: missing or invalid reply array');
-                    }
-                    
-                    // Ensure all required fields exist with proper types
-                    jsonData = {
-                        actions: Array.isArray(jsonData.actions) ? jsonData.actions : [],
-                        sfx: Array.isArray(jsonData.sfx) ? jsonData.sfx : [],
-                        reply: Array.isArray(jsonData.reply) ? jsonData.reply : [aiResponse],
-                        appendMemory: Array.isArray(jsonData.appendMemory) ? jsonData.appendMemory : [],
-                        scene: typeof jsonData.scene === 'string' ? jsonData.scene : '',
-                        appendMind: Array.isArray(jsonData.appendMind) ? jsonData.appendMind : []
-                    };
-                    
-                    console.log('✅ Successfully parsed AI response as JSON');
-                    
-                } catch (parseError) {
-                    console.warn('⚠️ AI response was not valid JSON, wrapping in default structure:', parseError.message);
-                    console.log('Raw AI response:', aiResponse);
-                    console.log('Chat service:', session.chat_service);
-                    
-                    // If not valid JSON, wrap in a simple structure
-                    jsonData = {
-                        actions: [],
-                        sfx: [],
-                        reply: [aiResponse],
-                        appendMemory: [],
-                        scene: '',
-                        appendMind: []
-                    };
-                }
-
-                // Add AI response to database
-                addChatMessage(chatId, 'assistant', aiResponse, JSON.stringify(jsonData));
-
                 // Send streaming complete message only if streaming was enabled
                 if (config.chat_streaming_enabled) {
                     this.sendToClient(ws, {
@@ -9193,23 +9608,140 @@ class WebSocketMessageHandlers {
                         chatId: chatId,
                         finalResponse: aiResponse
                     });
+                } else {
+                    // Parse AI response for non-streaming mode
+                    let parsedResponse;
+                    try {
+                        // Clean the response - remove markdown code blocks if present
+                        let cleanResponse = aiResponse.trim();
+                        if (cleanResponse.startsWith('```json')) {
+                            cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+                        } else if (cleanResponse.startsWith('```')) {
+                            cleanResponse = cleanResponse.replace(/^```\s*/, '').replace(/\s*```$/, '');
+                        }
+                        
+                        // Try to extract JSON from mixed responses
+                        let jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
+                        if (jsonMatch) {
+                            cleanResponse = jsonMatch[0];
+                        } else {
+                            // Check if it's multiple comma-separated objects (malformed JSON)
+                            const commaSeparatedObjects = cleanResponse.match(/\{[\s\S]*?\}(?=\s*,|\s*$)/g);
+                            if (commaSeparatedObjects && commaSeparatedObjects.length > 1) {
+                                cleanResponse = '[' + commaSeparatedObjects.join(',') + ']';
+                                cleanResponse = cleanResponse.replace(/,(\s*\])/g, '$1');
+                            } else {
+                                jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
+                                if (jsonMatch) {
+                                    cleanResponse = jsonMatch[0];
+                                }
+                            }
+                        }
+                        
+                        // Remove trailing commas before closing brackets/braces
+                        cleanResponse = cleanResponse.replace(/,(\s*[}\]])/g, '$1');
+                        
+                        let parsed;
+                        try {
+                            parsed = JSON.parse(cleanResponse);
+                        } catch (parseErr) {
+                            cleanResponse = cleanResponse.replace(/,(\s*[}\]])/g, '$1');
+                            if (!cleanResponse.startsWith('[') && cleanResponse.includes('},')) {
+                                cleanResponse = '[' + cleanResponse + ']';
+                                cleanResponse = cleanResponse.replace(/,(\s*\])/g, '$1');
+                            }
+                            parsed = JSON.parse(cleanResponse);
+                        }
+                        
+                        // Convert to array if it's a single object
+                        const events = Array.isArray(parsed) ? parsed : [parsed];
+                        
+                        // Extract environment and location events
+                        const environmentEvents = events.filter(e => e.type === 'environment').map(e => e.content);
+                        const locationEvents = events.filter(e => e.type === 'location').map(e => e.content);
+                        
+                        // Extract scene data
+                        let sceneData = 'A cozy, intimate setting';
+                        if (environmentEvents.length > 0) {
+                            sceneData = environmentEvents.join(' ');
+                        } else if (locationEvents.length > 0) {
+                            sceneData = locationEvents.join(' ');
+                        }
+                        
+                        parsedResponse = {
+                            actions: events.filter(e => e.type === 'actions').map(e => e.content),
+                            sfx: events.filter(e => e.type === 'sfx').map(e => e.content),
+                            speechdirect: events.filter(e => e.type === 'speechdirect').map(e => e.content),
+                            speech: events.filter(e => e.type === 'speech').map(e => e.content),
+                            reply: events.filter(e => e.type === 'speechdirect' || e.type === 'reply').map(e => e.content),
+                            innerspeech: events.filter(e => e.type === 'innerspeech').map(e => e.content),
+                            emotion: events.filter(e => e.type === 'emotion').map(e => e.content),
+                            environment: environmentEvents,
+                            memory: events.filter(e => e.type === 'memory').map(e => e.content),
+                            currplan: events.filter(e => e.type === 'currplan').map(e => e.content),
+                            futureplans: events.filter(e => e.type === 'futureplans').map(e => e.content),
+                            trustlevel: events.filter(e => e.type === 'trustlevel').map(e => e.content),
+                            inventory: events.filter(e => e.type === 'inventory').map(e => e.content),
+                            sensory: events.filter(e => e.type === 'sensory').map(e => e.content),
+                            offlinemessage: events.filter(e => e.type === 'offlinemessage').map(e => e.content),
+                            timeofday: events.filter(e => e.type === 'timeofday').map(e => e.content),
+                            location: locationEvents,
+                            myname: events.filter(e => e.type === 'myname').map(e => e.content),
+                            appendMemory: [],
+                            scene: sceneData,
+                            appendMind: []
+                        };
+                        
+                    } catch (parseError) {
+                        console.warn('⚠️ Failed to parse AI response as JSON, using fallback:', parseError.message);
+                        parsedResponse = {
+                            actions: [],
+                            sfx: [],
+                            speechdirect: [],
+                            speech: [],
+                            reply: [aiResponse || 'I apologize, but I could not generate a response.'],
+                            innerspeech: [],
+                            emotion: [],
+                            environment: [],
+                            memory: [],
+                            currplan: [],
+                            futureplans: [],
+                            trustlevel: [],
+                            inventory: [],
+                            sensory: [],
+                            offlinemessage: [],
+                            timeofday: [],
+                            location: [],
+                            myname: [],
+                            appendMemory: [],
+                            scene: 'A cozy, intimate setting',
+                            appendMind: []
+                        };
+                    }
+                    
+                    // Send the AI response to the client (non-streaming mode sends immediately)
+                    this.sendToClient(ws, {
+                        type: 'chat_message_response',
+                        requestId: message.requestId,
+                        data: {
+                            success: true,
+                            chatId: chatId,
+                            response: parsedResponse,
+                            rawResponse: aiResponse,
+                            streaming: false
+                        },
+                        timestamp: new Date().toISOString()
+                    });
                 }
 
-                this.sendToClient(ws, {
-                    type: 'chat_message_response',
-                    requestId: message.requestId,
-                    data: {
-                        success: true,
-                        chatId: chatId,
-                        response: jsonData,
-                        rawResponse: aiResponse,
-                        streaming: config.chat_streaming_enabled
-                    },
-                    timestamp: new Date().toISOString()
-                });
+                // Stop keep-alive when complete
+                this.stopKeepAliveInterval(message.requestId);
 
             } catch (aiError) {
                 console.error('❌ AI service error:', aiError);
+                
+                // Stop keep-alive on error
+                this.stopKeepAliveInterval(message.requestId);
                 
                 // Add error message to database
                 const errorResponse = {
@@ -9237,6 +9769,9 @@ class WebSocketMessageHandlers {
             }
 
         } catch (error) {
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(message.requestId);
+            
             console.error('❌ Error sending chat message:', error);
             this.sendError(ws, 'Failed to send chat message', error.message, message.requestId);
         }
@@ -9252,8 +9787,11 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            const messages = getChatMessages(chatId, limit, offset);
+            const rawMessages = getChatMessages(chatId, limit, offset);
             const totalCount = getChatMessageCount(chatId);
+            
+            // Messages are already stored as individual event objects, no transformation needed
+            const messages = rawMessages;
 
             this.sendToClient(ws, {
                 type: 'get_chat_messages_response',
@@ -9269,50 +9807,6 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error getting chat messages:', error);
             this.sendError(ws, 'Failed to get chat messages', error.message, message.requestId);
-        }
-    }
-
-    async handleUpdateChatModel(ws, message, clientInfo, wsServer) {
-        try {
-            const data = message.data || message;
-            const { chatId, provider, model } = data;
-            
-            if (!chatId || !provider || !model) {
-                this.sendError(ws, 'Chat ID, provider, and model are required', null, message.requestId);
-                return;
-            }
-
-            // Get the current chat session
-            const session = getChatSession(chatId);
-            if (!session) {
-                this.sendError(ws, 'Chat session not found', null, message.requestId);
-                return;
-            }
-
-            // Update the chat session with new model information
-            const success = updateChatSession(chatId, {
-                provider: provider,
-                model: model
-            });
-
-            if (success) {
-                this.sendToClient(ws, {
-                    type: 'update_chat_model_response',
-                    requestId: message.requestId,
-                    data: {
-                        success: true,
-                        chatId: chatId,
-                        provider: provider,
-                        model: model
-                    },
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                this.sendError(ws, 'Failed to update chat model', null, message.requestId);
-            }
-        } catch (error) {
-            console.error('❌ Error updating chat model:', error);
-            this.sendError(ws, 'Failed to update chat model', error.message, message.requestId);
         }
     }
 
@@ -9338,168 +9832,6 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error cancelling generation:', error);
             this.sendError(ws, 'Failed to cancel generation', error.message, message.requestId);
-        }
-    }
-
-    async handleGetOpenAIModels(ws, message, clientInfo, wsServer) {
-        try {
-            const { createPersonaChatSession: createChatGPTSession } = require('./aiServices/chatgptService');
-            
-            // Check if OpenAI is available
-            if (!createChatGPTSession) {
-                this.sendToClient(ws, {
-                    type: 'get_openai_models_response',
-                    requestId: message.requestId,
-                    data: {
-                        success: false,
-                        error: 'OpenAI service not available'
-                    },
-                    timestamp: new Date().toISOString()
-                });
-                return;
-            }
-
-            // For now, return a static list of known OpenAI models
-            // In the future, this could call the OpenAI API to get the actual list
-            const models = [
-                {
-                    id: 'gpt-4o',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        vision: true,
-                        function_calling: true
-                    }
-                },
-                {
-                    id: 'gpt-4o-mini',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        vision: true,
-                        function_calling: true
-                    }
-                },
-                {
-                    id: 'gpt-5',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        reasoning: true,
-                        vision: true
-                    }
-                },
-                {
-                    id: 'gpt-5-mini',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        reasoning: true,
-                        vision: true
-                    }
-                },
-                {
-                    id: 'gpt-5-nano',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        reasoning: true,
-                        vision: true
-                    }
-                },
-                {
-                    id: 'o4-high',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        reasoning: true,
-                        vision: true
-                    }
-                },
-                {
-                    id: 'gpt-o4',
-                    object: 'model',
-                    created: 1704062400,
-                    owned_by: 'openai',
-                    capabilities: {
-                        reasoning: true,
-                        vision: true
-                    }
-                }
-            ];
-
-            this.sendToClient(ws, {
-                type: 'get_openai_models_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    models: models
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error fetching OpenAI models:', error);
-            this.sendError(ws, 'Failed to fetch OpenAI models', error.message, message.requestId);
-        }
-    }
-
-    async handleGetGrokModels(ws, message, clientInfo, wsServer) {
-        try {
-            // Check if Grok AI is available
-            if (!createPersonaChatSession) {
-                this.sendToClient(ws, {
-                    type: 'get_grok_models_response',
-                    requestId: message.requestId,
-                    data: {
-                        success: false,
-                        error: 'Grok AI service not available'
-                    },
-                    timestamp: new Date().toISOString()
-                });
-                return;
-            }
-
-            // For now, return a static list of known Grok models
-            // In the future, this could call the Grok AI API to get the actual list
-            const models = [
-                {
-                    name: 'grok-4',
-                    displayName: 'Grok 4 (Reasoning)',
-                    supportedGenerationMethods: ['generateContent'],
-                    createTime: '2024-01-01T00:00:00Z'
-                },
-                {
-                    name: 'grok-4-fast-reasoning',
-                    displayName: 'Grok 4 Fast (Reasoning)',
-                    supportedGenerationMethods: ['generateContent'],
-                    createTime: '2024-01-01T00:00:00Z'
-                },
-                {
-                    name: 'grok-3-mini',
-                    displayName: 'Grok 3 mini (Reasoning)',
-                    supportedGenerationMethods: ['generateContent'],
-                    createTime: '2024-01-01T00:00:00Z'
-                }
-            ];
-
-            this.sendToClient(ws, {
-                type: 'get_grok_models_response',
-                requestId: message.requestId,
-                data: {
-                    success: true,
-                    models: models
-                },
-                timestamp: new Date().toISOString()
-            });
-        } catch (error) {
-            console.error('❌ Error fetching Grok models:', error);
-            this.sendError(ws, 'Failed to fetch Grok models', error.message, message.requestId);
         }
     }
 
@@ -9776,6 +10108,233 @@ class WebSocketMessageHandlers {
             this.sendError(ws, 'Failed to handle dynamic generation progress', error.message, message.requestId);
         }
     }
+
+    // Handle director feedback submission
+    async handleDirectorSaveFeedback(ws, message, clientInfo, wsServer) {
+        try {
+            const { select_text, replace_text, action, ai_reason, user_feedback, timestamp } = message;
+            
+            // Validate required fields
+            if (!user_feedback || user_feedback.trim() === '') {
+                this.sendError(ws, 'User feedback description is required', 'VALIDATION_ERROR', message.requestId);
+                return;
+            }
+            
+            // Load current director config
+            const directorConfigPath = path.join(__dirname, '../director.config.json');
+            let directorConfig = {
+                version: "1.0.0",
+                description: "Director AI feedback and learning configuration",
+                feedback: {
+                    description: "Collection of past generation issues and lessons learned to improve future generations",
+                    entries: []
+                }
+            };
+            
+            if (fs.existsSync(directorConfigPath)) {
+                try {
+                    const configData = fs.readFileSync(directorConfigPath, 'utf8');
+                    directorConfig = JSON.parse(configData);
+                } catch (parseError) {
+                    console.error('Error parsing director.config.json:', parseError);
+                    // Continue with default config
+                }
+            }
+            
+            // Ensure feedback structure exists
+            if (!directorConfig.feedback) {
+                directorConfig.feedback = {
+                    description: "Collection of past generation issues and lessons learned to improve future generations",
+                    entries: []
+                };
+            }
+            
+            if (!Array.isArray(directorConfig.feedback.entries)) {
+                directorConfig.feedback.entries = [];
+            }
+            
+            // Create feedback entry
+            const feedbackEntry = {
+                id: `feedback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                select_text: select_text || '',
+                replace_text: replace_text || '',
+                action: action || 'replace',
+                ai_reason: ai_reason || '',
+                user_feedback: user_feedback.trim(),
+                timestamp: timestamp || new Date().toISOString(),
+                resolved: false
+            };
+            
+            // Add to entries array
+            directorConfig.feedback.entries.push(feedbackEntry);
+            
+            // Save updated config
+            fs.writeFileSync(directorConfigPath, JSON.stringify(directorConfig, null, 2), 'utf8');
+            
+            console.log(`📝 Director feedback saved: ${feedbackEntry.id}`);
+            console.log(`   Issue: ${user_feedback.substring(0, 100)}${user_feedback.length > 100 ? '...' : ''}`);
+            
+            // Send success response
+            this.sendToClient(ws, {
+                type: 'director_save_feedback_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Feedback saved successfully',
+                    feedbackId: feedbackEntry.id,
+                    totalEntries: directorConfig.feedback.entries.length
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error saving director feedback:', error);
+            this.sendError(ws, 'Failed to save feedback', error.message, message.requestId);
+        }
+    }
+
+    // Handle director rules loading
+    async handleDirectorLoadRules(ws, message, clientInfo, wsServer) {
+        try {
+            // Load current director config
+            const directorConfigPath = path.join(__dirname, '../director.config.json');
+            let directorConfig = {
+                version: "1.0.0",
+                description: "Director AI feedback and learning configuration",
+                feedback: { description: "Collection of past generation issues and lessons learned to improve future generations", entries: [] },
+                rules: { description: "Global rules and constraints for Director AI behavior", entries: [] }
+            };
+            
+            if (fs.existsSync(directorConfigPath)) {
+                try {
+                    const configData = fs.readFileSync(directorConfigPath, 'utf8');
+                    directorConfig = JSON.parse(configData);
+                } catch (parseError) {
+                    console.error('Error parsing director.config.json:', parseError);
+                }
+            }
+            
+            // Ensure rules structure exists
+            if (!directorConfig.rules) {
+                directorConfig.rules = {
+                    description: "Global rules and constraints for Director AI behavior",
+                    entries: []
+                };
+            }
+            
+            if (!Array.isArray(directorConfig.rules.entries)) {
+                directorConfig.rules.entries = [];
+            }
+            
+            console.log(`📚 Loaded ${directorConfig.rules.entries.length} director rules`);
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'director_load_rules_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    rules: directorConfig.rules.entries
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error loading director rules:', error);
+            this.sendError(ws, 'Failed to load rules', error.message, message.requestId);
+        }
+    }
+
+    // Handle director rules saving
+    async handleDirectorSaveRules(ws, message, clientInfo, wsServer) {
+        try {
+            const { rules } = message;
+            
+            if (!Array.isArray(rules)) {
+                this.sendError(ws, 'Rules must be an array', 'VALIDATION_ERROR', message.requestId);
+                return;
+            }
+            
+            // Load current director config
+            const directorConfigPath = path.join(__dirname, '../director.config.json');
+            let directorConfig = {
+                version: "1.0.0",
+                description: "Director AI feedback and learning configuration",
+                feedback: { description: "Collection of past generation issues and lessons learned to improve future generations", entries: [] },
+                rules: { description: "Global rules and constraints for Director AI behavior", entries: [] }
+            };
+            
+            if (fs.existsSync(directorConfigPath)) {
+                try {
+                    const configData = fs.readFileSync(directorConfigPath, 'utf8');
+                    directorConfig = JSON.parse(configData);
+                } catch (parseError) {
+                    console.error('Error parsing director.config.json:', parseError);
+                }
+            }
+            
+            // Ensure rules structure exists
+            if (!directorConfig.rules) {
+                directorConfig.rules = {
+                    description: "Global rules and constraints for Director AI behavior",
+                    entries: []
+                };
+            }
+            
+            // Update rules
+            directorConfig.rules.entries = rules;
+            
+            // Save updated config
+            fs.writeFileSync(directorConfigPath, JSON.stringify(directorConfig, null, 2), 'utf8');
+            
+            console.log(`📝 Director rules saved: ${rules.length} rule(s)`);
+            
+            // Send success response
+            this.sendToClient(ws, {
+                type: 'director_save_rules_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Rules saved successfully',
+                    totalRules: rules.length
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error saving director rules:', error);
+            this.sendError(ws, 'Failed to save rules', error.message, message.requestId);
+        }
+    }
+
+    async handleResolveDynamicContext(ws, message, clientInfo, wsServer) {
+        try {
+            const { dynamicConfig, requestId } = message;
+
+            if (!dynamicConfig) {
+                this.sendError(ws, 'Dynamic config is required', 'MISSING_CONFIG', requestId);
+                return;
+            }
+
+            const { resolveDynamicContext } = require('./dynamicGenerationHandlers');
+            
+            // Resolve the dynamic context
+            const resolvedContext = await resolveDynamicContext(dynamicConfig, clientInfo.ip);
+
+            // Send response back to client
+            this.sendToClient(ws, {
+                type: 'resolve_dynamic_context_response',
+                requestId: requestId,
+                data: resolvedContext,
+                timestamp: new Date().toISOString()
+            });
+
+        } catch (error) {
+            console.error('❌ Error resolving dynamic context:', error);
+            this.sendError(ws, 'Failed to resolve dynamic context', error.message, message.requestId);
+        }
+    }
 }
 
 module.exports = { WebSocketMessageHandlers }; 
+

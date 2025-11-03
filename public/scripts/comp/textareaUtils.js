@@ -1,0 +1,254 @@
+/**
+ * Shared Textarea Utilities
+ * Common functions for creating and managing editable textareas across the application
+ */
+
+/**
+ * Creates an editable textarea container with toolbar
+ * @param {Object} options - Configuration options
+ * @param {string} options.value - Initial textarea value
+ * @param {number} options.rows - Number of textarea rows (default: 2)
+ * @param {string} options.placeholder - Placeholder text (default: 'Enter value...')
+ * @param {Object} options.dataAttributes - Data attributes to add to textarea (default: {})
+ * @returns {HTMLElement} The textarea container element
+ */
+function createEditableTextareaContainer(options = {}) {
+    const {
+        value = '',
+        rows = 2,
+        placeholder = 'Enter value...',
+        dataAttributes = {}
+    } = options;
+    
+    const container = document.createElement('div');
+    container.className = 'character-prompt-textarea-container';
+    
+    // Build data attributes string
+    const dataAttrsString = Object.entries(dataAttributes)
+        .map(([key, val]) => `data-${key}="${escapeHtml(String(val))}"`)
+        .join(' ');
+    
+    container.innerHTML = `
+        <div class="character-prompt-textarea-background"></div>
+        <textarea 
+            class="form-control character-prompt-textarea prompt-textarea"
+            rows="${rows}"
+            ${dataAttrsString}
+            placeholder="${placeholder}"
+            autocapitalize="false"
+            autocorrect="false"
+            spellcheck="false"
+            data-ms-editor="false"
+        >${escapeHtml(value)}</textarea>
+        <div class="prompt-textarea-toolbar hidden">
+            <div class="toolbar-left">
+                <span class="token-count">0 tokens</span>
+            </div>
+            <div class="toolbar-right">
+                <button type="button" class="btn-secondary btn-small toolbar-btn indicator" data-action="autofill" data-state="off" title="Toggle Autofill">
+                    <i class="fas fa-lightbulb-slash"></i>
+                </button>
+                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
+                    <i class="fas fa-scale-unbalanced-flip"></i>
+                </button>
+                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
+                    <i class="fas fa-book-font"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    return container;
+}
+
+/**
+ * Setup an editable textarea with standard event listeners
+ * @param {HTMLTextAreaElement} textarea - The textarea element to setup
+ * @param {Function} customToolbarHandler - Optional custom toolbar action handler
+ */
+function setupEditableTextarea(textarea, customToolbarHandler = null) {
+    if (!textarea || !textarea.matches('.character-prompt-textarea')) return;
+    
+    // Cache DOM elements to avoid repeated queries
+    const container = textarea.closest('.character-prompt-textarea-container');
+    const toolbar = container?.querySelector('.prompt-textarea-toolbar');
+    
+    // Add event listeners for focus/blur to show/hide toolbar
+    addSafeEventListener(textarea, 'focus', () => {
+        if (toolbar) {
+            toolbar.classList.remove('hidden');
+            if (window.promptTextareaToolbar) {
+                window.promptTextareaToolbar.updateTokenCount(textarea);
+            }
+        }
+        
+        if (container) {
+            container.classList.add('textarea-focused');
+        }
+    }, 'toolbar');
+    
+    addSafeEventListener(textarea, 'blur', () => {
+        if (toolbar) {
+            toolbar.classList.add('hidden');
+        }
+        
+        if (container) {
+            container.classList.remove('textarea-focused');
+        }
+    }, 'toolbar');
+    
+    // Add input event listener for token count updates with debouncing
+    const debouncedTokenUpdate = debounce(() => {
+        if (window.promptTextareaToolbar) {
+            window.promptTextareaToolbar.updateTokenCount(textarea);
+        }
+    }, 150); // 150ms debounce for token counting
+    
+    addSafeEventListener(textarea, 'input', debouncedTokenUpdate, 'tokenCount');
+    
+    // Add character autocomplete events
+    if (window.handleCharacterAutocompleteInput) {
+        addSafeEventListener(textarea, 'input', window.handleCharacterAutocompleteInput, 'autocomplete');
+    }
+    if (window.handleCharacterAutocompleteKeydown) {
+        addSafeEventListener(textarea, 'keydown', window.handleCharacterAutocompleteKeydown, 'keydown');
+    }
+    if (window.startEmphasisHighlighting) {
+        addSafeEventListener(textarea, 'focus', () => window.startEmphasisHighlighting(textarea), 'focus');
+    }
+    if (window.applyFormattedText && window.updateEmphasisHighlighting && window.stopEmphasisHighlighting) {
+        addSafeEventListener(textarea, 'blur', () => {
+            window.applyFormattedText(textarea, true);
+            window.updateEmphasisHighlighting(textarea);
+            window.stopEmphasisHighlighting();
+        }, 'blur');
+    }
+    
+    // Setup toolbar button event listeners
+    const toolbarElement = textarea.closest('.character-prompt-textarea-container')?.querySelector('.prompt-textarea-toolbar');
+    if (toolbarElement) {
+        setupEditableTextareaToolbar(toolbarElement, textarea, customToolbarHandler);
+    }
+    
+    // Initial token count
+    if (window.promptTextareaToolbar) {
+        window.promptTextareaToolbar.updateTokenCount(textarea);
+    }
+}
+
+/**
+ * Setup toolbar for an editable textarea
+ * @param {HTMLElement} toolbar - The toolbar element
+ * @param {HTMLTextAreaElement} textarea - The associated textarea
+ * @param {Function} customActionHandler - Optional custom action handler (action, textarea, toolbar, event) => void
+ */
+function setupEditableTextareaToolbar(toolbar, textarea, customActionHandler = null) {
+    if (!toolbar || !textarea) return;
+    
+    // Handle toolbar button clicks
+    const buttons = toolbar.querySelectorAll('.toolbar-btn');
+    
+    buttons.forEach((button) => {
+        const action = button.dataset.action;
+        
+        // Remove any existing listeners first
+        button.removeEventListener('click', button._editableTextareaClickHandler);
+        
+        // Create new handler
+        button._editableTextareaClickHandler = (e) => {
+            e.preventDefault();
+            
+            if (customActionHandler) {
+                customActionHandler(action, textarea, toolbar, e);
+            } else {
+                // Default handler
+                handleDefaultToolbarAction(action, textarea, toolbar);
+            }
+        };
+        
+        button.addEventListener('click', button._editableTextareaClickHandler);
+    });
+    
+    // Sync autofill button state with global system
+    const autofillBtn = toolbar.querySelector('[data-action="autofill"]');
+    if (autofillBtn) {
+        // Force enable the button if it's disabled
+        if (autofillBtn.disabled) {
+            autofillBtn.disabled = false;
+            autofillBtn.removeAttribute('disabled');
+        }
+        
+        if (window.toggleAutofill) {
+            try {
+                // Get current global state using the correct function
+                let globalState = false;
+                if (window.isAutofillEnabled) {
+                    globalState = window.isAutofillEnabled();
+                } else {
+                    globalState = window.autofillEnabled || false;
+                }
+                
+                // Update button to match global state
+                autofillBtn.setAttribute('data-state', globalState ? 'on' : 'off');
+                
+                const icon = autofillBtn.querySelector('i');
+                if (icon) {
+                    icon.className = globalState ? 'fas fa-lightbulb' : 'fas fa-lightbulb-slash';
+                }
+            } catch (error) {
+                console.error('Error syncing autofill state:', error);
+            }
+        }
+    }
+}
+
+/**
+ * Default toolbar action handler
+ * @param {string} action - The action to perform
+ * @param {HTMLTextAreaElement} textarea - The textarea element
+ * @param {HTMLElement} toolbar - The toolbar element
+ */
+function handleDefaultToolbarAction(action, textarea, toolbar) {
+    switch (action) {
+        case 'quick-access':
+            // Open the dataset tag toolbar
+            if (window.showDatasetTagToolbar) {
+                textarea.focus();
+                window.showDatasetTagToolbar();
+            }
+            break;
+        case 'emphasis':
+            // Start emphasis editing
+            if (window.startEmphasisEditing) {
+                window.startEmphasisEditing(textarea);
+            }
+            
+            // Enter emphasis mode
+            toolbar.classList.add('emphasis-mode');
+            
+            // Initialize emphasis mode
+            if (window.promptTextareaToolbar) {
+                window.promptTextareaToolbar.initializeEmphasisMode(textarea, toolbar);
+                window.promptTextareaToolbar.updateEmphasisDisplay(toolbar);
+            }
+            
+            // Ensure textarea maintains focus for keyboard input
+            setTimeout(() => textarea.focus(), 10);
+            break;
+        case 'autofill':
+            // Autofill is handled by the main toolbar system automatically
+            break;
+    }
+}
+
+/**
+ * Utility function to escape HTML
+ * @param {string} text - The text to escape
+ * @returns {string} Escaped HTML
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+

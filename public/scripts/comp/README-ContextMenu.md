@@ -62,7 +62,18 @@ const menuConfig = {
             title: 'Custom Section',
             content: '<div>Any HTML content here</div>'
         }
-    ]
+    ],
+    onAction: function(action, target, item) {  // Optional inline action handler
+        // Handle actions directly instead of using global events
+        switch(action) {
+            case 'copy':
+                // Handle copy action
+                break;
+            case 'delete':
+                // Handle delete action
+                break;
+        }
+    }
 };
 ```
 
@@ -81,12 +92,34 @@ contextMenu.attachToElement(element, menuConfig);
 
 ### Handling Actions
 
-Listen for context menu actions using the custom event:
+#### Method 1: Inline Action Handler (Recommended)
+
+Pass an `onAction` function directly in the config:
+
+```javascript
+const config = {
+    sections: [...],
+    onAction: function(action, target, item) {
+        switch(action) {
+            case 'copy':
+                // Handle copy action
+                break;
+            case 'delete':
+                // Handle delete action
+                break;
+        }
+    }
+};
+```
+
+#### Method 2: Global Event Listener
+
+Listen for context menu actions using the custom event (for backward compatibility):
 
 ```javascript
 document.addEventListener('contextMenuAction', function(event) {
     const { action, target, item } = event.detail;
-    
+
     switch(action) {
         case 'copy':
             // Handle copy action
@@ -94,12 +127,11 @@ document.addEventListener('contextMenuAction', function(event) {
         case 'delete':
             // Handle delete action
             break;
-        case 'favorite':
-            // Handle favorite action
-            break;
     }
 });
 ```
+
+**Note:** Inline handlers are preferred as they avoid unnecessary global event listeners and provide better encapsulation.
 
 ### API Methods
 

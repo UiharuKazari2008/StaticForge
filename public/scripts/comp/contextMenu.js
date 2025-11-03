@@ -195,6 +195,17 @@ class ContextMenuController {
     }
 
     bindEvents() {
+        // Prevent focus transfer when right-clicking on context menu elements
+        document.addEventListener('mousedown', (e) => {
+            // Only prevent focus transfer for right-clicks (button 2)
+            if (e.button === 2) {
+                const target = e.target.closest('[data-context-menu]');
+                if (target) {
+                    e.preventDefault();
+                }
+            }
+        });
+
         // Desktop right-click
         document.addEventListener('contextmenu', (e) => {
             const target = e.target.closest('[data-context-menu]');
@@ -304,7 +315,6 @@ class ContextMenuController {
         // Block additional context menu clicks when a menu is already active
         // But allow proxy events from the overlay
         if (this.isOpen && !isProxyEvent) {
-            console.log('Context menu already open, blocking additional clicks');
             return;
         }
 
@@ -320,6 +330,9 @@ class ContextMenuController {
 
         // Apply maxHeight setting if specified
         this.applyMaxHeight(config);
+
+        // Call initfn for all sections before rendering to allow dynamic item generation
+        this.executeInitFunctions(config, target);
 
         this.renderMenu(config, target);
         this.positionMenu(event, isTouch);
@@ -366,6 +379,47 @@ class ContextMenuController {
         }
     }
 
+    executeInitFunctions(config, target) {
+        if (!config.sections || !Array.isArray(config.sections)) return;
+
+        config.sections.forEach((section) => {
+            // Execute initfn for all section types to allow dynamic generation of items/content
+            if (section.initfn && typeof section.initfn === 'function') {
+                try {
+                    section.initfn(section, target);
+                } catch (error) {
+                    console.error('Error executing section initfn:', error);
+                }
+            }
+
+            // Execute initfn for individual list items if they exist
+            if (section.type === 'list' && section.items && Array.isArray(section.items)) {
+                section.items.forEach((item) => {
+                    if (item.initfn && typeof item.initfn === 'function') {
+                        try {
+                            item.initfn(item, target);
+                        } catch (error) {
+                            console.error('Error executing list item initfn:', error);
+                        }
+                    }
+                });
+            }
+
+            // Execute initfn for individual icons if they exist
+            if (section.type === 'icons' && section.icons && Array.isArray(section.icons)) {
+                section.icons.forEach((icon) => {
+                    if (icon.initfn && typeof icon.initfn === 'function') {
+                        try {
+                            icon.initfn(icon, target);
+                        } catch (error) {
+                            console.error('Error executing icon initfn:', error);
+                        }
+                    }
+                });
+            }
+        });
+    }
+
     executeLoadFunctions(config, target) {
         if (!config.sections || !Array.isArray(config.sections)) return;
 
@@ -380,16 +434,28 @@ class ContextMenuController {
             }
 
             // Execute loadfn for list sections
-            if (section.type === 'list' && section.items && Array.isArray(section.items)) {
-                section.items.forEach((item) => {
-                    if (item.loadfn && typeof item.loadfn === 'function') {
-                        try {
-                            item.loadfn(item, target);
-                        } catch (error) {
-                            console.error('Error executing list item loadfn:', error);
-                        }
+            if (section.type === 'list') {
+                // Call section-level loadfn first to populate items dynamically
+                if (section.loadfn && typeof section.loadfn === 'function') {
+                    try {
+                        section.loadfn(section, target);
+                    } catch (error) {
+                        console.error('Error executing list section loadfn:', error);
                     }
-                });
+                }
+
+                // Then process individual item loadfns if items exist
+                if (section.items && Array.isArray(section.items)) {
+                    section.items.forEach((item) => {
+                        if (item.loadfn && typeof item.loadfn === 'function') {
+                            try {
+                                item.loadfn(item, target);
+                            } catch (error) {
+                                console.error('Error executing list item loadfn:', error);
+                            }
+                        }
+                    });
+                }
             }
 
             // Execute loadfn for icon sections
@@ -443,10 +509,19 @@ class ContextMenuController {
                 return this.createIconsSection(section, target, sectionElement);
             case 'custom':
                 return this.createCustomSection(section, target, sectionElement);
+            case 'separator':
+                return this.createSeparatorSection(section, target, sectionElement);
             default:
                 console.warn(`Unknown section type: ${section.type}`);
                 return null;
         }
+    }
+
+    createSeparatorSection(section, target, sectionElement) {
+        const separator = document.createElement('div');
+        separator.className = 'context-menu-separator';
+        sectionElement.appendChild(separator);
+        return sectionElement;
     }
 
     createListSection(section, target, sectionElement) {
@@ -534,12 +609,23 @@ class ContextMenuController {
                 itemElement.setAttribute('aria-disabled', 'true');
             }
 
+            // Prevent focus transfer on mousedown
+            itemElement.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
+
             // Click handler
             if (item.action && typeof item.action === 'string') {
                 itemElement.addEventListener('click', () => {
                     if (!item.disabled) {
                         this.executeAction(item.action, target, item);
-                        this.hideMenu();
+                        // Only hide menu if keepMenuOpen is not set to true
+                        if (!item.keepMenuOpen) {
+                            this.hideMenu();
+                        } else {
+                            // If menu stays open, refresh the item display
+                            this.refreshListItemDisplay(itemElement, item, target);
+                        }
                     }
                 });
             }
@@ -660,7 +746,13 @@ class ContextMenuController {
                 iconElement.addEventListener('click', () => {
                     if (!icon.disabled) {
                         this.executeAction(icon.action, target, icon);
-                        this.hideMenu();
+                        // Only hide menu if keepMenuOpen is not set to true
+                        if (!icon.keepMenuOpen) {
+                            this.hideMenu();
+                        } else {
+                            // If menu stays open, refresh the icon display
+                            this.refreshIconDisplay(iconElement, icon, target);
+                        }
                     }
                 });
             }
@@ -821,7 +913,17 @@ class ContextMenuController {
     }
 
     executeAction(action, target, item) {
-        // Dispatch custom event
+        // First check if there's an inline action handler in the config
+        const menuConfigId = target.dataset.contextMenu;
+        const config = this.configs && this.configs[menuConfigId];
+
+        if (config && config.onAction && typeof config.onAction === 'function') {
+            // Call the inline handler directly
+            config.onAction(action, target, item);
+            return;
+        }
+
+        // Fallback to global event dispatch for backward compatibility
         const event = new CustomEvent('contextMenuAction', {
             detail: {
                 action: action,
@@ -830,8 +932,141 @@ class ContextMenuController {
                 menu: this
             }
         });
-        
+
         document.dispatchEvent(event);
+    }
+
+    refreshListItemDisplay(itemElement, item, target) {
+        // Skip items with custom content - they manage their own updates
+        if (item.content) {
+            // For custom content, just call loadfn if it exists
+            if (item.loadfn && typeof item.loadfn === 'function') {
+                try {
+                    item.loadfn(item, target);
+                } catch (error) {
+                    console.error('Error executing list item loadfn:', error);
+                }
+            }
+            return;
+        }
+
+        // Call loadfn to update item properties
+        if (item.loadfn && typeof item.loadfn === 'function') {
+            try {
+                item.loadfn(item, target);
+            } catch (error) {
+                console.error('Error executing list item loadfn:', error);
+                return;
+            }
+        }
+
+        // Update icon if it exists
+        const iconElement = itemElement.querySelector('i');
+        if (item.icon) {
+            const iconValue = typeof item.icon === 'function' ? item.icon(target) : item.icon;
+            if (iconElement) {
+                iconElement.className = iconValue;
+            } else {
+                // Create icon if it doesn't exist
+                const newIconElement = document.createElement('i');
+                newIconElement.className = iconValue;
+                itemElement.insertBefore(newIconElement, itemElement.firstChild);
+            }
+        } else if (iconElement) {
+            // Remove icon if it no longer exists
+            iconElement.remove();
+        }
+
+        // Update text if it exists
+        const textElement = itemElement.querySelector('.context-menu-item-text');
+        if (item.text) {
+            const textValue = typeof item.text === 'function' ? item.text(target) : item.text;
+            if (textElement) {
+                textElement.textContent = textValue;
+            } else {
+                // Create text element if it doesn't exist
+                const newTextElement = document.createElement('span');
+                newTextElement.className = 'context-menu-item-text';
+                newTextElement.textContent = textValue;
+                itemElement.appendChild(newTextElement);
+            }
+        } else if (textElement) {
+            // Remove text if it no longer exists
+            textElement.remove();
+        }
+
+        // Update className if it exists
+        if (item.className) {
+            // Remove old className from item element
+            itemElement.classList.remove('text-success', 'text-danger', 'text-warning', 'text-info');
+            // Add new className (handle both string and array)
+            const classes = Array.isArray(item.className) ? item.className : [item.className];
+            classes.forEach(cls => {
+                if (cls) itemElement.classList.add(cls);
+            });
+        }
+
+        // Update disabled state
+        if (item.disabled) {
+            itemElement.classList.add('disabled');
+            itemElement.setAttribute('aria-disabled', 'true');
+        } else {
+            itemElement.classList.remove('disabled');
+            itemElement.removeAttribute('aria-disabled');
+        }
+    }
+
+    refreshIconDisplay(iconElement, icon, target) {
+        // Call loadfn to update icon properties
+        if (icon.loadfn && typeof icon.loadfn === 'function') {
+            try {
+                icon.loadfn(icon, target);
+            } catch (error) {
+                console.error('Error executing icon loadfn:', error);
+                return;
+            }
+        }
+
+        // Update icon
+        const iconClass = iconElement.querySelector('i');
+        if (icon.icon) {
+            const iconValue = typeof icon.icon === 'function' ? icon.icon(target) : icon.icon;
+            if (iconClass) {
+                iconClass.className = iconValue;
+            } else {
+                // Create icon if it doesn't exist
+                const newIconClass = document.createElement('i');
+                newIconClass.className = iconValue;
+                iconElement.appendChild(newIconClass);
+            }
+        } else if (iconClass) {
+            // Remove icon if it no longer exists
+            iconClass.remove();
+        }
+
+        // Update tooltip
+        if (icon.tooltip) {
+            const tooltipValue = typeof icon.tooltip === 'function' ? icon.tooltip(target) : icon.tooltip;
+            iconElement.title = tooltipValue;
+        } else {
+            iconElement.removeAttribute('title');
+        }
+
+        // Update data-state attribute if available
+        if (icon.dataState) {
+            iconElement.setAttribute('data-state', icon.dataState);
+        } else {
+            iconElement.removeAttribute('data-state');
+        }
+
+        // Update disabled state
+        if (icon.disabled) {
+            iconElement.classList.add('disabled');
+            iconElement.setAttribute('aria-disabled', 'true');
+        } else {
+            iconElement.classList.remove('disabled');
+            iconElement.removeAttribute('aria-disabled');
+        }
     }
 
     hideMenu() {
@@ -986,6 +1221,11 @@ class ContextMenuController {
                 subItemElement.classList.add('disabled');
                 subItemElement.setAttribute('aria-disabled', 'true');
             }
+
+            // Prevent focus transfer on mousedown
+            subItemElement.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
 
             // Click handler
             if (customHandler && typeof customHandler === 'function') {
@@ -1143,6 +1383,109 @@ if (typeof module !== 'undefined' && module.exports) {
 }
 
 /*
+INITFN AND LOADFN USAGE:
+
+The context menu system supports two types of initialization functions:
+
+1. initfn - Called BEFORE rendering
+   - Use to dynamically generate items, icons, or content
+   - Perfect for populating section.items or section.icons arrays
+   - Runs before the DOM elements are created
+
+2. loadfn - Called AFTER rendering
+   - Use to update properties of already-rendered elements
+   - Perfect for updating icons, text, or disabled states
+   - Runs after DOM elements exist
+
+INITFN EXAMPLES:
+
+// List section - dynamically generate items before render
+{
+    type: "list",
+    title: "Recent Files",
+    items: [], // Start empty
+    initfn: (section, target) => {
+        // Populate items array dynamically
+        const recentFiles = getRecentFiles(); // Your function
+        section.items = recentFiles.map(file => ({
+            text: file.name,
+            icon: "fas fa-file",
+            action: "openFile",
+            data: file
+        }));
+    }
+}
+
+// Icons section - dynamically generate icons before render
+{
+    type: "icons",
+    title: "Quick Actions",
+    icons: [], // Start empty
+    initfn: (section, target) => {
+        // Populate icons array based on context
+        const availableActions = getAvailableActions(target);
+        section.icons = availableActions.map(action => ({
+            icon: action.icon,
+            tooltip: action.name,
+            action: action.id
+        }));
+    }
+}
+
+// Custom section - set up content before render
+{
+    type: "custom",
+    content: "", // Start empty
+    initfn: (section, target) => {
+        // Generate custom HTML content
+        const data = getContextData(target);
+        section.content = `<div class="custom-content">${data.html}</div>`;
+    }
+}
+
+LOADFN EXAMPLES:
+
+// Update item properties after render
+{
+    type: "list",
+    items: [
+        {
+            text: "Toggle Feature",
+            icon: "fas fa-toggle-off",
+            action: "toggleFeature",
+            loadfn: (item, target) => {
+                // Update icon based on current state
+                const isEnabled = checkFeatureState(target);
+                item.icon = isEnabled ? "fas fa-toggle-on" : "fas fa-toggle-off";
+                item.disabled = !canToggle(target);
+            }
+        }
+    ]
+}
+
+COMBINING BOTH:
+
+{
+    type: "list",
+    title: "Actions",
+    items: [],
+    // initfn creates the items
+    initfn: (section, target) => {
+        section.items = [
+            { text: "Action 1", icon: "fas fa-star", action: "action1" },
+            { text: "Action 2", icon: "fas fa-heart", action: "action2" }
+        ];
+    },
+    // loadfn updates item properties after rendering
+    loadfn: (section, target) => {
+        section.items.forEach(item => {
+            if (item.action === "action1") {
+                item.disabled = !canDoAction1(target);
+            }
+        });
+    }
+}
+
 MOBILE/DESKTOP FILTERING USAGE EXAMPLES:
 
 1. SIMPLE MOBILE/DESKTOP ONLY ITEMS:

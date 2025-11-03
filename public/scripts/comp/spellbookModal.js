@@ -73,12 +73,13 @@ class SpellbookModalManager {
         this.progressWeatherIcon = document.getElementById('spellbookProgressWeatherIcon');
         this.progressHoliday = document.getElementById('spellbookProgressHoliday');
         this.progressSeason = document.getElementById('spellbookProgressSeason');
-        this.progressReasoning = document.getElementById('spellbookProgressReasoning');
+        this.progressReasoningContainer = document.getElementById('spellbookProgressReasoningContainer');
 
         // Button elements
         this.downloadBtn = document.getElementById('spellbookDownloadBtn');
         this.copyBtn = document.getElementById('spellbookCopyBtn');
         this.upscaleBtn = document.getElementById('spellbookUpscaleBtn');
+        this.expandBtn = document.getElementById('spellbookExpandBtn');
         this.goToWorkspaceBtn = document.getElementById('spellbookGoToWorkspaceBtn');
     }
 
@@ -128,6 +129,11 @@ class SpellbookModalManager {
             this.upscaleBtn.addEventListener('click', () => this.handleUpscale());
         }
 
+        // Expand button
+        if (this.expandBtn) {
+            this.expandBtn.addEventListener('click', () => this.handleExpand());
+        }
+
         // Go to workspace button
         if (this.goToWorkspaceBtn) {
             this.goToWorkspaceBtn.addEventListener('click', () => this.handleGoToWorkspace());
@@ -155,18 +161,52 @@ class SpellbookModalManager {
                 overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
                 break;
             case 'thinking':
+                if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Getting Ready...');
                 break;
             case 'streaming':
+                if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Reading Response...');
                 this.addSpellbookProgressReasoning(data?.reason);
                 break;
+            case 'optimizing':
+                if (overlay?.classList?.contains('hidden')) return;
+                this.updateSpellbookProgressStatus('Optimizing...');
+                // Clear existing reasoning items to make room for optimization text
+                if (this.progressReasoningContainer) {
+                    // Fade out existing items quickly
+                    const existingItems = this.progressReasoningContainer.querySelectorAll('.progress-reasoning-item');
+                    existingItems.forEach((item, index) => {
+                        setTimeout(() => {
+                            item.classList.add('fade-out');
+                            if (index === existingItems.length - 1) {
+                                // After last item starts fading, clear container and positions
+                                setTimeout(() => {
+                                    this.progressReasoningContainer.innerHTML = '';
+                                    if (this.spellbookReasoningPositions) {
+                                        this.spellbookReasoningPositions = [];
+                                    }
+                                }, 400);
+                            }
+                        }, index * 50); // Quick stagger
+                    });
+                }
+                // Add the optimization reason if provided
+                if (data?.reason) {
+                    const existingItems = this.progressReasoningContainer?.querySelectorAll('.progress-reasoning-item');
+                    setTimeout(() => {
+                        this.addSpellbookProgressReasoning(data.reason);
+                    }, existingItems?.length > 0 ? (existingItems.length * 50 + 400) : 0);
+                }
+                break;
             case 'completion':
+                if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Starting Generation...');
                 // Show completion for 2 seconds then hide
                 this.hideSpellbookDynamicGenerationProgressOverlay();
                 break;
             case 'error':
+                if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
                 // Hide overlay after showing error for 3 seconds
                 this.hideSpellbookDynamicGenerationProgressOverlay();
@@ -506,7 +546,14 @@ class SpellbookModalManager {
         this.selectedPreset = presetName;
 
         if (this.customPresetSelected) {
-            this.customPresetSelected.innerHTML = `<i class="fa-light fa-sparkle"></i> ${presetName}`;
+            if (presetName.startsWith('chapter:')) {
+                const chapterName = presetName.replace('chapter:', '');
+                const chapter = window.chapterData?.find(c => c.name === chapterName);
+                const displayName = chapter ? chapter.displayName : chapterName;
+                this.customPresetSelected.innerHTML = `<i class="fas fa-layer-group"></i> ${displayName}`;
+            } else {
+                this.customPresetSelected.innerHTML = `<i class="fa-light fa-sparkle"></i> ${presetName}`;
+            }
         }
 
         if (this.clearPresetBtn) {
@@ -524,7 +571,16 @@ class SpellbookModalManager {
         // Update the hidden input for compatibility - use the correct preset format
         const hiddenInput = document.getElementById('presetSelect');
         if (hiddenInput) {
-            hiddenInput.value = `preset:${presetName}`;
+            if (presetName.startsWith('chapter:')) {
+                // For chapters, we need to get the chapter's UUID
+                const chapterName = presetName.replace('chapter:', '');
+                const chapter = window.chapterData?.find(c => c.name === chapterName);
+                if (chapter) {
+                    hiddenInput.value = `preset:${chapter.uuid}`;
+                }
+            } else {
+                hiddenInput.value = `preset:${presetName}`;
+            }
         }
 
         console.log('Selected preset:', presetName);
@@ -669,10 +725,26 @@ class SpellbookModalManager {
                 // Store generated image info
                 this.generatedFilename = filename;
                 this.generatedWorkspace = workspace;
+                
+                // Store dimensions for upscale calculation
+                this.generatedWidth = result.width || result.metadata?.width;
+                this.generatedHeight = result.height || result.metadata?.height;
 
-                // Enable upscale button now that we have an image
+                // Enable/show upscale button based on availability
                 if (this.upscaleBtn) {
-                    this.upscaleBtn.disabled = false;
+                    if (this.generatedWidth && this.generatedHeight) {
+                        const upscaleInfo = calculateUpscaleInfo(this.generatedWidth, this.generatedHeight);
+                        if (upscaleInfo.available) {
+                            this.upscaleBtn.disabled = false;
+                            this.upscaleBtn.classList.remove('hidden');
+                        } else {
+                            this.upscaleBtn.classList.add('hidden');
+                        }
+                    } else {
+                        // Default to enabled if dimensions unknown
+                        this.upscaleBtn.disabled = false;
+                        this.upscaleBtn.classList.remove('hidden');
+                    }
                 }
 
                 // Update blur background
@@ -966,14 +1038,20 @@ class SpellbookModalManager {
                 throw new Error('WebSocket not connected. Please check your connection.');
             }
 
+            // Calculate upscale cost and output resolution based on image dimensions
+            const width = this.generatedWidth || 1024;
+            const height = this.generatedHeight || 1024;
+            const upscaleInfo = calculateUpscaleInfo(width, height);
+            
             // Check for credit costs and show confirmation dialog for upscaling
-            const upscaleCost = 7; // Upscaling always costs 7 credits
-            const confirmed = await showCreditCostDialog(upscaleCost);
-            if (!confirmed) {
-                // Reset button state
-                this.upscaleBtn.disabled = false;
-                this.upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
-                return;
+            if (upscaleInfo.cost > 0) {
+                const confirmed = await showCreditCostDialog(upscaleInfo.cost, null, upscaleInfo.outputResolution);
+                if (!confirmed) {
+                    // Reset button state
+                    this.upscaleBtn.disabled = false;
+                    this.upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
+                    return;
+                }
             }
 
             // Show progress toast
@@ -1080,6 +1158,41 @@ class SpellbookModalManager {
         }
     }
 
+    async handleExpand() {
+        if (!this.generatedFilename) return;
+
+        try {
+            // Check if WebSocket is connected
+            if (!wsClient || !wsClient.isConnected()) {
+                throw new Error('WebSocket not connected. Please check your connection.');
+            }
+
+            // Fetch metadata to get image dimensions
+            let metadata = null;
+            if (typeof getImageMetadata === 'function') {
+                metadata = await getImageMetadata(this.generatedFilename);
+            }
+
+            const imageDimensions = metadata ? {
+                width: metadata.actual_width || metadata.width,
+                height: metadata.actual_height || metadata.height,
+                resPreset: metadata.actual_resolution || metadata.resPreset || metadata.resolution
+            } : null;
+
+            // Open the expansion modal
+            if (typeof openImageExpansionModal === 'function') {
+                openImageExpansionModal(this.generatedFilename, imageDimensions);
+            } else {
+                console.error('openImageExpansionModal function not found');
+                showGlassToast('error', 'Error', 'Image expansion feature not available', false, 5000, '<i class="nai-cross"></i>');
+            }
+
+        } catch (error) {
+            console.error('Expand error:', error);
+            showGlassToast('error', 'Error', error.message || 'Failed to open expansion modal', false, 5000, '<i class="nai-cross"></i>');
+        }
+    }
+
     // Animation and overlay methods (similar to manual modal)
     startSpellbookGenerationAnimation() {
         if (!this.previewStars || !this.previewBackgroundLines || !this.previewForegroundLines) {
@@ -1183,9 +1296,44 @@ class SpellbookModalManager {
     }
 
     hideSpellbookDynamicGenerationProgressOverlay() {
-        if (this.dynamicGenerationProgressOverlay) {
-            this.dynamicGenerationProgressOverlay.classList.add('hidden');
-        }
+        if (!this.dynamicGenerationProgressOverlay) return;
+
+        // Fade out time and weather sections first
+        const timeSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-time-section');
+        const weatherSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-weather-section');
+        
+        if (timeSection) timeSection.classList.add('fade-out');
+        if (weatherSection) weatherSection.classList.add('fade-out');
+
+        // Get all reasoning items
+        const reasoningItems = document.querySelectorAll('#spellbookDynamicGenerationProgressOverlay .progress-reasoning-item');
+        
+        // After time/weather fade out (300ms), start fading out reasoning items one by one
+        setTimeout(() => {
+            if (reasoningItems.length === 0) {
+                // No reasoning items, just hide the overlay
+                this.dynamicGenerationProgressOverlay.classList.add('hidden');
+                return;
+            }
+
+            // Fade out each reasoning item with staggered delays
+            reasoningItems.forEach((item, index) => {
+                setTimeout(() => {
+                    item.classList.add('fade-out');
+                    
+                    // After the last item starts fading out, wait for it to complete then hide overlay
+                    if (index === reasoningItems.length - 1) {
+                        setTimeout(() => {
+                            this.dynamicGenerationProgressOverlay.classList.add('hidden');
+                            // Clean up reasoning items
+                            if (this.progressReasoningContainer) {
+                                this.progressReasoningContainer.innerHTML = '';
+                            }
+                        }, 400); // Match transition duration
+                    }
+                }, index * 150); // Stagger by 150ms
+            });
+        }, 300); // Wait for time/weather to fade out
     }
 
     updateSpellbookProgressStatus(status) {
@@ -1197,21 +1345,7 @@ class SpellbookModalManager {
     addSpellbookProgressReasoning(reason) {
         if (!reason) return;
 
-        if (this.progressReasoning) {
-            // Create waiting dots element if it doesn't exist
-            let waitingElement = this.progressReasoning.querySelector('.progress-reasoning-waiting');
-            if (!waitingElement) {
-                waitingElement = document.createElement('div');
-                waitingElement.className = 'progress-reasoning-waiting';
-                waitingElement.innerHTML = '<span class="progress-reasoning-dots">●●●</span>';
-                this.progressReasoning.appendChild(waitingElement);
-            }
-
-            // Hide waiting dots when first reasoning arrives
-            if (waitingElement) {
-                waitingElement.style.display = 'none';
-            }
-
+        if (this.progressReasoningContainer) {
             // Create new div for this reasoning
             const reasonDiv = document.createElement('div');
             reasonDiv.className = 'progress-reasoning-item';
@@ -1220,11 +1354,97 @@ class SpellbookModalManager {
             reasonSpan.textContent = reason.trim();
 
             reasonDiv.appendChild(reasonSpan);
-            this.progressReasoning.appendChild(reasonDiv);
-
-            // Auto-scroll to bottom
-            this.progressReasoning.scrollTop = this.progressReasoning.scrollHeight;
+            this.progressReasoningContainer.appendChild(reasonDiv);
+            
+            // Generate random position as percentages, avoiding center and existing text
+            // Define zones: prefer edges and corners, avoid center (30-70% range)
+            let randomXPercent, randomYPercent;
+            let attempts = 0;
+            const maxAttempts = 20;
+            
+            do {
+                // Generate position favoring edges
+                const favorEdge = Math.random() < 0.7; // 70% chance to favor edges
+                
+                if (favorEdge) {
+                    // Choose a quadrant (top-left, top-right, bottom-left, bottom-right)
+                    const quadrant = Math.floor(Math.random() * 4);
+                    
+                    switch(quadrant) {
+                        case 0: // Top-left
+                            randomXPercent = Math.random() * 25 + 5; // 5-30%
+                            randomYPercent = Math.random() * 25 + 15; // 15-40%
+                            break;
+                        case 1: // Top-right
+                            randomXPercent = Math.random() * 25 + 70; // 70-95%
+                            randomYPercent = Math.random() * 25 + 15; // 15-40%
+                            break;
+                        case 2: // Bottom-left
+                            randomXPercent = Math.random() * 25 + 5; // 5-30%
+                            randomYPercent = Math.random() * 30 + 60; // 60-90%
+                            break;
+                        case 3: // Bottom-right
+                            randomXPercent = Math.random() * 25 + 70; // 70-95%
+                            randomYPercent = Math.random() * 30 + 60; // 60-90%
+                            break;
+                    }
+                } else {
+                    // Random position avoiding center
+                    randomXPercent = Math.random() * 90 + 5; // 5-95%
+                    randomYPercent = Math.random() * 75 + 15; // 15-90%
+                    
+                    // If in center zone, push to edges
+                    if (randomXPercent > 30 && randomXPercent < 70) {
+                        randomXPercent = randomXPercent < 50 ? Math.random() * 25 + 5 : Math.random() * 25 + 70;
+                    }
+                    if (randomYPercent > 35 && randomYPercent < 65) {
+                        randomYPercent = randomYPercent < 50 ? Math.random() * 20 + 15 : Math.random() * 30 + 60;
+                    }
+                }
+                
+                attempts++;
+            } while (this.checkSpellbookReasoningOverlap(randomXPercent, randomYPercent) && attempts < maxAttempts);
+            
+            // Store position for overlap checking
+            if (!this.spellbookReasoningPositions) {
+                this.spellbookReasoningPositions = [];
+            }
+            this.spellbookReasoningPositions.push({ x: randomXPercent, y: randomYPercent });
+            
+            // Switch between left/right and top/bottom based on 50% threshold
+            if (randomXPercent > 50) {
+                // Position from right edge
+                reasonDiv.style.right = `${100 - randomXPercent}%`;
+            } else {
+                // Position from left edge
+                reasonDiv.style.left = `${randomXPercent}%`;
+            }
+            
+            if (randomYPercent > 50) {
+                // Position from bottom edge
+                reasonDiv.style.bottom = `${100 - randomYPercent}%`;
+            } else {
+                // Position from top edge
+                reasonDiv.style.top = `${randomYPercent}%`;
+            }
+            
+            // Trigger fade-in with slight delay
+            setTimeout(() => {
+                reasonDiv.classList.add('visible');
+            }, 50);
         }
+    }
+
+    checkSpellbookReasoningOverlap(x, y, minDistance = 15) {
+        if (!this.spellbookReasoningPositions) return false;
+        
+        for (const pos of this.spellbookReasoningPositions) {
+            const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+            if (distance < minDistance) {
+                return true;
+            }
+        }
+        return false;
     }
 
     updateSpellbookProgressContext(data) {
@@ -1395,10 +1615,21 @@ class SpellbookModalManager {
             this.progressWeatherIcon.innerHTML = '<span class="weather-fallback-icon">🌤️</span>';
         }
 
-        // Clear reasoning
-        if (this.progressReasoning) {
-            this.progressReasoning.innerHTML = '';
+        // Clear reasoning container
+        if (this.progressReasoningContainer) {
+            this.progressReasoningContainer.innerHTML = '';
         }
+        
+        // Clear stored positions for new session
+        if (this.spellbookReasoningPositions) {
+            this.spellbookReasoningPositions = [];
+        }
+
+        // Remove fade-out classes
+        const timeSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-time-section');
+        const weatherSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-weather-section');
+        if (timeSection) timeSection.classList.remove('fade-out');
+        if (weatherSection) weatherSection.classList.remove('fade-out');
 
         this.hideSpellbookDynamicGenerationOverlay();
         this.hideSpellbookDynamicGenerationProgressOverlay();

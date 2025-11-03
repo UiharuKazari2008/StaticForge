@@ -114,6 +114,7 @@
         <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
         <link rel="stylesheet" href="/dist/mdi/materialdesignicons.min.css">
         <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
+        <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
     </head>
     <body class="initializing">
 
@@ -251,7 +252,7 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="button" id="allChatsBtn" class="btn-secondary hidden" title="All Chats">
+                        <button type="button" id="allChatsBtn" class="btn-secondary" title="All Chats">
                             <i class="fa-light fa-messages"></i>
                         </button>
                         <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator hidden" data-state="desc" title="Sort Order: Newest First">
@@ -483,7 +484,7 @@
                                     <button type="button" id="manualLoadBtn" class="btn-secondary" disabled>
                                         <i class="fas fa-arrow-up-from-square"></i>
                                     </button>
-                                    <button type="button" id="manualSaveBtn" class="btn-secondary">
+                                    <button type="button" id="manualSaveBtn" class="btn-secondary" style="flex: 1 0 auto;">
                                         Write <i class="fas fa-arrow-down-to-square"></i>
                                     </button>
                                 </div>
@@ -493,10 +494,13 @@
                                         <div class="tab-header">
                                             <div id="tab-buttons" class="gallery-toggle-group" data-active="prompt">
                                                 <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Base Prompt">
-                                                    <i class="nai-penwriting"></i>
+                                                    <i class="ri-code-block"></i>
+                                                </button>
+                                                <button type="button" class="gallery-toggle-btn hidden" data-tab="creative" title="Creative Directive">
+                                                    <i class="ri-text-block"></i>
                                                 </button>
                                                 <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content">
-                                                    <i class="fas fa-ban"></i>
+                                                    <i class="ri-eraser-fill"></i>
                                                 </button>
                                                 <div class="gallery-toggle-slider"></div>
                                             </div>
@@ -504,42 +508,12 @@
                                                 <span id="manualPresetPlaceholderText"></span>
                                             </div>
                                             <div class="extra-buttons">
-                                                <div id="transformationDropdown" class="custom-dropdown dropright">
-                                                    <button type="button" id="transformationDropdownBtn" class="btn-secondary indicator" data-state="off">
-                                                        <i class="nai-img2img"></i>
-                                                    </button>
-                                                    <div id="transformationDropdownMenu" class="custom-dropdown-menu hidden">
-                                                        <div class="custom-dropdown-option" data-value="base-image">
-                                                            <i class="nai-img2img"></i> Base Image
-                                                        </div>
-                                                        <div class="custom-dropdown-option" data-value="vibe-transfer">
-                                                            <i class="nai-vibe-transfer"></i> Vibe Transfer
-                                                        </div>
-                                                        <div class="custom-dropdown-option" data-value="character">
-                                                            <i class="nai-image-tool-line-art"></i> Character
-                                                        </div>
-                                                        <div class="custom-dropdown-separator"></div>
-                                                        <div class="custom-dropdown-option" data-value="reroll" class="hidden">
-                                                            <i class="fas fa-history"></i> Previous Image
-                                                        </div>
-                                                        <div class="custom-dropdown-option" data-value="variation" class="hidden">
-                                                            <i class="fas fa-image"></i> Current Image
-                                                        </div>
-                                                        <div class="custom-dropdown-option" data-value="upload">
-                                                            <i class="nai-import"></i> Upload
-                                                        </div>
-                                                    </div>
-                                                    <input type="hidden" id="transformationType" value="reroll">
-                                                </div>
                                                 
                                                 <button type="button" id="directorBtn" class="btn-secondary indicator" data-state="off" title="Director (AI powered image prompt assistant)">
                                                     <i class="xai-icon"></i>
                                                 </button>
                                                 <button type="button" id="manualPresetToggleBtn" class="btn-secondary indicator" data-state="off" title="Preset Settings">
                                                     <i class="fa-regular fa-bookmark"></i>
-                                                </button>
-                                                <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary indicator" data-state="off" title="Dynamic Generation">
-                                                    <i class="fas fa-house-day"></i>
                                                 </button>
                                             </div>
                                         </div>
@@ -549,6 +523,13 @@
                                                     <div class="prompt-textarea-background"></div>
                                                     <textarea id="manualPrompt" class="form-control prompt-textarea textarea-inset" placeholder="Enter your prompt..." required  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                     <div class="prompt-status-icons">
+                                                        <div class="prompt-token-progress">
+                                                            <div class="token-progress-bar">
+                                                                <div class="token-progress-fill prompt-total">
+                                                                    <div class="token-progress-inner"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                         <div class="prompt-status-icon uc-enabled hidden" title="UC preset enabled">
                                                             <div class="uc-level-dots">
                                                                 <div class="uc-level-dot"></div>
@@ -593,7 +574,16 @@
                                                     </div>
                                                     <div class="prompt-textarea-toolbar hidden">
                                                         <div class="toolbar-left">
-                                                            <span class="token-count">0 tokens</span>
+                                                            <div class="token-info-container">
+                                                                <div class="token-info-top">
+                                                                    <span class="token-count">0 tokens</span>
+                                                                </div>
+                                                                <div class="token-progress-bar">
+                                                                    <div class="token-progress-fill">
+                                                                        <div class="token-progress-inner"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                             <!-- Search Mode Elements (Hidden by default) -->
                                                             <div class="toolbar-search-elements">
                                                                 <div class="text-search-label">Search</div>
@@ -622,33 +612,71 @@
                                                                     </button>
                                                                     <div id="subTogglesDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
-                                                                <!-- Quality Toggle -->
-                                                                <button type="button" id="qualityToggleBtn" class="btn-small btn-secondary indicator toolbar-btn" data-state="off" title="Enable Quality Enhancements">
-                                                                    <i class="fa-crown fas"></i>
-                                                                </button>
-                                                                <!-- NSFW Dropdown -->
-                                                                <div id="nsfwDropdown" class="custom-dropdown dark">
-                                                                    <button type="button" id="nsfwToggleBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="neutral" title="NSFW Content Control">
-                                                                        <i class="fas fa-shield"></i>
-                                                                    </button>
-                                                                    <div id="nsfwDropdownMenu" class="custom-dropdown-menu hidden"></div>
-                                                                </div>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
-                                                                    <i class="fas fa-lightbulb"></i>
-                                                                </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator" id="showBothBtn" data-state="off" title="Show Both Prompt and UC Panes">
-                                                                    <i class="nai-detatch-up"></i>
+                                                                <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dynamic Generation Options">
+                                                                    <i class="ri-pencil-ai-2-fill"></i>
                                                                 </button>
                                                                 <div class="divider"></div>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                                                    <i class="fas fa-scale-unbalanced-flip"></i>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" id="showBothBtn" data-state="off" title="Show Both Prompt and UC Panes">
+                                                                    <i class="nai-detatch-up"></i>
                                                                 </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                                                    <i class="fas fa-book-font"></i>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                                    <i class="fas fa-lightbulb"></i>
                                                                 </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                                                    <i class="fas fa-search"></i>
+                                                                <div id="promptActionsDropdown" class="custom-dropdown dark dropright">
+                                                                    <button type="button" id="promptActionsDropdownBtn" class="btn-secondary btn-small toolbar-btn">
+                                                                        <i class="fas fa-toolbox"></i>
+                                                                    </button>
+                                                                    <div id="promptActionsDropdownMenu" class="custom-dropdown-menu hidden" tabindex="0">
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <!-- Search Mode Buttons (Hidden by default) -->
+                                                            <div class="toolbar-search-buttons">
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn text-search-select" data-action="search-select" title="Select (Enter)"><i class="fas fa-arrow-right-long-to-line"></i></button>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="tab-pane" id="creative-tab" data-label="Creative Directive">
+                                                <div class="prompt-textarea-container creative-directive-container">
+                                                    <div class="prompt-textarea-background"></div>
+                                                    <textarea id="creativeDirectiveInput" class="form-control prompt-textarea textarea-inset" placeholder="Dear Kamisama..." rows="1" autocapitalize="false"></textarea>
+                                                    <div class="prompt-textarea-toolbar hidden">
+                                                        <div class="toolbar-left">
+                                                            <div class="toolbar-regular-buttons info-container">
+                                                                <i class="fas fa-temperature-high"></i>
+                                                                <input type="number" id="creativeDirectiveTemperature" class="form-control hover-show colored" placeholder="Temp" min="0" max="2" step="0.1" value="1.0" title="AI Temperature (0-2, default 1.0)" style="width: 60px;">
+                                                                
+                                                            </div>
+                                                            <!-- Search Mode Elements (Hidden by default) -->
+                                                            <div class="toolbar-search-elements">
+                                                                <div class="text-search-label">Search</div>
+                                                                <div class="text-search-input-container">
+                                                                    <input type="text" class="text-search-input" placeholder="Enter search term..." />
+                                                                </div>
+                                                                <div class="text-search-match-count">0</div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="toolbar-right">
+                                                            <div class="toolbar-regular-buttons">
+                                                                <button type="button" id="creativeTabDynamicGenerationBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dynamic Generation Options">
+                                                                    <i class="ri-pencil-ai-2-fill"></i>
                                                                 </button>
+                                                                <div class="divider"></div>
+                                                                <button type="button" id="creativeTabShowBothBtn" class="btn-secondary btn-small toolbar-btn toggle-btn" data-state="off" title="Show Both Prompt and UC Panes">
+                                                                    <i class="nai-detatch-up"></i>
+                                                                </button>
+                                                                <div id="creativeTabPromptActionsDropdown" class="custom-dropdown dark dropright">
+                                                                    <button type="button" id="creativeTabPromptActionsDropdownBtn" class="btn-secondary btn-small toolbar-btn">
+                                                                        <i class="fas fa-toolbox"></i>
+                                                                    </button>
+                                                                    <div id="creativeTabPromptActionsDropdownMenu" class="custom-dropdown-menu hidden" tabindex="0">
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                             <!-- Search Mode Buttons (Hidden by default) -->
                                                             <div class="toolbar-search-buttons">
@@ -666,6 +694,13 @@
                                                     <div class="prompt-textarea-background"></div>
                                                     <textarea id="manualUc" class="form-control prompt-textarea textarea-inset" rows="3" placeholder="Enter undesired content..."  autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
                                                     <div class="prompt-status-icons">
+                                                        <div class="prompt-token-progress">
+                                                            <div class="token-progress-bar">
+                                                                <div class="token-progress-fill uc-total">
+                                                                    <div class="token-progress-inner"></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
                                                         <div class="prompt-status-icon uc-enabled hidden" title="UC preset enabled">
                                                             <div class="uc-level-dots">
                                                                 <div class="uc-level-dot"></div>
@@ -710,7 +745,16 @@
                                                     </div>
                                                     <div class="prompt-textarea-toolbar hidden">
                                                         <div class="toolbar-left">
-                                                            <span class="token-count">0 tokens</span>
+                                                            <div class="token-info-container">
+                                                                <div class="token-info-top">
+                                                                    <span class="token-count">0 tokens</span>
+                                                                </div>
+                                                                <div class="token-progress-bar">
+                                                                    <div class="token-progress-fill">
+                                                                        <div class="token-progress-inner"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                             <!-- Search Mode Elements (Hidden by default) -->
                                                             <div class="toolbar-search-elements">
                                                                 <div class="text-search-label">Search</div>
@@ -724,8 +768,8 @@
                                                             <!-- Regular Toolbar Buttons -->
                                                             <div class="toolbar-regular-buttons">
                                                                 <!-- UC Presets Dropdown -->
-                                                                <div id="ucPresetsDropdown" class="custom-dropdown dropup dropright">
-                                                                    <button type="button" id="ucPresetsDropdownBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="UC Presets">
+                                                                <div id="ucPresetsDropdown" class="custom-dropdown dark dropright">
+                                                                    <button type="button" id="ucPresetsDropdownBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-auto-clean="on" title="UC Presets">
                                                                         <div class="uc-boxes">
                                                                             <div class="uc-box" data-level="1"></div>
                                                                             <div class="uc-box" data-level="2"></div>
@@ -735,19 +779,24 @@
                                                                     </button>
                                                                     <div id="ucPresetsDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                                <!-- NSFW Dropdown -->
+                                                                <div id="nsfwDropdown" class="custom-dropdown dark dropright">
+                                                                    <button type="button" id="nsfwToggleBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="neutral" title="NSFW Content Control">
+                                                                        <i class="fas fa-shield"></i>
+                                                                    </button>
+                                                                    <div id="nsfwDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                                                                </div>                                                            
+                                                                <div class="divider"></div>
+                                                                <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn toolbar-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                                                     <i class="fas fa-lightbulb"></i>
                                                                 </button>
-                                                                <div class="divider"></div>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="emphasis" title="Emphasis">
-                                                                    <i class="fas fa-scale-unbalanced-flip"></i>
-                                                                </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="quick-access" title="Quick Access">
-                                                                    <i class="fas fa-book-font"></i>
-                                                                </button>
-                                                                <button type="button" class="btn-secondary btn-small toolbar-btn" data-action="search" title="Inline Find">
-                                                                    <i class="fas fa-search"></i>
-                                                                </button>
+                                                                <div id="ucActionsDropdown" class="custom-dropdown">
+                                                                    <button type="button" id="ucActionsDropdownBtn" class="btn-secondary btn-small toolbar-btn">
+                                                                        <i class="fas fa-toolbox"></i>
+                                                                    </button>
+                                                                    <div id="ucActionsDropdownMenu" class="custom-dropdown-menu hidden">
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                             <!-- Search Mode Buttons (Hidden by default) -->
                                                             <div class="toolbar-search-buttons">
@@ -764,31 +813,31 @@
                                         <!-- Dynamic Generation Section -->
                                         <div id="dynamicGenerationGroup" class="form-row hidden">
                                             <div class="dynamic-generation-container">
-                                                <div class="dynamic-generation-buttons">
-                                                    <!-- Dynamic Generation Buttons -->
+                                                <div class="dynamic-generation-carousel" id="dynamicCarousel">
+                                                    <div class="carousel-item active">
+                                                        <i class="carousel-icon fa-regular fa-clock"></i>
+                                                        <span class="carousel-text">Loading...</span>
+                                                    </div>
                                                 </div>
                                                 <div class="dynamic-generation-actions">
-                                                    <button type="button" id="todBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Time of Day">
+                                                    <button type="button" id="todBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" title="Time of Day">
                                                         <i class="fa-regular fa-clock"></i>
                                                     </button>
-                                                    <button type="button" id="weatherBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Weather">
+                                                    <button type="button" id="weatherBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" title="Weather">
                                                         <i class="fa-regular fa-cloud-sun"></i>
                                                     </button>
-                                                    <button type="button" id="seasonBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Season">
+                                                    <button type="button" id="seasonBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" data-toggle-holiday="true" title="Season">
                                                         <i class="fas fa-leaf-maple"></i>
                                                     </button>
-                                                    <button type="button" id="clothingBtn" class="btn-secondary btn-small indicator" data-state="off" title="Clothing Adaptation">
-                                                        <i class="fas fa-shirt"></i>
+                                                    <button type="button" id="creativeBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-toggle-clothing="false" data-toggle-action="false" title="Creative Mode">
+                                                        <i class="fas fa-paintbrush-pencil"></i>
                                                     </button>
-                                                    <button type="button" id="actionBtn" class="btn-secondary btn-small indicator" data-state="off" data-override="" title="Character Action">
-                                                        <i class="fa-regular fa-person-running"></i>
-                                                    </button>
-                                                    <button type="button" id="creativeBtn" class="btn-secondary btn-small indicator" data-state="off" title="Creative Mode">
-                                                        <i class="fa-solid fa-brush"></i>
+                                                    <button type="button" id="optimizeBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-token-count="true" data-lock-subject="false" data-pipeline-aware="false" data-initial-prompt-aware="false" data-context-menu="optimize-options" title="Token Optimization">
+                                                        <i class="fas fa-washing-machine"></i>
                                                     </button>
                                                     <div class="divider"></div>
-                                                    <button type="button" id="dynamicGenerationViewBtn" class="btn-secondary btn-small" disabled>
-                                                        <i class="fa-regular fa-memo-pad"></i>
+                                                    <button type="button" id="dynamicGenerationViewBtn" class="btn-secondary btn-small toolbar-btn" disabled title="View Compiled Prompt">
+                                                        <i class="fa-regular fa-glasses-round"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -797,38 +846,55 @@
                                 </div>
 
                                 <!-- Character Prompts Section -->
-                                <div class="form-group">
-                                    <div class="character-prompts-header">
-                                        <div class="character-prompts-title-group">
-                                            <button type="button" id="randomPromptToggleBtn" class="btn-secondary indicator" data-state="off" title="Random Prompt">
-                                                <i class="nai-dice"></i>
+                                <div class="character-prompts-header">
+                                    <div class="character-prompts-title-group">
+                                        <button type="button" id="randomPromptToggleBtn" class="btn-secondary indicator" data-state="off" title="Random Prompt">
+                                            <i class="nai-dice"></i>
+                                        </button>
+                                        <div id="randomPromptDivider" class="divider hidden"></div>
+                                        <button type="button" id="randomPromptRefreshBtn" class="btn-secondary hidden" title="Generate new random prompt" class="hidden">
+                                            <i class="nai-reload"></i>
+                                        </button>
+                                        <button type="button" id="randomPromptTransferBtn" class="btn-secondary hidden" title="Transfer random prompt to main prompt and exit random mode" class="hidden">
+                                            <i class="fas fa-arrow-alt-square-up"></i>
+                                        </button>
+                                    </div>
+                                    <div class="character-prompts-controls">
+                                        <button type="button" id="autoPositionBtn" class="btn-secondary indicator hidden" data-state="on" title="Auto Position">
+                                            <i class="fa-regular fa-arrows-up-down-left-right"></i> Auto
+                                        </button>
+                                        <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
+                                            <i class="fa-regular fa-equals"></i>
+                                        </button>
+                                        <button type="button" id="enableStageGenerationBtn" class="btn-secondary toggle-btn" data-state="on" title="Enable Stage Generations" style="margin-left: auto;">
+                                            <i class="fas fa-arrow-down-square-triangle"></i>
+                                        </button>
+                                        <!-- Add Item Dropdown -->
+                                        <div id="addItemDropdown" class="custom-dropdown dropright dark">
+                                            <button type="button" id="addItemDropdownBtn" class="btn-primary">
+                                                <i class="nai-plus"></i>
                                             </button>
-                                            <div id="randomPromptDivider" class="divider hidden"></div>
-                                            <button type="button" id="randomPromptRefreshBtn" class="btn-secondary hidden" title="Generate new random prompt" class="hidden">
-                                                <i class="nai-reload"></i>
-                                            </button>
-                                            <button type="button" id="randomPromptTransferBtn" class="btn-secondary hidden" title="Transfer random prompt to main prompt and exit random mode" class="hidden">
-                                                <i class="fas fa-arrow-alt-square-up"></i>
-                                            </button>
-                                        </div>
-                                        <div class="character-prompts-controls">
-                                            <button type="button" id="manualTextReplacementManagerBtn" class="btn-secondary" title="Manage Text Expanders">
-                                                <i class="fa-regular fa-language"></i>
-                                            </button>
-                                            <button type="button" id="autoPositionBtn" class="btn-secondary indicator hidden" data-state="on" title="Auto Position">
-                                                <i class="fa-regular fa-arrows-up-down-left-right"></i> Auto
-                                            </button>
-                                            <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
-                                                <i class="fa-regular fa-equals"></i>
-                                            </button>
-                                            <!-- Custom Transformation Dropdown -->
-                                            <button type="button" id="addCharacterBtn" class="btn-secondary">
-                                                Character <i class="nai-plus"></i>
-                                            </button>
+                                            <div id="addItemDropdownMenu" class="custom-dropdown-menu hidden">
+                                                <div class="custom-dropdown-option" data-value="character">
+                                                    <i class="fas fa-user"></i> Character
+                                                </div>
+                                                <div class="custom-dropdown-separator"></div>
+                                                <div class="custom-dropdown-option" data-value="expand-canvas">
+                                                    <i class="mdi mdi-1-25 mdi-relative-scale"></i> Expand Canvas
+                                                </div>
+                                                <div class="custom-dropdown-option" data-value="enhance">
+                                                    <i class="fas fa-diagram-venn"></i> Enhance
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div id="characterPromptsContainer" class="character-prompts-container">
-                                    </div>
+                                </div>
+
+                                <!-- Text Overlays Section -->
+                                <div id="textOverlaysContainer" class="text-overlays-container hidden">
+                                </div>
+
+                                <div id="characterPromptsContainer" class="character-prompts-container hidden">
                                 </div>
                                 
                                 <div id="transformationRow" class="transforms-container form-row">
@@ -930,7 +996,17 @@
                                         <!-- Vibe reference items will be added here -->
                                     </div>
                                 </div>
+
+                                <!-- Pipeline Stages Section -->
+                                <div id="pipelineStagesSection" class="form-group">
+                                    <div id="pipelineStagesHeader" class="pipeline-stages-header hidden" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                        <label style="margin: 0;">Pipeline Stages</label>
+                                    </div>
+                                    <div id="pipelineStagesContainer" class="pipeline-stages-container">
+                                    </div>
+                                </div>
                             </div>
+                            
                         </div>
                         <div class="bottom-border"></div>
                     </div>
@@ -949,31 +1025,36 @@
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
+
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
+                                
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
-                                <div class="preview-star"></div>
-                                <div class="preview-star"></div>
-                                <div class="preview-star"></div>
-                                <div class="preview-star"></div>
-                                <!-- Additional 15 stars for top, bottom, and edges -->
-                                <div class="preview-star"></div>
+                                
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
+
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
+                                <div class="preview-star"></div>
+
+                                <div class="preview-star"></div>
+                                <div class="preview-star"></div>
+                                <div class="preview-star"></div>
+                                <div class="preview-star"></div>
+                                
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
                                 <div class="preview-star"></div>
@@ -1020,45 +1101,37 @@
                             <div class="manual-preview-content">
                                 <!-- Dynamic Generation Progress Overlay -->
                                 <div id="dynamicGenerationProgressOverlay" class="dynamic-generation-progress-overlay hidden">
-                                    <div class="progress-overlay-header">
-                                        <div class="progress-loader">
-                                            <div class="progress-spinner"></div>
+                                    <!-- Left Top: Time and Season Data -->
+                                    <div class="progress-time-section">
+                                        <div class="progress-time-info" id="progressTimeInfo">
+                                            <span class="progress-time" id="progressTime">--:--</span>
+                                            <span class="progress-date" id="progressDate">--/--</span>
                                         </div>
-                                        <div class="progress-status" id="progressStatusText">Processing...</div>
-                                    </div>
-
-                                    <div class="progress-overlay-content">
-                                        <div class="progress-row">
-                                            <div class="progress-time-info" id="progressTimeInfo">
-                                                <span class="progress-time" id="progressTime">--:--</span>
-                                                <span class="progress-date" id="progressDate">--/--</span>
-                                            </div>
-                                            <div class="overlay-weather-section">
-                                                <div class="overlay-weather-info">
-                                                    <div class="overlay-weather-feels-like" id="progressWeatherFeelsLike">
-                                                        <span class="temp-number">--</span>
-                                                        <span class="temp-unit">°C</span>
-                                                    </div>
-                                                    <div class="overlay-weather-condition" id="progressWeatherCondition">Unknown</div>
-                                                    <div class="overlay-weather-condition" id="progressWeatherLocation" class="hidden">Unknown</div>
-                                                </div>
-                                                <div class="overlay-weather-icon" id="progressWeatherIcon">
-                                                    <span class="weather-fallback-icon">🌤️</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="progress-row">
+                                        <div class="progress-season-info">
                                             <span class="progress-holiday" id="progressHoliday"></span>
                                             <span class="progress-season" id="progressSeason">Season</span>
                                         </div>
+                                    </div>
 
-                                        <div class="progress-row reasoning-row">
-                                            <div class="progress-reasoning-wrapper">
-                                                <div class="progress-reasoning" id="progressReasoning"></div>
+                                    <!-- Right Top: Weather -->
+                                    <div class="progress-weather-section">
+                                        <div class="overlay-weather-section">
+                                            <div class="overlay-weather-info">
+                                                <div class="overlay-weather-feels-like" id="progressWeatherFeelsLike">
+                                                    <span class="temp-number">--</span>
+                                                    <span class="temp-unit">°C</span>
+                                                </div>
+                                                <div class="overlay-weather-condition" id="progressWeatherCondition">Unknown</div>
+                                                <div class="overlay-weather-condition" id="progressWeatherLocation" class="hidden">Unknown</div>
+                                            </div>
+                                            <div class="overlay-weather-icon" id="progressWeatherIcon">
+                                                <span class="weather-fallback-icon">🌤️</span>
                                             </div>
                                         </div>
                                     </div>
+
+                                    <!-- Inner Container for Reasoning Items -->
+                                    <div class="progress-reasoning-container" id="progressReasoningContainer"></div>
                                 </div>
                                 <!-- Navigation buttons -->
                                 <div class="manual-preview-image-container">
@@ -1070,6 +1143,10 @@
                                         <i class="mdi mdi-draw-pen"></i>
                                         <p>Generate an image to see preview</p>
                                     </div>
+                                    <!-- Dialog overlay container -->
+                                    <div id="manualPreviewDialogs" class="manual-preview-dialogs hidden"></div>
+                                    <!-- Stage Indicators -->
+                                    <div id="manualStageIndicators" class="manual-stage-indicators hidden"></div>
                                 </div>
                                 <div class="manual-preview-controls">
                                     <div class="manual-preview-controls-left">
@@ -1086,14 +1163,17 @@
                                     <div class="manual-preview-controls-center">
                                     </div>
                                     <div class="manual-preview-controls-right">
-                                        <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button hidden">
-                                            <i class="fas fa-download"></i>
+                                        <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button hidden">
+                                            <i class="fa-regular fa-star"></i>
                                         </button>
                                         <button type="button" id="manualPreviewCopyBtn" class="btn-secondary round-button hidden">
                                             <i class="nai-clipboard"></i>
                                         </button>
-                                        <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button hidden">
-                                            <i class="fa-regular fa-star"></i>
+                                        <button type="button" id="manualPreviewDownloadBtn" class="btn-secondary round-button hidden">
+                                            <i class="fas fa-download"></i>
+                                        </button>
+                                        <button type="button" id="manualPreviewExpandBtn" class="btn-secondary round-button" title="Expand Image">
+                                            <i class="mdi mdi-1-25 mdi-relative-scale"></i>
                                         </button>
                                         <button type="button" id="manualPreviewUpscaleBtn" class="btn-secondary round-button hidden">
                                             <i class="nai-upscale"></i>
@@ -1141,6 +1221,12 @@
                                             </div>
                                         </div>
                                     </div>
+                                    <button type="button" id="manualPreviewCompiledPromptBtn" class="btn-secondary round-button hidden" title="View Compiled Prompt">
+                                        <i class="fas fa-glasses-round"></i>
+                                    </button>
+                                    <button type="button" id="manualPreviewToggleDialogsBtn" class="btn-secondary round-button hidden indicator" data-state="on" title="Toggle Dialogs">
+                                        <i class="mdi mdi-message-text"></i>
+                                    </button>
                                     <!-- Manual Preview Close Button -->
                                     <button type="button" id="manualPreviewCloseBtn" class="btn-secondary round-button">
                                         <i class="nai-thin-cross"></i>
@@ -1254,7 +1340,7 @@
                                 <label for="manualGuidance">Guidance</label>
                                 <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
                                     <input type="number" id="manualGuidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" value="5.0" placeholder="5.0">
-                                    <button type="button" id="varietyBtn" class="btn-secondary indicator" title="Enable Variety+">
+                                    <button type="button" id="varietyBtn" class="btn-secondary toggle-btn" title="Enable Variety+">
                                         <i class="fas fa-sparkle"></i>
                                     </button>
                                 </div>
@@ -1269,7 +1355,10 @@
                         </div>
                         <div class="form-row control-row-resolution">
                             <div id="manualResolutionGroup" class="form-group">
-                                <label for="manualResolution">Resolution</label>
+                                <label for="manualResolution">
+                                    <span>Resolution</span>
+                                    <span id="resolutionAreaToggle" class="label-right-toggle hidden" title="Toggle between Normal (1MP) and Large (3MP) area limit">Normal</span>
+                                </label>
                                 <div class="resolution-group">
                                     <div id="manualResolutionDropdown" class="custom-dropdown dropup">
                                         <button type="button" id="manualResolutionDropdownBtn" class="custom-dropdown-btn hover-show colored">
@@ -1282,11 +1371,17 @@
                                         <button type="button" id="manualCustomResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
                                             <i class="fas fa-ruler-combined"></i>
                                         </button>
-                                        <input type="number" id="manualWidth" class="colored form-control hover-show" placeholder="Width" min="512" max="2048" step="8">
-                                        <span style="color: #ccc; padding-bottom: 5px;">×</span>
-                                        <input type="number" id="manualHeight" class="colored form-control hover-show" placeholder="Height" min="512" max="2048" step="8">
+                                        <input type="number" id="manualWidth" class="colored form-control hover-show width-value" placeholder="Width" min="64" step="64">
+                                        <span class="x-seperator">
+                                            <i class="fa-xmark-large fas"></i>
+                                        </span>
+                                        <input type="number" id="manualHeight" class="colored form-control hover-show height-value" placeholder="Height" min="64" step="64">
                                     </div>
-                                    <button type="button" id="manualUpscale" class="btn-secondary indicator" data-state="off" title="Enable upscaling">
+                                    <!-- Save Stage 0 Button -->
+                                    <button type="button" id="saveStage0Btn" class="btn-secondary toggle-btn hidden" data-state="off" title="Save Stage 0 Image">
+                                        <i class="fas fa-folder-download"></i>
+                                    </button>
+                                    <button type="button" id="manualUpscale" class="btn-secondary toggle-btn" data-state="off" title="Enable upscaling">
                                         <i class="nai-upscale"></i>
                                     </button>
                                 </div>
@@ -1327,7 +1422,7 @@
                                 <label for="manualWorkspace">Workspace</label>
                                 <div id="manualWorkspaceDropdown" class="custom-dropdown dropup">
                                     <button type="button" id="manualWorkspaceDropdownBtn" class="custom-dropdown-btn hover-show colored">
-                                        <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                                        <div class="workspace-option-content" style="display: flex; align-items: baseline; gap: 8px;">
                                             <div id="manualWorkspaceColorIndicator" class="workspace-color-indicator" style="width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;"></div>
                                             <span id="manualWorkspaceSelected">Select workspace...</span>
                                         </div>
@@ -1337,25 +1432,32 @@
                                 <input type="hidden" id="manualWorkspace" value="">
                             </div>
                         </div>
+                        <div class="form-row control-row-lockcontrols">
+                            <div class="form-group" style="flex: unset;">
+                                <label for="manualLocks">Locks</label>
+                                <div class="seed-input-group">
+                                    <button type="button" id="sproutSeedBtn" class="btn-secondary toggle-btn hidden" data-state="off" title="Lock Seed">
+                                        <i class="fas fa-seedling"></i>
+                                    </button>
+                                    <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator hidden" data-state="off" title="Lock Text Replacements">
+                                        <i class="fas fa-lambda"></i>
+                                    </button>
+                                    <button type="button" id="lockBtn" class="btn-secondary indicator hidden" data-state="off" data-use-cache="true" data-has-cache="false" data-context-locked="false" data-expire-preview="false" title="Lock Results and Context">
+                                        <i class="ri-ai-generate-3d-line"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="form-row control-row-seed">
                             <div class="form-group" style="flex: unset;">
                                 <label for="manualSeed">Seed</label>
                                 <div class="seed-input-group">
                                     <input type="number" id="manualSeed" class="form-control hover-show right colored" placeholder="Random" style="width: 120px;">
                                     <button type="button" id="loadSeedBtn" class="btn-primary" title="Paste seed">
-                                        <i class="nai-seed"></i>
+                                        <i class="fas fa-arrow-turn-down-right"></i>
                                     </button>
                                     <button type="button" id="clearSeedBtn" class="btn-secondary" title="Clear seed">
                                         <i class="nai-thin-cross"></i>
-                                    </button>
-                                    <button type="button" id="sproutSeedBtn" class="btn-secondary indicator hidden" data-state="on" title="Use Random Seed">
-                                        <i class="fas fa-seedling"></i>
-                                    </button>
-                                    <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator hidden" data-state="off" title="Lock Text Replacements">
-                                        <i class="fas fa-square-a-lock"></i>
-                                    </button>
-                                    <button type="button" id="lockBtn" class="btn-secondary indicator hidden" data-state="off" data-use-cache="true" data-has-cache="false" title="Lock Results">
-                                        <i class="fas fa-house-lock"></i>
                                     </button>
                                 </div>
                             </div>
@@ -1390,6 +1492,10 @@
                                         </button>
                                         <button type="button" id="directorAutoGenerateBtn" class="btn-secondary indicator hidden" data-state="off" title="Auto Generate">
                                             <i class="fas fa-play"></i>
+                                        </button>
+                                        <button type="submit" id="manualGenerateBtnAlt" class="btn-primary">
+                                            <span>Generate</span>
+                                            <i id="manualGenerateBtnIconAlt" class="nai-sparkles"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -1453,18 +1559,21 @@
                         </div>
                     </div>
                     <div class="position-dialog-actions">
-                        <button type="button" id="confirmPositionBtn" class="btn-primary">Confirm Position</button>
+                        <button type="button" id="confirmPositionBtn" class="btn-primary">
+                            <span>Confirm</span>
+                            <i class="fas fa-check"></i>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Text Replacement Lock Modal -->
-        <div id="textReplacementLockModal" class="modal hidden">
+        <div id="textReplacementLockModal" class="modal hidden resizeable-window">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-lock-a"></i>
-                    <span>Compiled Text Replacements</span>
+                    <span>Prompt Expantion</span>
                 </div>
             </div>
             <div class="modal-window-controls">
@@ -1478,12 +1587,25 @@
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content modal-padding">
+            <div class="modal-content text-replacement-lock-modal-content">
                 <div class="modal-body">
-                    <div id="textReplacementLockList" class="text-replacement-lock-list">
-                        <!-- Text replacement items will be populated here -->
+                    <div id="textReplacementLockListContainer" class="text-replacement-lock-list-container form-section-scroll">
+                        <div id="textReplacementLockList" class="text-replacement-lock-list">
+                            <!-- Text replacement items will be populated here -->
+                        </div>
                     </div>
-                    <div class="modal-footer">
+                </div>
+                <div class="modal-footer modal-footer-padded">
+                    <div class="modal-footer-left">
+                        <button type="button" id="openRequestBodyReplacementsBtn" class="btn-secondary" title="Local Text Replacements">
+                            <i class="fas fa-notebook"></i>
+                        </button>
+                        <button type="button" id="openGlobalReplacementsBtn" class="btn-secondary" title="Global Text Replacements">
+                            <i class="fas fa-book-font"></i>
+                            <span>Global</span>
+                        </button>
+                    </div>
+                    <div class="modal-footer-right">
                         <button type="button" id="applyTextReplacementLocksBtn" class="btn-primary">
                             <span>Save</span>
                             <i class="fas fa-floppy-disk"></i>
@@ -1527,6 +1649,189 @@
                             <button type="button" id="applyManualSelectionBtn" class="btn-primary">
                                 <span>Write</span>
                                 <i class="fas fa-floppy-disk"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Expansion Modal -->
+        <div id="imageExpansionDialog" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="mdi mdi-1-25 mdi-relative-scale"></i>
+                    <span>Expand Canvas</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeExpansionModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <!-- Expansion Mode Selection -->
+                    <div class="form-group" style="flex: 1 0 auto;">
+                        <label for="expansionModeDropdown">Expansion Mode</label>
+                        <div id="expansionModeDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="expansionModeDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <span id="expansionModeSelected">Source</span>
+                            </button>
+                            <div id="expansionModeDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                    <!-- Resolution Selection -->
+                    <div class="form-group" style="flex: 1 0 auto;">
+                        <label for="expansionResolutionDropdown">Target Resolution</label>
+                        <div class="resolution-group">
+                            <div id="expansionResolutionDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="expansionResolutionDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="expansionResolutionSelected">Select resolution...</span>
+                                </button>
+                                <div id="expansionResolutionDropdownMenu" class="custom-dropdown-menu hidden">
+                                    <!-- Options will be populated by JavaScript -->
+                                </div>
+                            </div>
+                            <button type="button" id="expansionUpscaleToggle" class="btn-secondary indicator" data-state="off" title="Enable upscaling after expansion">
+                                <i class="nai-upscale"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bias Selection -->
+                    <div class="form-group" style="flex: 1 0 auto;">
+                        <label for="expansionBiasDropdown">Image Position</label>
+                        <div id="expansionBiasDropdown" class="custom-dropdown dropup">
+                            <button type="button" id="expansionBiasDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <div class="mask-bias-button-content">
+                                    <div class="mask-bias-grid" id="expansionBiasGrid" data-bias="2" data-orientation="landscape">
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                        <div class="grid-cell"></div>
+                                    </div>
+                                    <span id="expansionBiasSelected">Center</span>
+                                </div>
+                            </button>
+                            <div id="expansionBiasDropdownMenu" class="custom-dropdown-menu hidden">
+                                <!-- Options will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+
+                    <!-- Requested Content -->
+                    <div id="expansionRequestedContentGroup" class="form-group hidden">
+                        <label for="expansionRequestedContent">Requested Content</label>
+                        <textarea id="expansionRequestedContent" class="form-control" rows="2" placeholder="e.g., add a cafe shop, include cherry blossoms..."></textarea>
+                    </div>
+
+                    <!-- Advanced Options Section -->
+                    <div id="expansionAdvancedOptions" class="hidden">
+                        <div class="form-group">
+                            <label for="expansionModelDropdown">Model</label>
+                            <div id="expansionModelDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="expansionModelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="expansionModelSelected">Select model...</span>
+                                </button>
+                                <div id="expansionModelDropdownMenu" class="custom-dropdown-menu hidden">
+                                    <!-- Options will be populated by JavaScript -->
+                                </div>
+                            </div>
+                            <input type="hidden" id="expansionModelInput" value="">
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionStepsInput">Steps</label>
+                            <input type="number" id="expansionStepsInput" class="form-control hover-show colored" placeholder="26" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionGuidanceInput">Guidance</label>
+                            <input type="number" id="expansionGuidanceInput" class="form-control hover-show colored" placeholder="4.7" min="0" max="10" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionRescaleInput">Rescale</label>
+                            <div class="percentage-input-container hover-show colored">
+                                <span id="expansionRescaleOverlay" class="percentage-input-overlay">5%</span>
+                                <input type="number" id="expansionRescaleInput" class="form-control" placeholder="0.05" min="0" max="1" step="0.05">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionSamplerDropdown">Sampler</label>
+                            <div id="expansionSamplerDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="expansionSamplerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="expansionSamplerSelected">Select sampler...</span>
+                                </button>
+                                <div id="expansionSamplerDropdownMenu" class="custom-dropdown-menu hidden">
+                                    <!-- Options will be populated by JavaScript -->
+                                </div>
+                            </div>
+                            <input type="hidden" id="expansionSamplerInput" value="">
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionNoiseSchedulerDropdown">Noise Scheduler</label>
+                            <div id="expansionNoiseSchedulerDropdown" class="custom-dropdown dropup">
+                                <button type="button" id="expansionNoiseSchedulerDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                    <span id="expansionNoiseSchedulerSelected">Select scheduler...</span>
+                                </button>
+                                <div id="expansionNoiseSchedulerDropdownMenu" class="custom-dropdown-menu hidden">
+                                    <!-- Options will be populated by JavaScript -->
+                                </div>
+                            </div>
+                            <input type="hidden" id="expansionNoiseSchedulerInput" value="">
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionNoiseInput">Noise</label>
+                            <div class="percentage-input-container hover-show colored">
+                                <span id="expansionNoiseOverlay" class="percentage-input-overlay">0%</span>
+                                <input type="number" id="expansionNoiseInput" class="form-control" placeholder="0" min="0" max="0.99" step="0.01">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="expansionSeedInput">Seed</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="number" id="expansionSeedInput" class="form-control hover-show colored" placeholder="Random" style="flex: 1;">    
+                                <button type="button" id="expansionAutoSeedToggle" class="btn-secondary indicator" data-state="on">
+                                    <i class="fas fa-seedling"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="modal-footer">
+                        <div class="controls-flex-left">
+                            <button type="button" id="expansionAIToggle" class="btn-secondary indicator" data-state="off" title="Enable AI prompt enhancement">
+                                <i class="mdi mdi-brain"></i>
+                            </button>
+                        </div>
+                        <div class="controls-flex-right">
+                            <button type="button" id="expansionAdvancedToggle" class="btn-secondary">
+                                <i class="fas fa-wrench"></i>
+                            </button>
+                            <button type="button" id="rerollExpansionBtn" class="btn-primary hidden">
+                                <i class="mdi mdi-refresh"></i>
+                                <span>Reroll</span>
+                            </button>
+                            <button type="button" id="submitExpansionBtn" class="btn-primary">
+                                <span>Generate</span>
+                                <i class="fas fa-sparkles"></i>
                             </button>
                         </div>
                     </div>
@@ -1874,6 +2179,7 @@
                 </div>
             </div>
         </div>
+
         <!-- Metadata Dialog (Mobile Only) -->
         <div id="metadataDialog" class="metadata-dialog hidden">
             <div class="modal-window-title">
@@ -2014,11 +2320,104 @@
             </div>
         </div>
 
+        <!-- Director Feedback Modal -->
+        <div id="directorFeedbackModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-flag"></i>
+                    <span>Report Issue with Text Replacement</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeDirectorFeedbackBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Original Text</label>
+                        <input type="text" id="feedbackSelectText" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Replacement Text</label>
+                        <input type="text" id="feedbackReplaceText" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>Action</label>
+                        <input type="text" id="feedbackAction" class="form-control" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label>AI's Reasoning</label>
+                        <textarea id="feedbackReason" class="form-control" rows="2" readonly></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="feedbackDescription">What went wrong? <span class="required">*</span></label>
+                        <textarea id="feedbackDescription" class="form-control" rows="4" placeholder="Describe what was wrong with this replacement. This will help the AI avoid similar mistakes in the future.
+
+Examples:
+- 'Changed the character name which should never be modified'
+- 'Replaced a weighted tag with unweighted version, losing emphasis'
+- 'Added conflicting terms that contradict the original intent'
+- 'Text doesn't exist in the original prompt - stacked replacement'"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="form-actions">
+                        <button type="button" id="saveFeedbackBtn" class="btn-primary">
+                            <i class="fas fa-save"></i> Save Feedback
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Director Rules Manager Modal -->
+        <div id="directorRulesModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-book-law"></i>
+                    <span>Director Rules Manager</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="addDirectorRuleBtn" class="btn-primary" title="Add New Rule">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button type="button" id="closeDirectorRulesBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <div class="info-section">
+                        <div class="info-header">
+                            <i class="fas fa-info-circle"></i>
+                            <span>About Director Rules</span>
+                        </div>
+                        <div class="info-content">
+                            <p>Rules are instructions given to the Director AI to guide its behavior. These rules are applied to every generation and help the AI understand your preferences and constraints.</p>
+                            <p><strong>Examples:</strong></p>
+                            <ul>
+                                <li>"Never modify artist: tags or style: tags"</li>
+                                <li>"Always preserve weighted emphasis markers like {{{ }}}"</li>
+                                <li>"Avoid adding seasonal decorations unless specifically requested"</li>
+                                <li>"Keep character names exactly as provided"</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div id="directorRulesList" class="director-rules-list">
+                        <!-- Rules will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Text Replacement Manager Modal -->
         <div id="textReplacementManagerModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
-                    <i class="fas fa-language"></i>
+                    <i class="fas fa-book-font"></i>
                     <span>Text Expanders</span>
                 </div>
             </div>
@@ -2066,7 +2465,7 @@
         <div id="createTextReplacementModal" class="modal resizeable-window hidden">
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
-                    <i class="fas fa-language"></i>
+                    <i class="fas fa-lambda"></i>
                     <span>Create New Text Replacement</span>
                 </div>
             </div>
@@ -2129,6 +2528,128 @@
                             <!-- Favorites will be populated here -->
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Request Body Text Replacements Modal -->
+        <div id="requestBodyReplacementsModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-notebook"></i>
+                    <span>Text Expanders [Embedded]</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="addRequestBodyReplacementBtn" class="btn-secondary" title="Add New Replacement">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button type="button" id="manageTextReplacementsBtn" class="btn-secondary" title="Manage Text Replacements">
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button type="button" id="closeRequestBodyReplacementsBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding text-replacement-manager-content">
+                <div class="modal-body">
+                    <div id="requestBodyReplacementsListContainer" class="text-replacement-list-container">
+                        <div id="requestBodyReplacementsList" class="text-replacement-list">
+                            <!-- Request body replacement items will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Request Body Replacement Modal -->
+        <div id="createRequestBodyReplacementModal" class="modal resizeable-window hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-lambda"></i>
+                    <span>Create Text Expander [Embedded]</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeCreateRequestBodyReplacementBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            </div>
+            <div class="modal-content modal-padding create-text-replacement-content">
+                <div class="modal-body">
+                    <div class="form-section">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="requestBodyReplacementKeyInput">Name</label>
+                                <div class="form-group-row">
+                                    <input type="text" id="requestBodyReplacementKeyInput" class="form-control hover-show colored" placeholder="Enter replacement name..." maxlength="50" autocorrect="false" autocapitalize="false">
+                                    <button type="button" id="requestBodyReplacementExtendBtn" class="btn-secondary btn-small indicator" data-state="off" title="Toggle Extend Mode">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="requestBodyReplacementTypeSelect">Stage Configuration</label>
+                                <div id="requestBodyReplacementTypeDropdown" class="custom-dropdown">
+                                    <button type="button" id="requestBodyReplacementTypeBtn" class="custom-dropdown-btn hover-show colored">
+                                        <span id="requestBodyReplacementTypeSelected">All Stages</span>
+                                    </button>
+                                    <div id="requestBodyReplacementTypeMenu" class="custom-dropdown-menu hidden">
+                                        <!-- Options will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="specificStagesRow" class="form-row hidden">
+                            <div class="form-group">
+                                <label>Select Stages</label>
+                                <div id="specificStagesDropdown" class="custom-dropdown">
+                                    <button type="button" id="specificStagesBtn" class="custom-dropdown-btn hover-show colored">
+                                        <span id="specificStagesSelected">Select stages...</span>
+                                    </button>
+                                    <div id="specificStagesMenu" class="custom-dropdown-menu hidden">
+                                        <!-- Stage options will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="rangeStagesRow" class="form-row hidden">
+                            <div class="form-group">
+                                <label>Stage Range</label>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="rangeStartInput">From Stage</label>
+                                        <input type="number" id="rangeStartInput" class="form-control hover-show colored" placeholder="Start" min="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="rangeEndInput">To Stage</label>
+                                        <input type="number" id="rangeEndInput" class="form-control hover-show colored" placeholder="End" min="0">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Values</label>
+                                <div id="createRequestBodyArrayItemsContainer" class="text-replacement-array-items">
+                                    <!-- Array items will be added here dynamically -->
+                                </div>
+                                <div class="text-replacement-add-item">
+                                    <button type="button" id="addCreateRequestBodyArrayItemBtn" class="btn-primary" title="Add Item">
+                                        <i class="fas fa-plus"></i> Add Item
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions btn-group">
+                    <button type="button" id="createRequestBodyReplacementCancelBtn" class="btn-secondary">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                    <button type="button" id="createRequestBodyReplacementSaveBtn" class="btn-primary">
+                        <i class="fas fa-plus"></i> Create
+                    </button>
                 </div>
             </div>
         </div>
@@ -2267,7 +2788,10 @@
                                 <label>Crossover Data</label>
                                 <div class="form-group-row">
                                     <button type="button" id="updatePresetCreativeBtn" class="btn-secondary indicator" data-state="off" title="Creative Mode">
-                                        <i class="fa-solid fa-brush"></i>
+                                        <i class="fas fa-paintbrush-pencil"></i>
+                                    </button>
+                                    <button type="button" id="updatePresetOptimizeBtn" class="btn-secondary indicator" data-state="off" title="Token Optimization">
+                                        <i class="fas fa-washing-machine"></i>
                                     </button>
                                     <div class="divider"></div>
                                     <button type="button" id="updatePresetUseCacheResponsesBtn" class="btn-secondary indicator" data-state="on" title="Use Cache Responses (Preset Only)">
@@ -2784,6 +3308,12 @@
                             </div>
                             
                             <div class="form-group">
+                                <label for="chatStoryContext">Story So Far (Optional)</label>
+                                <textarea id="chatStoryContext" class="form-control" rows="4" placeholder="Enter the story context and what has happened so far..."></textarea>
+                                <small class="form-text text-muted">Provide narrative context to help establish the character's current situation and history.</small>
+                            </div>
+                            
+                            <div class="form-group">
                                 <label for="chatViewerContext">Viewer Context</label>
                                 <textarea id="chatViewerContext" class="form-control" rows="3" placeholder="Describe your character or relationship..."></textarea>
                             </div>
@@ -2799,58 +3329,6 @@
                                     <option value="5">Poetic</option>
                                 </select>
                             </div>
-                            
-                            <div class="form-group">
-                                <label for="chatAIModel">AI Model</label>
-                                <div class="custom-dropdown dropup dark" id="chatAIModelDropdown">
-                                    <button type="button" id="chatAIModelBtn" class="custom-dropdown-btn hover-show colored">
-                                        <span id="chatAIModelSelected">Select model...</span>
-                                    </button>
-                                    <div class="custom-dropdown-menu hidden" id="chatAIModelMenu">
-                                        <!-- Models will be populated dynamically -->
-                                    </div>
-                                </div>
-                                <input type="hidden" id="chatAIModel" value="">
-                            </div>
-                            
-                            <div class="form-group" id="chatTemperatureGroup">
-                                <label for="chatTemperature">Temperature</label>
-                                <input type="range" id="chatTemperature" class="form-control" min="0" max="2" step="0.1" value="0.8">
-                                <div class="temperature-display">
-                                    <span id="chatTemperatureValue">0.8</span>
-                                </div>
-                            </div>
-                            
-                            <div class="form-group" id="chatThoughtLevelGroup" style="display: none;">
-                                <label for="chatThoughtLevel">Thought Level</label>
-                                <select id="chatThoughtLevel" class="form-control">
-                                    <option value="minimal">Minimal</option>
-                                    <option value="low">Low</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="high">High</option>
-                                    <option value="maximum">Maximum</option>
-                                </select>
-                            </div>
-                            
-                            <div class="form-group">
-                                <div class="checkbox-group">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="chatAutoContinue">
-                                        <span class="checkmark"></span>
-                                        Auto Continue
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="chatActionsText">
-                                        <span class="checkmark"></span>
-                                        Actions Text
-                                    </label>
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" id="chatAwaitResponse">
-                                        <span class="checkmark"></span>
-                                        Await Response
-                                    </label>
-                                </div>
-                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -2864,7 +3342,13 @@
         </div>
 
         <!-- Chat Interface Modal -->
-        <div id="chatInterfaceModal" class="modal hidden">
+        <div id="chatInterfaceModal" class="modal resizeable-window hidden" data-window-min-width="800" data-window-min-height="500">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="mdi mdi-1-5 mdi-chat"></i>
+                    <span>Chat Conversations</span>
+                </div>
+            </div>
             <div class="modal-window-controls">
                 <button id="closeChatInterfaceBtn" class="btn-danger close-btn btn-small" aria-label="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
@@ -2884,33 +3368,7 @@
                     
                     <!-- Chat Messages Panel -->
                     <div class="chat-messages-panel">
-                        <div class="chat-messages-header">
-                            <div class="chat-messages-title">
-                                <h3 id="currentChatName">Select a conversation</h3>
-                            </div>
-                            <div class="chat-messages-toolbar">
-                                <!-- Model Dropdown -->
-                                <div id="chatModelDropdown" class="custom-dropdown">
-                                    <button type="button" id="chatModelBtn" class="btn-secondary custom-dropdown-btn hover-show">
-                                        <span id="chatModelSelected">Select Model</span>
-                                    </button>
-                                    <div id="chatModelMenu" class="custom-dropdown-menu hidden"></div>
-                                </div>
-                                <input type="hidden" id="chatModel" value="">
-                                
-                                <button class="btn-secondary btn-small" id="chatHistoryBtn" title="Chat History">
-                                    <i class="mdi mdi-1-5 mdi-history"></i>
-                                </button>
-                                <button class="btn-secondary btn-small" id="chatRestartBtn" title="Reset Chat">
-                                    <i class="mdi mdi-1-5 mdi-refresh"></i>
-                                </button>
-                                <button class="btn-secondary btn-small" id="chatDeleteBtn" title="Delete Chat">
-                                    <i class="mdi mdi-1-5 mdi-delete"></i>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div class="chat-messages-content">
+                        <div class="chat-messages-content form-section-scroll reverse-scroll">
                             <div id="chatMessagesList" class="chat-messages-list">
                                 <!-- Messages will be populated here -->
                             </div>
@@ -2918,7 +3376,7 @@
                         
                         <div class="chat-input-panel">
                             <div class="chat-input-container">
-                                <textarea id="chatMessageInput" class="chat-message-input" placeholder="Type your message..." rows="1"></textarea>
+                                <textarea id="chatMessageInput" class="chat-message-input hover-show" placeholder="Type your message..." rows="1"></textarea>
                                 <button id="chatSendBtn" class="btn-primary chat-send-btn" disabled>
                                     <i class="mdi mdi-1-5 mdi-send"></i>
                                 </button>
@@ -2974,39 +3432,6 @@
                                 <option value="4">Elaborate</option>
                                 <option value="5">Poetic</option>
                             </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="personaDefaultAIEngine">Default AI Engine</label>
-                            <div class="custom-dropdown dropup dark" id="personaDefaultAIEngineDropdown">
-                                <button type="button" id="personaDefaultAIEngineBtn" class="custom-dropdown-btn hover-show colored">
-                                    <span id="personaDefaultAIEngineSelected">Select model...</span>
-                                </button>
-                                <div class="custom-dropdown-menu hidden" id="personaDefaultAIEngineMenu">
-                                    <!-- Models will be populated dynamically -->
-                                </div>
-                            </div>
-                            <input type="hidden" id="personaDefaultAIEngine" value="">
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="personaDefaultTemperature">Default Temperature</label>
-                            <input type="range" id="personaDefaultTemperature" class="form-control" min="0" max="2" step="0.1" value="0.8">
-                            <div class="temperature-display">
-                                <span id="personaDefaultTemperatureValue">0.8</span>
-                            </div>
-                        </div>
-                        
-                        <div class="form-group" id="personaDefaultReasoningLevelGroup">
-                            <label for="personaDefaultReasoningLevel">Default Reasoning Level</label>
-                            <select id="personaDefaultReasoningLevel" class="form-control">
-                                <option value="minimal">Minimal</option>
-                                <option value="low">Low</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="high">High</option>
-                                <option value="maximum">Maximum</option>
-                            </select>
-                            <small class="form-text">Used for GPT-5 models when reasoning level is available</small>
                         </div>
                     </div>
                 </div>
@@ -3260,19 +3685,9 @@
             <div class="modal-content modal-padding cache-metadata-content">
                 <div class="modal-body">
                     <div class="cache-metadata-form">
-                        
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Character Reference Only</label>
-                                <button type="button" id="characterReferenceToggle" class="btn-secondary indicator" data-state="off" title="Mark as character reference only">
-                                    <i class="nai-image-tool-line-art"></i> Character Reference
-                                </button>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="cacheDisplayNameInput">Display Name</label>
-                                <input type="text" id="cacheDisplayNameInput" class="form-control" placeholder="Enter custom display name">
-                            </div>
+                        <div class="form-group">
+                            <label for="cacheDisplayNameInput">Display Name</label>
+                            <input type="text" id="cacheDisplayNameInput" class="form-control" placeholder="Enter custom display name">
                         </div>
 
                         <div class="form-group">
@@ -3286,20 +3701,105 @@
                         </div>
 
                         <div class="form-group">
-                            <label for="cacheVibeAppendPromptTextarea">Vibe Append Prompt</label>
-                            <textarea id="cacheVibeAppendPromptTextarea" class="form-control" rows="2" placeholder="Additional prompt text to append when using as vibe..."></textarea>
+                            <label for="cacheVibeAppendPromptTextarea">Vibe Prompt</label>
+                            <div class="prompt-textarea-container">
+                                <div class="prompt-textarea-background"></div>
+                                <textarea id="cacheVibeAppendPromptTextarea" class="form-control prompt-textarea textarea-inset" rows="2" placeholder="Additional prompt text to append when using as vibe..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                                <div class="prompt-textarea-toolbar hidden">
+                                    <div class="toolbar-left">
+                                        <span class="token-count">0 tokens</span>
+                                        <!-- Search Mode Elements (Hidden by default) -->
+                                        <div class="toolbar-search-elements">
+                                            <div class="text-search-label">Search</div>
+                                            <div class="text-search-input-container">
+                                                <input type="text" class="text-search-input" placeholder="Enter search term..." />
+                                            </div>
+                                            <div class="text-search-match-count">0</div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-right">
+                                        <!-- Regular Toolbar Buttons -->
+                                        <div class="toolbar-regular-buttons">
+                                            <button type="button" id="cacheVibeAppendPromptPrependToggle" class="btn-secondary indicator btn-small toolbar-btn" data-state="off" title="Prepend instead of append">
+                                                <i class="fas fa-arrow-left-to-line"></i>
+                                            </button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                <i class="fas fa-lightbulb"></i>
+                                            </button>
+                                            <div id="cachePromptActionsDropdown" class="custom-dropdown dark dropright">
+                                                <button type="button" id="cachePromptActionsDropdownBtn" class="btn-secondary btn-small toolbar-btn">
+                                                    <i class="fas fa-toolbox"></i>
+                                                </button>
+                                                <div id="cachePromptActionsDropdownMenu" class="custom-dropdown-menu hidden" tabindex="0">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Search Mode Buttons (Hidden by default) -->
+                                        <div class="toolbar-search-buttons">
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-select" data-action="search-select" title="Select (Enter)"><i class="fas fa-arrow-right-long-to-line"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="form-group">
-                            <label for="cacheVibeAppendUcTextarea">Vibe Append UC</label>
-                            <textarea id="cacheVibeAppendUcTextarea" class="form-control" rows="2" placeholder="Additional UC text to append when using as vibe..."></textarea>
+                            <label for="cacheVibeAppendUcTextarea">Vibe Undesired Content</label>
+                            <div class="prompt-textarea-container">
+                                <div class="prompt-textarea-background"></div>
+                                <textarea id="cacheVibeAppendUcTextarea" class="form-control prompt-textarea textarea-inset" rows="2" placeholder="Additional UC text to append when using as vibe..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                                <div class="prompt-textarea-toolbar hidden">
+                                    <div class="toolbar-left">
+                                        <span class="token-count">0 tokens</span>
+                                        <!-- Search Mode Elements (Hidden by default) -->
+                                        <div class="toolbar-search-elements">
+                                            <div class="text-search-label">Search</div>
+                                            <div class="text-search-input-container">
+                                                <input type="text" class="text-search-input" placeholder="Enter search term..." />
+                                            </div>
+                                            <div class="text-search-match-count">0</div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-right">
+                                        <!-- Regular Toolbar Buttons -->
+                                        <div class="toolbar-regular-buttons">
+                                            <button type="button" id="cacheVibeAppendUcPrependToggle" class="btn-secondary indicator btn-small toolbar-btn" data-state="off" title="Prepend instead of append">
+                                                <i class="fas fa-arrow-left-to-line"></i>
+                                            </button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                <i class="fas fa-lightbulb"></i>
+                                            </button>
+                                            <div id="cacheUcActionsDropdown" class="custom-dropdown dark dropright">
+                                                <button type="button" id="cacheUcActionsDropdownBtn" class="btn-secondary btn-small toolbar-btn">
+                                                    <i class="fas fa-toolbox"></i>
+                                                </button>
+                                                <div id="cacheUcActionsDropdownMenu" class="custom-dropdown-menu hidden" tabindex="0">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Search Mode Buttons (Hidden by default) -->
+                                        <div class="toolbar-search-buttons">
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-select" data-action="search-select" title="Select (Enter)"><i class="fas fa-arrow-right-long-to-line"></i></button>
+                                            <button type="button" class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <div class="modal-actions btn-group">
+                        <button type="button" id="characterReferenceToggle" class="btn-secondary indicator" data-state="off" title="Mark as character reference only" style="width: 51px;">
+                            <i class="nai-image-tool-line-art"></i>
+                        </button>
                         <button type="button" class="btn-primary" id="saveCacheMetadataBtn">
-                            <i class="nai-save"></i> Save
+                            Save <i class="nai-save"></i>
                         </button>
                     </div>
                 </div>
@@ -3476,45 +3976,37 @@
 
                                 <!-- Dynamic Generation Progress Overlay -->
                                 <div id="spellbookDynamicGenerationProgressOverlay" class="dynamic-generation-progress-overlay hidden">
-                                    <div class="progress-overlay-header">
-                                        <div class="progress-loader">
-                                            <div class="progress-spinner"></div>
+                                    <!-- Left Top: Time and Season Data -->
+                                    <div class="progress-time-section">
+                                        <div class="progress-time-info" id="spellbookProgressTimeInfo">
+                                            <span class="progress-time" id="spellbookProgressTime">--:--</span>
+                                            <span class="progress-date" id="spellbookProgressDate">--/--</span>
                                         </div>
-                                        <div class="progress-status" id="spellbookProgressStatusText">Processing...</div>
-                                    </div>
-
-                                    <div class="progress-overlay-content">
-                                        <div class="progress-row">
-                                            <div class="progress-time-info" id="spellbookProgressTimeInfo">
-                                                <span class="progress-time" id="spellbookProgressTime">--:--</span>
-                                                <span class="progress-date" id="spellbookProgressDate">--/--</span>
-                                            </div>
-                                            <div class="overlay-weather-section">
-                                                <div class="overlay-weather-info">
-                                                    <div class="overlay-weather-feels-like" id="spellbookProgressWeatherFeelsLike">
-                                                        <span class="temp-number">--</span>
-                                                        <span class="temp-unit">°C</span>
-                                                    </div>
-                                                    <div class="overlay-weather-condition" id="spellbookProgressWeatherCondition">Unknown</div>
-                                                    <div class="overlay-weather-condition" id="spellbookProgressWeatherLocation" class="hidden">Unknown</div>
-                                                </div>
-                                                <div class="overlay-weather-icon" id="spellbookProgressWeatherIcon">
-                                                    <span class="weather-fallback-icon">🌤️</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="progress-row">
+                                        <div class="progress-season-info">
                                             <span class="progress-holiday" id="spellbookProgressHoliday"></span>
                                             <span class="progress-season" id="spellbookProgressSeason">Season</span>
                                         </div>
+                                    </div>
 
-                                        <div class="progress-row reasoning-row">
-                                            <div class="progress-reasoning-wrapper">
-                                                <div class="progress-reasoning" id="spellbookProgressReasoning"></div>
+                                    <!-- Right Top: Weather -->
+                                    <div class="progress-weather-section">
+                                        <div class="overlay-weather-section">
+                                            <div class="overlay-weather-info">
+                                                <div class="overlay-weather-feels-like" id="spellbookProgressWeatherFeelsLike">
+                                                    <span class="temp-number">--</span>
+                                                    <span class="temp-unit">°C</span>
+                                                </div>
+                                                <div class="overlay-weather-condition" id="spellbookProgressWeatherCondition">Unknown</div>
+                                                <div class="overlay-weather-condition" id="spellbookProgressWeatherLocation" class="hidden">Unknown</div>
+                                            </div>
+                                            <div class="overlay-weather-icon" id="spellbookProgressWeatherIcon">
+                                                <span class="weather-fallback-icon">🌤️</span>
                                             </div>
                                         </div>
                                     </div>
+
+                                    <!-- Inner Container for Reasoning Items -->
+                                    <div class="progress-reasoning-container" id="spellbookProgressReasoningContainer"></div>
                                 </div>
 
                                 <!-- Dynamic Generation Overlay -->
@@ -3578,6 +4070,9 @@
                                         </button>
                                         <button type="button" id="spellbookCopyBtn" class="btn-secondary round-button" title="Copy Image">
                                             <i class="fa-regular fa-clipboard"></i>
+                                        </button>
+                                        <button type="button" id="spellbookExpandBtn" class="btn-secondary round-button" title="Expand Image">
+                                            <i class="mdi mdi-1-25 mdi-relative-scale"></i>
                                         </button>
                                         <button type="button" id="spellbookUpscaleBtn" class="btn-secondary round-button" title="Upscale Image">
                                             <i class="nai-upscale"></i>
@@ -3730,6 +4225,32 @@
             </div>
         </div>
 
+        <!-- Token Display Modal -->
+        <div id="tokenDisplayModal" class="modal hidden">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-code"></i>
+                    <span>Token Analysis</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="closeTokenModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content modal-padding">
+                <div class="modal-body">
+                    <div class="token-modal-content">
+                        <div class="token-display-container">
+                            <div id="tokenModalDisplay" class="token-display-text">
+                                <!-- Tokens will be displayed here with highlighting -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script src="scripts/comp/toastManager.js"></script>
         <script src="scripts/websocket.js"></script>
         <script src="scripts/comp/serviceWorkerManager.js"></script>
@@ -3743,11 +4264,14 @@
         <script src="scripts/comp/chatSystem.js"></script>
         <script src="scripts/comp/inpaint.js"></script>
         <script src="scripts/comp/workspaceUtils.js"></script>
+        <script src="scripts/comp/textareaUtils.js"></script>
         <script src="scripts/comp/textReplacementManager.js"></script>
+        <script src="scripts/comp/requestBodyReplacementsModal.js"></script>
         <script src="scripts/comp/presetManager.js"></script>
         <script src="scripts/comp/autocompleteUtils.js"></script>
         <script src="scripts/utils/referenceUtils.js"></script>
         <script src="scripts/comp/imageBias.js"></script>
+        <script src="scripts/comp/imageExpansion.js"></script>
         <script src="scripts/comp/referenceManager.js"></script>
         <script src="scripts/comp/emphasisManager.js"></script>
         <script src="scripts/comp/confirmationDialog.js"></script>
@@ -3770,6 +4294,9 @@
         <!-- <script src="scripts/comp/presetManagement.js"></script>
         <script src="scripts/comp/characterPromptManager.js"></script>
         <script src="scripts/comp/manualPreviewManager.js"></script> -->
+
+        <!-- T5 Tokenizer Library (Protected) -->
+        <script src="protected/t5-tokenizer.js"></script>
 
         <script src="scripts/app.js"></script>
         <!-- <script src="scripts/comp/developerModal.js"></script> -->

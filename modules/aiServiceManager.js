@@ -3,7 +3,7 @@
  * Manages all AI services with database persistence and prompt separation
  */
 
-const { createPersonaChatSession: createChatGPTSession, establishPersona, continueConversation, establishPersonaStreaming, continueConversationStreaming } = require('./aiServices/chatgptService');
+const logger = require('./logger');
 const { createPersonaChatSession: createGrokSession, establishPersona: establishGrokPersona, continueConversation: continueGrokConversation, establishPersonaStreaming: establishGrokPersonaStreaming, continueConversationStreaming: continueGrokConversationStreaming } = require('./aiServices/grokService');
 const { getChatSession, getChatMessages, getChatMessageCount, getPersonaSettings, addChatMessage, getConversationData, cleanupExpiredMessages } = require('./chatDatabase');
 const promptManager = require('./promptManager');
@@ -25,9 +25,7 @@ class AIServiceManager {
      */
     async loadExistingSessions() {
         try {
-            console.log('🔄 Loading existing chat sessions from database...');
-            // Note: We don't preload services, just ensure database is accessible
-            console.log('✅ Database connection verified');
+            logger.bootSubStep('Chat database connection verified');
         } catch (error) {
             console.error('❌ Error loading existing sessions:', error);
         }
@@ -56,18 +54,25 @@ class AIServiceManager {
         const personaSettings = getPersonaSettings();
 
         // Get system prompt using prompt manager (using characterChat prompt type)
-        const systemPrompt = promptManager.getCompleteSystemPrompt(
+        // Pass filename to enable dynamic context extraction
+        const systemPrompt = await promptManager.getCompleteSystemPrompt(
             'characterChat',
             sessionData,
-            personaSettings
+            personaSettings,
+            sessionData.filename
         );
 
         // Create AI service instance based on provider
         let aiService;
         if (sessionData.provider === 'grok') {
             aiService = createGrokSession(sessionData, personaSettings, systemPrompt);
-        } else if (sessionData.provider === 'openai') {
-            aiService = createChatGPTSession(sessionData, personaSettings, systemPrompt);
+            
+            // Restore last response ID from database for Responses API
+            const conversationData = getConversationData(chatId);
+            if (conversationData && conversationData.response_id) {
+                aiService.lastResponseId = conversationData.response_id;
+                console.log(`🔄 Restored previous response ID for ${chatId}: ${conversationData.response_id}`);
+            }
         } else {
             throw new Error(`Unsupported chat provider: ${sessionData.provider}`);
         }
@@ -124,12 +129,8 @@ class AIServiceManager {
             } else {
                 await establishGrokPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar);
             }
-        } else if (serviceInfo.sessionData.provider === 'openai') {
-            if (onStreamUpdate) {
-                await establishPersonaStreaming(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar, onStreamUpdate);
-            } else {
-                await establishPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar);
-            }
+        } else {
+            throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);
         }
 
         serviceInfo.lastUsed = Date.now();
@@ -154,12 +155,6 @@ class AIServiceManager {
                 response = await continueGrokConversationStreaming(serviceInfo.aiService, message, onStreamUpdate);
             } else {
                 response = await continueGrokConversation(serviceInfo.aiService, message);
-            }
-        } else if (serviceInfo.sessionData.provider === 'openai') {
-            if (onStreamUpdate) {
-                response = await continueConversationStreaming(serviceInfo.aiService, message, onStreamUpdate);
-            } else {
-                response = await continueConversation(serviceInfo.aiService, message);
             }
         } else {
             throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);

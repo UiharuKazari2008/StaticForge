@@ -1,94 +1,149 @@
 // Credit Cost Confirmation Dialog System
 // Shows cost confirmation for paid requests
 
-let creditCostDialog = null;
 let creditCostDialogActive = false;
-let creditCostDialogCallback = null;
-let creditCostDialogCancelCallback = null;
 
 // Create and show credit cost confirmation dialog
-function showCreditCostDialog(cost, event = null) {
+function showCreditCostDialog(cost, event = null, outputResolution = null) {
     return new Promise((resolve, reject) => {
-        // Create dialog if it doesn't exist
-        if (!creditCostDialog) {
-            creditCostDialog = document.createElement('div');
-            creditCostDialog.id = 'creditCostDialog';
-            creditCostDialog.className = 'credit-cost-dialog';
-            creditCostDialog.classList.add('hidden');
-            creditCostDialog.innerHTML = `
-                <div class="credit-cost-content">
-                    <div class="credit-cost-header">
-                        <i class="nai-anla"></i>
-                        <span>Payment Required</span>
-                    </div>
-                    <div class="credit-cost-message">This will cost <div class="credit-cost-cost"><i class="nai-anla"></i><strong>${cost}</strong></div> to generate</div>
-                    <div class="credit-cost-buttons">
-                        <button class="credit-cost-cancel-btn btn-secondary" type="button">Cancel</button>
-                        <button class="credit-cost-confirm-btn btn-primary" type="button">Generate <i class="fas fa-arrow-right"></i></button>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(creditCostDialog);
-            
-            // Add event listeners
-            const confirmBtn = creditCostDialog.querySelector('.credit-cost-confirm-btn');
-            const cancelBtn = creditCostDialog.querySelector('.credit-cost-cancel-btn');
-            
-            confirmBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                hideCreditCostDialog();
-                resolve(true);
-            });
-            
-            cancelBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                hideCreditCostDialog();
-                resolve(false);
-            });
-            
-            // Close on escape key
-            document.addEventListener('keydown', handleCreditCostKeydown);
+        // Create fresh dialog elements each time
+        const dialog = document.createElement('div');
+        dialog.id = 'creditCostDialog';
+        dialog.className = 'credit-cost-dialog hidden';
+
+        // Build content programmatically
+        const content = document.createElement('div');
+        content.className = 'credit-cost-content';
+
+        const header = document.createElement('div');
+        header.className = 'credit-cost-header';
+
+        const icon = document.createElement('i');
+        icon.className = 'nai-anla';
+        header.appendChild(icon);
+
+        const title = document.createElement('span');
+        title.textContent = 'Payment Required';
+        header.appendChild(title);
+
+        const message = document.createElement('div');
+        message.className = 'credit-cost-message';
+        message.textContent = 'This will cost ';
+
+        const costContainer = document.createElement('div');
+        costContainer.className = 'credit-cost-cost';
+
+        const costIcon = document.createElement('i');
+        costIcon.className = 'nai-anla';
+        costContainer.appendChild(costIcon);
+
+        const costText = document.createElement('strong');
+        costText.textContent = cost;
+        costContainer.appendChild(costText);
+
+        message.appendChild(costContainer);
+        
+        // Add output resolution if provided
+        if (outputResolution && outputResolution.width && outputResolution.height) {
+            message.appendChild(document.createTextNode(' to generate (→ '));
+            const resolutionSpan = document.createElement('strong');
+            resolutionSpan.textContent = `${outputResolution.width}×${outputResolution.height}`;
+            message.appendChild(resolutionSpan);
+            message.appendChild(document.createTextNode(')'));
         } else {
-            // Update cost in existing dialog
-            const costElement = creditCostDialog.querySelector('.credit-cost-message strong');
-            if (costElement) {
-                costElement.textContent = `${cost} credits`;
-            }
+            message.appendChild(document.createTextNode(' to generate'));
         }
-        
+
+        const buttons = document.createElement('div');
+        buttons.className = 'credit-cost-buttons';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'credit-cost-cancel-btn btn-secondary';
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = 'Cancel';
+
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
+        confirmBtn.type = 'button';
+        confirmBtn.textContent = 'Generate ';
+
+        const arrowIcon = document.createElement('i');
+        arrowIcon.className = 'fas fa-arrow-right';
+        confirmBtn.appendChild(arrowIcon);
+
+        buttons.appendChild(cancelBtn);
+        buttons.appendChild(confirmBtn);
+
+        content.appendChild(header);
+        content.appendChild(message);
+        content.appendChild(buttons);
+        dialog.appendChild(content);
+
+        document.body.appendChild(dialog);
+
+        // Add event listeners with current promise resolve/reject
+        const handleConfirm = (e) => {
+            e.preventDefault();
+            cleanupCreditCostDialog(dialog);
+            resolve(true);
+        };
+
+        const handleCancel = (e) => {
+            e.preventDefault();
+            cleanupCreditCostDialog(dialog);
+            resolve(false);
+        };
+
+        const handleEscape = (e) => {
+            if (e.key === 'Escape' && creditCostDialogActive) {
+                cleanupCreditCostDialog(dialog);
+                resolve(false);
+            }
+        };
+
+        confirmBtn.addEventListener('click', handleConfirm);
+        cancelBtn.addEventListener('click', handleCancel);
+        document.addEventListener('keydown', handleEscape);
+
         // Position dialog near mouse or button
-        positionCreditCostDialog(event);
-        
+        positionCreditCostDialog(event, dialog);
+
         // Show dialog
-        creditCostDialog.classList.remove('hidden');
+        dialog.classList.remove('hidden');
         creditCostDialogActive = true;
-        
+
         // Debug: Log dialog state and ensure it's visible
         console.log('🎯 Credit cost dialog shown:', {
-            dialog: creditCostDialog,
-            isVisible: !creditCostDialog.classList.contains('hidden'),
+            dialog: dialog,
+            isVisible: !dialog.classList.contains('hidden'),
             position: {
-                left: creditCostDialog.style.left,
-                top: creditCostDialog.style.top
+                left: dialog.style.left,
+                top: dialog.style.top
             },
             event: event ? { clientX: event.clientX, clientY: event.clientY } : 'no event'
         });
     });
 }
 
-// Hide credit cost dialog
+// Clean up and remove credit cost dialog
+function cleanupCreditCostDialog(dialog) {
+    if (dialog && dialog.parentNode) {
+        dialog.parentNode.removeChild(dialog);
+    }
+    creditCostDialogActive = false;
+}
+
+// Hide credit cost dialog (legacy function for compatibility)
 function hideCreditCostDialog() {
-    if (creditCostDialog) {
-        creditCostDialog.classList.add('hidden');
-        creditCostDialogActive = false;
+    const dialog = document.getElementById('creditCostDialog');
+    if (dialog) {
+        cleanupCreditCostDialog(dialog);
     }
 }
 
 // Position dialog near mouse or button
-function positionCreditCostDialog(event) {
-    if (!creditCostDialog) return;
-    
-    const dialog = creditCostDialog;
+function positionCreditCostDialog(event, dialog) {
+    if (!dialog) return;
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
     
@@ -151,17 +206,6 @@ function positionCreditCostDialog(event) {
     });   
 }
 
-// Handle keyboard events
-function handleCreditCostKeydown(e) {
-    if (!creditCostDialogActive) return;
-    
-    if (e.key === 'Escape') {
-        hideCreditCostDialog();
-        if (creditCostDialogCancelCallback) {
-            creditCostDialogCancelCallback();
-        }
-    }
-}
 
 // Check if a request requires paid credits
 function requiresPaidCredits(requestBody) {    
@@ -170,7 +214,7 @@ function requiresPaidCredits(requestBody) {
     
     // Check for large resolutions
     if (requestBody.resolution) {
-        if (requestBody.resolution.toLowerCase().startsWith('large_') || requestBody.resolution.toLowerCase().startsWith('wallpaper_')) {
+        if (requestBody.resolution.toLowerCase().startsWith('large_') || requestBody.resolution.toLowerCase().startsWith('xlarge_') || requestBody.resolution.toLowerCase().startsWith('wallpaper_')) {
             return true;
         }
         

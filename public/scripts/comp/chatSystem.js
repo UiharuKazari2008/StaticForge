@@ -7,6 +7,11 @@ class ChatSystem {
         this.chatSessions = [];
         this.messages = [];
         this.isLoading = false;
+        this.isLoadingMore = false;
+        this.hasMoreMessages = true;
+        this.messagesOffset = 0;
+        this.messagesLimit = 50;
+        this.sentinelObserver = null;
         
         this.initializeWithPersonaSettings();
         this.initializeEventListeners();
@@ -27,9 +32,11 @@ class ChatSystem {
             }
         });
         
-        // Ensure send button is enabled when typing in the input
-        document.getElementById('chatMessageInput')?.addEventListener('input', () => {
+        // Ensure send button is enabled when typing in the input and handle auto-height
+        const chatInput = document.getElementById('chatMessageInput');
+        chatInput?.addEventListener('input', (e) => {
             this.ensureSendButtonEnabled();
+            this.autoResizeTextarea(e.target);
         });
         
         // Persona settings modal events
@@ -40,55 +47,67 @@ class ChatSystem {
             document.getElementById('personaProfilePhoto').click();
         });
         
-        // Chat history button
-        document.getElementById('chatHistoryBtn')?.addEventListener('click', () => this.showChatHistory());
-        
-        // Chat restart button
-        document.getElementById('chatRestartBtn')?.addEventListener('click', () => this.handleRestartButtonClick());
-        
-        // Chat delete button
-        document.getElementById('chatDeleteBtn')?.addEventListener('click', () => this.handleDeleteButtonClick());
-        
         // Persona settings button
         document.getElementById('personaSettingsBtn')?.addEventListener('click', () => this.openPersonaSettingsModal());
         
         // All chats button
         document.getElementById('allChatsBtn')?.addEventListener('click', () => this.showAllChats());
-        
-        // Temperature slider handler
-        document.getElementById('chatTemperature')?.addEventListener('input', (e) => {
-            document.getElementById('chatTemperatureValue').textContent = e.target.value;
-        });
-        
-        // Persona default temperature slider handler
-        document.getElementById('personaDefaultTemperature')?.addEventListener('input', (e) => {
-            document.getElementById('personaDefaultTemperatureValue').textContent = e.target.value;
-        });
     }
 
     async initializeWithPersonaSettings() {
         try {
+            // Ensure WebSocket client is ready before attempting to load settings
+            if (!window.wsClient) {
+                console.warn('⚠️ WebSocket client not available, deferring persona settings loading');
+                // Retry after a short delay
+                setTimeout(() => this.initializeWithPersonaSettings(), 1000);
+                return;
+            }
+
+            // Wait for WebSocket to be connected
+            if (!window.wsClient.isConnected()) {
+                console.warn('⚠️ WebSocket not connected, waiting...');
+                // Wait for connection with timeout
+                let attempts = 0;
+                const maxAttempts = 30; // 30 seconds max
+                while (!window.wsClient.isConnected() && attempts < maxAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                }
+                
+                if (!window.wsClient.isConnected()) {
+                    console.error('❌ WebSocket not connected after waiting, proceeding without persona settings');
+                    return;
+                }
+            }
+
             // Load persona settings first
             await this.loadPersonaSettings();
-            
-            // Then initialize model dropdowns with the correct default
-            await this.initializeModelDropdowns();
         } catch (error) {
-            console.error('Failed to initialize with persona settings:', error);
-            // Fallback to basic initialization
-            await this.initializeModelDropdowns();
+            console.error('❌ Failed to initialize with persona settings:', error);
         }
     }
 
     async loadPersonaSettings() {
         try {
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                console.warn('⚠️ Cannot load persona settings: WebSocket not connected');
+                return;
+            }
+
             const response = await window.wsClient.getPersonaSettings();
-            if (response.success) {
-                this.personaSettings = response.settings;
+            if (response && response.success) {
+                this.personaSettings = response.settings || {};
                 this.populatePersonaSettingsForm();
+            } else {
+                console.warn('⚠️ Failed to load persona settings: response was not successful');
+                // Initialize with empty settings
+                this.personaSettings = {};
             }
         } catch (error) {
-            console.error('Failed to load persona settings:', error);
+            console.error('❌ Failed to load persona settings:', error);
+            // Initialize with empty settings instead of leaving it null
+            this.personaSettings = {};
         }
     }
 
@@ -98,24 +117,6 @@ class ChatSystem {
         document.getElementById('personaUserName').value = this.personaSettings.user_name || '';
         document.getElementById('personaBackstory').value = this.personaSettings.backstory || '';
         document.getElementById('personaDefaultVerbosity').value = this.personaSettings.default_verbosity || 3;
-        // Set the selected model in the dropdown
-        const selectedElement = document.getElementById('personaDefaultAIEngineSelected');
-        if (selectedElement) {
-            // Use new provider/model structure if available, fallback to legacy
-            const provider = this.personaSettings.default_ai_provider || 'grok';
-            const model = this.personaSettings.default_ai_model || this.personaSettings.default_ai_engine || 'grok-2';
-            const modelId = this.personaSettings.default_ai_engine || 'grok-2';
-            
-            selectedElement.dataset.value = modelId;
-            selectedElement.dataset.provider = provider;
-            selectedElement.dataset.model = model;
-            
-            // Update the display using the new method
-            this.selectPersonaDefaultAIEngine(modelId);
-        }
-        document.getElementById('personaDefaultTemperature').value = this.personaSettings.default_temperature || 0.8;
-        document.getElementById('personaDefaultTemperatureValue').textContent = this.personaSettings.default_temperature || 0.8;
-        document.getElementById('personaDefaultReasoningLevel').value = this.personaSettings.default_reasoning_level || 'medium';
         
         // Set profile photo if exists
         if (this.personaSettings.profile_photo_base64) {
@@ -124,7 +125,7 @@ class ChatSystem {
         }
     }
 
-    openChatModal(filename, characterName = null) {
+    async openChatModal(filename, characterName = null) {
         this.currentFilename = filename;
         
         // Set the background image
@@ -138,34 +139,82 @@ class ChatSystem {
         // Reset form
         document.getElementById('chatName').value = characterName || '';
         document.getElementById('chatMindSeed').value = '';
+        document.getElementById('chatStoryContext').value = '';
         document.getElementById('chatViewerContext').value = '';
         document.getElementById('chatVerbosity').value = this.personaSettings?.default_verbosity || 3;
         
-        // AI model dropdown should already be initialized with the correct default
+        // Fetch image metadata to extract creative directive if dynamic generation was enabled
+        try {
+            if (window.wsClient && window.wsClient.isConnected()) {
+                const metadata = await window.wsClient.sendMessage('request_image_metadata', {
+                    filename: filename
+                });
+                
+                // The response is the metadata object directly
+                if (metadata && metadata.dynamic_generation && metadata.dynamic_generation.directive) {
+                    const directive = metadata.dynamic_generation.directive.trim();
+                    if (directive) {
+                        document.getElementById('chatMindSeed').value = directive;
+                        console.log('✅ Copied creative directive from image metadata:', directive);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not fetch image metadata for creative directive:', error);
+            // Non-critical error, continue without directive
+        }
         
-        document.getElementById('chatTemperature').value = this.personaSettings?.default_temperature || 0.8;
-        document.getElementById('chatTemperatureValue').textContent = this.personaSettings?.default_temperature || 0.8;
-        document.getElementById('chatThoughtLevel').value = this.personaSettings?.default_reasoning_level || 'medium';
         
-        // Initialize model-specific controls
-        this.handleAIModelChange();
-        
-        // Temperature control is now always visible for all models
+        // Fetch image metadata to extract creative directive if dynamic generation was enabled
+        try {
+            if (window.wsClient && window.wsClient.isConnected()) {
+                const metadata = await window.wsClient.sendMessage('request_image_metadata', {
+                    filename: filename
+                });
+                
+                // The response is the metadata object directly
+                if (metadata && metadata.dynamic_generation && metadata.dynamic_generation.directive) {
+                    const directive = metadata.dynamic_generation.directive.trim();
+                    if (directive) {
+                        document.getElementById('chatMindSeed').value = directive;
+                        console.log('✅ Copied creative directive from image metadata:', directive);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not fetch image metadata for creative directive:', error);
+            // Non-critical error, continue without directive
+        }
         
         // Open modal
-        const modal = document.getElementById('chatModal');
-        modal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
+        openModal(document.getElementById('chatModal'));
     }
 
-    closeChatModal() {
-        const modal = document.getElementById('chatModal');
-        modal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
+    async closeChatModal() {
+        this.currentFilename = null;
+        this.currentChatId = null;
+        this.messages = [];
+        this.messagesOffset = 0;
+        this.hasMoreMessages = true;    
+        this.chatSessions = [];
+        this.chatSessionsOffset = 0;
+        this.chatSessionsHasMore = true;
+
+        
+        closeModal(document.getElementById('chatModal'));
     }
 
     async startChat() {
         if (this.isLoading) return;
+        
+        // Ensure WebSocket is connected
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            if (window.showToast) {
+                window.showToast('WebSocket not connected. Please wait for connection to be established.', 'error');
+            }
+            console.error('❌ Cannot start chat: WebSocket not connected');
+            return;
+        }
         
         this.isLoading = true;
         const startBtn = document.getElementById('startChatBtn');
@@ -173,56 +222,25 @@ class ChatSystem {
         startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
         
         try {
-            // Use the chat interface model dropdown if available, otherwise fall back to chat creation modal
-            let selectedElement = document.getElementById('chatModelSelected');
-            let selectedModel, provider, model;
-            
-            if (selectedElement && selectedElement.dataset.value) {
-                // Use chat interface model dropdown
-                selectedModel = selectedElement.dataset.value;
-                provider = selectedElement.dataset.provider || 'grok';
-                model = selectedElement.dataset.model || selectedModel;
-            } else {
-                // Fall back to chat creation modal dropdown
-                selectedElement = document.getElementById('chatAIModelSelected');
-                selectedModel = selectedElement?.dataset.value || 'grok-2';
-                provider = selectedElement?.dataset.provider || 'grok';
-                model = selectedElement?.dataset.model || selectedModel;
-            }
-            
+            // Always use grok-4-fast-reasoning
             const chatData = {
                 filename: this.currentFilename,
                 characterName: document.getElementById('chatName').value || null,
                 textContextInfo: document.getElementById('chatMindSeed').value || null,
                 textViewerInfo: document.getElementById('chatViewerContext').value || null,
+                storyContext: document.getElementById('chatStoryContext').value || null,
                 verbosityLevel: parseInt(document.getElementById('chatVerbosity').value) || 3,
-                provider: provider,
-                model: model
+                provider: 'grok',
+                model: 'grok-4-fast-reasoning'
             };
-            
-            // Add appropriate parameter based on model
-            if (selectedModel === 'gpt-5-nano' || selectedModel === 'gpt-5') {
-                chatData.thoughtLevel = document.getElementById('chatThoughtLevel').value || 'minimal';
-            } else {
-                chatData.temperature = parseFloat(document.getElementById('chatTemperature').value) || 0.8;
-            }
             
             const response = await window.wsClient.createChatSession(chatData);
             
-            if (response.success) {
+            if (response && response.success) {
                 this.currentChatId = response.chatId;
                 this.closeChatModal();
                 this.openChatInterfaceModal();
                 await this.loadAllChatSessions();
-                
-                // Update the chat name display
-                const chatNameElement = document.getElementById('currentChatName');
-                if (chatNameElement) {
-                    const chatName = document.getElementById('chatName').value || 
-                                   document.getElementById('chatCharacterName').textContent || 
-                                   'New Chat';
-                    chatNameElement.textContent = chatName;
-                }
                 
                 // Load initial messages and wait for AI response
                 await this.loadChatMessages();
@@ -233,13 +251,15 @@ class ChatSystem {
                 // Ensure send button is ready after chat creation
                 this.resetSendButton();
             } else {
-                throw new Error(response.message || 'Failed to create chat session');
+                const errorMsg = response?.message || response?.error || 'Failed to create chat session';
+                throw new Error(errorMsg);
             }
         } catch (error) {
-            console.error('Failed to start chat:', error);
+            console.error('❌ Failed to start chat:', error);
             // Show error toast
             if (window.showToast) {
-                window.showToast('Failed to start chat: ' + error.message, 'error');
+                const errorMsg = error.message || 'Failed to start chat';
+                window.showToast('Failed to start chat: ' + errorMsg, 'error');
             }
         } finally {
             this.isLoading = false;
@@ -250,25 +270,18 @@ class ChatSystem {
 
     openChatInterfaceModal() {
         const modal = document.getElementById('chatInterfaceModal');
-        modal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
+        openModal(modal);
+        
+        // Initialize metadata toggle functionality
+        this.initializeMetadataToggle();
         
         // Reset send button state when opening modal
         this.resetSendButton();
-        
-        // If no chat is selected, set the model dropdown to show all models
-        if (!this.currentChatId) {
-            const defaultModel = this.personaSettings?.default_ai_engine || 'grok-2';
-            this.selectChatInterfaceModel(defaultModel);
-        }
     }
 
     closeChatInterfaceModal() {
         const modal = document.getElementById('chatInterfaceModal');
-        modal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
-        this.currentChatId = null;
-        this.messages = [];
+        closeModal(modal);
     }
 
     async loadChatSessions() {
@@ -306,7 +319,46 @@ class ChatSystem {
                 </div>
             `;
             
-            sessionElement.addEventListener('click', () => this.selectChatSession(session.id));
+            sessionElement.addEventListener('click', (e) => {
+                // Only select the chat if not opening context menu
+                if (!sessionElement.classList.contains('context-open')) {
+                    this.selectChatSession(session.id);
+                }
+            });
+            
+            // Add context menu to the session element
+            if (window.contextMenu) {
+                window.contextMenu.attachToElement(sessionElement, {
+                    sections: [
+                        {
+                            type: 'list',
+                            items: [
+                                {
+                                    icon: 'mdi mdi-1-5 mdi-refresh',
+                                    text: 'Reset Chat',
+                                    action: 'reset-chat',
+                                    data: { chatId: session.id }
+                                },
+                                {
+                                    icon: 'mdi mdi-1-5 mdi-delete',
+                                    text: 'Delete Chat',
+                                    action: 'delete-chat',
+                                    className: 'danger',
+                                    data: { chatId: session.id }
+                                }
+                            ]
+                        }
+                    ],
+                    onAction: (action, target, item) => {
+                        if (action === 'reset-chat') {
+                            this.handleContextMenuResetChat(item.data.chatId);
+                        } else if (action === 'delete-chat') {
+                            this.handleContextMenuDeleteChat(item.data.chatId);
+                        }
+                    }
+                });
+            }
+            
             container.appendChild(sessionElement);
         });
     }
@@ -314,29 +366,16 @@ class ChatSystem {
     async selectChatSession(chatId) {
         this.currentChatId = chatId;
         
-        // Find the selected session to get its name and filename
+        // Reset pagination state
+        this.messagesOffset = 0;
+        this.hasMoreMessages = true;
+        this.messages = [];
+        
+        // Find the selected session to get its filename
         const selectedSession = this.chatSessions.find(session => session.id === chatId);
         if (selectedSession) {
-            // Update the chat name display
-            const chatNameElement = document.getElementById('currentChatName');
-            if (chatNameElement) {
-                chatNameElement.textContent = selectedSession.chat_name || selectedSession.character_name || 'Unnamed Chat';
-            }
-            
             // Set the current filename for image display
             this.currentFilename = selectedSession.filename;
-
-            // Update the model dropdown to show the current chat's model
-            // This will also refresh the dropdown to only show models from the current provider
-            if (selectedSession.model) {
-                this.selectChatInterfaceModel(selectedSession.model);
-            } else {
-                // If no model is set, use the provider to set a default model
-                const defaultModel = this.getDefaultModelForProvider(selectedSession.provider);
-                if (defaultModel) {
-                    this.selectChatInterfaceModel(defaultModel);
-                }
-            }
         }
         
         await this.loadChatMessages();
@@ -346,16 +385,35 @@ class ChatSystem {
         this.resetSendButton();
     }
 
-    async loadChatMessages() {
+    async loadChatMessages(append = false) {
         if (!this.currentChatId) return;
         
         try {
-            const response = await window.wsClient.getChatMessages(this.currentChatId, 50, 0);
+            const offset = append ? this.messagesOffset : 0;
+            const response = await window.wsClient.getChatMessages(this.currentChatId, this.messagesLimit, offset);
             
             if (response.success) {
-                this.messages = response.messages.reverse(); // Reverse to show oldest first
+                const newMessages = response.messages.reverse(); // Reverse to show oldest first
+                
+                if (append) {
+                    // Prepend older messages
+                    this.messages = [...newMessages, ...this.messages];
+                    this.messagesOffset += newMessages.length;
+                } else {
+                    // Initial load
+                    this.messages = newMessages;
+                    this.messagesOffset = newMessages.length;
+                }
+                
+                // Check if there are more messages to load
+                this.hasMoreMessages = newMessages.length === this.messagesLimit;
+                
                 this.renderChatMessages();
-                this.scrollToBottom();
+                
+                if (!append) {
+                    this.scrollToBottom();
+                    this.setupSentinelObserver();
+                }
                 
                 // Ensure send button is enabled after loading messages
                 this.resetSendButton();
@@ -371,55 +429,279 @@ class ChatSystem {
         const container = document.getElementById('chatMessagesList');
         container.innerHTML = '';
         
-        this.messages.forEach(message => {
-            const messageElement = document.createElement('div');
-            messageElement.className = `chat-message ${message.message_type}`;
-            
-            let avatarSrc = '/static_images/icon-96x96.png';
-            if (message.message_type === 'user' && this.personaSettings?.profile_photo_base64) {
-                avatarSrc = `data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}`;
-            } else if (message.message_type === 'assistant') {
-                avatarSrc = `/images/${this.currentFilename}`;
+        // Set background image for chat messages panel
+        const panelContainer = document.querySelector('.chat-messages-panel');
+        if (panelContainer) {
+            if (this.currentFilename) {
+                panelContainer.style.backgroundImage = `url('/images/${this.currentFilename}')`;
+                panelContainer.classList.add('has-background');
+            } else {
+                panelContainer.style.backgroundImage = '';
+                panelContainer.classList.remove('has-background');
             }
+        }
+        
+        // Add sentinel at the top (oldest messages) for loading more
+        if (this.hasMoreMessages) {
+            const sentinel = document.createElement('div');
+            sentinel.className = 'chat-sentinel';
+            sentinel.id = 'chatLoadMoreSentinel';
+            sentinel.innerHTML = '<div class="chat-loading-indicator">Loading older messages...</div>';
+            container.appendChild(sentinel);
+        }
+        
+        // Group messages by response_id first, then by timestamp within each response
+        const responseGroups = [];
+        let currentResponseGroup = [];
+        
+        for (let i = 0; i < this.messages.length; i++) {
+            const message = this.messages[i];
             
-            let messageContent = message.content;
-            let actions = '';
-            let sfx = '';
+            if (message.message_type === 'user') {
+                // Flush any pending assistant response group
+                if (currentResponseGroup.length > 0) {
+                    responseGroups.push({ type: 'assistant_response', messages: currentResponseGroup });
+                    currentResponseGroup = [];
+                }
+                responseGroups.push({ type: 'user', message });
+            } else if (message.message_type === 'assistant') {
+                const lastMessage = currentResponseGroup[currentResponseGroup.length - 1];
+                
+                // If this is the first assistant message or has same response_id as last, add to current group
+                if (currentResponseGroup.length === 0 || (message.response_id && lastMessage?.response_id === message.response_id)) {
+                    currentResponseGroup.push(message);
+                } else {
+                    // Different response_id, flush current group and start new one
+                    if (currentResponseGroup.length > 0) {
+                        responseGroups.push({ type: 'assistant_response', messages: currentResponseGroup });
+                    }
+                    currentResponseGroup = [message];
+                }
+            }
+        }
+        
+        // Flush any remaining group
+        if (currentResponseGroup.length > 0) {
+            responseGroups.push({ type: 'assistant_response', messages: currentResponseGroup });
+        }
+        
+        // Render grouped messages (CSS column-reverse handles visual order)
+        responseGroups.forEach(group => {
+            if (group.type === 'user') {
+                // Render user message directly
+                const messageElement = document.createElement('div');
+                messageElement.className = `chat-message user`;
             
-            // Parse JSON data if available
-            if (message.json_data) {
+                let avatarSrc = '/static_images/icon-96x96.png';
+                if (this.personaSettings?.profile_photo_base64) {
+                    avatarSrc = `data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}`;
+                }
+                
+                messageElement.innerHTML = `
+                    <img src="${avatarSrc}" alt="Avatar" class="chat-message-avatar">
+                    <div class="chat-message-content">
+                        <div class="chat-message-text">${this.escapeHtml(group.message.content)}</div>
+                    </div>
+                `;
+                container.appendChild(messageElement);
+            } else if (group.type === 'assistant_response') {
+                // Group by timestamp and render each timestamp as a separate message
+                this.renderAssistantResponse(group.messages);
+            }
+        });
+        
+        // Update custom scrollbar after rendering
+        if (window.customScrollbar) {
+            const contentElement = document.querySelector('.chat-messages-content');
+            if (contentElement) {
+                // Small delay to ensure DOM is fully updated
+                setTimeout(() => {
+                    window.customScrollbar.updateScrollbar(contentElement);
+                }, 10);
+            }
+        }
+    }
+    
+    renderAssistantResponse(eventMessages) {
+        const container = document.getElementById('chatMessagesList');
+        const avatarSrc = `/images/${this.currentFilename}`;
+        
+        // Group events by timestamp
+        const timestampGroups = {};
+        eventMessages.forEach(eventMsg => {
+            // Parse event metadata to get timestamp
+            let timestamp = 0;
+            if (eventMsg.event_metadata) {
                 try {
-                    const jsonData = JSON.parse(message.json_data);
-                    
-                    // Handle new response structure with individual object keys
-                    if (jsonData.Description) {
-                        messageContent = jsonData.Description;
-                    } else if (jsonData.reply && jsonData.reply.length > 0) {
-                        // Fallback to old structure for backward compatibility
-                        messageContent = jsonData.reply.join(' ');
-                    }
-                    if (jsonData.actions && jsonData.actions.length > 0) {
-                        actions = jsonData.actions.join(', ');
-                    }
-                    if (jsonData.sfx && jsonData.sfx.length > 0) {
-                        sfx = jsonData.sfx.join(', ');
-                    }
+                    const metadata = JSON.parse(eventMsg.event_metadata);
+                    timestamp = metadata.timestamp !== undefined ? metadata.timestamp : 0;
                 } catch (e) {
-                    // Use raw content if JSON parsing fails
+                    timestamp = 0;
                 }
             }
             
+            if (!timestampGroups[timestamp]) {
+                timestampGroups[timestamp] = [];
+            }
+            timestampGroups[timestamp].push(eventMsg);
+        });
+        
+        // Sort timestamps in chronological order (column-reverse CSS will flip visually)
+        const sortedTimestamps = Object.keys(timestampGroups).map(Number).sort((a, b) => a - b);
+        
+        sortedTimestamps.forEach(timestamp => {
+            const eventsAtTime = timestampGroups[timestamp];
+            this.renderEventGroup(eventsAtTime, avatarSrc, container);
+        });
+    }
+    
+    renderEventGroup(events, avatarSrc, container) {
+        // Define which events are "4th wall metadata"
+        const metadataEventTypes = ['memory', 'environment', 'sensory', 'emotion', 'location', 'timeofday', 'innerspeech', 'currplan', 'futureplans', 'trustlevel', 'inventory', 'offlinemessage'];
+        const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
+        
+        // Separate events into visible and metadata
+        const visibleEvents = events.filter(e => visibleEventTypes.includes(e.event_type));
+        const metadataEvents = events.filter(e => metadataEventTypes.includes(e.event_type));
+        
+        // Render visible events as a single message bubble if present
+        if (visibleEvents.length > 0) {
+            let messageContent = '';
+            let actions = '';
+            let sfx = '';
+            
+            visibleEvents.forEach(event => {
+                const eventType = event.event_type;
+                const content = event.content;
+                
+                if (!content) return;
+                
+                switch(eventType) {
+                    case 'speechdirect':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'speech':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'reply':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'actions':
+                        actions = content;
+                        break;
+                    case 'sfx':
+                        sfx = content;
+                        break;
+                    case 'myname':
+                        // Handle name introduction specially
+                        if (!messageContent) messageContent = `My name is ${content}`;
+                        break;
+                }
+            });
+            
+            // Only create message if there's actual content
+            if (messageContent || actions || sfx) {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'chat-message assistant';
+                
+                messageElement.innerHTML = `
+                    <div class="chat-message-content">
+                        ${messageContent ? `<div class="chat-message-text">${this.escapeHtml(messageContent)}</div>` : ''}
+                        ${actions ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
+                        ${sfx ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
+                    </div>
+                `;
+                container.appendChild(messageElement);
+            }
+        }
+        
+        // Render each metadata event as its own separate message with metadata class
+        metadataEvents.forEach(event => {
+            const messageElement = document.createElement('div');
+            messageElement.className = `chat-message assistant metadata-message ${event.event_type}`;
+            
+            // Get event display name
+            const eventDisplayNames = {
+                'memory': '🧠 Memory',
+                'environment': '🌍 Environment',
+                'sensory': '👁️ Sensory',
+                'emotion': '💭 Emotion',
+                'location': '📍 Location',
+                'timeofday': '🕐 Time',
+                'innerspeech': '💬 Inner Thought',
+                'currplan': '📋 Current Plan',
+                'futureplans': '🔮 Future Plans',
+                'trustlevel': '🤝 Trust',
+                'inventory': '🎒 Inventory',
+                'offlinemessage': '📱 Message'
+            };
+            
+            const eventLabel = eventDisplayNames[event.event_type] || event.event_type;
+            
             messageElement.innerHTML = `
-                <img src="${avatarSrc}" alt="Avatar" class="chat-message-avatar">
                 <div class="chat-message-content">
-                    <div class="chat-message-text">${this.escapeHtml(messageContent)}</div>
-                    ${actions ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
-                    ${sfx ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
+                    <div class="metadata-label">${eventLabel}</div>
+                    <div class="chat-message-text">${this.escapeHtml(event.content)}</div>
                 </div>
             `;
-            
             container.appendChild(messageElement);
         });
+    }
+
+    toggleMetadataVisibility() {
+        const container = document.getElementById('chatMessagesList');
+        if (container) {
+            container.classList.toggle('show-metadata');
+            
+            // Save preference to localStorage
+            const isShowing = container.classList.contains('show-metadata');
+            localStorage.setItem('chat-show-metadata', isShowing);
+            
+            // Show toast notification
+            if (window.showToast) {
+                window.showToast(isShowing ? '4th Wall events visible' : '4th Wall events hidden', 'info');
+            }
+        }
+    }
+    
+    initializeMetadataToggle() {
+        // Restore preference from localStorage
+        const showMetadata = localStorage.getItem('chat-show-metadata') === 'true';
+        const container = document.getElementById('chatMessagesList');
+        if (container && showMetadata) {
+            container.classList.add('show-metadata');
+        }
+        
+        // Add context menu to chat messages container
+        if (window.contextMenu) {
+            window.contextMenu.attachToElement(container, {
+                sections: [
+                    {
+                        type: 'list',
+                        items: [
+                            {
+                                icon: 'mdi mdi-1-5 mdi-eye',
+                                text: 'Toggle 4th Wall Events',
+                                action: 'toggle-metadata'
+                            }
+                        ]
+                    }
+                ],
+                onAction: (action, target, item) => {
+                    if (action === 'toggle-metadata') {
+                        this.toggleMetadataVisibility();
+                    }
+                }
+            });
+        }
+        
+        // Force scrollbar update after initialization
+        if (window.customScrollbar) {
+            const contentElement = document.querySelector('.chat-messages-content');
+            if (contentElement) {
+                window.customScrollbar.forceReinit(contentElement);
+            }
+        }
     }
 
     async sendMessage() {
@@ -436,19 +718,25 @@ class ChatSystem {
         // Add user message to UI immediately
         this.addMessageToUI('user', message);
         input.value = '';
+        
+        // Reset textarea height
+        input.style.height = 'auto';
+        
         this.scrollToBottom();
         
         try {
+            // Ensure WebSocket is connected
+            if (!window.wsClient || !window.wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+
             // Send the message
             const response = await window.wsClient.sendChatMessage(this.currentChatId, message);
             
-            if (response.success) {
+            if (response && response.success) {
                 // If streaming is disabled, add the response directly to UI
                 // If streaming is enabled, the streaming events will handle the UI updates
                 if (!response.streaming) {
-                    // Add AI response to UI for non-streaming mode
-                    this.addMessageToUI('assistant', response.rawResponse, response.response);
-                    
                     // Reset loading state for non-streaming mode
                     this.isLoading = false;
                     sendBtn.disabled = false;
@@ -457,17 +745,24 @@ class ChatSystem {
                 }
                 // For streaming mode, the loading state will be reset by handleStreamingComplete
             } else {
-                throw new Error(response.error || 'Failed to send message');
+                const errorMsg = response?.error || response?.message || 'Failed to send message';
+                throw new Error(errorMsg);
             }
         } catch (error) {
-            console.error('Failed to send message:', error);
+            console.error('❌ Failed to send message:', error);
             // Show error message
-            this.addMessageToUI('assistant', 'I apologize, but I encountered an error processing your message.');
+            const errorMessage = error.message || 'I apologize, but I encountered an error processing your message.';
+            this.addMessageToUI('assistant', errorMessage);
             
             // Reset loading state on error
             this.isLoading = false;
             sendBtn.disabled = false;
             sendBtn.innerHTML = '<i class="mdi mdi-1-5 mdi-send"></i>';
+            
+            // Show toast notification
+            if (window.showToast) {
+                window.showToast('Failed to send message: ' + errorMessage, 'error');
+            }
         }
     }
 
@@ -487,9 +782,90 @@ class ChatSystem {
         let actions = '';
         let sfx = '';
         
+        // Try to parse content as JSON if it looks like JSON and jsonData is null
+        if (!jsonData && content && typeof content === 'string' && (content.trim().startsWith('{') || content.trim().startsWith('['))) {
+            try {
+                let parsed;
+                let cleanedContent = content.trim();
+                
+                // Handle malformed JSON - multiple objects separated by commas (not wrapped in array)
+                if (cleanedContent.startsWith('{') && !cleanedContent.startsWith('[{') && cleanedContent.includes('},')) {
+                    // Try to wrap in array brackets
+                    cleanedContent = '[' + cleanedContent + ']';
+                }
+                
+                // Remove trailing commas before closing brackets/braces
+                cleanedContent = cleanedContent.replace(/,(\s*[}\]])/g, '$1');
+                
+                parsed = JSON.parse(cleanedContent);
+                
+                // Handle simple response objects
+                if (parsed.message && typeof parsed.message === 'string') {
+                    messageContent = parsed.message;
+                } else if (parsed.response && typeof parsed.response === 'string') {
+                    messageContent = parsed.response;
+                } else if (Array.isArray(parsed)) {
+                    // Array of events - extract the most important content
+                    // Priority: speechdirect > speech > innerspeech > reply > actions
+                    const speechdirectEvents = parsed.filter(e => e.type === 'speechdirect');
+                    const speechEvents = parsed.filter(e => e.type === 'speech');
+                    const innerspeechEvents = parsed.filter(e => e.type === 'innerspeech');
+                    const replyEvents = parsed.filter(e => e.type === 'reply');
+                    const actionEvents = parsed.filter(e => e.type === 'actions');
+                    
+                    if (speechdirectEvents.length > 0) {
+                        messageContent = speechdirectEvents.map(e => e.content || e.text || '').join(' ');
+                    } else if (speechEvents.length > 0) {
+                        messageContent = speechEvents.map(e => e.content || e.text || '').join(' ');
+                    } else if (innerspeechEvents.length > 0) {
+                        messageContent = innerspeechEvents.map(e => e.content || e.text || '').join(' ');
+                    } else if (replyEvents.length > 0) {
+                        messageContent = replyEvents.map(e => e.content || e.text || '').join(' ');
+                    } else if (actionEvents.length > 0) {
+                        messageContent = actionEvents.map(e => e.content || e.text || '').join(' ');
+                    } else if (parsed.length > 0 && parsed[0].content) {
+                        messageContent = parsed[0].content;
+                    }
+                    
+                    // Extract actions and sfx for display
+                    if (actionEvents.length > 0) {
+                        actions = actionEvents.map(e => e.content || '').join(', ');
+                    }
+                    const sfxEvents = parsed.filter(e => e.type === 'sfx');
+                    if (sfxEvents.length > 0) {
+                        sfx = sfxEvents.map(e => e.content || '').join(', ');
+                    }
+                } else if (parsed.type === 'myname' && parsed.content) {
+                    messageContent = `My name is ${parsed.content}`;
+                } else if (parsed.type === 'speechdirect' && parsed.content) {
+                    messageContent = parsed.content;
+                } else if (parsed.type === 'speech' && parsed.content) {
+                    messageContent = parsed.content;
+                } else if (parsed.type === 'innerspeech' && parsed.content) {
+                    messageContent = parsed.content;
+                } else if (parsed.type && parsed.content) {
+                    messageContent = parsed.content;
+                }
+            } catch (e) {
+                // Not valid JSON, use content as-is
+                console.warn('Failed to parse message content as JSON:', e);
+            }
+        }
+        
         if (jsonData) {
-            if (jsonData.reply && jsonData.reply.length > 0) {
+            // Priority: speechdirect > speech > innerspeech > reply > Description
+            if (jsonData.speechdirect && jsonData.speechdirect.length > 0) {
+                messageContent = jsonData.speechdirect.join(' ');
+            } else if (jsonData.speech && jsonData.speech.length > 0) {
+                messageContent = jsonData.speech.join(' ');
+            } else if (jsonData.innerspeech && jsonData.innerspeech.length > 0) {
+                messageContent = jsonData.innerspeech.join(' ');
+            } else if (jsonData.reply && jsonData.reply.length > 0) {
                 messageContent = jsonData.reply.join(' ');
+            } else if (jsonData.Description) {
+                messageContent = jsonData.Description;
+            } else if (jsonData.myname && jsonData.myname.length > 0) {
+                messageContent = `My name is ${jsonData.myname.join(' ')}`;
             }
             if (jsonData.actions && jsonData.actions.length > 0) {
                 actions = jsonData.actions.join(', ');
@@ -512,8 +888,85 @@ class ChatSystem {
     }
 
     scrollToBottom() {
-        const container = document.getElementById('chatMessagesList');
-        container.scrollTop = container.scrollHeight;
+        const container = document.querySelector('.chat-messages-content .scrollable-content');
+        if (container) {
+            // With column-reverse, scrollTop 0 is the "bottom" (newest messages)
+            container.scrollTop = 0;
+        }
+    }
+    
+    setupSentinelObserver() {
+        // Clean up existing observer
+        if (this.sentinelObserver) {
+            this.sentinelObserver.disconnect();
+        }
+        
+        // Create new observer for the sentinel
+        this.sentinelObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && this.hasMoreMessages && !this.isLoadingMore) {
+                    this.loadMoreMessages();
+                }
+            });
+        }, {
+            root: document.querySelector('.chat-messages-content .scrollable-content'),
+            rootMargin: '100px', // Start loading 100px before sentinel is visible
+            threshold: 0
+        });
+        
+        // Observe the sentinel
+        const sentinel = document.getElementById('chatLoadMoreSentinel');
+        if (sentinel) {
+            this.sentinelObserver.observe(sentinel);
+        }
+    }
+    
+    async loadMoreMessages() {
+        if (this.isLoadingMore || !this.hasMoreMessages || !this.currentChatId) return;
+        
+        this.isLoadingMore = true;
+        
+        // Show loading state on sentinel
+        const sentinel = document.getElementById('chatLoadMoreSentinel');
+        if (sentinel) {
+            sentinel.classList.add('loading');
+        }
+        
+        try {
+            // Get a reference message ID to track position
+            const container = document.querySelector('.chat-messages-content .scrollable-content');
+            const messageElements = container.querySelectorAll('.chat-message');
+            let referenceMessageId = null;
+            
+            if (messageElements.length > 0) {
+                // Get the first visible message's ID (or use a stable reference)
+                const firstMessage = messageElements[messageElements.length - 1]; // Last in DOM (due to column-reverse)
+                referenceMessageId = firstMessage.dataset.messageIndex || 0;
+            }
+            
+            const oldScrollHeight = container.scrollHeight;
+            const oldScrollTop = container.scrollTop;
+            
+            await this.loadChatMessages(true);
+            
+            // Restore scroll position (adjust for new content added)
+            // With column-reverse, new content at DOM start increases scrollHeight
+            const newScrollHeight = container.scrollHeight;
+            const scrollDiff = newScrollHeight - oldScrollHeight;
+            
+            // Adjust scroll to maintain position
+            container.scrollTop = oldScrollTop + scrollDiff;
+            
+            // Re-observe the new sentinel
+            this.setupSentinelObserver();
+        } catch (error) {
+            console.error('Failed to load more messages:', error);
+        } finally {
+            this.isLoadingMore = false;
+            if (sentinel) {
+                sentinel.classList.remove('loading');
+            }
+        }
     }
 
     openPersonaSettingsModal() {
@@ -529,20 +982,10 @@ class ChatSystem {
     }
 
     async savePersonaSettings() {
-        const selectedElement = document.getElementById('personaDefaultAIEngineSelected');
-        const selectedModel = selectedElement?.dataset.value || 'grok-2';
-        const provider = selectedElement?.dataset.provider || 'grok';
-        const model = selectedElement?.dataset.model || selectedModel;
-        
         const settings = {
             user_name: document.getElementById('personaUserName').value,
             backstory: document.getElementById('personaBackstory').value,
             default_verbosity: parseInt(document.getElementById('personaDefaultVerbosity').value),
-            default_ai_engine: selectedModel, // Keep for backward compatibility
-            default_ai_provider: provider,
-            default_ai_model: model,
-            default_temperature: parseFloat(document.getElementById('personaDefaultTemperature').value),
-            default_reasoning_level: document.getElementById('personaDefaultReasoningLevel').value,
             profile_photo_base64: this.personaSettings?.profile_photo_base64 || ''
         };
         
@@ -580,29 +1023,6 @@ class ChatSystem {
         };
         reader.readAsDataURL(file);
     }
-    
-    handleAIModelChange(selectedModel = null) {
-        // Get selected model from parameter or from dropdown
-        if (!selectedModel) {
-            const selectedElement = document.getElementById('chatAIModelSelected');
-            selectedModel = selectedElement?.dataset.value || 'grok-2';
-        }
-        
-        const temperatureGroup = document.getElementById('chatTemperatureGroup');
-        const thoughtLevelGroup = document.getElementById('chatThoughtLevelGroup');
-        
-        // Show/hide appropriate controls based on model
-        if (selectedModel === 'gpt-5-nano' || selectedModel === 'gpt-5') {
-            // GPT-5 models use thought level instead of temperature
-            temperatureGroup.style.display = 'none';
-            thoughtLevelGroup.style.display = 'block';
-        } else {
-            // Other models use temperature
-            temperatureGroup.style.display = 'block';
-            thoughtLevelGroup.style.display = 'none';
-        }
-    }
-
 
     async deleteChat() {
         if (!this.currentChatId) return;
@@ -632,8 +1052,10 @@ class ChatSystem {
         try {
             const response = await window.wsClient.restartChatSession(this.currentChatId);
             if (response.success) {
-                // Clear current messages and reload
+                // Clear current messages and reset pagination state
                 this.messages = [];
+                this.messagesOffset = 0;
+                this.hasMoreMessages = true;
                 await this.loadChatMessages();
                 if (window.showToast) {
                     window.showToast('Chat restarted successfully', 'success');
@@ -664,6 +1086,17 @@ class ChatSystem {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        
+        // Reset height to auto to get the correct scrollHeight
+        textarea.style.height = 'auto';
+        
+        // Set height to scrollHeight (content height)
+        const newHeight = Math.min(textarea.scrollHeight, 200); // Max 200px
+        textarea.style.height = newHeight + 'px';
     }
 
     formatStreamingActions(parsedContent) {
@@ -707,9 +1140,6 @@ class ChatSystem {
         // Hide typing indicator if it's showing
         this.hideTypingIndicator();
         
-        // Determine if this is a reasoning model
-        const isReasoning = this.isCurrentModelReasoning();
-        
         // Add a placeholder message for streaming
         const messagesContainer = document.getElementById('chatMessagesList');
         if (!messagesContainer) {
@@ -720,105 +1150,27 @@ class ChatSystem {
         const streamingMessage = document.createElement('div');
         streamingMessage.className = 'chat-message assistant streaming';
         streamingMessage.id = `streaming-${message.chatId}`;
-        streamingMessage.dataset.isReasoning = isReasoning;
-                
-        let avatarSrc = '/static_images/icon-96x96.png';
-        if (this.currentFilename) {
-            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp`;
-        }
+        streamingMessage.dataset.accumulatedEvents = JSON.stringify([]); // Store accumulated events
         
-        if (isReasoning) {
-            // For reasoning models, show live typing with thought process
-            streamingMessage.innerHTML = `
-                <img src="${avatarSrc}" alt="Avatar" class="chat-message-avatar">
-                <div class="chat-message-content">
-                    <div class="chat-message-text">
-                        <div class="reasoning-header">
-                            <i class="fa-light fa-head-side-brain reasoning-icon"></i>
-                            <span class="reasoning-label">AI is thinking...</span>
-                        </div>
-                        <div class="reasoning-content">
-                            <div class="reasoning-text">${message.message || 'Processing your request...'}</div>
-                            <div class="streaming-indicator">
-                                <span class="streaming-cursor">|</span>
-                            </div>
-                        </div>
+        // For reasoning models, show live typing with thought process
+        streamingMessage.innerHTML = `
+            <div class="chat-message-content">
+                <div class="chat-message-text">
+                    <div class="director-typing-dots">
+                        <div class="director-typing-dot"></div>
+                        <div class="director-typing-dot"></div>
+                        <div class="director-typing-dot"></div>
                     </div>
                 </div>
-            `;
-        } else {
-            // For non-reasoning models, show bouncing dots
-            streamingMessage.innerHTML = `
-                <img src="${avatarSrc}" alt="Avatar" class="chat-message-avatar">
-                <div class="chat-message-content">
-                    <div class="chat-message-text">
-                        <div class="streaming-content">
-                            <div class="streaming-text">${message.message || 'Generating response...'}</div>
-                        </div>
-                        <div class="streaming-indicator">
-                            <div class="bouncing-dots">
-                                <div class="bouncing-dot"></div>
-                                <div class="bouncing-dot"></div>
-                                <div class="bouncing-dot"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
+            </div>
+        `;
         
         messagesContainer.appendChild(streamingMessage);
         this.scrollToBottom();
     }
     
     handleStreamingUpdate(message) {
-        // Check if modal is open and this is the active chat
-        if (!this.isChatInterfaceModalOpen() || message.chatId !== this.currentChatId) {
-            return;
-        }
-
-        const streamingMessage = document.getElementById(`streaming-${message.chatId}`);
-        
-        if (!streamingMessage) {
-            return;
-        }
-
-        const isReasoning = streamingMessage.dataset.isReasoning === 'true';
-        
-        if (isReasoning) {
-            // For reasoning models, show the thought process
-            const reasoningText = streamingMessage.querySelector('.reasoning-text');
-            if (reasoningText) {
-                // Show the raw response as it streams (thought process)
-                reasoningText.textContent = message.fullResponse || message.chunk || 'Processing...';
-            }
-        } else {
-            // For non-reasoning models, show formatted content
-            const messageText = streamingMessage.querySelector('.chat-message-text');
-            
-            // Try to parse the JSON response to show formatted content
-            let displayContent = message.fullResponse;
-            let parsedContent = null;
-            
-            try {
-                parsedContent = JSON.parse(message.fullResponse);
-                if (parsedContent.reply && parsedContent.reply.length > 0) {
-                    displayContent = parsedContent.reply.join(' ');
-                }
-            } catch (e) {
-                console.warn('⚠️ JSON parse failed, using raw content');
-            }
-            
-            const streamingContent = messageText.querySelector('.streaming-content');
-            if (streamingContent) {
-                streamingContent.innerHTML = `
-                    <div class="streaming-text">${this.escapeHtml(displayContent)}</div>
-                    ${parsedContent ? this.formatStreamingActions(parsedContent) : ''}
-                `;
-            }
-        }
-        
-        this.scrollToBottom();
+        return;
     }
     
     handleStreamingComplete(message) {
@@ -830,25 +1182,9 @@ class ChatSystem {
         
         const streamingMessage = document.getElementById(`streaming-${message.chatId}`);
         if (streamingMessage) {
-            const isReasoning = streamingMessage.dataset.isReasoning === 'true';
-            
-            if (isReasoning) {
-                // For reasoning models, show a brief "Processing complete" message
-                const reasoningText = streamingMessage.querySelector('.reasoning-text');
-                if (reasoningText) {
-                    reasoningText.textContent = 'Processing complete... Generating final response...';
-                }
-                
-                // Wait a moment then replace with final message
-                setTimeout(() => {
-                    streamingMessage.remove();
-                    this.loadChatMessages();
-                }, 1000);
-            } else {
-                // For non-reasoning models, remove immediately and reload
-                streamingMessage.remove();
-                this.loadChatMessages();
-            }
+            // Remove streaming indicator and reload messages to show final content
+            streamingMessage.remove();
+            this.loadChatMessages();
         }
         
         // Hide typing indicator
@@ -869,23 +1205,14 @@ class ChatSystem {
         typingMessage.className = 'chat-message assistant typing-indicator';
         typingMessage.id = 'typing-indicator';
         
-        let avatarSrc = '/static_images/icon-96x96.png';
-        if (this.currentFilename) {
-            avatarSrc = `/previews/${encodeURIComponent(this.currentFilename.replace(/\.(jpg|jpeg|png|webp)$/i, ''))}.webp`;
-        }
-        
         typingMessage.innerHTML = `
-            <div class="chat-message-avatar">
-                <img src="${avatarSrc}" alt="AI Avatar" onerror="this.src='/static_images/icon-96x96.png'">
-            </div>
             <div class="chat-message-content">
                 <div class="chat-message-text">
-                    <div class="typing-dots">
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
+                    <div class="director-typing-dots">
+                        <div class="director-typing-dot"></div>
+                        <div class="director-typing-dot"></div>
+                        <div class="director-typing-dot"></div>
                     </div>
-                    <span class="typing-text">AI is thinking...</span>
                 </div>
             </div>
         `;
@@ -901,48 +1228,26 @@ class ChatSystem {
         }
     }
     
-    isCurrentModelReasoning() {
-        // Get the current model from the dropdown
-        const selectedElement = document.getElementById('chatAIModelSelected');
-        if (!selectedElement) return false;
-        
-        const modelId = selectedElement.dataset.value;
-        if (!modelId) return false;
-        
-        // Use model manager if available
-        if (window.modelManager && window.modelManager.isReasoningModel) {
-            return window.modelManager.isReasoningModel(modelId);
-        }
-        
-        // Fallback: check against known reasoning models
-        const reasoningModels = [
-            'gpt-5-nano',
-            'gpt-5',
-            'o1-preview',
-            'o1-mini',
-            'o4-high',
-            'gpt-o4'
-        ];
-        return reasoningModels.includes(modelId);
+    showAllChats() {
+        // Open the chat interface modal to show all chats
+        this.openChatInterfaceModal();
+        // Load all chat sessions (not filtered by filename)
+        this.loadAllChatSessions();
     }
 
-    showChatHistory() {
-        // Show all chat sessions in a modal or expand the chat list panel
-        if (window.showToast) {
-            window.showToast('Chat history feature coming soon!', 'info');
-        }
-        // TODO: Implement chat history modal or expand chat list
-        console.log('Chat history requested');
-    }
-
-    async handleRestartButtonClick() {
-        if (!this.currentChatId) {
-            if (window.showToast) {
-                window.showToast('No active chat to restart', 'warning');
+    async loadAllChatSessions() {
+        try {
+            const response = await window.wsClient.getChatSessions(); // No filename filter
+            if (response.success) {
+                this.chatSessions = response.sessions;
+                this.renderChatSessions();
             }
-            return;
+        } catch (error) {
+            console.error('Failed to load all chat sessions:', error);
         }
+    }
 
+    async handleContextMenuResetChat(chatId) {
         const restartConfirmed = await showConfirmationDialog(
             'Are you sure you want to restart this chat? This will clear all messages.',
             [
@@ -952,18 +1257,36 @@ class ChatSystem {
         );
         
         if (restartConfirmed) {
-            await this.restartChat();
+            try {
+                const response = await window.wsClient.restartChatSession(chatId);
+                if (response.success) {
+                    if (window.showToast) {
+                        window.showToast('Chat restarted successfully', 'success');
+                    }
+                    
+                    // If this is the current chat, reload messages
+                    if (chatId === this.currentChatId) {
+                        this.messages = [];
+                        this.messagesOffset = 0;
+                        this.hasMoreMessages = true;
+                        await this.loadChatMessages();
+                    }
+                    
+                    // Reload chat sessions to update UI
+                    await this.loadAllChatSessions();
+                } else {
+                    throw new Error(response.message || 'Failed to restart chat');
+                }
+            } catch (error) {
+                console.error('Failed to restart chat:', error);
+                if (window.showToast) {
+                    window.showToast('Failed to restart chat: ' + error.message, 'error');
+                }
+            }
         }
     }
-    
-    async handleDeleteButtonClick() {
-        if (!this.currentChatId) {
-            if (window.showToast) {
-                window.showToast('No active chat to delete', 'warning');
-            }
-            return;
-        }
-        
+
+    async handleContextMenuDeleteChat(chatId) {
         const deleteConfirmed = await showConfirmationDialog(
             'Are you sure you want to delete this chat? This action cannot be undone.',
             [
@@ -974,28 +1297,24 @@ class ChatSystem {
         
         if (deleteConfirmed) {
             try {
-                const response = await window.wsClient.deleteChatSession(this.currentChatId);
+                const response = await window.wsClient.deleteChatSession(chatId);
                 
                 if (response.success) {
                     if (window.showToast) {
                         window.showToast('Chat deleted successfully', 'success');
                     }
                     
-                    // Clear current chat and reload sessions
-                    this.currentChatId = null;
-                    this.currentFilename = null;
-                    this.messages = [];
-                    
-                    // Update UI
-                    const chatNameElement = document.getElementById('currentChatName');
-                    if (chatNameElement) {
-                        chatNameElement.textContent = 'Select a conversation';
-                    }
-                    
-                    // Clear messages list
-                    const messagesList = document.getElementById('chatMessagesList');
-                    if (messagesList) {
-                        messagesList.innerHTML = '';
+                    // If this was the current chat, clear it
+                    if (chatId === this.currentChatId) {
+                        this.currentChatId = null;
+                        this.currentFilename = null;
+                        this.messages = [];
+                        
+                        // Clear messages list
+                        const messagesList = document.getElementById('chatMessagesList');
+                        if (messagesList) {
+                            messagesList.innerHTML = '';
+                        }
                     }
                     
                     // Reload chat sessions
@@ -1009,417 +1328,6 @@ class ChatSystem {
                     window.showToast('Failed to delete chat: ' + error.message, 'error');
                 }
             }
-        }
-    }
-
-    showAllChats() {
-        // Open the chat interface modal to show all chats
-        this.openChatInterfaceModal();
-        // Load all chat sessions (not filtered by filename)
-        this.loadAllChatSessions();
-    }
-
-    async initializeModelDropdowns() {
-        try {            
-            // Wait for model manager to be available
-            if (!window.modelManager) {
-                return;
-            }
-
-            // Get available models
-            const models = await window.modelManager.getAvailableModels();
-            
-            // Get default model from persona settings
-            const defaultModel = this.personaSettings?.default_ai_engine || 'grok-2';
-
-            // Setup chat AI model dropdown using standard system
-            this.setupChatAIModelDropdown(models, defaultModel);
-
-            // Setup chat interface model dropdown using standard system
-            this.setupChatInterfaceModelDropdown(models, defaultModel);
-
-            // Setup persona default AI engine dropdown using standard system
-            this.setupPersonaDefaultAIEngineDropdown(models, defaultModel);
-        } catch (error) {
-            console.error('Failed to initialize model dropdowns:', error);
-        }
-    }
-
-    setupChatAIModelDropdown(models, defaultValue) {
-        const container = document.getElementById('chatAIModelDropdown');
-        const button = document.getElementById('chatAIModelBtn');
-        const menu = document.getElementById('chatAIModelMenu');
-        
-        if (!container || !button || !menu) {
-            console.error('Chat AI model dropdown elements not found');
-            return;
-        }
-
-        // Get model groups
-        const modelGroups = this.getModelGroups();
-        
-        // Render function for grouped dropdown
-        const renderChatAIModelDropdown = (selectedValue) => {
-            renderGroupedDropdown(
-                menu,
-                modelGroups,
-                this.selectChatAIModel.bind(this),
-                this.closeChatAIModelDropdown.bind(this),
-                selectedValue,
-                this.renderModelOptionContent.bind(this)
-            );
-        };
-
-        // Get selected value function
-        const getSelectedValue = () => {
-            const selectedElement = document.getElementById('chatAIModelSelected');
-            return selectedElement?.dataset.value || defaultValue;
-        };
-
-        // Setup dropdown
-        setupDropdown(container, button, menu, renderChatAIModelDropdown, getSelectedValue, {
-            preventFocusTransfer: true
-        });
-
-        // Set initial value
-        this.selectChatAIModel(defaultValue);
-    }
-
-    setupChatInterfaceModelDropdown(models, defaultValue) {
-        const container = document.getElementById('chatModelDropdown');
-        const button = document.getElementById('chatModelBtn');
-        const menu = document.getElementById('chatModelMenu');
-        
-        if (!container || !button || !menu) {
-            console.error('Chat interface model dropdown elements not found');
-            return;
-        }
-
-        // Render function for grouped dropdown - will be updated when chat is selected
-        const renderChatInterfaceModelDropdown = (selectedValue) => {
-            // Get filtered model groups based on current chat's provider
-            const modelGroups = this.getFilteredModelGroups();
-            renderGroupedDropdown(
-                menu,
-                modelGroups,
-                this.selectChatInterfaceModel.bind(this),
-                this.closeChatInterfaceModelDropdown.bind(this),
-                selectedValue,
-                this.renderModelOptionContent.bind(this)
-            );
-        };
-
-        // Get selected value function
-        const getSelectedValue = () => {
-            const selectedElement = document.getElementById('chatModelSelected');
-            return selectedElement?.dataset.value || defaultValue;
-        };
-
-        // Setup dropdown
-        setupDropdown(container, button, menu, renderChatInterfaceModelDropdown, getSelectedValue, {
-            preventFocusTransfer: true
-        });
-
-        // Set initial value
-        this.selectChatInterfaceModel(defaultValue);
-    }
-
-    setupPersonaDefaultAIEngineDropdown(models, defaultValue) {
-        const container = document.getElementById('personaDefaultAIEngineDropdown');
-        const button = document.getElementById('personaDefaultAIEngineBtn');
-        const menu = document.getElementById('personaDefaultAIEngineMenu');
-        
-        if (!container || !button || !menu) {
-            console.error('Persona default AI engine dropdown elements not found');
-            return;
-        }
-
-        // Get model groups
-        const modelGroups = this.getModelGroups();
-        
-        // Render function for grouped dropdown
-        const renderPersonaDefaultAIEngineDropdown = (selectedValue) => {
-            renderGroupedDropdown(
-                menu,
-                modelGroups,
-                this.selectPersonaDefaultAIEngine.bind(this),
-                this.closePersonaDefaultAIEngineDropdown.bind(this),
-                selectedValue,
-                this.renderModelOptionContent.bind(this)
-            );
-        };
-
-        // Get selected value function
-        const getSelectedValue = () => {
-            const selectedElement = document.getElementById('personaDefaultAIEngineSelected');
-            return selectedElement?.dataset.value || defaultValue;
-        };
-
-        // Setup dropdown
-        setupDropdown(container, button, menu, renderPersonaDefaultAIEngineDropdown, getSelectedValue, {
-            preventFocusTransfer: true
-        });
-
-        // Set initial value
-        this.selectPersonaDefaultAIEngine(defaultValue);
-    }
-
-    selectChatAIModel(value) {
-        const selected = document.getElementById('chatAIModelSelected');
-        const hidden = document.getElementById('chatAIModel');
-        
-        if (!selected || !hidden) return;
-
-        // Find the model object from groups
-        const modelGroups = this.getModelGroups();
-        let model = null;
-        for (const group of modelGroups) {
-            model = group.options.find(m => m.value === value);
-            if (model) break;
-        }
-        
-        if (!model) return;
-
-        // Update display with model information
-        const brainIcon = model.isReasoning ? '<i class="fa-light fa-head-side-brain model-reasoning-icon"></i>' : '';
-        const serviceBadge = model.service === 'OpenAI' ? 
-            '<span class="model-service-badge openai">OpenAI</span>' : 
-            '<span class="model-service-badge grok">xAI</span>';
-        
-        selected.innerHTML = `
-            <div class="model-option-content">
-                <div class="model-option-left">
-                    <span class="model-name">${model.name}</span>
-                    ${brainIcon}
-                </div>
-                <div class="model-option-right">
-                    ${serviceBadge}
-                </div>
-            </div>
-        `;
-        selected.dataset.value = model.value;
-        selected.dataset.provider = model.provider;
-        selected.dataset.model = model.model;
-
-        // Update hidden input
-        hidden.value = model.value;
-
-        // Handle model-specific controls
-        this.handleAIModelChange(model.value);
-    }
-
-    selectChatInterfaceModel(value) {
-        const selected = document.getElementById('chatModelSelected');
-        const hidden = document.getElementById('chatModel');
-        
-        if (!selected || !hidden) return;
-
-        // Find the model object from filtered groups (only current provider)
-        const modelGroups = this.getFilteredModelGroups();
-        let model = null;
-        for (const group of modelGroups) {
-            model = group.options.find(m => m.value === value);
-            if (model) break;
-        }
-        
-        if (!model) return;
-
-        // If we have a current chat, validate that the new model is from the same provider
-        if (this.currentChatId) {
-            const currentSession = this.chatSessions.find(session => session.id === this.currentChatId);
-            if (currentSession && currentSession.provider && model.provider !== currentSession.provider) {
-                console.warn('Cannot switch to model from different provider:', model.provider, 'vs', currentSession.provider);
-                if (window.showToast) {
-                    window.showToast('Cannot switch to a model from a different provider', 'warning');
-                }
-                return;
-            }
-        }
-
-        // Update display with model information
-        const brainIcon = model.isReasoning ? '<i class="fa-light fa-head-side-brain model-reasoning-icon"></i>' : '';
-        const serviceBadge = model.service === 'OpenAI' ? 
-            '<span class="model-service-badge openai">OpenAI</span>' : 
-            '<span class="model-service-badge grok">xAI</span>';
-        
-        selected.innerHTML = `
-            <div class="model-option-content">
-                <div class="model-option-left">
-                    <span class="model-name">${model.name}</span>
-                    ${brainIcon}
-                </div>
-                <div class="model-option-right">
-                    ${serviceBadge}
-                </div>
-            </div>
-        `;
-        selected.dataset.value = model.value;
-        selected.dataset.provider = model.provider;
-        selected.dataset.model = model.model;
-        
-        // Update hidden input
-        hidden.value = model.value;
-
-        // Update the current chat session's model if we have an active chat
-        if (this.currentChatId) {
-            this.updateChatModel(this.currentChatId, model);
-        }
-    }
-
-    selectPersonaDefaultAIEngine(value) {
-        const selected = document.getElementById('personaDefaultAIEngineSelected');
-        const hidden = document.getElementById('personaDefaultAIEngine');
-        
-        if (!selected || !hidden) return;
-
-        // Find the model object from groups
-        const modelGroups = this.getModelGroups();
-        let model = null;
-        for (const group of modelGroups) {
-            model = group.options.find(m => m.value === value);
-            if (model) break;
-        }
-        
-        if (!model) return;
-
-        // Update display with model information
-        const brainIcon = model.isReasoning ? '<i class="fa-light fa-head-side-brain model-reasoning-icon"></i>' : '';
-        const serviceBadge = model.service === 'OpenAI' ? 
-            '<span class="model-service-badge openai">OpenAI</span>' : 
-            '<span class="model-service-badge grok">xAI</span>';
-        
-        selected.innerHTML = `
-            <div class="model-option-content">
-                <div class="model-option-left">
-                    <span class="model-name">${model.name}</span>
-                    ${brainIcon}
-                </div>
-                <div class="model-option-right">
-                    ${serviceBadge}
-                </div>
-            </div>
-        `;
-        selected.dataset.value = model.value;
-        selected.dataset.provider = model.provider;
-        selected.dataset.model = model.model;
-        
-        // Update hidden input
-        hidden.value = model.value;
-    }
-
-    // Helper function to render model option content for grouped dropdown
-    renderModelOptionContent(option, group) {
-        const brainIcon = option.isReasoning ? '<i class="fa-light fa-head-side-brain model-reasoning-icon"></i>' : '';
-        
-        return `
-            <div class="model-option-content">
-                <div class="model-option-left">
-                    <span class="model-name">${option.name}</span>
-                    ${brainIcon}
-                </div>
-            </div>
-        `;
-    }
-
-    // Close handlers for dropdowns
-    closeChatAIModelDropdown() {
-        const menu = document.getElementById('chatAIModelMenu');
-        const button = document.getElementById('chatAIModelBtn');
-        closeDropdown(menu, button);
-    }
-
-    closeChatInterfaceModelDropdown() {
-        const menu = document.getElementById('chatModelMenu');
-        const button = document.getElementById('chatModelBtn');
-        closeDropdown(menu, button);
-    }
-
-    closePersonaDefaultAIEngineDropdown() {
-        const menu = document.getElementById('personaDefaultAIEngineMenu');
-        const button = document.getElementById('personaDefaultAIEngineBtn');
-        closeDropdown(menu, button);
-    }
-
-    getFallbackModels() {
-        return [
-            { id: 'grok-2', name: 'Grok-2', provider: 'grok', model: 'grok-2', service: 'Grok', isReasoning: false },
-            { id: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai', model: 'gpt-5-nano', service: 'OpenAI', isReasoning: true },
-            { id: 'gpt-5', name: 'GPT-5', provider: 'openai', model: 'gpt-5', service: 'OpenAI', isReasoning: true },
-            { id: 'o4-high', name: 'O4 High', provider: 'openai', model: 'o4-high', service: 'OpenAI', isReasoning: true },
-            { id: 'gpt-o4', name: 'GPT O4', provider: 'openai', model: 'gpt-o4', service: 'OpenAI', isReasoning: true }
-        ];
-    }
-
-    getModelGroups() {
-        return [
-            {
-                group: 'xAI',
-                options: [
-                    { value: 'grok-2', name: 'Grok-2', provider: 'grok', model: 'grok-2', service: 'Grok', isReasoning: false },
-                    { value: 'grok-2-1212', name: 'Grok-2-1212', provider: 'grok', model: 'grok-2-1212', service: 'Grok', isReasoning: false },
-                    { value: 'grok-2-vision-1212', name: 'Grok-2-Vision-1212', provider: 'grok', model: 'grok-2-vision-1212', service: 'Grok', isReasoning: false }
-                ]
-            },
-            {
-                group: 'OpenAI',
-                options: [
-                    { value: 'gpt-5-nano', name: 'GPT-5 Nano', provider: 'openai', model: 'gpt-5-nano', service: 'OpenAI', isReasoning: true },
-                    { value: 'gpt-5', name: 'GPT-5', provider: 'openai', model: 'gpt-5', service: 'OpenAI', isReasoning: true },
-                    { value: 'gpt-4o', name: 'GPT-4o', provider: 'openai', model: 'gpt-4o', service: 'OpenAI', isReasoning: false },
-                    { value: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'openai', model: 'gpt-4o-mini', service: 'OpenAI', isReasoning: false },
-                    { value: 'o1-preview', name: 'O1 Preview', provider: 'openai', model: 'o1-preview', service: 'OpenAI', isReasoning: true },
-                    { value: 'o1-mini', name: 'O1 Mini', provider: 'openai', model: 'o1-mini', service: 'OpenAI', isReasoning: true }
-                ]
-            }
-        ];
-    }
-
-    getFilteredModelGroups() {
-        // If no current chat, return all model groups
-        if (!this.currentChatId) {
-            return this.getModelGroups();
-        }
-
-        // Find the current chat session to get its provider
-        const currentSession = this.chatSessions.find(session => session.id === this.currentChatId);
-        if (!currentSession || !currentSession.provider) {
-            return this.getModelGroups();
-        }
-
-        // Filter model groups to only show models from the current chat's provider
-        const allModelGroups = this.getModelGroups();
-        const currentProvider = currentSession.provider;
-        
-        return allModelGroups.filter(group => {
-            // Check if any model in this group matches the current provider
-            return group.options.some(option => option.provider === currentProvider);
-        }).map(group => ({
-            ...group,
-            options: group.options.filter(option => option.provider === currentProvider)
-        }));
-    }
-
-    getDefaultModelForProvider(provider) {
-        const allModelGroups = this.getModelGroups();
-        for (const group of allModelGroups) {
-            const model = group.options.find(option => option.provider === provider);
-            if (model) {
-                return model.value;
-            }
-        }
-        return null;
-    }
-
-
-    async loadAllChatSessions() {
-        try {
-            const response = await window.wsClient.getChatSessions(); // No filename filter
-            if (response.success) {
-                this.chatSessions = response.sessions;
-                this.renderChatSessions();
-            }
-        } catch (error) {
-            console.error('Failed to load all chat sessions:', error);
         }
     }
 
@@ -1450,37 +1358,53 @@ class ChatSystem {
             }
         }
     }
-
-    // Update the chat session's model
-    async updateChatModel(chatId, model) {
-        try {
-            const response = await window.wsClient.updateChatModel(chatId, {
-                provider: model.provider,
-                model: model.model
-            });
-            
-            if (response.success) {
-                if (window.showToast) {
-                    window.showToast(`Model changed to ${model.name}`, 'success');
-                }
-            } else {
-                throw new Error(response.message || 'Failed to update chat model');
-            }
-        } catch (error) {
-            console.error('Failed to update chat model:', error);
-            if (window.showToast) {
-                window.showToast('Failed to update model: ' + error.message, 'error');
-            }
-        }
-    }
-
 }
 
 if (window.wsClient) {
     window.wsClient.registerInitStep(99, 'Setting up chat system', async () => {
-        // Chat system is already initialized, just ensure listeners are registered
-        window.chatSystem = new ChatSystem();
+        try {
+            // Ensure WebSocket is connected before initializing
+            if (!window.wsClient.isConnected()) {
+                console.warn('⚠️ WebSocket not connected when initializing chat system, waiting...');
+                // Wait up to 10 seconds for connection
+                let attempts = 0;
+                while (!window.wsClient.isConnected() && attempts < 10) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                }
+            }
+
+            // Create chat system instance
+            if (!window.chatSystem) {
+                window.chatSystem = new ChatSystem();
+                console.log('✅ Chat system initialized');
+            } else {
+                console.log('ℹ️ Chat system already exists, skipping re-initialization');
+            }
+        } catch (error) {
+            console.error('❌ Failed to initialize chat system:', error);
+            // Still create the instance so the UI doesn't break
+            if (!window.chatSystem) {
+                window.chatSystem = new ChatSystem();
+            }
+        }
     });
+} else {
+    console.error('❌ WebSocket client not available when chatSystem.js loaded');
+    // Try to initialize later when wsClient becomes available
+    const initInterval = setInterval(() => {
+        if (window.wsClient) {
+            clearInterval(initInterval);
+            window.wsClient.registerInitStep(99, 'Setting up chat system', async () => {
+                if (!window.chatSystem) {
+                    window.chatSystem = new ChatSystem();
+                }
+            });
+        }
+    }, 500);
+    
+    // Give up after 30 seconds
+    setTimeout(() => clearInterval(initInterval), 30000);
 }
 
 // Export for use in other scripts

@@ -149,14 +149,10 @@ class DatabaseCheckpointManager {
             // Open source database
             const sourceDb = new Database(this.dbPath, { readonly: true });
             
-            // Create backup database
-            const backupDb = new Database(checkpointPath);
+            // Perform backup - backup() expects a destination path string
+            sourceDb.backup(checkpointPath);
             
-            // Perform backup
-            sourceDb.backup(backupDb);
-            
-            // Close databases
-            backupDb.close();
+            // Close source database
             sourceDb.close();
 
             console.log(`✅ Created database checkpoint with backup API: ${checkpointFilename}`);

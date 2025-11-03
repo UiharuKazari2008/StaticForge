@@ -34,12 +34,13 @@ function getLightboxDataSource() {
         let height = 1024; // Default fallback
 
         // Try to get dimensions from the image object if available
-        if (img.metadata && img.metadata.width && img.metadata.height) {
-            width = img.metadata.width;
-            height = img.metadata.height;
-        } else if (img.width && img.height) {
+        // Use img.width/height first (actual file dimensions) before metadata (which may be from original for expanded images)
+        if (img.width && img.height) {
             width = img.width;
             height = img.height;
+        } else if (img.metadata && img.metadata.width && img.metadata.height) {
+            width = img.metadata.width;
+            height = img.metadata.height;
         }
 
         return {
@@ -162,6 +163,37 @@ async function initializePhotoSwipe() {
                 } else {
                     bottomBar.classList.remove('hidden');
                 }
+                
+                // Update upscale button visibility based on image dimensions
+                const upscaleButton = bottomBar.querySelector('.pswp__button--upscale-button');
+                if (upscaleButton && currentItem.data.data) {
+                    const imageData = currentItem.data.data;
+                    
+                    // Try to get dimensions from various sources
+                    let width = currentItem.width;
+                    let height = currentItem.height;
+                    
+                    // Check metadata if direct properties aren't available
+                    if (!width || !height) {
+                        if (imageData.metadata) {
+                            width = imageData.metadata.actual_width || imageData.metadata.width;
+                            height = imageData.metadata.actual_height || imageData.metadata.height;
+                        }
+                    }
+                    
+                    // Check if upscaling is available for these dimensions
+                    if (width && height && typeof calculateUpscaleInfo === 'function') {
+                        const upscaleInfo = calculateUpscaleInfo(width, height);
+                        if (upscaleInfo.available) {
+                            upscaleButton.classList.remove('hidden');
+                        } else {
+                            upscaleButton.classList.add('hidden');
+                        }
+                    } else {
+                        // Default to showing if dimensions unknown
+                        upscaleButton.classList.remove('hidden');
+                    }
+                }
             }
         };
 
@@ -265,6 +297,8 @@ async function initializePhotoSwipe() {
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
+                                    // Close PhotoSwipe first, then open expansion modal
+                                    pswp.close();
                                     rerollImage(currentItem.data?.data, e);
                                 }
                             }
@@ -276,21 +310,42 @@ async function initializePhotoSwipe() {
                             onClick: (e) => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
+                                    // Close PhotoSwipe first, then open expansion modal
+                                    pswp.close();
                                     rerollImageWithEdit(currentItem.data?.data, e);
                                 }
                             }
                         },
-                        /* {
+                        {
+                            className: 'expand-button',
+                            icon: '<i class="mdi mdi-1-25 mdi-relative-scale"></i>',
+                            label: 'Expand canvas',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    // Get the filename to expand - prefer upscaled version, fallback to original
+                                    const filename = currentItem.data.data.upscaled || currentItem.data.data.original;
+                                    if (filename && typeof openImageExpansionModal === 'function') {
+                                        // Close PhotoSwipe first, then open expansion modal
+                                        pswp.close();
+                                        openImageExpansionModal(filename);
+                                    }
+                                }
+                            }
+                        },
+                        {
                             className: 'upscale-button',
                             icon: '<i class="nai-upscale"></i>',
                             label: 'Upscale image',
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
+                                    // Close PhotoSwipe first, then open expansion modal
+                                    pswp.close();
                                     upscaleImage(currentItem.data?.data);
                                 }
                             }
-                        }, */
+                        },
                         {
                             className: 'scrap-button',
                             icon: '<i class="fa-light fa-bin-recycle"></i>',
@@ -298,6 +353,8 @@ async function initializePhotoSwipe() {
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
+                                    // Close PhotoSwipe first, then open expansion modal
+                                    pswp.close();
                                     if (currentGalleryView === 'scraps') {
                                         removeFromScraps(currentItem.data?.data);
                                     } else {
@@ -313,6 +370,8 @@ async function initializePhotoSwipe() {
                             onClick: () => {
                                 const currentItem = pswp.currSlide;
                                 if (currentItem && currentItem.data?.data) {
+                                    // Close PhotoSwipe first, then open expansion modal
+                                    pswp.close();
                                     deleteImage(currentItem.data?.data);
                                 }
                             }

@@ -1,6 +1,7 @@
 const spellchecker = require('spellchecker');
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 class SpellChecker {
     constructor() {
@@ -15,10 +16,10 @@ class SpellChecker {
                 const data = fs.readFileSync(customWordsPath, 'utf8');
                 const customWordsData = JSON.parse(data);
                 this.customWords = new Set(customWordsData.words || []);
-                console.log(`📚 Loaded ${this.customWords.size} custom words for spell checking`);
+                logger.bootSubStep(`Loaded ${this.customWords.size} custom words for spell checking`);
             }
         } catch (error) {
-            console.warn('⚠️ Could not load customWords.json:', error.message);
+            logger.warn('Could not load customWords.json:', error.message);
         }
     }
 

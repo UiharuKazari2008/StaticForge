@@ -83,7 +83,7 @@ function createShortcutsOverlay() {
                     </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F7</span>
-                        <span class="shortcut-desc"><span>Reset to Normal</span><i class="fa fa-undo"></i></span>
+                        <span class="shortcut-desc"><span>Reset to Normal</span><i class="nai-dot-reset"></i></span>
                     </div>
                     <div class="shortcut-item alt">
                         <span class="shortcut-key">ALT + F7</span>
@@ -178,6 +178,15 @@ function handleKeyDown(event) {
                 }
             }
             break;
+        case 'ALT+F3':
+            // Remove all emphasis from selected text
+            const activeElement = document.activeElement;
+            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+                event.preventDefault();
+                event.stopPropagation();
+                removeAllEmphasisFromSelection(activeElement);
+            }
+            break;
         case 'F4':
             event.preventDefault();
             event.stopPropagation();
@@ -225,7 +234,7 @@ function handleKeyDown(event) {
             
             // Reset resolution to normal if large or wallpaper
             const resVal = manualResolutionHidden ? manualResolutionHidden.value : '';
-            if (resVal && (resVal.startsWith('large_') || resVal.startsWith('wallpaper_'))) {
+            if (resVal && (resVal.startsWith('large_') || resVal.startsWith('xlarge_') || resVal.startsWith('wallpaper_'))) {
                 const parts = resVal.split('_');
                 if (parts.length >= 2) {
                     const aspect = parts[1];
@@ -251,7 +260,7 @@ function handleKeyDown(event) {
             
             // Set Max Resolution
             const inputResVal = manualResolutionHidden ? manualResolutionHidden.value : '';
-            if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('wallpaper_'))) {
+            if (inputResVal && !(inputResVal.startsWith('large_') || inputResVal.startsWith('xlarge_') || inputResVal.startsWith('wallpaper_'))) {
                 const parts = inputResVal.split('_');
                 if (parts.length >= 2) {
                     const aspect = parts[1];

@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const logger = require('./logger');
 
 class ReferenceMetadataDatabase {
     constructor() {
@@ -25,9 +26,9 @@ class ReferenceMetadataDatabase {
             // Create tables
             this.createTables();
             
-            console.log('Reference metadata database initialized successfully');
+            logger.bootSubStep('Reference metadata database initialized');
         } catch (error) {
-            console.error('Error initializing reference metadata database:', error);
+            logger.error('Error initializing reference metadata database:', error);
             throw error;
         }
     }
@@ -43,12 +44,26 @@ class ReferenceMetadataDatabase {
                 comment TEXT,
                 vibe_append_prompt TEXT,
                 vibe_append_uc TEXT,
+                vibe_prepend_prompt BOOLEAN DEFAULT 0,
+                vibe_prepend_uc BOOLEAN DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `;
 
         this.db.exec(createReferenceMetadataTable);
+
+        // Migrate existing databases to add vibe_prepend column if it doesn't exist
+        try {
+            this.db.exec(`ALTER TABLE reference_metadata ADD COLUMN vibe_prepend_prompt BOOLEAN DEFAULT 0`);
+        } catch (error) {
+            // Column already exists or table doesn't exist, ignore
+        }
+        try {
+            this.db.exec(`ALTER TABLE reference_metadata ADD COLUMN vibe_prepend_uc BOOLEAN DEFAULT 0`);
+        } catch (error) {
+            // Column already exists or table doesn't exist, ignore
+        }
 
         // Create indexes for better performance
         this.db.exec(`
@@ -81,6 +96,9 @@ class ReferenceMetadataDatabase {
             if (result) {
                 // Parse tags JSON
                 result.tags = result.tags ? JSON.parse(result.tags) : [];
+                // Convert vibe_prepend to boolean
+                result.vibe_prepend_prompt = !!result.vibe_prepend_prompt;
+                result.vibe_prepend_uc = !!result.vibe_prepend_uc;
                 return result;
             }
             
@@ -100,6 +118,8 @@ class ReferenceMetadataDatabase {
      * @param {string} [metadata.comment] - Comment
      * @param {string} [metadata.vibeAppendPrompt] - Vibe append prompt
      * @param {string} [metadata.vibeAppendUc] - Vibe append UC
+     * @param {boolean} [metadata.vibePrependPrompt] - Whether to prepend vibe text instead of append
+     * @param {boolean} [metadata.vibePrependUc] - Whether to prepend vibe text instead of append
      * @returns {Object} Created/updated metadata
      */
     setMetadata(hash, metadata) {
@@ -111,10 +131,10 @@ class ReferenceMetadataDatabase {
             
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO reference_metadata (
-                    hash, display_name, tags, comment, 
-                    vibe_append_prompt, vibe_append_uc, 
+                    hash, display_name, tags, comment,
+                    vibe_append_prompt, vibe_append_uc, vibe_prepend_prompt, vibe_prepend_uc,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
 
             const result = stmt.run(
@@ -124,6 +144,8 @@ class ReferenceMetadataDatabase {
                 metadata.comment || null,
                 metadata.vibeAppendPrompt || null,
                 metadata.vibeAppendUc || null,
+                metadata.vibePrependPrompt ? 1 : 0,
+                metadata.vibePrependUc ? 1 : 0,
                 now,
                 now
             );
@@ -304,7 +326,9 @@ class ReferenceMetadataDatabase {
             results.forEach(result => {
                 metadataMap[result.hash] = {
                     ...result,
-                    tags: result.tags ? JSON.parse(result.tags) : []
+                    tags: result.tags ? JSON.parse(result.tags) : [],
+                    vibe_prepend_prompt: !!result.vibe_prepend_prompt,
+                    vibe_prepend_uc: !!result.vibe_prepend_uc
                 };
             });
             

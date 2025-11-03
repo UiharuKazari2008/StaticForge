@@ -182,8 +182,10 @@ function blendColors(fg, bg, alpha) {
 // Generate CSS variables for a specific workspace
 function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, primaryFont = '', textareaFont = '', isBlurDisabled = false) {
     // Color adjustment variables for consistent theming
-    const BADGE_LIGHTNESS_1 = 25; // Much darker first badge color
+    const BADGE_LIGHTNESS_1 = 30; // Much darker first badge color
+    const BADGE_SATURATION_1 = 45; // Much darker first badge color
     const BADGE_LIGHTNESS_2 = 35; // Much darker second badge color
+    const BADGE_SATURATION_2 = 35; // Much darker second badge color
     const HOVER_SHOW_COLORED_LIGHTNESS = 94; // Light colored text
     const GLASS_TINT_SATURATION = 15; // Glass tint saturation
     const GLASS_TINT_LIGHTNESS_FACTOR = 0.4; // Glass tint lightness factor
@@ -239,12 +241,12 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--text-accent: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}%);`,
         `--shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
         `--text-accent-tinted: hsl(${workspaceHsl.h} 100% 85%);`,
-        `--btn-hover-bg-primary: radial-gradient(hsl(${brightenedHsl.h} ${brightenedHsl.s}% ${brightenedHsl.l}% / 50%), hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 90%));`,
+        `--btn-hover-bg-primary: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 50%);`,
         `--btn-hover-border-primary: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
         `--btn-hover-text-primary: #ffffff;`,
         `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
         `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
-        `--btn-hover-bg-secondary: radial-gradient(hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 21%), hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%));`,
+        `--btn-hover-bg-secondary: hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%);`,
         `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`,
         `--hover-show-active-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 66%);`,
         `--hover-show-active-border: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 20%);`,
@@ -256,7 +258,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--badge-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
         `--badge-text: #ffffff;`,
         `--badge-shadow: 0 1px 3px hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 30%);`,
-        `--custom-dropdown-badge-bg: linear-gradient(45deg, hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_1}%), hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${BADGE_LIGHTNESS_2}%));`,
+        `--custom-dropdown-badge-bg: linear-gradient(45deg, hsl(${workspaceHsl.h} ${BADGE_SATURATION_1}% ${BADGE_LIGHTNESS_1}%), hsl(${workspaceHsl.h} ${BADGE_SATURATION_2}% ${BADGE_LIGHTNESS_2}%));`,
         `--custom-dropdown-badge-text: #ffffff;`,
         `--hover-show-colored-text: hsl(${workspaceHsl.h} 100% ${HOVER_SHOW_COLORED_LIGHTNESS}%);`,
         `--toggle-on-bg: hsl(${workspaceHsl.h} ${TOGGLE_ON_SATURATION}% ${TOGGLE_ON_LIGHTNESS}%);`,
