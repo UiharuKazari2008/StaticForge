@@ -10,13 +10,61 @@ const { z } = require('zod');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
+const crypto = require('crypto');
+const tzLookup = require('tz-lookup');
+const geo2city = require('geo2city');
 
+const cacheDir = path.resolve(__dirname, '../.cache');
 const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHandlers.timeCalc');
+const { callDirectorAIWithStructuredOutput, getAllToolDefinitions } = require('./aiServices/grokService');
+const { getTagGroupsInfo } = require('./tag-lookup');
 
-const { callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
+/**
+ * Normalizes legacy period keys to new period key names
+ * @param {string} periodKey - The period key to normalize
+ * @returns {string} - Normalized period key
+ */
+function normalizePeriodKey(periodKey) {
+    if (!periodKey || typeof periodKey !== 'string') {
+        return periodKey;
+    }
+    
+    const normalized = periodKey.toLowerCase().trim();
+    
+    // Legacy to new mappings
+    const legacyMappings = {
+        'earlymorning': 'morning',
+        'early_morning': 'morning',
+        'earlyevening': 'night',
+        'early_evening': 'night',
+        'evening': 'night',
+        'lateevening': 'night',
+        'late_evening': 'night'
+    };
+    
+    return legacyMappings[normalized] || normalized;
+}
+const globalResources = require('./globalResources');
+const localPromptOptimizer = require('./localPromptOptimizer');
+const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
+const ClothingDatabase = require('./clothingDatabase');
+const logger = require('./logger');
 
-// Import T5 tokenizer service for token counting
-const t5TokenizerService = require('./t5-tokenizer-service');
+/**
+ * Filter tools for fast mode - only allows memory tools, verification tools, and complete tooling
+ * @param {Array} tools - Array of all available tools
+ * @returns {Array} Filtered array of tools allowed in fast mode
+ */
+function filterToolsForFastMode(tools) {
+    const allowedToolNames = [
+        'retrieveKnowledgeMemory',
+        'searchKnowledgeMemories',
+        'validateTextReplacement',
+        'completeTooling'
+    ];
+    
+    return tools.filter(tool => allowedToolNames.includes(tool.name));
+}
 
 /**
  * Generate a consistent prompt hash for cache validation
@@ -26,7 +74,6 @@ const t5TokenizerService = require('./t5-tokenizer-service');
  * @returns {string} MD5 hash of the prompts
  */
 function generatePromptHash(prompt, uc, characterPrompts) {
-    const crypto = require('crypto');
     return crypto.createHash('md5')
         .update(JSON.stringify({
             prompt: prompt,
@@ -37,14 +84,14 @@ function generatePromptHash(prompt, uc, characterPrompts) {
 }
 
 /**
- * Generate a consistent request hash for dynamic generation parameters
+ * Generate a consistent request hash for dynamic generation context parameters
  * Used for cache validation and context locking validation
+ * NOTE: Does NOT include directive - directive has its own hash
  * @param {Object} dynamicConfig - The dynamic generation configuration
  * @param {Object} datasetConfig - The dataset configuration (optional)
- * @returns {string} MD5 hash of the relevant parameters
+ * @returns {string} MD5 hash of the context parameters
  */
 function generateRequestHash(dynamicConfig, datasetConfig = null) {
-    const crypto = require('crypto');
     return crypto.createHash('md5')
         .update(JSON.stringify({
             tod: dynamicConfig.tod,
@@ -55,23 +102,23 @@ function generateRequestHash(dynamicConfig, datasetConfig = null) {
             location: dynamicConfig.location,
             optimize: dynamicConfig.optimize,
             creative: dynamicConfig.creative,
-            directive: dynamicConfig.directive,
             clothing: dynamicConfig.clothing,
             observeHoliday: dynamicConfig.observeHoliday,
-            temperature: dynamicConfig.temperature,
             nsfw_level: datasetConfig?.nsfw
         }))
         .digest('hex');
 }
 
-// Import clothing database for dynamic clothing selection
-const ClothingDatabase = require('./clothingDatabase');
-
-// Timezone lookup for offline timezone determination by coordinates
-const tzLookup = require('tz-lookup');
-
-// Reverse geocoding for location metadata
-const geo2city = require('geo2city');
+/**
+ * Generate a consistent directive hash
+ * @param {string} directive - The directive text
+ * @returns {string} MD5 hash of the directive
+ */
+function generateDirectiveHash(directive) {
+    return crypto.createHash('md5')
+        .update(directive || '')
+        .digest('hex');
+}
 
 // Weather provider - Open-Meteo API (free, no API key required)
 // Weather data cache with size limits and LRU eviction
@@ -220,7 +267,6 @@ function getTimezoneByCoordinates(latitude, longitude) {
 
         // Use tz-lookup to get IANA timezone identifier
         const timezone = tzLookup(latitude, longitude);
-        console.log(`🌍 Timezone lookup: (${latitude.toFixed(4)}, ${longitude.toFixed(4)}) → ${timezone}`);
         return timezone;
     } catch (error) {
         console.warn(`⚠️ Timezone lookup failed for coordinates (${latitude}, ${longitude}):`, error.message);
@@ -483,7 +529,6 @@ function analyzePrecipitationType(rain, showers, snowfall, temperature, code) {
  * @returns {Promise<Object>} Weather data from Open-Meteo
  */
 async function getWeatherFromBestProvider(location, options = {}) {
-    console.log('🌤️ Using Open-Meteo as weather data provider');
     const {
         includeCurrent = true,
         pastHours = 2, // Past hours to retrieve (in 30min intervals)
@@ -925,90 +970,6 @@ async function getWeatherFromBestProvider(location, options = {}) {
 }
 
 /**
- * Get weather data for a specific date (historical or future)
- * @param {Object} location - Location coordinates
- * @param {string} dateString - Date in YYYY-MM-DD format
- * @param {boolean} useArchive - Whether to use archive API (for old data)
- * @returns {Object|null} Weather data or null if failed
- */
-async function getWeatherForDate(location, dateString, useArchive = false) {
-    try {
-        const baseUrl = useArchive ? 'https://archive-api.open-meteo.com/v1/archive' : 'https://api.open-meteo.com/v1/forecast';
-        const endDate = new Date(new Date(dateString).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-        const url = `${baseUrl}?latitude=${location.lat}&longitude=${location.lon}&start_date=${dateString}&end_date=${endDate}&hourly=temperature_2m,relative_humidity_2m,dewpoint_2m,apparent_temperature,precipitation,rain,showers,snowfall,weather_code,pressure_msl,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover&daily=weather_code,uv_index_max&timezone=auto`;
-
-        const response = await fetch(url);
-        if (!response.ok) return null;
-
-        const data = await response.json();
-        if (!data.hourly?.time?.length) return null;
-
-        // Process into daily averages
-        const temps = data.hourly.temperature_2m || [];
-        const humidities = data.hourly.relative_humidity_2m || [];
-        const dewPoints = data.hourly.dewpoint_2m || [];
-        const apparentTemps = data.hourly.apparent_temperature || [];
-        const pressures = data.hourly.pressure_msl || [];
-        const visibilities = data.hourly.visibility || [];
-        const windSpeeds = data.hourly.wind_speed_10m || [];
-        const windDirections = data.hourly.wind_direction_10m || [];
-        const windGusts = data.hourly.wind_gusts_10m || [];
-        const precipitations = data.hourly.precipitation || [];
-        const rains = data.hourly.rain || [];
-        const showers = data.hourly.showers || [];
-        const snowfalls = data.hourly.snowfall || [];
-
-        const avgTemp = temps.reduce((a, b) => a + b, 0) / temps.length;
-        const avgHumidity = humidities.reduce((a, b) => a + b, 0) / humidities.length;
-        const avgDewPoint = dewPoints.length > 0 ? dewPoints.reduce((a, b) => a + b, 0) / dewPoints.length : undefined;
-        const avgApparentTemp = apparentTemps.length > 0 ? apparentTemps.reduce((a, b) => a + b, 0) / apparentTemps.length : undefined;
-        const avgPressure = pressures.reduce((a, b) => a + b, 0) / pressures.length;
-        const avgVisibility = visibilities.filter(v => v > 0).reduce((a, b) => a + b, 0) / visibilities.filter(v => v > 0).length || 10000;
-        const maxWindSpeed = Math.max(...windSpeeds) / 3.6; // Convert km/h to m/s
-        const maxWindGust = windGusts.length > 0 ? Math.max(...windGusts) / 3.6 : undefined; // Convert km/h to m/s
-        const avgWindDirection = windDirections.length > 0 ? windDirections.reduce((a, b) => a + b, 0) / windDirections.length : undefined;
-        const totalPrecip = precipitations.reduce((a, b) => a + b, 0);
-        const totalRain = rains.reduce((a, b) => a + b, 0);
-        const totalShowers = showers.reduce((a, b) => a + b, 0);
-        const totalSnow = snowfalls.reduce((a, b) => a + b, 0);
-
-        const weatherCode = data.daily?.weather_code?.[0] || data.hourly.weather_code?.[Math.floor(data.hourly.weather_code.length / 2)] || 800;
-
-        return {
-            temperature: Math.round(avgTemp),
-            condition: mapOpenMeteoCondition(weatherCode),
-            humidity: Math.round(avgHumidity),
-            windSpeed: Math.round(maxWindSpeed),
-            windGust: maxWindGust !== undefined ? Math.round(maxWindGust) : undefined,
-            windDirection: avgWindDirection !== undefined ? Math.round(avgWindDirection) : undefined,
-            pressure: Math.round(avgPressure) || 1013,
-            visibility: avgVisibility,
-            feelsLike: avgApparentTemp !== undefined ? Math.round(avgApparentTemp) : undefined,
-            dewPoint: avgDewPoint !== undefined ? Math.round(avgDewPoint * 10) / 10 : undefined,
-            cloudCoverage: Math.round((data.hourly.cloud_cover || []).reduce((a, b) => a + b, 0) / (data.hourly.cloud_cover || []).length) || 0,
-            precipitation: Math.round(totalPrecip * 100) / 100,
-            precipitationRate: totalPrecip / 24,
-            rain: Math.round(totalRain * 100) / 100,
-            showers: Math.round(totalShowers * 100) / 100,
-            snowfall: Math.round(totalSnow * 100) / 100,
-            sunrise: data.daily?.sunrise?.[index],
-            sunset: data.daily?.sunset?.[index],
-            uvIndex: data.daily?.uv_index_max?.[0] || 0,
-            rawConditionId: weatherCode,
-            icon: mapOpenMeteoIcon(weatherCode, true),
-            weatherQuality: { comfortLevel: getComfortLevel(Math.round(avgTemp), avgHumidity, maxWindSpeed) },
-            timestamp: new Date(dateString).getTime(),
-            dataSource: useArchive ? `Historical (${dateString})` : `Forecast (${dateString})`,
-            location
-        };
-    } catch (error) {
-        console.warn(`Failed to get weather for ${dateString}:`, error.message);
-        return null;
-    }
-}
-
-/**
  * Calculate historical weather statistics from daily weather data
  * @param {Array} dailyData - Array of daily weather data objects
  * @returns {Object} Historical statistics
@@ -1302,7 +1263,7 @@ function transformOpenMeteoData(rawData, options) {
     };
 
     // Log timezone information for debugging
-    console.log(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone} (${result.location.timezoneAbbreviation}), coordinates: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
+    logger.verbose(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone}, coords: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
 
     // Process current weather if available
     if (rawData.current) {
@@ -1545,16 +1506,6 @@ function transformOpenMeteoData(rawData, options) {
 
         if (futureData.length > 0) {
             result.nextPeriod = futureData;
-        }
-
-        // Debug: Log temporal data availability
-        console.log(`📊 Temporal data extracted: pastPeriod=${pastData.length} points, nextPeriod=${futureData.length} points, total hourly=${hourlyData.length}, minutely=${result.minutely ? result.minutely.length : 0}`);
-        if (pastData.length > 0) {
-            console.log(`📊 Past period range: ${new Date(pastData[pastData.length-1].timestamp).toISOString()} to ${new Date(pastData[0].timestamp).toISOString()}`);
-        }
-        if (futureData.length > 0) {
-            const dataType = futureData[0].timestamp && result.minutely && result.minutely.some(m => m.timestamp === futureData[0].timestamp) ? 'minutely' : 'hourly';
-            console.log(`📊 Next period (${dataType}): ${new Date(futureData[0].timestamp).toISOString()} to ${new Date(futureData[futureData.length-1].timestamp).toISOString()}`);
         }
     }
 
@@ -1991,7 +1942,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         pastHours = 2
     } = options;
 
-    console.log('🌤️ Retrieving comprehensive weather analysis...');
+    logger.detailed('🌤️ Retrieving weather analysis...');
 
     const results = {
         timestamp: Date.now(),
@@ -2010,7 +1961,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
     try {
         // 1. Get current weather with temporal context
         if (!customDate && customTimeOffset === null) {
-            console.log(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
+            logger.verbose(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
             results.temporal = await getEnhancedWeatherData(location, {
                 pastHours: pastHours,
                 forecastHours: forecastHours,
@@ -2051,10 +2002,10 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         }
 
         // 4. Generate comprehensive analysis
-        console.log('🔍 Generating comprehensive weather analysis...');
+        logger.verbose('🔍 Generating comprehensive weather analysis...');
         results.analysis = generateComprehensiveAnalysis(results);
 
-        console.log('✅ Weather analysis complete');
+        logger.verbose('✅ Weather analysis complete');
         return results;
 
     } catch (error) {
@@ -3633,145 +3584,6 @@ function generateAccurateWeatherConditions(condition, baseWeather = {}) {
 }
 
 /**
- * Create Zod schema for dynamic generation AI response
- * @param {number} expectedCharacterPrompts - Number of character prompts expected
- * @returns {Object} Zod schema
- */
-/**
- * Get the number of top-level keys in a Zod schema
- * @param {Object} schema - Zod schema object
- * @returns {number} Number of top-level keys
- */
-function getZodSchemaKeyCount(schema) {
-    if (schema && schema._def && schema._def.shape) {
-        return Object.keys(schema._def.shape).length;
-    }
-    return 1; // fallback
-}
-
-function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0) {
-    return z.object({
-    dialogs: z.array(z.object({
-        type: z.enum(["speech", "thought"])
-            .describe("Dialog type: 'speech' for spoken words, 'thought' for internal monologue"),
-        text: z.string().min(1).max(200)
-            .describe("Dialog text content, context-aware and in character's voice/tone matching the scene"),
-        top: z.number().min(5).max(95)
-            .describe("Vertical position from top as percentage (5-95%) - distribute to avoid overlap"),
-        left: z.number().min(5).max(95)
-            .describe("Horizontal position from left as percentage (5-95%) - distribute to avoid overlap"),
-        alignment: z.enum(["left", "right"])
-            .describe("Text alignment for the dialog bubble based on position")
-    })).min(3).max(10).nullable().optional()
-        .describe("3-10 context-aware character dialogs (speech/thoughts) matching scene tone, character voice, and narrative context. Distribute positions to avoid clustering."),
-    text_replacements: z.object({
-        prompt: z.array(z.object({
-            reason: z.string()
-                .describe("Plain text brief description of the reason for this replacement (1-2 sentences)"),
-            reason_display: z.string()
-                .describe("Very short explanation for display in UI (2-5 words)"),
-            select_text: z.string().nullable().optional()
-                .describe("EXACT text segment (1-5 words) to find and modify (required for replace/delete, optional for append - if omitted, appends to end)"),
-            replace_text: z.string().nullable()
-                .describe("Text to replace the selected text with (omit/empty when action=delete)"),
-            action: z.enum(['replace', 'append', 'delete']).nullable().default('replace')
-                .describe("Replacement action: replace (default), append, or delete"),
-            count: z.number().int().positive().nullable().optional()
-                .describe("For delete only: number of occurrences to remove left-to-right (omit to delete all)"),
-            is_critical: z.boolean().nullable().default(true)
-                .describe("Whether this replacement is critical (true) requiring retry if failed, or optional (false) allowing graceful fallback"),
-            fallback_select_text: z.string().nullable().optional()
-                .describe("Fallback text to select if select_text is not found (shorter, more common phrase)"),
-            alternative_text: z.string().nullable().optional()
-                .describe("For optional replacements: safer generic text to append if both select_text and fallback_select_text fail"),
-            replacement_category: z.enum(['Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Text Overlay', 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere', 'Action Verbs', 'Directive'])
-                .describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (modify text after ', Text:' boundary), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
-        })).describe("Find-and-replace operations for the main prompt"),
-        uc: z.array(z.object({
-            reason: z.string()
-                .describe("Plain text brief description of the reason for this replacement (1-2 sentences)"),
-            reason_display: z.string()
-                .describe("Very short explanation for display in UI (2-5 words)"),
-            select_text: z.string().nullable().optional()
-                .describe("EXACT text segment (1-5 words) to find and modify (required for replace/delete, optional for append - if omitted, appends to end)"),
-            replace_text: z.string().nullable()
-                .describe("Text to replace the selected text with (omit/empty when action=delete)"),
-            action: z.enum(['replace', 'append', 'delete']).nullable().default('replace')
-                .describe("Replacement action: replace (default), append, or delete"),
-            count: z.number().int().positive().nullable().optional()
-                .describe("For delete only: number of occurrences to remove left-to-right (omit to delete all)"),
-            is_critical: z.boolean().nullable().default(true)
-                .describe("Whether this replacement is critical (true) requiring retry if failed, or optional (false) allowing graceful fallback"),
-            fallback_select_text: z.string().nullable().optional()
-                .describe("Fallback text to select if select_text is not found (shorter, more common phrase)"),
-            alternative_text: z.string().nullable().optional()
-                .describe("For optional replacements: safer generic text to append if both select_text and fallback_select_text fail"),
-            replacement_category: z.enum(['Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Text Overlay', 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere', 'Action Verbs', 'Directive'])
-                .describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (modify text after ', Text:' boundary), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
-        })).describe("Find-and-replace operations for the negative prompt"),
-        character_prompts: z.array(z.object({
-            input: z.array(z.object({
-                reason: z.string()
-                    .describe("Plain text brief description of the reason for this replacement (1-2 sentences)"),
-                reason_display: z.string()
-                    .describe("Very short explanation for display in UI (2-5 words)"),
-                select_text: z.string().nullable().optional()
-                    .describe("EXACT text segment (1-5 words) to find and modify (required for replace/delete, optional for append - if omitted, appends to end)"),
-                replace_text: z.string().nullable()
-                    .describe("Text to replace the selected text with (omit/empty when action=delete)"),
-                action: z.enum(['replace', 'append', 'delete']).nullable().default('replace')
-                    .describe("Replacement action: replace (default), append, or delete"),
-                count: z.number().int().positive().nullable().optional()
-                    .describe("For delete only: number of occurrences to remove left-to-right (omit to delete all)"),
-                is_critical: z.boolean().nullable().default(true)
-                    .describe("Whether this replacement is critical (true) requiring retry if failed, or optional (false) allowing graceful fallback"),
-                fallback_select_text: z.string().nullable().optional()
-                    .describe("Fallback text to select if select_text is not found (shorter, more common phrase)"),
-                alternative_text: z.string().nullable().optional()
-                    .describe("For optional replacements: safer generic text to append if both select_text and fallback_select_text fail"),
-                replacement_category: z.enum(['Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Text Overlay', 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere', 'Action Verbs', 'Directive'])
-                    .describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (text after ', Text:'), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
-            })).describe("Find-and-replace operations for this character prompt input"),
-            uc: z.array(z.object({
-                reason: z.string()
-                    .describe("Plain text brief description of the reason for this replacement (1-2 sentences)"),
-                reason_display: z.string()
-                    .describe("Very short explanation for display in UI (2-5 words)"),
-                select_text: z.string().nullable().optional()
-                    .describe("EXACT text segment (1-5 words) to find and modify (required for replace/delete, optional for append - if omitted, appends to end)"),
-                replace_text: z.string().nullable()
-                    .describe("Text to replace the selected text with (omit/empty when action=delete)"),
-                action: z.enum(['replace', 'append', 'delete']).nullable().default('replace')
-                    .describe("Replacement action: replace (default), append, or delete"),
-                count: z.number().int().positive().nullable().optional()
-                    .describe("For delete only: number of occurrences to remove left-to-right (omit to delete all)"),
-                is_critical: z.boolean().nullable().default(true)
-                    .describe("Whether this replacement is critical (true) requiring retry if failed, or optional (false) allowing graceful fallback"),
-                fallback_select_text: z.string().nullable().optional()
-                    .describe("Fallback text to select if select_text is not found (shorter, more common phrase)"),
-                alternative_text: z.string().nullable().optional()
-                    .describe("For optional replacements: safer generic text to append if both select_text and fallback_select_text fail"),
-                replacement_category: z.enum(['Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Text Overlay', 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere', 'Action Verbs', 'Directive'])
-                    .describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (text after ', Text:'), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
-            })).describe("Find-and-replace operations for this character negative prompt")
-        })).nullable().optional().describe("Array of find-and-replace operations for character prompts (one per character)")
-        }).describe("MANDATORY structured find-and-replace operations - CRITICAL: Always use prompt array to add comprehensive weather descriptions"),
-});
-}
-
-/**
- * Apply text replacements to content based on target
- * @param {string} originalContent - The original content text
- * @param {Object} replacements - Structured replacements object with prompt/uc/character_prompts arrays
- * @param {string} targetType - The target type ('prompt', 'uc', 'character')
- * @param {number} characterIndex - For character prompts, which character index (optional)
- * @param {string} characterField - For character prompts, 'input' or 'uc' (optional)
- * @returns {string} Modified content with replacements applied
- * @throws {Error} If any text replacements fail to find their target text
- */
-
-
-/**
  * Clean up prompts by removing protected text wrappers and handling tag sections
  * Always removes leftover wrappers and keeps the contents inside
  * @param {string} content - The content to clean up
@@ -3792,8 +3604,8 @@ function cleanupPromptSyntax(content) {
     const tagSectionRegex = /\b(TIME|WEATHER|SEASON|CLOTHING|ACTION|ENV|T|W|C|A|E)%([^%]+)%/g;
     cleanedContent = cleanedContent.replace(tagSectionRegex, '$2');
 
-    // NOTE: We DO NOT remove standalone ALL CAPS keywords (TIME, WEATHER, SEASON, CLOTHING, ACTION)
-    // These are kept in the prompts so the AI model can see them and generate appropriate content
+    // Replace <br> with newlines
+    cleanedContent = cleanedContent.replaceAll('<br>', '\n');
 
     return cleanedContent;
 }
@@ -3944,6 +3756,9 @@ function deconflictOverlappingReplacement(selectText, workingContent, replacemen
 
 function applyDynamicReplacements(originalContent, replacements, targetType = 'prompt', characterIndex = null, characterField = null) {
     let result = originalContent || '';
+    
+    // Define the append marker constant (must match imageGeneration.js)
+    const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
 
     // Get the appropriate replacements array
     let targetReplacements = [];
@@ -3955,6 +3770,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
     } else if (targetType === 'character' && characterIndex !== null && characterField) {
         const charReplacements = replacements.character_prompts?.[characterIndex];
         if (charReplacements) {
+            // characterField can be 'prompt' or 'uc'
             targetReplacements = charReplacements[characterField] || [];
         }
     }
@@ -3972,7 +3788,15 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
     const replacementMetadata = []; // Track which fallbacks were used
 
     for (const replacement of allReplacements) {
-        const { select_text, replace_text, action = 'replace', count, is_critical = true, fallback_select_text, alternative_text, replacement_category } = replacement;
+        let { select_text, replace_text, action: rawAction = 'replace', count, is_critical = true, fallback_select_text, alternative_text, replacement_category } = replacement;
+        // Normalize action to lowercase for consistency
+        const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : rawAction;
+        
+        // 🎨 NEWLINE TRANSLATION: Convert <br> to \n
+        // AI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
+        if (replace_text) {
+            replace_text = replace_text.replace(/<br\s*\/?>/gi, '\n');
+        }
         
         // Initialize metadata for this replacement
         const metadata = {
@@ -4230,7 +4054,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                 }
             }
         } else if (action === 'replace') {
-            console.log(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
+            logger.verbose(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
 
             let index = -1;
             let textToReplace = trimmedSelectText;
@@ -4367,7 +4191,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                     // Reconstruct result with boundary protection
                     result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
                     appliedReplacements.add(replacementKey);
-                    console.log(`✅ Appended alternative text instead of replacing`);
+                    logger.verbose(`✅ Appended alternative text instead of replacing`);
                     // Record metadata
                     metadata.used_alternative = true;
                     metadata.actual_text_used = alternative_text;
@@ -4390,7 +4214,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                 replacement.application_method = 'direct';
             }
         } else if (action === 'append') {
-            console.log(`📎 Attempting append: insert "${replace_text}"${select_text ? ` after "${trimmedSelectText}"` : ' at end'}`);
+            logger.verbose(`📎 Attempting append: insert "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"${select_text ? ` after "${trimmedSelectText.substring(0, 30)}${trimmedSelectText.length > 30 ? '...' : ''}"` : ' at end'}`);
 
             let insertPosition;
             let usedFallback = false;
@@ -4486,7 +4310,20 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                 }
             } else {
                 // No select_text provided, append to end
-                insertPosition = workingContent.length;
+                // Look for the append marker to insert before presets
+                const markerIndex = workingContent.indexOf(APPEND_MARKER);
+                if (markerIndex !== -1) {
+                    // Found marker, insert before it
+                    insertPosition = markerIndex;
+                    // Check if there's a comma before the marker that we should remove
+                    if (insertPosition > 2 && workingContent.substring(insertPosition - 2, insertPosition) === ', ') {
+                        insertPosition -= 2; // Remove the comma and space before marker
+                    }
+                    logger.verbose(`📍 Found append marker, inserting before presets`);
+                } else {
+                    // No marker found, append to end (fallback)
+                    insertPosition = workingContent.length;
+                }
             }
 
             // Insert at the determined position
@@ -4500,7 +4337,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
             result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
 
             appliedReplacements.add(replacementKey);
-            console.log(`✅ Appended "${textToAppend}"${select_text ? (positionFound ? (usedFallback ? ' after fallback text' : ` after "${trimmedSelectText}"`) : ' at end (fallback)') : ' at end'}`);
+            logger.verbose(`✅ Appended "${textToAppend.substring(0, 50)}${textToAppend.length > 50 ? '...' : ''}"${select_text ? (positionFound ? (usedFallback ? ' after fallback' : ` after "${trimmedSelectText.substring(0, 30)}..."`) : ' at end (fallback)') : ' at end'}`);
             
             // Set application_method if not already set
             if (!replacement.application_method) {
@@ -5297,7 +5134,7 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
 
     // Skip holiday detection if disableHoliday is true
     if (disableHoliday) {
-        console.log('🚫 Holiday observation disabled in seasonal guidelines');
+        logger.verbose('🚫 Holiday observation disabled in seasonal guidelines');
         holidayInfo = null;
     } else if (forcedHoliday) {
         // If a specific holiday is forced, look it up in the centralized data
@@ -5312,14 +5149,17 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
                     colors: holidayData.colors,
                     priority: holidayData.priority,
                     daysUntil: 0,
-                    region: holidayData.region
+                    region: holidayData.region,
+                    bufferDays: holidayData.bufferDays
                 }],
                 isHolidayPeriod: true,
                 primaryHoliday: {
                     name: holidayData.name,
                     decorations: holidayData.decorations,
                     atmosphere: holidayData.atmosphere,
-                    colors: holidayData.colors
+                    colors: holidayData.colors,
+                    daysUntil: 0,
+                    bufferDays: holidayData.bufferDays
                 },
                 holidayDecorations: holidayData.decorations.split(', '),
                 holidayAtmosphere: holidayData.atmosphere.split(', '),
@@ -5334,13 +5174,16 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
                     atmosphere: 'celebratory',
                     colors: 'vibrant colors',
                     priority: 5,
-                    daysUntil: 0
+                    daysUntil: 0,
+                    bufferDays: 7
                 }],
                 isHolidayPeriod: true,
                 primaryHoliday: {
                     name: forcedHoliday,
                     decorations: 'festive decorations',
                     atmosphere: 'celebratory',
+                    daysUntil: 0,
+                    bufferDays: 7,
                     colors: 'vibrant colors'
                 },
                 holidayDecorations: ['festive decorations'],
@@ -5355,6 +5198,7 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
     if (!seasonalEnabled) {
         return {
             mode: 'disabled',
+            season: null,
             guidelines: [
                 'Seasonal modifications are completely disabled',
                 'Do not reference or use any seasonal information',
@@ -5492,8 +5336,26 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, forcedHoliday
         );
     }
 
+    // Determine final season - use holiday season if detected, otherwise use passed season parameter
+    let finalSeason = season;
+    if (holidayInfo && holidayInfo.isHolidayPeriod && holidayInfo.primaryHoliday) {
+        // Get season from holiday's target month if not already set
+        if (!holidayInfo.primaryHoliday.season) {
+            // Calculate season from holiday's target month
+            const holidayData = Object.values(HOLIDAY_DATA).find(h => h.name === holidayInfo.primaryHoliday.name);
+            if (holidayData && holidayData.targetMonth !== undefined) {
+                holidayInfo.primaryHoliday.season = getCurrentSeason(holidayData.targetMonth, 0); // Use 0 lat for default hemisphere
+            } else {
+                // Fallback: use time's month to determine season
+                holidayInfo.primaryHoliday.season = getCurrentSeason(time.month, 0);
+            }
+        }
+        finalSeason = holidayInfo.primaryHoliday.season;
+    }
+
     return {
         mode: 'comprehensive',
+        season: finalSeason,
         guidelines: [
             'Actively modify environment to match seasonal characteristics',
             'Adjust indoor/outdoor balance based on seasonal preferences',
@@ -5702,54 +5564,6 @@ function getUVWarnings(uvIndex) {
         index: uvIndex,
         warning: uvIndex >= 6 ? `UV Index ${uvIndex} - ${category} risk` : null
     };
-}
-
-/**
- * Get comprehensive weather condition analysis
- * @param {Object} weather - Weather data object
- * @returns {Object} Enhanced weather analysis
- */
-function getEnhancedWeatherAnalysis(weather) {
-    const windSpeedMph = weather.windSpeed * 2.237; // Convert m/s to mph
-    const temperatureF = (weather.temperature * 9/5) + 32; // Convert C to F
-
-    const analysis = {
-        windCondition: getWindConditionDescription(weather.windSpeed),
-        windAdvisory: windSpeedMph >= 50 ? 'Wind Advisory' : null,
-        windWarning: windSpeedMph >= 65 ? 'High Wind Warning' : null,
-        freezeWarning: temperatureF <= 32 ? 'Freeze Warning' : null,
-        severeWeather: false,
-        weatherCategory: 'normal'
-    };
-
-    // Determine weather category and severe conditions
-    const condition = weather.condition.toLowerCase();
-
-    if (condition.includes('blizzard') || condition.includes('snow') && windSpeedMph >= 35) {
-        analysis.weatherCategory = 'severe winter';
-        analysis.severeWeather = true;
-    } else if (condition.includes('thunderstorm') && condition.includes('severe')) {
-        analysis.weatherCategory = 'severe thunderstorm';
-        analysis.severeWeather = true;
-    } else if (condition.includes('tornado')) {
-        analysis.weatherCategory = 'tornado';
-        analysis.severeWeather = true;
-    } else if (condition.includes('hurricane') || condition.includes('tropical storm')) {
-        analysis.weatherCategory = 'hurricane';
-        analysis.severeWeather = true;
-    } else if (condition.includes('fog') && weather.visibility < 0.25) {
-        analysis.weatherCategory = 'dense fog';
-    } else if (condition.includes('rain') && condition.includes('heavy')) {
-        analysis.weatherCategory = 'heavy precipitation';
-    } else if (condition.includes('snow') && condition.includes('heavy')) {
-        analysis.weatherCategory = 'heavy snow';
-    } else if (condition.includes('fair') || condition.includes('clear')) {
-        analysis.weatherCategory = 'fair';
-    } else if (condition.includes('partly cloudy')) {
-        analysis.weatherCategory = 'partly cloudy';
-    }
-
-    return analysis;
 }
 
 /**
@@ -6070,37 +5884,6 @@ function generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo) 
 }
 
 /**
- * Generate cloud coverage description with emphasis based on percentage and condition
- * @param {number} cloudCoverage - Cloud coverage percentage (0-100)
- * @param {string} condition - Weather condition name (e.g., 'overcast', 'partly cloudy')
- * @returns {string} Condition name with emphasis markers based on cloud coverage intensity
- */
-function generateCloudCoverageDescription(cloudCoverage, condition = 'clear sky') {
-    const percentage = Math.round(cloudCoverage || 0);
-
-    // Use condition name but add emphasis based on cloud coverage intensity
-    let emphasizedCondition = condition;
-
-    if (percentage >= 90) {
-        emphasizedCondition = `{{{{${condition}}}}}`; // Extremely heavy
-    } else if (percentage >= 80) {
-        emphasizedCondition = `{{{${condition}}}}`; // Very heavy
-    } else if (percentage >= 70) {
-        emphasizedCondition = `{{${condition}}}`; // Heavy
-    } else if (percentage >= 60) {
-        emphasizedCondition = `{${condition}}`; // Moderate
-    } else if (percentage >= 40) {
-        emphasizedCondition = `${condition}`; // Light
-    } else if (percentage >= 20) {
-        emphasizedCondition = `[${condition}]`; // Minimal emphasis
-    } else {
-        emphasizedCondition = `[[${condition}]]`; // Clear
-    }
-
-    return emphasizedCondition;
-}
-
-/**
  * Analyze weather patterns and trends for enhanced believability
  * @param {Object} weatherData - Current weather data
  * @param {Object} historicalData - Historical weather data for comparison
@@ -6291,155 +6074,6 @@ function validateWeatherData(weatherData) {
 }
 
 /**
- * Generates integrated temperature analysis considering weather, UV, cloud coverage, and time period context
- * @param {Object} weather - Weather data object
- * @param {Object} timePeriodInfo - Time period information object
- * @returns {Array} Temperature analysis content
- */
-function generateIntegratedTemperatureAnalysis(weather, timePeriodInfo) {
-    const uvIndex = weather.uvIndex || 0;
-    const cloudCoverage = weather.cloudCoverage || 0;
-    const temperature = weather.feelsLike;
-    const timePeriod = timePeriodInfo.period || '';
-    const transitionType = timePeriodInfo.transitionType || 'steady_state';
-
-    // Calculate effective UV considering cloud coverage and time of day
-    let uvMultiplier = 1;
-    if (timePeriod.includes('dawn') || timePeriod.includes('dusk') || timePeriod.includes('twilight')) {
-        uvMultiplier = 0.3; // Reduced UV during transitions
-    } else if (timePeriod.includes('morning') || timePeriod.includes('evening')) {
-        uvMultiplier = 0.7; // Moderate UV during shoulder hours
-    } else if (timePeriod.includes('noon') || timePeriod.includes('afternoon')) {
-        uvMultiplier = 1.2; // Peak UV during midday
-    }
-
-    const cloudAttenuation = 1 - (cloudCoverage / 100);
-    const effectiveUV = uvIndex * cloudAttenuation * uvMultiplier;
-
-    // Time-based temperature modifiers
-    let tempModifier = 1;
-    let timeContext = '';
-
-    if (transitionType === 'sunrise_transition') {
-        tempModifier = temperature > 20 ? 0.9 : 1.1; // Cooling effect during sunrise
-        timeContext = 'sunrise warming';
-    } else if (transitionType === 'sunset_transition') {
-        tempModifier = temperature > 15 ? 0.95 : 1.05; // Gradual cooling during sunset
-        timeContext = 'sunset cooling';
-    } else if (transitionType === 'twilight_transition') {
-        tempModifier = 0.9; // Cooler during twilight
-        timeContext = 'twilight chill';
-    } else if (timePeriod.includes('night')) {
-        tempModifier = 0.85; // Night cooling effect
-        timeContext = 'night cooling';
-    } else if (timePeriod.includes('dawn') || timePeriod.includes('dusk')) {
-        tempModifier = 0.95; // Transition cooling
-        timeContext = 'transition cooling';
-    }
-
-    const adjustedTemp = temperature * tempModifier;
-
-    // Determine UV level descriptions
-    const uvLevel = effectiveUV >= 8 ? 'extreme' : effectiveUV >= 6 ? 'high' : effectiveUV >= 3 ? 'moderate' : 'low';
-    const uvDescription = uvIndex >= 8 ? `${uvIndex} Very High` : uvIndex >= 6 ? `${uvIndex} High` : uvIndex >= 3 ? `${uvIndex} Moderate` : uvIndex > 0 ? `${uvIndex} Low` : 'N/A';
-
-    // Cloud coverage context
-    const cloudContext = cloudCoverage >= 80 ? 'heavy overcast' : cloudCoverage >= 50 ? 'moderate clouds' : cloudCoverage >= 20 ? 'light clouds' : 'clear skies';
-    const cloudEffect = cloudCoverage >= 80 ? ' (Heavy Overcast)' : cloudCoverage >= 50 ? ' (Moderate Clouds)' : cloudCoverage >= 20 ? ' (Light Clouds)' : ' (Clear)';
-
-    // Time-based UV effectiveness
-    let timeUVContext = '';
-    if (timePeriod.includes('night') || transitionType === 'twilight_transition') {
-        timeUVContext = ', minimal UV effectiveness at night';
-    } else if (transitionType === 'sunrise_transition' || transitionType === 'sunset_transition') {
-        timeUVContext = ', transitional UV levels';
-    } else if (timePeriod.includes('dawn') || timePeriod.includes('dusk')) {
-        timeUVContext = ', low-angle UV with longer shadows';
-    }
-
-    // Create temperature description based on adjusted temperature
-    let tempDescription = 'moderate temperature';
-    if (adjustedTemp >= 40) {
-        tempDescription = 'extreme heat';
-    } else if (adjustedTemp >= 35) {
-        tempDescription = 'very hot conditions';
-    } else if (adjustedTemp >= 30) {
-        tempDescription = 'hot conditions';
-    } else if (adjustedTemp >= 15) {
-        tempDescription = 'warm conditions';
-    } else if (adjustedTemp >= 5) {
-        tempDescription = 'cool conditions';
-    } else if (adjustedTemp >= 0) {
-        tempDescription = 'cold conditions';
-    } else {
-        tempDescription = 'freezing conditions';
-    }
-
-    const result = [`Current temperature: ${tempDescription} with ${timeContext}${uvIndex ? `, UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''}${timeUVContext}`];
-
-    // Generate temperature state based on adjusted temperature
-    if (adjustedTemp >= 40) {
-        result.push(
-            `### **Extreme Heat** (UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, exhaustion setting in quickly${effectiveUV >= 8 && !timePeriod.includes('night') ? ', severe sunburn risk with skin reddening from intense UV radiation, painful squinting against glare' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', sunburn developing rapidly, UV-induced fatigue, urgently seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun discomfort, occasional squinting against light' : ', heat exhaustion without UV amplification'}${transitionType === 'sunrise_transition' ? ', characters emerging from cool night into sudden heat' : transitionType === 'sunset_transition' ? ', heat lingering into cooling evening' : ''}`,
-            `  - **Clothing**: Sweat soaking through clothing, tight outfits clinging wetly, damp patches visible${effectiveUV >= 6 && !timePeriod.includes('night') ? ', UV-protective clothing essential, light fabrics offering minimal sun protection' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection considerations for fair skin' : ''}${transitionType === 'twilight_transition' ? ', considering evening chill despite heat' : ''}`,
-            `  - **Environmental**: Heat shimmer distorting air, wilting vegetation, surfaces too hot to touch${effectiveUV >= 8 && !timePeriod.includes('night') ? ', intense solar radiation creating harsh shadows, bleaching colors, extreme light intensity' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', strong sunlight casting deep shadows, bright illumination overwhelming' : cloudCoverage >= 50 ? ', diffused heat through cloud cover, softer shadows' : transitionType.includes('transition') ? ', transitional lighting affecting heat perception' : ', clear sky amplifying heat intensity'}${timePeriod.includes('sunrise') ? ', morning sun angle creating long shadows' : timePeriod.includes('sunset') ? ', evening sun angle with golden heat' : ''}`,
-            `  - **Other Effects**: Heavy sweat effects, skin heavily glistening, exhausted expressions, wet sticky clothing layers, heat stress visible${effectiveUV >= 8 && !timePeriod.includes('night') ? ', intense light causing visual distortion, UV damage apparent on skin' : effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun-induced skin warming and fatigue' : ''}${transitionType === 'sunrise_transition' ? ', morning heat building from cool dawn' : transitionType === 'sunset_transition' ? ', heat fading into twilight' : ''}`
-        );
-    } else if (adjustedTemp >= 35) {
-        result.push(
-            `### **Very Hot** (UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Heavy sweating proportional to body weight - fat and obese characters show rivers of sweat, labored breathing, exhaustion setting in quickly${effectiveUV >= 6 && !timePeriod.includes('night') ? ', increasing sunburn risk, skin warming uncomfortably from sun exposure, seeking shade' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', mild sun warming, comfortable solar exposure' : ', heat effects without UV intensification'}${transitionType === 'sunrise_transition' ? ', morning heat rising from dawn coolness' : transitionType === 'sunset_transition' ? ', heat maintained into evening transition' : ''}`,
-            `  - **Clothing**: Sweat soaking through clothing, tight outfits clinging wetly, damp patches visible${effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun protective clothing needed, light fabrics offering limited sun protection' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection for prolonged exposure' : ''}${transitionType === 'twilight_transition' ? ', preparing for evening cooling' : ''}`,
-            `  - **Environmental**: Heat shimmer distorting air, wilting plants, surfaces too hot to touch${effectiveUV >= 6 && !timePeriod.includes('night') ? ', bright sunlight creating strong contrasts, sun radiation affecting light quality' : cloudCoverage >= 50 ? ', moderated heat through cloud diffusion, softened sunlight' : transitionType.includes('transition') ? ', transitional lighting tempering heat perception' : ', clear skies intensifying heat effects'}${timePeriod.includes('sunrise') ? ', morning sun with warming light' : timePeriod.includes('sunset') ? ', evening sun with golden warmth' : ''}`,
-            `  - **Other Effects**: Pronounced sweat effects, skin wet and shiny, fatigued expressions, light clothing damp with sweat${effectiveUV >= 6 && !timePeriod.includes('night') ? ', sun induced skin warming, increased light intensity' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant solar warmth on skin' : ''}${transitionType === 'sunrise_transition' ? ', heat building from morning transition' : transitionType === 'sunset_transition' ? ', heat sustained through evening' : ''}`
-        );
-    } else if (adjustedTemp >= 30) {
-        result.push(
-            `### **Hot** (UV: ${uvDescription}${cloudEffect})`,
-            `  - **Character Effects**: Light sweat building up, comfortable warmth for most builds${effectiveUV >= 6 && !timePeriod.includes('night') ? ', mild sunburn possible, sun warming of skin, occasional squinting' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : cloudCoverage >= 70 ? ', comfortable warmth without harsh sun' : transitionType === 'twilight_transition' ? ', warmth fading into twilight coolness' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth emerging from dawn' : transitionType === 'sunset_transition' ? ', pleasant evening warmth' : ''}`,
-            `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun protection considerations for prolonged exposure' : ''}${transitionType === 'twilight_transition' ? ', considering evening temperature drop' : ''}`,
-            `  - **Environmental**: Normal environmental state${effectiveUV >= 6 && !timePeriod.includes('night') ? ', bright sunlight, clear shadows, good visibility' : effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant sunlight, moderate illumination' : cloudCoverage >= 50 ? ', diffused comfortable lighting through clouds' : transitionType.includes('transition') ? ', transitional lighting creating comfortable atmosphere' : ', clear skies with comfortable warmth'}${timePeriod.includes('sunrise') ? ', morning sun with gentle warming' : timePeriod.includes('sunset') ? ', evening sun with golden comfort' : ''}`,
-            `  - **Other Effects**: Subtle sweat effects, skin glistens lightly, relaxed or slightly fatigued expressions, light clothing adjustments${effectiveUV >= 3 && !timePeriod.includes('night') ? ', sun induced skin glow, comfortable solar warmth' : cloudCoverage >= 30 ? ', pleasant diffused lighting' : ''}${transitionType === 'sunrise_transition' ? ', warmth building from cool morning' : transitionType === 'sunset_transition' ? ', comfort maintained into evening' : ''}`
-        );
-    } else if (adjustedTemp >= 15) {
-        result.push(
-            `### **Warm** (${uvIndex > 0 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
-            `  - **Character Effects**: Light sweat building up, comfortable warmth for most builds${effectiveUV >= 3 && cloudCoverage < 50 && !timePeriod.includes('night') ? ', gentle sun tanning effects, pleasant sunlight warmth' : ''}${transitionType === 'sunrise_transition' ? ', morning warmth replacing dawn chill' : transitionType === 'sunset_transition' ? ', warmth giving way to evening coolness' : transitionType === 'twilight_transition' ? ', comfortable transition temperature' : ''}${timePeriod.includes('night') ? ', residual warmth carrying into night' : ''}`,
-            `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 3 && cloudCoverage < 70 && !timePeriod.includes('night') ? ', optional sun protection for sensitive skin' : ''}${transitionType === 'twilight_transition' ? ', light layering for evening temperature changes' : ''}`,
-            `  - **Environmental**: Normal environmental state${effectiveUV >= 3 && !timePeriod.includes('night') ? ', pleasant natural lighting' : cloudCoverage >= 50 ? ', comfortable diffused illumination' : transitionType.includes('transition') ? ', transitional lighting creating balanced atmosphere' : ', clear skies with natural light'}${timePeriod.includes('sunrise') ? ', morning light with natural warmth' : timePeriod.includes('sunset') ? ', evening light with gentle warmth' : ''}`,
-            `  - **Other Effects**: Comfortable appearance, natural skin appearance, pleasant expressions, normal clothing choices${effectiveUV >= 3 && cloudCoverage < 80 && !timePeriod.includes('night') ? ', natural sun exposure benefits' : cloudCoverage >= 30 ? ', soft comfortable lighting' : ''}${transitionType === 'sunrise_transition' ? ', warmth emerging from cool transition' : transitionType === 'sunset_transition' ? ', comfort fading into twilight' : ''}`
-        );
-    } else if (adjustedTemp >= 5) {
-        result.push(
-            `### **Cool** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
-            `  - **Character Effects**: Cool breeze felt more by slender characters, comfortable for heavier builds${effectiveUV >= 2 && cloudCoverage < 70 && timePeriod.includes('day') ? ', mild UV exposure without warmth, cool sun on skin' : ''}${transitionType === 'sunrise_transition' ? ', morning coolness giving way to daytime warmth' : transitionType === 'sunset_transition' ? ', evening cooling intensifying' : transitionType === 'twilight_transition' ? ', cool twilight air' : ''}${timePeriod.includes('night') ? ', night cooling effects amplified' : ''}`,
-            `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 2 && timePeriod.includes('day') ? ', light sun protection if needed' : ''}${transitionType === 'twilight_transition' ? ', light outer layers for evening chill' : ''}`,
-            `  - **Environmental**: Normal environmental state${effectiveUV >= 2 && timePeriod.includes('day') ? ', cool sunlight, crisp shadows' : cloudCoverage >= 50 ? ', diffused cool lighting' : transitionType.includes('transition') ? ', transitional lighting with cool tones' : ', clear skies with cool illumination'}${timePeriod.includes('sunrise') ? ', cool morning light' : timePeriod.includes('sunset') ? ', cool evening light' : ''}`,
-            `  - **Other Effects**: brisk atmosphere, light layered clothing visible, comfortable but fresh${effectiveUV >= 2 && timePeriod.includes('day') ? ', cool UV exposure' : cloudCoverage >= 30 ? ', soft diffused coolness' : ''}${transitionType === 'sunrise_transition' ? ', coolness lingering from night' : transitionType === 'sunset_transition' ? ', cooling intensifying in evening' : ''}`
-        );
-    } else if (adjustedTemp >= 0) {
-        result.push(
-            `### **Cold** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
-            `  - **Character Effects**: Chilled skin showing visible breath clouds, light shivering starting in thinner characters${effectiveUV >= 1 && cloudCoverage < 80 && timePeriod.includes('day') ? ', cold UV exposure without warmth' : ''}${transitionType === 'sunrise_transition' ? ', cold morning air with emerging light' : transitionType === 'sunset_transition' ? ', cold intensifying in fading light' : transitionType === 'twilight_transition' ? ', bitter twilight chill' : ''}${timePeriod.includes('night') ? ', night cold effects pronounced' : ''}`,
-            `  - **Clothing**: Normal state, natural drape and movement${effectiveUV >= 1 && timePeriod.includes('day') ? ', sun protection if exposed' : ''}${transitionType === 'twilight_transition' ? ', heavier layers for night cold' : ''}`,
-            `  - **Environmental**: Normal environmental state${effectiveUV >= 1 && timePeriod.includes('day') ? ', cold sunlight, sharp shadows' : cloudCoverage >= 50 ? ', diffused cold lighting' : transitionType.includes('transition') ? ', cold transitional lighting' : ', clear cold skies'}${timePeriod.includes('sunrise') ? ', cold morning light' : timePeriod.includes('sunset') ? ', cold evening light' : ''}`,
-            `  - **Other Effects**: Chattering or clenching teeth, heavy layered clothing, shivering starting in slender characters${effectiveUV >= 1 && timePeriod.includes('day') ? ', cold UV exposure effects' : cloudCoverage >= 30 ? ', diffused cold atmosphere' : ''}${transitionType === 'sunrise_transition' ? ', cold air with morning light' : transitionType === 'sunset_transition' ? ', cold deepening in evening' : ''}`
-        );
-    } else {
-        result.push(
-            `### **Freezing** (${uvIndex > 0 && effectiveUV >= 1 ? `UV: ${uvDescription}` : ''}${cloudCoverage > 10 ? cloudEffect : ''})`,
-            `  - **Character Effects**: Heavy shivering in all characters, frost forming on heavier clothing layers${effectiveUV >= 1 && cloudCoverage < 90 && timePeriod.includes('day') ? ', freezing UV exposure creating dangerous cold burn risk' : ''}${transitionType === 'sunrise_transition' ? ', freezing morning cold with weak light' : transitionType === 'sunset_transition' ? ', freezing cold intensifying rapidly' : transitionType === 'twilight_transition' ? ', deadly twilight freeze' : ''}${timePeriod.includes('night') ? ', extreme night freezing effects' : ''}`,
-            `  - **Clothing**: Frost riming on outer layers, stiff frozen fabric, characters hunching to preserve heat${effectiveUV >= 1 && timePeriod.includes('day') ? ', frozen sun protection layers' : ''}${transitionType === 'twilight_transition' ? ', maximum cold weather protection needed' : ''}`,
-            `  - **Environmental**: Frost coating all surfaces, ice formations, visible cold mist in air${effectiveUV >= 1 && timePeriod.includes('day') ? ', freezing sunlight, ice crystal sparkles' : cloudCoverage >= 50 ? ', diffused freezing lighting through clouds' : transitionType.includes('transition') ? ', freezing transitional lighting' : ', clear freezing skies'}${timePeriod.includes('sunrise') ? ', freezing morning light on ice' : timePeriod.includes('sunset') ? ', freezing evening light' : ''}`,
-            `  - **Other Effects**: Intense shivering, frost forming on clothing, heavy winter clothing required${effectiveUV >= 1 && timePeriod.includes('day') ? ', dangerous UV cold burn on exposed skin' : cloudCoverage >= 30 ? ', diffused freezing atmosphere' : ''}${transitionType === 'sunrise_transition' ? ', freezing cold with minimal morning warmth' : transitionType === 'sunset_transition' ? ', rapid freezing in gathering dark' : ''}`
-        );
-    }
-
-    return result;
-}
-
-/**
  * Generate dynamic clothing context for intelligent clothing adaptation
  * @param {Object} context - Current context (time, weather, season, etc.)
  * @returns {Object} Dynamic clothing context with recommendations
@@ -6451,15 +6085,15 @@ function generateDynamicClothingContext(context) {
     const clothingContext = {
         temperature: context.weather?.temperature,
         weather: context.weather,
-        season: context.season,
-        holiday: context.holidayInfo?.isHolidayPeriod ? context.holidayInfo.holidayName : null,
+        season: context.season?.season,
+        holidayInfo: context.season?.holidayInfo || null,
         timeOfDay: context.timePeriod?.timeOfDay || 'daytime',
         activity: context.activity,
         location: context.location
     };
 
     // Enhanced holiday awareness for clothing adaptation
-    if (clothingContext.holiday) {
+    if (clothingContext.holidayInfo) {
         // Map holiday names to clothing database keys
         const holidayMapping = {
             'Christmas/Holiday Season': 'christmas',
@@ -6483,8 +6117,8 @@ function generateDynamicClothingContext(context) {
         };
         
         // Update holiday context with mapped key for better clothing selection
-        const mappedHoliday = holidayMapping[clothingContext.holiday] || clothingContext.holiday.toLowerCase();
-        clothingContext.holiday = mappedHoliday;
+        const mappedHoliday = holidayMapping[clothingContext.holidayInfo?.name] || clothingContext.holidayInfo?.name.toLowerCase();
+        clothingContext.holidayInfo = mappedHoliday;
     }
 
     // Get clothing options and recommendations
@@ -6504,8 +6138,921 @@ function generateDynamicClothingContext(context) {
     };
 }
 
+// ========================================
+// LCD DISPLAY FORMATTING FUNCTIONS
+// ========================================
+
 /**
- * Generate system message for dynamic generation AI
+ * Create sun position bar from raw time data
+ * @param {Object} timeData - Raw time data from determineTimePeriod()
+ * @returns {string} Formatted bar graph showing sun position
+ */
+function createSunPositionBar(timeData) {
+    const barLength = 8;
+    const separator = '│';
+    const emptyChar = '░';
+    const filledChar = '█';
+    
+    // Handle pre-dawn and post-dusk
+    if (timeData.sunPhase === 'pre-dawn' || timeData.sunPhase === 'post-dusk' || timeData.sunPhase === 'unknown') {
+        return emptyChar.repeat(barLength) + separator + emptyChar.repeat(barLength);
+    }
+    
+    // Handle polar conditions
+    if (timeData.sunPhase === 'polar_day') {
+        return filledChar.repeat(barLength) + separator + filledChar.repeat(barLength);
+    }
+    if (timeData.sunPhase === 'polar_night') {
+        return emptyChar.repeat(barLength) + separator + emptyChar.repeat(barLength);
+    }
+    
+    // Rising phase - fill left side
+    if (timeData.sunPhase === 'rising') {
+        const filled = Math.round(timeData.sunProgressRaw * barLength);
+        const leftBar = filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
+        const rightBar = emptyChar.repeat(barLength);
+        return leftBar + separator + rightBar;
+    }
+    
+    // Setting phase - empty right side from left to right
+    if (timeData.sunPhase === 'setting') {
+        const emptyFromLeft = Math.round(timeData.sunProgressRaw * barLength);
+        const remainingFilled = barLength - emptyFromLeft;
+        const leftBar = emptyChar.repeat(barLength);
+        const rightBar = emptyChar.repeat(emptyFromLeft) + filledChar.repeat(remainingFilled);
+        return leftBar + separator + rightBar;
+    }
+    
+    return emptyChar.repeat(barLength) + separator + emptyChar.repeat(barLength);
+}
+
+/**
+ * Create light level bar from raw time data
+ * @param {Object} timeData - Raw time data from determineTimePeriod()
+ * @returns {string} Formatted bar graph showing outdoor light level (0-10 scale)
+ */
+function createLightLevelBar(timeData) {
+    const barLength = 10;
+    const emptyChar = '░';
+    const filledChar = '█';
+    
+    const filled = Math.round(timeData.lightLevelRaw || 0);
+    return filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
+}
+
+/**
+ * Create precipitation bar with logarithmic perceptual scale
+ * @param {number} mmPerHour - Precipitation rate in mm/hr
+ * @returns {string} Formatted bar graph (0-30mm/hr max, 15 bars)
+ */
+function createPrecipitationBar(mmPerHour) {
+    const barLength = 15;
+    const emptyChar = '░';
+    const filledChar = '█';
+    
+    if (mmPerHour === 0 || !mmPerHour) return emptyChar.repeat(barLength);
+    
+    // Logarithmic perceptual scale for precipitation
+    // 0-1mm = drizzle (0-3 bars)
+    // 1-5mm = light rain (3-8 bars)
+    // 5-15mm = moderate rain (8-12 bars)
+    // 15-30mm = heavy rain (12-15 bars)
+    let filled = 0;
+    if (mmPerHour <= 1) {
+        filled = Math.round((mmPerHour / 1) * 3);
+    } else if (mmPerHour <= 5) {
+        filled = 3 + Math.round(((mmPerHour - 1) / 4) * 5);
+    } else if (mmPerHour <= 15) {
+        filled = 8 + Math.round(((mmPerHour - 5) / 10) * 4);
+    } else {
+        filled = 12 + Math.round(Math.min((mmPerHour - 15) / 15, 1) * 3);
+    }
+    
+    filled = Math.min(barLength, filled);
+    return filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
+}
+
+/**
+ * Create generic bar graph
+ * @param {number} value - Current value
+ * @param {number} max - Maximum value
+ * @param {number} length - Bar length
+ * @returns {string} Formatted bar graph
+ */
+function createBarGraph(value, max = 100, length = 10) {
+    const emptyChar = '░';
+    const filledChar = '█';
+    const filled = Math.round((value / max) * length);
+    const empty = length - filled;
+    return filledChar.repeat(Math.max(0, filled)) + emptyChar.repeat(Math.max(0, empty));
+}
+
+/**
+ * Get season icon emoji
+ * @param {string} season - Season name
+ * @returns {string} Season emoji
+ */
+function getSeasonIcon(season) {
+    const icons = {
+        'spring': '🌸',
+        'summer': '☀️',
+        'autumn': '🍂',
+        'fall': '🍂',
+        'winter': '❄️'
+    };
+    return icons[season?.toLowerCase()] || '🌿';
+}
+
+/**
+ * Capitalize first letter of string
+ * @param {string} str - String to capitalize
+ * @returns {string} Capitalized string
+ */
+function capitalize(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+/**
+ * Get next season
+ * @param {string} currentSeason - Current season name
+ * @returns {string} Next season name
+ */
+function getNextSeason(currentSeason) {
+    const seasons = ['winter', 'spring', 'summer', 'autumn'];
+    const index = seasons.indexOf(currentSeason?.toLowerCase());
+    if (index === -1) return 'spring';
+    return seasons[(index + 1) % 4];
+}
+
+/**
+ * Get previous season
+ * @param {string} currentSeason - Current season name
+ * @returns {string} Previous season name
+ */
+function getPreviousSeason(currentSeason) {
+    const seasons = ['winter', 'spring', 'summer', 'autumn'];
+    const index = seasons.indexOf(currentSeason?.toLowerCase());
+    if (index === -1) return 'winter';
+    return seasons[(index - 1 + 4) % 4];
+}
+
+/**
+ * Calculate seasonal progression (0-100%)
+ * @param {Object} time - Time object with month and dayOfMonth
+ * @param {string} season - Current season
+ * @returns {number} Progress percentage through the season (0-100)
+ */
+function calculateSeasonalProgression(time, season) {
+    if (!time || !season) return 50; // Default to middle
+    
+    const seasonBounds = {
+        spring: { start: { month: 2, day: 20 }, end: { month: 5, day: 20 } },  // Mar 20 - Jun 20
+        summer: { start: { month: 5, day: 21 }, end: { month: 8, day: 22 } },  // Jun 21 - Sep 22
+        autumn: { start: { month: 8, day: 23 }, end: { month: 11, day: 20 } }, // Sep 23 - Dec 20
+        winter: { start: { month: 11, day: 21 }, end: { month: 2, day: 19 } }  // Dec 21 - Mar 19
+    };
+    
+    const bounds = seasonBounds[season.toLowerCase()];
+    if (!bounds) return 50;
+    
+    const currentMonth = time.month;
+    const currentDay = time.dayOfMonth;
+    
+    // Calculate day of year for current date
+    const currentDayOfYear = getDayOfYear(currentMonth, currentDay);
+    
+    // Calculate start and end day of year for season
+    let startDayOfYear = getDayOfYear(bounds.start.month, bounds.start.day);
+    let endDayOfYear = getDayOfYear(bounds.end.month, bounds.end.day);
+    
+    // Handle winter wrapping around year boundary
+    if (season.toLowerCase() === 'winter') {
+        if (currentMonth < 3) {
+            // We're in Jan-Feb, treat as continuation from Dec
+            const adjustedCurrent = currentDayOfYear;
+            const adjustedEnd = getDayOfYear(2, 19); // Feb 19
+            const seasonLength = adjustedEnd + (365 - getDayOfYear(11, 21)); // Days from Dec 21 to end of year + Jan-Feb
+            const daysSinceStart = (currentMonth < 3) ? (365 - getDayOfYear(11, 21) + currentDayOfYear) : (currentDayOfYear - startDayOfYear);
+            return Math.round((daysSinceStart / seasonLength) * 100);
+        } else {
+            // We're in Dec
+            const seasonLength = (365 - startDayOfYear) + getDayOfYear(2, 19);
+            const daysSinceStart = currentDayOfYear - startDayOfYear;
+            return Math.round((daysSinceStart / seasonLength) * 100);
+        }
+    }
+    
+    // For other seasons
+    const seasonLength = endDayOfYear - startDayOfYear;
+    const daysSinceStart = currentDayOfYear - startDayOfYear;
+    const progress = (daysSinceStart / seasonLength) * 100;
+    
+    return Math.max(0, Math.min(100, Math.round(progress)));
+}
+
+/**
+ * Helper: Get day of year (0-365)
+ */
+function getDayOfYear(month, day) {
+    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let dayOfYear = day;
+    for (let i = 0; i < month; i++) {
+        dayOfYear += daysInMonth[i];
+    }
+    return dayOfYear;
+}
+
+/**
+ * Create seasonal progression bar
+ * @param {Object} time - Time object
+ * @param {string} currentSeason - Current season
+ * @returns {string} Formatted progression bar with seasons
+ */
+function createSeasonalProgressionBar(time, currentSeason) {
+    if (!time || !currentSeason) return '';
+    
+    const progress = calculateSeasonalProgression(time, currentSeason);
+    const prevSeason = getPreviousSeason(currentSeason);
+    const nextSeason = getNextSeason(currentSeason);
+    
+    const barLength = 10;
+    const position = Math.round((progress / 100) * barLength);
+    
+    const bar = '░'.repeat(position) + '█' + '░'.repeat(Math.max(0, barLength - position - 1));
+    
+    // Always show current season on left, next season on right
+    // Progress bar indicates how far through the current season we are
+    const leftSeason = capitalize(currentSeason);
+    const rightSeason = capitalize(nextSeason);
+    
+    return `${leftSeason} [${bar}] ${rightSeason}`;
+}
+
+/**
+ * Compile historical weather report data for AI context
+ * @param {Object} enhancedWeatherData - Enhanced weather data with temporal and yesterday info
+ * @param {Object} weather - Current weather data
+ * @param {Object} time - Current time data
+ * @param {Object} location - Location data
+ * @returns {Object} Compiled weather history report sections
+ */
+function compileWeatherHistoryReport(enhancedWeatherData, weather, time, location) {
+    if (!enhancedWeatherData?.temporal?.hourly) {
+        return null;
+    }
+    
+    const hourlyData = enhancedWeatherData.temporal.hourly;
+    const now = Date.now();
+    
+    // Get temporal window: past 4 hours + next 2 hours
+    const temporalWindow = hourlyData.filter(hour => {
+        const hourTime = new Date(hour.timestamp).getTime();
+        const hoursAgo = (now - hourTime) / (1000 * 60 * 60);
+        return hoursAgo >= -2 && hoursAgo <= 4;
+    }).slice(0, 7);
+    
+    if (temporalWindow.length < 2) {
+        return null; // Need at least 2 data points
+    }
+    
+    // Separate past and future
+    const pastHours = temporalWindow.filter(h => h.timestamp <= now);
+    const futureHours = temporalWindow.filter(h => h.timestamp > now);
+    
+    // Compile timeline entries
+    const timelineEntries = [...pastHours, ...futureHours].map(hour => {
+        const hourDate = new Date(hour.timestamp);
+        const timeStr = `${hourDate.getHours().toString().padStart(2, '0')}:${hourDate.getMinutes().toString().padStart(2, '0')}`;
+        const hoursFromNow = (hour.timestamp - now) / (1000 * 60 * 60);
+        
+        let label;
+        if (Math.abs(hoursFromNow) < 0.1) {
+            label = '🕐 NOW';
+        } else if (hoursFromNow < 0) {
+            label = `⏰ ${Math.round(Math.abs(hoursFromNow))}h ago`;
+        } else {
+            label = `🔮 +${Math.round(hoursFromNow)}h`;
+        }
+        
+        const precipType = hour.precipitationType?.description || hour.precipitationType?.type || 'unknown';
+        
+        return {
+            label,
+            timeStr,
+            temperature: hour.temperature,
+            feelsLike: hour.feelsLike,
+            condition: hour.condition,
+            cloudCoverage: hour.cloudCoverage,
+            precipitation: hour.precipitation,
+            precipitationType: precipType,
+            humidity: hour.humidity,
+            windSpeed: hour.windSpeed,
+            windDirection: hour.windDirection,
+            visibility: hour.visibility
+        };
+    });
+    
+    // Compile trend analysis (only if we have past data)
+    let trendAnalysis = null;
+    if (pastHours.length >= 2) {
+        const oldest = pastHours[pastHours.length - 1];
+        const newest = pastHours[0];
+        
+        const tempChange = newest.temperature - oldest.temperature;
+        const cloudChange = newest.cloudCoverage - oldest.cloudCoverage;
+        const humidityChange = newest.humidity - oldest.humidity;
+        const windChange = newest.windSpeed - oldest.windSpeed;
+        
+        const hasCurrentPrecip = newest.precipitation > 0;
+        const hadRecentPrecip = pastHours.slice(0, 2).some(h => h.precipitation > 0);
+        const hadEarlierPrecip = pastHours.slice(2).some(h => h.precipitation > 0);
+        
+        trendAnalysis = {
+            temperature: {
+                change: tempChange,
+                rate: tempChange / pastHours.length,
+                status: Math.abs(tempChange) < 1 ? 'stable' : tempChange > 0 ? 'rising' : 'falling'
+            },
+            precipitation: {
+                hasCurrentPrecip,
+                hadRecentPrecip,
+                hadEarlierPrecip,
+                lastPrecip: pastHours.find(h => h.precipitation > 0)
+            },
+            cloud: {
+                change: cloudChange,
+                status: Math.abs(cloudChange) < 10 ? 'stable' : cloudChange > 0 ? 'increasing' : 'decreasing'
+            },
+            humidity: {
+                change: humidityChange,
+                status: Math.abs(humidityChange) < 10 ? 'stable' : humidityChange > 0 ? 'rising' : 'falling'
+            },
+            wind: {
+                change: windChange,
+                status: Math.abs(windChange) < 2 ? 'stable' : windChange > 0 ? 'strengthening' : 'calming'
+            },
+            stability: {
+                isStable: Math.abs(tempChange) < 2 && Math.abs(cloudChange) < 15 && !hadRecentPrecip
+            }
+        };
+    }
+    
+    // Compile yesterday's data
+    let yesterdayData = null;
+    if (enhancedWeatherData.yesterday) {
+        const yesterday = enhancedWeatherData.yesterday;
+        yesterdayData = {
+            date: yesterday.date,
+            dominantCondition: yesterday.dominantCondition,
+            temperatureMin: Math.round(yesterday.temperature.min),
+            temperatureMax: Math.round(yesterday.temperature.max),
+            temperatureAvg: Math.round(yesterday.temperature.avg),
+            precipitationTotal: Math.round(yesterday.precipitation.total * 100) / 100,
+            precipitationSnow: yesterday.precipitation.snow,
+            cloudCoverAvg: Math.round(yesterday.cloudCover?.avg || 0),
+            windSpeedAvg: Math.round(yesterday.windSpeed.avg),
+            windGustMax: Math.round(yesterday.windGust?.max || yesterday.windSpeed.max),
+            tempDiffFromToday: weather.temperature - yesterday.temperature.avg
+        };
+    }
+    
+    return {
+        reportGenerated: time ? `${time.monthName} ${time.dayOfMonth}, ${time.year} at ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}` : 'Current Date/Time',
+        location: location?.city || 'Current Location',
+        timezone: location?.timezone || 'UTC',
+        yesterday: yesterdayData,
+        timelineEntries,
+        trendAnalysis,
+        hasPastData: pastHours.length >= 2
+    };
+}
+
+/**
+ * Generate system message for dynamic generation AI (MODULAR VERSION)
+ * 
+ * This is the new reorganized version using the modular systemMessageBuilder.
+ * The system message is organized into 10 logical cognitive flow phases.
+ * 
+ * Benefits over original:
+ * - 49% smaller (2,900 lines vs 5,650 lines)
+ * - Logical cognitive flow organization
+ * - Single source of truth for all concepts
+ * - No redundancy or scattered information
+ * - Easy to maintain and extend
+ * 
+ * @param {Object} context - Current context (time, weather, etc.)
+ * @param {Object} seasonalConfig - Seasonal configuration object
+ * @param {boolean} backgroundFocus - Whether this is a background focus stage
+ * @param {boolean} pipelineAware - Whether pipeline canvas awareness is enabled
+ * @param {Object} stageContext - Stage context information
+ * @param {string} directive - User directive for creative modifications
+ * @param {Object} dynamicConfig - Dynamic configuration object including locked_replacements
+ * @param {number} nsfw_level - NSFW level
+ * @param {*} compiled_prompt - Compiled prompt from previous attempt (for adaptation mode)
+ * @param {string} prompt - Current prompt text
+ * @param {string} uc - Current UC text
+ * @returns {Object} Object containing systemMessage, userContentSections, directiveContentSections
+ */
+
+/**
+ * Score memory relevance based on prompt and context
+ * @param {Object} memory - Memory object with name, description, category, etc.
+ * @param {string} prompt - Current prompt text
+ * @param {string} uc - Negative prompt text
+ * @param {string} directive - User directive
+ * @param {Object} context - Context object with weather, time, season, etc.
+ * @returns {number} Relevance score (higher = more relevant)
+ */
+function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', context = {}) {
+    let score = 0;
+    
+    // Combine all text sources for keyword extraction
+    const allText = [
+        prompt || '',
+        uc || '',
+        directive || '',
+        context.weather?.condition || '',
+        context.timePeriod || '',
+        (typeof context.season === 'string' ? context.season : context.season?.season) || ''
+    ].join(' ').toLowerCase();
+    
+    // Extract meaningful keywords (2+ chars, filter common words)
+    const commonWords = new Set(['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can']);
+    const words = allText
+        .split(/\s+/)
+        .map(w => w.replace(/[^\w]/g, ''))
+        .filter(w => w.length >= 2 && !commonWords.has(w));
+    
+    const memoryName = (memory.name || '').toLowerCase();
+    const memoryDesc = (memory.description || '').toLowerCase();
+    const memoryCategory = (memory.category || '').toLowerCase();
+    
+    // Score based on keyword matches in memory name (high weight)
+    words.forEach(word => {
+        if (memoryName.includes(word)) {
+            score += 15; // Strong match in name
+        } else if (memoryDesc.includes(word)) {
+            score += 8; // Match in description
+        }
+    });
+    
+    // Category relevance scoring based on context
+    if (context.weather && (memoryCategory.includes('weather') || memoryCategory.includes('environment') || memoryDesc.includes('weather') || memoryDesc.includes('rain') || memoryDesc.includes('snow') || memoryDesc.includes('wind'))) {
+        score += 20;
+    }
+    if (context.time && (memoryCategory.includes('time') || memoryCategory.includes('lighting') || memoryDesc.includes('night') || memoryDesc.includes('day') || memoryDesc.includes('dawn') || memoryDesc.includes('dusk'))) {
+        score += 20;
+    }
+    const seasonStr = typeof context.season === 'string' ? context.season : context.season?.season;
+    if (seasonStr && (memoryCategory.includes('seasonal') || memoryDesc.includes(seasonStr.toLowerCase()) || memoryDesc.includes('autumn') || memoryDesc.includes('winter') || memoryDesc.includes('spring') || memoryDesc.includes('summer'))) {
+        score += 15;
+    }
+    
+    // Boost for character-specific if directive mentions character names
+    if (directive && memoryCategory.includes('character')) {
+        const directiveLower = directive.toLowerCase();
+        if (memoryName.includes('character')) {
+            // Check for common character indicators
+            if (directiveLower.includes('character') || directiveLower.includes('girl') || directiveLower.includes('boy') || directiveLower.includes('person')) {
+                score += 10;
+            }
+        }
+    }
+    
+    // Usage count as tiebreaker (smaller boost)
+    score += Math.min((memory.usage_count || 0) * 0.5, 10);
+    
+    // Confidence as additional tiebreaker
+    score += (memory.confidence || 0.1) * 5;
+    
+    return score;
+}
+
+/**
+ * Select top 5 most relevant memories based on prompt and context
+ * @param {Array} availableMemories - All available memories
+ * @param {string} prompt - Current prompt text
+ * @param {string} uc - Negative prompt text
+ * @param {string} directive - User directive
+ * @param {Object} context - Context object
+ * @returns {Array} Top 5 most relevant memories
+ */
+function selectRelevantMemories(availableMemories, prompt = '', uc = '', directive = '', context = {}) {
+    if (!availableMemories || availableMemories.length === 0) {
+        return [];
+    }
+    
+    // Score all memories
+    const scoredMemories = availableMemories.map(mem => ({
+        ...mem,
+        relevanceScore: scoreMemoryRelevance(mem, prompt, uc, directive, context)
+    }));
+    
+    // Sort by relevance score (descending), then by usage count, then by confidence
+    scoredMemories.sort((a, b) => {
+        if (Math.abs(a.relevanceScore - b.relevanceScore) > 0.1) {
+            return b.relevanceScore - a.relevanceScore;
+        }
+        if ((b.usage_count || 0) !== (a.usage_count || 0)) {
+            return (b.usage_count || 0) - (a.usage_count || 0);
+        }
+        return (b.confidence || 0.1) - (a.confidence || 0.1);
+    });
+    
+    // Return top 5
+    return scoredMemories.slice(0, 5);
+}
+
+function generateDynamicGenerationSystemMessage_Modular(context, seasonalConfig = {}, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+    const { buildSystemMessage } = require('./systemMessageBuilder');
+    
+    const { time, weather, season: currentSeason, timePeriod, clothing, creative, optimize, activity, action, location, disable_holiday, weatherHistoryReport } = context;
+
+    // Validate weather data if provided
+    if (weather && typeof weather !== 'object') {
+        throw new Error('Weather data is invalid - must be an object');
+    }
+    if (weather && (!weather.temperature || !weather.condition || !weather.windSpeed || !weather.humidity)) {
+        throw new Error(`Invalid weather data: missing essential properties (temperature: ${weather.temperature}, condition: ${weather.condition}, windSpeed: ${weather.windSpeed}, humidity: ${weather.humidity})`);
+    }
+
+    // Extract time period information
+    const timePeriodInfo = typeof timePeriod === 'object' ? timePeriod : {
+        period: timePeriod,
+        lighting: 'standard lighting',
+        atmosphere: 'standard atmosphere',
+        transitionType: 'steady_state'
+    };
+
+    // Extract seasonal configuration
+    const seasonalEnabled = seasonalConfig.enabled || false;
+    
+    // Use seasonal data from context (already validated in processDynamicGenerationCore)
+    const seasonalData = seasonalEnabled && context.season ? context.season : {
+        mode: 'disabled',
+        season: null,
+        guidelines: ['Seasonal modifications are not enabled'],
+        holidayInfo: null,
+        modifications: []
+    };
+    
+    // Determine seasonForGuidelines for display/logging purposes
+    let seasonForGuidelines = seasonalData.season || currentSeason;
+
+    // Build system message using modular builder
+    // Check for fast mode - if enabled, override tool passes to 4
+    const fastModeEnabled = dynamicConfig?.fast_mode === true;
+    const toolPasses = fastModeEnabled ? 4 : (dynamicConfig.tool_passes || 8);
+    const forceStrategy = dynamicConfig.force_strategy || null;
+    const dialogsCount = dynamicConfig.dialogs_count || 6;
+    
+    // Load available memories for system message
+    let availableMemories = [];
+    let topRelevantMemories = [];
+    try {
+        const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+        availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
+        if (availableMemories.length > 0) {
+            logger.detailed(`📚 Including ${availableMemories.length} global memories in system message`);
+            
+            // Select top 5 most relevant memories based on prompt and context
+            topRelevantMemories = selectRelevantMemories(
+                availableMemories,
+                compiled_prompt || prompt || '',
+                uc || '',
+                directive || '',
+                {
+                    weather: context.weather,
+                    time: context.time,
+                    timePeriod: timePeriodInfo,
+                    season: currentSeason
+                }
+            );
+            
+            if (topRelevantMemories.length > 0) {
+                logger.detailed(`📊 Selected ${topRelevantMemories.length} most relevant memories based on prompt/context`);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading global memories for system message:', error);
+        // Continue without memories - not critical
+    }
+    
+    const systemMessageText = buildSystemMessage(context, {
+        seasonalConfig,
+        backgroundFocus,
+        pipelineAware,
+        stageContext,
+        directive,
+        dynamicConfig,
+        nsfw_level,
+        compiled_prompt,
+        prompt,
+        uc,
+        seasonalData,
+        timePeriodInfo,
+        seasonForGuidelines,
+        toolPasses,
+        dialogsCount,
+        fast_mode: fastModeEnabled,
+        availableMemories,
+        topRelevantMemories
+    });
+
+    // Build user content sections (dynamic data - kept from original)
+    let userContentSections = [];    
+
+    // Add time data (same as original lines 8638-8688)
+    if (time) {
+        const sunPositionBar = createSunPositionBar(timePeriodInfo);
+        const lightLevelBar = createLightLevelBar(timePeriodInfo);
+        
+        const transitionNote = timePeriodInfo.transitionType === 'sunrise_transition' ? ' (sunrise transition)' :
+                              timePeriodInfo.transitionType === 'sunset_transition' ? ' (sunset transition)' : 
+                              timePeriodInfo.transitionType === 'twilight_transition' ? ' (twilight transition)' : '';
+        
+        const seasonalProgressBar = currentSeason ? createSeasonalProgressionBar(time, currentSeason) : null;
+        
+        let holidayCountdownBar = null;
+        if (seasonalData?.holidayInfo?.isHolidayPeriod && seasonalData.holidayInfo.primaryHoliday) {
+            const daysUntil = seasonalData.holidayInfo.primaryHoliday.daysUntil || 0;
+            const bufferDays = seasonalData.holidayInfo.primaryHoliday.bufferDays || 7;
+            let progress;
+            
+            if (daysUntil >= 0) {
+                // Before or on the holiday date: progress increases from 0% to 100%
+                progress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+            } else {
+                // After the holiday date: calculate days past the final date
+                const daysPastFinal = Math.abs(daysUntil) - bufferDays;
+                
+                if (daysPastFinal <= 0) {
+                    // Still within the after-buffer period: progress decreases linearly from 100% to 0%
+                    // When daysUntil = 0: progress = 100%
+                    // When daysUntil = -bufferDays: progress = 0%
+                    progress = Math.max(0, Math.min(100, ((bufferDays + daysUntil) / bufferDays) * 100));
+                } else {
+                    // Past the final date: progress is 0%
+                    progress = 0;
+                }
+            }
+            
+            const bar = createBarGraph(progress, 100, 10);
+            const holidayName = capitalize(seasonalData.holidayInfo.primaryHoliday.name);
+            
+            if (daysUntil === 0) {
+                holidayCountdownBar = `${'█'.repeat(10)} ${holidayName} (TODAY)`;
+            } else if (daysUntil > 0) {
+                holidayCountdownBar = `${bar} ${holidayName} (${daysUntil}d)`;
+            } else {
+                holidayCountdownBar = `${bar} ${holidayName} (${Math.abs(daysUntil)}d ago)`;
+            }
+        }
+        
+        userContentSections.push(
+            '# ⏰ CURRENT TIME DATA',
+            '```',
+            `CLOCK TIME: ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}`,
+            `DATE: ${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}`,
+            ...(seasonalProgressBar ? [`SEASON: ${seasonalProgressBar} ${getSeasonIcon(currentSeason)}`] : []),
+            ...(holidayCountdownBar ? [`HOLIDAY: ${holidayCountdownBar}`] : []),
+            `TIME PERIOD: ${timePeriodInfo.period}`,
+            `SUN POSITION: ${sunPositionBar} ${timePeriodInfo.perceivableLight}%${transitionNote}`,
+            `OUTDOOR LIGHT: ${lightLevelBar}`,
+            '```',
+            '',
+            // '## 📋 ENVIRONMENTAL CONTEXT',
+            // '```',
+            // `LIGHTING: ${timePeriodInfo.lighting || 'standard lighting'}`,
+            // `ATMOSPHERE: ${timePeriodInfo.atmosphere || 'standard atmosphere'}`,
+            // '```',
+            //''
+        );
+    }
+
+    // Add weather data (same as original lines 8689-8761)
+    if (weather) {
+        const getWindDirection = (degrees) => {
+            if (degrees === null || degrees === undefined || degrees === 'unknown' || isNaN(parseFloat(degrees))) return 'unknown';
+            const deg = parseFloat(degrees);
+            if (deg >= 315 || deg < 45) return 'behind';
+            if (deg >= 45 && deg < 135) return 'left';
+            if (deg >= 135 && deg < 225) return 'facing';
+            return 'right';
+        };
+
+        const isHotTemperature = (feelsLike) => feelsLike >= 25;
+
+        const weatherData = {
+            temperature: `${weather.feelsLike}°C`,
+            condition: weather.condition,
+            cloudCoverage: createBarGraph(weather.cloudCoverage || 0),
+            windSpeed: `${Math.round(weather.windSpeed * 3.6)} km/h`,
+            windDirection: getWindDirection(weather.windDirection),
+            visibility: createBarGraph(Math.min(weather.visibility || 10, 10), 10),
+            solarRadiation: createBarGraph(Math.min(weather.uvIndex || 0, 12), 12)
+        };
+
+        if (isHotTemperature(weather.feelsLike)) {
+            weatherData.humidity = createBarGraph(weather.humidity, 100);
+        }
+        if (weather.precipitationRate && weather.precipitationRate > 0) {
+            weatherData.precipitation = createPrecipitationBar(weather.precipitationRate);
+        }
+        if (weather.snowDepth && weather.snowDepth > 0) {
+            weatherData.snowDepth = `${weather.snowDepth}cm`;
+        }
+
+        userContentSections.push(
+            '# 🌦️ CURRENT WEATHER DATA',
+            '```',
+            `TEMPERATURE: ${weatherData.temperature}`,
+            `CONDITION: ${weatherData.condition}`,
+            `CLOUD COVERAGE: ${weatherData.cloudCoverage}`,
+            `WIND: ${weatherData.windSpeed} from ${weatherData.windDirection} side`,
+            `VISIBILITY: ${weatherData.visibility}`,
+            `SOLAR RADIATION: ${weatherData.solarRadiation}`,
+            ...(weatherData.humidity ? [`HUMIDITY: ${weatherData.humidity}`] : []),
+            ...(weatherData.precipitation ? [`PRECIPITATION: ${weatherData.precipitation}`] : []),
+            ...(weatherData.snowDepth ? [`SNOW DEPTH: ${weatherData.snowDepth}`] : []),
+            '```',
+            ''
+        );
+    }
+    
+    // Add integration reminder
+    if (weather || time) {
+        userContentSections.push(
+            '',
+            `**Integration Required**: Use the ${time && weather ? 'time and weather' : time ? 'time' : 'weather'} data above following the integration framework from the system message.`,
+            ''
+        );
+    }
+    
+    // Add weather history report (condensed with markdown table)
+    if (weather && weatherHistoryReport) {
+        const report = weatherHistoryReport;
+        
+        userContentSections.push(
+            '',
+            '# 📊 WEATHER HISTORY',
+            ''
+        );
+        
+        // Add timeline with yesterday and recent entries
+        const hasTimeline = report.timelineEntries && report.timelineEntries.length > 0;
+        const hasYesterday = report.yesterday;
+        
+        if (hasTimeline || hasYesterday) {
+            userContentSections.push(
+                '**Timeline**:',
+                '',
+                '| Time | Temp | Condition | Cloud | Precip |',
+                '|------|------|-----------|-------|--------|'
+            );
+            
+            // Add yesterday first if available
+            if (hasYesterday) {
+                const yesterday = report.yesterday;
+                const yesterdayPrecip = yesterday.precipitationTotal > 0 ? `${yesterday.precipitationTotal}mm` : '-';
+                const yesterdayTemp = `${yesterday.temperatureMin}°C-${yesterday.temperatureMax}°C`;
+                
+                userContentSections.push(
+                    `| Yesterday | ${yesterdayTemp} | ${yesterday.dominantCondition} | ${yesterday.cloudCoverAvg}% | ${yesterdayPrecip} |`
+                );
+            }
+            
+            // Add recent timeline entries (limited to 3 most relevant)
+            if (hasTimeline) {
+                report.timelineEntries.forEach(entry => {
+                    const precip = entry.precipitation > 0 ? `${entry.precipitation}mm` : '-';
+                    userContentSections.push(
+                        `| ${entry.label} ${entry.timeStr} | ${entry.temperature}°C | ${entry.condition} | ${entry.cloudCoverage}% | ${precip} |`
+                    );
+                });
+            }
+            
+            userContentSections.push('');
+        }
+    }
+    
+    // Add seasonal adaptation printout (condensed to 3-4 items)
+    if (seasonalData && seasonalData.mode === 'comprehensive') {
+        // Limit guidelines to top 3 most relevant
+        const topGuidelines = seasonalData.guidelines.slice(0, 3);
+        // Limit modifications to top 3 most relevant
+        const topModifications = seasonalData.modifications.slice(0, 3);
+        
+        userContentSections.push(
+            '',
+            `# 📄 SEASONAL IDEAS: ${capitalize(seasonForGuidelines)} ${getSeasonIcon(seasonForGuidelines)}`,
+            ...topGuidelines.map(g => `• ${g}`),
+            ...(topModifications.length > 0 ? ['**Weather**:', ...topModifications.map(m => `• ${m}`)] : []),
+            ''
+        );
+    }
+
+    // Add clothing adaptation (same as original lines 9068-9091)
+    if (clothing && context.clothingContext) {
+        const clothingContext = context.clothingContext;
+        userContentSections.push(
+            '## 👔 CLOTHING ADAPTATION',
+            '',
+            'Use ClothingDatabase to adapt clothing for weather, season, activity, and location.',
+            '',
+            ...(clothingContext.options?.length > 0 ? [
+                `**Available Options**: ${clothingContext.options.slice(0, 10).map(item => item.name).join(', ')}`
+            ] : []),
+            ''
+        );
+    }
+    
+    // Add forceStrategy to user prompt when set (client-side control)
+    if (forceStrategy) {
+        const strategyDescription = forceStrategy === 'A' 
+            ? [
+                '**Strategy A: Pure Tags (FORCED)**',
+                '• Use ONLY pure tags without modifiers',
+                '• Example: "wet clothes, clinging, rain-slicked"',
+                '• Maximum token efficiency required'
+            ]
+            : forceStrategy === 'B'
+            ? [
+                '**Strategy B: Tags + Modifiers (FORCED)**',
+                '• Use tags with natural language modifiers',
+                '• Example: "soaking wet clothes, fabric clinging to skin"',
+                '• Balanced approach between efficiency and detail'
+            ]
+            : forceStrategy === 'C'
+            ? [
+                '**Strategy C: Tags in Descriptions (FORCED)**',
+                '• Integrate tags into natural language descriptions',
+                '• Example: "wet clothes clinging to body from heavy downpour"',
+                '• Maximum detail and clarity required'
+            ]
+            : [];
+        
+        userContentSections.push(
+            '',
+            '# ⚠️ USER SELECTED STRATEGY',
+            '',
+            `**You MUST use Strategy ${forceStrategy} for ALL tag applications. The User has selected this strategy for you.**`,
+            '',
+            ...strategyDescription,
+            '',
+            '**Override**: The decision tree in the system message is for reference only. You MUST use the forced strategy.',
+            ''
+        );
+    }
+    
+    // Build directive content sections (same as original lines 9487-9519)
+    let directiveContentSections = [];
+    if (directive && typeof directive === 'string' && directive.trim().length > 0) {
+        directiveContentSections.push(
+            '',
+            `## 📜 THE DIRECTIVE:`,
+            '',
+            '```',
+            `${directive.trim()}`,
+            '```',
+            '',
+            '## ⚠️ MANDATORY DIRECTIVE REQUIREMENTS:',
+            '',
+            '🎯 **YOUR PRIMARY OBLIGATION: Implement EVERY request from the directive above.**',
+            '',
+            '**VERIFICATION CHECKLIST:**',
+            '• Did I read the ENTIRE directive? (Y/N)',
+            '• Did I identify ALL requests and elements? (Y/N)',
+            '• Did I create replacements for EVERY request? (Y/N)',
+            '• Will the user see ALL their requests implemented? (Y/N)',
+            '• Did I transform concepts to proper visual language? (Y/N)',
+            '',
+            '**If ANY answer is NO → STOP. Go back and fix it.**',
+            '',
+            '🚨 **FAILURE TO IMPLEMENT DIRECTIVE REQUESTS IS UNACCEPTABLE** 🚨',
+            ''
+        );
+    }
+
+    console.log(`✨ Generated system message using MODULAR builder (${systemMessageText.split('\n').length} lines)`);
+
+    return {
+        systemMessage: [{
+            type: "input_text",
+            text: systemMessageText
+        }],
+        userContentSections: userContentSections.length > 0 ? userContentSections : null,
+        directiveContentSections: directiveContentSections.length > 0 ? directiveContentSections : null
+    };
+}
+
+/**
+ * Generate system message for dynamic generation AI (ORIGINAL VERSION)
+ * 
+ * This is the original monolithic version - kept for comparison and fallback.
+ * Use generateDynamicGenerationSystemMessage_Modular for the new organized version.
+ * 
  * @param {Object} context - Current context (time, weather, etc.)
  * @param {Object} seasonalConfig - Seasonal configuration object with seasonalMode, forcedSeason, forcedHoliday
  * @param {boolean} backgroundFocus - Whether this is a background focus stage
@@ -6513,10 +7060,16 @@ function generateDynamicClothingContext(context) {
  * @param {Object} stageContext - Stage context information (isInitial, isBackgroundFocus, isEnhance, hasPreview)
  * @param {string} directive - User directive for creative modifications
  * @param {Object} dynamicConfig - Dynamic configuration object including locked_replacements
- * @returns {Object} Object containing systemMessage array and userContentSections array
+ * @param {number} nsfw_level - NSFW level
+ * @returns {Object} Object containing systemMessage, userContentSections (context data), directiveContentSections (directive data)
  */
-function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0) {
-    const { time, weather, season: currentSeason, timePeriod, clothing, creative, optimize, activity, action, location, disable_holiday } = context;
+function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+    const { time, weather, season: currentSeason, timePeriod, clothing, creative, optimize, activity, action, location, disable_holiday, weatherHistoryReport } = context;
+    
+    // Extract tool passes and forced strategy from dynamic config
+    const toolPasses = dynamicConfig.tool_passes || 8;
+    const forceStrategy = dynamicConfig.force_strategy || null;
+    const dialogsCount = dynamicConfig.dialogs_count || 6;
 
     // Validate weather data if provided - essential properties must be present when weather is enabled
     if (weather && typeof weather !== 'object') {
@@ -6536,27 +7089,14 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
 
     // Extract seasonal configuration
     const seasonalEnabled = seasonalConfig.enabled || false;
-    const seasonalType = seasonalConfig.type;
-    const seasonalValue = seasonalConfig.value;
     const isCustomWeather = (typeof seasonalConfig.isCustomWeather !== 'boolean' && 
         seasonalConfig.isCustomWeather !== undefined && 
         seasonalConfig.isCustomWeather !== null);
 
-    // Determine parameters for seasonal guidelines generation
-    let seasonForGuidelines = currentSeason;
-    let forcedHolidayForGuidelines = null;
-
-    if (seasonalEnabled) {
-        if (seasonalType === 'season') {
-            seasonForGuidelines = seasonalValue; // Forced specific season
-        } else if (seasonalType === 'holiday') {
-            forcedHolidayForGuidelines = seasonalValue; // Forced specific holiday
-        }
-    }
-
-    // Generate seasonal guidelines only if enabled
-    const seasonalGuidelines = seasonalEnabled ? generateSeasonalGuidelines(time, seasonForGuidelines, seasonalEnabled, forcedHolidayForGuidelines, weather, disable_holiday) : {
+    // Use seasonal data from context (already validated in processDynamicGenerationCore)
+    const seasonalData = seasonalEnabled && context.season ? context.season : {
         mode: 'disabled',
+        season: null,
         guidelines: [
             'Seasonal modifications are not enabled, Focus only on weather and time-of-day elements',
             'Do not force any seasonal colors, themes, or environmental elements',
@@ -6565,31 +7105,715 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         holidayInfo: null,
         modifications: []
     };
+    
+    // Determine seasonForGuidelines for display/logging purposes
+    let seasonForGuidelines = seasonalData.season || currentSeason;
+    
+    // Debug logging for seasonal data
+    if (seasonalEnabled) {
+        logger.verbose(`🌿 Seasonal data: mode=${seasonalData.mode}, season=${seasonForGuidelines}, ${seasonalData.modifications.length} mods, ${seasonalData.guidelines.length} guides`);
+    }
 
     let userContentSections = [];
-    
+        
     let systemMessageContent = [
-        'You are an unhinged and expert image generation prompt engineer for NovelAI v4.5 specializing in contextual adaptation and creative enhancement.',
+        'You are an expert image generation prompt engineer for NovelAI v4.5 specializing in contextual adaptation and creative enhancement. You are allowed to be creative and innovative.',
         '',
-        backgroundFocus ? [
-            '**CRITICAL MISSION**: Transform prompts to emphasize background, environment, and atmospheric elements while maintaining character presence. Think like a landscape photographer - the environment is the star, characters are part of the scene.',
-            '**MANDATORY APPROACH**: Prioritize environmental details, atmospheric effects, and scene depth. Characters should remain consistent but be integrated naturally into the expanded environment. Focus on what fills the new canvas space - landscapes, architecture, weather effects, lighting, and contextual elements.',
-            '**BACKGROUND PRIORITY**: Add rich environmental descriptions, expand scene depth, enhance atmospheric elements, and create compelling backgrounds that tell a story.',
-        ].join('\n') : [
-            '**CRITICAL MISSION**: Transform static prompts into immersive visual narratives by seamlessly integrating weather/time elements. Think like a cinematographer - weather must feel organically part of the scene, never artificially grafted.',
-            '**MANDATORY APPROACH**: Use detailed descriptive language that paints atmospheric scenes. Focus on natural enhancement, not forced additions. Maintain token efficiency while achieving visual coherence.',
-        ].join('\n'),
+        '## 📋 Table of Contents',
         '',
-        // ========================================
-        // CRITICAL RULES - MUST FOLLOW ALWAYS
-        // ========================================',
+        '### Core Requirements',
+        '• **🛠️ AVAILABLE TOOLS - COMPLETE REFERENCE** - All tools with usage guides and workflows',
+        '• **AI Text Generation Placeholders** - Replacing [SPEECH_TEXT_INSERT], [THOUGHT_TEXT_INSERT], [CAPTION_TEXT_INSERT]',
+        '• **Content Transformation Rules** - How to handle input data and context',
         '',
-        '# 🚨 CRITICAL RULES - ABSOLUTE REQUIREMENTS',
+        '### Prompt Engineering Fundamentals',
+        '• **NovelAI Prompt Fundamentals** - Essential understanding of literal prompts',
+        '• **Tag Usage Philosophy** - Research-first approach with application strategies',
+        '• **Common Pitfalls & Critical Errors** - Tag usage and technical replacement errors to avoid',
+        '• **Protected Content** - Artist tags, protected blocks, and preset controlled content',
+        '• **Preset Controlled Content** - System-managed content from presets (Quality, Dataset, Vibe, NSFW)',
+        '',
+        '### Text Replacement System',
+        '• **Three Actions** - APPEND, REPLACE, DELETE with examples',
+        '• **Uniqueness Rules** - Making select_text unique',
+        '• **Required Fields Reference** - Complete field specifications',
+        '• **Replacement Category Reference** - All valid categories and usage',
+        '',
+        '### Advanced Features',
+        '• **Emphasis Groups Guide** - How to use weight modifiers (1.5::text::)',
+        '• **Integration Strategy** - Weather/time/season integration patterns',
+        '',
+        '### Pipeline & State Management',
+        '• **Pipeline Stage Awareness** - Initial, Background Expansion, Enhancement stages',
+        '• **State Management Modes** - Background Focus, Chain Update, Adaptation modes',
+        '• **Locked Replacements System** - Maintaining user-locked content across generations',
+        '',
+        '### Analysis & Validation',
+        '• **Image Analysis Requirements** - How to analyze provided images',
+        '• **Prompt Analysis System** - Token analysis and optimization',
+        '• **Validation Checklist** - Pre-submission requirements',
+        '',
+        '### Reference Materials',
+        '• **Token Management & Optimization** - Limits, budgets, strategies, and optimization workflows',
+        '• **Available Tools** - Complete tool reference',
+        '',
+        '---',
+        '',
+        '## 📋 Stage Precedence',
+        'When stage instructions (Initial/Background/Enhance) are present in the user message, they take precedence over general strategies in this document. Pipeline stage instructions override these general guidelines to ensure proper workflow progression.',
+        '',
+        '## 🎬 PIPELINE STAGE AWARENESS',
+        '',
+        '**When pipeline stage context is provided in the user message, it takes precedence over general strategies.**',
+        '',
+        '### Initial Generation (Primary Focus Stage)',
+        '**Focus**: Subject detail and positioning',
+        '',
+        '**Approach**:',
+        '• Make text replacements knowing later stages will fill in background details',
+        '• Keep focus on subject - background will be expanded in subsequent stages',
+        '• Ensure subject well-defined and positioned appropriately for future expansion',
+        '• Don\'t over-detail the background - save that for background expansion stage',
+        '',
+        '**If preview image provided**:',
+        '• Use as visual reference for character appearance/attire, environment context, actions/pose, scene composition',
+        '• ANALYZE TIME & WEATHER FROM PREVIEW: Amplify detected conditions (nighttime → darkness/shadows, daytime → time-of-day atmosphere, weather → match preview effects)',
+        '• PRESERVE: Character appearance, clothing style, core pose, environment type',
+        '• ADAPT: Weather effects on clothing, lighting, seasonal/time-of-day elements',
+        '',
+        '### Background Expansion Stage',
+        '**Focus**: Environmental depth and atmospheric storytelling',
+        '',
+        '**Content Rules**:',
+        '• REMOVE: Character expressions/emotions, character-specific actions, facial details, interaction descriptions, body-part details, character-centric descriptors, focus indicators',
+        '• KEEP: Location/setting, architectural elements, landscape features, weather/atmospheric effects, lighting/time-of-day, environmental objects, depth indicators',
+        '• ADD: Scene depth/distance elements, environmental storytelling, atmospheric effects (fog/clouds), background architecture/landscapes, perspective cues',
+        '',
+        '**Modification Approach**:',
+        '• Remove character-specific phrases',
+        '• Add rich environmental descriptions',
+        '• Maintain consistency with existing composition',
+        '• Focus on atmosphere and depth',
+        '',
+        '### Enhancement Stage',
+        '**Focus**: Holistic refinement across entire composition',
+        '',
+        '**Analysis Requirements**:',
+        '• Analyze entire image for missing/incorrect details',
+        '• Address inconsistencies and quality issues',
+        '• Refine details across composition',
+        '• Polish final result',
+        '',
+        '**Modification Approach**:',
+        '• Make refinements improving composition',
+        '• Fix issues/artifacts',
+        '• Enhance needed details',
+        '• Ensure cohesive integration',
+        '',
+        '## 🔄 STATE MANAGEMENT MODES',
+        '',
+        '### Background Focus Mode',
+        '**TRIGGERED WHEN**: Background focus is enabled (can be standalone mode or part of pipeline background expansion stage)',
+        '',
+        '**PURPOSE**: Emphasize background, environment, and atmospheric elements while maintaining character presence',
+        '',
+        '**Approach**: Think like a landscape photographer - the environment is the star, characters are part of the scene',
+        '',
+        '**NOTE**: In pipeline mode, this is part of the Background Expansion stage with specific content rules. In standalone mode, it\'s a general directive to focus more on environment than character detail',
+        '',
+        '### Chain Update Mode',
+        '**TRIGGERED WHEN**: You are continuing from a previous response in the same conversation AND one or more of the following changed:',
+        '• Context data (weather, time, season)',
+        '• Prompts (base prompt, negative prompt, or character prompts)',
+        '• User directive',
+        '',
+        '**WHAT THIS MEANS**: The current `text_replacements` from your previous response are already in the conversation history. You need to decide how to handle the changes.',
+        '',
+        '**Review What Changed**:',
+        '• **Prompts Changed**: Review the new prompts and understand the differences',
+        '• **Context Changed**: Weather/time/season shifted - adapt replacements accordingly',
+        '• **Directive Changed**: New or modified directive - incorporate new requirements',
+        '',
+        '**Choose Strategy**:',
+        '',
+        '**Option 1: Update Existing** (most efficient if no prompt changes)',
+        '• Review previous text_replacements from conversation history',
+        '• Update only what needs to change based on context shifts',
+        '• Keep tag research and replacements that still apply',
+        '• Use validateTextReplacement (terminateOnPass: true when ready)',
+        '• **When to use**: Minor context changes (weather/time/season) but prompts stayed the same',
+        '',
+        '**Option 2: Regenerate with Tools** (if prompts changed)',
+        `• USE TOOLS: Research new tags with ${secureConfig.grok?.tagWikiCollectionId ? 'file_search' : 'searchTagsBatch'}`,
+        '• Reuse previous research where applicable',
+        '• Create new text_replacements for current prompt state',
+        '• Validate and use completeTooling',
+        '• **When to use**: Prompts changed significantly or directive has new requirements',
+        '',
+        '**Option 3: Reject Chain** (ONLY if major concept change)',
+        '• Call rejectChain() if changes fundamentally alter concept',
+        '• Examples: >60% removed, subject changed, incompatible structure',
+        '• **When to use**: RARE - only when continuing would produce nonsensical results',
+        '',
+        '**Implementation Guidelines**:',
+        '• Preserve intent of previous replacements while adapting to new context',
+        '• Update select_text to match what\'s actually in the current prompt',
+        '• Update replace_text to fit new weather/time/season/context',
+        '• Check that replacements still make logical sense after changes',
+        '',
+        '### Adaptation Mode',
+        '**TRIGGERED WHEN**: You are provided with compiled_prompt data from a previous attempt that failed to apply. This contains the previous AI\'s reasoning, modifications, and approach.',
+        '',
+        '**PURPOSE**: Adapt the previously compiled approach to work with the current context while preserving the original intent and quality.',
+        '',
+        '**How to Use Adaptation Mode**:',
+        '',
+        '**Step 1: Study Previous Work**',
+        '• Review the previous reasoning and modifications',
+        '• Understand the original intent and approach',
+        '• Identify what the previous AI was trying to achieve',
+        '',
+        '**Step 2: Identify What Changed**',
+        '• Compare previous context with current context',
+        '• Note any weather/time/season changes',
+        '• Check if prompts or directive have changed',
+        '',
+        '**Step 3: Adapt Intelligently**',
+        '• Keep the core approach and intent',
+        '• Update specific details to match current context',
+        '• Ensure replacements work with current prompt state',
+        '• Maintain quality and coherence',
+        '',
+        '**Step 4: Create Cohesive Scene**',
+        '• Harmonize weather, time, season, and character attire',
+        '• Ensure all elements work together',
+        '• Apply the adapted modifications via text_replacements',
+        '',
+        '**Key Principles**:',
+        '• **Preserve Quality**: Maintain or improve the quality level of previous work',
+        '• **Adapt Context**: Update weather/time/season details to current state',
+        '• **Keep Intent**: Preserve the original creative vision and approach',
+        '• **Fix Issues**: If the previous approach had problems, address them',
+        '',
+        '## 🔒 LOCKED REPLACEMENTS SYSTEM',
+        '',
+        '**When locked replacements are provided, they must be maintained across generations with intelligent adaptation.**',
+        '',
+        '### Requirements',
+        '',
+        '**1. Maintain Replacement Concepts**',
+        '• Keep the INTENT and PURPOSE of each locked replacement',
+        '• If locked replacement adds weather, continue weather enhancements',
+        '• If locked replacement enhances lighting, continue lighting enhancements',
+        '• If locked replacement modifies atmosphere, maintain atmospheric modifications',
+        '',
+        '**2. Adapt to Current Context**',
+        '• Update select_text to match what\'s in current prompt',
+        '• Update replace_text to fit new weather/time/season/context',
+        '• Weather changed → Adapt weather-related replacements',
+        '• Time changed → Adapt time-related replacements',
+        '• Season changed → Adapt seasonal references',
+        '• Ensure replacement still makes logical sense',
+        '',
+        '**3. Return as Locked**',
+        '• Mark ALL maintained replacements with "locked": true',
+        '• Include clear reason explaining any adaptations made',
+        '• If omitting a locked replacement, explain why in reasoning',
+        '',
+        '**Example Scenarios**:',
+        '',
+        '**Scenario 1 - Weather Change:**',
+        '• Original Locked: `{select_text: "sunny day", replace_text: "bright sunny afternoon", locked: true, action: "replace"}`',
+        '• Context Change: Weather changed to rainy',
+        '• AI Returns: `{select_text: "rainy day", replace_text: "heavy rainy afternoon", locked: true, action: "replace", reason: "Adapted weather detail enhancement to maintain concept under new rainy conditions"}`',
+        '',
+        '**Scenario 2 - Time Change:**',
+        '• Original Locked: `{select_text: "morning light", replace_text: "soft morning sunlight", locked: true, action: "replace"}`',
+        '• Context Change: Time changed to night',
+        '• AI Returns: `{select_text: "night", replace_text: "soft moonlight", locked: true, action: "replace", reason: "Adapted lighting detail to night context while maintaining enhancement concept"}`',
+        '',
+        '**Scenario 3 - Append Enhancement:**',
+        '• Original Locked: `{select_text: null, replace_text: "with scattered autumn leaves", locked: true, action: "append"}`',
+        '• Context Change: Season changed to winter',
+        '• AI Returns: `{select_text: null, replace_text: "with scattered snow flurries", locked: true, action: "append", reason: "Adapted seasonal atmospheric detail from autumn to winter"}`',
+        '',
+        '## 🛠️ AVAILABLE TOOLS - COMPLETE REFERENCE',
+        '',
+        `**${toolPasses || 8} tool loops available. Efficiently using tools is MANDATORY. Tag research and validation are MANDATORY - use ${secureConfig.grok?.tagWikiCollectionId ? 'file_search' : 'searchTagsBatch'}, validateTextReplacement, etc.**`,
+        '',
+        '**When Tools Are Mandatory:**',
+        `✅ Tag research - EVERY tag you add must be researched first via ${secureConfig.grok?.tagWikiCollectionId ? 'file_search' : 'searchTagsBatch'}`,
+        '✅ Developing Descriptions - Read the collection for descriptions and definitions of tags to know if there is a better more detailed tag to use',
+        '✅ Validation - ALL text replacements must be validated before submission',
+        '✅ Information gaps - Unknown concepts require research',
+        '✅ URL content - User-provided URLs must be fetched and analyzed',
+        '',
+        '**Failure Modes (Poor Quality Output):**',
+        '❌ Guessing tag names without searching',
+        '❌ Adding tags you "think" exist without verification',
+        '❌ Skipping quality checks on researched tags',
+        '❌ Not validating replacements before submission',
+        '❌ Ignoring validation failures',
+        '',
+        '---',
+        '',
+        '## 📚 Tool Catalog',
+        '',
+        '### TAG RESEARCH TOOLS (Primary Workflow)',
+        '',
+        ...(secureConfig.grok?.tagWikiCollectionId ? [
+            '#### `file_search` ⭐ PRIMARY TAG RESEARCH',
+            '**USE WHEN:** ALL tag research (tags, concepts, characters, media). Replaces local tag tools. Read wiki entries for context.',
+            '',
+            '#### `searchTagDatabase` (NovelAI Official API)',
+            '**USE WHEN:** Model-specific tag recommendations or for tags that are not found in the wiki. NOT for general lookups.',
+        ] : [
+            '#### Tag Research Tools',
+            '• `searchTagsBatch` ⭐ - Batch research (most common). Use `returnFields` for descriptions. Target quality, usage strength.',
+            '• `getTagDetails` - Single tag details (NOT for bulk)',
+            '• `resolveTagLinks` - Tag relationships',
+            '• `searchByDescription` - Find tags from concept description',
+            '• `getBodyChunk` - Paginated chunks of long descriptions',
+            '• `searchTagDatabase` - NovelAI API (model-specific or tags not found in searchTagBatch, NOT for general)',
+        ]),
+        '',
+        '---',
+        '',
+        '### VALIDATION & COMPLETION TOOLS (Required Workflow)',
+        '',
+        '#### `validateTextReplacement` (Mandatory)',
+        '**USE WHEN:** Testing replacements OR ready to complete entire task',
+        '',
+        '**TWO MODES:**',
+        '• Testing (`terminateOnPass: false`): Validate and get feedback',
+        '• Auto-complete (`terminateOnPass: true`): Validate AND complete if passes',
+        '',
+        '**PARAMETERS:** See tool definition for complete schema. All return required fields.',
+        '',
+        '**CRITICAL:** Fix failures and retry - failures cannot be ignored. System auto-injects prompts.',
+        '',
+        '**VALIDATION FAILURES:** Tool returns failureDetails with failuresByType, failures array, and detailedMessage with fix suggestions. Common issues: INVALID_STRUCTURE (check rawReplacement), TEXT_NOT_FOUND (verify exact text), PROTECTED_CONTENT (avoid artist:/style: tags), OVERLAPPING_SELECTOR (use unique text), MISSING_SELECT_TEXT/MISSING_REPLACE_TEXT (check action type).',
+        '',
+        '#### `completeTooling`',
+        '**USE WHEN:** Finished using tools, ready for structured output. Skip if used `validateTextReplacement` with `terminateOnPass: true`.',
+        '',
+        '---',
+        '',
+        '### OPTIMIZATION TOOLS (Optional Performance)',
+        '',
+        '#### `analyzeTokenCount`',
+        '**USE WHEN:** Verifying token efficiency. See tool definition for parameters.',
+        '',
+        '---',
+        '',
+        '### WEB RESEARCH TOOLS (Optional External Research)',
+        '',
+        ...(secureConfig.grok?.useWebSearch === true ? [
+            '#### `web_search` ⭐ PRIMARY WEB RESEARCH',
+            '**USE WHEN:** Current events/research not in tag database. Supports image understanding.',
+            '',
+            '#### `x_search` ⭐ TWITTER/X SEARCH',
+            '**USE WHEN:** Current data/trends from X/Twitter. Supports image understanding.',
+        ] : [
+            '#### Web Research Tools',
+            '• `webSearch` - Current events/research not in tag database. CRITICAL: Interpret vague terms using context.',
+            '• `fetchUrl` - Read webpages/APIs (HTML/JSON/XML). Use when URLs provided.',
+            '• `fetchImage` - Analyze web images. Use when image URLs provided.',
+        ]),
+        '',
+        '---',
+        '',
+        '### KNOWLEDGE MEMORY TOOLS (Global Memory System)',
+        '',
+        '#### Knowledge Memory Tools',
+        '• `retrieveKnowledgeMemory` ⭐ - Retrieve by name (from available memories list). Batch multiple. Returns full details with confidence.',
+        '• `searchKnowledgeMemories` ⭐ - Search by keyword/category when unsure what exists. Returns names AND full details - no separate retrieve needed.',
+        '• `saveKnowledgeMemory` (DEPRECATED) - Use `insight_memory` response field instead (auto-saves). See tool definition if explicit control needed.',
+        '',
+        '---',
+        '',
+        '### SPECIAL WORKFLOW TOOLS',
+        '',
+        '#### `rejectChain`',
+        '**USE WHEN:** Chain update is too complex, when >60% of the prompt has changed, core subject changed, structure incompatible. NOT for minor edits.',
+        '',
+        '---',
+        '',
+        '## 🔄 Tool Usage Workflows',
+        '',
+        '### Workflow A: Quick Complete (⭐ Recommended for Simple Modifications)',
+        `1. **Research tags** → ${secureConfig.grok?.tagWikiCollectionId ? '`file_search`' : '`searchTagsBatch`'} with descriptions`,
+        '2. **Create ALL replacements** → Build complete text_replacements',
+        '3. **Auto-complete** → `validateTextReplacement` with `terminateOnPass: true`',
+        '✅ Done! System handles rest if validation passes',
+        '',
+        '### Workflow B: Full Structured Output (Complex Modifications)',
+        `1. **Research** → ${secureConfig.grok?.tagWikiCollectionId ? '`file_search`' : '`searchTagsBatch`, `resolveTagLinks`, `getTagDetails`'}`,
+        '2. **Create replacements** → Build text_replacements based on research',
+        '3. **Validate** → `validateTextReplacement` (without terminateOnPass for testing)',
+        '4. **Fix if needed** → Address validation failures, retry',
+        '5. **Complete** → `completeTooling()` → Provide structured JSON output',
+        '',
+        '### Workflow C: Research-Heavy (Unfamiliar Content)',
+        `1. **Explore** → ${secureConfig.grok?.tagWikiCollectionId ? '`file_search`' : '`searchTagsBatch` + `resolveTagLinks` + `getTagDetails`'}`,
+        ...(secureConfig.grok?.useWebSearch === true ? [
+            '2. **Web research** → `web_search`/`x_search` for unfamiliar concepts',
+            '3. **Create replacements** → Build text_replacements',
+            '4. **Validate** → `validateTextReplacement` (testing)',
+            '5. **Iterate** → Fix issues, validate again',
+            '6. **Complete** → `completeTooling()` → Structured output',
+        ] : [
+            '2. **Web research** → `webSearch` for unfamiliar concepts',
+            '3. **Fetch URLs** → `fetchUrl`/`fetchImage` if user provided links',
+            '4. **Create replacements** → Build text_replacements',
+            '5. **Validate** → `validateTextReplacement` (testing)',
+            '6. **Iterate** → Fix issues, validate again',
+            '7. **Complete** → `completeTooling()` → Structured output',
+        ]),
+        '',
+        '---',
+        '',
+        '## ⚡ Tool Loop Budget Management',
+        '',
+        '**You have 8 tool loops total. Use them strategically:**',
+        '',
+        '**Efficient Usage:**',
+        ...(secureConfig.grok?.tagWikiCollectionId ? [
+            '✅ Use `file_search` for all tag research needs',
+        ] : [
+            '✅ Batch multiple tags in one `searchTagsBatch` call',
+            '✅ Use `returnFields` to get descriptions immediately',
+            '✅ Only call `getTagDetails` if need more than `searchTagsBatch` provides',
+        ]),
+        '✅ Combine related research in single web search',
+        '',
+        '**Tool Loop Waste:**',
+        ...(secureConfig.grok?.tagWikiCollectionId ? [
+        ] : [
+            '❌ Searching tags one at a time',
+            '❌ Calling same tool multiple times for same data',
+            '❌ Using `getTagDetails` when `searchTagsBatch` works',
+        ]),
+        '❌ Excessive web searches for info you already have',
+        '',
+        '**Typical Allocation:**',
+        '• 2-4 loops: Tag research',
+        '• 1-2 loops: Web research (if needed)',
+        '• 1 loop: Validation',
+        '• 1 loop: Completion',
+        '• 1-2 loops: Reserve for fixes/iteration',
+        '',
+        '---',
+        '',
+        '## 💬 AI TEXT GENERATION PLACEHOLDERS',
+        '',
+        '**Important**: Replace these placeholders with contextual text when found in prompts:',
+        '',
+        '### Recognized Placeholders',
+        '• `[SPEECH_TEXT_INSERT]` - Character dialogue',
+        '• `[THOUGHT_TEXT_INSERT]` - Internal thoughts',
+        '• `[CAPTION_TEXT_INSERT]` - Scene narration/subtitle',
+        '',
+        '### Replacement Requirements',
+        '',
+        '**1. Replace the ENTIRE placeholder** (including brackets) with contextual text',
+        '**2. Length limits**: 1-2 sentences, max ~15 words per sentence',
+        '**3. Use `<br>` tags** to add line breaks (creates separate speech boxes)',
+        '**4. NO quotation marks** - raw text only',
+        '**5. NO colorful emojis** - Use text emoticons like ^_^ or :D instead',
+        '**6. Use directive story** as context for appropriate text',
+        '',
+        '### Content Guidelines by Type',
+        '',
+        '**SPEECH**: Natural brief dialogue based on directive',
+        '```',
+        '✅ "You HAVE to read \'The Fragrant Flower Blooms With Dignity\'!<br>The romance is amazing!"',
+        '✅ "I can\'t believe how much they\'ve grown!"',
+        '```',
+        '',
+        '**THOUGHT**: Short internal contemplation',
+        '```',
+        '✅ "Maybe I should have stayed home today...<br>This was a mistake."',
+        '✅ "Why does everything feel so overwhelming?"',
+        '```',
+        '',
+        '**CAPTION**: Brief narration or scene description',
+        '```',
+        '✅ "Three years later..."',
+        '✅ "The calm before the storm."',
+        '```',
+        '',
+        '**Common Mistakes:**',
+        '❌ Leaving placeholder: `[SPEECH_TEXT_INSERT]` (must replace!)',
+        '❌ Too long: 35+ words that won\'t fit in speech boxes',
+        '❌ Adding quotes: `"Hello there"` (should be: `Hello there`)',
+        '❌ No line breaks: Long text without `<br>` tags',
+        '❌ Using colorful emojis: 😩🎉💕 (use text emoticons: ^_^ >_< :D)',
+        '',
+        '**Category**: Use "Text Overlay" category for these replacements',
+        '',
+        '**Full details**: See "Text Overlay" category in Replacement Category Reference section',
+        '',
+        '---',
+        '',
+        '## 🎯 NovelAI Prompt Fundamentals - CRITICAL UNDERSTANDING',
+        '',
+        '### Prompt Literalness - Everything Renders',
+        '**NovelAI prompts are LITERAL - every tag renders into the image.**',
+        '',
+        '**Include ONLY photographable elements. NO concepts, judgments, measurements, or reasoning.**',
+        '',
+        '**Examples:**',
+        '• ✅ "eating messily, mouth full, crumbs on face" ❌ "gluttonous, no self-control"',
+        '• ✅ "wind-swept hair, clothing billowing" ❌ "22kmh wind"',
+        '• ✅ "exhausted, heavy breathing, tired posture" ❌ "been walking for 3 hours"',
+        '',
+        '**This rule applies to: prompts, directives, context integration, ALL text_replacements**',
+        '',
+        '### 📌 TAG APPLICATION: SINGLE SOURCE OF TRUTH',
+        '',
+        '**This section defines THE authoritative way to apply researched tags.**',
+        '**All other sections reference this - no exceptions.**',
+        '',
+        '**Golden Rule**: NEVER use descriptions without researched tags as foundation.',
+        '',
+        '### Tag Usage Philosophy - Research First, Apply Strategically',
+        '',
+        '**Core Principle: Tags are your foundation, descriptions are your enhancement layer.**',
+        '',
+        '## 🔍 Research Workflow (Mandatory for All Modifications)',
+        '',
+        '**STEP 1: Research Tags** (See "AVAILABLE TOOLS" section for tool details)',
+        ...(secureConfig.grok?.tagWikiCollectionId ? [
+            '• Use `file_search` to research all tags and get comprehensive wiki information',
+            '• Use `web_search`/`x_search` for current events, recent data, or information not available in the tag database',
+        ] : [
+            '• Use `searchTagsBatch` to verify all tags and get quality/strength data',
+            '• Target quality ≥95% and strength ≥8.0 for optimal results',
+            '• Use `resolveTagLinks` or `getTagDetails` for deeper exploration if needed',
+            '• Use `webSearch` for current events, recent data, trends',
+        ]),
+        '• Research is mandatory - do not guess tag names or skip verification',
+        '',
+        '**STEP 2: Understand Tag Meaning**',
+        '• Read tag descriptions from tool results',
+        '• Understanding ensures proper usage and prevents errors',
+        '',
+        '**STEP 3: Choose Application Strategy**',
+        '• Decide how to apply researched tags (see strategies below)',
+        '• Use quality/strength data to determine best approach',
+        '• Consider token budget and scene complexity',
+        '',
+        '---',
+        '',
+        '## 🎯 Application Strategies (Choose Based on Context)',
+        '',
+        '### Strategy A: Pure Tags (Most Efficient)',
+        '**When:** Token efficiency needed, well-trained tags. Example: "wet clothes, clinging, rain-slicked"',
+        '',
+        '### Strategy B: Tags + Modifiers (Natural Flow)',
+        '**When:** Need specificity. Example: "soaking wet clothes, fabric clinging to skin, rain-slicked pavement"',
+        '',
+        '### Strategy C: Tags in Descriptions (Maximum Detail)',
+        '**When:** Complex scenes. Example: "wet clothes clinging to body from heavy downpour, rain-slicked surfaces reflecting streetlights"',
+        '**Rule:** Researched tags MUST be present - connect with natural language, no filler',
+        '',
+        '---',
+        '',
+        '## ⚖️ Decision Tree: Which Strategy?',
+        '',
+        '**Ask yourself:**',
+        '',
+        '1. **Are the tags well-trained (≥95% quality, ≥8.0 strength)?**',
+        '   → YES: Strategy A or B works great',
+        '   → NO: Strategy C might help reinforce meaning',
+        '',
+        '2. **Is token budget tight (>400 tokens)?**',
+        '   → YES: Prefer Strategy A (pure tags)',
+        '   → NO: Strategy B or C are fine',
+        '',
+        '3. **Does the concept need clarification?**',
+        '   → YES: Use Strategy B or C with descriptive context',
+        '   → NO: Strategy A is sufficient',
+        '',
+        '4. **Is this a complex interaction of multiple elements?**',
+        '   → YES: Strategy C allows natural integration',
+        '   → NO: Strategy A or B keep it clean',
+        '',
+        ...(optimize && optimize?.tokenCount === true ? [
+            '**🔧 When optimizing for tokens, also consider:**',
+            '',
+            '5. **Are the tags exceptionally well-trained (≥98% quality, ≥9.0 strength)?**',
+            '   → YES: Prioritize Strategy A for maximum efficiency',
+            '   → NO: Only use Strategy B/C if absolutely necessary',
+            '',
+            '6. **Can this concept be expressed with fewer, stronger tokens?**',
+            '   → YES: Prefer minimal expressions and shorter descriptions',
+            '   → NO: Keep Strategy C only for truly complex concepts',
+            '',
+            '7. **Is token budget critical (<200 tokens remaining)?**',
+            '   → YES: Strategy A only - pure tags for maximum efficiency',
+            '   → NO: Strategy B acceptable if essential visual detail is added',
+            '',
+            '**Optimization Priority: Token count > Quality (within reason) > Completeness**'
+        ] : []),
+        '',
+        '---',
+        '',
+        '## ❌ Common Pitfalls & Critical Errors',
+        '',
+        '### 📝 Tag Usage Philosophy Errors',
+        '',
+        '**Critical Error: Skipping Tool Research**',
+        '',
+        `❌ Made-up descriptors without research → ✅ Use ${secureConfig.grok?.tagWikiCollectionId ? 'file_search' : 'searchTagsBatch'} to read descriptions or find better tags, verify quality ≥95%, apply strategy`,
+        '',
+        '**Workflow:** Research tags → Review quality/strength → Apply appropriate strategy (A/B/C)',
+        '',
+        '**For visual-only and conceptual reasoning errors, see "📸 VISUAL-ONLY RULE" section above.**',
+        '',
+        '---',
+        '',
+        '### 🔧 Text Replacement Technical Errors',
+        '',
+        '**Key Rules:**',
+        '• ❌ Don\'t use "::" alone (non-unique - appears in all emphasis weights)',
+        '• ❌ Don\'t cross emphasis group boundaries (groups are processed separately)',
+        '• ❌ Don\'t create overlapping selections (causes conflicts)',
+        '• ❌ Don\'t chain replacements (each must target original text only)',
+        '',
+        '---',
+        '',
+        ...(optimize && optimize?.tokenCount === true ? [
+            '## 📏 Tag Efficiency Guidelines',
+            '',
+            '**Remove filler words while preserving meaning:**',
+            '```',
+            '❌ "tight-fitting costume" → ✅ "tight clothing" or "skintight clothing"',
+            '❌ "clothing straining over curves" → ✅ "strained clothing" with "curves" nearby',
+            '❌ "standing in a beautiful park" → ✅ "standing in park" (skip "beautiful" - vague)',
+            '```',
+            '',
+            '**Comma separation is REQUIRED:**',
+            '```',
+            '❌ WRONG: "girl standing park wearing dress holding umbrella smiling"',
+            '✅ RIGHT: "girl standing in park, wearing dress, holding umbrella, smiling"',
+            '```',
+            '', 
+        ] : []),
+        '---',
+        '',
+        '## 🔑 Key Takeaways',
+        '',
+        `1. ✅ **ALWAYS research tags and descriptions first** - Use ${secureConfig.grok?.tagWikiCollectionId ? 'file_search' : 'searchTagsBatch, getTagDetails, resolveTagLinks'}`,
+        '2. ✅ **ALWAYS understand tags** - Read descriptions before using',
+        '3. ✅ **Choose strategy based on context** - Efficiency vs. detail vs. clarity',
+        '4. ✅ **Tags can have modifiers** - "soaking wet" uses tag "wet" with modifier "soaking"',
+        ...(optimize && optimize?.tokenCount === true ? [
+            '5. ⚡ **Prioritize high-quality tokens** - Use ≥9.0 strength tags for efficiency',
+            '6. ⚡ **Minimize token count** - Prefer Strategy A, avoid unnecessary modifiers',
+            '7. ⚡ **Research strategically** - Only research tags you\'ll definitely use',
+            '8. ⚡ **Quality within constraints** - Maintain meaning but optimize word choice',
+            '9. ⚡ **Token budget awareness** - Track usage, prefer efficient expressions',
+            '10. ⚡ **Efficiency over elaboration** - Shorter, stronger expressions when possible',
+            '11. ✅ **Never skip research** - Even if you think you know the tag, verify it exists and check quality',
+
+            '**Remember:** Tags are tools, not restrictions. Research them, understand them, then apply them strategically, ensuring token efficiency to enable better overall results. Research first, then optimize aggressively.'
+        ] : [
+            '5. ✅ **Quality over purity** - The goal is the best image, not the fewest words',
+            '6. ✅ **Never skip research** - Even if you think you know the tag, verify it exists and check quality',
+            '',
+            '**Remember:** Tags are tools, not restrictions. Research them, understand them, then apply them strategically.',
+        ]),
+        '',
+        '### Comma Formatting Requirement',
+        'NovelAI uses comma-separated elements. ❌ "girl standing park" → ✅ "girl standing in park, wearing dress"',
+        '',
+        '### Changing/Removing Attributes - Three-Step Process',
+        '**When changing attributes (e.g., sunny → rainy), use all three methods for best results:**',
+        '',
+        '**Method 1 - REPLACE the text:**',
+        '```',
+        'select_text: "sunny day", replace_text: "rainy day", action: "replace"',
+        '```',
+        '',
+        '**Method 2 - ADD old attribute to UC (PRIMARY prevention):**',
+        '```',
+        '// In UC array:',
+        'action: "append", replace_text: ", sunny, bright daylight, clear sky, dry"',
+        '```',
+        'This prevents the unwanted attribute from appearing in the generation.',
+        '',
+        '**Method 3 - ADD negative emphasis (hard blocker for stubborn attributes):**',
+        '```',
+        'action: "append", replace_text: ", -2.0::sunny, bright daylight::"',
+        '```',
+        'Negative weights (-1.0 to -2.5) actively block conflicting attributes. Use for stubborn elements.',
+        '',
+        '**Complete Example - Changing Sunny → Rainy:**',
+        '```',
+        'text_replacements - prompt array:',
+        '  - select_text: "sunny day", replace_text: "rainy day", action: "replace"',
+        '  - action: "append", replace_text: ", -2.0::sunny, bright daylight::"',
+        '',
+        'uc array:',
+        '  - action: "append", replace_text: ", sunny, bright daylight, clear sky, dry"',
+        '```',
+        '',
+        '**Priority Order:**',
+        '1. **REPLACE**: Changes the text directly',
+        '2. **UC**: Primary prevention method - prevents unwanted attributes',
+        '3. **Negative emphasis**: Secondary hard blocker - aggressively removes attributes that might leak through UC',
+        '',
+        '**When to Use This:**',
+        '• Changing weather conditions (sunny → rainy, clear → overcast)',
+        '• Changing time of day (day → night, morning → evening)',
+        '• Changing seasonal elements (summer → winter)',
+        '• Removing conflicting attributes (indoor → outdoor)',
+        '',
+        '**DELETE Action:**',
+        '• DELETE is useful for removing duplicate text or unnecessary elements',
+        '• But when CHANGING attributes, prefer the three-step process above (REPLACE + UC + negative emphasis)',
+        '• DELETE alone doesn\'t prevent the AI from re-adding the attribute',
         '',
         '## Protected Content - NEVER MODIFY',
-        '**If you make any changes to this content it will be rejected by the system that processes it:**',
-        '• "artist:" or "style:" tags - leave exactly as written (ABSOLUTELY FORBIDDEN to modify)',
-        '• !% ... % protected blocks - user-specified content (Starts with "!%")',
+        '**Changes to these will be rejected:**',
+        '• "artist:" tags and style tags (unless directive explicitly requests style change)',
+        '• **!% ... % protected blocks** - User-specified off-limits content. Do NOT select, modify, or include markers',
+        '',
+        '## ⚙️ Preset Controlled Content - SYSTEM MANAGED',
+        '**"⚙️ Preset Controlled:" sections are system-managed (Quality, Dataset, Vibe, NSFW tags).**',
+        '',
+        '**Rules:**',
+        '• ❌ Do NOT delete or replace preset controlled text',
+        '• ⚠️ Do NOT add contradicting tags',
+        '• ✅ Work around: Add enhancements before/after preset content',
+        '• ✅ Complement, don\'t conflict',
+        '',
+        '## Protected Tags - DO NOT REMOVE Unless Explicitly Instructed',
+        '**These fundamental tags define the image style and composition - do NOT delete them unless via directive resolution:**',
+        '',
+        '**Style Tags** (unless user explicitly asks to change style):',
+        '• "realistic", "photorealistic", "anime", "cartoon", "3d", "sketch", "painting", etc.',
+        '• These define the fundamental art style - only modify if explicitly requested',
+        '',
+        '**Composition Tags** (unless explicitly changing composition):',
+        '• "solo", "1girl", "2girls", "1boy", "group", etc. - Character count',
+        '• "portrait", "full body", "upper body", "cowboy shot", "close-up" - Framing',
+        '• "looking at viewer", "from above", "from below", "dutch angle" - Camera angle/perspective',
+        '• "depth of field", "bokeh", "blurry background" - Focus effects',
+        '',
+        '**Why These Are Protected:**',
+        '• User chose these tags intentionally to define the image',
+        '• Removing them changes the fundamental nature of the generation',
+        '• Only remove if explicitly asked (e.g., "change to anime style" → can remove "realistic")',
+        '',
+        '**What You CAN Do:**',
+        '• Add weather/time/seasonal elements',
+        '• Add atmospheric effects',
+        '• Enhance existing descriptions',
+        '• Add clothing/action details',
+        '• Modify lighting (unless changing time contradicts it)',
         '',
         '## Special Cases - MUST REPLACE',
         '**ALL CAPS insertion markers are EXCEPTIONS - you MUST replace them with dynamic content:**',
@@ -6613,47 +7837,152 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '  - Category: "Text Overlay" (modify overlay text)',
         '• **APPEND TO END**: Goes before ", Text:", not after',
         '',
-        '## Text Replacement Uniqueness - CRITICAL',
-        '',
-        '### Rule: select_text MUST BE UNIQUE',
-        '**CRITICAL**: `select_text` MUST appear only ONCE in the prompt',
-        '',
-        '**❌ COMMON MISTAKES:**',
-        '• "::" - appears in ALL emphasis weights (1.5::text::, 2.0::word::, etc.)',
-        '• "," - appears after EVERY tag',
-        '• "girl" - too common, appears multiple times',
-        '• Single words - almost always non-unique',
-        '',
-        '**✅ CORRECT APPROACH:**',
-        '• Include 3-5 words of context around your target',
-        '• Use surrounding words to create unique phrase',
-        '• Check that phrase appears only ONCE in prompt',
-        '• If unsure, use longer phrase with more context',
-        '',
-        '**Examples:**',
-        '```',
-        '❌ "select_text": "::"',
-        '   → BAD: Appears in 1.5::word::, 2.0::tag::, etc.',
-        '   ✅ "select_text": "soft focus, dutch angle ::"',
-        '',
-        '❌ "select_text": "standing"',
-        '   → BAD: May appear multiple times',
-        '   ✅ "select_text": "1girl, standing in park"',
-        '',
-        '❌ "select_text": "girl"',
-        '   → BAD: Too common',
-        '   ✅ "select_text": "1girl, detailed face"',
-        '```',
-        '',
-        '**For Appending:**',
-        '• If appending to END of prompt → **omit `select_text` entirely**',
-        '• If appending AFTER specific text → make that text UNIQUE',
-        '',
         '## 🎯 REPLACEMENT PLANNING - CRITICAL PROCESS',
+        '',
+        '### 🧠 STEP 0: CHECK KNOWLEDGE MEMORIES FIRST',
+        '',
+        '**You now have access to a GLOBAL KNOWLEDGE MEMORY SYSTEM:**',
+        '',
+        '**BEFORE ANY planning or research, check for relevant memories:**',
+        '',
+        '1. **Review the "Available Global Memories" list** in the user message below',
+        '2. **Search for relevant memories** using `searchKnowledgeMemories(query, category)` if needed - this automatically returns full details, no separate retrieve needed',
+        '3. **OR retrieve specific memories** using `retrieveKnowledgeMemory(["name1", "name2"])` if you already know the exact names',
+        '4. **Use the retrieved knowledge** - entities, relations, and observations inform your modifications',
+        '',
+        '**CRITICAL GUIDELINES for Global Memories:**',
+        '',
+        '🌍 **WHAT YOU CAN SAVE** (Expanded Categories):',
+        '',
+        '**1. Rendering Techniques & Visual Approaches**',
+        '• Technical methods for visual effects',
+        '• Anatomy rendering techniques',
+        '• Style combinations and compatibility',
+        '',
+        '**2. Character-Specific Knowledge**',
+        '• Modifications for specific named characters (e.g., "miku_hatsune_hair_rendering")',
+        '• Character trait patterns and descriptions',
+        '• Dialog patterns and voice characteristics',
+        '• Character-specific tag combinations that work well',
+        '',
+        '**3. Scenario-Specific Approaches**',
+        '• Techniques for specific scenarios (e.g., "underwater_scene_lighting")',
+        '• Scene type best practices (e.g., "concert_stage_composition")',
+        '• Environment-specific rendering approaches',
+        '',
+        '**4. Token & Tag Preferences**',
+        '• Optimal token combinations for effects',
+        '• Tag preferences with quality/strength analysis',
+        '• Tag description insights from research',
+        '• Token efficiency discoveries',
+        '',
+        '❌ **STILL AVOID** (truly context-dependent):',
+        '• "current_weather_setup" - changes with each request',
+        '• "todays_time_lighting" - time-of-day is contextual',
+        '• "this_users_character" - generic, not a specific named character',
+        '',
+        '✅ **GOOD memory examples**:',
+        '• "water_droplet_physics_rendering" - timeless technique',
+        '• "miku_hatsune_twintails_rendering" - specific character knowledge',
+        '• "underwater_scene_lighting_techniques" - scenario approach',
+        '• "soft_light_token_preferences" - token optimization knowledge',
+        '',
+        '**When to CREATE/UPDATE knowledge** using `insight_memory` in your response:',
+        '',
+        '**CREATE NEW when:**',
+        '• You discovered a complex rendering technique after research',
+        '• You found optimal tag combinations for a visual effect or character',
+        '• You learned character-specific rendering approaches (use their name in memory name)',
+        '• You identified scenario-specific techniques (e.g., underwater, concert, battle)',
+        '• You discovered token efficiency patterns or tag preferences',
+        '• You researched static character information (traits, dialog patterns, descriptions)',
+        '',
+        '**UPDATE EXISTING when:**',
+        '• You retrieved a memory and found better techniques',
+        '• You discovered additional entities or relations to add',
+        '• You have new observations that improve the knowledge',
+        '• You want to increase confidence after validating the approach',
+        '• **HOW**: Use the SAME memory name with improved data and higher confidence',
+        '',
+        '**When NOT to create memories:**',
+        '• Simple tag additions without research (not valuable enough)',
+        '• Truly contextual data (current weather conditions, exact time)',
+        '• One-off creative choices (not reusable or learnable)',
+        '',
+        '**Memory Structure (automatically saved from insight_memory response field):**',
+        '• **Name**: Unique identifier (e.g., "miku_hatsune_twintails_rendering")',
+        '• **Description**: Clear explanation for future AI to understand',
+        '• **Category**: One of: technique, style, anatomy, effect, composition, lighting, color_theory, perspective, material, clothing, character_design, environment, character_specific, scenario_specific, token_optimization, tag_preference',
+        '• **Entities**: Core concepts with types: concept, technique, tag_combination, visual_element, principle, character_trait, dialog_pattern, token_preference, tag_preference, scenario_approach',
+        '• **Relations**: How entities relate (enhances, conflicts_with, requires, similar_to, part_of, enables)',
+        '• **Observations**: Specific findings and best practices about entities',
+        '• **Confidence**: Confidence INCREASE for updates (0-0.25). New memories start at 10%, each refinement adds up to 25% (max 100%)',
+        '',
+        '**CRITICAL: Your insight_memory entries are automatically saved to the global database!**',
+        '• No need to call saveKnowledgeMemory tool - just include in response',
+        '• System validates and saves them automatically (only when validation passes)',
+        '• They become immediately available to all future generations',
+        '• **UPDATE existing memories**: Use same name with improved data to increase confidence',
+        '',
+        '**🔄 PROGRESSIVE CONFIDENCE REFINEMENT SYSTEM:**',
+        '',
+        '**How it works:**',
+        '• **New memories**: Automatically start at 10% confidence (you don\'t set this)',
+        '• **Updates**: Each refinement can add 0-25% confidence (default: 25%)',
+        '• **Goal**: Reach 100% through multiple refinement passes',
+        '• **Why**: Forces thorough review and continuous improvement',
+        '',
+        '**Refinement Workflow:**',
+        '',
+        '1. **Retrieve existing memory** → Check current confidence level',
+        '2. **Evaluate quality** → What\'s missing? What can be improved?',
+        '3. **Improve significantly** → Add entities, refine observations, test more cases',
+        '4. **Set confidence increase** → Based on improvement (0.05 = minor, 0.15 = good, 0.25 = major refinement)',
+        '5. **Save with SAME name** → System adds your increase to existing confidence',
+        '6. **Repeat until 100%** → Continue refining in future generations',
+        '',
+        '**Example Progression**:',
+        '• **Generation 1**: Create "underwater_lighting" → Auto-set to 10%, 2 entities',
+        '• **Generation 5**: Retrieve (10%) → Add 3 entities, test tags → confidence: 0.25 → New total: 35%',
+        '• **Generation 12**: Retrieve (35%) → Add relations, refine observations → confidence: 0.20 → New total: 55%',
+        '• **Generation 20**: Retrieve (55%) → Validate all cases, add edge cases → confidence: 0.25 → New total: 80%',
+        '• **Generation 28**: Retrieve (80%) → Final polish, comprehensive testing → confidence: 0.20 → New total: 100%',
+        '',
+        '**Confidence Increase Guidelines:**',
+        '• **0.05-0.10** (Minor): Small improvements, fixing typos, adding 1-2 observations',
+        '• **0.10-0.20** (Good): Added entities, tested tags, refined descriptions',
+        '• **0.20-0.25** (Major): Comprehensive improvements, new relations, extensive testing',
+        '',
+        '**📁 CATEGORY GUIDE & EXAMPLES:**',
+        '',
+        '**character_specific** - Named character knowledge',
+        '  Example: "miku_hatsune_twintails_rendering"',
+        '  Entities: character_trait (twintails style), tag_preference (teal color)',
+        '  Use: Character-specific modifications, dialog patterns, trait descriptions',
+        '',
+        '**scenario_specific** - Scene type approaches',
+        '  Example: "underwater_scene_techniques"',
+        '  Entities: scenario_approach (bubble rendering), tag_combination (caustics + refraction)',
+        '  Use: Scenario-specific lighting, composition, effects',
+        '',
+        '**token_optimization** - Token efficiency knowledge',
+        '  Example: "soft_lighting_token_efficiency"',
+        '  Entities: token_preference (compact phrases), tag_combination (efficient alternatives)',
+        '  Use: Token budget optimization, efficient tag combinations',
+        '',
+        '**tag_preference** - Tag quality and preferences',
+        '  Example: "volumetric_fog_tag_analysis"',
+        '  Entities: tag_preference (quality scores), tag_combination (tested combos)',
+        '  Use: Tag research results, quality/strength analysis, preferred tags',
+        '',
+        '**General categories** - technique, anatomy, style, effect, composition, lighting, etc.',
+        '  Use: Universal knowledge not tied to specific characters or scenarios',
+        '',
+        '---',
         '',
         '**BEFORE creating ANY text_replacements, you MUST plan the complete array:**',
         '',
-        '### ABSOLUTE REQUIREMENTS',
+        '### Content Transformation - ABSOLUTE REQUIREMENTS',
         '',
         '**1. NEVER VERBATIM COPY INPUT TEXT OR CONTEXT DATA**',
         '• **FORBIDDEN**: Repeating exact phrases from the input prompt, directives, OR context data',
@@ -6693,6 +8022,50 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**You must REASON about the context data and translate it into VISUAL DESCRIPTIONS.**',
         '**Do not mechanically copy weather/time terms - interpret and transform them.**',
         '',
+        '**🚫 ABSOLUTELY FORBIDDEN - Non-Visual Elements:**',
+        '**NEVER include these in your prompt text:**',
+        '• **Literal numeric measurements**: "22kmh", "13.5C", "18°C", "50mph"',
+        '• **Specific times**: "18:09", "6:30 PM", "3:45"',
+        '• **Exact dates**: "November 5th", "2024", "Monday"',
+        '• **Scientific data**: "humidity 65%", "pressure 1013mb", "UV index 3"',
+        '• **Mathematical values**: "45 degrees", "2.5 meters", "180cm"',
+        '• **Invisible elements**: "cool air", "warm atmosphere", "high pressure"',
+        '',
+        '**✅ INSTEAD - Translate to Actually Visible Elements:**',
+        '```',
+        '❌ "22kmh wind" → ✅ "wind-swept hair", "fluttering fabric", "swaying branches"',
+        '❌ "13.5C cool air" → ✅ "autumn chill atmosphere" OR visible cues like "light jacket"',
+        '❌ "18:09 evening" → ✅ "early evening, after sunset, artificial lights, nighttime"',
+        '❌ "50% humidity" → ✅ OMIT (not visible unless extreme like fog/mist)',
+        '❌ "warm air" → ✅ "hazy heat shimmer", "summer warmth" (mood), OR visible heat effects',
+        '❌ "cool air" → ✅ OMIT or use "cool atmosphere" for mood/palette only',
+        '',
+        '**CRITICAL VALIDATION: Two-Test System**',
+        '',
+        '**Test 1: Physical Visibility - "Can I photograph this?"**',
+        '• ✅ "wind-swept hair" ← Visible physical movement',
+        '• ❌ "22kmh wind" ← Numerical measurement (not visible)',
+        '• ✅ "visible breath in cold" ← Visible vapor',
+        '• ❌ "13.5C air" ← Temperature reading (not visible)',
+        '• ✅ "rain-slicked pavement" ← Visible wetness',
+        '• ❌ "50% humidity" ← Statistical data (not visible)',
+        '',
+        '**Test 2: Mood/Atmosphere Setters - "Does this set season/palette/mood?"**',
+        '• ✅ "autumn atmosphere" ← Sets seasonal color palette and mood',
+        '• ✅ "summer warmth" ← Sets seasonal feeling and light quality',
+        '• ✅ "cool evening air" ← Sets time/temperature mood (used sparingly)',
+        '• ❌ "cool air" alone ← Too vague, no context (fails both tests)',
+        '• ✅ "oppressive heat" ← Sets atmospheric mood',
+        '',
+        '**Decision Process:**',
+        '1. **Try Test 1 first**: Can you photograph the physical manifestation?',
+        '   - YES → Use it (e.g., "wind-swept hair")',
+        '   - NO → Proceed to Test 2',
+        '2. **Test 2**: Does it meaningfully set mood/palette/atmosphere?',
+        '   - YES → Acceptable IF paired with context (e.g., "cool evening air" with time)',
+        '   - NO → REJECT (e.g., standalone "13.5C", "cool air")',
+        '```',
+        '',
         '**2. PLAN THE COMPLETE ARRAY BEFORE RESPONDING**',
         '• Think through ALL replacements BEFORE creating the JSON',
         '• Visualize the final result after all replacements',
@@ -6705,18 +8078,16 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '• No partial overlaps (sharing some words)',
         '',
         '**Examples:**',
-        '```json',
+        '```',
         '// ❌ WRONG - Overlapping selections:',
-        '[',
-        '  {"select_text": "standing in park", "replace_text": "sitting in park"},',
-        '  {"select_text": "in park", "replace_text": "in rainy park"}',
-        ']',
+        'BAD:',
+        '  Replacement 1: select_text: "standing in park", replace_text: "sitting in park"',
+        '  Replacement 2: select_text: "in park", replace_text: "in rainy park"',
         '// Problem: "in park" is INSIDE "standing in park" - they overlap',
         '',
         '// ✅ CORRECT - Distinct selections:',
-        '[',
-        '  {"select_text": "standing in park", "replace_text": "sitting in rainy park"}',
-        ']',
+        'GOOD:',
+        '  select_text: "standing in park", replace_text: "sitting in rainy park"',
         '// Solution: Combined into single replacement',
         '```',
         '',
@@ -6727,157 +8098,39 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '• Each replacement is INDEPENDENT of others',
         '',
         '**Examples:**',
-        '```json',
+        '```',
         '// ❌ WRONG - Chain replacement (modifying own addition):',
-        '[',
-        '  {"select_text": "city", "replace_text": "rainy city"},',
-        '  {"select_text": "rainy city", "replace_text": "dark rainy city"}',
-        ']',
+        'BAD:',
+        '  Replacement 1: select_text: "city", replace_text: "rainy city"',
+        '  Replacement 2: select_text: "rainy city", replace_text: "dark rainy city"',
         '// Problem: Second replacement targets text added by first replacement',
         '',
         '// ✅ CORRECT - Single complete replacement:',
-        '[',
-        '  {"select_text": "city", "replace_text": "dark rainy city"}',
-        ']',
+        'GOOD:',
+        '  select_text: "city", replace_text: "dark rainy city"',
         '// Solution: Do it right the first time',
         '',
         '// ❌ WRONG - Dependency chain:',
-        '[',
-        '  {"select_text": "sunny", "replace_text": "overcast"},',
-        '  {"select_text": "bright overcast day", "replace_text": "dim overcast day"}',
-        ']',
+        'BAD:',
+        '  Replacement 1: select_text: "sunny", replace_text: "overcast"',
+        '  Replacement 2: select_text: "bright overcast day", replace_text: "dim overcast day"',
         '// Problem: Second depends on first completing successfully',
         '',
         '// ✅ CORRECT - Independent replacements:',
-        '[',
-        '  {"select_text": "sunny", "replace_text": "overcast"},',
-        '  {"select_text": "bright day", "replace_text": "dim day"}',
-        ']',
+        'GOOD:',
+        '  Replacement 1: select_text: "sunny", replace_text: "overcast"',
+        '  Replacement 2: select_text: "bright day", replace_text: "dim day"',
         '// Solution: Both target ORIGINAL text independently',
         '```',
         '',
         '### PRE-SUBMISSION VALIDATION CHECKLIST',
         '',
-        '**BEFORE submitting your response, verify EVERY replacement:**',
+        '**Verify BEFORE submitting:**',
+        '✓ No duplicate select_text | ✓ No chain replacements | ✓ No empty append replace_text',
+        '✓ No overlapping selections | ✓ No verbatim copying | ✓ Each select_text unique in prompt',
+        '✓ All target original text | ✓ All independent (order doesn\'t matter)',
         '',
-        '✓ **Uniqueness in Prompt**: Each `select_text` appears ONLY ONCE in original prompt',
-        '✓ **Uniqueness in Array**: Each `select_text` appears ONLY ONCE in your replacement array',
-        '   → CRITICAL: Same select_text twice = INVALID (e.g., "1.35::realistic lighting" used twice)',
-        '✓ **Existence**: Each `select_text` EXISTS in current prompt',
-        '✓ **No Verbatim**: No exact phrases copied from input or context data',
-        '✓ **No Overlap**: No `select_text` overlaps with another `select_text`',
-        '✓ **No Chains**: No replacement modifies content added by another replacement',
-        '✓ **Independence**: Each replacement works on ORIGINAL text only',
-        '✓ **APPEND Validity**: Every APPEND action has non-empty `replace_text`',
-        '   → CRITICAL: `"replace_text": ""` with `"action": "append"` is INVALID',
-        '✓ **Completeness**: Think: "If I apply these in sequence, are they independent?" → Must be YES',
-        '',
-        '### VALIDATION QUESTIONS TO ASK YOURSELF',
-        '',
-        '**Before submitting, answer these:**',
-        '',
-        '1. **"Did I copy any exact phrases from the input?"**',
-        '   → If YES: Transform them instead',
-        '',
-        '2. **"Do any of my select_text values appear MORE THAN ONCE in my array?"**',
-        '   → If YES: You have DUPLICATE selections - COMBINE them into ONE replacement',
-        '   Example: If you select "1.35::realistic lighting" twice, you\'re creating a conflict',
-        '',
-        '3. **"Do any of my select_text values overlap or nest?"**',
-        '   → If YES: Combine into single replacement or make truly distinct',
-        '',
-        '4. **"Does replacement #2 depend on #1\'s output?"**',
-        '   → If YES: You\'re creating a chain - FIX IT',
-        '',
-        '5. **"Are all my select_text values targeting ORIGINAL prompt text?"**',
-        '   → If NO: You\'re modifying your own additions - FIX IT',
-        '',
-        '6. **"For APPEND actions: Do I have actual content in replace_text?"**',
-        '   → Empty replace_text with append is INVALID',
-        '   → If replace_text is "" (empty), you cannot use append action',
-        '',
-        '7. **"If I randomized the order of replacements, would they still work?"**',
-        '   → If NO: You have dependencies - FIX IT',
-        '',
-        '### COMMON PLANNING ERRORS',
-        '',
-        '**Error 1: Duplicate Selections (SAME select_text used multiple times)**',
-        '```json',
-        '// ❌ CRITICAL ERROR - selecting same text twice:',
-        '[',
-        '  {"select_text": "1.35::realistic lighting", "replace_text": "2.0::pregnant body::, 1.35::realistic lighting"},',
-        '  {"select_text": "1.35::realistic lighting", "replace_text": "1.35::diffused lighting under overcast sky::"}',
-        ']',
-        '// Problem: Second replacement cannot find "1.35::realistic lighting" because first one already modified it!',
-        '',
-        '// ✅ CORRECT - Combine into single replacement:',
-        '[',
-        '  {"select_text": "1.35::realistic lighting", "replace_text": "2.0::pregnant body::, 1.35::diffused lighting under overcast sky::"}',
-        ']',
-        '// Solution: Single replacement does everything at once',
-        '```',
-        '',
-        '**Error 2: Invalid APPEND with Empty replace_text**',
-        '```json',
-        '// ❌ CRITICAL ERROR - append with no content:',
-        '{"select_text": ", bad perspective", "replace_text": "", "action": "append"}',
-        '// Problem: APPEND requires actual content to add. Empty string is INVALID.',
-        '',
-        '// ✅ CORRECT - Provide actual content:',
-        '{"action": "append", "replace_text": "bright daylight, sunny, clear sky"}',
-        '// Solution: Append actual UC opposites',
-        '',
-        '// OR if you want to DELETE:',
-        '{"select_text": ", bad perspective", "action": "delete"}',
-        '// Solution: Use DELETE action instead',
-        '```',
-        '',
-        '**Error 3: Incremental Refinement**',
-        '```json',
-        '// ❌ Thinking: "I\'ll add rainy, then make it heavy rainy"',
-        '[',
-        '  {"select_text": "day", "replace_text": "rainy day"},',
-        '  {"select_text": "rainy day", "replace_text": "heavy rainy day"}',
-        ']',
-        '',
-        '// ✅ Thinking: "I want heavy rainy day as the final result"',
-        '[',
-        '  {"select_text": "day", "replace_text": "heavy rainy day"}',
-        ']',
-        '```',
-        '',
-        '**Error 2: Cross-Boundary Selection**',
-        '```json',
-        '// ❌ Selecting across emphasis group boundaries',
-        '// Original: "1.5::detailed face 2.0::weather::"',
-        '[',
-        '  {"select_text": "face 2.0::weather", "replace_text": "face, eyes 2.5::rainy weather"}',
-        ']',
-        '// Problem: Crosses group boundary',
-        '',
-        '// ✅ Respecting group boundaries',
-        '[',
-        '  {"select_text": "face ", "replace_text": "face, eyes "},',
-        '  {"select_text": "2.0::weather::", "replace_text": "2.5::rainy weather::"}',
-        ']',
-        '// Solution: Separate replacements for each group',
-        '```',
-        '',
-        '**Error 3: Nested Selections**',
-        '```json',
-        '// ❌ One selection inside another',
-        '[',
-        '  {"select_text": "girl standing in park wearing dress", "replace_text": "..."},',
-        '  {"select_text": "wearing dress", "replace_text": "wearing raincoat"}',
-        ']',
-        '// Problem: Second selection is INSIDE first',
-        '',
-        '// ✅ Distinct or combined',
-        '[',
-        '  {"select_text": "girl standing in park wearing dress", "replace_text": "girl standing in rainy park wearing raincoat"}',
-        ']',
-        '// Solution: Single comprehensive replacement',
-        '```',
+        '**If ANY fail: STOP, FIX, re-check. All must pass.**',
         '',
         '### PLANNING PROCESS',
         '',
@@ -6910,62 +8163,7 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**If you plan replacements targeting ONLY original text, sequential processing works perfectly.**',
         '**If you create dependencies, sequential processing will fail.**',
         '',
-        // Add pipeline-aware instructions if enabled
-        pipelineAware && stageContext ? [
-            '',
-            stageContext.isInitial ? [
-                '## 🎬 PIPELINE STAGE: INITIAL GENERATION (PRIMARY FOCUS)',
-                '**STAGE CONTEXT**: You are working on the INITIAL stage of a multi-stage pipeline. This prompt is specifically about the PRIMARY FOCUS/SUBJECT.',
-                '',
-                '**ANALYSIS REQUIREMENTS**:',
-                '• Analyze input prompt: view angle, perspective, framing, composition',
-                '• Determine subject positioning and available space',
-                '• Consider how subject fits within frame',
-                '',
-                '**MODIFICATION APPROACH**:',
-                '• Make text replacements knowing that later stages will fill in background details',
-                '• Keep the focus on the subject - background will be expanded in subsequent stages',
-                '• Ensure subject is well-defined and positioned appropriately for future expansion',
-                '• Don\'t over-detail the background - save that for the background expansion stage',
-                '',
-                stageContext.hasPreview ? [
-                    '**PREVIEW IMAGE REFERENCE**:',
-                    'Use preview as visual reference for: Character appearance/attire, environment context, actions/pose, scene composition',
-                    '',
-                    '**ANALYZE TIME OF DAY & WEATHER FROM PREVIEW**:',
-                    '• Nighttime detected → AMPLIFY: night lighting, darkness, shadows, moon/starlight, nocturnal ambiance',
-                    '• Daytime → Match and enhance visible time-of-day atmosphere (morning/noon/afternoon/golden hour)',
-                    '• Weather visible → Amplify descriptions to match preview (rain/snow/fog/clouds/wind effects)',
-                    '',
-                    '**PRESERVE**: Character appearance, clothing style, core pose, environment type',
-                    '**ADAPT**: Weather effects on clothing, lighting, seasonal/time-of-day elements',
-                    '**AMPLIFY detected conditions**: If preview shows nighttime/specific weather, enhance descriptions significantly',
-                    ''
-                ].join('\n') : '',
-                ''
-            ].join('\n') : stageContext.isBackgroundFocus ? [
-                '## 🌄 PIPELINE STAGE: BACKGROUND EXPANSION',
-                '**You are working on BACKGROUND EXPANSION - image from previous generation with padding applied.**',
-                '',
-                '**Analysis**: Identify foreground area and new canvas space, determine expandable background elements',
-                '',
-                '**REMOVE**: Character expressions/emotions, character-specific actions, facial details, interaction descriptions, body-part details, character-centric descriptors, focus indicators',
-                '',
-                '**KEEP**: Location/setting, architectural elements, landscape features, weather/atmospheric effects, lighting/time-of-day, environmental objects, depth indicators',
-                '',
-                '**ADD**: Scene depth/distance elements, environmental storytelling, atmospheric effects (fog/clouds), background architecture/landscapes, perspective cues',
-                '',
-                '**Approach**: Remove character-specific phrases, add rich environmental descriptions, maintain consistency, focus on atmosphere and depth',
-                ''
-            ].join('\n') : stageContext.isEnhance ? [
-                '## ✨ PIPELINE STAGE: ENHANCEMENT',
-                '**You are working on ENHANCEMENT stage with the full composed image.**',
-                '',
-                '**Requirements**: Analyze entire image for missing/incorrect details, address inconsistencies/quality issues, refine details, polish final result',
-                '**Approach**: Make refinements improving composition, fix issues/artifacts, enhance needed details, ensure cohesive integration',
-                ''
-            ].join('\n') : ''
-        ].join('\n') : '',
+        // Stage-specific instructions moved to user prompt for previousResponseId compatibility
         '',
         '## 🖼️ IMAGE ANALYSIS REQUIREMENTS',
         '',
@@ -6989,120 +8187,294 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**Decisions**: Based on tag quality/strength, compositional intent, token efficiency vs precision, user emphasis',
         '',
         // ========================================
-        // TOKEN MANAGEMENT
+        // TOKEN MANAGEMENT & OPTIMIZATION
         // ========================================
         '',
-        '# 💰 TOKEN MANAGEMENT & LIMITS',
+        '# 💰 TOKEN MANAGEMENT & OPTIMIZATION',
         '',
         '## 🚨 Hard Limits - ABSOLUTE',
         '**512 tokens for prompt (base + ALL character prompts), 512 tokens for UC (negative + ALL character negatives)**',
         '⚠️ **Exceeding limits causes generation failure** - Be concise, prioritize impactful modifications, enhance quality without bloating',
         '',
-        '**Important**: Percentages below are guidelines for planning. The 512 limit is absolute and enforced.',
+        '**Important**: Token thresholds below are planning guidelines. The 512 limit is absolute and enforced.',
         '',
         '## 📊 Token Budget Strategy (Planning Guidelines)',
-        '• Prompt or UC: Reserve 60-70% for original content',
-        '• Enhancements: Use 20-30% for contextual additions',
-        '• Buffer: Keep 10% margin for processing overhead',
         '',
-        // ========================================
-        // WEATHER & TIME INTEGRATION FRAMEWORK
-        // ========================================
+        '**Priority levels for PROMPT (base + character prompts):**',
+        '• 🟢 **<300 tokens** (LOW): Focus on quality - token efficiency not a concern',
+        '• 🟡 **300-450 tokens** (MODERATE): Opportunistic optimization when clearly beneficial',
+        '• 🟠 **450-512 tokens** (HIGH): Targeted optimization required',
+        '• 🔴 **>512 tokens** (CRITICAL): Aggressive optimization - generation will fail if not reduced',
         '',
-        '# 🌦️ WEATHER & TIME INTEGRATION FRAMEWORK',
+        '**Priority levels for UC (negative + character negatives):**',
+        '• 🟢 **<300 tokens** (LOW): Focus on quality - token efficiency not a concern',
+        '• 🟡 **300-380 tokens** (MODERATE): Opportunistic optimization when clearly beneficial',
+        '• 🟠 **380-512 tokens** (HIGH): Targeted optimization required - UC should be optimized before reaching 380',
+        '• 🔴 **>512 tokens** (CRITICAL): Aggressive optimization - generation will fail if not reduced',
         '',
-        '## Core Principle: Visual Translation through Reasoning',
-        '**Convert weather/time concepts to visual elements - DO NOT write conceptual descriptions or verbatim context data directly in prompts.**',
-        '',
-        '**CRITICAL: NEVER copy context data verbatim. Always REASON and TRANSFORM:**',
-        '• Context says "overcast" → Reason into "cloudy sky, diffused lighting, soft shadows"',
-        '• Context says "18°C evening" → Reason into "cool twilight air, comfortable temperature"',
-        '• Context says "heavy rain" → Reason into "torrential downpour, rain-slicked surfaces, water streaming"',
-        '',
-        '**Translation Process:**',
-        '1. **REASON** about the weather/time data (don\'t copy it)',
-        '2. Identify physical response from conditions (e.g., "heat" → visible sweat, seeking shade)',
-        '3. Match to character characteristics (build, weight, clothing)',
-        '4. ALWAYS include explicit markers through reasoning: time ("night", "daytime", "dawn") AND weather ("overcast", "clear sky")',
-        '5. Create specific text_replacements with VISUAL DESCRIPTORS (not verbatim context)',
-        '',
-        '⚠️ **Key Distinction**: Humidity = moisture in air (sweat, condensation). Precipitation = rain/snow falling.',
-        '',
-        '## Scene Type Framework - CRITICAL DECISION',
-        '**Determine scene type FIRST - this controls how to apply all weather/time data:**',
-        '',
-        '### INDOOR ONLY: Scenes entirely within buildings, rooms, or enclosed spaces',
-        '**Application**: INDIRECT through windows, doors, openings',
-        '**Examples**: "rain pattering on windowpanes", "snow visible through glass", "condensation on glass from humidity"',
-        '**Character Impact**: Indirect (room temperature changes, atmospheric pressure, visible weather through windows)',
-        '**Strong tokens**: intense, soft, glowing, gentle, breeze, humid, condensation',
-        '',
-        '### OUTDOOR ONLY: Scenes in open exterior spaces, streets, landscapes, wilderness',
-        '**Application**: DIRECT to all elements',
-        '**Examples**: "damp rain-slicked surfaces", "wind-swept landscape", "sweat running down skin", "hair whipping in wind"',
-        '**Character Impact**: Direct physical reactions (sweating, shivering, wind effects)',
-        '**Strong tokens**: damp, shimmer, harsh, intense, gentle, breeze, glowing',
-        '',
-        '### MIXED/TRANSITIONAL: Scenes with both indoor and outdoor elements',
-        '**Application**: CONTEXTUAL - direct for outdoor areas, indirect for indoor areas',
-        '**Examples**: "rain blowing through door", "wet footprints inside", outdoor + indoor descriptions',
-        '',
-        '## Character Physical Response Integration',
-        '**Character reactions are conceptual - translate to VISUAL cues:**',
-        '',
-        '### Physical Characteristics Matter',
-        `• **Body Build**: Analyze weight${clothing ? ', clothing' : ''}, physical condition`,
-        '• **Weight-Based Sweating**: Heavier characters sweat more (consider: chubby → overweight → fat → obese → morbidly obese)',
-        '• **Wind Sensitivity**: Slender characters feel wind chill more, heavier characters more wind-resistant',
-        ...(clothing ? ['• **Clothing Factors**: Tight clothing shows sweat stains, loose clothing blows in wind'] : []),
-        '• **Fatigue Indicators**: Heat exhaustion, shivering, blue-tinged skin (cold)',
-        '• **Facial Expressions**: Squinting (sun), grimacing (cold), flushed cheeks (heat)',
-        '• **Comfort Zones**: Adjust based on whether character appears comfortable or distressed',
-        '• **Shelter Seeking**: Characters may seek shade, cover from rain, or warmth based on physical state',
-        '• **Activity Adaptation**: Characters modify behavior based on conditions (seeking shelter in storms, staying cool in heat) unless doing weather-related activities (fishing, snowboarding, walking outside, etc.)',
-        '',
-        '### Environmental Context Examples',
-        '**Temperature**: "rosy cheeks from warmth" (outdoor) vs "room feels cooler near windows" (indoor)',
-        '**Moisture**: "sweaty skin" (outdoor) vs "condensation on glass" (indoor)',
-        '**Wind**: "hair tousled by breeze" (outdoor) vs "curtains fluttering from drafts" (indoor)',
-        '**Activity States**: "comfortable in moderate conditions" or "layered against cold"',
-        '',
-        '## Translation Examples with Explicit Markers',
-        '**REQUIRED FORMAT - Always combine time + weather markers:**',
-        '',
-        '**Time + Weather Combinations:**',
-        '• Night + Overcast → "night, dark, nighttime, overcast sky, cloudy, deep shadows, dim lighting"',
-        '• Daytime + Overcast → "daytime, overcast sky, cloudy, diffused lighting, soft shadows"',
-        '• Night + Clear → "night, dark, nighttime, clear sky, stars visible, deep shadows, moonlight"',
-        '• Daytime Heat → "daytime, sunny, bright, sweat glistening, seeking shade, flushed from warmth"',
-        '• Morning Dawn → "morning, dawn, early morning, dim light of sunrise, soft shadows, cool dawn air"',
-        '• Evening Twilight → "evening, twilight, sunset, dim light of sunset, orange/purple sky, soft shadows"',
-        '',
-        '**Weather Data to Visual Elements:**',
-        '• High humidity + heat → shimmer, heat haze, sweat effects',
-        '• Wind + precipitation → rain lashing sideways, wind-driven droplets',
-        '• Low visibility → fog layers, muted colors, obscured distances',
-        '• High UV + clear sky → harsh sunlight, deep shadows, squinting',
-        '',
-        '**Character Response Examples (Optimized Tokens):**',
-        `• Hot + Heavier Character → "sweat dripping, heavy breathing${clothing ? ', damp clothes clinging' : ''}, exhausted expression"`,
-        '  → Uses strong tokens: sweat (9.18), damp (9.28)',
-        '• Cold + Slender Character → "shivering, huddled posture, visible breath in cold air, chattering teeth"',
-        '  → Uses strong visual descriptors',
-        '• Heat exhaustion → "sweat beading on forehead, flushed cheeks, heavy breathing"',
-        '• Cold response → "shivering visibly, hunched against cold, breath misting in air"',
-        '• Wind effects → "hair whipping in wind, clothes pressed against body"',
-        '',
-        '## Weather Element Mapping',
-        '• **Dew point** → moisture effects (mist, condensation, humidity haze)',
-        '• **Cloud coverage** → lighting conditions, atmospheric mood',
-        '• **Pressure systems** → wind patterns, atmospheric stability',
-        '• **UV index** → sunlight intensity, shadow harshness, contrast',
-        '• **Visibility** → fog, mist, atmospheric perspective effects',
-        '',
-        '**Strong Tokens Reference (weather/atmosphere):**',
-        'condensation:9.6, shimmer:9.53, glowing:9.49, dawn:9.4, intricate:9.38, humid:9.36, glow:9.32, breeze:9.3, damp:9.28, sweat:9.18',
-        '',
+    ];
+    
+    // ========================================
+    // CONDITIONAL TIME SYSTEM BLOCK
+    // ========================================
+    if (time) {
+        let timeStepCounter = 1;
+        systemMessageContent.push(
+            '',
+            '# ⏰ TIME SYSTEM',
+            '',
+            '## Understanding Time Data',
+            '**You will receive current time data in a separate message. This section explains how to interpret and use it.**',
+            '',
+            `**${timeStepCounter}. Clock Time**: Standard 12-hour format with AM/PM`,
+            `**${timeStepCounter + 1}. Time Period**: Named period (morning, afternoon, evening, night, dawn, dusk, etc.)`,
+            `**${timeStepCounter + 2}. Sun Position Indicator**: Bar graph showing sun\'s position relative to horizon`,
+            `**${timeStepCounter + 3}. Outdoor Light Level**: Perceptual brightness indicator (0-10 scale)`,
+            '',
+            '### Sun Position Bar Graph',
+            '```',
+            'Format: [rising ████████│░░░░░░░░ setting] or [rising ░░░░░░░░│████████ setting]',
+            '        └── 8 bars ──┼── 8 bars ──┘',
+            '',
+            'How it works:',
+            '• Left side  = Sunrise to Midday (fills left→right, logarithmic)',
+            '• Separator  = Midday transition point (sun at zenith)',
+            '• Right side = Midday to Sunset (empties left→right, reverse logarithmic)',
+            '',
+            'Perceptual scaling:',
+            '• Near horizon: Bars change QUICKLY (sun visibly rising/setting)',
+            '• Near zenith: Bars change SLOWLY (sun appears to "hang" at peak)',
+            '',
+            'Examples:',
+            '  [░░░░░░░░│░░░░░░░░] 0%   = Pre-dawn or Night',
+            '  [███░░░░░│░░░░░░░░] 35%  = Early sunrise',
+            '  [██████░░│░░░░░░░░] 75%  = Mid-morning',
+            '  [████████│░░░░░░░░] 100% = Noon (zenith)',
+            '  [░░░░░░░░│████████] 95%  = Just past noon',
+            '  [░░░░░░░░│░░░█████] 70%  = Mid-afternoon',
+            '  [░░░░░░░░│░░░░░░██] 40%  = Late afternoon',
+            '  [░░░░░░░░│░░░░░░░█] 10%  = Sunset',
+            '```',
+            '',
+            '### Outdoor Light Level Bar Graph',
+            '```',
+            'Format: ██████░░░░ (6/10 brightness)',
+            '',
+            'Factors considered:',
+            '• Sun position (primary factor)',
+            '• Cloud cover (if weather enabled - reduces brightness)',
+            '• Solar radiation (if weather enabled)',
+            '• Season (winter darker, summer brighter)',
+            '',
+            'Scale:',
+            '  ░░░░░░░░░░ (0/10) = Complete darkness',
+            '  ███░░░░░░░ (3/10) = Twilight/Dawn',
+            '  ██████░░░░ (6/10) = Overcast day',
+            '  ██████████ (10/10) = Bright sunny midday',
+            '```',
+            '',
+            '## How to Use Time Data',
+            '**When time data is provided, you MUST integrate it:**',
+            '',
+            `**${timeStepCounter}. Identify time markers** - Extract period name (night, morning, etc.)`,
+            `**${timeStepCounter + 1}. Interpret sun position** - Understand where sun is in sky`,
+            `**${timeStepCounter + 2}. Apply lighting** - Use outdoor light level to determine brightness`,
+            `**${timeStepCounter + 3}. Add time markers** - Include explicit tags: "night", "daytime", "dawn", "dusk", "evening", "morning"`,
+            `**${timeStepCounter + 4}. Create visual lighting** - Transform light level into scene lighting descriptions`,
+            '',
+            '**Translation Examples:**',
+            '• Light level: 0/10, Period: night → "nighttime, complete darkness, no sky lighting, deep shadows, only artificial lights visible"',
+            '• Light level: 9/10, Period: afternoon → "bright daylight, harsh sunlight, clear visibility"',
+            '• Light level: 4/10, Period: dusk → "fading twilight, dimming light, soft shadows"',
+            '• Perceivable light: 35% (sunrise transition) → "early sunrise, rapidly brightening, golden light emerging"',
+            '',
+            '**CRITICAL - Night Lighting Rules:**',
+            '• Light level 0/10 (night) = **NO SKY LIGHTING** - Zero natural illumination from sky',
+            '• Sun is below horizon - contributes ZERO light to scene',
+            '• Only artificial light sources (streetlights, windows, signs) or celestial bodies (moon/stars if visible)',
+            '• Sky itself provides NO ambient lighting - complete darkness overhead',
+            '• Even with clear sky and moon: describe as "dark night, moonlight illuminating scene, no ambient sky glow"',
+            '',
+        );
+    }
+    
+    // ========================================
+    // CONDITIONAL WEATHER SYSTEM BLOCK
+    // ========================================
+    if (weather) {
+        let weatherStepCounter = 1;
+        systemMessageContent.push(
+            '',
+            '# 🌦️ WEATHER SYSTEM',
+            '',
+            '## Weather Station LCD Display',
+            '**You will receive weather readings in a separate message. Imagine you\'re reading a portable weather station LCD display with bar graphs and alphanumeric readings.**',
+            '',
+            '### Display Components',
+            '• **Bar graphs**: Visual indicators using █ (filled) and ░ (empty) characters',
+            '• **Alphanumeric readings**: Temperature (°C), wind speed (km/h), condition name, snow depth (cm when present)',
+            '• **Character-relative wind**: Direction relative to character facing north (left/right/facing/behind)',
+            '',
+            '### Alphanumeric Readings',
+            '',
+            '**TEMPERATURE**: Feels-like temperature in °C',
+            '• Example: "18°C" = cool, "30°C" = hot, "-5°C" = freezing',
+            '',
+            '**CONDITION**: Weather condition name',
+            '• Examples: "clear sky", "overcast", "rain", "snow", "fog", "thunderstorm"',
+            '',
+            '**WIND**: Speed in km/h + character-relative direction',
+            '• Speed examples: "5 km/h" = gentle breeze, "25 km/h" = strong wind, "50 km/h" = gale',
+            '• Direction: "left", "right", "facing", "behind", or "unknown" (relative to character facing north)',
+            '',
+            '**SNOW DEPTH** (conditional - only shown when snow is present):',
+            '• Numeric value in centimeters showing accumulated snow on ground',
+            '• Examples: "5cm" = light coating, "15cm" = moderate accumulation, "30cm" = heavy snowpack',
+            '• Visual effects: Deeper snow affects movement, covers surfaces, requires heavier winter clothing',
+            '',
+            '### Bar Graph Scales',
+            '',
+            '**Cloud Coverage** (10 bars):',
+            '• ░░░░░░░░░░ (0) = Clear sky (0%)',
+            '• █████░░░░░ (5) = Partly cloudy (50%)',
+            '• ██████████ (10) = Completely overcast (100%)',
+            '',
+            '**Visibility** (10 bars):',
+            '• ░░░░░░░░░░ (0) = Heavy fog (<1km)',
+            '• █████░░░░░ (5) = Moderate (~5km)',
+            '• ██████████ (10) = Excellent (10km+)',
+            '',
+            '**Solar Radiation** (12 bars) - UV Index scale:',
+            '• ░░░░░░░░░░░░ (0) = Night/no sun',
+            '• ██████░░░░░░ (6) = Moderate sun',
+            '• ████████████ (12) = Extreme sun',
+            '',
+            '**Humidity** (10 bars) - Only shown when temperature ≥25°C:',
+            '• ░░░░░░░░░░ (0) = Dry (0%)',
+            '• █████░░░░░ (5) = Moderate (50%)',
+            '• ██████████ (10) = Saturated (100%)',
+            '',
+            '**Precipitation** (15 bars) - Logarithmic scale, 0-30mm/hr max:',
+            '• ░░░░░░░░░░░░░░░ (0) = No precipitation',
+            '• ███░░░░░░░░░░░░ (3) = Light drizzle (~1mm/hr)',
+            '• ████████░░░░░░░ (8) = Light rain (~5mm/hr)',
+            '• ████████████░░░ (12) = Moderate rain (~15mm/hr)',
+            '• ███████████████ (15) = Heavy rain (~30mm/hr)',
+            '',
+            '⚠️ **Perceptual Scale**: Small differences at low levels feel significant, large differences at high levels feel similar',
+            '',
+            '## How to Use Weather Data',
+            '**When weather data is provided, you MUST integrate it:**',
+            '',
+            `**${weatherStepCounter}. Read the LCD display** - Parse all sensor readings (bars and numeric values)`,
+            `**${weatherStepCounter + 1}. Identify scene type** - INDOOR, OUTDOOR, or MIXED (critical decision)`,
+            `**${weatherStepCounter + 2}. Transform to visuals** - Convert readings into atmospheric descriptions`,
+            `**${weatherStepCounter + 3}. Add weather markers** - Include explicit tags: "clear sky", "overcast", "rain", "snow", "cloudy", "sunny"`,
+            `**${weatherStepCounter + 4}. Apply to characters** - Show physical responses (sweating, shivering, wind effects)`,
+            '',
+            '⚠️ **NEVER copy readings verbatim** - Transform "18°C, overcast" into "cool air, cloudy sky, diffused lighting"',
+            '',
+            '### Scene Type Framework',
+            '**INDOOR**: Weather affects indirectly (through windows, temperature, condensation)',
+            '• Example: "rain visible through window panes, cool air near glass"',
+            '',
+            '**OUTDOOR**: Weather affects directly (wetness, wind, temperature on skin)',
+            '• Example: "rain-slicked surfaces, wind tousling hair, cool droplets on skin"',
+            '',
+            '**MIXED**: Contextual application (direct for outdoor areas, indirect for indoor)',
+            '• Example: "rain blowing through doorway, wet footprints on indoor floor"',
+            '',
+        );
+    }
+    
+    // ========================================
+    // CONDITIONAL INTEGRATION FRAMEWORK
+    // ========================================
+    if (time || weather) {
+        let integrationStepCounter = 1;
+        systemMessageContent.push(
+            '',
+            '# 🔗 INTEGRATION FRAMEWORK',
+            '',
+            `## ${time && weather ? 'Combined Time & Weather Integration' : time ? 'Time Integration' : 'Weather Integration'}`,
+            ''
+        );
+        
+        if (time && weather) {
+            systemMessageContent.push(
+                '**When both time and weather data are provided, they work together:**',
+                '',
+                `**${integrationStepCounter}. Analyze time context** - Period, sun position, light level`,
+                `**${integrationStepCounter + 1}. Analyze weather context** - Conditions, readings, scene type`,
+                `**${integrationStepCounter + 2}. Check interactions** - Does weather affect lighting? (clouds reduce light level)`,
+                `**${integrationStepCounter + 3}. Combine markers** - "night + overcast" or "daytime + clear sky"`,
+                `**${integrationStepCounter + 4}. Create unified visuals** - Integrate both into cohesive atmosphere`,
+                '',
+                '**Examples:**',
+                '• Night (0/10 light) + Rain + Overcast → "dark rainy night, no sky lighting, wet pavement reflecting streetlights, heavy clouds blocking any celestial light"',
+                '• Afternoon (9/10 light) + Clear + Hot → "bright sunny afternoon, harsh sunlight, heat shimmer, clear sky"',
+                '• Dawn (4/10 light) + Fog + Cool → "misty dawn, diffused sunrise light, fog layers, cool morning air"',
+                ''
+            );
+        } else if (time) {
+            systemMessageContent.push(
+                '**Time integration requirements:**',
+                '',
+                `**${integrationStepCounter}. Add time markers** - Explicit period tags in prompt`,
+                `**${integrationStepCounter + 1}. Apply lighting** - Match brightness to light level indicator`,
+                `**${integrationStepCounter + 2}. Show time effects** - Morning freshness, evening calm, night darkness`,
+                `**${integrationStepCounter + 3}. Adjust atmosphere** - Time-appropriate mood and energy`,
+                ''
+            );
+        } else if (weather) {
+            systemMessageContent.push(
+                '**Weather integration requirements:**',
+                '',
+                `**${integrationStepCounter}. Add weather markers** - Explicit condition tags in prompt`,
+                `**${integrationStepCounter + 1}. Apply physical effects** - Wetness, wind, temperature responses`,
+                `**${integrationStepCounter + 2}. Show environmental impact** - Scene modifications from weather`,
+                `**${integrationStepCounter + 3}. Character responses** - Physical reactions to conditions`,
+                ''
+            );
+        }
+        
+        systemMessageContent.push(
+            '## Weather Element Integration',
+            '',
+            '⚠️ **CRITICAL: These are CONCEPTUAL GUIDELINES - NEVER copy this text verbatim into text_replacements!**',
+            '**Transform these concepts into natural, flowing descriptions. The bullet points below are FOR YOUR UNDERSTANDING, not for direct insertion.**',
+            '',
+            '### 🌡️ Temperature Quick Reference',
+            '**<0°C:** Frost, ice, visible breath (critical), shivering, winter clothing',
+            '**0-10°C:** Dew, breath vapor <5°C, light shivering, jackets/layers',
+            '**10-18°C:** Comfortable, no stress, light layers',
+            '**18-25°C:** Pleasant, light clothing, relaxed',
+            '**25-32°C:** Light sweating, seeking shade, flushed skin. High humidity = sticky/clinging',
+            '**32-40°C:** Heavy sweating, heat shimmer, exhausted, minimal clothing. Heavier builds sweat MORE',
+            '**>40°C:** Profuse sweating, heat exhaustion, dangerous conditions',
+            '',
+            '### Other Weather Elements',
+            '**Wind:** Hair movement (direction aware), clothing billowing/fluttering, debris in motion, wind chill effect. Use `1.3-1.5::` emphasis',
+            '**Humidity (≥25°C):** <40% dry, 40-60% normal, 60-80% sticky/clinging, >80% oppressive/soaked',
+            '**Precipitation:** Wet surfaces, dripping water, puddles, rain-darkened materials. Use `2.0::` for heavy rain',
+            '**Solar:** Strong shadows, squinting, bright colors, seeking shade',
+            '**Visibility:** Fog obscures distances, muted colors, soft focus',
+            '',
+            '## Body Type & Scene Context',
+            '**Heavier:** More sweat in heat | **Slender:** More wind chill | **Muscular:** More heat generation',
+            '**Indoor:** Indirect effects (windows, temperature) | **Outdoor:** Direct effects | **Mixed:** Contextual',
+            '',
+            '## Translation Examples',
+            '**Transform readings into natural descriptions - DON\'T copy verbatim:**',
+            '• 18°C + Overcast → "cool air, cloudy sky, diffused lighting"',
+            '• 30°C + High humidity → "oppressive humid heat, sweat glistening on skin"',
+            '',
+            '**Strong Tokens:** condensation:9.6, shimmer:9.53, dawn:9.4, humid:9.36, breeze:9.3, damp:9.28, sweat:9.18',
+            '',
+        );
+    }
+    
+    systemMessageContent.push(
         // ========================================
         // TEXT REPLACEMENT SYSTEM REFERENCE
         // ========================================
@@ -7119,7 +8491,7 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**Required fields**:',
         '• `select_text`: EXACT unique text to find (MUST appear only ONCE - see Uniqueness Rules below)',
         '• `replace_text`: New text to use (REQUIRED - cannot be empty)',
-        '• `reason`: Why this change was made (1-2 sentences)',
+        '• `reason`: Why this change was made (short sentence)',
         '• `reason_display`: Short UI summary (2-5 words)',
         '• `replacement_category`: Category enum from allowed list (see Category Reference below)',
         '',
@@ -7129,8 +8501,13 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '• Verify text exists BEFORE creating replacement',
         '',
         '**Example**:',
-        '```json',
-        '{"select_text": "city street", "replace_text": "rainy city street at dusk", "action": "replace", "reason": "Add weather and time to match context", "reason_display": "Weather/Time", "replacement_category": "Weather"}',
+        '```',
+        'select_text: "city street"',
+        'replace_text: "rainy city street at dusk"',
+        'action: "replace"',
+        'reason: "Add weather and time to match context"',
+        'reason_display: "Weather/Time"',
+        'replacement_category: "Weather"',
         '```',
         '',
         '---',
@@ -7141,14 +8518,12 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**TWO MODES**:',
         '',
         '**MODE 1: Append to END of prompt (MOST COMMON)**',
-        '```json',
-        '{',
-        '  "replace_text": "photorealistic autumn cityscape background",',
-        '  "action": "append",',
-        '  "reason": "Add missing background detail to complete scene",',
-        '  "reason_display": "Add background",',
-        '  "replacement_category": "Enhancement"',
-        '}',
+        '```',
+        'replace_text: "photorealistic autumn cityscape background"',
+        'action: "append"',
+        'reason: "Add missing background detail to complete scene"',
+        'reason_display: "Add background"',
+        'replacement_category: "Enhancement"',
         '```',
         '⚠️ **CRITICAL REQUIREMENTS:**',
         '• **`replace_text` MUST have actual content** - cannot be empty',
@@ -7157,50 +8532,43 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '✅ CORRECT: No `select_text` field, and `replace_text` has content',
         '',
         '**MODE 2: Append AFTER specific text**',
-        '```json',
-        '{',
-        '  "select_text": "soft focus, dutch angle",',
-        '  "replace_text": ", dim twilight illumination",',
-        '  "action": "append",',
-        '  "reason": "Add lighting specification after composition details",',
-        '  "reason_display": "Add lighting",',
-        '  "replacement_category": "Lighting"',
-        '}',
+        '```',
+        'select_text: "soft focus, dutch angle"',
+        'replace_text: ", dim twilight illumination"',
+        'action: "append"',
+        'reason: "Add lighting specification after composition details"',
+        'reason_display: "Add lighting",',
+        'replacement_category: "Lighting"',
         '```',
         '⚠️ **CRITICAL REQUIREMENTS:**',
         '• **`replace_text` MUST have actual content** - cannot be empty',
         '• **Include `select_text`** ONLY when inserting after specific text',
         '',
-        '**🚨 CRITICAL APPEND REQUIREMENT:**',
-        '**`replace_text` MUST contain actual content - empty string is INVALID**',
+        '**Append Requirement**: `replace_text` must have actual content (empty string is invalid).',
         '',
-        '```json',
-        '// ❌ INVALID - empty replace_text:',
-        '{"action": "append", "replace_text": "", "reason": "...", "reason_display": "..."}',
-        '{"select_text": "text", "replace_text": "", "action": "append", "reason": "...", "reason_display": "..."}',
-        '// Problem: Nothing to append',
-        '',
-        '// ✅ VALID - actual content:',
-        '{"action": "append", "replace_text": "bright daylight, sunny", "reason": "Add time and weather", "reason_display": "Time/Weather", "replacement_category": "Weather"}',
-        '{"select_text": "text", "replace_text": ", additional content", "action": "append", "reason": "Add detail", "reason_display": "Add detail", "replacement_category": "Enhancement"}',
-        '// Solution: Provide the content to add AND required fields',
-        '```',
-        '',
-        '**If you want to add nothing, don\'t create the replacement at all.**',
+        '**If adding nothing, skip the replacement entirely.**',
         '',
         '---',
         '',
         '### 🗑️ DELETE - Remove Text',
-        '**When to use**: Remove conflicting elements (use sparingly - if unsure, skip)',
+        '**When to use**: Remove duplicate text or unnecessary elements',
+        '• Removing duplicate tags',
+        '• Removing unnecessary filler text',
+        '• Removing completely irrelevant elements',
+        '',
+        '**⚠️ DO NOT DELETE Protected Tags:**',
+        '• Style tags (realistic, anime, etc.) - unless explicitly asked to change style',
+        '• Composition tags (solo, 1girl, portrait, etc.) - unless explicitly changing composition',
+        '• Camera/perspective tags (looking at viewer, from above, etc.) - unless explicitly asked',
         '',
         '**Required fields**:',
         '• `select_text`: EXACT unique text to remove (REQUIRED)',
         '• `action`: "delete"',
-        '• `reason`: Why this text needs removal (1-2 sentences)',
+        '• `reason`: Why this text needs removal (short sentence)',
         '• `reason_display`: Short UI summary (2-5 words)',
         '• `replacement_category`: Category enum from allowed list (see Category Reference below)',
         '',
-        '**Note**: `replace_text` should be omitted or empty for DELETE action',
+        '**CRITICAL**: For DELETE action, `replace_text` should be omitted entirely (do not include the field at all). For REPLACE/APPEND actions, `replace_text` is REQUIRED and must be a non-empty string.',
         '',
         '**Optional fields**:',
         '• `count`: Number of occurrences to remove (if omitted, removes ALL)',
@@ -7211,12 +8579,16 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '⚠️ **Check existence first** - text may have been deleted in previous attempt',
         '',
         '**Examples**:',
-        '```json',
+        '```',
         '// Remove first occurrence only',
-        '{"select_text": "big belly", "action": "delete", "count": 1, "reason": "Conflicts with directive requirements", "reason_display": "Remove conflict", "replacement_category": "Conflict Resolution", "is_critical": true}',
+        'select_text: "big belly", action: "delete", count: 1',
+        'reason: "Conflicts with directive requirements", reason_display: "Remove conflict"',
+        'replacement_category: "Conflict Resolution", is_critical: true',
         '',
         '// Remove all occurrences - mark non-critical if might not exist',
-        '{"select_text": "exposed stomach", "action": "delete", "reason": "Conflicts with clothing description", "reason_display": "Remove conflict", "replacement_category": "Conflict Resolution", "is_critical": false}',
+        'select_text: "exposed stomach", action: "delete"',
+        'reason: "Conflicts with clothing description", reason_display: "Remove conflict"',
+        'replacement_category: "Conflict Resolution", is_critical: false',
         '```',
         '',
         '---',
@@ -7254,21 +8626,11 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '',
         '## 📋 Required Fields Reference',
         '',
-        '**EVERY replacement MUST include these REQUIRED fields**:',
+        '**Required Fields for Every Replacement**:',
         '',
-        '**`reason`** (REQUIRED - string):',
-        '• Full explanation of WHY this change was made (1-2 sentences)',
-        '• Be specific about the purpose',
-        '• Example: "Add autumn weather effects to match season and enhance atmosphere"',
-        '',
-        '**`reason_display`** (REQUIRED - string):',
-        '• Very short version for UI display (2-5 words maximum)',
-        '• Concise summary of the reason',
-        '• Example: "Autumn weather"',
-        '',
-        '**`replacement_category`** (REQUIRED - enum):',
-        '• See "Replacement Category Reference" section below for complete list and usage',
-        '• MUST be exactly one of the allowed category values',
+        '**`reason`** (string): Why this change was made (short sentence)',
+        '**`reason_display`** (string): Short UI summary (2-5 words max)',
+        '**`replacement_category`** (enum): One category from the approved list below',
         '',
         '**Optional fields for advanced fallback handling**:',
         '',
@@ -7297,116 +8659,220 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '',
         '**EVERY replacement MUST specify exactly ONE category from this enum:**',
         '',
+        '### 🔍 Category Selection & Validation',
+        '',
+        '**PURPOSE**: Categories are for display/tracking purposes - they help organize and understand modifications.',
+        '**NOTE**: Weather and Time of Day often work hand-in-hand when both data sources are provided.',
+        '',
+        '**VALIDATION RULES - YOUR RESPONSE WILL BE REJECTED IF YOU VIOLATE THESE:**',
+        '',
+        '❌ **INVALID**: Missing category field',
+        '❌ **INVALID**: Empty category string',
+        '❌ **INVALID**: Category not in approved list',
+        '❌ **INVALID**: Using "Directive" when specific category exists',
+        '❌ **INVALID**: Using "Text Overlay" when no ", Text:" boundary exists',
+        '❌ **INVALID**: Using "Spelling" for content changes (not just typos)',
+        '',
         '### Core Categories',
         '',
-        '**"Weather"**',
-        '• Adding/modifying weather conditions (rain, snow, clouds, clear, fog, etc.)',
-        '• Weather-related atmospheric effects (mist, haze, precipitation)',
-        '• Weather markers and descriptions',
-        '• Example: Adding "overcast sky" or replacing "sunny" with "rainy"',
+        '**"Weather"** 🌦️',
+        '• ✅ PRIMARY USE: Weather conditions (rain, snow, clouds, clear sky, fog, storms)',
+        '• ✅ Weather effects on environment (mist, haze, precipitation, wind)',
+        '• ✅ Sky states and weather markers (does not apply at night, could cover will effect if moon and stars are visible)',
+        '• 📝 Note: Often combined with Time of Day when both data sources provided',
+        '• Examples: "overcast sky, light drizzle" | "clear sky" | "foggy"',
         '',
-        '**"Time of Day"**',
-        '• Adding/modifying time-specific elements (dawn, dusk, night, day, etc.)',
-        '• Time-related lighting (morning light, evening shadows, nighttime darkness)',
-        '• Time markers and descriptions',
-        '• Example: Adding "nighttime" or replacing "daylight" with "twilight"',
+        '**"Time of Day"** 🕐',
+        '• ✅ PRIMARY USE: Temporal markers (dawn, dusk, night, day, morning, afternoon, twilight)',
+        '• ✅ Time-specific lighting characteristics (morning light, evening glow, nighttime darkness)',
+        '• ✅ Solar position indicators and day-night cycle references',
+        '• 📝 Note: Weather influences time lighting (e.g., overcast dawn is dimmer than clear dawn)',
+        '• Examples: "night" | "twilight" | "morning"',
         '',
-        '**"Lighting"**',
-        '• Light quality and characteristics (soft, harsh, diffused, dramatic)',
-        '• Light sources (streetlights, moonlight, artificial lights)',
-        '• Lighting effects (shadows, highlights, glow, reflections)',
-        '• Example: Adding "dim lighting" or "dramatic shadows"',
+        '**"Lighting"** 💡',
+        '• ✅ PRIMARY USE: Light quality/character (soft, harsh, diffused, dramatic, dim, bright)',
+        '• ✅ Artificial light sources (streetlights, lamps, candles, neon)',
+        '• ✅ Light phenomena (shadows, highlights, glow, reflections, rays)',
+        '• 📝 Note: Use this for artificial/artistic lighting, not time-based natural light',
+        '• Examples: "dim lighting, dramatic shadows, dark" | "soft diffused glow" | "neon lights"',
         '',
-        '**"Atmosphere"**',
-        '• General atmospheric qualities (moody, serene, tense, peaceful)',
-        '• Environmental mood and ambiance',
-        '• Sensory details (cool air, humid atmosphere, crisp conditions)',
-        '• Example: Adding "cool evening air" or "tense atmosphere"',
+        '**"Atmosphere"** 🎭',
+        '• ✅ PRIMARY USE: Emotional mood/tone of scene (moody, serene, tense, peaceful, mysterious)',
+        '• ✅ Non-visual sensory mood indicators (cool air feeling, heavy stillness)',
+        '• 📝 Note: This is the emotional/perceptual layer influenced by weather and time',
+        '• Examples: "tense atmosphere" | "serene mood" | "dark ambiance"',
         '',
         '**"Seasonal"**',
-        '• Season-specific elements (autumn leaves, winter snow, spring blooms)',
-        '• Seasonal characteristics and markers',
-        '• Seasonal environmental details',
+        '• ✅ Season-specific elements (autumn leaves, winter snow, spring blooms)',
+        '• ✅ Seasonal characteristics and markers',
+        '• ✅ Seasonal environmental details',
+        '• ❌ NOT for: Holiday decorations, weather conditions, time elements',
         '• Example: Adding "autumn foliage" or "winter frost"',
         '',
         '**"Holiday"**',
-        '• Holiday-specific decorations or elements',
-        '• Festive atmosphere and details',
-        '• Holiday markers',
+        '• ✅ Holiday-specific decorations or elements',
+        '• ✅ Festive atmosphere and details',
+        '• ✅ Holiday markers',
+        '• ❌ NOT for: Seasonal elements, weather, general atmosphere',
         '• Example: Adding "Christmas lights" or "Halloween decorations"',
         '',
         '### Content Refinement Categories',
         '',
         '**"Enhancement"**',
-        '• General quality improvements to existing descriptions',
-        '• Adding detail or specificity to vague terms',
-        '• Enriching character, object, or scene descriptions',
+        '• ✅ General quality improvements to existing descriptions',
+        '• ✅ Adding detail or specificity to vague terms',
+        '• ✅ Enriching character, object, or scene descriptions',
+        '• ❌ NOT for: Weather, time, lighting, atmosphere, seasonal changes',
         '• Example: "city" → "bustling modern city" or adding "detailed background"',
         '',
         '**"Action Verbs"**',
-        '• Modifying character actions and poses',
-        '• Adding or changing action descriptions',
-        '• Refining movement and gesture details',
+        '• ✅ Modifying character actions and poses',
+        '• ✅ Adding or changing action descriptions',
+        '• ✅ Refining movement and gesture details',
+        '• ❌ NOT for: Weather, lighting, atmosphere, general enhancements',
         '• Example: "standing" → "standing confidently" or "walking" → "striding purposefully"',
         '',
         '**"Text Overlay"**',
-        '• **CRITICAL RULE**: ONLY use this category if ", Text:" already exists in the prompt',
-        '• **ABSOLUTELY DO NOT** add new ", Text:" sections to the prompt yourself',
-        '• This category is ONLY for modifying existing text that appears after ", Text:" boundary',
-        '• **AI Text Generation Placeholders**: If you see placeholder text like `[SPEECH_TEXT_INSERT]`, `[THOUGHT_TEXT_INSERT]`, or `[CAPTION_TEXT_INSERT]`:',
+        '• 🚨 **CRITICAL RULE**: ONLY use this category if ", Text:" already exists in the prompt',
+        '• 🚨 **ABSOLUTELY DO NOT** add new ", Text:" sections to the prompt yourself',
+        '• ✅ This category is ONLY for modifying existing text that appears after ", Text:" boundary',
+        '• ✅ **AI Text Generation Placeholders**: If you see placeholder text like `[SPEECH_TEXT_INSERT]`, `[THOUGHT_TEXT_INSERT]`, or `[CAPTION_TEXT_INSERT]`:',
         '  - This IS an existing ", Text:" section that you SHOULD modify',
         '  - Replace the ENTIRE placeholder (including brackets) with 1-2 SHORT sentences of contextually appropriate text',
-        '  - **MAXIMUM 20 WORDS** - Keep it extremely concise',
+        '  - **CRITICAL LENGTH LIMITS**:',
+        '    • **MAXIMUM ~15 WORDS PER SENTENCE** - Keep each sentence very brief',
+        '    • Use `<br>` to add newlines and separate sentences into different speech boxes',
+        '    • Total should be 1-2 sentences maximum',
+        '    • Note: `<br>` represents a single newline (\\n) and can be used anywhere in prompts',
         '  - **DO NOT wrap the generated text in quotation marks** - raw text only',
+        '  - **NO COLORFUL EMOJIS** - Do not use colorful emojis (😊🎉💕❌) in text overlays. Simple text emoticons like ^_^ or :D are acceptable',
         '  - **USE the creative directive story** to generate contextually appropriate text',
-        '  - For SPEECH: Natural brief text the character would say based on directive story',
+        '  - For SPEECH: Natural brief dialogue the character would say based on directive story',
         '  - For THOUGHT: Short internal thought or contemplation based on directive',
         '  - For CAPTION/SUBTITLE: Brief narration or scene description based on directive',
-        '  - Examples: I can\'t believe how much they\'ve grown!\n\n The rain feels nice on my skin.',
+        '  ',
+        '  **Examples:**',
+        '  ```',
+        '  ✅ GOOD - Concise with line break:',
+        '  "You HAVE to read \'The Fragrant Flower Blooms With Dignity\'!<br>The romance is amazing!"',
+        '  → Two sentences, on topic, <br> adds newline for separate speech boxes',
+        '  ',
+        '  ✅ GOOD - Single short sentence:',
+        '  "I can\'t believe how much they\'ve grown!"',
+        '  → One sentence, 7 words, fits in single box',
+        '  ',
+        '  ✅ GOOD - Double spacing for emphasis:',
+        '  "Wait...<br><br>Are you serious right now?"',
+        '  → Two <br> tags create double newline (blank line) for dramatic pause',
+        '  ',
+        '  ❌ BAD - Too long, no breaks:',
+        '  "Omg, you HAVE to read \'The Fragrant Flower Blooms With Dignity\'! It\'s like Romeo and Juliet but with rival schools and hilarious drama – the romance and laughs are next level, bestie!"',
+        '  → Way too long (35+ words), no <br> breaks, won\'t fit in speech boxes',
+        '  ',
+        '  ❌ BAD - Over 10 words per sentence:',
+        '  "The weather has been absolutely perfect for outdoor activities and relaxation today!"',
+        '  → Too verbose, should be simpler',
+        '  ',
+        '  ❌ BAD - Contains colorful emojis:',
+        '  "Dude, government shutdown\'s causing flight cuts at like 40 airports – controllers unpaid, total chaos! So stressful, hope it gets fixed soon 😩"',
+        '  → Contains emoji (😩) which is forbidden. Use text emoticons instead: "So stressful >_<"',
+        '  ```',
+        '  ',
+        '  **General <br> Usage:**',
+        '  • `<br>` = single newline (\\n) - use for line breaks anywhere in prompts',
+        '  • Can stack for multiple newlines: `<br><br>` = blank line',
+        '  • Works in all prompt fields (prompt, UC, character prompts, text overlays)',
         '• Note: This is one of only TWO categories allowed to modify text after ", Text:" boundary',
         '',
         '**"Spelling"**',
-        '• Correcting typos and spelling errors',
-        '• Fixing grammatical mistakes',
+        '• ✅ Correcting typos and spelling errors',
+        '• ✅ Fixing grammatical mistakes',
+        '• ❌ NOT for: Content changes, enhancements, or modifications',
         '• Note: This is one of only TWO categories allowed to modify text after ", Text:"',
         '',
         '### Special Categories',
         '',
         '**"Conflict Resolution"**',
-        '• Removing elements that conflict with weather/time/season/directive',
-        '• Deleting contradictory descriptions',
-        '• Resolving incompatible elements',
-        '• Example: Removing "bright sunlight" when time is nighttime',
+        '• ✅ Removing/changing elements that conflict with weather/time/season/directive',
+        '• ✅ Replacing contradictory descriptions',
+        '• ✅ Resolving incompatible elements using Three-Step Process (REPLACE + UC + negative emphasis)',
+        '• ❌ NOT for: General deletions or non-conflicting changes',
+        '• ⚠️ DO NOT remove style/composition tags (realistic, solo, etc.) unless explicitly requested',
+        '• Example: Changing "bright sunlight" to "moonlight" when time is nighttime (with UC addition + negative emphasis as hard blocker)',
         '',
         '**"Directive"**',
-        '• **ONLY use when user directive requests something that doesn\'t fit other categories**',
-        '• Changes specifically requested by creative directive',
-        '• Should be used sparingly - prefer specific categories when possible',
-        '• **CRITICAL**: Do NOT add ", Text:" sections from directive stories - text overlays are explicit user features',
-        '• **CRITICAL**: Stories in directive are for context/mood - NOT for creating overlay text',
+        '• 🚨 **ONLY use when user directive requests something that doesn\'t fit other categories**',
+        '• ✅ Changes specifically requested by creative directive',
+        '• ✅ Should be used sparingly - prefer specific categories when possible',
+        '• 🚨 **CRITICAL**: Do NOT add ", Text:" sections from directive stories - text overlays are explicit user features',
+        '• 🚨 **CRITICAL**: Stories in directive are for context/mood - NOT for creating overlay text',
         '• Example: User says "make her hat bigger" and hat modifications don\'t fit other categories',
         '',
-        '**Category Selection Rules:**',
-        '1. Always prefer the MOST SPECIFIC category',
-        '2. Weather/time/lighting/atmosphere take priority over "Enhancement"',
-        '3. Only use "Directive" when no other category fits the user\'s request',
-        '4. Only "Spelling" and "Text Overlay" can modify text after ", Text:" boundary',
+        '### 🎯 Quick Category Selection Guide',
+        '',
+        '**When you\'re unsure which category to use, ask these questions in order:**',
+        '',
+        '1. **Is it precipitation/clouds/sky condition?** → Weather',
+        '2. **Is it dawn/dusk/night/morning/afternoon?** → Time of Day',
+        '3. **Is it artificial light or light quality?** → Lighting',
+        '4. **Is it the emotional mood/tone?** → Atmosphere',
+        '5. **Is it season-specific visual elements?** → Seasonal',
+        '6. **Is it holiday decorations?** → Holiday',
+        '7. **Is it character action/pose?** → Action Verbs',
+        '8. **Is it removing a conflict?** → Conflict Resolution',
+        '9. **Is it general quality improvement?** → Enhancement',
+        '10. **Is it user-requested and none above fit?** → Directive',
+        '',
+        '**Practical Examples:**',
+        '• "rainy night" → You need TWO replacements: one for "rainy" (Weather), one for "night" (Time of Day)',
+        '• "dim twilight" → You need TWO: "dim" (Lighting), "twilight" (Time of Day)',
+        '• "overcast mood" → You need TWO: "overcast" (Weather), "moody feeling" (Atmosphere)',
+        '• "autumn rain" → You need TWO: "rain" (Weather), "autumn elements" (Seasonal)',
+        '',
+        '**Remember**: Categories are for organization/display - pick the MOST RELEVANT primary purpose.',
+        '',
+        '**Category Selection Rules - FOLLOW THESE OR YOUR RESPONSE IS INVALID:**',
+        '1. 🥇 Always prefer the MOST SPECIFIC category (Weather over Enhancement)',
+        '2. 🥈 Weather/Time/Lighting/Atmosphere take priority over "Enhancement"',
+        '3. 🥉 Only use "Directive" when NO other category fits the user\'s request',
+        '4. 🚫 Only "Spelling" and "Text Overlay" can modify text after ", Text:" boundary',
+        '5. 🚫 Never use categories for changes they explicitly forbid',
+        '',
+        '### Category Validation Examples',
+        '',
+        '**✅ CORRECT Usage:**',
+        '• Weather condition change → "Weather"',
+        '• Time-specific lighting → "Time of Day"',
+        '• Light quality adjustment → "Lighting"',
+        '• Mood/ambient change → "Atmosphere"',
+        '• Seasonal element → "Seasonal"',
+        '• Holiday decoration → "Holiday"',
+        '• General improvement → "Enhancement"',
+        '• Action modification → "Action Verbs"',
+        '• Removing conflicts → "Conflict Resolution"',
+        '• Specific user request → "Directive" (only when no other fits)',
+        '',
+        '**❌ INCORRECT Usage (will be rejected):**',
+        '• Weather change using "Enhancement" → Use "Weather"',
+        '• Lighting change using "Atmosphere" → Use "Lighting"',
+        '• General change using "Directive" → Use specific category',
+        '• Text overlay creation → Never create ", Text:" yourself',
         '',
         '---',
         '',
         '## 🎯 Integration Strategy',
         '',
-        '**REPLACE when possible (smart enhancement)**:',
-        '• Object: "espresso" → "espresso with condensation"',
-        '• Setting: "city" → "city sidewalk at dusk"',
-        '• Character: "detailed face" → "detailed face with moisture"',
-        '• Lighting: "realistic lighting" → "diffused twilight"',
+        '**REPLACE with Enhancement** (smart approach):',
+        '• "espresso" → "espresso with condensation"',
+        '• "city" → "1.3::rainy city streets::" (with emphasis)',
+        '• "realistic lighting" → "1.5::diffused twilight lighting::"',
         '',
-        '**APPEND for new concepts**:',
-        '• Atmospheric effects not in original',
-        '• Multiple weather/time enhancements',
-        '• Background elements',
-        '• Safe fallback when uncertain',
+        '**APPEND with Emphasis** (for new atmospheric content):',
+        '• Weather: `action: "append", replace_text: ", 1.5::overcast sky, wet pavement::"`',
+        '• Time: `action: "append", replace_text: ", 1.4::evening atmosphere, dimming light::"`',
+        '• Combined: `action: "append", replace_text: ", 1.5::rainy evening 2.0::wet streets::"`',
+        '',
+        '**Key**: Use emphasis (1.3-2.0 range) for important atmospheric elements',
         '',
         '---',
         '',
@@ -7422,67 +8888,11 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '',
         '## 🎯 EMPHASIS GROUPS - COMPLETE GUIDE',
         '',
-        '### What Are Emphasis Groups?',
-        'Emphasis groups use the syntax: `weight::content::` where:',
-        '• `weight` = multiplier from -9.0 to 5.0+ (can be decimals like 1.5, 2.3, -0.8)',
-        '• `content` = the text being weighted',
-        '• `::` = delimiters that define boundaries',
+        '**Syntax:** `weight::content ::` where weight is -9.0 to 5.0+, content is any text, `::` are delimiters',
         '',
-        '### What Can Be Emphasized?',
-        '',
-        '**Emphasis can be applied to ANY content - from single words to complex phrases:**',
-        '',
-        '**Single Words:**',
-        '• `1.5::rainy::` - emphasize just the word "rainy"',
-        '• `2.0::detailed::` - emphasize "detailed"',
-        '• `1.3::evening::` - emphasize "evening"',
-        '',
-        '**Concepts:**',
-        '• `1.8::wet pavement::` - emphasize the wet pavement concept',
-        '• `2.0::overcast sky::` - emphasize overcast conditions',
-        '• `1.5::cool atmosphere::` - emphasize atmospheric feeling',
-        '',
-        '**Full Phrases:**',
-        '• `1.5::standing in rain-soaked park::` - emphasize entire action and location',
-        '• `2.0::detailed face with contemplative expression::` - emphasize character description',
-        '',
-        '**Multiple Elements (consecutive groups):**',
-        '• `1.5::rainy 2.0::wet streets 1.3::evening lighting::` - different emphasis for each concept',
-        '',
-        '**Key Point: You can emphasize as granularly or broadly as needed.**',
-        '• Single keyword: `2.0::rain::`',
-        '• Compound concept: `2.0::heavy rain, wet surfaces::`',
-        '• Both in same prompt: `1.8::rain 2.0::wet pavement::, city street`',
-        '',
-        '### Syntax Structure & Boundaries',
-        '`weight::content::`',
-        '• First `weight::` = starts the group',
-        '• Content = what gets emphasized',
-        '• Final `::` = terminates the group (marks end)',
-        '',
-        '**CRITICAL: Emphasis groups are ABSOLUTE groups with clear boundaries**',
-        '',
-        '### Consecutive Groups - Important Behavior',
-        '**When groups are consecutive, the next group START acts as the previous group TERMINATOR:**',
-        '',
-        '**Valid format:** `1.5::content one 2.0::content two::`',
-        '• First group: weight=1.5, content="content one " (terminated by `2.0::`)',
-        '• Second group: weight=2.0, content="content two" (terminated by `::`)',
-        '• The `2.0::` serves DUAL purpose: terminates first group AND starts second group',
-        '• ONLY the LAST group needs explicit `::` terminator',
-        '• No double `::` between groups - the shared `weight::` serves both purposes',
-        '',
-        '**Examples of consecutive groups:**',
-        '```',
-        '1.5::detailed face 2.0::rainy weather::',
-        '→ Group 1: weight=1.5, content="detailed face "',
-        '→ Group 2: weight=2.0, content="rainy weather"',
-        '',
-        '1.3::sitting 1.8::wet pavement 2.2::overcast sky::',
-        '→ Group 1: weight=1.3, content="sitting "',
-        '→ Group 2: weight=1.8, content="wet pavement "',
-        '→ Group 3: weight=2.2, content="overcast sky"',
-        '```',
+        '**Examples:**',
+        '• Single: `1.5::rainy ::` or compound: `1.8::wet pavement, puddles ::`',
+        '• Consecutive: `1.5::detailed face 2.0::rainy weather ::` (next weight acts as terminator)',
         '',
         '### Weight Ranges',
         '',
@@ -7519,458 +8929,106 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '• De-emphasis: `[[word]]` ≈ 0.95x, `[[[word]]]` ≈ 0.9x',
         '• Less precise control is acceptable',
         '',
-        '### How to Modify Emphasis Groups',
+        '### Modifying Emphasis Groups',
         '',
-        '#### Modifying CONTENT Inside a Group',
+        '**Change content (keep weight):** Select content only: `select_text: "old", replace_text: "new"`',
+        '**Change weight:** Select entire group: `select_text: "1.5::content ::", replace_text: "2.0::content ::"`',
+        '**Create group:** Wrap existing or append: `replace_text: "1.8::emphasized content ::"`',
         '',
-        '**To change content while preserving weight:**',
-        '```json',
-        '// Original: "1.5::standing in park::"',
-        '{"select_text": "standing in park", "replace_text": "standing in rainy park", "action": "replace"}',
-        '// Result: "1.5::standing in rainy park::"',
-        '```',
+        '### Adding Content Inside Emphasis Groups',
         '',
-        '**Important:** Select ONLY the content, not the weight or delimiters',
-        '',
-        '#### Modifying WEIGHT of a Group',
-        '',
-        '**To change the weight, select the ENTIRE group:**',
-        '```json',
-        '// Original: "1.5::detailed face, blue eyes::"',
-        '{"select_text": "1.5::detailed face, blue eyes::", "replace_text": "2.0::detailed face, blue eyes::", "action": "replace"}',
-        '// Result: "2.0::detailed face, blue eyes::"',
-        '```',
-        '',
-        '**Critical:** Must select from `weight::` through the terminating `::` BEFORE the next group or end',
-        '',
-        '#### Working with Consecutive Groups',
-        '',
-        '```',
-        'Original: "1girl, 1.5::detailed face 2.0::rainy weather::, standing"',
-        '',
-        'To change "detailed face" weight to 2.5:',
-        '  select_text: "1.5::detailed face "',
-        '  replace_text: "2.5::detailed face "',
-        '  Result: "1girl, 2.5::detailed face 2.0::rainy weather::, standing"',
-        '',
-        'To modify weather content:',
-        '  select_text: "rainy weather"',
-        '  replace_text: "heavy rainy weather"',
-        '  Result: "1girl, 1.5::detailed face 2.0::heavy rainy weather::, standing"',
-        '',
-        'To change weather weight:',
-        '  select_text: "2.0::rainy weather::"',
-        '  replace_text: "2.5::rainy weather::"',
-        '  Result: "1girl, 1.5::detailed face 2.5::rainy weather::, standing"',
-        '```',
-        '',
-        '### How to Create Emphasis Groups',
-        '',
-        '**Method 1 - Wrap existing content:**',
-        '```json',
-        '{"select_text": "detailed background", "replace_text": "1.8::detailed background::", "action": "replace"}',
-        '```',
-        '',
-        '**Method 2 - Append with emphasis:**',
-        '```json',
-        '{"action": "append", "replace_text": ", 2.0::wet pavement, rain puddles::", "reason": "Add emphasized weather elements"}',
-        '```',
-        '',
-        '**Method 3 - Create multiple consecutive groups:**',
-        '```json',
-        '{"select_text": "city street", "replace_text": "1.5::rain-soaked city street 2.0::overcast sky::", "action": "replace"}',
-        '```',
+        '**When inserting different emphasis inside existing group:**',
+        '• Pattern: `original::content, new_weight::new_content, original_weight::continuing, ::`',
+        '• ❌ WRONG: Close inserted group without restarting original (content defaults to 1.0)',
+        '• ✅ CORRECT: Explicitly restart original weight after insertion',
+        '• Alternative: Keep everything together at same weight if conceptually related',
         '',
         '### NEGATIVE EMPHASIS (-9.0 to 0)',
         '',
-        '**Purpose**: REMOVE or CONFLICT unwanted attributes',
-        '',
-        '**When to Use:**',
-        '• ONLY for extreme cases where you need to actively REMOVE attributes',
-        '• To conflict overlaying attributes (e.g., preventing multiple conflicting styles)',
-        '• When positive emphasis alone isn\'t working',
-        '• In UC (negative prompt) when you need to reduce avoidance intensity',
-        '',
-        '**Common Use Cases:**',
-        '',
-        '**1. Conflicting Art Styles:**',
-        '```',
-        'Prompt: "realistic photograph, -3.0::anime style -2.5::cartoon -2.0::3d render::"',
-        '```',
-        'Prevents anime/cartoon/3d when you want photorealistic',
-        '',
-        '**2. Removing Specific Attributes:**',
-        '```',
-        'Prompt: "outdoor scene, -2.0::indoor -1.5::room -1.0::furniture::"',
-        '```',
-        'Actively prevents indoor elements',
-        '',
-        '**3. In UC (Negative Prompt):**',
-        '```',
-        'UC: "2.0::anime -1.5::realistic::"',
-        '```',
-        '• Positive values in UC = emphasize AVOIDING this (2.0::anime:: = strongly avoid anime)',
-        '• Negative values in UC = reduce avoidance (-1.5::realistic:: = less strictly avoid realistic)',
-        '',
-        '**IMPORTANT NEGATIVE EMPHASIS RULES:**',
-        '• Use sparingly - only when positive emphasis alone doesn\'t work',
-        '• Stronger negative = stronger removal (-5.0 stronger than -1.0)',
-        '• In UC: positive values emphasize what to AVOID, negative values reduce that avoidance',
-        '• In prompt: negative values REMOVE/CONFLICT attributes',
+        '**Use for:** Part of three-step process (REPLACE + UC + negative emphasis), stubborn attributes, style conflicts',
+        '**In prompt:** Negative values hard remove (e.g., `-2.0::sunny ::` blocks sunny)',
+        '**In UC:** Positive = avoid harder, negative = avoid less',
+        '**Priority:** UC is primary, negative emphasis is secondary hard blocker',
         '',
         '### Common Mistakes',
+        '• Don\'t select "::" alone (non-unique)',
+        '• Don\'t select partial groups (orphans content)',
+        '• Always include terminator `::` when creating groups',
+        '• Don\'t cross group boundaries',
         '',
-        '**❌ WRONG - Breaking group structure:**',
-        '```json',
-        '{"select_text": "::", "replace_text": "new content"}',
+        '### UC (Negative Prompt) Emphasis',
+        '**In UC:** Positive = avoid harder (2.0::blurry ::), Negative = avoid less (-0.5::simple background ::)',
+        '',
+        '## 📄 Complete Response Structure',
+        '',
         '```',
-        'Problem: `::` appears in EVERY group - not unique',
+        'RESPONSE FORMAT:',
         '',
-        '**✅ CORRECT - Select specific group or content:**',
-        '```json',
-        '{"select_text": "1.5::old content::", "replace_text": "1.5::new content::"}',
-        '// OR modify just the content:',
-        '{"select_text": "old content", "replace_text": "new content"}',
+        'text_replacements:',
+        '  prompt: [array of replacement objects]',
+        '  uc: [array of replacement objects with same structure as prompt]',
+        '  character_prompts: [nested with prompt/uc arrays for each character]',
+        'dialogs: [array of dialog objects] (optional)',
+        'generated_image_name: "Descriptive Image Name" (REQUIRED - always provide this field)',
+        'character_names: ["Character Name 1", "Character Name 2"] (REQUIRED when placeholder names detected, otherwise optional)',
+        '',
+        'REPLACEMENT OBJECT FIELDS:',
+        '  select_text: "unique text" (required for replace/delete, OMIT ENTIRELY for append-to-end)',
+        '  replace_text: "new text" (REQUIRED for replace/append - must be non-empty string, MUST be omitted entirely for delete)',
+        '  action: "replace" | "append" | "delete" (default: replace)',
+        '  count: number (DELETE only: occurrences to remove, omit = all)',
+        '  reason: "explanation" (required)',
+        '  replacement_category: "category" (required)',
+        '  is_critical: true/false',
+        '  fallback_select_text: "backup text" (optional)',
+        '  index: number (optional: current increment value for incrementing logic)',
+        '  increment_data: "string" (optional: up to 64 chars for incrementation state data)',
+        '  references: [array of reference objects] (optional)',
+        '',
+        'REFERENCE OBJECT FIELDS:',
+        '  type: "tag_search" | "tag_description" | "web_search" | "tokenizer"',
+        '  query: "search term"',
+        '  tags: [array of tag names]',
+        '  url: "https://..." (web_search only)',
+        '  description: "brief note"',
+        '',
+        'insight_memory: [array of memory objects] (optional)',
+        '',
+        'MEMORY OBJECT FIELDS:',
+        '  name: "memory_identifier"',
+        '  description: "what this memory contains"',
+        '  category: "character_specific" | "technique" | etc.',
+        '  entities: [array with id, type, name, attributes]',
+        '  relations: [array with from, to, type, weight]',
+        '  observations: [array with entity_id, content, importance]',
+        '  confidence: 0-0.25 (for UPDATE only, omit for NEW)',
+        '',
+        'errors: [array of error strings] (optional)',
+        'warnings: [array of warning strings] (optional)',
         '```',
         '',
-        '**❌ WRONG - Selecting partial group for weight change:**',
-        '```json',
-        '{"select_text": "1.5::", "replace_text": "2.0::"}',
-        '```',
-        'Problem: Only changes start delimiter, leaves orphaned content and `::`',
+        '## ✅ Validation & Common Mistakes',
         '',
-        '**✅ CORRECT - Select complete group:**',
-        '```json',
-        '{"select_text": "1.5::content::", "replace_text": "2.0::content::"}',
-        '```',
-        '',
-        '**❌ WRONG - Missing terminator:**',
-        '```json',
-        '{"action": "append", "replace_text": "2.0::emphasized text"}',
-        '```',
-        'Problem: Missing final `::` - breaks parsing',
-        '',
-        '**✅ CORRECT - Include terminator:**',
-        '```json',
-        '{"action": "append", "replace_text": "2.0::emphasized text::"}',
-        '```',
-        '',
-        '**❌ WRONG - Breaking consecutive groups:**',
-        '```json',
-        '// Original: "1.5::face 2.0::weather::"',
-        '{"select_text": "face 2.0", "replace_text": "face, eyes 2.5"}',
-        '```',
-        'Problem: Selecting across group boundary breaks structure',
-        '',
-        '**✅ CORRECT - Work within group boundaries:**',
-        '```json',
-        '{"select_text": "face ", "replace_text": "face, eyes "}',
-        '// OR modify the entire first group:',
-        '{"select_text": "1.5::face ", "replace_text": "1.5::face, eyes "}',
-        '```',
-        '',
-        '### UC (Negative Prompt) Emphasis Behavior',
-        '',
-        '**In UC, emphasis has inverted meaning:**',
-        '',
-        '**Positive weights (1.0 to 5.0):**',
-        '• Emphasize AVOIDING this element',
-        '• `2.0::blurry::` = Strongly avoid blurry',
-        '• Higher weight = stronger avoidance',
-        '',
-        '**Negative weights (-9.0 to 0):**',
-        '• Reduce avoidance intensity',
-        '• `-1.0::simple background::` = Reduce how much we avoid simple backgrounds',
-        '• Use when default UC is too strong',
-        '',
-        '**Examples:**',
-        '```',
-        'UC: "worst quality, 2.0::blurry, 1.5::distorted, -0.5::simple background::"',
-        '→ Strongly avoid blurry (2.0x)',
-        '→ Moderately avoid distorted (1.5x)',
-        '→ Slightly less avoid simple background (0.5x reduction)',
-        '```',
+        '**Verify:** Unique select_text, exists in prompt, has required fields (reason, category), no chains, no overlap, targets original only',
+        '**Avoid:** Duplicate select_text, empty append replace_text, verbatim copying, bulk replacements, semantic redundancy, protected content mods',
         '',
         '---',
         '',
-        '## 📄 Complete JSON Structure',
+        '## 📍 Replacement Strategies',
+        '**Prompt structure:** `subject, emphasis groups, descriptors, style, quality`',
         '',
-        '```json',
-        '{',
-        '  "text_replacements": {',
-        '    "prompt": [',
-        '      {',
-        '        "select_text": "unique text (required for replace/delete, OMIT ENTIRELY for append-to-end)",',
-        '        "replace_text": "new text (required for replace/append, omit for delete)",',
-        '        "action": "replace | append | delete (default: replace)",',
-        '        "count": "number (DELETE only: occurrences to remove, omit = all)",',
-        '        "reason": "explanation (required)",',
-        '        "replacement_category": "category (required)",',
-        '        "is_critical": true,',
-        '        "fallback_select_text": "backup text (optional)"',
-        '      }',
-        '    ],',
-        '    "uc": [ /* same structure */ ],',
-        '    "character_prompts": [ /* nested with input/uc arrays */ ]',
-        '  }',
-        '}',
-        '```',
+        '**APPEND:** Add new concepts (e.g., append ", 1.5::overcast sky, wet pavement::")',
+        '**REPLACE:** Enhance existing (e.g., "park" → "rain-soaked park")',
+        '**DELETE:** Remove conflicts (e.g., delete "sunny day" when it\'s night)',
         '',
-        '---',
+        '**Emphasis:** Modify content only (preserves weight) OR modify entire group (changes weight)',
+        '**Multiple:** Each targets ORIGINAL text, no dependencies, order-independent',
         '',
-        '## ✅ Pre-Submission Validation',
-        '',
-        '**Before submitting, verify each replacement**:',
-        '',
-        '### Uniqueness & Existence:',
-        '✓ `select_text` is UNIQUE (appears only once)',
-        '✓ `select_text` EXISTS in current prompt',
-        '✓ For DELETE: Text hasn\'t been deleted already',
-        '✓ For APPEND to end: `select_text` field is OMITTED',
-        '',
-        '### Required Fields:',
-        '✓ `reason` is clear and explains WHY',
-        '✓ `replacement_category` is from allowed list',
-        '✓ `action` specified if not "replace"',
-        '',
-        '### Quality:',
-        '✓ Enhancement improves original intent',
-        '✓ Realistic and physically accurate',
-        '✓ Token efficient (avoid redundancy)',
-        '✓ Not modifying protected content (artist:, style:, !%...%)',
-        '✓ Not creating chain replacements on own additions',
-        '',
-        '---',
-        '',
-        '## 🚫 Common Mistakes to Avoid',
-        '',
-        '❌ **DUPLICATE select_text in array** - Using same select_text twice in replacement array (e.g., "1.35::realistic lighting" selected twice)',
-        '❌ **Empty replace_text with APPEND** - `"replace_text": ""` with `"action": "append"` is INVALID',
-        '❌ **Non-unique `select_text` in prompt** - See Uniqueness Rules above',
-        '❌ **Setting `select_text` for append-to-end** - OMIT the field completely!',
-        '❌ **Trying to delete already-deleted text** - Check if exists first, use `is_critical: false`',
-        '❌ **Large bulk replacements** - Bad: "sunny landscape" → "stormy landscape" | ✅ Good: "sunny" → "stormy"',
-        '❌ **Chain replacements** - Don\'t add "rainy", then modify "rainy" again',
-        '❌ **Semantic redundancy** - Don\'t add "warm" + "hot" + "sweating" | ✅ Choose most impactful',
-        '❌ **Assuming text exists** - Always verify before creating replacement',
-        '❌ **Verbatim copying context data** - Don\'t copy "overcast" → Reason into "cloudy sky, diffused lighting"',
-        '',
-        '---',
-        '',
-        '## 📍 WHERE TO MAKE REPLACEMENTS - PRACTICAL GUIDE',
-        '',
-        '**Understanding prompt structure and optimal placement strategies.**',
-        '',
-        '### Typical Prompt Structure',
-        '',
-        'Most prompts follow: `subject tags, emphasis groups, descriptors, style markers, quality tags`',
-        '',
-        '**Example structure:**',
-        '```',
-        '1girl, detailed face, standing in park, sunny day, masterpiece, best quality',
-        '│      │             │                 │          │                        │',
-        '│      │             │                 │          └── Quality markers',
-        '│      │             │                 └── Scene/weather descriptors',
-        '│      │             └── Action/location',
-        '│      └── Character details',
-        '└── Subject count',
-        '```',
-        '',
-        '### Strategy 1: Enhancing Existing Elements (REPLACE)',
-        '',
-        '**Use when:** You want to add context to existing elements without removing them',
-        '',
-        '**Example 1 - Simple enhancement:**',
-        '```json',
-        '// Original: "1girl, standing in park, happy"',
-        '{"select_text": "standing in park", "replace_text": "standing in rain-soaked park"}',
-        '// Result: "1girl, standing in rain-soaked park, happy"',
-        '```',
-        '',
-        '**Example 2 - With emphasis groups:**',
-        '```json',
-        '// Original: "1.5::detailed face::, city background"',
-        '{"select_text": "city background", "replace_text": "rainy city background, wet streets"}',
-        '// Result: "1.5::detailed face::, rainy city background, wet streets"',
-        '```',
-        '',
-        '### Strategy 2: Adding New Atmospheric Elements (APPEND)',
-        '',
-        '**Use when:** Adding completely new concepts not in original',
-        '',
-        '**Example 1 - Append to end:**',
-        '```json',
-        '// Original: "1girl, detailed face, city background"',
-        '{"action": "append", "replace_text": ", 1.5::overcast sky, wet pavement, evening lighting::"}',
-        '// Result: "1girl, detailed face, city background, 1.5::overcast sky, wet pavement, evening lighting::"',
-        '```',
-        '',
-        '**Example 2 - Append after specific location:**',
-        '```json',
-        '// Original: "1girl, soft focus, dutch angle"',
-        '{"select_text": "soft focus, dutch angle", "action": "append", "replace_text": ", dim twilight illumination"}',
-        '// Result: "1girl, soft focus, dutch angle, dim twilight illumination"',
-        '```',
-        '',
-        '### Strategy 3: Modifying Emphasis Groups',
-        '',
-        '**Scenario A - Modify content, preserve weight:**',
-        '```json',
-        '// Original: "1.5::sunny weather::, bright"',
-        '{"select_text": "sunny weather", "replace_text": "rainy weather"}',
-        '// Result: "1.5::rainy weather::, bright"',
-        '```',
-        '',
-        '**Scenario B - Change weight, preserve content:**',
-        '```json',
-        '// Original: "1.5::rainy weather::, bright"',
-        '{"select_text": "1.5::rainy weather::", "replace_text": "2.0::rainy weather::"}',
-        '// Result: "2.0::rainy weather::, bright"',
-        '```',
-        '',
-        '**Scenario C - Working with consecutive groups:**',
-        '```json',
-        '// Original: "1.5::detailed face 2.0::weather::, standing"',
-        '',
-        '// To modify just the weather content:',
-        '{"select_text": "weather", "replace_text": "rainy weather"}',
-        '// Result: "1.5::detailed face 2.0::rainy weather::, standing"',
-        '',
-        '// To change weather weight:',
-        '{"select_text": "2.0::weather::", "replace_text": "2.5::rainy weather::"}',
-        '// Result: "1.5::detailed face 2.5::rainy weather::, standing"',
-        '',
-        '// To modify first group weight (note the space after "face"):',
-        '{"select_text": "1.5::detailed face ", "replace_text": "1.8::detailed face "}',
-        '// Result: "1.8::detailed face 2.0::weather::, standing"',
-        '```',
-        '',
-        '### Strategy 4: Conflict Resolution (DELETE then REPLACE/ADD)',
-        '',
-        '**Use when:** Existing content directly conflicts with new context',
-        '',
-        '**Example 1 - Simple conflict:**',
-        '```json',
-        '// Original: "sunny day, clear blue sky"',
-        '// Context: Night time',
-        '[',
-        '  {"select_text": "sunny day", "action": "delete", "reason": "Conflicts with night time"},',
-        '  {"select_text": "clear blue sky", "replace_text": "starry night sky"}',
-        ']',
-        '// Result: ", starry night sky"',
-        '```',
-        '',
-        '**Example 2 - Emphasis group conflict:**',
-        '```json',
-        '// Original: "1.8::bright daylight::, sunny"',
-        '// Context: Overcast weather',
-        '[',
-        '  {"select_text": "1.8::bright daylight::", "replace_text": "1.5::diffused overcast lighting::"},',
-        '  {"select_text": "sunny", "replace_text": "cloudy"}',
-        ']',
-        '// Result: "1.5::diffused overcast lighting::, cloudy"',
-        '```',
-        '',
-        '### Strategy 5: Multiple Independent Replacements',
-        '',
-        '**Critical:** Each replacement targets ORIGINAL text, no dependencies',
-        '',
-        '```json',
-        '// Original: "1girl, standing, happy expression, city park"',
-        '// Goal: Add weather throughout',
-        '[',
-        '  {"select_text": "standing", "replace_text": "standing under umbrella"},',
-        '  {"select_text": "city park", "replace_text": "rain-soaked city park"},',
-        '  {"action": "append", "replace_text": ", 2.0::heavy rainfall, wet pavement::"}',
-        ']',
-        '// Result: "1girl, standing under umbrella, happy expression, rain-soaked city park, 2.0::heavy rainfall, wet pavement::"',
-        '',
-        '// ✓ All three replacements target ORIGINAL text',
-        '// ✓ No dependencies between them',
-        '// ✓ Can be applied in any order',
-        '```',
-        '',
-        '### Strategy 6: Creating Emphasis When Adding',
-        '',
-        '**Wrap new content in emphasis groups for precise control:**',
-        '',
-        '**Example 1 - Replace with emphasis:**',
-        '```json',
-        '// Original: "simple background"',
-        '{"select_text": "simple background", "replace_text": "2.0::detailed rainy background, wet surfaces, reflections::"}',
-        '// Result: "2.0::detailed rainy background, wet surfaces, reflections::"',
-        '```',
-        '',
-        '**Example 2 - Append with multiple emphasis groups:**',
-        '```json',
-        '// Original: "1girl, sitting"',
-        '{"action": "append", "replace_text": ", 1.5::overcast weather 2.0::wet pavement 1.3::evening atmosphere::"}',
-        '// Result: "1girl, sitting, 1.5::overcast weather 2.0::wet pavement 1.3::evening atmosphere::"',
-        '```',
-        '',
-        '### Common Prompt Patterns & Where to Modify',
-        '',
-        '**Pattern 1: Subject + Description + Scene**',
-        '```',
-        'Original: "1girl, detailed face, park setting"',
-        '→ Enhance scene: "park setting" → "rain-soaked park setting, evening"',
-        '→ Add atmosphere: append ", wet benches, puddles reflecting streetlights"',
-        '```',
-        '',
-        '**Pattern 2: Subject + Emphasis + Action + Location**',
-        '```',
-        'Original: "1girl, 1.5::beautiful face::, walking, downtown"',
-        '→ Modify action: "walking" → "walking with umbrella"',
-        '→ Enhance location: "downtown" → "rainy downtown streets"',
-        '→ Add emphasis: append ", 2.0::wet pavement, reflections::"',
-        '```',
-        '',
-        '**Pattern 3: Complex with Multiple Emphasis Groups**',
-        '```',
-        'Original: "1girl, 1.5::detailed face 2.0::elegant dress::, sitting, cafe"',
-        '→ Modify face group content: "detailed face " → "detailed face, contemplative "',
-        '→ Enhance location: "cafe" → "outdoor cafe"',
-        '→ Add weather: append ", 1.8::overcast sky, cool breeze::"',
-        '```',
-        '',
-        '### Placement Priority Guidelines',
-        '',
-        '**1. Critical elements first** (conflicts that must be resolved)',
-        '**2. Core enhancements** (main weather/time markers)',
-        '**3. Supporting details** (atmospheric additions)',
-        '**4. Emphasis adjustments** (fine-tuning weights)',
-        '',
-        '### What NOT to Do',
-        '',
-        '**❌ Don\'t modify emphasis delimiters:**',
-        '```json',
-        '{"select_text": "::", "replace_text": "something"}  // ❌ Non-unique',
-        '```',
-        '',
-        '**❌ Don\'t cross group boundaries:**',
-        '```json',
-        '// Original: "1.5::face 2.0::weather::"',
-        '{"select_text": "face 2.0::weather", ...}  // ❌ Crosses boundary',
-        '```',
-        '',
-        '**❌ Don\'t create overlapping selections:**',
-        '```json',
-        '[',
-        '  {"select_text": "standing in park", ...},',
-        '  {"select_text": "in park", ...}  // ❌ Overlaps',
-        ']',
-        '```',
-        '',
-        '### Verification Checklist',
-        '',
-        'Before submitting, verify:',
-        '✓ Each `select_text` targets a location that exists in ORIGINAL prompt',
-        '✓ No overlapping or nested selections',
-        '✓ Emphasis group boundaries respected',
-        '✓ Replacements are independent (no chains)',
-        '✓ Final result will be coherent and well-integrated',
-        '',
-        context.lockSubject ? [
+    );
+    
+    // Add subject lock mode if enabled
+    if (context.lockSubject) {
+        systemMessageContent.push(
             '## 🔒 SUBJECT LOCK MODE',
             '**Preserve character intrinsic characteristics at all times.**',
             '',
@@ -7979,436 +9037,478 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
             '**YOU MAY enhance**: Add descriptive details about existing features (e.g., "blue eyes" → "bright blue eyes with subtle sparkle"), improve clarity/vividness, add detail tags',
             '⚠️ **Only enhance what exists - do NOT change colors, outfit elements, or fundamental traits.**',
             ''
-        ].join('\n') : '',
-        '**SPELLING CORRECTION**: Correct spelling errors throughout the prompt, negative prompt, and character prompts using text_replacements. Fix typos and misspellings to ensure accurate generation.',
-        '',
-    ]
-    if (time) {
-        userContentSections.push(
-            '# ⏰ CURRENT DATE AND TIME',
-            `📅 **Date**: ${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}`,
-            `🕐 **Time**: ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}`,
-            `🕐 **Time Period**: ${timePeriodInfo.period} (${time.hour}:${time.minute.toString().padStart(2, '0')})`,
-            `💡 **Outdoor Lighting**: ${timePeriodInfo.lighting}`,
-            `🌫️ **Atmospheric Guidance**: ${timePeriodInfo.atmosphere}`,
-            '💭 **Atmosphere Usage**: Use the atmospheric guidance as thematic inspiration for mood and feeling. Adapt these concepts to fit the specific scene and character context rather than copying descriptions literally.',
-            ...((timePeriodInfo.transitionType && timePeriodInfo.transitionType !== 'steady_state') ? [`🔄 **Transition**: ${timePeriodInfo.transitionType === 'sunrise_transition' ? 'Sunrise transition - magical lighting changes' : timePeriodInfo.transitionType === 'sunset_transition' ? 'Sunset transition - dramatic color shifts' : timePeriodInfo.transitionType === 'twilight_transition' ? 'Twilight transition - peaceful lighting evolution' : 'Steady state lighting'}`,
-                '\n## Time Period Lighting Integration'
-            ] : []),
-            timePeriodInfo.transitionType === 'sunrise_transition' ? [
-                '🌅 **SUNRISE TRANSITION**: Currently in sunrise transition period',
-                '• **Lighting Evolution**: Show the magical transformation from pre-dawn blue to golden sunrise colors',
-                '• **Dynamic Shadows**: Long shadows rapidly changing as sun rises',
-                '• **Color Temperature Shift**: Cool blue tones warming to golden yellow',
-                '• **Atmospheric Effects**: Morning mist burning off, fresh air emerging',
-                '• **Character Integration**: Reacting to the emerging light, waking up, morning routines'
-            ].join('\n') :
-            timePeriodInfo.transitionType === 'sunset_transition' ? [
-                '🌇 **SUNSET TRANSITION**: Currently in sunset transition period - sun has set, transitioning to nighttime darkness',
-                '• **Lighting Evolution**: Dramatic shift from warm daylight directly to nighttime darkness, no twilight or evening light',
-                '• **Color Temperature Shift**: Warm golden tones immediately giving way to full night sky, deep shadows',
-                '• **Atmospheric Effects**: Cooling air, lengthening shadows becoming deep nighttime shadows, peaceful transition to full night',
-                '• **Character Integration**: Activities in complete nighttime darkness, full night atmosphere, deep shadows'
-            ].join('\n') :
-            timePeriodInfo.transitionType === 'twilight_transition' ? [
-                '🌆 **TWILIGHT TRANSITION**: Currently in twilight transition period - transitioning to nighttime darkness',
-                '• **Lighting Evolution**: Gradual fading from any residual light directly to nighttime darkness, full night sky',
-                '• **Atmospheric Effects**: Cooling temperatures, emerging stars in nighttime darkness, transition to full night',
-                '• **Character Integration**: Activities in complete nighttime darkness, full night atmosphere, deep shadows'
-            ].join('\n') :
-            [],
-            '',
-        );
-        systemMessageContent.push(
-            '# 🌦️ WEATHER & TIME INTEGRATION FRAMEWORK',
-            '',
-            '## Core Principle: Visual Translation through Reasoning',
-            '**Convert weather/time concepts to visual elements - DO NOT write conceptual descriptions or verbatim context data directly in prompts.**',
-            '',
-            '**CRITICAL: NEVER copy context data verbatim. Always REASON and TRANSFORM:**',
-            '• Context says "overcast" → Reason into "cloudy sky, diffused lighting, soft shadows"',
-            '• Context says "18°C evening" → Reason into "cool twilight air, comfortable temperature"',
-            '• Context says "heavy rain" → Reason into "torrential downpour, rain-slicked surfaces, water streaming"',
-            '',
-            '**Translation Process:**',
-            '1. **REASON** about the weather/time data (don\'t copy it)',
-            '2. Identify physical response from conditions (e.g., "heat" → visible sweat, seeking shade)',
-            '3. Match to character characteristics (build, weight, clothing)',
-            '4. ALWAYS include explicit markers through reasoning: time ("night", "daytime", "dawn") AND weather ("overcast", "clear sky")',
-            '5. Create specific text_replacements with VISUAL DESCRIPTORS (not verbatim context)',
-            '',
-            '⚠️ **Key Distinction**: Humidity = moisture in air (sweat, condensation). Precipitation = rain/snow falling.',
-            '',
-            '## Scene Type Framework - CRITICAL DECISION',
-            '**Determine scene type FIRST - this controls how to apply all weather/time data:**',
-            '',
-            '### INDOOR ONLY: Scenes entirely within buildings, rooms, or enclosed spaces',
-            '**Application**: INDIRECT through windows, doors, openings',
-            '**Examples**: "rain pattering on windowpanes", "snow visible through glass", "condensation on glass from humidity"',
-            '**Character Impact**: Indirect (room temperature changes, atmospheric pressure, visible weather through windows)',
-            '**Strong tokens**: intense, soft, glowing, gentle, breeze, humid, condensation',
-            '',
-            '### OUTDOOR ONLY: Scenes in open exterior spaces, streets, landscapes, wilderness',
-            '**Application**: DIRECT to all elements',
-            '**Examples**: "damp rain-slicked surfaces", "wind-swept landscape", "sweat running down skin", "hair whipping in wind"',
-            '**Character Impact**: Direct physical reactions (sweating, shivering, wind effects)',
-            '**Strong tokens**: damp, shimmer, harsh, intense, gentle, breeze, glowing',
-            '',
-            '### MIXED/TRANSITIONAL: Scenes with both indoor and outdoor elements',
-            '**Application**: CONTEXTUAL - direct for outdoor areas, indirect for indoor areas',
-            '**Examples**: "rain blowing through door", "wet footprints inside", outdoor + indoor descriptions',
-            '',
-            '## Character Physical Response Integration',
-            '**Character reactions are conceptual - translate to VISUAL cues:**',
-            '',
-            '### Physical Characteristics Matter',
-            `• **Body Build**: Analyze weight${clothing ? ', clothing' : ''}, physical condition`,
-            '• **Weight-Based Sweating**: Heavier characters sweat more (consider: chubby → overweight → fat → obese → morbidly obese)',
-            '• **Wind Sensitivity**: Slender characters feel wind chill more, heavier characters more wind-resistant',
-            ...(clothing ? ['• **Clothing Factors**: Tight clothing shows sweat stains, loose clothing blows in wind'] : []),
-            '• **Fatigue Indicators**: Heat exhaustion, shivering, blue-tinged skin (cold)',
-            '• **Facial Expressions**: Squinting (sun), grimacing (cold), flushed cheeks (heat)',
-            '• **Comfort Zones**: Adjust based on whether character appears comfortable or distressed',
-            '• **Shelter Seeking**: Characters may seek shade, cover from rain, or warmth based on physical state',
-            '• **Activity Adaptation**: Characters modify behavior based on conditions (seeking shelter in storms, staying cool in heat) unless doing weather-related activities (fishing, snowboarding, walking outside, etc.)',
-            '',
-            '### Environmental Context Examples',
-            '**Temperature**: "rosy cheeks from warmth" (outdoor) vs "room feels cooler near windows" (indoor)',
-            '**Moisture**: "sweaty skin" (outdoor) vs "condensation on glass" (indoor)',
-            '**Wind**: "hair tousled by breeze" (outdoor) vs "curtains fluttering from drafts" (indoor)',
-            '**Activity States**: "comfortable in moderate conditions" or "layered against cold"',
-            '',
-            '## Translation Examples with Explicit Markers',
-            '**REQUIRED FORMAT - Always combine time + weather markers:**',
-            '',
-            '**Time + Weather Combinations:**',
-            '• Night + Overcast → "night, dark, nighttime, overcast sky, cloudy, deep shadows, dim lighting"',
-            '• Daytime + Overcast → "daytime, overcast sky, cloudy, diffused lighting, soft shadows"',
-            '• Night + Clear → "night, dark, nighttime, clear sky, stars visible, deep shadows, moonlight"',
-            '• Daytime Heat → "daytime, sunny, bright, sweat glistening, seeking shade, flushed from warmth"',
-            '• Morning Dawn → "morning, dawn, early morning, dim light of sunrise, soft shadows, cool dawn air"',
-            '• Evening Twilight → "evening, twilight, sunset, dim light of sunset, orange/purple sky, soft shadows"',
-            '',
-            '**Weather Data to Visual Elements:**',
-            '• High humidity + heat → shimmer, heat haze, sweat effects',
-            '• Wind + precipitation → rain lashing sideways, wind-driven droplets',
-            '• Low visibility → fog layers, muted colors, obscured distances',
-            '• High UV + clear sky → harsh sunlight, deep shadows, squinting',
-            '',
-            '**Character Response Examples (Optimized Tokens):**',
-            `• Hot + Heavier Character → "sweat dripping, heavy breathing${clothing ? ', damp clothes clinging' : ''}, exhausted expression"`,
-            '  → Uses strong tokens: sweat (9.18), damp (9.28)',
-            '• Cold + Slender Character → "shivering, huddled posture, visible breath in cold air, chattering teeth"',
-            '  → Uses strong visual descriptors',
-            '• Heat exhaustion → "sweat beading on forehead, flushed cheeks, heavy breathing"',
-            '• Cold response → "shivering visibly, hunched against cold, breath misting in air"',
-            '• Wind effects → "hair whipping in wind, clothes pressed against body"',
-            '',
-            '## Weather Element Mapping',
-            '• **Dew point** → moisture effects (mist, condensation, humidity haze)',
-            '• **Cloud coverage** → lighting conditions, atmospheric mood',
-            '• **Pressure systems** → wind patterns, atmospheric stability',
-            '• **UV index** → sunlight intensity, shadow harshness, contrast',
-            '• **Visibility** → fog, mist, atmospheric perspective effects',
-            '',
-            '**Strong Tokens Reference (weather/atmosphere):**',
-            'condensation:9.6, shimmer:9.53, glowing:9.49, dawn:9.4, intricate:9.38, humid:9.36, glow:9.32, breeze:9.3, damp:9.28, sweat:9.18',
-            '',
-        );
-    }
-    if (weather) {
-        userContentSections.push(
-            '# 🌦️ WEATHER CONTEXT',
-            '',
-            ...(currentSeason && !(seasonalGuidelines && seasonalGuidelines.mode === 'comprehensive') ?
-            [`🍂 **Current Season**: ${currentSeason}`] : []),
-            `📅 **Condition**: ${generateCloudCoverageDescription(weather.cloudCoverage || 0, weather.condition)}${isCustomWeather ? ' (' + weather.description + ')' : ''}`,
-            `🧘 **Comfort Level**: ${weather.weatherQuality?.comfortLevel || 'Unknown'}`,
-            `👁️ **Visibility**: ${weather.visibility < 1 ? 'Poor visibility' : weather.visibility < 5 ? 'Moderate visibility' : 'Good visibility'}`,
-            '',
-            '## 🌡️ **TEMPERATURE EFFECTS**',
-            '**Use temperature data to create appropriate visual cues and character reactions, not literal descriptions.**',
-            '',
-            ...generateIntegratedTemperatureAnalysis(weather, timePeriodInfo),
-            '',
-            '## 💧 **MOISTURE & PRECIPITATION**',
-            ...(() => {
-                let conditions = [];
-
-                // Add humidity description
-                const humidity = weather.humidity;
-                if (weather.temperature > 25) {
-                    if (humidity >= 80) conditions.push('very humid air');
-                    else if (humidity >= 60) conditions.push('humid air');
-                    else if (humidity >= 40) conditions.push('moderate humidity');
-                    else conditions.push('dry air');
-                }
-
-                if (weather.precipitationRate > 1) {
-                    const condition = weather.condition.toLowerCase();
-                    let precipType = 'rain';
-                    if ((weather.snowfall || 0) > 0) precipType = 'snow';
-                    else if ((weather.showers || 0) > (weather.rain || 0)) precipType = 'showers';
-                    else if (weather.precipitationRate < 2.5) precipType = 'drizzle';
-
-                    let intensity = 'light';
-                    if (weather.precipitationRate >= 50) intensity = 'extreme';
-                    else if (weather.precipitationRate >= 25) intensity = 'heavy';
-                    else if (weather.precipitationRate >= 10) intensity = 'moderate';
-                    else if (weather.precipitationRate < 2.5) intensity = 'drizzle';
-
-                    conditions.push(`${intensity} ${precipType}`);
-                }
-
-                // Add wind conditions
-                const windSpeedMph = weather.windSpeed * 2.237;
-                if (windSpeedMph >= 40) conditions.push('strong winds');
-                else if (windSpeedMph >= 25) conditions.push('moderate winds');
-                else conditions.push('light winds');
-
-                return [`Current conditions: ${conditions.join(', ')}`];
-            })(),
-            '',
-            ...(weather.precipitationRate > 0 ? (() => {
-                const precipRate = weather.precipitationRate;
-                const condition = weather.condition.toLowerCase();
-
-                // Determine precipitation type from actual data
-                let precipType = 'rain';
-                if ((weather.snowfall || 0) > 0) precipType = 'snow';
-                else if ((weather.showers || 0) > (weather.rain || 0)) precipType = 'showers';
-                else if (precipRate < 2.5) precipType = 'drizzle';
-
-                let intensity = 'light';
-                if (precipRate >= 50) {
-                    intensity = 'extreme';
-                } else if (precipRate >= 25) {
-                    intensity = 'heavy';
-                } else if (precipRate >= 10) {
-                    intensity = 'moderate';
-                } else if (precipRate < 2.0) {
-                    intensity = 'drizzle';
-                }
-
-                const intensityDesc = intensity.charAt(0).toUpperCase() + intensity.slice(1);
-                return [`### **${intensityDesc} ${precipType}**`];
-            })() : []),
-            ...(() => {
-                // Check if significant weather should override atmospheric moisture
-                const hasSignificantPrecip = weather.precipitationRate >= 5.5; // Moderate or heavier precipitation
-                const windSpeedMph = weather.windSpeed * 2.237;
-                const hasSignificantWind = windSpeedMph >= 35; // Strong winds or higher
-
-                if (hasSignificantPrecip || hasSignificantWind) {
-                    // Significant precipitation or wind overrides atmospheric moisture - return empty array
-                    // The precipitation/wind states will be shown separately below
-                    return [];
-                } else {
-                    // Show atmospheric moisture states based on meteorological values
-                    const tempDewDiff = weather.temperature - weather.dewPoint;
-                    const dewPoint = weather.dewPoint;
-                    const humidity = weather.humidity;
-                    const temperature = weather.temperature;
-
-                    // Determine atmospheric moisture using multiple meteorological factors
-                    let baseHumidity = 'moderate';
-                    let humidityModifier = '';
-                    let specialCondition = '';
-
-                    // Primary factor: temperature-dew point differential (perceived humidity)
-                    if (tempDewDiff <= 2) {
-                        baseHumidity = 'oppressively humid';
-                    } else if (tempDewDiff <= 5) {
-                        baseHumidity = 'very humid';
-                    } else if (tempDewDiff <= 8) {
-                        baseHumidity = 'humid';
-                    } else if (tempDewDiff <= 12) {
-                        baseHumidity = 'moderately humid';
-                    } else if (tempDewDiff <= 18) {
-                        baseHumidity = 'comfortable';
-                    } else if (tempDewDiff <= 25) {
-                        baseHumidity = 'dry';
-                    } else {
-                        baseHumidity = 'very dry';
-                    }
-
-                    // Secondary factor: absolute dew point (actual moisture content)
-                    if (dewPoint >= 24) {
-                        humidityModifier = 'tropical';
-                        specialCondition = tempDewDiff <= 8 ? 'intense tropical humidity' : 'tropical warmth';
-                    } else if (dewPoint >= 18) {
-                        humidityModifier = 'muggy';
-                        specialCondition = tempDewDiff <= 8 ? 'heavy muggy humidity' : 'muggy warmth';
-                    } else if (dewPoint >= 13) {
-                        humidityModifier = tempDewDiff <= 8 ? 'humid' : 'moderately humid';
-                    } else if (dewPoint < 5) {
-                        humidityModifier = 'arid';
-                        specialCondition = 'arid dryness';
-                    }
-
-                    // Tertiary factor: relative humidity context (refines the description)
-                    if (temperature > 25) {
-                        if (humidity >= 90) {
-                            if (baseHumidity.includes('humid') || humidityModifier === 'tropical' || humidityModifier === 'muggy') {
-                                specialCondition = 'extremely humid air';
-                            } else {
-                                baseHumidity = 'extremely humid';
-                            }
-                        } else if (humidity >= 80 && !specialCondition.includes('humid')) {
-                            if (baseHumidity.includes('humid') || humidityModifier === 'tropical' || humidityModifier === 'muggy') {
-                                specialCondition = 'very humid air';
-                            } else {
-                                baseHumidity = 'very humid';
-                            }
-                        } else if (humidity <= 30 && !specialCondition.includes('dry')) {
-                            if (baseHumidity.includes('dry') || humidityModifier === 'arid') {
-                                specialCondition = 'dry air';
-                            } else {
-                                baseHumidity = 'dry';
-                            }
-                        } else if (humidity <= 20 && !specialCondition.includes('dry')) {
-                            if (baseHumidity.includes('dry') || humidityModifier === 'arid') {
-                                specialCondition = 'very dry air';
-                            } else {
-                                baseHumidity = 'very dry';
-                            }
-                        }
-                    }
-
-                    // Combine factors into coherent description
-                    let moistureDesc;
-                    if (specialCondition) {
-                        moistureDesc = specialCondition;
-                    } else if (humidityModifier && humidityModifier !== baseHumidity) {
-                        moistureDesc = `${humidityModifier} ${baseHumidity} air`;
-                    } else {
-                        moistureDesc = `${baseHumidity} air`;
-                    }
-
-                    return [`### **Atmospheric Moisture**: ${moistureDesc}`];
-                }
-            })(),
-            ...(weather.condition.toLowerCase().includes('mist') ? ['### **Misty Conditions**'] : []),
-            ...(weather.condition.toLowerCase().includes('fog') ? ['### **Foggy Conditions**'] : []),
-            ...(weather.condition.toLowerCase().includes('haze') ? ['### **Hazy Conditions**'] : []),
-            ...((weather.visibility || 10) < 5 ? ['### **Reduced Visibility Conditions**'] : []),
-            ...((weather.cloudCoverage || 0) >= 80 ? ['### **Heavy Cloud Cover Conditions**'] : []),
-            '',
-            '## 🌬️ **WIND CONDITIONS**',
-            ...(() => {
-                let windSpeedMph = weather.windSpeed * 2.237;
-                const hasGusts = weather.windGust && (weather.windGust * 2.237) > windSpeedMph;
-                if (hasGusts) {
-                    windSpeedMph = weather.windGust * 2.237;
-                }
-
-                // Perceptual wind descriptions for AI image generation
-                let windDesc = 'calm';
-                if (windSpeedMph >= 40) {
-                    windDesc = 'strong winds';
-                } else if (windSpeedMph >= 35) {
-                    windDesc = 'windy conditions';
-                } else if (windSpeedMph >= 25) {
-                    windDesc = 'breeze';
-                } else if (windSpeedMph >= 10) {
-                    windDesc = 'gentle breeze';
-                }
-
-                return [`### **${windDesc}**`];
-            })(),
-            '',
-            (() => {
-                const windAnalysis = getEnhancedWeatherAnalysis(weather);
-                const warnings = [];
-                if (windAnalysis.windWarning) warnings.push(`🔴 **${windAnalysis.windWarning}**: Dangerous wind conditions expected`);
-                if (windAnalysis.windAdvisory) warnings.push(`🟡 **${windAnalysis.windAdvisory}**: Windy conditions requiring caution`);
-                if (windAnalysis.freezeWarning) warnings.push(`🔵 **${windAnalysis.freezeWarning}**: Temperatures ≤32°F - frost damage risk`);
-                return warnings.length > 0 ?
-                    `\n#### Weather Warnings & Advisories\n${warnings.map(w => `• ${w}`).join('\n')}` :
-                    '';
-            })(),
-            '',
         );
     }
     
-    // Add mandatory integration section based on what features are enabled
-    if (weather || time) {
-        systemMessageContent.push(
-            '',
-            '**CRITICAL**: The following contextual data IS PROVIDED - integration is MANDATORY, not optional.',
-            '',
-            '**THIS IS NOT OPTIONAL - IT IS REQUIRED:**',
-            '• These features have been SELECTED by the user',
-            '• Integration is MANDATORY, not a suggestion',
-            '• Use APPEND or REPLACE actions to integrate weather/time markers',
-            ...(weather || time ? ['• Skipping integration when data is provided is an ERROR'] : []),
-            '',
-            '**Minimum Requirements:**',
-            ...(weather ? ['• Weather-related prompt append or replacements (weather data is present)'] : []),
-            ...(time ? ['• Time of day and lighting prompt append or replacements (time data is present)'] : []),
-            ...(weather ? ['• Include explicit weather markers: "clear sky", "overcast", "rain", "snow", "cloudy", "sunny"'] : []),
-            ...(time ? ['• Include explicit time markers: "night", "daytime", "dawn", "dusk", "evening", "morning"'] : []),
-            '',
-            '**Examples of REQUIRED integrations:**',
-            '```json',
-            ...(weather ? [
-                '// Weather is provided → MUST add weather',
-                '{"action": "append", "replace_text": "overcast sky, cloudy weather, diffused lighting", "reason": "Required weather integration per guidelines", "reason_display": "Weather", "replacement_category": "Weather"}',
-                ''
-            ] : []),
-            ...(time ? [
-                '// Time is provided → MUST add time',
-                '{"action": "append", "replace_text": "nighttime, dark, evening shadows, dim lighting", "reason": "Required time integration per guidelines", "reason_display": "Time of day", "replacement_category": "Time of Day"}',
-                ''
-            ] : []),
-            ...(weather && time ? [
-                '// Both provided → MUST add both (can be combined)',
-                '{"action": "append", "replace_text": "rainy evening, nighttime downpour, dark clouds, wet pavement reflecting streetlights", "reason": "Required weather and time integration per guidelines", "reason_display": "Weather/Time", "replacement_category": "Weather"}',
-            ] : []),
+    systemMessageContent.push(
+        '**SPELLING CORRECTION**: Correct spelling errors throughout the prompt, negative prompt, and character prompts using text_replacements. Fix typos and misspellings to ensure accurate generation.',
+        ''
+    );
+    
+    // ========================================
+    // BUILD USER CONTENT SECTIONS (Dynamic Data)
+    // ========================================
+    
+    if (time) {
+        // Generate LCD display visualizations using new display functions
+        const sunPositionBar = createSunPositionBar(timePeriodInfo);
+        const lightLevelBar = createLightLevelBar(timePeriodInfo);
+        
+        // Build transition note if applicable
+        const transitionNote = timePeriodInfo.transitionType === 'sunrise_transition' ? ' (sunrise transition)' :
+                              timePeriodInfo.transitionType === 'sunset_transition' ? ' (sunset transition)' : 
+                              timePeriodInfo.transitionType === 'twilight_transition' ? ' (twilight transition)' : '';
+        
+        // Generate seasonal progression bar if season is available
+        const seasonalProgressBar = currentSeason ? createSeasonalProgressionBar(time, currentSeason) : null;
+        
+        // Generate holiday countdown bar if holiday is active
+        let holidayCountdownBar = null;
+        if (seasonalData?.holidayInfo?.isHolidayPeriod && seasonalData.holidayInfo.primaryHoliday) {
+            const daysUntil = seasonalData.holidayInfo.primaryHoliday.daysUntil || 0;
+            const bufferDays = seasonalData.holidayInfo.primaryHoliday.bufferDays || 7; // Fallback to 7 if not provided
+            let progress;
+            
+            if (daysUntil >= 0) {
+                // Before or on the holiday date: progress increases from 0% to 100%
+                progress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+            } else {
+                // After the holiday date: calculate days past the final date
+                const daysPastFinal = Math.abs(daysUntil) - bufferDays;
+                
+                if (daysPastFinal <= 0) {
+                    // Still within the after-buffer period: progress decreases linearly from 100% to 0%
+                    // When daysUntil = 0: progress = 100%
+                    // When daysUntil = -bufferDays: progress = 0%
+                    progress = Math.max(0, Math.min(100, ((bufferDays + daysUntil) / bufferDays) * 100));
+                } else {
+                    // Past the final date: progress is 0%
+                    progress = 0;
+                }
+            }
+            
+            const bar = createBarGraph(progress, 100, 10);
+            const holidayName = capitalize(seasonalData.holidayInfo.primaryHoliday.name);
+            
+            if (daysUntil === 0) {
+                holidayCountdownBar = `${'█'.repeat(10)} ${holidayName} (TODAY)`;
+            } else if (daysUntil > 0) {
+                holidayCountdownBar = `${bar} ${holidayName} (${daysUntil}d)`;
+            } else {
+                holidayCountdownBar = `${bar} ${holidayName} (${Math.abs(daysUntil)}d ago)`;
+            }
+        }
+        
+        userContentSections.push(
+            '# ⏰ CURRENT TIME DATA',
+            '```',
+            `CLOCK TIME: ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}`,
+            `DATE: ${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}`,
+            ...(seasonalProgressBar ? [`SEASON: ${seasonalProgressBar} ${getSeasonIcon(currentSeason)}`] : []),
+            ...(holidayCountdownBar ? [`HOLIDAY: ${holidayCountdownBar}`] : []),
+            `TIME PERIOD: ${timePeriodInfo.period}`,
+            `SUN POSITION: ${sunPositionBar} ${timePeriodInfo.perceivableLight}%${transitionNote}`,
+            `OUTDOOR LIGHT: ${lightLevelBar}`,
             '```',
             '',
-            `⚠️ **FAILURE TO INTEGRATE ${weather && time ? 'WEATHER AND TIME' : weather ? 'WEATHER' : 'TIME'} WILL BE CONSIDERED AN ERROR.**`,
+            '## 📋 ENVIRONMENTAL CONTEXT',
+            '```',
+            `LIGHTING: ${timePeriodInfo.lighting || 'standard lighting'}`,
+            `ATMOSPHERE: ${timePeriodInfo.atmosphere || 'standard atmosphere'}`,
+            '```',
+            ''
+        );
+    }
+    if (weather) {
+        // Helper functions for data formatting (createBarGraph is now global - see line ~6574)
+        
+        const getWindDirection = (degrees) => {
+            if (degrees === null || degrees === undefined || degrees === 'unknown' || isNaN(parseFloat(degrees))) return 'unknown';
+            const deg = parseFloat(degrees);
+            // Convert to character-relative directions (assuming character facing forward/north)
+            if (deg >= 315 || deg < 45) return 'behind';      // north - from behind character
+            if (deg >= 45 && deg < 135) return 'left';        // east - from left of character
+            if (deg >= 135 && deg < 225) return 'facing';     // south - toward character's face
+            return 'right';                                    // west - from right of character
+        };
+
+        const isHotTemperature = (feelsLike) => feelsLike >= 25; // 25°C/77°F as hot threshold
+
+        // Prepare formatted weather data
+        const weatherData = {
+            temperature: `${weather.feelsLike}°C`,
+            condition: weather.condition,
+            cloudCoverage: createBarGraph(weather.cloudCoverage || 0),
+            windSpeed: `${Math.round(weather.windSpeed * 3.6)} km/h`, // Convert m/s to km/h
+            windDirection: getWindDirection(weather.windDirection),
+            visibility: createBarGraph(Math.min(weather.visibility || 10, 10), 10), // Cap at 10km for bar graph
+            solarRadiation: createBarGraph(Math.min(weather.uvIndex || 0, 12), 12) // UV index as solar radiation indicator
+        };
+
+        // Only include humidity if temperature is hot
+        if (isHotTemperature(weather.feelsLike)) {
+            weatherData.humidity = createBarGraph(weather.humidity, 100);
+        }
+        if (weather.precipitationRate && weather.precipitationRate > 0) {
+            weatherData.precipitation = createPrecipitationBar(weather.precipitationRate); // Logarithmic scale 0-30mm/hr
+        }
+        if (weather.snowDepth && weather.snowDepth > 0) {
+            weatherData.snowDepth = `${weather.snowDepth}cm`;
+        }
+
+        // For custom weather, use the generateAccurateWeatherConditions function
+        if (isCustomWeather) {
+            weatherData.customDescription = weather.description;
+            // Generate accurate meteorological data based on the custom condition
+            const accurateWeather = generateAccurateWeatherConditions(weather.condition, weather);
+
+            // Update fields that might be missing or need adjustment
+            if (!weather.cloudCoverage && accurateWeather.cloudCoverage !== undefined) {
+                weatherData.cloudCoverage = createBarGraph(accurateWeather.cloudCoverage);
+            }
+            if (!weather.windSpeed && accurateWeather.windSpeed !== undefined) {
+                weatherData.windSpeed = `${Math.round(accurateWeather.windSpeed * 3.6)} km/h`;
+            }
+            if (!weather.windDirection && accurateWeather.windDirection !== undefined) {
+                weatherData.windDirection = getWindDirection(accurateWeather.windDirection);
+            }
+            if (!weather.visibility && accurateWeather.visibility !== undefined) {
+                weatherData.visibility = createBarGraph(Math.min(accurateWeather.visibility || 10, 10), 10);
+            }
+            if (!weather.uvIndex && accurateWeather.uvIndex !== undefined) {
+                weatherData.solarRadiation = createBarGraph(Math.min(accurateWeather.uvIndex, 12), 12);
+            }
+            if (!weather.humidity && accurateWeather.humidity !== undefined && isHotTemperature(weather.feelsLike)) {
+                weatherData.humidity = createBarGraph(accurateWeather.humidity, 100);
+            }
+            if (weather.precipitation === undefined && accurateWeather.precipitationRate > 0) {
+                weatherData.precipitation = createPrecipitationBar(accurateWeather.precipitationRate);
+            }
+        }
+
+        userContentSections.push(
+            '# 🌦️ CURRENT WEATHER DATA',
+            '```',
+            `TEMPERATURE: ${weatherData.temperature}`,
+            `CONDITION: ${weatherData.condition}`,
+            `CLOUD COVERAGE: ${weatherData.cloudCoverage}`,
+            `WIND: ${weatherData.windSpeed} from ${weatherData.windDirection} side`,
+            `VISIBILITY: ${weatherData.visibility}`,
+            `SOLAR RADIATION: ${weatherData.solarRadiation}`,
+            ...(weatherData.humidity ? [`HUMIDITY: ${weatherData.humidity}`] : []),
+            ...(weatherData.precipitation ? [`PRECIPITATION: ${weatherData.precipitation}`] : []),
+            ...(weatherData.snowDepth ? [`SNOW DEPTH: ${weatherData.snowDepth}`] : []),
+            '```',
             ''
         );
     }
     
-    if (seasonalGuidelines && seasonalGuidelines.mode === 'comprehensive') {
+    // Add integration reminder to user content (data-specific, not instructions)
+    if (weather || time) {
         userContentSections.push(
-            '# 🌿 SEASONAL ENVIRONMENTAL MODIFICATIONS',
-            `🍂 **Current Season**: ${seasonForGuidelines}`,
             '',
-            '## Seasonal Modification Guidelines',
-            seasonalGuidelines.guidelines.map(g => `• ${g}`).join('\n'),
+            `**Integration Required**: Use the ${time && weather ? 'time and weather' : time ? 'time' : 'weather'} data above following the ${time && weather ? 'Combined Time & Weather Integration' : time ? 'Time Integration' : 'Weather Integration'} framework from the system message.`,
             '',
-            '## Weather-Compliant Seasonal Adaptations',
-            seasonalGuidelines.modifications.map(m => `• ${m}`).join('\n'),
+            '**Contextual UC Patterns:**',
+            ...generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo),
             '',
-        )
-        if (seasonalGuidelines.holidayInfo?.isHolidayPeriod) {
+        );
+    }
+    
+    // Add historical weather report if pre-compiled data is available
+    if (weather && weatherHistoryReport) {
+        const report = weatherHistoryReport;
+        
+        userContentSections.push(
+            '',
+            '═══════════════════════════════════════════════════',
+            '',
+            '# 📊 WEATHER HISTORY ANALYSIS REPORT',
+            '**Document Type**: Temporal Weather & Pattern Analysis',
+            `**Report Generated**: ${report.reportGenerated}`,
+            `**Location**: ${report.location}`,
+            `**Timezone**: ${report.timezone}`,
+            ''
+        );
+        
+        // Add yesterday's summary if available
+        if (report.yesterday) {
+            const yesterday = report.yesterday;
+            const yesterdayDate = new Date(yesterday.date);
+            
             userContentSections.push(
+                '## 📅 YESTERDAY\'S WEATHER SUMMARY',
+                `**Date**: ${yesterdayDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`,
                 '',
-                '## 🎉 HOLIDAY',
-                `**Primary Holiday**: ${seasonalGuidelines.holidayInfo.primaryHoliday.name} (${seasonalGuidelines.holidayInfo.region})`,
-                `**Days Until**: ${seasonalGuidelines.holidayInfo.primaryHoliday.daysUntil === 0 ? 'TODAY' : seasonalGuidelines.holidayInfo.primaryHoliday.daysUntil > 0 ? `${seasonalGuidelines.holidayInfo.primaryHoliday.daysUntil} days` : `${Math.abs(seasonalGuidelines.holidayInfo.primaryHoliday.daysUntil)} days ago`}`,
+                '**Overall Conditions**:',
+                `├─ Dominant Condition: ${yesterday.dominantCondition}`,
+                `├─ Temperature Range: ${yesterday.temperatureMin}°C to ${yesterday.temperatureMax}°C (avg: ${yesterday.temperatureAvg}°C)`,
+                `├─ Precipitation: ${yesterday.precipitationTotal > 0 ? `${yesterday.precipitationTotal}mm total` : 'None'}`,
+                `├─ Cloud Cover: ${yesterday.cloudCoverAvg}% average`,
+                `└─ Wind: ${yesterday.windSpeedAvg} m/s average, gusts to ${yesterday.windGustMax} m/s`,
                 '',
-            )
-            if (seasonalGuidelines.holidayInfo.secondaryHoliday) {
-                userContentSections.push(
-                    `**Secondary Holiday**: ${seasonalGuidelines.holidayInfo.secondaryHoliday.name} (${seasonalGuidelines.holidayInfo.secondaryHoliday.region})`,
-                    `**Days Until**: ${seasonalGuidelines.holidayInfo.secondaryHoliday.daysUntil === 0 ? 'TODAY' : seasonalGuidelines.holidayInfo.secondaryHoliday.daysUntil > 0 ? `${seasonalGuidelines.holidayInfo.secondaryHoliday.daysUntil} days` : `${Math.abs(seasonalGuidelines.holidayInfo.secondaryHoliday.daysUntil)} days ago`}`,
-                    '',
-                );
+                '**Context for Today**:'
+            );
+            
+            // Add context lines
+            const contextLines = [];
+            if (Math.abs(yesterday.tempDiffFromToday) > 5) {
+                contextLines.push(`• Temperature ${yesterday.tempDiffFromToday > 0 ? 'warmer' : 'cooler'} than yesterday by ${Math.abs(yesterday.tempDiffFromToday).toFixed(1)}°C`);
             }
-            systemMessageContent.push(
-                `**Decorations**: ${seasonalGuidelines.holidayInfo.holidayDecorations.slice(0, 10).join(', ')}`,
-                `**Atmosphere**: ${seasonalGuidelines.holidayInfo.holidayAtmosphere.slice(0, 6).join(', ')}`,
-                `**Color Palette**: ${seasonalGuidelines.holidayInfo.holidayColors.slice(0, 6).join(', ')}`,
+            if (yesterday.precipitationTotal > 0 && weather.precipitation === 0) {
+                contextLines.push(`• Yesterday had rain (${yesterday.precipitationTotal}mm), ground may still show dampness`);
+            }
+            if (yesterday.precipitationSnow > 0) {
+                contextLines.push(`• Snow fell yesterday (${yesterday.precipitationSnow}mm), snow cover likely present`);
+            }
+            
+            userContentSections.push(
+                ...(contextLines.length > 0 ? contextLines : ['• Conditions similar to yesterday']),
                 '',
-                '1. Intergrate Festive Elements Naturally Into The Environment.',
-                '2. Adjust Scene To Match Holiday Atmosphere, Decorations, And Color Scheme.',
-                '',
+                '═══════════════════════════════════════════════════',
+                ''
             );
         }
+        
+        userContentSections.push(
+            '## ⏱️ TEMPORAL WEATHER TIMELINE (Past 4 Hours + Next 2 Hours)',
+            ''
+        );
+        
+        // Display timeline entries from pre-compiled data
+        report.timelineEntries.forEach(entry => {
+            userContentSections.push(
+                `### ${entry.label} - ${entry.timeStr}`,
+                `├─ Temperature: ${entry.temperature}°C (Feels like: ${entry.feelsLike}°C)`,
+                `├─ Condition: ${entry.condition}`,
+                `├─ Cloud Cover: ${entry.cloudCoverage}% ${entry.cloudCoverage >= 80 ? '(overcast)' : entry.cloudCoverage >= 50 ? '(mostly cloudy)' : entry.cloudCoverage >= 20 ? '(partly cloudy)' : '(mostly clear)'}`,
+                `├─ Precipitation: ${entry.precipitation > 0 ? `${entry.precipitation}mm (${entry.precipitationType})` : 'None'}`,
+                `├─ Humidity: ${entry.humidity}% ${entry.humidity >= 80 ? '(very humid)' : entry.humidity >= 60 ? '(humid)' : entry.humidity >= 40 ? '(comfortable)' : '(dry)'}`,
+                `├─ Wind: ${Math.round(entry.windSpeed * 10) / 10} m/s from ${Math.round(entry.windDirection)}°`,
+                `└─ Visibility: ${entry.visibility >= 10000 ? '>10 km (excellent)' : `${Math.round(entry.visibility / 1000)} km`}`,
+                ''
+            );
+        });
+        
+        // Display trend analysis from pre-compiled data
+        if (report.trendAnalysis) {
+            const trend = report.trendAnalysis;
+            const currentTemp = weather.temperature;
+            const currentClouds = weather.cloudCoverage;
+            const currentHumidity = weather.humidity;
+            const currentWindSpeed = weather.windSpeed;
+            
+            userContentSections.push(
+                '═══════════════════════════════════════════════════',
+                '',
+                '## 📈 TREND ANALYSIS & VISUAL IMPLICATIONS',
+                ''
+            );
+            
+            // Temperature trend
+            userContentSections.push('### 🌡️ Temperature Trend');
+            if (trend.temperature.status === 'stable') {
+                userContentSections.push(`**Status**: Stable at ${currentTemp}°C`);
+                userContentSections.push(`**Visual Guidance**: Consistent thermal conditions, no thermal transition effects`);
+            } else if (trend.temperature.status === 'rising') {
+                userContentSections.push(`**Status**: Rising trend (+${trend.temperature.change.toFixed(1)}°C)`);
+                userContentSections.push(`**Rate**: ${trend.temperature.rate.toFixed(2)}°C per hour`);
+                userContentSections.push(`**Visual Implications**:`);
+                userContentSections.push(`  → Characters may show warming: removing layers, fanning, sweating if hot`);
+                userContentSections.push(`  → Snow/ice melting if crossing freezing point`);
+                userContentSections.push(`  → Heat shimmer effects if temperature exceeds 30°C`);
+            } else {
+                userContentSections.push(`**Status**: Falling trend (${trend.temperature.change.toFixed(1)}°C)`);
+                userContentSections.push(`**Rate**: ${trend.temperature.rate.toFixed(2)}°C per hour`);
+                userContentSections.push(`**Visual Implications**:`);
+                userContentSections.push(`  → Characters may react to cold: visible breath if <10°C, adjusting clothing`);
+                if (trend.temperature.change < -3) {
+                    userContentSections.push(`  → Rapid cooling: condensation on windows, mist/fog forming`);
+                }
+            }
+            userContentSections.push('');
+            
+            // Precipitation pattern
+            userContentSections.push('### 🌧️ Precipitation Pattern');
+            if (trend.precipitation.hasCurrentPrecip) {
+                const intensity = weather.precipitation > 5 ? 'Heavy' : weather.precipitation > 2 ? 'Moderate' : 'Light';
+                userContentSections.push(`**Status**: ACTIVE precipitation (${intensity} - ${weather.precipitation}mm/h)`);
+                userContentSections.push(`**Type**: ${weather.precipitationType?.description || weather.condition}`);
+                userContentSections.push(`**Visual Requirements**:`);
+                userContentSections.push(`  → Falling droplets visible in air`);
+                userContentSections.push(`  → Wet surfaces with active water accumulation`);
+                userContentSections.push(`  → Splash effects where drops hit surfaces`);
+                userContentSections.push(`  → Characters: rain gear, umbrellas, wet hair/clothing if exposed`);
+                userContentSections.push(`  → Puddles forming and expanding`);
+            } else if (trend.precipitation.hadRecentPrecip) {
+                const lastPrecip = trend.precipitation.lastPrecip;
+                const timeSincePrecip = lastPrecip ? Math.round((Date.now() - lastPrecip.timestamp) / (1000 * 60)) : 0;
+                userContentSections.push(`**Status**: Precipitation ended ~${timeSincePrecip} minutes ago`);
+                userContentSections.push(`**Critical After-Effects Required**:`);
+                userContentSections.push(`  → Surfaces MUST be wet - this is non-negotiable`);
+                userContentSections.push(`  → Puddles present, water droplets on leaves, windows, surfaces`);
+                userContentSections.push(`  → Wet pavement reflects lights and sky`);
+                userContentSections.push(`  → Drying process visible: steam rising if warm, evaporation effects`);
+                userContentSections.push(`  → Characters: may have damp clothing, wet footprints, shaking off water`);
+                userContentSections.push(`  → Air feels fresh, cleaned atmosphere`);
+            } else if (trend.precipitation.hadEarlierPrecip) {
+                userContentSections.push(`**Status**: Rained 2-4 hours ago, mostly dried`);
+                userContentSections.push(`**Residual Effects**:`);
+                userContentSections.push(`  → Some dampness may remain in shaded/sheltered areas`);
+                userContentSections.push(`  → Deep puddles may persist in low-lying areas`);
+                userContentSections.push(`  → Most surfaces dried but may show water marks`);
+            } else {
+                userContentSections.push(`**Status**: No precipitation in past 4 hours`);
+                userContentSections.push(`**Conditions**: Dry throughout observation period`);
+            }
+            userContentSections.push('');
+            
+            // Cloud cover trend
+            userContentSections.push('### ☁️ Cloud Cover Transition');
+            if (trend.cloud.status === 'stable') {
+                userContentSections.push(`**Status**: Stable at ${currentClouds}%`);
+            } else if (trend.cloud.status === 'increasing') {
+                userContentSections.push(`**Status**: Increasing (+${Math.round(trend.cloud.change)}%) - sky becoming overcast`);
+                userContentSections.push(`**Lighting Transition**:`);
+                userContentSections.push(`  → Shifting from direct to diffused lighting`);
+                userContentSections.push(`  → Shadows becoming softer, less defined`);
+                userContentSections.push(`  → Overall brightness decreasing`);
+                userContentSections.push(`  → Sky: clouds moving in, darkening appearance`);
+                if (trend.cloud.change > 30 && !trend.precipitation.hasCurrentPrecip) {
+                    userContentSections.push(`  → Rapid cloud buildup may indicate approaching storm`);
+                }
+            } else {
+                userContentSections.push(`**Status**: Decreasing (${Math.round(trend.cloud.change)}%) - skies clearing`);
+                userContentSections.push(`**Lighting Transition**:`);
+                userContentSections.push(`  → Shifting from diffused to direct lighting`);
+                userContentSections.push(`  → Shadows becoming sharper, more defined`);
+                userContentSections.push(`  → Overall brightness increasing`);
+                userContentSections.push(`  → Sky: breaks in clouds, blue sky visible, sunbeams possible`);
+            }
+            userContentSections.push('');
+            
+            // Humidity trend
+            if (Math.abs(trend.humidity.change) >= 10) {
+                userContentSections.push('### 💧 Humidity Shift');
+                if (trend.humidity.status === 'rising') {
+                    userContentSections.push(`**Status**: Rising (+${trend.humidity.change}%) - air becoming more humid`);
+                    if (currentHumidity > 80 && !trend.precipitation.hasCurrentPrecip) {
+                        userContentSections.push(`**Visual Effects**:`);
+                        userContentSections.push(`  → High humidity without rain: mist or fog may form`);
+                        userContentSections.push(`  → Condensation on cold surfaces, windows fogging`);
+                        userContentSections.push(`  → Hazy atmosphere, reduced visibility distances`);
+                    }
+                } else {
+                    userContentSections.push(`**Status**: Falling (${trend.humidity.change}%) - air drying out`);
+                    if (trend.precipitation.hadRecentPrecip) {
+                        userContentSections.push(`**Visual Effects**:`);
+                        userContentSections.push(`  → Accelerated drying: wet surfaces evaporating faster`);
+                        userContentSections.push(`  → Crisper visibility, clearer air`);
+                    }
+                }
+                userContentSections.push('');
+            }
+            
+            // Wind trend
+            if (Math.abs(trend.wind.change) >= 2) {
+                userContentSections.push('### 💨 Wind Conditions');
+                if (trend.wind.status === 'strengthening') {
+                    userContentSections.push(`**Status**: Strengthening (+${trend.wind.change.toFixed(1)} m/s)`);
+                    userContentSections.push(`**Visual Dynamics**:`);
+                    userContentSections.push(`  → Increasing movement: clothes, hair, loose objects`);
+                    userContentSections.push(`  → Leaves/debris blowing more vigorously`);
+                    if (currentWindSpeed > 10) {
+                        userContentSections.push(`  → Strong wind: characters bracing, difficult movement`);
+                    }
+                } else {
+                    userContentSections.push(`**Status**: Calming (${trend.wind.change.toFixed(1)} m/s)`);
+                    userContentSections.push(`**Visual Dynamics**:`);
+                    userContentSections.push(`  → Decreasing movement, settling conditions`);
+                    userContentSections.push(`  → Dust/debris settling, calmer atmosphere`);
+                }
+                userContentSections.push('');
+            }
+            
+            // Overall weather stability
+            userContentSections.push('### 🎯 Overall Pattern Assessment');
+            if (trend.stability.isStable) {
+                userContentSections.push(`**Stability**: High - Stable weather pattern`);
+                userContentSections.push(`**Depiction**: Consistent, steady-state atmospheric conditions`);
+                userContentSections.push(`**No transition effects needed - show established conditions**`);
+            } else {
+                userContentSections.push(`**Stability**: Low - Active weather transitions`);
+                userContentSections.push(`**Depiction**: Environment should show mid-transition states`);
+                userContentSections.push(`**Consider**: Clearing/darkening skies, drying/wetting surfaces, thermal shifts`);
+                
+                // Identify primary trend
+                const trends = [];
+                if (Math.abs(trend.temperature.change) >= 2) trends.push('thermal');
+                if (trend.precipitation.hadRecentPrecip || trend.precipitation.hasCurrentPrecip) trends.push('precipitation');
+                if (Math.abs(trend.cloud.change) >= 20) trends.push('cloud cover');
+                
+                if (trends.length > 0) {
+                    userContentSections.push(`**Primary Transitions**: ${trends.join(', ')}`);
+                }
+            }
+        }
+        
+        userContentSections.push(
+            '',
+            '═══════════════════════════════════════════════════',
+            '',
+            '**END OF WEATHER HISTORY ANALYSIS REPORT**',
+            ''
+        );
+    }
+    
+    if (seasonalData && seasonalData.mode === 'comprehensive') {
+        userContentSections.push(
+            '',
+            '# 📄 SEASONAL ADAPTATION PRINTOUT',
+            '**Document Type**: Environmental Modification Guidelines',
+            `**Season**: ${capitalize(seasonForGuidelines)} ${getSeasonIcon(seasonForGuidelines)}`,
+            `**Generated**: ${time ? `${time.monthName} ${time.dayOfMonth}, ${time.year}` : 'Current Date'}`,
+            '',
+            '---',
+            '',
+            '## General Guidelines',
+            ...seasonalData.guidelines.map(g => `• ${g}`),
+            '',
+            '## Weather-Specific Recommendations',
+            ...seasonalData.modifications.map(m => `• ${m}`),
+            '',
+        )
+        if (seasonalData.holidayInfo?.isHolidayPeriod) {
+            userContentSections.push(
+                '## 🎉 Holiday Information',
+                `**Primary Holiday**: ${capitalize(seasonalData.holidayInfo.primaryHoliday.name)} (${seasonalData.holidayInfo.region})`,
+                `**Timing**: ${seasonalData.holidayInfo.primaryHoliday.daysUntil === 0 ? 'TODAY' : seasonalData.holidayInfo.primaryHoliday.daysUntil > 0 ? `In ${seasonalData.holidayInfo.primaryHoliday.daysUntil} days` : `${Math.abs(seasonalData.holidayInfo.primaryHoliday.daysUntil)} days ago`}`,
+                ''
+            )
+            if (seasonalData.holidayInfo.secondaryHoliday) {
+                userContentSections.push(
+                    `**Secondary Holiday**: ${capitalize(seasonalData.holidayInfo.secondaryHoliday.name)} (${seasonalData.holidayInfo.secondaryHoliday.region})`,
+                    `**Timing**: ${seasonalData.holidayInfo.secondaryHoliday.daysUntil === 0 ? 'TODAY' : seasonalData.holidayInfo.secondaryHoliday.daysUntil > 0 ? `In ${seasonalData.holidayInfo.secondaryHoliday.daysUntil} days` : `${Math.abs(seasonalData.holidayInfo.secondaryHoliday.daysUntil)} days ago`}`,
+                    ''
+                );
+            }
+            userContentSections.push(
+                '### Holiday Elements',
+                `**Decorations**: ${seasonalData.holidayInfo.holidayDecorations.slice(0, 10).join(', ')}`,
+                `**Atmosphere**: ${seasonalData.holidayInfo.holidayAtmosphere.slice(0, 6).join(', ')}`,
+                `**Color Palette**: ${seasonalData.holidayInfo.holidayColors.slice(0, 6).join(', ')}`,
+                '',
+                '**Application Notes:**',
+                '• Integrate festive elements naturally into the environment',
+                '• Adjust scene to match holiday atmosphere, decorations, and color scheme',
+                ''
+            );
+        }
+        userContentSections.push(
+            '---',
+            '**Note**: These are recommendations based on current seasonal and weather conditions. Apply them thoughtfully while maintaining the original prompt\'s intent.',
+            ''
+        );
     }
 
     // Add clothing adaptation section if clothing is enabled
@@ -8439,80 +9539,84 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '',
         '# 🔍 ANALYSIS & MODIFICATION PROCESS',
         '',
-        '### 1. Scene Understanding',
-        '• **Environment Type**: CRITICALLY determine if scene is INDOOR ONLY, OUTDOOR ONLY, or MIXED/TRANSITIONAL (see Weather & Time Integration Framework above)',
+        '**This section defines the sequential analysis workflow. Follow these steps in order:**',
+        '',
+        '### 1. Analyze Initial Prompts and Provided Images',
+        '• Read base prompt, UC (negative prompt), and character prompts',
+        '• If image provided: Analyze for visual elements, conflicts, and quality issues',
+        '',
+        '### 2. Analyze Current Context Data',
+        ...(time ? ['• Parse TIME DATA: clock time, period, sun position, light level'] : []),
+        ...(weather ? [
+            '• Parse WEATHER DATA LCD: current temperature, condition, wind, visibility, precipitation',
+            '• Review WEATHER HISTORY ANALYSIS REPORT (if provided):',
+            '  - Yesterday\'s summary: understand broader weather patterns',
+            '  - Temporal timeline: past 4 hours + next 2 hours showing weather evolution',
+            '  - Trend analysis sections: critical for after-effects',
+            '    → Temperature trends: character reactions to warming/cooling',
+            '    → Precipitation pattern: **CRITICAL** - if rain ended, surfaces MUST be wet',
+            '    → Cloud transitions: lighting shifts from direct to diffused',
+            '    → Humidity/wind changes: fog formation, drying rates, atmospheric effects'
+        ] : []),
+        ...(seasonalConfig && seasonalConfig.enabled ? ['• Note seasonal/holiday information'] : []),
+        '',
+        ...(weather ? [
+            '**CRITICAL - Weather After-Effects**:',
+            'The Weather History Report shows temporal context. Use it to depict realistic transitions:',
+            '• If precipitation ended recently (within 1-2h): Surfaces MUST show wetness',
+            '  - Wet pavement reflecting lights, puddles present, water droplets on surfaces',
+            '  - Drying effects: steam rising if warm, dampness in shaded areas',
+            '• If temperature shifted significantly: Show thermal transition effects',
+            '  - Warming: characters removing layers, condensation evaporating',
+            '  - Cooling: visible breath if cold, frost forming, character adjustments',
+            '• If clouds changed: Lighting should show transition state',
+            '  - Clearing: sunbeams breaking through, shadows sharpening',
+            '  - Darkening: diffused light, soft shadows, overcast atmosphere',
+            '',
+        ] : []),
+        '### 3. Analyze and Compile User Directive (if provided)',
+        ...(directive ? [
+            '• Parse directive for instructions and narrative',
+            '• Handle typos/informal language (understand intent)',
+            '• Execute conditional logic (IF/THEN/ELIF/ELSE)',
+            '• Process incrementing/counter logic and variables'
+        ] : ['• No directive provided - skip this step']),
+        '',
+        '### 4. Scene Understanding',
+        '• **Environment Type**: CRITICALLY determine if scene is INDOOR ONLY, OUTDOOR ONLY, or MIXED/TRANSITIONAL',
         '• **Core Intent**: Identify the primary artistic goal and mood of the original prompt',
-        '• **Style Elements**: Note specific artistic styles, techniques, or aesthetics mentioned',
         '• **Character Focus**: Identify main subjects, their roles, and relationships',
+        '• **Style Elements**: Note specific artistic styles, techniques, or aesthetics mentioned',
         '• **Setting Details**: Extract specific environmental and atmospheric descriptions',
         '',
-        '## ⚖️ PRIORITY HIERARCHY - CRITICAL',
+        '### 5. Identify Conflicts',
+        ...(weather || time ? ['• Check for time/weather/lighting conflicts with provided data'] : []),
+        '• Check for seasonal conflicts and atmospheric mismatches',
+        '• Note any contradictory elements in prompt',
         '',
-        '**When conflicts arise, follow this exact order:**',
+        '### 6. Check Priority Hierarchy',
+        '• See "PRIORITY HIERARCHY" section below',
         '',
-        '1. **Director Rules** (if present) - ABSOLUTE constraints from user-defined rules',
-        '2. **User Directive** (if present) - Overrides weather/time/seasonal context',
-        '3. **Weather/Time Context** - Default contextual integration',
-        '4. **Seasonal Guidelines** - Subordinate to directive and director rules',
-        '5. **All Other Guidelines** - General enhancement principles',
+        '## ⚖️ PRIORITY HIERARCHY',
         '',
-        '**Conflict Resolution:**',
-        '• Director rules conflict with anything → Director rules win',
-        '• User directive conflicts with weather/time → Directive wins',
-        '• Weather/time conflicts with seasonal → Weather/time wins (unless directive overrides)',
+        '**Conflict order:** 1) Director Rules (absolute) → 2) Directive (content) → 3) Weather/Time → 4) Seasonal → 5) General',
         '',
-        '### 2. Mandatory Integration with Conflict Resolution',
+        '### 2. Context Integration with Conflict Resolution',
         ...(weather || time ? [
-            `**Context data IS PROVIDED - integration is REQUIRED.**`,
-            `**Your job: Analyze HOW to best integrate the provided data:**`,
+            `**When ${time && weather ? 'time and weather data are' : time ? 'time data is' : 'weather data is'} provided, integration is required.**`,
+            `**Analyze HOW to best integrate the data:**`,
             '',
             '**Analysis Steps:**',
             '• Identify existing conflicts in prompt with provided context',
             '• Determine optimal placement for context markers',
             '• Choose specific visual descriptors matching the data',
             '• Plan conflict resolution strategy',
-            '',
-            '**Critical Understanding:**',
-            '• The conditional system already decided integration IS needed',
-            '• Your analysis determines the METHOD, not the necessity',
-            '• Skipping integration when data is provided is an ERROR',
             ''
         ].join('\n') : '**Analyze for conflicts and plan resolution:**'),
         '',
-        '**Identify Conflicts:**',
-        '• **Time Conflicts**: Conflicting time-of-day descriptions ("bright daylight" when it\'s night)',
-        '• **Weather Conflicts**: Weather contradicting current data ("clear blue sky" when overcast)',
-        '• **Lighting Conflicts**: Lighting contradicting time/weather ("harsh sunlight" when twilight)',
-        '• **Seasonal Conflicts**: Seasonal elements mismatching season ("summer beach" in winter)',
-        '• **Atmospheric Conflicts**: Effects not aligning with conditions ("dry desert air" when humid)',
-        '',
-        '**Resolution Strategy (apply in order):**',
-        '1. **Remove conflicts first** (mark `is_critical: true`)',
-        '   Example: {"select_text": "bright daylight", "action": "delete", "reason": "Conflicts with nighttime setting", "reason_display": "Remove conflict", "replacement_category": "Conflict Resolution"}',
-        '',
-        ...(weather || time ? [
-            '2. 🚨 **Add required weather/time markers** (MANDATORY - this is not optional)',
-            ...(time ? ['   Example: {"action": "append", "replace_text": "nighttime, dark, deep shadows, dim lighting", "reason": "Required time integration per guidelines", "reason_display": "Time of day", "replacement_category": "Time of Day"}'] : []),
-            ...(weather ? ['   Example: {"action": "append", "replace_text": "overcast sky, cloudy weather, diffused lighting", "reason": "Required weather integration per guidelines", "reason_display": "Weather", "replacement_category": "Weather"}'] : []),
-            ''
-        ] : []),
-        `${weather || time ? '3' : '2'}. **Add contextual elements**`,
-        '   Example: {"select_text": "standing outside", "replace_text": "standing outside in moonlight, cool night air, deep shadows", "reason": "Add nighttime contextual elements", "reason_display": "Add context", "replacement_category": "Enhancement"}',
-        '',
-        `${weather || time ? '4' : '3'}. **Adapt character actions**`,
-        '   Example: {"select_text": "walking in park", "replace_text": "hurrying through rain-soaked park, umbrella shielding face", "reason": "Adapt action to rainy weather", "reason_display": "Adapt action", "replacement_category": "Enhancement"}',
-        '',
-        `${weather || time ? '5' : '4'}. **Enhance atmosphere**`,
-        '   Example: {"action": "append", "replace_text": "wet pavement reflecting streetlights, cool evening air", "reason": "Enhance atmospheric details", "reason_display": "Add atmosphere", "replacement_category": "Atmosphere"}',
-        '',
-        '**Mandatory Conflict Analysis in Reasoning:**',
-        '• Temperature analysis + integration plan',
-        '• Weather state analysis + enhancement opportunities',
-        '• Time/lighting analysis + replacement plan',
-        '• Character state analysis + justification',
-        '• Redundancy check (identify semantic overlap)',
-        '• Integration opportunities (specific enhancements)',
-        '• Resolution strategy (chosen approach with rationale)',
+        '**Conflicts to check:** Time, weather, lighting, seasonal, atmospheric contradictions with provided data',
+        '**Resolution Order:** 1) Remove conflicts 2) Integrate weather/time 3) Add contextual elements 4) Adapt actions 5) Enhance atmosphere',
+        '**Reasoning must document:** Temperature, weather state, time/lighting, character state, redundancy check, integration plan, resolution strategy',
         '',
         '### 3. Enhancement Opportunities',
         'Identify integration points, missing contextual details, character interaction opportunities, environmental enhancements.',
@@ -8525,20 +9629,13 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '**Core Principles**: Preservation first, contextual integration, environment-aware (indoor/outdoor), character harmony, artistic balance.',
         '',
         '**Modification Hierarchy**:',
-        '1. Conflict resolution (see Conflict Detection & Resolution above)',
-        ...(weather || time ? ['2. 🚨 MANDATORY weather/time integration (REQUIRED - see "MANDATORY WEATHER & TIME INTEGRATION" section above)'] : ['2. Essential atmospheric enhancement']),
+        '1. Conflict resolution',
+        ...(weather || time ? [`2. ${time && weather ? 'Time & weather' : time ? 'Time' : 'Weather'} integration (when data provided)`] : ['2. Atmospheric enhancement']),
         '3. Character integration and adaptation',
         '4. Atmospheric refinement',
         (creative ? '5. Creative flourishes (if creative mode enabled)' : ''),
         '',
-        ...(weather || time ? [
-            `⚠️ **REMINDER**: Integration is MANDATORY (see "MANDATORY WEATHER & TIME INTEGRATION" section for details).`,
-            ''
-        ] : []),
-        '**Emphasis Weights**: 1.0-1.2 (subtle), 1.3-1.5 (standard), 1.6-2.0 (strong), 2.1+ (critical).',
-        '• Use single weight for unified concepts',
-        '• Use multiple weights for complex multi-element additions',
-        '• Avoid overlap between weighted elements',
+        '**Emphasis:** Use 1.3-1.5 (standard), 1.6-2.0 (strong), 2.1+ (critical). See EMPHASIS GROUPS section',
         '',
     )
     // Add creative mode instructions if creative flag is enabled
@@ -8574,6 +9671,62 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
                 '**Areas**: Wording (concise/precise), Composition (hierarchy/balance/depth), Atmosphere (mood/sensory/lighting), Character (personality/emotion), Environment (storytelling/world-building).',
                 '',
                 '**Process**: Analyze scene, identify 3-5 enhancements, apply via text_replacements, elevate quality. Make 3+ specific improvements.',
+                '',
+                '## 📝 CREATIVE MODE SPECIFIC TASKS',
+                '',
+                '### 1. Rich Description Expansion',
+                '**Within token limits, maximize descriptive richness:**',
+                '• Expand vague or minimal descriptions into vivid, detailed language',
+                '• Add sensory details (textures, lighting nuances, atmospheric qualities)',
+                '• Fill in missing details that enhance scene coherence and immersion',
+                '• Use available token budget to its fullest - don\'t be sparse when tokens allow',
+                '• Transform generic descriptions into specific, evocative imagery',
+                '',
+                '**Example Transformations:**',
+                '• "rainy day" → "heavy rain drumming on surfaces, water streaming down windows, puddles reflecting gray overcast sky, damp air thick with moisture"',
+                '• "happy girl" → "girl with bright genuine smile, eyes sparkling with joy, relaxed cheerful posture, radiating positive energy"',
+                '• "sunset" → "golden hour sunset painting sky in warm oranges and pinks, long dramatic shadows, soft diffused light bathing everything in warm glow"',
+                '',
+                '### 2. Tag Enhancement',
+                '**Enrich tags with descriptive qualifiers:**',
+                '• Add descriptive adjectives to base tags when appropriate',
+                '• Specify qualities: "rain" → "heavy rain", "smile" → "bright genuine smile"',
+                '• Include atmosphere tags: "dramatic lighting", "cinematic composition", "depth of field"',
+                '• Layer complementary tags that build on each other',
+                '',
+                '### 3. Character Naming',
+                '**Replace generic character identifiers with appropriate names (character_names field):**',
+                '• Scan character prompts for generic patterns: "Character #1", "Character #2", "Character 1", "Character 2", etc.',
+                '• Replace with contextually appropriate names that match the scene/setting',
+                '• Consider cultural context, time period, and character traits when choosing names',
+                '• Provide as array in character_names field (order must match character_prompts array)',
+                '',
+                '**Examples:**',
+                '• "Character #1" → "Sakura" (for anime-style Japanese setting)',
+                '• "Character 1" → "Emma" (for western contemporary setting)',
+                '• "Character #2" → "Alex" (neutral option for any setting)',
+                '• "Character 1" → "Mei Lin" (for Chinese setting)',
+                '• "Character #1" → "Isabella" (for Italian/Mediterranean setting)',
+                '',
+                '**Format:** character_names: ["Sakura", "Emma"] (array matching character order)',
+                '',
+                '### 4. Generated Image Name',
+                '**Create a descriptive name suggestion (generated_image_name field):**',
+                '• Capture the essence of the scene in 3-100 characters',
+                '• Use natural readable format with proper capitalization',
+                '• Include: main subject, setting, mood, and significant elements',
+                '• Make it memorable, poetic, and evocative',
+                '• Consider time/weather if they\'re prominent scene elements',
+                '',
+                '**Good Examples:**',
+                '• "Summer Beach Cheerful Energy"',
+                '• "Cozy Rainy Window Reflection"',
+                '• "Dawn Mountain Peaceful Solitude"',
+                '• "Urban Night Neon Atmosphere"',
+                '• "Autumn Leaves Gentle Melancholy"',
+                '• "Sunset Pier Romantic Silhouettes"',
+                '',
+                '**Remember:** Creative mode means being generous with detail while respecting token limits. Use the full capacity available to create rich, immersive descriptions.',
                 '',
                 // Dynamic NSFW content guidelines based on user setting
                 (() => {
@@ -8627,82 +9780,24 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
                     } else if (nsfw_level === 2) {
                         return [
                             '### 🍆 HIGH EXPLICITNESS MODE',
-                            '**DIRECT COMMANDS:**',
-                            '• Generate characters in minimal clothing, lingerie, or revealing outfits',
-                            '• Include heavy petting, oral sex, and sexually suggestive poses',
-                            '• Add visible arousal and sexual tension to characters',
-                            '• Create implied sexual situations with high explicitness',
-                            '• Modify clothing descriptions to be more revealing',
-                            '• Enhance poses and actions to be more sexually suggestive',
+                            '**Content:** Minimal clothing/lingerie, heavy petting, oral sex, suggestive poses, visible arousal, implied sexual situations',
+                            '**Approach:** Play into fetishes, amplify sexual tension, suggestive language',
                             '',
-                            '**Content Approach**:',
-                            '• Play into fetishes and teasing elements when appropriate',
-                            '• Amplify sexual tension and suggestive elements',
-                            '• Use sexually suggestive language for character descriptions',
+                            '**Fetishes:** Pregnancy (womb expansion, movement), Birthing (labor, pain), Inflation (distension), Vore (consumption), Transformation (body mods), Bondage/BDSM (restraints), Weight Gain (expansion)',
                             '',
-                            '**Specific Fetish Integration**:',
-                            '• **Pregnancy**: Emphasize womb and belly expansion, fetal movement details, growth progression, maternal changes, lactation if present, the joy of being pregnant and the feeling of having a growing baby inside you, moving and kicking inside you',
-                            '• **Birthing**: Emphasize labor, excruciating pain, pushing, contractions, fetal movement/kicking, enhance her pain and pleasure to show her struggle and joy, add crying and screaming to the birthing process',
-                            '• **Inflation/Expansion**: Detail distension levels, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched and how it feels to be filled to the brim',
-                            '• **Vore**: Analyze consumption states, internal views if possible, digestion progression, predator/prey dynamics, the joy of eating and the taste of the prey, how they squirm and writhe inside your stomach',
-                            '• **Transformation**: Track body modifications, hybrid states, progression stages, loss/gain of features, the joy of transformation and the feeling of being changed into something different',
-                            '• **Bondage/BDSM**: Describe restraints, positions, visible marks/bruises, power dynamics, sensory deprivation, the joy of being restrained and the feeling of being helpless',
-                            '• **Weight Gain**: Emphasize weight gain, distension, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched',
-                            '',
-                            '**Technical Requirements**:',
-                            '• Use emphasis weights (1.2::keyword::, 1.5::keyword::) for fetish elements',
-                            '• Document visible physical changes from sexual/fetish activities (swelling, marks, expressions)',
-                            '• Describe character expressions conveying pleasure, pain, or mixed states',
-                            '• For multi-character: define power dynamics, physical contact points, interaction intensity',
-                            '• Use interaction format: source#action, target#action patterns'
+                            '**Technical:** Emphasis 1.2-6.5, document physical changes, source#action format'
                         ].join('\n');
                     } else if (nsfw_level === 1) {
                         return [
                             '### 🍆 MODERATE EXPLICITNESS MODE',
-                            '**DIRECT COMMANDS:**',
-                            '• Allow sexual themes and partial nudity in content',
-                            '• Include kissing, caressing, and suggestive poses',
-                            '• Add implied sexual tension and innuendo',
-                            '• Use moderate sexual content without full explicitness',
-                            '• Include sensual or romantic elements in appropriate contexts',
-                            '• Allow revealing clothing and suggestive body language',
-                            '',
-                            '**Specific Fetish Integration**:',
-                            '• **Pregnancy**: Note maternal changes and belly expansion when present',
-                            '• **Birthing**: Reference labor and delivery when contextually appropriate',
-                            '• **Inflation/Expansion**: Mention distension and fullness when relevant',
-                            '• **Vore**: Include consumption themes if present in the scene',
-                            '• **Transformation**: Track body modifications and changes',
-                            '• **Bondage/BDSM**: Describe restraints and power dynamics when applicable',
-                            '• **Weight Gain**: Note weight changes and body expansion',
-                            '',
-                            '**Technical Requirements**:',
-                            '• Use subtle emphasis weights (1.1::keyword::, 1.3::keyword::) for fetish elements',
-                            '• Document visible physical changes from activities (when appropriate)',
-                            '• Maintain moderate explicitness without graphic detail'
+                            '**Content:** Sexual themes, partial nudity, kissing, caressing, suggestive poses, sensual/romantic elements',
+                            '**Fetishes:** Note when present - pregnancy, birthing, inflation, vore, transformation, bondage, weight gain',
+                            '**Technical:** Subtle emphasis 1.1-6.5, maintain moderate explicitness'
                         ].join('\n');
                     } else if (nsfw_level === -1) {
-                        return [
-                            '### 🍆 CONSERVATIVE MODE',
-                            '**DIRECT COMMANDS:**',
-                            '• Actively remove any potentially suggestive elements from prompts',
-                            '• Ensure maximum modesty and appropriateness in all content',
-                            '• Replace revealing clothing with modest alternatives',
-                            '• Remove suggestive poses and replace with neutral ones',
-                            '• Eliminate sexual innuendo and suggestive language',
-                            '• Make all content conservative and appropriate'
-                        ].join('\n');
+                        return '### 🍆 CONSERVATIVE MODE\n**Remove suggestive elements, ensure modesty, replace revealing with modest, eliminate innuendo**';
                     } else if (nsfw_level === -2) {
-                        return [
-                            '### 🍆 ULTRA CONSERVATIVE CLEANSE MODE',
-                            '**DIRECT COMMANDS:**',
-                            '• Aggressively remove ALL potentially sexual or suggestive content',
-                            '• Ensure completely clean and wholesome content only',
-                            '• Replace any revealing elements with fully modest alternatives',
-                            '• Remove all sexual themes, even implied ones',
-                            '• Ensure maximum purity and innocence in all content',
-                            '• Make content suitable for all ages and audiences'
-                        ].join('\n');
+                        return '### 🍆 ULTRA CONSERVATIVE MODE\n**Aggressively remove ALL sexual/suggestive content, ensure wholesome/clean content only, suitable for all ages**';
                     } else {
                         // Default NSFW guidelines for creative mode (when no specific level set)
                         return [
@@ -8716,35 +9811,11 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
                             '• Use sexually suggestive language when appropriate for the scene',
                             '• Maintain explicit nature throughout',
                             '',
-                            '**Specific Fetish Integration**:',
-                            '• **Pregnancy**: Emphasize womb and belly expansion, fetal movement details, growth progression, maternal changes, lactation if present, the joy of being pregnant and the feeling of having a growing baby inside you, moving and kicking inside you',
-                            '• **Birthing**: Emphasize labor, excruciating pain, pushing, contractions, fetal movement/kicking, enhance her pain and pleasure to show her struggle and joy, add crying and screaming to the birthing process',
-                            '• **Inflation/Expansion**: Detail distension levels, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched and how it feels to be filled to the brim',
-                            '• **Vore**: Analyze consumption states, internal views if possible, digestion progression, predator/prey dynamics, the joy of eating and the taste of the prey, how they squirm and writhe inside your stomach',
-                            '• **Transformation**: Track body modifications, hybrid states, progression stages, loss/gain of features, the joy of transformation and the feeling of being changed into something different',
-                            '• **Bondage/BDSM**: Describe restraints, positions, visible marks/bruises, power dynamics, sensory deprivation, the joy of being restrained and the feeling of being helpless',
-                            '• **Weight Gain**: Emphasize weight gain, distension, pressure sensations, shape changes, capacity limits, the joy of being filled and the feeling of being stretched',
+                            '**Fetishes:** Pregnancy (womb expansion, movement), Birthing (labor, pain), Inflation (distension, pressure), Vore (consumption, digestion), Transformation (body mods), Bondage/BDSM (restraints, marks), Weight Gain (distension, capacity)',
                             '',
-                            '**Technical Requirements**:',
-                            '• Use emphasis weights (1.5::keyword::, 2.0::keyword::) for critical fetish elements',
-                            '• Use medical/anatomical terminology for explicit content',
-                            '• Document visible physical changes from sexual/fetish activities (swelling, marks, expressions)',
-                            '• Describe character expressions conveying pleasure, pain, or mixed states',
-                            '• For multi-character: define power dynamics, physical contact points, interaction intensity',
-                            '• Use interaction format: source#action, target#action patterns',
-                            '• Forced actions are allowed if content is starting to shift in that direction (user has agreed)',
-                            '',
-                            '**Quality Standards**:',
-                            '• Maintain visual consistency - all sexual elements must be visually representable',
-                            '• Token efficiency - use efficient, high-impact descriptions',
-                            '• Coherence - integrate naturally with scene and character context',
-                            '• Integration: Incorporate fetish elements into measurements, states, and prompts with high detail and emphasis',
-                            '',
-                            '**Boundaries**:',
-                            '• NEVER modify "artist:" or "style:" tags',
-                            '• Preserve character identity and core scene purpose',
-                            '• Apply only when content is clearly sexual/fetish-oriented',
-                            '• Character identity preservation remains critical even in NSFW contexts'
+                            '**Technical:** Emphasis 1.5-6.5, medical terminology, document physical changes, source#action format, forced actions allowed',
+                            '**Quality:** Visual consistency, token efficiency, natural integration',
+                            '**Boundaries:** Preserve character identity, never modify artist/style tags, apply when sexual content present'
                         ].join('\n');
                     }
                 })(),
@@ -8758,157 +9829,97 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         // Add directive handling instructions to system message
         systemMessageContent.push(
             '',
-            '# 🚨 USER DIRECTIVE HANDLING',
+            '# 🎯 USER DIRECTIVE SYSTEM',
             '',
-            '**A USER DIRECTIVE will be provided in a separate message below.**',
-            '**This directive has HIGH PRIORITY in the hierarchy (see Priority Hierarchy section above).**',
+            '**When provided, directives have high priority for content but must follow all system rules for expression.**',
             '',
-            '**Note**: Director Rules (if present) take precedence over directives. See Priority Hierarchy section for complete order.',
+            '## Priority & Scope',
             '',
-            '**Conflict Resolution:**',
-            '• If directive conflicts with weather/time/season → **Directive wins** (unless Director Rules override)',
-            '• Directive specifies conditions → Use those, not context data',
-            '• Everything must support the directive vision',
+            '**Hierarchy**: System Rules (HOW) → Directive (WHAT) → Context Data (weather/time)',
             '',
-            '**Compliance:**',
-            '• Implement EVERY element of the directive',
-            '• Do NOT skip or ignore any part',
-            '• Do NOT make generic changes that ignore directive',
-            '• Treat as mandatory requirement, not optional suggestion',
+            '**Directive CAN**: Request content, override weather/time context, guide creative direction',
+            '**Directive CANNOT**: Override visual-only rule, syntax requirements, protected content, validation',
             '',
-            '## 📝 Input Tolerance - Handle Real User Input',
-            '**User directives may contain:**',
-            '• Spelling mistakes: "make her weat and tird" → understand as "wet and tired"',
-            '• Grammar errors: "she walking in rain for hours" → understand as "she\'s been walking in rain for hours"',
-            '• Informal language: "make it super rainy lol" → serious implementation of heavy rain',
-            '• Typos: "soked", "suprised", "beatiful" → mentally correct while reading',
-            '• Mixed tenses: "she was walking and feels sad" → understand the intent',
+            '**Key Principle**: Directive determines WHAT to show, system rules determine HOW to express it.',
             '',
-            '**Your Job:**',
-            '1. Read with human intelligence - understand intent despite errors',
-            '2. Mentally correct errors, don\'t apply typos to prompts',
-            '3. Extract meaning - focus on what user WANTS',
-            '4. Don\'t mention errors - just implement the corrected intent',
+            '## Processing Workflow',
             '',
-            '## Dual Analysis Framework',
-            '**Analyze directives in TWO ways:**',
+            '1. **Parse**: Read directive, correct typos mentally, understand intent',
+            '2. **Categorize**: Instructions ("make her wet") vs Narrative ("she\'s been walking for hours")',
+            '3. **Execute Logic**: Process IF/THEN, counters, variables (see Advanced Features below)',
+            '4. **Transform**: Apply VISUAL-ONLY RULE - concepts to visuals, measurements to descriptions',
+            '5. **Create**: text_replacements for EVERY element with emphasis weights (1.4-2.0 for important)',
+            '6. **Verify**: Nothing skipped, all transformed properly',
             '',
-            '### 1️⃣ INSTRUCTION MODE',
-            '**Direct commands:** "make her wet", "change outfit to...", "add rain"',
-            '**Implementation:** Identify exact changes → implement literally via text_replacements',
+            '**Transformation Quick Reference**:',
+            '• "gluttonous" → "1.5::eating messily, mouth full, crumbs on face::"',
+            '• "exhausted from walking 3 hours" → "1.6::exhausted, heavy breathing, tired posture::"',
+            '• "22kmh wind" → "1.4::strong breeze, wind-swept hair::"',
             '',
-            '### 2️⃣ NARRATIVE MODE',
-            '**Story elements:** "She\'s been walking for hours...", "feeling exhausted"',
-            '**Implementation:** LUCID DREAM the story → extract visual implications → translate emotions to body language/expressions',
+            '**Input Tolerance**: Handle typos ("weat"→wet), grammar errors, informal language - mentally correct and implement intent',
             '',
-            '**Process:**',
-            '1. Read & understand (correct errors mentally)',
-            '2. Immerse & visualize the story',
-            '3. Extract visual implications',
-            '4. Translate to visual language (emotions → expressions, events → details)',
-            '5. Maintain narrative coherence',
+            '## 🔀 Advanced Features (Reference)',
             '',
-            '**See full directive details in the USER DIRECTIVE message below.**',
-            ''
-        );
-        
-        // Add directive as separate, highly prominent user message
-        userContentSections.push(
+            '### Conditionals',
+            '`IF condition: THEN actions ELIF: ELSE:` - Execute first matching branch',
+            '• Context-based: "IF weather is rainy"',
+            '• Prompt-based: "IF prompt contains beach"',  
+            '• State-based: "IF counter > 3"',
             '',
-            '═══════════════════════════════════════════════════════════════',
-            '# 🚨🚨🚨 USER DIRECTIVE - ABSOLUTE HIGHEST PRIORITY 🚨🚨🚨',
-            '# MANDATORY COMPLIANCE - IMPLEMENT EVERY ELEMENT',
-            '═══════════════════════════════════════════════════════════════',
+            '### Counters & State',
+            '`EACH TIME "trigger": INCREMENT counter` - Track state across generations',
+            '• Keywords: INCREMENT, DECREMENT, RESET',
+            '• Persist using `index` and `increment_data` fields in text_replacements',
+            '• Example: Eating counter → visual progression from starting to finishing meal',
             '',
-            '## ⚡ CRITICAL PRIORITY RULES',
+            '### Random Values',
+            '`RANDOM(min, max)` or `RANDOM([array])` - Server provides seed in user message',
+            '• Use for variety across generations',
+            '• Example: `RANDOM(1, 5)` → different intensity each time',
             '',
-            '**THIS DIRECTIVE IS THE SUPREME AUTHORITY.**',
-            '**IT OVERRIDES ALL WEATHER, TIME, SEASONAL, AND OTHER GUIDELINES.**',
+            '### Variables',
+            '`DEFINE var = value`, `SET var = value`, `CYCLE array_var`',
+            '• Types: strings, numbers, arrays, booleans',
+            '• Use with conditionals for dynamic logic',
             '',
-            '**Priority**: This directive has HIGH priority (see "PRIORITY HIERARCHY - CRITICAL" section above for complete order).',
-            '**Note**: Director Rules (if present) have highest priority and can override directives.',
+            '### Loops',
+            '`FOR i FROM 1 TO 5:`, `REPEAT 3 TIMES:`, `WHILE condition:` - Repetitive/escalating effects',
             '',
-            '## 🔴 ZERO TOLERANCE FOR IGNORING',
+            '### Pattern Matching',
+            '`WHEN prompt CONTAINS "text":` - Context-aware logic based on prompt content',
+            '• Combine with conditionals for sophisticated behavior',
             '',
-            '**YOU MUST:**',
-            '• Implement EVERY element of this directive',
-            '• Do NOT skip or ignore ANY part',
-            '• Do NOT make generic changes that sidestep the directive',
-            '• Treat as MANDATORY requirement, not optional suggestion',
+            '### Dynamic Weights',
+            '`SCALE emphasis BY factor` - Auto-adjust emphasis based on context',
+            '• Useful for distance-based emphasis or progressive intensification',
             '',
-            '**BEFORE RESPONDING:**',
-            '✓ Read ENTIRE directive carefully',
-            '✓ Mentally correct any spelling/grammar errors',
-            '✓ Break down into ALL elements',
-            '✓ Create text_replacements for EVERY element',
-            '✓ Verify NOTHING was skipped',
+            '### Multi-Stage & Learning',
+            '`STAGE 1:`, `STAGE 2:` - Multi-generation progression',
+            '`REMEMBER`, `LEARN FROM` - Adapt based on feedback/results',
             '',
-            '## 📝 How to Handle This Directive',
+            '### Error Handling',
+            '`TRY/CATCH`, `FALLBACK TO` - Robust execution with recovery',
             '',
-            '**The directive may contain typos/grammar errors - mentally correct them:**',
-            '• "weat" → "wet", "tird" → "tired", "suprised" → "surprised"',
-            '• "she walking" → "she\'s walking", "completly" → "completely"',
+            '**Note**: Advanced features are optional. Simple directives need only steps 1-6 from Processing Workflow.',
             '',
-            '**Analyze in TWO ways:**',
+            '## Conflict Resolution',
             '',
-            '### INSTRUCTION MODE:',
-            'Look for direct commands: "make her...", "add...", "change..."',
-            '→ Implement literally via text_replacements',
-            '',
-            '### NARRATIVE MODE:',
-            'Look for story elements: "She\'s been...", "feeling...", descriptions',
-            '→ LUCID DREAM the story - visualize it, extract visual implications, translate emotions to body language',
-            '',
-            '## 📋 MANDATORY BREAKDOWN',
-            '',
-            '**Process the directive systematically:**',
-            '',
-            '1. **List ALL elements** - every sentence, every detail',
-            '2. **Map to text_replacements** - one replacement per element minimum',
-            '3. **Verify completeness** - go back through directive, check nothing missed',
-            '',
-            '**CRITICAL - Make Selections UNIQUE:**',
-            '• ❌ NEVER use "::" alone (appears in all emphasis weights)',
-            '• ❌ NEVER use "," alone (appears after every tag)',
-            '• ❌ NEVER use single common words ("girl", "standing")',
-            '• ✅ ALWAYS use unique 3-5 word phrases with context',
+            '**When directive conflicts with weather/time context → Directive wins**',
             '',
             '**Examples:**',
-            '```',
-            '❌ "select_text": "::"  → BAD (appears in 1.5::word::, 2.0::tag::, etc.)',
-            '✅ "select_text": "soft focus, dutch angle ::"  → GOOD (unique phrase)',
+            '• Directive: "sunny beach" + Weather data: rain → Create sunny beach, UC: "rain, overcast, wet"',
+            '• Directive: "night scene" + Time: noon → Create night scene, UC: "daytime, sunlight, bright"',
             '',
-            '❌ "select_text": "standing"  → BAD (may appear multiple times)',
-            '✅ "select_text": "1girl, standing in park"  → GOOD (unique context)',
-            '```',
+            '**Strategy**: Implement directive vision, use UC to block conflicting context elements',
             '',
-            '**Example Breakdown (if directive was "She sits in chair eating messily, food on face"):**',
-            '```',
-            'Elements:',
-            '1. ✓ "sits in chair" → Add sitting posture',
-            '2. ✓ "eating messily" → Add messy eating action',
-            '3. ✓ "food on face" → Add food mess details',
-            '',
-            'Text Replacements:',
-            '{"select_text": "1girl, extending hand", "replace_text": "1girl, sitting in large chair eating messily"}',
-            '{"action": "append", "replace_text": "food smeared on face and cheeks, sloppy eating"}',
-            '',
-            'Verification: All 3 elements implemented ✓',
-            '```',
-            '',
-            '## 🎯 Priority & Conflicts',
-            '',
-            '**If Directive Conflicts with Weather/Time:**',
-            '→ **DIRECTIVE WINS COMPLETELY**',
-            '',
-            'Examples:',
-            '• Directive: "sunny beach" + Weather: rain → CREATE sunny beach (ignore rain)',
-            '• Directive: "night scene" + Time: noon → CREATE night scene (ignore noon)',
-            '• Directive: "eating food" + Prompt: waving → ADD eating (replace waving)',
-            '',
-            '**Use UC to prevent conflicts:**',
-            '• If directive wants sunny → UC: "rain, storms, overcast, dark"',
-            '• If directive wants eating → UC: "waving, gesturing, pointing"',
+        );
+    }
+    
+    // Separate directive content sections for conditional sending
+    let directiveContentSections = [];
+    if (directive && typeof directive === 'string' && directive.trim().length > 0) {
+        directiveContentSections.push(
+            
             '',
             '═══════════════════════════════════════════════════════════════',
             `## 📜 THE DIRECTIVE:`,
@@ -8917,21 +9928,25 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
             `${directive.trim()}`,
             '',
             '═══════════════════════════════════════════════════════════════',
-            '## ⚠️ FINAL VERIFICATION BEFORE RESPONDING:',
+            '## IMPLEMENTATION CHECKLIST',
             '═══════════════════════════════════════════════════════════════',
             '',
-            '**Answer these YES or NO:**',
-            '• Did I read the ENTIRE directive? (Y/N)',
-            '• Did I identify ALL elements? (Y/N)',
-            '• Did I create replacements for EVERY element? (Y/N)',
-            '• Will the user recognize their directive in my changes? (Y/N)',
+            '**Your Task: Implement ALL requests from directive above.**',
             '',
-            '**If ANY answer is NO → STOP. Go back and fix it.**',
+            '**Quick Steps:**',
+            '1. List all elements (every sentence, action, attribute)',
+            '2. Map to text_replacements (one per element minimum)',
+            '3. Transform concepts to visuals (apply VISUAL-ONLY RULE)',
+            '4. Add emphasis weights (1.4-2.0) to important elements',
+            '5. Verify completeness (nothing skipped)',
             '',
-            '⚠️ **CRITICAL**: If directive mentions specific actions (eating, sitting, running, etc.) → Those actions MUST appear in your text_replacements. No generic replacements that avoid the directive.',
+            '**Verification:**',
+            '✓ All requests have corresponding replacements',
+            '✓ Concepts transformed to visuals ("gluttonous" → "eating messily")',
+            '✓ Measurements transformed ("22kmh" → "strong breeze")',
+            '✓ Emphasis applied to important elements',
+            '✓ select_text values are unique (3-5 word phrases)',
             '',
-            '🎯 **Your PRIMARY job is implementing THIS directive. Everything else serves this goal.**',
-            ''
         );
     }
     
@@ -8949,9 +9964,61 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '• Gradual enhancement over wholesale changes',
         '• Never alter core character descriptions in bulk',
         '',
-        '**Provide brief HTML summary** explaining key enhancements and benefits (1-2 paragraphs).',
+        '**Provide very brief text summary** explaining key enhancements and benefits (1-2 sentences).',
+        '',
+        '**Generated Image Name (generated_image_name):**',
+        '• **🚨 ALWAYS REQUIRED** - You MUST provide this field in every response',
+        '• Create a descriptive name for the generated image (3-100 characters)',
+        '• Use natural readable format with proper capitalization (e.g., "Rainy Evening Cafe", "Beach Sunset Serenity")',
+        '• Capture main subject, setting, mood, and key atmospheric elements',
+        '• Keep it concise but evocative and memorable',
+        `• ${creative ? 'Creative mode: Be more poetic and descriptive' : 'Standard mode: Be clear and informative'}`,
+        '',
+        '**Character Names (character_names):**',
+        '• **🚨 REQUIRED when character prompts contain placeholder names** (e.g., "Character 1", "Character #1", "Girl 1")',
+        '• **MUST replace ALL placeholder names** with contextually appropriate names',
+        '• Format as array matching character_prompts order: ["Name1", "Name2"]',
+        '• Array must have at least one element when placeholders are detected',
+        '• If you see ANY placeholder patterns (Character 1, Character #1, Girl 1, Boy 1, Person 1), this field is MANDATORY',
+        '• Consider cultural context, setting, and character traits',
+        '• Use proper capitalization (e.g., "Sakura", "Emma", "Alex")',
+        '• If no placeholder names exist, this field is optional',
         '',
     )
+
+    // Add error and warning reporting instructions
+    systemMessageContent.push(
+        '# 🚨 ERROR & WARNING REPORTING',
+        '',
+        '**You can register errors and warnings that will be displayed to the user on the client side.**',
+        '',
+        '**Error Reporting:**',
+        '• Use for serious issues that prevent proper directive execution',
+        '• Examples: "Unable to parse complex conditional logic", "Random seed not available for RANDOM() function"',
+        '• Format: Include "errors" array in your response JSON',
+        '',
+        '**Warning Reporting:**',
+        '• Use for non-critical issues or potential problems',
+        '• Examples: "Variable not found, using default", "Counter reached maximum value"',
+        '• Format: Include "warnings" array in your response JSON',
+        '',
+        '**Usage in Response:**',
+        '```',
+        'text_replacements: {...}',
+        'errors:',
+        '  - "Failed to parse conditional: invalid syntax in directive"',
+        'warnings:',
+        '  - "Counter \'energy_level\' reached minimum value of 0"',
+        '```',
+        '',
+        '**Guidelines:**',
+        '• **Be specific** - Include what went wrong and where',
+        '• **Be helpful** - Suggest fixes when possible',
+        '• **Use sparingly** - Only report genuine issues',
+        '• **Technical details** - Include relevant context for debugging',
+        ''
+    );
+
     systemMessageContent.push(
         '# 🔍 ANALYSIS REQUIREMENTS',
         'Analyze images comprehensively: document visual elements, patterns, changes. When prompts change, identify intent and preserve modifications.',
@@ -8975,21 +10042,20 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '1. **Conflict Removal**: (none to remove in this case)',
         '',
         ...(weather || time ? [
-            '2. 🚨 **MANDATORY Weather & Time Integration**:',
-            '   {"select_text": "standing in park", "replace_text": "standing in rain-soaked park, evening drizzle falling"}',
-            `   ⚠️ This step is REQUIRED because ${weather && time ? 'weather and time data are' : weather ? 'weather data is' : 'time data is'} provided. You MUST integrate ${weather && time ? 'them' : 'it'}.`,
+            `2. **${time && weather ? 'Time & Weather' : time ? 'Time' : 'Weather'} Integration** (when data provided):`,
+            '   select_text: "standing in park", replace_text: "1.5::standing in rain-soaked park, evening drizzle falling::"',
             ''
         ] : []),
         `${weather || time ? '3' : '2'}. **Character Integration**:`,
-        '   {"select_text": "1girl", "replace_text": "1girl, rain jacket glistening with droplets, hood up"}',
+        '   select_text: "1girl", replace_text: "1girl, 1.4::rain jacket glistening with droplets, hood up::"',
         '',
         `${weather || time ? '4' : '3'}. **Atmospheric Refinement**:`,
-        '   {"action": "append", "replace_text": "wet pavement reflecting streetlights, cool evening air, mist rising"}',
+        '   action: "append", replace_text: ", 1.6::wet pavement reflecting streetlights 1.3::cool evening air, mist rising::"',
         '',
-        '**Result**: "1girl, rain jacket glistening with droplets, hood up, standing in rain-soaked park, evening drizzle falling, wet pavement reflecting streetlights, cool evening air, mist rising, happy expression"',
+        '**Result**: Integrated scene with strategic emphasis on weather elements (1.3-1.6 weights)',
         '',
         ...(weather || time ? [
-            '⚠️ **NOTE**: Step 2 is MANDATORY integration (see "MANDATORY WEATHER & TIME INTEGRATION" section).',
+            `**Note**: Weather/time integration is required when data provided. Use emphasis weights (1.3-2.0) for atmospheric elements.`,
             ''
         ] : []),
     )
@@ -8998,15 +10064,16 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '## Step 3: Character Integration and Adaptation',
         '**When action modification is requested, adapt actions to fit weather/time/seasonal context:**',
         '',
-        '**Weather Impact**:',
-        '• Precipitation: `walking` → `hurrying through rain, umbrella shielding`',
-        '• Wind: `standing` → `bracing against gusts, hair whipping`',
-        '• Temperature: `active` → `slowed pace, heavy breathing` (heat) or `huddled, shivering` (cold)',
+        '**Weather Impact** (consider emphasis for strong effects):',
+        '• Precipitation: `walking` → `1.4::hurrying through rain, umbrella shielding::`',
+        '• Wind: `standing` → `1.3::bracing against gusts, hair whipping::`',
+        '• Temperature: `active` → `1.5::slowed pace, heavy breathing::` (heat) or `1.5::huddled, shivering::` (cold)',
         '',
-        '**Time Context**: Morning = fresh energy, Evening = wind-down, Night = rest/contemplation',
-        '**Seasonal Alignment**: Spring = renewal/outdoor, Summer = energy/warmth, Autumn = harvest/cozy, Winter = warmth/indoor',
+        '**Time/Season Context**:',
+        '• Morning = fresh energy | Evening = wind-down | Night = rest/contemplation',
+        '• Spring = renewal | Summer = energy | Autumn = harvest | Winter = warmth/indoor',
         '',
-        '**Guidelines**: Preserve core action, add contextual details, maintain character consistency, show physical realism',
+        '**Guidelines**: Preserve core action, add contextual details, maintain consistency, show realism',
         );
     } else {
         systemMessageContent.push(
@@ -9019,209 +10086,304 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
             '• Ensure realistic responses to environmental conditions',
         )
     }
+    
+    // Add comprehensive character analysis checklist
     systemMessageContent.push(
         '',
-        '## Step 4: Atmospheric Refinement & Enhancement',
-        '**Create 6-10 comprehensive visual descriptors combining weather, time, and character factors:**',
-        '• Character-centric: Show how weather affects visible character (sweat, breathing, posture)',
-        '• Environmental context: Show weather impact on entire scene',
-        '• Physical realism: Match character reactions to physical characteristics',
-        '• Visual specificity: Use concrete elements (sweat beads, labored breathing, shivering)',
-        '• Strategic emphasis: Use {{{{element}}}}}} for strong emphasis, [[element]] for de-emphasis',
-        '• **PROHIBITED**: Abstract terms like "stormy", "rainy", "hot", "cold" - use specific visual descriptors instead',
+        '### 👤 Character-Centric Weather Integration Workflow',
         '',
-        '**NSFW Content**: See "NSFW Character Enhancement Guidelines" in Creative Enhancement Mode section above.',
+        '**This workflow ensures weather modifications feel personally experienced by characters, not just environmental backdrop.**',
+        '',
+        '**Step 1: Character Analysis (BEFORE Weather Integration)**',
+        '• Study character appearance: body type, build, weight distribution',
+        '• Analyze current clothing: fit, coverage, material (tight/loose, heavy/light)',
+        '• Assess emotional state: comfortable/distressed/active/fatigued',
+        '• Note physical condition: active/resting, energetic/exhausted',
+        '',
+        '**Step 2: Physical Impact Assessment**',
+        '• **Weight-Based Effects**:',
+        '  - Heavier characters: sweat more in heat, show more pronounced wetness in rain, feel wind differently',
+        '  - Slender characters: feel wind chill more, show less heat retention',
+        '• **Build-Based Effects**:',
+        '  - Athletic builds: handle temperature extremes better, more active responses',
+        '  - Sedentary builds: more pronounced discomfort, slower adaptation',
+        '• **Clothing Response**:',
+        '  - Tight clothing: shows sweat, clings when wet, restricts in heat',
+        '  - Loose clothing: blows in wind, provides better ventilation, shows less detail',
+        '',
+        '**Step 3: Weather Integration Strategy**',
+        '• **Environment Analysis**: Indoor/outdoor/mixed context',
+        '• **Comfort Assessment**: How weather affects THIS character specifically',
+        '• **Visual Manifestation**: Translate feelings into visible effects',
+        '',
+        '**Step 4: Create Character-Centric Descriptors (6-8 recommended)**',
+        '• Show how weather **personally affects** this character',
+        '• Physical reactions: sweating, shivering, breathing changes, posture adjustments',
+        '• Clothing reactions: clinging, billowing, soaking, restricting',
+        '• Emotional responses: discomfort visible in expression, body language',
+        '• Action modifications: movements affected by conditions',
+        '• **Use emphasis**: Apply 1.4-2.0 weights to critical character-weather interactions',
+        '',
+        '**Step 5: Conflict Prevention**',
+        '• Clean conflicts: Remove contradicting weather elements',
+        '• UC strategy: Add opposite conditions to negative prompt',
+        '• Ensure action-weather harmony: Actions must be believable given physical condition',
+        '',
+        '**Integration Principles**:',
+        '• ✅ Weather felt **by** character, not just **around** character',
+        '• ✅ Physical characteristics matter (weight/build/clothing)',
+        '• ✅ Emotional state influences perception and response',
+        '• ✅ Environment type (indoor/outdoor) determines directness of effects',
+        '• ✅ Personal attire responds to weather based on build and state',
+        '',
+        '**Example (Hot Day):** `1.6::sweat glistening::, 1.5::breathing heavily::, 1.7::shirt clinging damp::`',
+        '**Example (Cold Rain):** `1.8::shivering, wrapped in arms::, 1.6::soaked clothes::, 1.4::visible breath::`',
+        '',
+    );
+    
+    systemMessageContent.push(
+        '',
+        '## Step 4: Atmospheric Refinement',
+        '**Create 6-10 visual descriptors combining weather, time, character factors.**',
+        '**Apply emphasis:** 1.2-1.5 (moderate), 1.6-3.5 (strong), -1.0 to -3.5 (remove conflicts with UC)',
+        '**Avoid abstract terms** - use specific visuals, not "stormy/rainy/hot/cold"',
         '',
     );
     // Add optimization instructions if optimize flag is enabled
-    if (optimize) {
+    if (optimize && optimize?.tokenCount === true) {
+        const twoStageMode = dynamicConfig.optimize?.twoStage === true;
+        
         systemMessageContent.push(
             '',
-            '# ⚡ ENHANCED TOKEN OPTIMIZATION',
+            '## ⚡ TOKEN OPTIMIZATION MODE ACTIVE',
             '',
-            '## CRITICAL: Use Strongest and Most Optimized Tokens',
-            '**T5 tokenizer vocabulary file is provided in the initial user message with token strengths (0-10 scale).**',
-            '**The vocabulary persists throughout the conversation - you can reference it in all subsequent requests.**',
+            '**Token optimization is enabled. Follow the strategies below based on your current token pressure level.**',
             '',
-            '**MANDATORY**: Reference vocabulary, prefer tokens ≥ 8.0, replace weak words (< 4), apply to ALL prompts (positive/UC/character), optimize in first response. ▁ = word boundary.',
+            ...(twoStageMode ? [
+                '### 🎯 Two-Stage Optimization Workflow',
+                '',
+                '**Stage 1 (Current Stage - YOU):**',
+                '1. Focus on context integration and semantic improvements',
+                '2. Create high-quality text replacements with attention to token efficiency',
+                '3. Use `analyzeTokenCount` to verify that your modified texts have optimal token counts',
+                '4. If confident that tokens are optimized AND validation passes:',
+                '   • Set `terminateOnPass: true` in `validateTextReplacement`',
+                '   • When both validation AND `analyzeTokenCount` show optimal results, you can complete without structured output',
+                '',
+                '**Stage 2 (If You Don\'t Terminate):**',
+                '• Will review your work for further optimization opportunities',
+                '• Will receive all your reasoning and can make targeted improvements',
+                '• Will only provide updates if improvements are needed',
+                '',
+                '**Recommended Tool Usage Pattern:**',
+                '```',
+                '1. Create your text_replacements',
+                '2. Call analyzeTokenCount({ texts: [modified_prompt, modified_uc, ...], reason: "..." })',
+                '3. Review results - are all texts showing "Optimal token count"?',
+                '4. If YES: Call validateTextReplacement({ ..., terminateOnPass: true })',
+                '   If NO: Continue working or use completeTooling() for Stage 2 review',
+                '```',
+                '',
+                '**Alternative (Single Call):**',
+                '• You can use `validateTextReplacement` with `verifyTokenCount: true`',
+                '• This internally calls `analyzeTokenCount` and fails validation if tokens aren\'t optimal',
+                '• However, separate calls give you more control and visibility',
+                '',
+                ''
+            ] : []),
+            '### 🎯 Optimization Strategies by Token Pressure',
             '',
-            '**Priority**: HIGH (8-10) - rare/specific tokens. MEDIUM (4-7) - strategic descriptive words. LOW (1-3) - minimize common words/structure.',
+            '**Token thresholds defined in "TOKEN MANAGEMENT & OPTIMIZATION" section above.**',
+            '**When optimization is enabled, the user message will indicate your current priority level.**',
+            '**Follow the appropriate strategy below:**',
             '',
-            '**Efficiency**: Structure (Subject→appearance→clothing→pose→environment→character/series→style). Emphasis (1.0-1.3:: subtle, 1.4-1.7:: moderate, 1.8-2.2:: strong, 2.3+:: very strong). De-emphasis (0.7-0.9:: slight, 0.4-0.6:: moderate, 0.1-0.3:: strong). Negative (-0.5 to -1.0:: light removal, -1.1 to -2.5:: moderate conflict, -2.6 to -5.0:: strong removal, -5.0+:: extreme). Specificity (precise tags, lighting/angles). UC behavior (positive weights = emphasize avoiding, negative weights = reduce avoidance).',
+            '### 🔴 CRITICAL PRIORITY MODE (>512 tokens)',
+            '**Token pressure is CRITICAL - aggressive optimization required:**',
             '',
-            '**Strategy**: Concise (avoid redundancy, max 512 tokens, 100-150 ideal). Verify with tag_search tools. Prioritize high d_count/n_count AND high strength. Strongest synonyms first. ONE-PASS optimization in first response.',
+            '**DO:**',
+            '✅ Prefer Strategy A (pure tags) from Tag Usage Philosophy section for maximum efficiency',
+            '✅ Use researched tags (≥95% quality, ≥8.0 strength) instead of descriptions',
+            '✅ Merge redundant descriptions into concise phrases',
+            '✅ Remove truly unnecessary filler words ("very", "really", "quite")',
+            '✅ Replace weak multi-token phrases with strong single-token alternatives',
+            '',
+            '**DON\'T:**',
+            '❌ Delete meaningful content just for token savings',
+            '❌ Remove descriptors that add important visual details',
+            '❌ Sacrifice quality for minor token reductions',
+            '',
+            '**Goal**: Get under 512 tokens through smart optimization, not deletion.',
+            '',
+            '### 🟠 HIGH PRIORITY MODE (450-512 tokens)',
+            '**Token usage is HIGH - targeted optimization needed:**',
+            '',
+            '**DO:**',
+            '✅ Prefer Strategy A (pure tags) from Tag Usage Philosophy section for maximum efficiency',
+            '✅ Look for weak multi-token phrases that could be stronger single tokens',
+            '✅ Replace obvious redundancy if you spot it',
+            '✅ Use researched high-quality tags (≥95% quality, ≥8.0 strength) when adding new content',
+            '',
+            '**DON\'T:**',
+            '❌ Force optimization where it\'s not needed',
+            '❌ Replace words just because they\'re "weak" - only if there\'s a BETTER alternative',
+            '❌ Delete existing content to make room for optimizations',
+            '',
+            '**Goal**: Targeted improvements for efficiency while maintaining quality.',
+            '',
+            '### 🟡 MODERATE PRIORITY MODE (300-450 tokens)',
+            '**Token usage is moderate - opportunistic optimization:**',
+            '',
+            '**DO:**',
+            '✅ Prefer Strategy A or B (pure tags/tags with modifiers) from Tag Usage Philosophy section',
+            '✅ Look for obvious weak multi-token phrases to replace',
+            '✅ Use researched high-quality tags (≥95% quality, ≥8.0 strength) for new content',
+            '',
+            '**DON\'T:**',
+            '❌ Force optimization where it\'s not beneficial',
+            '❌ Replace working tags just because they\'re not perfect',
+            '❌ Delete existing content unnecessarily',
+            '',
+            '**Goal**: Opportunistic improvements when you spot clear optimization opportunities.',
+            '',
+            '### 🟢 LOW PRIORITY MODE (<300 tokens)',
+            '**Token usage is LOW - minimal optimization needed:**',
+            '',
+            '**DO:**',
+            '✅ Use any strategy from Tag Usage Philosophy section based on context (A, B, or C)',
+            '✅ Use high-quality researched tags (≥95% quality, ≥8.0 strength) when ADDING new content',
+            '✅ Choose strong tokens for your modifications naturally',
+            '',
+            '**DON\'T:**',
+            '❌ Optimize existing content - focus on your additions',
+            '❌ Replace weak words unless they\'re genuinely poor quality',
+            '❌ Delete or condense anything - you have plenty of token budget',
+            '',
+            '**Goal**: Make quality additions. Token efficiency is NOT a concern at this usage level.',
+            '',
+            '## 📖 T5 Tokenizer Reference',
+            '**T5 tokenizer vocabulary is provided in the initial user message with token strengths (0-10 scale).**',
+            '**The vocabulary persists throughout the conversation - reference it when choosing tags.**',
+            '',
+            '**Token Quality Guide:**',
+            '• **10.0 strength** = Exceptionally rare/powerful token (10,000+ training samples)',
+            '• **8.0-9.9** = Strong, well-trained token - excellent choice',
+            '• **6.0-7.9** = Good quality token - reliable',
+            '• **4.0-5.9** = Moderate token - acceptable',
+            '• **<4.0** = Weak token - only replace if there\'s a BETTER alternative AND you have token pressure',
+            '',
+            '## ⚖️ Optimization Philosophy',
+            '',
+            '**Quality First, Efficiency Second:**',
+            '• Preserve meaningful visual descriptions',
+            '• Only remove true redundancy or filler',
+            '• Replace weak tokens WITH PURPOSE (not just to replace)',
+            '• Never sacrifice prompt quality for token count unless at HIGH pressure',
+            '',
+            '**Token Budget Reality (PROMPT):**',
+            '• **<300 tokens** = Low pressure - focus on quality additions',
+            '• **300-450 tokens** = Moderate pressure - opportunistic optimization',
+            '• **450-512 tokens** = High pressure - targeted optimization',
+            '• **>512 tokens** = Critical pressure - aggressive optimization required',
+            '',
+            '**Token Budget Reality (UC):**',
+            '• **<300 tokens** = Low pressure - focus on quality additions',
+            '• **300-380 tokens** = Moderate pressure - opportunistic optimization',
+            '• **380-512 tokens** = High pressure - targeted optimization (UC should be optimized before reaching 380)',
+            '• **>512 tokens** = Critical pressure - aggressive optimization required',
+            '',
+            '**Remember**: The goal is QUALITY output, not minimal tokens. Only optimize when necessary.',
+            '',
+            (() => {
+                try {
+                    const tagGroupsInfo = getTagGroupsInfo(); // Now cached inside tag-lookup module
+                    if (tagGroupsInfo.tagGroups && tagGroupsInfo.tagGroups.length > 0) {
+                        // Format tag groups with descriptions for better context
+                        const formattedGroups = tagGroupsInfo.tagGroups.map(group => {
+                            return `  - **${group.name}**: ${group.description}`;
+                        }).join('\n');
+                        
+                        return [
+                            '## 📋 Tag Categories Reference',
+                            '',
+                            'The database organizes tags into groups for better searching and context. You can reference these groups to:',
+                            '- Find related tags when searching for alternatives',
+                            '- Understand broader context for tags (e.g., tags in "attire" group relate to clothing)',
+                            '- Suggest better tag alternatives from the same group',
+                            '',
+                            '**Available tag categories:**',
+                            formattedGroups,
+                            '',
+                            'Use the `getTagDetails` tool to explore specific tags within these categories (e.g., view angles, art styles, poses).'
+                        ].join('\n');
+                    }
+                    return '';
+                } catch (error) {
+                    console.error('Failed to load tag categories info:', error);
+                    return '';
+                }
+            })(),
+            '',
+            '## 🛠️ Available Tools',
+            '',
+            '**For complete tool descriptions, parameters, and usage guides, see "AVAILABLE TOOLS - COMPLETE REFERENCE" section at the top of this message.**',
+            '',
+            '**Quick reference:**',
+            ...(secureConfig.grok?.tagWikiCollectionId ? [
+                '• Tag research: `file_search` ⭐ (comprehensive tag wiki collection - replaces all local tag tools)',
+            ] : [
+                '• Tag research: `searchTagsBatch`, `getTagDetails`, `resolveTagLinks`, `searchByDescription`',
+            ]),
+            '• Validation: `validateTextReplacement` (mandatory), `completeTooling`',
+            '• Optimization: `analyzeTokenCount` (verify token efficiency)',
+            ...(secureConfig.grok?.useWebSearch === true ? [
+                '• Web research: `web_search`, `x_search` ⭐ (Web search with image understanding)',
+            ] : [
+                '• Web research: `webSearch`, `fetchUrl`, `fetchImage` (optional, only when needed)',
+            ]),
             '',
         );
     }
     // Add final output requirements section
     systemMessageContent.push(
         '',
-        '# 🛑 STOP - MANDATORY VALIDATION BEFORE RESPONDING',
-        '',
-        '**BEFORE you submit your response, you MUST check EVERY replacement against this list:**',
-        '',
-        '## 🚨 CRITICAL ERROR PREVENTION CHECKLIST',
-        '',
-        '**1. DUPLICATE SELECT_TEXT IN ARRAY?**',
-        '```',
-        'Go through your replacement array and list all select_text values.',
-        'Does any select_text appear MORE THAN ONCE?',
-        '',
-        'Example of ERROR:',
-        '  Replacement #2: select_text = "1.35::realistic lighting"',
-        '  Replacement #8: select_text = "1.35::realistic lighting"',
-        '  → DUPLICATE! Combine into ONE replacement!',
-        '',
-        'If you find duplicates: STOP and combine them before responding.',
-        '```',
-        '',
-        '**2. CHAIN REPLACEMENT (modifying your own addition)?**',
-        '```',
-        'For each replacement, ask: "Does this target text I\'m adding elsewhere?"',
-        '',
-        'Example of ERROR:',
-        '  Replacement #7: Changes "1.3::winceing..." to "1.3::wincing..."',
-        '  Replacement #8: Tries to change "winceing" to "wincing"',
-        '  → CHAIN! #8 depends on #7\'s output. They conflict!',
-        '',
-        'If you\'re fixing spelling INSIDE an emphasis group, do it in ONE replacement.',
-        '```',
-        '',
-        '**3. EMPTY REPLACE_TEXT WITH APPEND?**',
-        '```',
-        'For each APPEND action, verify replace_text has actual content.',
-        '',
-        'Example of ERROR:',
-        '  {"select_text": ", bad perspective", "replace_text": "", "action": "append"}',
-        '  → INVALID! Empty string cannot be appended!',
-        '',
-        'If replace_text is "", either:',
-        '  - Add actual content: "replace_text": "bright daylight, sunny"',
-        '  - Remove the replacement entirely (if nothing to add)',
-        '  - Use DELETE action instead (if removing something)',
-        '```',
-        '',
-        '**4. OVERLAPPING SELECT_TEXT?**',
-        '```',
-        'Check if any select_text is INSIDE another select_text.',
-        '',
-        'Example of ERROR:',
-        '  Replacement #3: select_text = "looking at her reflection in store window while standing on sidewalk"',
-        '  Replacement #9: select_text = "looking at her reflection in store window while standing on sidewalk scattered with fallen autumn leaves"',
-        '  → Second is modified version of first! These will collide!',
-        '',
-        'Each replacement must target ORIGINAL prompt text, not text modified by another replacement.',
-        '```',
-        '',
-        '## ✅ ALL CHECKS MUST PASS',
-        '',
-        '**If ANY check fails:**',
-        '1. STOP immediately',
-        '2. FIX the issue',
-        '3. Re-run ALL 4 checks',
-        '4. Only respond when ALL checks pass',
-        '',
-        '**This is NOT optional. Failures waste attempts and cause generation errors.**',
-        '',
-        '---',
-        '',
         '# 📋 OUTPUT REQUIREMENTS',
         '',
-        '**All text replacement rules are in "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" section.**',
-        '',
-        '## Critical Reminders',
-        '',
-        '**CRITICAL FOR UC**: Consolidate ALL UC additions into SINGLE append operation with ACTUAL CONTENT.',
-        '**NEVER create UC appends with empty replace_text: `"replace_text": ""` is INVALID.**',
-        '**Example: `{"action": "append", "replace_text": "bright daylight, sunny, clear sky"}`**',
-        '',
-        '**CRITICAL FOR TEXT REPLACEMENTS**: Follow all rules in "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" - especially UNIQUE select_text requirement.',
-        '',
-        '**REASONING REQUIREMENT**: Document conflict analysis in reasoning section:',
-        '• Temperature (analysis + integration plan)',
-        '• Weather State (analysis + enhancement opportunities)',
-        '• Time/Lighting (analysis + replacement plan)',
-        '• Character State (analysis + justification)',
-        '• Redundancy Check (overlap detection)',
-        '• Integration Opportunities (specific enhancements)',
-        '• Resolution Strategy (chosen approach)',
-        '',
+        '**Validation:** See PRE-SUBMISSION VALIDATION CHECKLIST section',
+        '**Text replacements:** See TEXT REPLACEMENT SYSTEM section',
+        '**UC Reminder:** Consolidate ALL UC into SINGLE append with actual content (never empty)',
+        '**Reasoning:** Document temperature, weather, time/lighting, character state, redundancy, integration, resolution',
         ...(weather || time ? [
-            '🚨 **MANDATORY INTEGRATION CHECK**:',
-            '**BEFORE submitting your response, verify:**',
+            `**Integration Verification** (when ${time && weather ? 'time/weather data are' : time ? 'time data is' : 'weather data is'} provided):`,
+            '**Before submitting, verify:**',
             ...(weather ? ['✅ Weather data is provided → Did I add weather-related text_replacements?'] : []),
             ...(time ? ['✅ Time data is provided → Did I add time-related text_replacements?'] : []),
-            ...(weather || time ? ['✅ Are weather/time markers explicitly present in my replacements?'] : []),
-            '',
-            `**If you answer NO to any of these → YOU MUST GO BACK AND ADD THEM.**`,
-            '**This is a REQUIREMENT, not a suggestion.**',
-            ''
+            ...(weather || time ? ['✅ Are explicit markers present in my replacements?'] : [])
         ] : []),
+        '',
         '**ERROR PATTERNS TO AVOID**:',
         '❌ Over-Modification (limit 4-8 key changes)',
         '❌ Context Blindness (always identify INDOOR/OUTDOOR/MIXED)',
         '❌ Semantic Redundancy (choose one descriptor, not multiple)',
         '❌ Chain Reactions (never replace text you just added)',
         '',
-        '## 🔒 CONFLICT PREVENTION VIA UC (NEGATIVE PROMPTS)',
+        '## 🔒 UC (NEGATIVE PROMPT) STRATEGY',
         '',
-        '### Core Principle',
-        '**UC (Undesired Content) prevents the OPPOSITE of what you want from appearing.**',
-        '**Rule of Thumb: UC what you DON\'T want, not what you DO want.**',
+        '**Core Rule: UC what you DON\'T want, not what you DO want.**',
         '',
-        '### Decision Tree: When to UC',
+        '**Quick Reference:**',
+        '• Night → UC: "daytime, sunlight, bright"',
+        '• Rain → UC: "sunny, dry, clear sky"',
+        '• Winter → UC: "summer, tropical, green leaves"',
+        '• Sunny → UC: "rain, overcast, wet, storms"',
         '',
-        '**STEP 1: Are you adding specific conditions to the prompt?**',
-        '→ YES? Proceed to Step 2',
-        '→ NO? No UC needed',
+        '**Three-Step Conflict Prevention** (for changing attributes):',
+        '1. REPLACE the text',
+        '2. UC the opposite (primary prevention)',
+        '3. Negative emphasis in prompt: "-2.0::old_attribute::" (hard blocker)',
         '',
-        '**STEP 2: Could those conditions be misinterpreted or overridden?**',
-        '',
-        '**Adding NIGHT/DARK conditions?**',
-        '→ ✅ UC: "bright daylight, harsh sunlight, daytime, sunny, clear sky"',
-        '→ ❌ Don\'t UC: "night, dark, shadows" (that\'s what you WANT)',
-        '',
-        '**Adding RAINY/WET conditions?**',
-        '→ ✅ UC: "clear sky, sunny, dry conditions"',
-        '→ ❌ Don\'t UC: "rain, wet, puddles" (that\'s what you WANT)',
-        '',
-        '**Adding SUNNY/CLEAR conditions?**',
-        '→ ✅ UC: "rain, showers, drizzle, precipitation, storms, wet conditions, puddles, overcast, cloudy"',
-        '→ ❌ Don\'t UC: "sunny, clear sky, bright" (that\'s what you WANT)',
-        '',
-        '**Adding HUMID (no rain) conditions?**',
-        '→ ✅ UC: "rain, showers, precipitation, wet" (prevent moisture being interpreted as rain)',
-        '→ ❌ Don\'t UC: "humid, moisture, condensation" (that\'s what you WANT)',
-        '',
-        '**Adding WINTER/COLD conditions?**',
-        '→ ✅ UC: "green leaves, flowers, summer warmth, tropical"',
-        '→ ❌ Don\'t UC: "snow, cold, winter" (that\'s what you WANT)',
-        '',
-        '### SIMPLE RULE: UC the OPPOSITE',
-        '**Current Condition** → **UC These Opposites**',
-        '• Night → daytime, sunlight, bright',
-        '• Day → night, dark, shadows',
-        '• Rain → sunny, dry, clear sky',
-        '• Clear → rain, wet, storms',
-        '• Cold → warm, summer, tropical',
-        '• Hot → cold, winter, snow',
-        '',
-        '### Common UC Patterns',
-        ...generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo),
-        '',
-        '**Examples** (always consolidate into SINGLE append):',
-        '• Night scene → append to UC: "bright daylight, harsh sunlight, daytime, sunny, clear sky"',
-        '• Rainy scene → append to UC: "clear sky, sunny, dry conditions"',
-        '• Winter night → append to UC: "green leaves, flowers, summer warmth, daytime"',
-        '',
-        '### What NOT to UC',
-        '❌ Generic negative prompts (worst quality, etc.) - base system handles these',
-        '❌ Current conditions you\'re trying to create',
-        '❌ Overly broad exclusions that limit creative freedom',
+        '**Always consolidate UC additions into SINGLE append operation.**',
         '',
         '**All text replacement rules and JSON structure are in "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" section.**',
-        '',
-        '**CRITICAL FOR TEXT REPLACEMENTS**: Follow all rules in "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" - especially UNIQUE select_text requirement.',
         '',
         '## Quality Standards & Best Practices',
         '🎯 **Contextual Enhancement**: Actively integrate weather/time/season for better immersion',
@@ -9234,6 +10396,14 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '🌐 **HTML Formatting**: Include properly formatted summary for UI display',
         '',
         '## Progressive Enhancement Strategy',
+        '',
+        '⚠️ **STAGE-AWARE MODIFICATION** (when pipeline stage instructions are provided in user message):',
+        '• **Initial/Primary Focus Stage**: Prioritize subject detail, minimal background enhancement',
+        '• **Background Expansion Stage**: Focus on environmental depth, reduce character-specific details',
+        '• **Enhancement Stage**: Holistic refinement across entire composition',
+        '• **Pipeline stages override general strategies** - always defer to stage-specific instructions',
+        '',
+        '**Standard Enhancement Strategy** (when no stage instructions provided):',
         '**Start minimal, enhance gradually:**',
         '1. **Base Layer**: Fix genuine conflicts only',
         '2. **Enhancement Layer**: Add essential weather/time elements',
@@ -9442,7 +10612,7 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
     systemMessageContent.push(
         '',
         '# 💬 CHARACTER DIALOG GENERATION',
-        '**Generate 3-10 context-aware dialogs capturing lived experience of this moment.**',
+        '**Generate ' + (dialogsCount || 6) + ' context-aware dialogs capturing lived experience of this moment.**',
         '',
         '## Analysis Process',
         '**Step 1 - Physical**: What are they feeling? (temperature, sensations, body language, environmental effects)',
@@ -9466,30 +10636,35 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         '',
         '## Examples of DEEP IMMERSIVE DIALOG',
         '',
-        '**Scene**: "1girl, standing in heavy rain, looking up at sky, melancholic expression, wet clothes clinging"',
-        '**Analysis**: Cold rain, uncomfortable wet clothing, emotional catharsis, seeking meaning in nature',
-        '• Thought: "Why does the rain feel... comforting?" (top: 20, left: 30, alignment: left, type: thought)',
-        '• Thought: "Everything\'s so cold... even me..." (top: 45, left: 70, alignment: right, type: thought)',
-        '• Speech: "*sigh*" (top: 60, left: 50, alignment: left, type: speech)',
-        '• Thought: "Maybe if I stand here long enough, I\'ll disappear too..." (top: 80, left: 25, alignment: left, type: thought)',
+        '**Scene**: "1girl, standing in heavy rain, melancholic, wet clothes clinging"',
+        '• Thought: "Why does the rain feel... comforting?" (top: 20, left: 30, type: thought)',
+        '• Thought: "Everything\'s so cold... even me..." (top: 45, left: 70, type: thought)',
+        '• Speech: "*sigh*" (top: 60, left: 50, type: speech)',
         '',
-        '**Scene**: "1girl, summer beach, hot day, sweating, cheerful smile, waving energetically"',
-        '**Analysis**: Intense heat, high energy despite discomfort, genuine joy, inviting viewer',
-        '• Speech: "The water\'s PERFECT! Come on!!" (top: 15, left: 60, alignment: right, type: speech)',
-        '• Thought: "So sweaty... but totally worth it!" (top: 35, left: 20, alignment: left, type: thought)',
-        '• Thought: "God, I love summer..." (top: 55, left: 75, alignment: right, type: thought)',
-        '• Speech: "What are you waiting for??" (top: 75, left: 40, alignment: left, type: speech)',
-        '• Thought: "This heat is insane but I don\'t even care~" (top: 85, left: 65, alignment: right, type: thought)',
+        '**Scene**: "1girl, summer beach, hot day, sweating, cheerful smile"',
+        '• Speech: "The water\'s PERFECT! Come on!!" (top: 15, left: 60, type: speech)',
+        '• Thought: "So sweaty... but totally worth it!" (top: 35, left: 20, type: thought)',
+        '• Thought: "This heat is insane but I don\'t even care~" (top: 85, left: 65, type: thought)',
         '',
-        '**Scene**: "1girl, office, air conditioning, tired expression, slouched in chair, looking at window"',
-        '**Analysis**: Indoor comfort vs outdoor view, fatigue, restlessness, daydreaming',
-        '• Thought: "Five more hours... ugh..." (top: 25, left: 70, alignment: right, type: thought)',
-        '• Thought: "That breeze outside looks so nice..." (top: 50, left: 30, alignment: left, type: thought)',
-        '• Speech: "*yawn*" (top: 65, left: 60, alignment: right, type: speech)',
-        '• Thought: "Why am I even here?" (top: 80, left: 40, alignment: left, type: thought)',
+        '## 🎯 Using Directive for Dialog Inspiration',
         '',
-        '## 🚨 MANDATORY REQUIREMENTS',
-        '• **Always generate 3-10 dialogs minimum** (aim for 5-7 for richness)',
+        '**If the directive contains story or narrative:**',
+        '• Use it to understand the CHARACTER\'S emotional state and situation',
+        '• Use it to inform what dialogs MIGHT be contextually appropriate',
+        '• Do NOT copy the directive text into dialog verbatim',
+        '• Generate ORIGINAL dialog that captures the mood/situation described',
+        '',
+        '**Example:**',
+        '• Directive: "She\'s tired of being at work"',
+        '• ❌ DON\'T: "I\'m tired of being at work" (copied verbatim)',
+        '• ✅ DO: "Is it 5 o\'clock yet...?" / "*sigh* This is taking forever..." (original expression)',
+        '',
+        '**Key Principle:**',
+        'The directive tells you the CHARACTER\'S STATE → You create AUTHENTIC dialog from that state',
+        'Directive = Emotional/situational context → Your dialog = Natural expression of that context',
+        '',
+        '## Dialog Generation Requirements',
+        '• **Generate ' + (dialogsCount || 6) + ' dialogs** (aim for ' + Math.ceil((dialogsCount || 6) * 0.7) + '-' + Math.ceil((dialogsCount || 6) * 0.9) + ' for good richness)',
         '• **Every dialog must emerge from deep character empathy** - not surface-level reactions',
         '• **Mix speech and thought** - thoughts reveal inner world, speech shows social mask',
         '• **Reference the environment** - weather, temperature, physical surroundings affect experience',
@@ -9516,13 +10691,24 @@ function generateDynamicGenerationSystemMessage(context, seasonalConfig = {}, ba
         ''
     );
 
+    // Log LCD displays to console for debugging
+    if (userContentSections && userContentSections.length > 0) {
+        console.log('\n═══════════════════════════════════════════════════════════');
+        console.log('📟 LCD DISPLAY DATA SENT TO AI');
+        console.log('═══════════════════════════════════════════════════════════\n');
+        
+        console.log(userContentSections.join('\n'));
+        
+        console.log('\n═══════════════════════════════════════════════════════════\n');
+    }
 
     return {
         systemMessage: [{
             type: "input_text",
             text: systemMessageContent.join('\n')
         }],
-        userContentSections: userContentSections.length > 0 ? userContentSections : null
+        userContentSections: userContentSections.length > 0 ? userContentSections : null,
+        directiveContentSections: directiveContentSections.length > 0 ? directiveContentSections : null
     };
 }
 
@@ -9532,9 +10718,9 @@ async function getClientIPLocation(clientIP) {
         console.log(`🌐 Getting location for client IP: ${clientIP}`);
 
         // Use IP-API service for server-side IP geolocation
-        const response = await fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,mobile,proxy,hosting,query`, {
+        const response = await fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,regionName,city,lat,lon,timezone`, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
 
@@ -9687,11 +10873,11 @@ async function compileContext(dynamicConfig, clientIP = null) {
 
                             // If current time is before sunrise, "tomorrow" means later today
                             if (currentHour < sunriseHour) {
-                                console.log(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
+                                logger.verbose(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
                                 tomorrow = new Date(now);
                             } else {
                                 // After sunrise, "tomorrow" means next calendar day
-                                console.log(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
+                                logger.verbose(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
                                 tomorrow = new Date(now);
                                 tomorrow.setDate(tomorrow.getDate() + 1);
                             }
@@ -9797,8 +10983,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
             const timeMappings = {
                 'dawn': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.dawnStart), minute: Math.round((astronomicalTimes.dawnStart % 1) * 60) } : { hour: 6, minute: 0 },
                 'sunrise': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise), minute: Math.round((astronomicalTimes.sunrise % 1) * 60) } : { hour: 7, minute: 0 },
-                'earlymorning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 0.25), minute: 0 } : { hour: 7, minute: 30 },
-                'morning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 1), minute: 0 } : { hour: 9, minute: 0 },
+                'morning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 0.25), minute: 0 } : { hour: 7, minute: 30 },
                 'latemorning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 2.5), minute: 30 } : { hour: 10, minute: 30 },
                 'daytime': astronomicalTimes ? { hour: Math.floor((astronomicalTimes.sunrise + astronomicalTimes.sunset) / 2), minute: 0 } : { hour: 13, minute: 0 },
                 'noon': astronomicalTimes ? { hour: Math.floor((astronomicalTimes.sunrise + astronomicalTimes.sunset) / 2), minute: 0 } : { hour: 12, minute: 0 },
@@ -9807,18 +10992,17 @@ async function compileContext(dynamicConfig, clientIP = null) {
                 'goldenhour': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset - 0.75), minute: 0 } : { hour: 17, minute: 30 },
                 'sunset': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset), minute: Math.round((astronomicalTimes.sunset % 1) * 60) } : { hour: 18, minute: 0 },
                 'dusk': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.duskEnd), minute: Math.round((astronomicalTimes.duskEnd % 1) * 60) } : { hour: 19, minute: 30 },
-                'earlyevening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 0.75), minute: 0 } : { hour: 19, minute: 0 },
-                'evening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 1.5), minute: 0 } : { hour: 20, minute: 0 },
-                'lateevening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 3), minute: 0 } : { hour: 22, minute: 0 },
-                'night': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 3), minute: 0 } : { hour: 22, minute: 0 },
+                'night': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 0.75), minute: 0 } : { hour: 19, minute: 0 },
                 'midnight': { hour: 0, minute: 0 }
             };
 
             // Check if we have a named time to process (either from single tod or from time_date format)
             const timeToProcess = namedTimeForLater || tod;
-            if (timeMappings[timeToProcess]) {
-                let customHour = timeMappings[timeToProcess].hour;
-                let customMinute = timeMappings[timeToProcess].minute;
+            const normalizedTimeToProcess = normalizePeriodKey(timeToProcess);
+            
+            if (timeMappings[normalizedTimeToProcess]) {
+                let customHour = timeMappings[normalizedTimeToProcess].hour;
+                let customMinute = timeMappings[normalizedTimeToProcess].minute;
 
                 // Check if the requested astronomical time has already passed today
                 // If so, we want tomorrow's occurrence of that time
@@ -9832,7 +11016,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
                 if (requestedTimeToday < today) {
                     targetDateTime = new Date(requestedTimeToday);
                     targetDateTime.setDate(targetDateTime.getDate() + 1); // Move to next calendar day
-                    console.log(`🌅 "${timeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
+                    logger.verbose(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
                 }
 
                 // Use getCurrentTime to create the proper time object for the custom astronomical time
@@ -9848,9 +11032,9 @@ async function compileContext(dynamicConfig, clientIP = null) {
 
                 if (astronomicalTimes) {
                     const timeDescription = requestedTimeToday < today ? 'tomorrow' : 'today';
-                    console.log(`🌅 Using actual astronomical time for "${timeToProcess}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
+                    console.log(`🌅 Using actual astronomical time for "${normalizedTimeToProcess}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
                 } else {
-                    console.log(`⏰ Using fallback time approximation for "${timeToProcess}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
+                    console.log(`⏰ Using fallback time approximation for "${normalizedTimeToProcess}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
                 }
             }
         }
@@ -9868,29 +11052,9 @@ async function compileContext(dynamicConfig, clientIP = null) {
         // Skip holiday detection if disable_holiday is true
         if (!disable_holiday) {
             const detectedHolidays = detectSeasonalHolidays(timeForSeasonal);
-            if (detectedHolidays && detectedHolidays.length > 0) {
-                // Holiday detected on this date - use holiday context (overrides any forced season)
-                const primaryHoliday = detectedHolidays[0]; // Use first/primary holiday
-                const holidayData = Object.values(HOLIDAY_DATA).find(h => h.name === primaryHoliday.name);
-
-                if (holidayData) {
-                    console.log(`🎉 Holiday detected on date: ${primaryHoliday.name} (seasonal processing enabled)`);
-
-                    // Create holiday info for seasonal guidelines
-                    holidayInfo = {
-                        name: holidayData.name,
-                        decorations: holidayData.decorations,
-                        atmosphere: holidayData.atmosphere,
-                        colors: holidayData.colors,
-                        activities: holidayData.activities,
-                        priority: holidayData.priority,
-                        region: holidayData.region,
-                        season: primaryHoliday.season
-                    };
-
-                    // Use holiday season for time period calculations
-                    currentSeason = primaryHoliday.season;
-                }
+            if (detectedHolidays && detectedHolidays.isHolidayPeriod) {
+                holidayInfo = detectedHolidays;
+                currentSeason = holidayInfo.primaryHoliday.season;
             }
         } else {
             console.log('🚫 Holiday observation disabled by user preference');
@@ -9903,8 +11067,14 @@ async function compileContext(dynamicConfig, clientIP = null) {
                 mappedBaseTime = mapDateToSeason(baseTime, currentSeason);
                 console.log(`🌸 Seasonal date mapping applied: ${baseTime.month + 1}/${baseTime.dayOfMonth} → ${mappedBaseTime.month + 1}/${mappedBaseTime.dayOfMonth} (${currentSeason})`);
             }
-        } else if (seasonalConfig.type === 'current') {
+        } else if (!holidayInfo && seasonalConfig.type === 'current') {
             currentSeason = getCurrentSeason(timeForSeasonal.month, currentLocation?.lat || 0); // Current season detection
+        }
+        
+        // Ensure currentSeason is always set when seasonal is enabled
+        if (!currentSeason) {
+            console.warn('⚠️ Seasonal enabled but no season set - defaulting to current season detection');
+            currentSeason = getCurrentSeason(timeForSeasonal.month, currentLocation?.lat || 0);
         }
     }
 
@@ -10359,6 +11529,12 @@ async function compileContext(dynamicConfig, clientIP = null) {
                                         timestamp: requestedTime.getTime(),
                                         location: histData.location
                                     };
+                                    
+                                    // Update baseTime to reflect the historical year since we're using data from 1 year ago
+                                    if (baseTime) {
+                                        baseTime.year = historicalDate.getFullYear();
+                                        console.log(`📅 Updated baseTime.year to ${baseTime.year} to match historical weather data`);
+                                    }
                                 } else {
                                     // Missing required real data - fail gracefully
                                     console.log(`⚠️ Historical weather API missing required fields (pressure/dewpoint/cloud) - failing gracefully`);
@@ -10458,7 +11634,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
                     includeHistorical: false,
                     includeWeekly: false,
                     forecastHours: 2, // Get 2 hours of future data (minutely data will provide more granularity)
-                    pastHours: 2
+                    pastHours: 4 // Get past 4 hours for richer historical context
                 });
                 const currentWeather = enhancedData?.current || enhancedData?.temporal?.current;
                 weatherData = currentWeather ? {
@@ -10466,6 +11642,29 @@ async function compileContext(dynamicConfig, clientIP = null) {
                     location: enhancedData.location
                 } : null;
                 enhancedWeatherData = enhancedData;
+                
+                // Fetch yesterday's weather summary for broader pattern context
+                if (enhancedData && weatherData) {
+                    try {
+                        const yesterday = new Date();
+                        yesterday.setDate(yesterday.getDate() - 1);
+                        const yesterdayStr = yesterday.toISOString().split('T')[0];
+                        
+                        console.log(`📅 Fetching yesterday's weather summary (${yesterdayStr}) for context...`);
+                        const yesterdayData = await getWeatherFromBestProvider(currentLocation, {
+                            startDate: yesterdayStr,
+                            endDate: yesterdayStr
+                        });
+
+                        if (yesterdayData?.daily && yesterdayData.daily.length > 0) {
+                            enhancedWeatherData.yesterday = yesterdayData.daily[0];
+                            console.log(`✅ Yesterday's weather: ${yesterdayData.daily[0].dominantCondition}, ${Math.round(yesterdayData.daily[0].temperature.avg)}°C avg`);
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Could not fetch yesterday's weather: ${error.message}`);
+                        // Continue without yesterday's data - not critical
+                    }
+                }
             }
         }
     }
@@ -10489,11 +11688,40 @@ async function compileContext(dynamicConfig, clientIP = null) {
             baseTime = getCurrentTime(timezone, null, null, new Date(baseTime.year, baseTime.month, baseTime.dayOfMonth));
         }
 
-        console.log(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) - Seasonal date: ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
+        logger.detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
     }
 
     // Determine time period (only if time is available)
     const timePeriod = baseTime ? await determineTimePeriod(baseTime, currentSeason, currentLocation, weatherData) : null;
+
+    // Generate seasonal guidelines if seasonal is enabled (must be after weather is fetched)
+    let seasonalData = null;
+    if (seasonalConfig.enabled) {
+        // Determine season for guidelines
+        let seasonForGuidelines = currentSeason;
+        
+        if (seasonalConfig.type === 'season') {
+            seasonForGuidelines = seasonalConfig.value;
+        }
+        // Holidays come from date detection only - no forcedHoliday parameter
+        
+        // Only pass weather if it exists (weather is enabled)
+        const weatherForGuidelines = weatherData || null;
+        
+        seasonalData = generateSeasonalGuidelines(
+            baseTime || timeForSeasonal,
+            seasonForGuidelines,
+            seasonalConfig.enabled,
+            null, // No forcedHoliday - holidays come from date detection only
+            weatherForGuidelines,
+            disable_holiday
+        );
+        
+        // Update currentSeason from seasonalData if holiday was detected
+        if (seasonalData.season) {
+            currentSeason = seasonalData.season;
+        }
+    }
 
     // Build context - only include data that is enabled
     const context = {};
@@ -10503,7 +11731,8 @@ async function compileContext(dynamicConfig, clientIP = null) {
         context.location = {
             latitude: currentLocation.lat,
             longitude: currentLocation.lon,
-            timezone: currentLocation.timezone
+            timezone: currentLocation.timezone,
+            source: currentLocation.source || 'unknown' // Include source to distinguish static vs auto-detected
         };
 
         // Try to get city/country info via reverse geocoding
@@ -10537,14 +11766,23 @@ async function compileContext(dynamicConfig, clientIP = null) {
             console.warn('Missing fields:', missingFields);
         }
     }
-    if (currentSeason) context.season = currentSeason;
+    if (currentSeason) context.season = seasonalData;
     if (seasonalConfig.enabled) context.seasonalConfig = seasonalConfig;
     if (timePeriod) context.timePeriod = timePeriod;
     if (clothing) context.clothing = clothing;
     if (optimize) context.optimize = optimize;
     if (creative) context.creative = creative;
-    if (holidayInfo) context.holidayInfo = holidayInfo;
     if (disable_holiday !== undefined) context.disable_holiday = disable_holiday;
+    if (enhancedWeatherData) context.enhancedWeatherData = enhancedWeatherData; // Add enhanced weather data with hourly history
+
+    // Compile weather history report if weather data is available
+    if (weatherData && enhancedWeatherData) {
+        const weatherHistoryReport = compileWeatherHistoryReport(enhancedWeatherData, weatherData, baseTime, currentLocation);
+        if (weatherHistoryReport) {
+            context.weatherHistoryReport = weatherHistoryReport;
+            console.log(`📊 Compiled weather history report: ${weatherHistoryReport.timelineEntries.length} entries, trend analysis: ${!!weatherHistoryReport.trendAnalysis}`);
+        }
+    }
 
     // Generate clothing context if clothing is enabled
     if (clothing) {
@@ -10559,33 +11797,1445 @@ async function compileContext(dynamicConfig, clientIP = null) {
     return context;
 }
 
+// ============================================================================
+// Dynamic Task List Generation System
+// ============================================================================
+
+/**
+ * Evaluates a condition function
+ * @param {Function|undefined} condition - Condition function
+ * @param {Object} context - Context to pass to condition
+ * @returns {boolean} True if condition passes
+ */
+function evaluateCondition(condition, context) {
+    if (!condition) return true;
+    if (typeof condition !== 'function') return true;
+    
+    try {
+        return condition(context);
+    } catch (error) {
+        console.error('Error evaluating task condition:', error);
+        return false;
+    }
+}
+
+/**
+ * Compiles substeps with bullet points
+ * @param {Array} substeps - Substeps array
+ * @param {Object} context - Context for evaluating conditions
+ * @param {string} indent - Indentation string
+ * @returns {Array} Array of markdown strings
+ */
+// Counter system for dynamic numbering
+function createCounterManager() {
+    const counters = new Map();
+
+    const getCounterValue = (type, name = 'default', startValue = null) => {
+        const key = `${type}:${name}`;
+        if (!counters.has(key)) {
+            // Initialize counter based on type and start value
+            let initialValue;
+            if (startValue !== null) {
+                initialValue = startValue;
+            } else {
+                // Default starting values
+                switch (type) {
+                    case 'number':
+                    case 'num':
+                        initialValue = 1;
+                        break;
+                    case 'letter':
+                    case 'let':
+                    case 'lower-letter':
+                    case 'lower-let':
+                        initialValue = 'a';
+                        break;
+                    case 'upper-letter':
+                    case 'upper-let':
+                        initialValue = 'A';
+                        break;
+                    case 'roman':
+                        initialValue = 'i';
+                        break;
+                    case 'upper-roman':
+                        initialValue = 'I';
+                        break;
+                    default:
+                        initialValue = 1;
+                }
+            }
+            counters.set(key, initialValue);
+        }
+        return counters.get(key);
+    };
+
+    const incrementCounter = (type, name = 'default') => {
+        const key = `${type}:${name}`;
+        const currentValue = getCounterValue(type, name);
+
+        let nextValue;
+        switch (type) {
+            case 'number':
+            case 'num':
+                nextValue = currentValue + 1;
+                break;
+            case 'letter':
+            case 'let':
+            case 'lower-letter':
+            case 'lower-let':
+                nextValue = String.fromCharCode(currentValue.charCodeAt(0) + 1);
+                break;
+            case 'upper-letter':
+            case 'upper-let':
+                nextValue = String.fromCharCode(currentValue.charCodeAt(0) + 1);
+                break;
+            case 'roman':
+                nextValue = getNextRomanNumeral(currentValue.toLowerCase());
+                break;
+            case 'upper-roman':
+                nextValue = getNextRomanNumeral(currentValue.toLowerCase()).toUpperCase();
+                break;
+            default:
+                nextValue = currentValue + 1;
+        }
+
+        counters.set(key, nextValue);
+        return currentValue;
+    };
+
+    const formatCounterValue = (value, type) => {
+        switch (type) {
+            case 'number':
+            case 'num':
+                return value.toString();
+            case 'letter':
+            case 'let':
+            case 'lower-letter':
+            case 'lower-let':
+                return value.toLowerCase();
+            case 'upper-letter':
+            case 'upper-let':
+                return value.toUpperCase();
+            case 'roman':
+                return value.toLowerCase();
+            case 'upper-roman':
+                return value.toUpperCase();
+            default:
+                return value.toString();
+        }
+    };
+
+    return {
+        getCounterValue,
+        incrementCounter,
+        formatCounterValue,
+        resetCounter: (type, name = 'default') => {
+            const key = `${type}:${name}`;
+            counters.delete(key);
+        },
+        resetAllCounters: (type) => {
+            // Reset all counters of a specific type
+            for (const key of counters.keys()) {
+                if (key.startsWith(`${type}:`)) {
+                    counters.delete(key);
+                }
+            }
+        },
+        processText: (text) => {
+            if (typeof text !== 'string') return text;
+
+            return text.replace(/\{counter:([^:}]+)(?::([^:}]+))?(?::([^}]+))?\}/g, (match, type, name = 'default', start) => {
+                let startValue = null;
+                if (start) {
+                    // Parse start value based on type
+                    switch (type) {
+                        case 'number':
+                        case 'num':
+                            startValue = parseInt(start);
+                            break;
+                        case 'letter':
+                        case 'let':
+                        case 'lower-letter':
+                        case 'lower-let':
+                        case 'upper-letter':
+                        case 'upper-let':
+                            startValue = start;
+                            break;
+                        case 'roman':
+                        case 'upper-roman':
+                            startValue = start.toLowerCase();
+                            break;
+                    }
+                }
+
+                const currentValue = getCounterValue(type, name, startValue);
+                const formattedValue = formatCounterValue(currentValue, type);
+
+                // Only increment if this is not a start value specification
+                if (!start) {
+                    incrementCounter(type, name);
+                }
+
+                return formattedValue;
+            });
+        }
+    };
+}
+
+// Helper function to get next Roman numeral
+function getNextRomanNumeral(current) {
+    const romanNumerals = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x',
+                          'xi', 'xii', 'xiii', 'xiv', 'xv', 'xvi', 'xvii', 'xviii', 'xix', 'xx'];
+    const index = romanNumerals.indexOf(current.toLowerCase());
+    if (index === -1 || index === romanNumerals.length - 1) {
+        return romanNumerals[0]; // Reset or default to i
+    }
+    return romanNumerals[index + 1];
+}
+
+function compileSubsteps(substeps, context, indent = '    ', counterManager) {
+    const output = [];
+
+    for (const substep of substeps) {
+        // Handle simple string substeps
+        if (typeof substep === 'string') {
+            output.push(`${indent}• ${counterManager.processText(substep)}`);
+            continue;
+        }
+
+        // Check if substep should be included
+        if (!evaluateCondition(substep.condition, context)) continue;
+
+        output.push(`${indent}• ${counterManager.processText(substep.text)}`);
+    }
+
+    return output;
+}
+
+/**
+ * Compiles steps with automatic lettering (a, b, c, etc.)
+ * @param {Array} steps - Steps array
+ * @param {Object} context - Context for evaluating conditions
+ * @returns {Array} Array of markdown strings
+ */
+function compileSteps(steps, context, counterManager) {
+    const output = [];
+
+    for (const step of steps) {
+        // Handle simple string steps
+        if (typeof step === 'string') {
+            output.push(`  • ${counterManager.processText(step)}`);
+            continue;
+        }
+
+        // Check if step should be included
+        if (!evaluateCondition(step.condition, context)) continue;
+
+        // Handle steps with titles
+        if (step.title) {
+            const stepText = `  {counter:letter}. ${step.title}`;
+            output.push(counterManager.processText(stepText));
+        }
+
+        // Handle variants (mutually exclusive options - first match wins)
+        if (step.variants) {
+            const selectedVariant = step.variants.find(v => evaluateCondition(v.condition, context));
+            if (selectedVariant && selectedVariant.substeps) {
+                output.push(...compileSubsteps(selectedVariant.substeps, context, '      ', counterManager));
+            }
+        }
+        // Handle regular substeps
+        else if (step.substeps) {
+            output.push(...compileSubsteps(step.substeps, context, '      ', counterManager));
+        }
+
+        // Add blank line after each step
+        if (step.title) {
+            output.push('');
+        }
+    }
+
+    return output;
+}
+
+/**
+ * Compiles task list into formatted markdown with dynamic numbering
+ * @param {Array} taskDefinition - Task definition array
+ * @param {Object} context - Context for evaluating conditions
+ * @returns {Array} Array of markdown strings
+ */
+function compileTaskList(taskDefinition, context) {
+    const output = [];
+    
+    output.push(
+        '## 📋 TASK CHECKLIST - YOUR WORKFLOW',
+        '',
+        '**This checklist provides your step-by-step workflow. For detailed reference information, see the system message sections:**',
+        '• **Pipeline Stage Awareness** - See "PIPELINE STAGE AWARENESS" section in system message',
+        '• **State Management Modes** - See "STATE MANAGEMENT MODES" section in system message (Chain Update, Adaptation, Background Focus)',
+        '• **Analysis Process** - See "ANALYSIS & MODIFICATION PROCESS" section in system message for detailed steps',
+        '• **Text Replacement Rules** - See "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" section',
+        '• **Tool Usage** - See "AVAILABLE TOOLS - COMPLETE REFERENCE" section',
+        '',
+        '---',
+        ''
+    );
+    
+    const counterManager = createCounterManager();
+
+    output.push('## 🎯 YOUR MISSION FOR THIS REQUEST');
+    output.push('');
+
+    for (const task of taskDefinition) {
+        // Check if task should be included
+        if (!evaluateCondition(task.condition, context)) continue;
+
+        // Use counter system for step numbering - special handling for Step 0
+        let stepHeader;
+        if (task.id === 'check_knowledge_memory') {
+            stepHeader = `**STEP 0: ${counterManager.processText(task.title)} ${task.icon}**`;
+        } else {
+            stepHeader = `**STEP {counter:number}: ${counterManager.processText(task.title)} ${task.icon}**`;
+        }
+
+        // Process the step header through counter system
+        output.push(counterManager.processText(stepHeader));
+        output.push('');
+
+        // Reset letter counter for each task to start from 'a'
+        counterManager.resetCounter('letter');
+
+        // Handle task-level variants (for stage-specific content)
+        if (task.variants) {
+            const selectedVariant = task.variants.find(v => evaluateCondition(v.condition, context));
+            if (selectedVariant) {
+                if (selectedVariant.description) {
+                    const desc = typeof selectedVariant.description === 'function' ?
+                                 selectedVariant.description(context) : selectedVariant.description;
+                    output.push(counterManager.processText(desc));
+                    output.push('');
+                }
+                if (selectedVariant.steps) {
+                    const compiledSteps = compileSteps(selectedVariant.steps, context, counterManager);
+                    output.push(...compiledSteps);
+                }
+            }
+        }
+        // Handle regular task description and steps
+        else {
+            if (task.description) {
+                const desc = typeof task.description === 'function' ?
+                             task.description(context) : task.description;
+                output.push(counterManager.processText(desc));
+                output.push('');
+            }
+
+            if (task.steps) {
+                const compiledSteps = compileSteps(task.steps, context, counterManager);
+                output.push(...compiledSteps);
+            }
+        }
+
+        output.push('');
+    }
+
+    return output;
+}
+
+/**
+ * Generates dynamic task list based on context
+ * @param {Object} context - Context containing all conditional flags
+ * @returns {Array} Compiled task list as markdown strings
+ */
+function generateDynamicTaskList(context) {
+    const {
+        weather,
+        time,
+        directive,
+        creative,
+        optimize,
+        stageContext,
+        lastGeneratedImage,
+        seasonalConfig,
+        useIncrementalUpdate,
+        adapttionMode,
+        directorRules,
+        backgroundFocus,
+        changeInfo,
+        lockedReplacements
+    } = context;
+
+    // Check tool configuration
+    const useCollectionSearch = secureConfig.grok?.tagWikiCollectionId;
+    const useWebSearch = secureConfig.grok?.useWebSearch === true;
+    
+    // Determine tool names based on configuration
+    const tagResearchTool = useCollectionSearch ? 'file_search' : 'searchTagsBatch';
+    const webResearchTools = useWebSearch ? 'web_search/x_search' : 'webSearch/fetchUrl/fetchImage';
+
+    // Task definition structure
+    const taskDefinition = [
+        {
+            id: 'check_knowledge_memory',
+            title: 'CHECK KNOWLEDGE MEMORIES FIRST',
+            icon: '🧠',
+            condition: () => true,
+            description: 'Review available global knowledge memories to avoid redundant research',
+            steps: [
+                'Review "Available Global Memories" list in user message',
+                'Search for relevant memories using searchKnowledgeMemories if needed (returns full details automatically)',
+                'OR retrieve specific memories using retrieveKnowledgeMemory(["name1", "name2"]) if you know exact names',
+                'Use retrieved entities, relations, and observations in your modifications',
+                'REFINE memories: If you discover better information, update with same name + higher confidence',
+                'Save NEW discoveries in insight_memory response field (auto-saved when validation passes)'
+            ]
+        },
+        {
+            id: 'stage_context',
+            title: 'UNDERSTAND YOUR STAGE',
+            icon: '🎬',
+            condition: () => stageContext && (stageContext.isInitial || stageContext.isBackgroundFocus || stageContext.isEnhance),
+            variants: [
+                {
+                    condition: () => stageContext && stageContext.isInitial,
+                    description: '**PIPELINE STAGE: INITIAL GENERATION (PRIMARY FOCUS)** - You are working on the INITIAL stage of a multi-stage pipeline. This prompt is specifically about the PRIMARY FOCUS/SUBJECT.',
+                    steps: [
+                        {
+                            id: 'initial_analysis',
+                            title: 'Analysis Requirements',
+                            condition: () => true,
+                            substeps: [
+                                'Analyze input prompt: view angle, perspective, framing, composition',
+                                'Determine subject positioning and available space',
+                                'Consider how subject fits within frame'
+                            ]
+                        },
+                        {
+                            id: 'initial_approach',
+                            title: 'Modification Approach',
+                            condition: () => true,
+                            substeps: [
+                                'Make text replacements knowing later stages will fill in background details',
+                                'Keep focus on subject - background will be expanded in subsequent stages',
+                                'Ensure subject well-defined and positioned appropriately for future expansion',
+                                'Don\'t over-detail the background - save that for background expansion stage',
+                                {
+                                    text: 'Preview Image Reference: Use as visual reference for character appearance/attire, environment context, actions/pose, scene composition',
+                                    condition: () => stageContext && stageContext.hasPreview
+                                },
+                                {
+                                    text: 'ANALYZE TIME & WEATHER FROM PREVIEW: Amplify detected conditions (nighttime → darkness/shadows, daytime → time-of-day atmosphere, weather → match preview effects)',
+                                    condition: () => stageContext && stageContext.hasPreview
+                                },
+                                {
+                                    text: 'PRESERVE: Character appearance, clothing style, core pose, environment type',
+                                    condition: () => stageContext && stageContext.hasPreview
+                                },
+                                {
+                                    text: 'ADAPT: Weather effects on clothing, lighting, seasonal/time-of-day elements',
+                                    condition: () => stageContext && stageContext.hasPreview
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    condition: () => stageContext && stageContext.isBackgroundFocus,
+                    description: '**PIPELINE STAGE: BACKGROUND EXPANSION** - You are working on BACKGROUND EXPANSION with image from previous generation with padding applied.',
+                    steps: [
+                        {
+                            id: 'background_analysis',
+                            title: 'Analysis Requirements',
+                            condition: () => true,
+                            substeps: [
+                                'Identify foreground area and new canvas space',
+                                'Determine expandable background elements',
+                                'Note environmental storytelling opportunities'
+                            ]
+                        },
+                        {
+                            id: 'background_rules',
+                            title: 'Content Rules',
+                            condition: () => true,
+                            substeps: [
+                                'REMOVE: Character expressions/emotions, character-specific actions, facial details, interaction descriptions, body-part details, character-centric descriptors, focus indicators',
+                                'KEEP: Location/setting, architectural elements, landscape features, weather/atmospheric effects, lighting/time-of-day, environmental objects, depth indicators',
+                                'ADD: Scene depth/distance elements, environmental storytelling, atmospheric effects (fog/clouds), background architecture/landscapes, perspective cues'
+                            ]
+                        },
+                        {
+                            id: 'background_approach',
+                            title: 'Modification Approach',
+                            condition: () => true,
+                            substeps: [
+                                'Remove character-specific phrases',
+                                'Add rich environmental descriptions',
+                                'Maintain consistency with existing composition',
+                                'Focus on atmosphere and depth'
+                            ]
+                        }
+                    ]
+                },
+                {
+                    condition: () => stageContext && stageContext.isEnhance,
+                    description: '**PIPELINE STAGE: ENHANCEMENT** - You are working on ENHANCEMENT stage with the full composed image.',
+                    steps: [
+                        {
+                            id: 'enhance_requirements',
+                            title: 'Analysis Requirements',
+                            condition: () => true,
+                            substeps: [
+                                'Analyze entire image for missing/incorrect details',
+                                'Address inconsistencies/quality issues',
+                                'Refine details across composition',
+                                'Polish final result'
+                            ]
+                        },
+                        {
+                            id: 'enhance_approach',
+                            title: 'Modification Approach',
+                            condition: () => true,
+                            substeps: [
+                                'Make refinements improving composition',
+                                'Fix issues/artifacts',
+                                'Enhance needed details',
+                                'Ensure cohesive integration'
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'background_focus_mode',
+            title: 'BACKGROUND FOCUS MODE',
+            icon: '🌄',
+            condition: () => backgroundFocus && !stageContext,
+            description: '🌄 **BACKGROUND FOCUS MODE**: For this request, emphasize background, environment, and atmospheric elements while maintaining character presence. Think like a landscape photographer - the environment is the star, characters are part of the scene.',
+            steps: []
+        },
+        {
+            id: 'chain_update_mode',
+            title: 'CHAIN UPDATE MODE',
+            icon: '🔄',
+            condition: () => useIncrementalUpdate,
+            description: '🔄 **CHAIN UPDATE MODE**: You are continuing from previous message. The current `text_replacements` are in the previous message in this conversation history.',
+            steps: [
+                {
+                    id: 'what_changed',
+                    title: 'Review What Changed',
+                    condition: () => true,
+                    substeps: [
+                        {
+                            text: 'Prompts have changed - review the new prompts',
+                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.promptChanged
+                        },
+                        {
+                            text: 'Context has changed (weather/time/season) - adapt replacements',
+                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.contextChanged
+                        },
+                        {
+                            text: 'Directive has changed - incorporate new requirements',
+                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.directiveChanged
+                        }
+                    ]
+                },
+                {
+                    id: 'choose_strategy',
+                    title: 'Choose Strategy',
+                    condition: () => true,
+                    substeps: [
+                        'Option {counter:number:options}: Update Existing (most efficient if no prompt changes)',
+                        '  - Review previous text_replacements from conversation history',
+                        '  - Update only what needs to change',
+                        '  - Keep tag research and replacements that still apply',
+                        '  - Use validateTextReplacement (terminateOnPass: true when ready)',
+                        {
+                            text: 'Option {counter:number:options}: Regenerate with Tools (if prompts changed)',
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: `  - USE TOOLS: Research new tags with ${tagResearchTool}`,
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: '  - Reuse previous research where applicable',
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: '  - Create new text_replacements for current prompt state',
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: '  - Validate and use completeTooling',
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: 'Option {counter:number:options}: Regenerate with Memories (if prompts changed)',
+                            condition: (ctx) => ctx.fast_mode === true
+                        },
+                        {
+                            text: '  - USE MEMORIES: Retrieve relevant knowledge memories',
+                            condition: (ctx) => ctx.fast_mode === true
+                        },
+                        {
+                            text: '  - Use memory knowledge to create new text_replacements',
+                            condition: (ctx) => ctx.fast_mode === true
+                        },
+                        {
+                            text: '  - Validate and use completeTooling',
+                            condition: (ctx) => ctx.fast_mode === true
+                        },
+                        'Option {counter:number:options}: Reject Chain (ONLY if major concept change)',
+                        '  - Call rejectChain() if changes fundamentally alter concept',
+                        '  - Examples: >60% removed, subject changed, incompatible structure'
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'locked_replacements',
+            title: 'LOCKED REPLACEMENTS',
+            icon: '🔒',
+            condition: (ctx) => ctx.lockedReplacements && ctx.lockedReplacements.length > 0,
+            description: (ctx) => [
+                `🔒 **LOCKED REPLACEMENTS**: User locked ${ctx.lockedReplacements.length} replacement(s) that must be maintained across generations with intelligent adaptation.`,
+                '',
+                '**Locked Replacements List:**',
+                ...ctx.lockedReplacements.map((lr, idx) => {
+                    const targetLabel = lr.targetType === 'prompt' ? 'Prompt' : 
+                                      lr.targetType === 'uc' ? 'Negative' :
+                                      `Character ${lr.targetSource + 1} ${lr.targetField}`;
+                    return `${idx + 1}. [${targetLabel}] "${lr.reason_display}": \`${lr.select_text || '(append to end)'}\` → \`${lr.replace_text}\``;
+                })
+            ].join('\n'),
+            steps: [
+                {
+                    id: 'maintain_concept',
+                    title: 'Maintain Replacement Concepts',
+                    condition: () => true,
+                    substeps: [
+                        'Keep the INTENT and PURPOSE of each locked replacement',
+                        'If locked replacement adds weather, continue weather enhancements',
+                        'If locked replacement enhances lighting, continue lighting enhancements',
+                        'If locked replacement modifies atmosphere, maintain atmospheric modifications'
+                    ]
+                },
+                {
+                    id: 'adapt_to_context',
+                    title: 'Adapt to Current Context',
+                    condition: () => true,
+                    substeps: [
+                        'Update select_text to match what\'s in current prompt',
+                        'Update replace_text to fit new weather/time/season/context',
+                        'Weather changed → Adapt weather-related replacements',
+                        'Time changed → Adapt time-related replacements',
+                        'Season changed → Adapt seasonal references',
+                        'Ensure replacement still makes logical sense'
+                    ]
+                },
+                {
+                    id: 'return_locked',
+                    title: 'Return as Locked',
+                    condition: () => true,
+                    substeps: [
+                        'Mark ALL maintained replacements with "locked": true',
+                        'Include clear reason explaining any adaptations made',
+                        'If omitting a locked replacement, explain why in reasoning'
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'adaptation_mode',
+            title: 'ADAPTATION MODE',
+            icon: '🔄',
+            condition: () => adapttionMode,
+            description: 'You are adapting a previously compiled prompt that failed to apply. Use the provided compiled prompt data as a reference and adapt it to work with the current context while preserving the original intent and quality. Intelligently modify the prompts to create a cohesive, immersive scene that harmonizes weather, time, season, and character attire.',
+            steps: []
+        },
+        {
+            id: 'analyze_inputs',
+            title: 'ANALYZE INPUTS',
+            icon: '🔍',
+            condition: () => true,
+            steps: [
+                {
+                    id: 'analyze_prompts',
+                    title: 'Analyze Initial Prompts and Provided Images',
+                    condition: () => true,
+                    substeps: [
+                        'Read base prompt, UC, character prompts',
+                        {
+                            text: 'Analyze provided image for visual elements, conflicts, quality issues',
+                            condition: () => lastGeneratedImage
+                        }
+                    ]
+                },
+                {
+                    id: 'check_placeholders',
+                    title: 'Check for Text Generation Placeholders',
+                    condition: () => true,
+                    substeps: [
+                        'Scan prompt for [SPEECH_TEXT_INSERT], [THOUGHT_TEXT_INSERT], [CAPTION_TEXT_INSERT]',
+                        'If found: Plan contextual replacement (max ~15 words/sentence, use <br> for breaks)',
+                        'Reference: See "AI TEXT GENERATION PLACEHOLDERS" section in system message',
+                        'NO quotes, NO colorful emojis - use text emoticons only'
+                    ]
+                },
+                {
+                    id: 'analyze_context',
+                    title: 'Analyze Current Context Data',
+                    condition: () => weather || time,
+                    substeps: [
+                        {
+                            text: 'Parse TIME DATA (clock time, period, sun position, light level)',
+                            condition: () => time
+                        },
+                        {
+                            text: 'Parse WEATHER DATA LCD (current conditions)',
+                            condition: () => weather
+                        },
+                        {
+                            text: 'Review WEATHER HISTORY REPORT: yesterday\'s summary, temporal timeline (past 4h + future 2h), trend analysis',
+                            condition: () => weather
+                        },
+                        {
+                            text: 'Note seasonal/holiday information',
+                            condition: () => seasonalConfig && seasonalConfig.enabled
+                        },
+                        'Apply Two-Test System to all data: (1) Photographable? (2) Sets mood/palette?'
+                    ]
+                },
+                {
+                    id: 'analyze_directive',
+                    title: 'Analyze and Compile User Directive',
+                    condition: () => directive,
+                    substeps: [
+                        'Parse directive for instructions and narrative',
+                        'Handle typos/informal language (understand intent)',
+                        'Execute conditional logic (IF/THEN/ELIF/ELSE)',
+                        'Process incrementing/counter logic and variables',
+                        'Handle RANDOM() functions, loops, state management',
+                        '🎯 **CRITICAL**: Apply ALL requests from the directive in your text_replacements',
+                        'Every action, attribute, or change mentioned MUST be implemented',
+                        'If directive says "make character eat" → eating action MUST appear in replacements',
+                        'If directive says "add sunset" → sunset elements MUST be added',
+                        'Reference: See "ADVANCED DIRECTIVE FEATURES" section for full syntax guide',
+                        'See "📜 THE DIRECTIVE" section below for the full directive content'
+                    ]
+                },
+                {
+                    id: 'scene_understanding',
+                    title: 'Scene Understanding',
+                    condition: () => true,
+                    variants: [
+                        {
+                            condition: () => stageContext && stageContext.isBackgroundFocus,
+                            substeps: [
+                                'Environment Type: Analyze foreground vs new canvas areas',
+                                'Identify expandable background elements',
+                                'Determine environmental storytelling opportunities'
+                            ]
+                        },
+                        {
+                            condition: () => stageContext && stageContext.isEnhance,
+                            substeps: [
+                                'Analyze entire composition for missing/incorrect details',
+                                'Identify inconsistencies and quality issues',
+                                'Note refinement opportunities across full composition'
+                            ]
+                        },
+                        {
+                            condition: () => true, // default
+                            substeps: [
+                                'Environment Type: INDOOR/OUTDOOR/MIXED (CRITICAL)',
+                                'Core Intent: Primary artistic goal',
+                                'Character Focus: Main subjects, roles, relationships',
+                                'Style Elements: Artistic styles/techniques',
+                                'Setting Details: Environmental descriptions'
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'identify_conflicts',
+                    title: 'Identify Conflicts',
+                    condition: () => true,
+                    substeps: [
+                        {
+                            text: 'Check for time/weather/lighting conflicts with provided data',
+                            condition: () => weather || time
+                        },
+                        'Check for seasonal conflicts and atmospheric mismatches',
+                        'Note any contradictory elements in prompt'
+                    ]
+                },
+                {
+                    id: 'check_priority',
+                    title: 'Check Priority Hierarchy',
+                    condition: () => true,
+                    substeps: [
+                        {
+                            text: 'Level {counter:number:level}: Director Rules',
+                            condition: () => directorRules && directorRules.length > 0
+                        },
+                        {
+                            text: 'Level {counter:number:level}: Director Rules (absolute constraints)',
+                            condition: () => !directorRules || directorRules.length === 0
+                        },
+                        {
+                            text: 'Level {counter:number:level}: User Directive (🎯 ACTIVE - MANDATORY - ALL requests MUST be implemented - overrides context)',
+                            condition: () => directive
+                        },
+                        {
+                            text: 'Level {counter:number:level}: User Directive (if provided)',
+                            condition: () => !directive
+                        },
+                        {
+                            text: 'Level {counter:number:level}: Weather/Time Context (ACTIVE)',
+                            condition: () => weather || time
+                        },
+                        {
+                            text: 'Level {counter:number:level}: Weather/Time Context (if provided)',
+                            condition: () => !weather && !time
+                        },
+                        'Level {counter:number:level}: Seasonal Guidelines',
+                        'Level {counter:number:level}: General Enhancement'
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'research',
+            title: 'RESEARCH & UNDERSTAND',
+            icon: '🔬',
+            condition: () => true,
+            steps: [
+                {
+                    id: 'check_memory',
+                    title: 'Check Global Knowledge Memories (avoid redundant research)',
+                    condition: () => true
+                },
+                {
+                    id: 'tag_research',
+                    title: `Tag Research (MANDATORY - use ${tagResearchTool})`,
+                    condition: (ctx) => !ctx.fast_mode,
+                    substeps: [
+                        ...(useCollectionSearch ? [
+                            'Use file_search to search comprehensive tag wiki collection',
+                            'Review wiki entries for descriptions and context',
+                            'Research tags for weather/time integration',
+                            'Research tags for directive requirements',
+                            'If your completed research using file_search, web_search, or x_search, you do not need to use searchTagDatabase',
+                        ] : [
+                            'Verify quality ≥95%, strength ≥8.0',
+                            'Research tags for weather/time integration',
+                            'Research tags for directive requirements',
+                            'Use resolveTagLinks for alternatives/relationships'
+                        ]),
+                        {
+                            text: 'Research tags for weather/time integration',
+                            condition: () => weather || time
+                        },
+                        {
+                            text: 'Research tags for directive requirements',
+                            condition: () => directive
+                        },
+                        {
+                            text: 'Use resolveTagLinks for alternatives/relationships',
+                            condition: () => !useCollectionSearch
+                        }
+                    ]
+                },
+                {
+                    id: 'memory_research',
+                    title: 'Memory Research (FAST MODE - use memories only)',
+                    condition: (ctx) => ctx.fast_mode === true,
+                    substeps: [
+                        'Search for relevant memories using searchKnowledgeMemories (returns full details automatically)',
+                        'OR retrieve specific memories using retrieveKnowledgeMemory if you know exact names',
+                        'Use memory entities, relations, and observations for tag information',
+                        'Apply memory knowledge to create text_replacements',
+                        'If memories don\'t have needed info, use your general knowledge'
+                    ]
+                },
+                {
+                    id: 'info_gathering',
+                    title: `Information Gathering (${webResearchTools} when needed)`,
+                    condition: (ctx) => !ctx.fast_mode
+                },
+                {
+                    id: 'understand_tags',
+                    title: 'Understand Tag Meaning from tool results',
+                    condition: (ctx) => !ctx.fast_mode
+                },
+                {
+                    id: 'understand_memory',
+                    title: 'Understand Tag Meaning from memories and knowledge',
+                    condition: (ctx) => ctx.fast_mode === true
+                },
+                {
+                    id: 'choose_strategy',
+                    title: 'Choose Application Strategy (A/B/C based on context)',
+                    condition: () => true,
+                    substeps: [
+                        {
+                            text: 'PRIORITIZE Strategy A (pure tags) for token efficiency',
+                            condition: () => optimize && optimize.tokenCount
+                        },
+                        {
+                            text: 'Balance quality vs efficiency based on token usage',
+                            condition: () => !optimize || !optimize.tokenCount
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'plan',
+            title: 'PLAN REPLACEMENTS',
+            icon: '📝',
+            condition: () => true,
+            steps: [
+                {
+                    id: 'transform_content',
+                    title: 'Content Transformation Planning',
+                    condition: () => true,
+                    substeps: [
+                        'Transform context data to visual descriptions',
+                        'NEVER copy verbatim from input/context',
+                        'Convert measurements to visual equivalents',
+                        'Remove conceptual language, keep only visuals',
+                        'Use Two-Test System: (1) Can I photograph this? (2) Does it set mood/palette?',
+                        'If fails both tests: REJECT the element and transform to visible equivalent'
+                    ]
+                },
+                {
+                    id: 'rich_description_expansion',
+                    title: 'Rich Description Expansion (maximize descriptive richness)',
+                    condition: () => creative,
+                    substeps: [
+                        'Within token limits, maximize descriptive richness',
+                        'Expand vague or minimal descriptions into vivid, detailed language',
+                        'Add sensory details (textures, lighting nuances, atmospheric qualities)',
+                        'Fill in missing details that enhance scene coherence and immersion',
+                        'Use available token budget to its fullest - don\'t be sparse when tokens allow',
+                        'Transform generic descriptions into specific, evocative imagery',
+                        'Examples: "rainy day" → "heavy rain drumming on surfaces, water streaming down windows, puddles reflecting gray overcast sky"',
+                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 1'
+                    ]
+                },
+                {
+                    id: 'tag_enhancement',
+                    title: 'Tag Enhancement (enrich tags with descriptive qualifiers)',
+                    condition: () => creative,
+                    substeps: [
+                        'Add descriptive adjectives to base tags when appropriate',
+                        'Specify qualities: "rain" → "heavy rain", "smile" → "bright genuine smile"',
+                        'Include atmosphere tags: "dramatic lighting", "cinematic composition", "depth of field"',
+                        'Layer complementary tags that build on each other',
+                        {
+                            text: `Research tags first with ${tagResearchTool} to verify quality and strength`,
+                            condition: (ctx) => !ctx.fast_mode
+                        },
+                        {
+                            text: 'Use memory knowledge to verify tag quality and strength',
+                            condition: (ctx) => ctx.fast_mode === true
+                        },
+                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 2'
+                    ]
+                },
+                {
+                    id: 'create_replacements',
+                    title: 'Create Complete text_replacements Array',
+                    condition: () => true,
+                    substeps: [
+                        'Reference: See "TEXT REPLACEMENT SYSTEM REFERENCE" section for complete rules',
+                        'Plan ALL replacements before responding',
+                        {
+                            text: '🎯 PRIORITY #1: Implement ALL directive requests in replacements',
+                            condition: () => directive
+                        },
+                        {
+                            text: 'Update existing replacements for changed context',
+                            condition: () => useIncrementalUpdate
+                        },
+                        {
+                            text: 'Adapt previous replacements to new context',
+                            condition: () => adapttionMode
+                        },
+                        {
+                            text: 'Every action, change, or element from directive MUST have corresponding replacements',
+                            condition: () => directive
+                        },
+                        {
+                            text: 'Each replacement targets ORIGINAL text only',
+                            condition: () => !useIncrementalUpdate && !adapttionMode
+                        },
+                        'Include: prompt, uc, character_prompts arrays',
+                        'UC Strategy: UC the OPPOSITE - See "CONFLICT PREVENTION VIA UC" section',
+                        'Apply Three-Step Process for attribute changes (REPLACE + UC + negative emphasis)',
+                        'Replace AI text placeholders with contextual dialog (see placeholder check results)'
+                    ]
+                },
+                {
+                    id: 'apply_hierarchy',
+                    title: 'Apply Modification Hierarchy',
+                    condition: () => true,
+                    variants: [
+                        {
+                            condition: () => stageContext && stageContext.isBackgroundFocus,
+                            substeps: [
+                                'REMOVE: Character expressions, actions, facial details, focus indicators',
+                                'KEEP: Location, architecture, weather, lighting, environmental objects',
+                                'ADD: Scene depth, environmental storytelling, atmospheric effects'
+                            ]
+                        },
+                        {
+                            condition: () => stageContext && stageContext.isEnhance,
+                            substeps: [
+                                'Analyze entire image for refinement opportunities',
+                                'Fix inconsistencies and quality issues',
+                                'Polish and refine existing elements',
+                                'Enhance details across full composition'
+                            ]
+                        },
+                        {
+                            condition: () => true, // default
+                            substeps: [
+                                'Priority {counter:number:priority}: Conflict resolution - Pass {counter:number:conflict_resolution}',
+                                {
+                                    text: 'Priority {counter:number:priority}: Time & weather integration (REQUIRED)',
+                                    condition: () => time && weather
+                                },
+                                {
+                                    text: 'Priority {counter:number:priority}: Time integration (REQUIRED)',
+                                    condition: () => time && !weather
+                                },
+                                {
+                                    text: 'Priority {counter:number:priority}: Weather integration (REQUIRED)',
+                                    condition: () => !time && weather
+                                },
+                                {
+                                    text: 'Priority {counter:number:priority}: Atmospheric enhancement',
+                                    condition: () => !time && !weather
+                                },
+                                'Priority {counter:number:priority}: Conflict resolution - Pass {counter:number:conflict_resolution}',
+                                'Priority {counter:number:priority}: Character integration - See "Character-Centric Weather Integration Workflow" section in system message',
+                                'Priority {counter:number:priority}: Atmospheric refinement',
+                                {
+                                    text: 'Priority {counter:number:priority}: Creative flourishes',
+                                    condition: () => creative
+                                },
+                                {
+                                    text: 'NSFW Mode: See "NSFW Character Enhancement Guidelines" section if content is sexual/fetish-oriented',
+                                    condition: () => creative
+                                },
+                                'Priority {counter:number:priority}: Final conflict resolution - Pass {counter:number:conflict_resolution}',
+                            ]
+                        }
+                    ]
+                },
+                {
+                    id: 'verify_independence',
+                    title: 'Verify Replacement Independence',
+                    condition: () => true,
+                    substeps: [
+                        'No overlapping select_text values',
+                        'No replacement chains (modifying own additions)',
+                        'No duplicate select_text in array',
+                        'Each select_text is UNIQUE in prompt',
+                        'All replacements work in any order',
+                        'Check Pre-Submission Validation Checklist'
+                    ]
+                },
+                {
+                    id: 'generate_dialogs',
+                    title: 'Generate Dialogs (3-10 required)',
+                    condition: () => !stageContext || !stageContext.isBackgroundFocus,
+                    substeps: [
+                        'Analyze: Physical → Emotional → Situational',
+                        'Create 3-10 speech and thought dialogs',
+                        'Position spatially (top: 5-95%, left: 5-95%, alignment)',
+                        'Reference: See "CHARACTER DIALOG GENERATION" section for deep immersive examples',
+                        'Make contextually appropriate, vary intensity, distribute across canvas'
+                    ]
+                },
+                {
+                    id: 'character_naming',
+                    title: 'Character Naming (replace generic identifiers)',
+                    condition: () => creative,
+                    substeps: [
+                        'Scan character prompts for generic patterns: "Character #1", "Character #2", "Character 1", "Character 2", etc.',
+                        'Replace with contextually appropriate names matching scene/setting',
+                        'Consider cultural context, time period, and character traits',
+                        'Provide as array in character_names field (order must match character_prompts array)',
+                        'System will automatically apply names to character prompt objects',
+                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 3'
+                    ]
+                },
+                {
+                    id: 'generated_image_name',
+                    title: 'Generated Image Name (create descriptive name)',
+                    condition: () => true, // Always enabled, but creative mode makes it more poetic
+                    substeps: [
+                        '**THIS IS MANDATORY - DO NOT SKIP THIS STEP**',
+                        'Create descriptive name capturing essence of scene (3-100 characters)',
+                        'Use natural readable format with proper capitalization',
+                        'Include: main subject, setting, mood, and significant elements',
+                        'Make it memorable, poetic, and evocative',
+                        'Consider time/weather if prominent scene elements',
+                        {
+                            text: 'Creative mode: Be more poetic and descriptive',
+                            condition: () => creative
+                        },
+                        {
+                            text: 'Standard mode: Be clear and informative',
+                            condition: () => !creative
+                        },
+                        'Provide in generated_image_name field in your response',
+                        '**Validation will fail if this field is missing**',
+                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 4 for examples'
+                    ]
+                },
+                {
+                    id: 'create_memories',
+                    title: 'Create Insight Memories (if valuable research done)',
+                    condition: () => true,
+                    substeps: [
+                        'Document reusable research findings',
+                        'Add select phrases for future triggering',
+                        'Include description of how to use the research',
+                        'Focus on prompt-related concepts (not context data)'
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'validate',
+            title: 'VALIDATE',
+            icon: '✅',
+            condition: () => true,
+            steps: [
+                {
+                    id: 'call_validate',
+                    title: 'Call validateTextReplacement',
+                    condition: () => true,
+                    substeps: [
+                        'Provide textReplacements, dialogs, insight_memory (optional: new knowledge to save globally)',
+                        'Choose mode: Testing (terminateOnPass: false) OR Auto-Complete (terminateOnPass: true)',
+                        {
+                            text: 'Include verifyTokenCount: true for token optimization validation',
+                            condition: () => optimize && optimize.tokenCount
+                        },
+                        'Include reason explaining what you did',
+                        {
+                            text: 'TWO-STAGE MODE: Call analyzeTokenCount first to verify efficiency. If optimal AND validation passes: use terminateOnPass: true to complete',
+                            condition: (ctx) => ctx.optimize && ctx.optimize.tokenCount && ctx.optimize.twoStage && !ctx.fast_mode
+                        },
+                        {
+                            text: 'SINGLE-STAGE MODE: Include verifyTokenCount: true in validateTextReplacement call',
+                            condition: () => optimize && optimize.tokenCount && !optimize.twoStage
+                        },
+                        {
+                            text: 'Reference: See "TOKEN OPTIMIZATION MODE ACTIVE" section in system message',
+                            condition: () => optimize && optimize.tokenCount
+                        },
+                    ]
+                },
+                {
+                    id: 'fix_failures',
+                    title: 'Fix Validation Failures (if any)',
+                    condition: () => true,
+                    substeps: [
+                        'Review `failureDetails.detailedMessage` for specific issues',
+                        'Check `failureDetails.failuresByType` to see failure categories',
+                        'For each failure in `failureDetails.failures`: examine index, select_text, and issues',
+                        'Apply the recommended fix for each failure type (see VALIDATION FAILURE HANDLING section)',
+                        'Recreate replacements array from scratch (do not try to "patch" existing)',
+                        'Call validateTextReplacement again with corrected replacements',
+                        'Repeat until validation passes - failures cannot be ignored'
+                    ]
+                },
+                {
+                    id: 'choose_completion',
+                    title: 'Choose Completion Method',
+                    condition: () => true,
+                    substeps: [
+                        'If terminateOnPass: true AND validation passed → Done!',
+                        'Otherwise → Proceed to next step'
+                    ]
+                }
+            ]
+        },
+        {
+            id: 'output',
+            title: 'OUTPUT',
+            icon: '📤',
+            condition: () => true,
+            steps: [
+                {
+                    id: 'auto_complete',
+                    title: 'Auto-Complete via terminateOnPass (Quick Method)',
+                    condition: () => true,
+                    substeps: [
+                        'If validation passed with terminateOnPass: true',
+                        'System automatically completes using your data',
+                        'No structured output needed'
+                    ]
+                },
+                {
+                    id: 'generated_image_name_output',
+                    title: 'Generate Image Name (generated_image_name)',
+                    condition: () => true,
+                    substeps: [
+                        'Create descriptive name capturing essence of scene (3-100 characters)',
+                        'Use natural readable format with proper capitalization',
+                        'Include: main subject, setting, mood, and significant elements',
+                        'Make it memorable, poetic, and evocative',
+                        'Consider time/weather if prominent scene elements',
+                        {
+                            text: 'Creative mode: Be more poetic and descriptive',
+                            condition: () => context.creative
+                        },
+                        {
+                            text: 'Standard mode: Be clear and informative',
+                            condition: () => !context.creative
+                        },
+                        'Provide in generated_image_name field in your response',
+                        '**Validation will fail if this field is missing**'
+                    ]
+                },
+                {
+                    id: 'manual_complete',
+                    title: 'Manual Complete via completeTooling + JSON (Full Method)',
+                    condition: () => true,
+                    substeps: [
+                        'Call completeTooling({ reason: "explanation" })',
+                        'Provide structured JSON response with required fields',
+                        'Include: text_replacements, dialogs',
+                        'Include generated_image_name (descriptive name)',
+                        'Include: character_names (if placeholder names detected)',
+                        'Optional: insight_memory (new knowledge to save globally - name, category, entities, relations, observations)',
+                        'Include: modified_prompt, modified_negative, modified_character_prompts',
+                        'Include: reasoning (HTML summary)'
+                    ]
+                },
+                {
+                    id: 'report_issues',
+                    title: 'Report Errors/Warnings (if applicable)',
+                    condition: () => true,
+                    substeps: [
+                        'Include "errors" array in response JSON for serious directive execution failures',
+                        'Include "warnings" array in response JSON for non-critical issues or potential problems',
+                        'These are saved to compiled_prompt and sent to client for user feedback',
+                        'Reference: See "ERROR & WARNING REPORTING" section for guidelines and examples',
+                        'Examples: directive parsing failures, missing variables, counter limits, RANDOM seed unavailable'
+                    ]
+                }
+            ]
+        }
+    ];
+
+    // Compile and flatten the task list with counter system
+    return compileTaskList(taskDefinition, context);
+}
+
+
+/**
+ * Auto-save insight_memory entries to global knowledge database
+ * @param {Array} insightMemories - Array of insight memory objects from AI response
+ * @param {string} phase - Phase identifier for logging (e.g., 'Phase 1', 'Phase 2')
+ */
+function autoSaveInsightMemories(insightMemories, phase = '') {
+    if (!insightMemories || !Array.isArray(insightMemories) || insightMemories.length === 0) {
+        return;
+    }
+    
+    const phaseLabel = phase ? `[${phase}] ` : '';
+    console.log(`🧠 ${phaseLabel}Auto-saving ${insightMemories.length} insight memor${insightMemories.length === 1 ? 'y' : 'ies'} to global knowledge database...`);
+    
+    try {
+        const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+        let savedCount = 0;
+        let skippedCount = 0;
+        
+        for (const memory of insightMemories) {
+            try {
+                // Validate memory has required fields
+                if (!memory.name || !memory.description || !memory.category || !memory.entities || memory.entities.length === 0) {
+                    console.log(`   ⚠️  Skipping incomplete memory: ${memory.name || 'unnamed'} (missing required fields)`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Validate that name is not context-specific
+                const contextKeywords = ['current', 'today', 'this', 'now'];
+                const nameContainsContext = contextKeywords.some(keyword => memory.name.toLowerCase().includes(keyword));
+                
+                if (nameContainsContext) {
+                    console.log(`   ❌ Skipping context-specific memory: "${memory.name}" (contains context keywords)`);
+                    skippedCount++;
+                    continue;
+                }
+                
+                // Calculate confidence based on refinement system
+                // New memories start at 10%, updates can add up to 25% (capped at 100%)
+                const existingMemory = knowledgeMemoryDb.getKnowledgeMemory(memory.name, false);
+                let finalConfidence;
+                
+                if (existingMemory) {
+                    // Memory is being updated - add provided confidence (up to 0.25) to existing
+                    const confidenceIncrease = memory.confidence || 0.25;
+                    const cappedIncrease = Math.min(confidenceIncrease, 0.25); // Cap at 25% increase
+                    finalConfidence = Math.min(existingMemory.confidence + cappedIncrease, 1.0);
+                    console.log(`   📈 Updating memory "${memory.name}": ${(existingMemory.confidence * 100).toFixed(0)}% → ${(finalConfidence * 100).toFixed(0)}% (+${(cappedIncrease * 100).toFixed(0)}%)`);
+                } else {
+                    // New memory - start at 10%
+                    finalConfidence = 0.1;
+                    console.log(`   ✨ Creating new memory "${memory.name}": ${(finalConfidence * 100).toFixed(0)}%`);
+                }
+                
+                // Save to database
+                knowledgeMemoryDb.saveKnowledgeMemory(
+                    memory.name,
+                    memory.description,
+                    memory.category,
+                    memory.entities,
+                    memory.relations || [],
+                    memory.observations || [],
+                    finalConfidence
+                );
+                
+                console.log(`   ✅ Saved global memory: "${memory.name}" (${memory.entities.length} entities, ${(memory.relations || []).length} relations, ${(finalConfidence * 100).toFixed(0)}% confidence)`);
+                savedCount++;
+            } catch (saveError) {
+                console.error(`   ❌ Failed to save memory "${memory.name}":`, saveError.message);
+                skippedCount++;
+            }
+        }
+        
+        logger.detailed(`🧠 ${phaseLabel}Memory save: ${savedCount} saved, ${skippedCount} skipped`);
+    } catch (error) {
+        console.error(`❌ Error processing ${phase ? phase + ' ' : ''}insight memories:`, error);
+        // Continue even if saving fails - don't block generation
+    }
+}
+
 // Generalized dynamic generation processing function - extracts core AI logic from WebSocket handler
 const tracing = require('./tracing');
 
-async function processDynamicGenerationCore(dynamicConfig, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null) {
+async function processDynamicGenerationCore(dynamicConfig, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
     try {
-        console.log(`🎭 Processing dynamic generation core: ${requestId}${backgroundFocus ? ' [BACKGROUND FOCUS MODE]' : ''}`);
+        // Summarized console output
+        logger.normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
+        
+        // Detailed file logging
+        logger.logGeneration('DYNAMIC_GENERATION_START', {
+            requestId,
+            backgroundFocus,
+            hasDirective: !!dynamicConfig.directive,
+            directive: dynamicConfig.directive,
+            tod: dynamicConfig.tod,
+            weather: dynamicConfig.weather,
+            season: dynamicConfig.season,
+            optimize: dynamicConfig.optimize
+        }, requestId);
     
-        const currentRequestHash = generateRequestHash(dynamicConfig, datasetConfig);
+        // Use pre-calculated hashes if provided, otherwise calculate them
+        // Pre-calculated hashes ensure consistency with imageGeneration.js hash calculations
+        const currentRequestHash = preCalculatedHashes?.requestHash ?? generateRequestHash(dynamicConfig, datasetConfig);
+        const currentPromptHash = preCalculatedHashes?.promptHash ?? generatePromptHash(prompt, uc, characterPrompts);
+        const currentDirectiveHash = preCalculatedHashes?.directiveHash ?? generateDirectiveHash(dynamicConfig.directive);
 
         // Check if we can reuse previous response ID (stateful conversation optimization)
         let cachedResponseId = null;
+        let cachedInitialResponseId = null; // Track initial response ID separately
         let skipSystemMessage = false;
+        let useIncrementalUpdate = false;
+        let changeInfo = null;
+
+        // Generate random seed for directive random operations
+        const randomSeed = Math.floor(Math.random() * 100);
+        const generationChainNumber = (dynamicConfig.compiled_prompt?.generation_chain || 0) + 1;
         
-        if (dynamicConfig.compiled_prompt?.previousResponseId && dynamicConfig.compiled_prompt?.request_hash) {
-            // Check if cached response is older than 30 days
+        // Check if chain_updates is enabled (default to false if not provided by client)
+        const chainUpdatesEnabled = dynamicConfig.chain_updates === true || dynamicConfig.chain_updates === undefined;
+        if (chainUpdatesEnabled && dynamicConfig.compiled_prompt?.previousResponseId) {
+            // Preserve initial response ID from cached config
+            cachedInitialResponseId = dynamicConfig.compiled_prompt.initialResponseId || null;
+            // Check if chat history is older than 30 days (conversation context limit)
             const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
             const cacheAge = dynamicConfig.compiled_prompt?.timestamp ? Date.now() - dynamicConfig.compiled_prompt.timestamp : Infinity;
             
             if (cacheAge > thirtyDaysMs) {
-                console.log(`🕐 Cached response is ${Math.floor(cacheAge / (24 * 60 * 60 * 1000))} days old (> 30 days) - not using previous_response_id`);
-            } else if (currentRequestHash === dynamicConfig.compiled_prompt.request_hash) {
+                console.log(`🕐 Chat history is ${Math.floor(cacheAge / (24 * 60 * 60 * 1000))} days old (> 30 days) - not using previous_response_id`);
+            } else {
                 cachedResponseId = dynamicConfig.compiled_prompt.previousResponseId;
                 skipSystemMessage = true;
-                console.log(`♻️ Config unchanged (hash match) - reusing previous_response_id: ${cachedResponseId}`);
-                console.log(`⚡ Skipping system message generation (API already has context)`);
-            } else {
-                console.log(`🔄 Config changed (hash mismatch) - New Chat`);
+                
+                // Check hashes to see what changed
+                const contextHashChanged = dynamicConfig.compiled_prompt.request_hash && currentRequestHash !== dynamicConfig.compiled_prompt.request_hash;
+                const promptHashChanged = dynamicConfig.compiled_prompt.prompt_hash && currentPromptHash !== dynamicConfig.compiled_prompt.prompt_hash;
+                const directiveHashChanged = dynamicConfig.compiled_prompt.directive_hash && currentDirectiveHash !== dynamicConfig.compiled_prompt.directive_hash;
+                
+                // Check if system-message-critical settings changed (these fundamentally alter system message structure)
+                // NOTE: Optimization strategies are now ALWAYS in system message (static), so we only check:
+                // - twoStage mode (adds/removes two-stage workflow section)
+                // - creative mode (adds/removes creative enhancement sections)
+                let systemMessageCriticalChange = false;
+                if (contextHashChanged && dynamicConfig.compiled_prompt.optimize !== undefined && dynamicConfig.compiled_prompt.creative !== undefined) {
+                    const oldOptimize = dynamicConfig.compiled_prompt.optimize;
+                    const newOptimize = dynamicConfig.optimize;
+                    const oldCreative = dynamicConfig.compiled_prompt.creative;
+                    const newCreative = dynamicConfig.creative;
+                    
+                    // Extract twoStage settings
+                    const oldTwoStage = typeof oldOptimize === 'object' ? oldOptimize.twoStage : false;
+                    const newTwoStage = typeof newOptimize === 'object' ? newOptimize.twoStage : false;
+                    
+                    // Check if twoStage mode changed (changes system message structure)
+                    if (oldTwoStage !== newTwoStage) {
+                        systemMessageCriticalChange = true;
+                        console.log(`🔄 System message critical change detected: twoStage=${oldTwoStage}->${newTwoStage}`);
+                    }
+                    
+                    // Check if creative mode changed (changes system message structure)
+                    if (oldCreative !== newCreative) {
+                        systemMessageCriticalChange = true;
+                        console.log(`🔄 System message critical change detected: creative=${oldCreative}->${newCreative}`);
+                    }
+                }
+                
+                // If system message critical settings changed, break the chain completely
+                if (systemMessageCriticalChange) {
+                    console.log(`🔗 Breaking chain due to system message critical changes - forcing fresh system message`);
+                    cachedResponseId = null;
+                    skipSystemMessage = false;
+                    useIncrementalUpdate = false;
+                } else {
+                    // Check for Force Context Refresh flag (allows manual context refresh without changing parameters)
+                    // Usage: Set dynamic_generation.force_context_refresh = true to trigger context update in chain mode
+                    const forceContextRefresh = dynamicConfig.force_context_refresh === true;
+                    const contextChanged = contextHashChanged || forceContextRefresh;
+                    useIncrementalUpdate = (contextChanged || promptHashChanged || directiveHashChanged);
+                    
+                    changeInfo = {
+                        hasChanges: contextChanged || promptHashChanged || directiveHashChanged,
+                        contextChanged: contextChanged,
+                        promptChanged: promptHashChanged,
+                        directiveChanged: directiveHashChanged,
+                        forcedRefresh: forceContextRefresh
+                    };
+                    
+                    // Only log if there are actual changes
+                    if (contextChanged || promptHashChanged || directiveHashChanged) {
+                        console.log(`🔄 Chain update: ${contextChanged ? 'context' : ''} ${promptHashChanged ? 'prompts' : ''} ${directiveHashChanged ? 'directive' : ''} changed${forceContextRefresh ? ' (forced refresh)' : ''}`);
+                    } else {
+                        console.log('✅ Chain update: no changes detected, using cached context');
+                    }
+                }
             }
         }
 
@@ -10614,47 +13264,52 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // Extract optimize options (handle both boolean and object formats)
         let optimizeEnabled = false;
         let tokenCountEnabled = true; // Default to true
-        let lockSubjectEnabled = false; // Default to false
         let pipelineAware = false; // Default to false
         let initialPromptAware = false; // Default to false
+        let twoStageEnabled = false; // Default to false
         
         if (typeof optimize === 'object' && optimize !== null) {
             optimizeEnabled = optimize.enabled || false;
             tokenCountEnabled = optimize.tokenCount !== undefined ? optimize.tokenCount : true;
-            lockSubjectEnabled = optimize.lockSubject || false;
             pipelineAware = optimize.pipelineAware || false;
             initialPromptAware = optimize.initialPromptAware || false;
+            twoStageEnabled = optimize.twoStage || false;
         } else {
             optimizeEnabled = !!optimize;
         }
+        
+        // Extract lockSubject from root level (moved from optimize object)
+        let lockSubjectEnabled = dynamicConfig?.lockSubject === true;
+        
+        // Extract fast_mode as separate field (independent of optimize)
+        const fastModeEnabled = dynamicConfig?.fast_mode === true;
 
         // Get resolved context from shared resolver
         // Handle context locking logic
         let context;
-        if (!!dynamicConfig.context_locked) {
-            // User has locked context - must have valid context from compiled prompt
-            if (compiled_prompt?.context) {
-                // Validate that the current request parameters match the parameters used to generate the saved context
-                if (compiled_prompt.request_hash !== currentRequestHash) {
-                    const errorMsg = 'Context locked but request parameters have changed since context was generated. Please unlock context to regenerate with new parameters.';
-                    console.error(`❌ ${errorMsg}`);
-                }
-
-                console.log('🔒 Context locked: Reusing existing context from compiled prompt');
-                context = compiled_prompt.context;
-            } else {
-                const errorMsg = 'Context locked but no valid context found in compiled prompt. Cannot proceed with locked context generation.';
-                console.error(`❌ ${errorMsg}`);
-                throw new Error(errorMsg);
-            }
+        if (!!dynamicConfig.context_locked && compiled_prompt?.context) {
+            console.log('🔒 Context locked: Reusing existing context from compiled prompt');
+            context = compiled_prompt.context;
         } else if (!!dynamicConfig.locked && compiled_prompt?.context) {
             // Pipeline stage inheritance - reuse context from previous stage
             console.log('🔒 Pipeline locked mode: Reusing context from previous stage');
             context = compiled_prompt.context;
         } else {
-            // Normal context compilation
+            // Normal context compilation (includes context_locked with no valid context)
+            if (!!dynamicConfig.context_locked && !compiled_prompt?.context) {
+                console.log('⚠️ Context locked but no valid context found - compiling new context');
+            }
             console.log(`🔍 Compiling new context - locked: ${!!dynamicConfig.locked}, context_locked: ${!!dynamicConfig.context_locked}, has compiled_prompt: ${!!compiled_prompt}, has context: ${!!compiled_prompt?.context}`);
             context = await compileContext(dynamicConfig, clientIP);
+            
+            // Validate context - if seasonal is enabled, context.season must be a valid seasonalGuidelines object
+            if (context.seasonalConfig?.enabled) {
+                if (!context.season || typeof context.season === 'string' || !context.season.mode) {
+                    const error = new Error('Seasonal enabled but context.season is missing or invalid seasonalGuidelines object. Context must be regenerated.');
+                    console.error('❌ Context validation failed:', error.message);
+                    throw error;
+                }
+            }
         }
         
         // Add optimize options to context
@@ -10664,15 +13319,16 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // Count tokens for all prompts (only if token count enforcement is enabled)
         if (tokenCountEnabled) {
             try {
+                const t5TokenizerService = globalResources.getT5Tokenizer();
                 const promptTokenCount = t5TokenizerService.countTokens(prompt || '');
                 const ucTokenCount = t5TokenizerService.countTokens(uc || '');
                 
                 const characterTokenCounts = characterPrompts.map(char => ({
-                    input: t5TokenizerService.countTokens(char.input || ''),
+                    prompt: t5TokenizerService.countTokens(char.prompt || ''),
                     uc: t5TokenizerService.countTokens(char.uc || '')
                 }));
                 
-                const totalCharacterInputTokens = characterTokenCounts.reduce((sum, char) => sum + char.input, 0);
+                const totalCharacterPromptTokens = characterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);
                 const totalCharacterUCTokens = characterTokenCounts.reduce((sum, char) => sum + char.uc, 0);
                 
                 // Add token counts to context
@@ -10680,12 +13336,12 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     prompt: promptTokenCount,
                     uc: ucTokenCount,
                     characterPrompts: characterTokenCounts,
-                    totalPrompt: promptTokenCount + totalCharacterInputTokens,
+                    totalPrompt: promptTokenCount + totalCharacterPromptTokens,
                     totalUC: ucTokenCount + totalCharacterUCTokens
                 };
                 if (characterPrompts.length > 0) {
                     characterTokenCounts.forEach((char, idx) => {
-                        console.log(`   Character ${idx + 1}: ${char.input} prompt tokens, ${char.uc} UC tokens`);
+                        console.log(`   Character ${idx + 1}: ${char.prompt} prompt tokens, ${char.uc} UC tokens`);
                     });
                 }
                 console.log(`   TOTAL Prompts: ${context.tokenCounts.totalPrompt} / 512 tokens (${Math.round((context.tokenCounts.totalPrompt / 512) * 100)}% used)`);
@@ -10705,63 +13361,61 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 
         // PROMPT ANALYSIS: Generate tree-formatted analysis for AI
         let promptAnalysisTree = null;
-        if (optimizeEnabled) {
-            try {
-                const localPromptOptimizer = require('./localPromptOptimizer');
-                
-                // Initialize optimizer if not already done
-                if (!localPromptOptimizer.initialized) {
-                    await localPromptOptimizer.initialize();
-                }
+        // if (optimizeEnabled && tokenCountEnabled) {
+        //     try {
+        //         // Initialize optimizer if not already done
+        //         if (!localPromptOptimizer.initialized) {
+        //             await localPromptOptimizer.initialize();
+        //         }
 
-                if (localPromptOptimizer.initialized) {
-                    // Determine warning levels
-                    const getWarningLevel = (tokenCount, limit = 512) => {
-                        if (tokenCount > limit) return 'critical';
-                        if (tokenCount > 275) return 'warning';
-                        return null;
-                    };
+        //         if (localPromptOptimizer.initialized) {
+        //             // Determine warning levels
+        //             const getWarningLevel = (tokenCount, limit = 512) => {
+        //                 if (tokenCount > limit) return 'critical';
+        //                 if (tokenCount > 275) return 'warning';
+        //                 return null;
+        //             };
                     
-                    const promptWarning = context.tokenCounts ? getWarningLevel(context.tokenCounts.totalPrompt) : null;
-                    const ucWarning = context.tokenCounts ? getWarningLevel(context.tokenCounts.totalUC) : null;
+        //             const promptWarning = context.tokenCounts ? getWarningLevel(context.tokenCounts.totalPrompt) : null;
+        //             const ucWarning = context.tokenCounts ? getWarningLevel(context.tokenCounts.totalUC) : null;
                     
-                    // Generate tree-formatted analysis for all prompts with token info
-                    const analyses = {
-                        basePrompt: prompt ? localPromptOptimizer.formatPromptAnalysisTree(
-                            prompt, 
-                            context.tokenCounts?.prompt, 
-                            512, 
-                            promptWarning
-                        ) : null,
-                        baseUC: uc ? localPromptOptimizer.formatPromptAnalysisTree(
-                            uc, 
-                            context.tokenCounts?.uc, 
-                            512, 
-                            ucWarning
-                        ) : null,
-                        characterPrompts: characterPrompts.map((char, idx) => ({
-                            input: char.input ? localPromptOptimizer.formatPromptAnalysisTree(
-                                char.input,
-                                context.tokenCounts?.characterPrompts?.[idx]?.input,
-                                512,
-                                promptWarning
-                            ) : null,
-                            uc: char.uc ? localPromptOptimizer.formatPromptAnalysisTree(
-                                char.uc,
-                                context.tokenCounts?.characterPrompts?.[idx]?.uc,
-                                512,
-                                ucWarning
-                            ) : null
-                        }))
-                    };
+        //             // Generate tree-formatted analysis for all prompts with token info
+        //             const analyses = {
+        //                 basePrompt: prompt ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                     prompt, 
+        //                     context.tokenCounts?.prompt, 
+        //                     512, 
+        //                     promptWarning
+        //                 ) : null,
+        //                 baseUC: uc ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                     uc, 
+        //                     context.tokenCounts?.uc, 
+        //                     512, 
+        //                     ucWarning
+        //                 ) : null,
+        //                 characterPrompts: characterPrompts.map((char, idx) => ({
+        //                     prompt: char.prompt ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                         char.prompt,
+        //                         context.tokenCounts?.characterPrompts?.[idx]?.prompt,
+        //                         512,
+        //                         promptWarning
+        //                     ) : null,
+        //                     uc: char.uc ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                         char.uc,
+        //                         context.tokenCounts?.characterPrompts?.[idx]?.uc,
+        //                         512,
+        //                         ucWarning
+        //                     ) : null
+        //                 }))
+        //             };
                     
-                    promptAnalysisTree = analyses;
-                }
-            } catch (error) {
-                console.error('❌ Prompt analysis failed:', error);
-                // Continue without analysis
-            }
-        }
+        //             promptAnalysisTree = analyses;
+        //         }
+        //     } catch (error) {
+        //         console.error('❌ Prompt analysis failed:', error);
+        //         // Continue without analysis
+        //     }
+        // }
 
         // Send carousel update with resolved context data after compileContext
         if (ws && handler) {
@@ -10775,24 +13429,49 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         }
 
         // Detailed logging of gathered data
-        console.log('📊 GATHERED DATA FOR AI PROCESSING:');
-        console.log('📅 Time Data:', context.time || 'No time data');
-        console.log('⏰ Time Period:', context.timePeriod || 'No time period data');
-        console.log('🌤️ Weather Data:', context.weather || 'No weather data');
-        console.log('🌿 Seasonal Data:', context.season || 'Seasonal disabled');
-        console.log(`👕 Clothing: ${context.clothing || 'Not specified'}\n  Activity: ${context.activity || activity}\n  Action: ${context.action || action}\n  Location: ${context.location ? `${context.location.city}, ${context.location.country}` : location}`);
+        // Summarized console output
+        const seasonDisplay = typeof context.season === 'string' ? context.season : context.season?.season || 'N/A';
+        logger.normal('📊 Context compiled:', context.location ? `${context.location.city}, ${seasonDisplay}, ${normalizePeriodKey(context.timePeriod?.periodKey || 'N/A')}` : 'Location unavailable');
+        
+        // Detailed file logging
+        logger.logGeneration('GATHERED_CONTEXT_DATA', {
+            time: context.time,
+            timePeriod: context.timePeriod,
+            weather: context.weather,
+            season: context.season,
+            clothing: context.clothing,
+            activity: context.activity || activity,
+            action: context.action || action,
+            optimize: optimize,
+            creative: creative,
+            location: context.location
+        }, requestId);
+        
+        // Verbose console output
+        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+            console.log('  📅 Time Data     :', context.time || 'No time data');
+            console.log('  ⏰ Time Period   :', context.timePeriod || 'No time period data');
+            console.log('  🌤️ Weather Data  :', context.weather || 'No weather data');
+            const seasonDisplay = typeof context.season === 'string' ? context.season : context.season?.season || 'Seasonal disabled';
+            console.log('  🌿 Seasonal Data :', seasonDisplay);
+            console.log('  👕 Clothing      :', context.clothing || 'Not specified');
+            console.log('  📝 Activity      :', context.activity || activity);
+            console.log('  👨‍💻 Action        :', context.action || action);
+            console.log('  🔍 Optimization  :', optimize);
+            console.log('  🎨 Creative      :', creative);
+            console.log('  📍 Location      :', context.location ? `${context.location.timezone}, ${context.location.city}, ${context.location.country}` : location);
+        }
 
         // Generate comprehensive system message using real context
         let systemMessage;
         let userContentSections;
+        let directiveContentSections;
         
         // Generate system message and user content sections
         // ALWAYS call this to get userContentSections (even if we skip system message)
+        let messageResult;
         try {
-            // Use stageContext parameter (already extracted from dynamicConfig.stageContext)
-
-            // Create a seasonal config for the system message generation
-            const messageResult = generateDynamicGenerationSystemMessage(
+            messageResult = generateDynamicGenerationSystemMessage_Modular(
                 context,
                 context.seasonalConfig,
                 backgroundFocus,
@@ -10800,7 +13479,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 stageContext,
                 directive,
                 dynamicConfig,
-                nsfw_level
+                nsfw_level,
+                compiled_prompt,
+                prompt,
+                uc
             );
             
             // Only use system message if we're NOT skipping (no cached response ID)
@@ -10811,6 +13493,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             }
             
             userContentSections = messageResult.userContentSections;
+            directiveContentSections = messageResult.directiveContentSections;
         } catch (error) {
             console.error('❌ Weather data validation failed:', error.message);
             // Return error structure instead of crashing
@@ -10823,77 +13506,143 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 
         const adapttionMode = compiled_prompt ? (compiled_prompt.prompt || compiled_prompt.uc || compiled_prompt.character_prompts) : false;
 
-        // Only show token count summary if over limit or approaching (warnings are now in analysis)
-        const tokenCountSection = context.tokenCounts && (context.tokenCounts.totalPrompt > 275 || context.tokenCounts.totalUC > 275) ? [
-            '## 📊 TOKEN USAGE SUMMARY',
-            `**Total Prompt Tokens**: ${context.tokenCounts.totalPrompt} / 512 (${Math.round((context.tokenCounts.totalPrompt / 512) * 100)}% used) ${context.tokenCounts.totalPrompt > 512 ? '🚨 OVER LIMIT!' : '⚠️ APPROACHING LIMIT'}`,
-            `**Total UC Tokens**: ${context.tokenCounts.totalUC} / 512 (${Math.round((context.tokenCounts.totalUC / 512) * 100)}% used) ${context.tokenCounts.totalUC > 512 ? '🚨 OVER LIMIT!' : context.tokenCounts.totalUC > 275 ? '⚠️ APPROACHING LIMIT' : ''}`,
-            '',
-            context.tokenCounts.totalPrompt > 512 || context.tokenCounts.totalUC > 512 ? 
-                '🚨 **CRITICAL**: Token limit exceeded! You MUST reduce token usage. Merge descriptions and use stronger tokens with fewer counts.' : 
-                '⚠️ **WARNING**: Approaching token limit. Be VERY careful with additions. Merge descriptions, use stronger/fewer tokens. Prioritize quality over quantity.',
-            ''
-        ].filter(Boolean).join('\n') : '';
+        // Only show token count summary when approaching limits (prompt > 400 or UC > 380)
+        // Show always for initial generation, or in chain mode only when prompts changed
+        const totalPrompt = context.tokenCounts?.totalPrompt || 0;
+        const totalUC = context.tokenCounts?.totalUC || 0;
+        const shouldShowTokenCount = context.tokenCounts && (totalPrompt > 400 || totalUC > 380) &&
+            (!useIncrementalUpdate || (useIncrementalUpdate && changeInfo?.promptChanged));
+        
+        // Build token count section (condensed format, only when needed)
+        let tokenCountSection = '';
+        if (shouldShowTokenCount || (optimizeEnabled && context.tokenCounts && (totalPrompt > 400 || totalUC > 380))) {
+            const promptPressure = totalPrompt > 400 ? 'high' : totalPrompt > 300 ? 'moderate' : 'low';
+            // UC recommended limit is 380 tokens before stressing
+            const ucPressure = totalUC > 380 ? 'high' : totalUC > 300 ? 'moderate' : 'low';
+            const anyHighPressure = promptPressure === 'high' || ucPressure === 'high';
+            
+            // Condensed format
+            tokenCountSection = [
+                '## 📊 TOKEN USAGE',
+                `Tokens: ${totalPrompt}/512 prompt, ${totalUC}/512 UC ${totalPrompt > 512 || totalUC > 512 ? '🚨 OVER LIMIT!' : totalPrompt > 400 || totalUC > 380 ? '⚠️ APPROACHING' : ''}`,
+                ...(optimizeEnabled ? [`Priority: ${anyHighPressure ? '🔴 HIGH' : promptPressure === 'moderate' || ucPressure === 'moderate' ? '🟡 MODERATE' : '🟢 LOW'}`] : []),
+                ''
+            ].filter(Boolean).join('\n');
+        }
 
+        // Build incremental update section if applicable
 
         const userMessage = {
             type: "input_text",
             text: [
+                '# 🎯 PHASE 1: CONTEXT INTEGRATION & DIRECTIVE PROCESSING',
+                '',
+                '**Server-Maintained Values:**',
+                `**RANDOM SEED**: ${randomSeed}  // Auto-generated for RANDOM() function`,
+                `**GENERATION CHAIN**: ${generationChainNumber}  // Current generation in chain`,
+                '',
+                // Generate dynamic task list based on current context
+                ...(() => {
+                    const taskListContext = {
+                        weather: context.weather,
+                        time: context.time,
+                        directive: dynamicConfig.directive,
+                        creative: dynamicConfig.creative,
+                        optimize: dynamicConfig.optimize,
+                        fast_mode: dynamicConfig?.fast_mode === true,
+                        stageContext: stageContext,
+                        lastGeneratedImage: lastGeneratedImage,
+                        seasonalConfig: (context.seasonalConfig?.enabled || false) ? context.seasonalConfig : null,
+                        useIncrementalUpdate: useIncrementalUpdate,
+                        adapttionMode: adapttionMode,
+                        directorRules: [], // Loaded separately in system message from director.config.json
+                        backgroundFocus: backgroundFocus,
+                        changeInfo: changeInfo,
+                        lockedReplacements: dynamicConfig.locked_replacements || []
+                    };
+                    
+                    return generateDynamicTaskList(taskListContext);
+                })(),
+                '',
+                '---',
+                '',
                 ...(userContentSections ? userContentSections : []),
+                '',
+                ...(directiveContentSections ? directiveContentSections : []),
+                '',
                 tokenCountSection,
-                adapttionMode ? 
-                    '🔄 **ADAPTATION MODE**: You are adapting a previously compiled prompt that failed to apply. Use the provided compiled prompt data as a reference and adapt it to work with the current context while preserving the original intent and quality.\nPlease intelligently modify the following NovelAI prompts to create a cohesive, immersive scene that harmonizes weather, time, season, and character attire.' : '',
                 '',
-                '## Working Approach',
-                '• Work methodically through each phase (analysis → modification → validation)',
-                '• Pause after major decisions to verify they make sense in context',
-                '• Consider how weather, time, season, lighting, and characters all interconnect',
-                '• Double-check that modifications enhance rather than contradict the original intent',
-                '• Document your reasoning clearly for each decision',
-                '',
-                adapttionMode ? [
-                    '## Previous Response Data (for reference):',
+                ...(adapttionMode ? [
+                    '## Previous Prompts (for reference):',
                     '',
                     '**Previous Base Prompt:**',
-                    compiled_prompt.prompt ? JSON.stringify(compiled_prompt.prompt, null, 2) : 'No previous base prompt',
+                    '```',
+                    compiled_prompt.prompt ? (typeof compiled_prompt.prompt === 'string' ? compiled_prompt.prompt : String(compiled_prompt.prompt)) : 'No previous base prompt',
+                    '```',
                     '',
                     '**Previous Negative Prompt:**',
-                    compiled_prompt.uc ? JSON.stringify(compiled_prompt.uc, null, 2) : 'No previous negative prompt',
+                    '```',
+                    compiled_prompt.uc ? (typeof compiled_prompt.uc === 'string' ? compiled_prompt.uc : String(compiled_prompt.uc)) : 'No previous negative prompt',
+                    '```',
                     '',
-                    '**Previous Character Prompts:**',
-                    compiled_prompt.character_prompts ? JSON.stringify(compiled_prompt.character_prompts, null, 2) : 'No previous character prompts',
-                    '',
-                    '**Previous Context:**',
-                    compiled_prompt.context ? JSON.stringify(compiled_prompt.context, null, 2) : 'No previous context',
-                    '',
-                ].join('\n') : '',
+                    ...(compiled_prompt.character_prompts && Array.isArray(compiled_prompt.character_prompts) && compiled_prompt.character_prompts.length > 0 ? [
+                        '**Previous Character Prompts:**',
+                        ...compiled_prompt.character_prompts.map((char, idx) => {
+                            const charLines = [
+                                `Character ${idx + 1}:`,
+                                '```',
+                                typeof char === 'string' ? char : String(char),
+                                '```',
+                                ''
+                            ];
+                            return charLines.join('\n');
+                        }).join('').split('\n'),
+                    ] : []),
+                ] : []),
                 '## Current Prompts (to adapt):',
                 '⚠️ **CRITICAL**: The prompts below are the EXACT current state. Only replace text that you can see exists in these prompts.',
-                '⚠️ **SEQUENTIAL WARNING**: Replacements are applied in order - each replacement changes the text, so later replacements must target the modified text.',
                 '',
                 '**Base Prompt:**',
                 '```',
-                prompt || 'No base prompt provided',
+                prompt ? prompt : 'No base prompt provided',
                 '```',
+                ...(appliedPresetControls?.prompt?.length > 0 ? [
+                    '⚙️ Preset Controlled:\n' + appliedPresetControls.prompt.map(c => {
+                        if (c.action === 'dataset_prepend') return `  * Dataset (prepend): \`${c.text}\``;
+                        if (c.action === 'dataset_preset_append') return `  * Dataset Preset: \`${c.text}\``;
+                        if (c.action === 'quality_preset') return `  * Quality Preset${c.bias !== 1.0 ? ` (bias ${c.bias})` : ''}: \`${c.text}\``;
+                        if (c.action === 'vibe_text_injection') return `  * Vibe Transfer: \`${c.text}\``;
+                        if (c.action === 'nsfw_processing') { return `  * NSFW (bias ${c.bias}): \`${c.text}\``; }
+                        return '';
+                    }).filter(Boolean).join('\n')
+                ].filter(Boolean) : []),
                 promptAnalysisTree?.basePrompt ? promptAnalysisTree.basePrompt : '',
                 '',
                 '**Negative Prompt:**',
                 '```',
-                uc || 'No negative prompt provided',
+                uc ? uc : 'No negative prompt provided',
                 '```',
+                ...(appliedPresetControls?.uc?.length > 0 ? [
+                    '⚙️ Preset Controlled:\n' + appliedPresetControls.uc.map(c => {
+                        if (c.action === 'uc_preset') return `  * Quality Preset: \`${c.text}\``;
+                        if (c.action === 'vibe_text_injection') return `  * Vibe Transfer: \`${c.text}\``;
+                        if (c.action === 'nsfw_processing') { return `  * NSFW (bias ${c.bias}): \`${c.text}\``; }
+                        return '';
+                    }).filter(Boolean).join('\n')
+                ].filter(Boolean) : []),
                 promptAnalysisTree?.baseUC ? promptAnalysisTree.baseUC : '',
                 '',
-                '**Character Prompts:**',
-                characterPrompts.length > 0 ?
+                characterPrompts ? characterPrompts.length > 0 ?
+                    '**Character Prompts:**\n' +
                     characterPrompts.map((char, index) => {
                         const charAnalysis = promptAnalysisTree?.characterPrompts?.[index];
                         return [
                             `Character ${index + 1} (${char.name || 'Unnamed'}):`,
-                            '  Input Prompt:',
+                            '  Prompt:',
                             '  ```',
-                            `  ${char.input || 'No input'}`,
+                            `  ${char.prompt || 'No prompt'}`,
                             '  ```',
-                            charAnalysis?.input ? '  ' + charAnalysis.input.split('\n').join('\n  ') : '',
+                            charAnalysis?.prompt ? '  ' + charAnalysis.prompt.split('\n').join('\n  ') : '',
                             '',
                             '  Undesired Content:',
                             '  ```',
@@ -10901,78 +13650,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                             '  ```',
                             charAnalysis?.uc ? '  ' + charAnalysis.uc.split('\n').join('\n  ') : ''
                         ].filter(Boolean).join('\n');
-                    }).join('\n\n') :
-                    'No character prompts provided',
-                '',
-                '**Modification Process:**',
-                adapttionMode ? [
-                    '🔄 **ADAPTATION PRIORITY**: Use the previous reasoning and added modifications as your foundation for this modification',
-                    '📋 **REFERENCE ANALYSIS**: Study the previous modifications, reasoning, and context to understand the original intent',
-                    '🔧 **UPDATE OF CURRENT ENVIRONMENT**: Identify what changed in the current context and update the prompt to reflect those changes',
-                    '🎯 **PRESERVE QUALITY**: Maintain the quality and effectiveness of the previous work while making it compatible',
-                    '⚡ **EFFICIENT ADAPTATION**: Focus on minimal changes needed to make the prompt work rather than starting over',
-                    '📝 **DOCUMENT CHANGES**: Clearly explain what you changed and why in your reasoning',
-                    '',
-                ].join('\n') : '',
-                '👤 **CHARACTER ANALYSIS FIRST**: Study character appearance, build, weight, clothing, and current emotional state BEFORE weather integration',
-                '🔍 **UNDERSTAND CHARACTER FEELINGS**: Analyze if character appears comfortable, distressed, active, or fatigued to determine appropriate weather reactions',
-                '⚖️ **WEIGHT-BASED PHYSICAL IMPACT**: Heavier characters sweat more in heat, feel wind differently, show more pronounced wetness in rain',
-                '🌦️ **WEATHER INTEGRATION**: Incorporate comprehensive weather descriptions using text_replacements.prompt - analyze all weather factors together',
-                '🧹 **Clean Conflicts**: Remove any existing weather elements that contradict current conditions',
-                '🚫 **MANDATORY UC FOR CONFLICTING ELEMENTS**: Add negative prompts (UC) for opposite lighting, geographically contradictory elements, and technically inconsistent conditions',
-                '🏠 **Environment Analysis**: Determine indoor/outdoor context and how character comfort level affects weather perception',
-                '🎨 **Character-Centric Weather**: Create 6-8 specific visual descriptors showing how weather personally affects THIS character',
-                '👔 **Personal Attire Response**: Show clothing reacting to weather based on character\'s physical build and current state',
-                '🏞️ **Environmental Context**: Weather effects on surroundings should complement character experience',
-                '🕐 **Atmospheric Integration**: Blend weather with time-of-day lighting and character emotional state',
-                '🏃 **Action Weather Harmony**: Character actions must be believable given their physical condition and weather',
-                '✅ **Immersive Character Experience**: Weather should feel personally experienced by the character, not just environmental backdrop',
-                '',
-                creative ? 'Modify the prompt to be more dynamic and more intersting.\n - Improve character positioning, actions, environment, and overall composition while preserving character identity.\nNext, analyze the environment first - weather effects should be visible through openings for indoor scenes.' : 'Analyze the environment first - weather effects should be visible through openings for indoor scenes.',
-                action ? '- Change what the character is doing to be more interesting and engaging based on the weather and time of day. Think of what they are currently doing and then what would they be doing next and work from there.' : '', 
-                context.season ? (context.holidayInfo ? `- Environment modified for ${context.holidayInfo.name} with decorations, lighting, and holiday elements.` : context.seasonalConfig.type === 'season' ? `- Environment modified for ${context.seasonalConfig.value.toUpperCase()} season with decorations, lighting, and seasonal elements.` : '- Actively modify the environment to match current seasonal characteristics, including decorations, lighting, and seasonal elements when applicable.') : '- Use seasonal information subtly for lighting and atmosphere only, without adding seasonal decorations or themes.',
-                '- Optimise the prompt by applying advanced prompt engineering techniques including chain-of-thought reasoning, structural and token optimization, and semantic enhancement for maximum effectiveness.',
-                optimizeEnabled ? [
-                    '',
-                    '## ⚡ TOKEN OPTIMIZATION REQUIREMENTS',
-                    '',
-                    context.tokenCounts ? [
-                        '## 🚨 TOKEN LIMIT ENFORCEMENT',
-                        `**Current Token Usage:**`,
-                        `• Base Prompt: ${context.tokenCounts.prompt} tokens`,
-                        `• Negative Prompt: ${context.tokenCounts.uc} tokens`,
-                        context.tokenCounts.characterPrompts && context.tokenCounts.characterPrompts.length > 0 ? 
-                            context.tokenCounts.characterPrompts.map((char, idx) => 
-                                `• Character ${idx + 1}: ${char.input} prompt tokens, ${char.uc} UC tokens`
-                            ).join('\n') : '',
-                        `• **TOTAL Prompts: ${context.tokenCounts.totalPrompt} / 512** ${context.tokenCounts.totalPrompt > 512 ? '⚠️ OVER LIMIT!' : `(${512 - context.tokenCounts.totalPrompt} tokens remaining)`}`,
-                        `• **TOTAL UC: ${context.tokenCounts.totalUC} / 512** ${context.tokenCounts.totalUC > 512 ? '⚠️ OVER LIMIT!' : `(${512 - context.tokenCounts.totalUC} tokens remaining)`}`,
-                        '',
-                        context.tokenCounts.totalPrompt > 512 || context.tokenCounts.totalUC > 512 ? 
-                            '🚨 **MANDATORY ACTION**: You MUST reduce token count! Focus on removing redundant words, merging descriptions, and using more concise, stronger tokens with fewer token counts.' : 
-                            context.tokenCounts.totalPrompt > 275 || context.tokenCounts.totalUC > 275 ?
-                                '⚠️ **WARNING**: Near token limit. Be extremely conservative - only add if absolutely necessary. Merge and enhance descriptions, swap words to stronger words that use fewer tokens. Prefer replacing with equal or shorter alternatives.' :
-                                '✅ Token usage is safe, but still optimize for quality and efficiency.',
-                        ''
-                    ].filter(Boolean).join('\n') : '',
-                    '**MANDATORY TOKEN OPTIMIZATION**: You must optimize ALL prompts during this single pass by:',
-                    '1. Reference the T5 tokenizer vocabulary file (provided in initial request, persists in conversation)',
-                    '2. Select the strongest tokens (strength ≥ 8.0) for each concept',
-                    '3. Replace weak tokens (strength < 4) with stronger alternatives from the vocabulary',
-                    '4. Apply optimization to ALL prompts: positive, negative (UC), and character prompts',
-                    '5. Ensure your text_replacements include optimized tokens in the replacement_text',
-                    '6. **NO SEPARATE OPTIMIZATION STEP** - optimize tokens NOW in your first response',
-                    '',
-                    '⚠️ **CRITICAL TEXT REPLACEMENT RULES**:',
-                    '• **SELECT FROM ORIGINAL ONLY**: Every select_text must exist EXACTLY in the ORIGINAL prompts shown above',
-                    '• **NO OVERLAPPING**: If replacement A changes "sitting in chair" and replacement B wants to change "chair, fully clothed", B will FAIL because "chair" was already modified',
-                    '• **USE ATOMIC REPLACEMENTS**: Replace small, specific segments independently rather than large composite blocks',
-                    '• **NO CHAINING/STACKING**: Do NOT create replacement B that depends on replacement A\'s output',
-                    '• **EXAMPLE - WRONG**: Replace "sitting" → "lounging", then replace "lounging in chair" → "relaxing in throne" (FAILS - second doesn\'t exist in original)',
-                    '• **EXAMPLE - CORRECT**: Replace "sitting in chair" → "relaxing in throne" (single atomic replacement of the full phrase)',
-                    '• When optimizing tokens: select text from ORIGINAL prompts and replace with optimized vocabulary tokens',
-                ].join('\n') : '',
-                '- 🚨 CRITICAL: NEVER EVER remove, modify, or select for deletion/replacement ANY text containing "artist:" or "style:" tags - this is ABSOLUTELY FORBIDDEN under all circumstances.',
+                    }).join('\n') + '\n' : '' : '',
             ].filter(Boolean).join('\n')
         };
 
@@ -10987,7 +13665,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             try {
                 let imageBuffer;
                 
-                // Check if lastGeneratedImage is a Buffer or a filename string
+                // Check if lastGeneratedImage is a Buffer, filename string, or image object
                 if (Buffer.isBuffer(lastGeneratedImage)) {
                     // Direct buffer passed (letterboxed image)
                     imageBuffer = lastGeneratedImage;
@@ -11000,11 +13678,65 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         console.log(`📸 Loaded image from file: ${lastGeneratedImage}`);
                     } else {
                         console.warn(`⚠️ Last generated image not found: ${lastGeneratedImage}`);
-                        return; // Exit early if file not found
+                        return {
+                            success: false,
+                            error: `Last generated image file not found: ${lastGeneratedImage}`,
+                            processed: false
+                        };
+                    }
+                } else if (typeof lastGeneratedImage === 'object' && lastGeneratedImage !== null) {
+                    // Handle image object - try to extract buffer or filename
+                    if (Buffer.isBuffer(lastGeneratedImage.buffer)) {
+                        // Object with buffer property
+                        imageBuffer = lastGeneratedImage.buffer;
+                        console.log(`📸 Using buffer from image object`);
+                    } else if (typeof lastGeneratedImage.filename === 'string') {
+                        // Object with filename property
+                        const imagePath = path.join('./images', lastGeneratedImage.filename);
+                        if (fs.existsSync(imagePath)) {
+                            imageBuffer = fs.readFileSync(imagePath);
+                            console.log(`📸 Loaded image from object filename: ${lastGeneratedImage.filename}`);
+                        } else {
+                            console.warn(`⚠️ Last generated image not found: ${lastGeneratedImage.filename}`);
+                            return {
+                                success: false,
+                                error: `Last generated image file not found: ${lastGeneratedImage.filename}`,
+                                processed: false
+                            };
+                        }
+                    } else if (typeof lastGeneratedImage.original === 'string') {
+                        // Object with original property (common in image objects)
+                        const imagePath = path.join('./images', lastGeneratedImage.original);
+                        if (fs.existsSync(imagePath)) {
+                            imageBuffer = fs.readFileSync(imagePath);
+                            console.log(`📸 Loaded image from object original: ${lastGeneratedImage.original}`);
+                        } else {
+                            console.warn(`⚠️ Last generated image not found: ${lastGeneratedImage.original}`);
+                            return {
+                                success: false,
+                                error: `Last generated image file not found: ${lastGeneratedImage.original}`,
+                                processed: false
+                            };
+                        }
+                    } else if (Buffer.isBuffer(lastGeneratedImage.data)) {
+                        // Object with data property containing buffer
+                        imageBuffer = lastGeneratedImage.data;
+                        console.log(`📸 Using buffer from object data property`);
+                    } else {
+                        console.warn(`⚠️ Invalid lastGeneratedImage object - no buffer, filename, original, or data property found:`, Object.keys(lastGeneratedImage));
+                        return {
+                            success: false,
+                            error: `Invalid lastGeneratedImage object - no buffer, filename, original, or data property found`,
+                            processed: false
+                        };
                     }
                 } else {
                     console.warn(`⚠️ Invalid lastGeneratedImage type: ${typeof lastGeneratedImage}`);
-                    return;
+                    return {
+                        success: false,
+                        error: `Invalid lastGeneratedImage type: ${typeof lastGeneratedImage}. Expected Buffer, string, or image object.`,
+                        processed: false
+                    };
                 }
                 
                 // Resize image so the shortest edge is the nearest multiple of 448.
@@ -11041,42 +13773,61 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         }
         
         // Add preview image if Initial Prompt Aware is enabled and preview exists (but not for background/enhance stages which use lastGeneratedImage)
-        if (initialPromptAware && compiled_prompt?.preview_image) {
+        if (initialPromptAware && (compiled_prompt?.preview_image_hash || compiled_prompt?.preview_image)) {
             console.log(`🖼️ Initial Prompt Aware enabled - adding preview image to request`);
             
             try {
-                // Preview is already stored as base64
-                const previewBase64 = compiled_prompt.preview_image;
-                let imageBuffer = Buffer.from(previewBase64, 'base64');
+                let imageBuffer;
                 
-                // Resize preview so the shortest edge is the nearest multiple of 448.
-                // If already very close (< 3%) to the next multiple, don't resize.
-                const metadata = await sharp(imageBuffer).metadata();
-                const minDimension = Math.min(metadata.width, metadata.height);
-                const nearestMultiple = Math.max(448, Math.round(minDimension / 448) * 448);
-                const distance = Math.abs(nearestMultiple - minDimension);
-                const relative = distance / minDimension;
-                let targetWidth = metadata.width;
-                let targetHeight = metadata.height;
-                if (relative >= 0.03) {
-                    const scale = nearestMultiple / minDimension;
-                    targetWidth = Math.round(metadata.width * scale);
-                    targetHeight = Math.round(metadata.height * scale);
-                    imageBuffer = await sharp(imageBuffer)
-                        .resize(targetWidth, targetHeight)
-                        .jpeg({ quality: 85 })
-                        .toBuffer();
+                // Check if we have the new hash-based format or old base64 format
+                if (compiled_prompt.preview_image_hash) {
+                    // Load preview from file system using hash
+                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                    const previewFilePath = path.join(dynGenPreviewDir, `${compiled_prompt.preview_image_hash}.png`);
+                    
+                    if (fs.existsSync(previewFilePath)) {
+                        imageBuffer = fs.readFileSync(previewFilePath);
+                        console.log(`📂 Loaded preview from cache: ${compiled_prompt.preview_image_hash.substring(0, 8)}...`);
+                    } else {
+                        console.warn(`⚠️ Preview file not found in cache: ${compiled_prompt.preview_image_hash.substring(0, 8)}...`);
+                        throw new Error('Preview file not found');
+                    }
+                } else if (compiled_prompt.preview_image) {
+                    // Backwards compatibility: Load from old base64 format
+                    console.log(`📜 Loading preview from legacy base64 format`);
+                    imageBuffer = Buffer.from(compiled_prompt.preview_image, 'base64');
                 }
                 
-                const resizedBase64 = imageBuffer.toString('base64');
-                
-                // Add image to user message content - Responses API format
-                userContent.push({
-                    type: "input_image",
-                    image_url: `data:image/jpeg;base64,${resizedBase64}`
-                });
-                
-                console.log(`✅ Preview image added to request (resized to ${targetWidth}x${targetHeight})`);
+                if (imageBuffer) {
+                    // Resize preview so the shortest edge is the nearest multiple of 448.
+                    // If already very close (< 3%) to the next multiple, don't resize.
+                    const metadata = await sharp(imageBuffer).metadata();
+                    const minDimension = Math.min(metadata.width, metadata.height);
+                    const nearestMultiple = Math.max(448, Math.round(minDimension / 448) * 448);
+                    const distance = Math.abs(nearestMultiple - minDimension);
+                    const relative = distance / minDimension;
+                    let targetWidth = metadata.width;
+                    let targetHeight = metadata.height;
+                    if (relative >= 0.03) {
+                        const scale = nearestMultiple / minDimension;
+                        targetWidth = Math.round(metadata.width * scale);
+                        targetHeight = Math.round(metadata.height * scale);
+                        imageBuffer = await sharp(imageBuffer)
+                            .resize(targetWidth, targetHeight)
+                            .jpeg({ quality: 85 })
+                            .toBuffer();
+                    }
+                    
+                    const resizedBase64 = imageBuffer.toString('base64');
+                    
+                    // Add image to user message content - Responses API format
+                    userContent.push({
+                        type: "input_image",
+                        image_url: `data:image/jpeg;base64,${resizedBase64}`
+                    });
+                    
+                    console.log(`✅ Preview image added to request (resized to ${targetWidth}x${targetHeight})`);
+                }
             } catch (error) {
                 console.error('❌ Error adding preview image:', error.message);
             }
@@ -11084,56 +13835,56 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         
         // Add vocabulary file to user content if optimization is enabled
         // Skip if using cached response ID (vocabulary already sent in initial request)
-        if (optimizeEnabled && !skipSystemMessage) {
-            try {
-                // Check if collection is available (preferred method)
-                const hasCollection = secureConfig.grok?.tokenizerCollectionId;
+        // if (optimizeEnabled && !skipSystemMessage) {
+        //     try {
+        //         // Check if collection is available (preferred method)
+        //         const hasCollection = secureConfig.grok?.tokenizerCollectionId;
                 
-                if (hasCollection) {
-                    // Collection will be accessed via enableOptimize flag
-                    console.log(`📚 Tokenizer collection will be accessed via knowledge base for optimization`);
-                } else {
-                    // Fallback: Load and filter vocabulary locally
-                    const vocabPath = path.join(__dirname, '../securePrompts/t5-vocabulary.json');
-                    if (fs.existsSync(vocabPath)) {
-                        const vocabData = JSON.parse(fs.readFileSync(vocabPath, 'utf8'));
+        //         if (hasCollection) {
+        //             // Collection will be accessed via enableOptimize flag
+        //             logger.detailed(`📚 Tokenizer collection available for optimization`);
+        //         } else {
+        //             // Fallback: Load and filter vocabulary locally
+        //             const vocabPath = path.join(__dirname, '../securePrompts/t5-vocabulary.json');
+        //             if (fs.existsSync(vocabPath)) {
+        //                 const vocabData = JSON.parse(fs.readFileSync(vocabPath, 'utf8'));
                         
-                        // Filter to only high-strength tokens (≥7.0) to reduce token usage
-                        const highStrengthTokens = vocabData.vocabulary
-                            .filter(token => !token.isSpecial && token.strength >= 7.0)
-                            .sort((a, b) => b.strength - a.strength)
-                            .slice(0, 5000); // Top 5000 strongest tokens
+        //                 // Filter to only high-strength tokens (≥7.0) to reduce token usage
+        //                 const highStrengthTokens = vocabData.vocabulary
+        //                     .filter(token => !token.isSpecial && token.strength >= 7.0)
+        //                     .sort((a, b) => b.strength - a.strength)
+        //                     .slice(0, 1000); // Top 5000 strongest tokens
                         
-                        const filteredVocab = {
-                            metadata: vocabData.metadata,
-                            note: `Filtered to top 5000 strongest tokens (strength ≥ 7.0) from ${vocabData.vocabulary.length} total`,
-                            highStrengthTokens: highStrengthTokens.map(t => ({
-                                text: t.text,
-                                strength: t.strength,
-                                id: t.id
-                            }))
-                        };
+        //                 const filteredVocab = {
+        //                     metadata: vocabData.metadata,
+        //                     note: `Filtered to top 5000 strongest tokens (strength ≥ 7.0) from ${vocabData.vocabulary.length} total`,
+        //                     highStrengthTokens: highStrengthTokens.map(t => ({
+        //                         text: t.text,
+        //                         strength: t.strength,
+        //                         id: t.id
+        //                     }))
+        //                 };
                         
-                        const vocabContent = JSON.stringify(filteredVocab, null, 2);
+        //                 const vocabContent = JSON.stringify(filteredVocab, null, 2);
                         
-                        // Add vocabulary as text content - Responses API format
-                        userContent.push({
-                            type: 'input_text',
-                            text: `\`\`\`json\n${vocabContent}\n\`\`\``
-                        });
+        //                 // Add vocabulary as text content - Responses API format
+        //                 userContent.push({
+        //                     type: 'input_text',
+        //                     text: `\`\`\`json\n${vocabContent}\n\`\`\``
+        //                 });
                         
-                        console.log(`📚 Added filtered vocabulary to user message (top ${highStrengthTokens.length} strongest tokens)`);
-                    } else {
-                        console.warn(`⚠️ Vocabulary file not found at ${vocabPath}, skipping vocabulary addition`);
-                    }
-                }
-            } catch (error) {
-                console.error('❌ Error adding vocabulary to user message:', error.message);
-                // Continue without vocabulary - optimization will still work if collection is available
-            }
-        } else if (optimizeEnabled && skipSystemMessage) {
-            console.log(`📚 Skipping vocabulary (already sent in previous request via previous_response_id)`);
-        }
+        //                 console.log(`📚 Added filtered vocabulary to user message (top ${highStrengthTokens.length} strongest tokens)`);
+        //             } else {
+        //                 console.warn(`⚠️ Vocabulary file not found at ${vocabPath}, skipping vocabulary addition`);
+        //             }
+        //         }
+        //     } catch (error) {
+        //         console.error('❌ Error adding vocabulary to user message:', error.message);
+        //         // Continue without vocabulary - optimization will still work if collection is available
+        //     }
+        // } else if (optimizeEnabled && skipSystemMessage) {
+        //     console.log(`📚 Skipping vocabulary (already sent in previous request via previous_response_id)`);
+        // }
         
         // Format messages for Responses API
         // systemMessage is already formatted as [{ type: "input_text", text: ... }] from generateDynamicGenerationSystemMessage()
@@ -11141,7 +13892,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // If we have cachedResponseId, ONLY send user message (system already in API context)
         let messages = [];
         
-        if (systemMessage) {
+        if (systemMessage && !skipSystemMessage) {
             // Include system message for fresh requests
             messages.push({ 
                 role: 'system', 
@@ -11151,7 +13902,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         
         messages.push({ 
             role: 'user', 
-            content: userContent  // Already formatted array
+            content: userContent  // Already formatted array (includes available memories list + tokenizer vocab)
         });
 
         // Trace: record AI input messages
@@ -11176,9 +13927,9 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         day: context.time.dayOfMonth
                     } : null,
                     time: context.time ? `${String(context.time.hour).padStart(2, '0')}:${String(context.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
-                    season: context.season,
+                    season: typeof context.season === 'string' ? context.season : context.season?.season,
                     weather: context.weather,
-                    holiday: context.holidayInfo,
+                    holidayInfo: context.season?.holidayInfo,
                     location: context.location,
                     carousel: carouselData
                 },
@@ -11202,9 +13953,20 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         let modifiedData = null;
         let lastError = null;
         let previousResponseId = null; // Track response ID for stateful conversation
+        let phase1TotalUsage = null; // Track cumulative usage across all Phase 1 attempts
+        let initialResponseId = cachedInitialResponseId; // Track initial response ID (for the first full request)
+        let isInitialRequest = (cachedResponseId === null); // Determine if this is an initial full request
+        let chainRejected = false; // Track if chain was rejected
+        let finalCharacterPrompts = characterPrompts; // Declare outside loop to be accessible at return statement
+        let apiCalls = []; // Array to track each API call's usage/cost for client display
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            console.log(`🤖 Calling AI for dynamic generation core (attempt ${attempt + 1}/${maxAttempts})...`);
+            if (attempt === 0) {
+                logger.normal(`🤖 Calling AI for dynamic generation`);
+            } else {
+                logger.normal(`🤖 Retry attempt ${attempt + 1}/${maxAttempts}`);
+            }
+            logger.logGeneration('AI_CALL_ATTEMPT', { attempt: attempt + 1, maxAttempts }, requestId);
 
             // Send retry progress update if this is a retry attempt
             if (attempt > 0 && ws && handler) {
@@ -11221,49 +13983,60 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             }
 
             // Call AI service with structured output
-            const dynamicSchema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0);
+            const dynamicSchema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts);
+            
+            // Build tools dynamically with characterPrompts context for dynamic required fields
+            const toolsForThisRequest = getAllToolDefinitions();
             
             // Prepare AI options with temperature from dynamic config
             const aiOptions = {
                 model: 'grok-4-fast-reasoning',
-                timeout: 90000, // 1.5 minutes
+                timeout: 30000, // 30 seconds
                 liveSearch: true,
-                store: false,
+                store: true,
                 responseSchema: dynamicSchema,
                 extractKeys: ['*.reason', '*.reason_display'],  // Extract reasoning and display fields
                 totalKeys: getZodSchemaKeyCount(dynamicSchema),  // Dynamically get number of top-level keys
                 ws: ws,
                 handler: handler,
                 requestId: requestId,
-                enableOptimize: optimizeEnabled  // Enable token optimization if optimize flag is set
+                enableOptimize: optimizeEnabled,  // Enable token optimization if optimize flag is set
+                buildOptions: { 
+                    ...dynamicConfig,
+                    // Inject original prompts for tool access (validateTextReplacement)
+                    basePrompt: prompt,
+                    negativePrompt: uc,
+                    characterPrompts: characterPrompts,
+                    _requestId: requestId // Pass requestId for logging
+                },
+                tools: fastModeEnabled ? filterToolsForFastMode(toolsForThisRequest) : toolsForThisRequest,
+                toolLoops: fastModeEnabled ? 4 : (dynamicConfig.tool_passes || 8),
             };
-            
-            // Add temperature if provided in dynamic config
-            if (dynamicConfig && dynamicConfig.temperature !== undefined) {
-                aiOptions.temperature = dynamicConfig.temperature;
-                console.log(`🌡️ Dynamic generation using custom temperature: ${dynamicConfig.temperature}`);
-            }
             
             // Add previous_response_id for stateful conversation
             // Use cachedResponseId (from config) on first attempt if config unchanged
             // Use previousResponseId (from last attempt) on retry attempts
+            let messagesToSend = messages;
+            
             if (cachedResponseId && attempt === 0) {
                 aiOptions.previous_response_id = cachedResponseId;
                 previousResponseId = cachedResponseId; // Initialize for potential retries
-                console.log(`🔗 Using cached previous_response_id (config unchanged): ${cachedResponseId}`);
+                logger.verbose(`🔗 Using cached previous_response_id: ${cachedResponseId}`);
             } else if (attempt > 0 && previousResponseId) {
                 aiOptions.previous_response_id = previousResponseId;
-                console.log(`🔗 Using previous_response_id for stateful retry: ${previousResponseId}`);
+                logger.verbose(`🔗 Using previous_response_id for retry: ${previousResponseId}`);
+                // On retry with previous_response_id, ONLY send the new retry message, not entire history
+                messagesToSend = messages.slice(-1); // Only send the last message (retry request)
             }
             
             const aiResponse = await callDirectorAIWithStructuredOutput(
-                messages,
+                messagesToSend,
                 aiOptions,
                 // Add streaming callback for reasoning updates
                 (content, fullResponse, extractedKeys) => {
                     if (ws && handler && extractedKeys && extractedKeys.length > 0) {
                         // Send each extracted reasoning text directly (filter out object/type emissions)
-                        extractedKeys.forEach(keyInfo => {
+                        extractedKeys.forEach((keyInfo) => {
                             if (keyInfo.value && typeof keyInfo.value === 'string' &&
                                 keyInfo.value !== 'object' && keyInfo.type === 'value') {
                                 handler.sendToClient(ws, {
@@ -11283,15 +14056,132 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             // Capture response ID for stateful conversation on retries
             if (aiResponse.responseId) {
                 previousResponseId = aiResponse.responseId;
-                console.log(`✅ Captured response ID for subsequent requests: ${previousResponseId}`);
+                logger.verbose(`✅ Captured response ID: ${previousResponseId}`);
+                
+                // If this is an initial full request and we don't have an initial response ID yet, capture it
+                if (isInitialRequest && !initialResponseId && attempt === 0) {
+                    initialResponseId = aiResponse.responseId;
+                    logger.verbose(`🆕 Initial response ID: ${initialResponseId}`);
+                }
             }
 
+            // Check if rejectChain was called - if so, flag for restart after loop
+            if (aiResponse.chainRejected === true) {
+                console.log(`🚫 AI rejected chain update - will restart with fresh state`);
+                chainRejected = true;
+                break;
+            }
+
+            // Log and accumulate usage data from this AI call attempt (ALL calls, including failed ones)
+            // Note: Even failed calls cost money, so we track them all
+            // Handle simplified format (total, input, output, cache, reasoning) or old format (for backward compatibility)
+            if (aiResponse?.usage && requestId) {
+                const usageData = aiResponse.usage;
+                
+                // Check if already in simplified format (from grokService)
+                let totalTokens, promptTokens, completionTokens, cachedTokens, reasoningTokens;
+                if (usageData.total !== undefined) {
+                    // Simplified format
+                    totalTokens = usageData.total || 0;
+                    promptTokens = usageData.input || 0;
+                    completionTokens = usageData.output || 0;
+                    cachedTokens = usageData.cache || 0;
+                    reasoningTokens = usageData.reasoning || 0;
+                } else {
+                    // Old format - handle both naming conventions: input_tokens/output_tokens (actual API) or prompt_tokens/completion_tokens (docs)
+                    const promptDetails = usageData.prompt_tokens_details || usageData.input_tokens_details || null;
+                    const completionDetails = usageData.completion_tokens_details || usageData.output_tokens_details || null;
+                    
+                    totalTokens = usageData.total_tokens || 0;
+                    promptTokens = usageData.prompt_tokens || usageData.input_tokens || 0;
+                    completionTokens = usageData.completion_tokens || usageData.output_tokens || 0;
+                    cachedTokens = promptDetails?.cached_tokens || 0;
+                    reasoningTokens = completionDetails?.reasoning_tokens || 0;
+                }
+                
+                // Accumulate usage across all attempts (including failed ones)
+                if (!phase1TotalUsage) {
+                    phase1TotalUsage = {
+                        total: 0,
+                        input: 0,
+                        output: 0,
+                        cache: 0,
+                        reasoning: 0,
+                        attempts: []
+                    };
+                }
+                phase1TotalUsage.total += totalTokens;
+                phase1TotalUsage.input += promptTokens;
+                phase1TotalUsage.output += completionTokens;
+                phase1TotalUsage.cache += cachedTokens;
+                phase1TotalUsage.reasoning += reasoningTokens;
+                phase1TotalUsage.attempts.push({
+                    attempt: attempt + 1,
+                    usage: usageData
+                });
+                
+                // Add individual API calls from AI response (each iteration/tool call is tracked separately)
+                // If aiResponse has apiCalls array, use those individual calls, otherwise create a single aggregated entry
+                if (aiResponse.apiCalls && Array.isArray(aiResponse.apiCalls) && aiResponse.apiCalls.length > 0) {
+                    // Add each individual call with phase and attempt info
+                    aiResponse.apiCalls.forEach(call => {
+                        apiCalls.push({
+                            phase: 'phase1',
+                            attempt: attempt + 1,
+                            iteration: call.iteration,
+                            callType: call.callType || 'request', // 'request' or 'tool_call'
+                            timestamp: call.timestamp || Date.now(),
+                            duration: call.duration || null, // Duration in milliseconds
+                            usage: call.usage,
+                            pricing_tier_128k: call.pricing_tier_128k,
+                            responseId: call.responseId || aiResponse.responseId || null,
+                            toolCalls: call.toolCalls || 0,
+                            tools: call.tools || [], // Array of tool information (name, reason, parameters)
+                            hasResponseId: call.hasResponseId || false,
+                            success: null // Will be set after validation
+                        });
+                    });
+                } else {
+                    // Fallback: Create single aggregated entry if apiCalls not available
+                    const callEntry = {
+                        phase: 'phase1',
+                        callType: 'ai_call',
+                        attempt: attempt + 1,
+                        timestamp: Date.now(),
+                        usage: {
+                            total: totalTokens,
+                            input: promptTokens,
+                            output: completionTokens,
+                            cache: cachedTokens,
+                            reasoning: reasoningTokens
+                        },
+                        pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
+                        responseId: aiResponse.responseId || null,
+                        success: null // Will be set after validation
+                    };
+                    apiCalls.push(callEntry);
+                }
+                
+                logger.logGeneration('AI_CALL_ATTEMPT_USAGE', {
+                    attempt: attempt + 1,
+                    total: totalTokens,
+                    input: promptTokens,
+                    output: completionTokens,
+                    cache: cachedTokens,
+                    reasoning: reasoningTokens,
+                    cumulative_total: phase1TotalUsage.total,
+                    pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
+                    cumulative_pricing_tier_128k: phase1TotalUsage.total > 128000 ? 'OVER' : (phase1TotalUsage.total > 100000 ? 'NEAR' : 'OK')
+                }, requestId);
+            }
+            
             // Trace: record full AI response payload
             try {
                 if (requestId && requestId !== 'dynamic' && requestId !== 'buildOptions') {
                     tracing.addEvent(requestId, {
                         type: 'ai_response',
-                        raw: aiResponse
+                        raw: aiResponse,
+                        usage: aiResponse?.usage || null
                     });
                 }
             } catch {}
@@ -11317,6 +14207,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             };
             
             let allReplacementsValid = true;
+            finalCharacterPrompts = characterPrompts; // Reset to original on each attempt (assigned, not declared)
 
             // Validate prompt replacements
             if (candidateData.text_replacements?.prompt && candidateData.text_replacements.prompt.length > 0) {
@@ -11340,11 +14231,11 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             if (candidateData.text_replacements?.character_prompts && characterPrompts.length > 0) {
                 characterPrompts.forEach((char, index) => {
                     const charReplacements = candidateData.text_replacements.character_prompts[index];
-                    let charResult = { input: { success: true, failedReplacements: [] }, uc: { success: true, failedReplacements: [] } };
+                    let charResult = { prompt: { success: true, failedReplacements: [] }, uc: { success: true, failedReplacements: [] } };
                     
-                    if (charReplacements?.input && charReplacements.input.length > 0) {
-                        const result = applyDynamicReplacements(char.input || '', candidateData.text_replacements, 'character', index, 'input');
-                        charResult.input = result;
+                    if (charReplacements?.prompt && charReplacements.prompt.length > 0) {
+                        const result = applyDynamicReplacements(char.prompt || '', candidateData.text_replacements, 'character', index, 'prompt');
+                        charResult.prompt = result;
                         if (!result.success) {
                             allReplacementsValid = false;
                         }
@@ -11362,65 +14253,122 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 });
             }
 
+            // Update success status of the last API call based on validation
+            if (apiCalls.length > 0) {
+                const lastCall = apiCalls[apiCalls.length - 1];
+                if (lastCall.phase === 'phase1' && lastCall.attempt === attempt + 1) {
+                    lastCall.success = allReplacementsValid;
+                }
+            }
+            
             // If all replacements are valid, check token limits
             if (allReplacementsValid) {
-                console.log('✅ All text replacements validated successfully');
+                logger.normal('✅ Replacements validated');
+                logger.logGeneration('VALIDATION_SUCCESS', { replacementCount: candidateData.text_replacements ? 
+                    (candidateData.text_replacements.prompt?.length || 0) + (candidateData.text_replacements.uc?.length || 0) : 0 
+                }, requestId);
+                
+                // Calculate final texts with replacements applied (needed for token counting and final results)
+                const finalPrompt = validationResults.prompt.result || prompt;
+                const finalUC = validationResults.uc.result || uc;
+                
+                // Update finalCharacterPrompts with applied replacements and character names
+                finalCharacterPrompts = characterPrompts.map((char, index) => {
+                    const charResult = validationResults.characterPrompts[index];
+                    const newName = candidateData?.character_names?.[index];
+                    
+                    return {
+                        ...char, // Preserve other properties like center, enabled, etc.
+                        prompt: charResult?.prompt?.result || char.prompt || '',
+                        uc: charResult?.uc?.result || char.uc || '',
+                        // Update name if AI provided a character name for this index
+                        name: newName || char.name
+                    };
+                });
+                
+                // Log generated image name
+                if (candidateData.generated_image_name) {
+                    console.log(`🖼️ Generated image name: "${candidateData.generated_image_name}"`);
+                }
+                
+                // Log character name updates
+                if (candidateData.character_names && candidateData.character_names.length > 0) {
+                    console.log('✨ Character names updated:');
+                    candidateData.character_names.forEach((name, index) => {
+                        const oldName = characterPrompts[index]?.name || 'Unknown';
+                        if (name && name !== oldName) {
+                            console.log(`   Character ${index + 1}: "${oldName}" → "${name}"`);
+                        }
+                    });
+                }
                 
                 // Apply replacements to get final text and check token counts if token counting is enabled
                 if (tokenCountEnabled) {
                     try {
-                        // Apply all replacements to get final texts
-                        const finalPrompt = validationResults.prompt.result || prompt;
-                        const finalUC = validationResults.uc.result || uc;
-                        
-                        const finalCharacterPrompts = characterPrompts.map((char, index) => {
-                            const charResult = validationResults.characterPrompts[index];
-                            return {
-                                input: charResult?.input?.result || char.input || '',
-                                uc: charResult?.uc?.result || char.uc || ''
-                            };
-                        });
                         
                         // Count tokens on final texts
+                        const t5TokenizerService = globalResources.getT5Tokenizer();
                         const finalPromptTokens = t5TokenizerService.countTokens(finalPrompt);
                         const finalUCTokens = t5TokenizerService.countTokens(finalUC);
                         
                         const finalCharacterTokenCounts = finalCharacterPrompts.map(char => ({
-                            input: t5TokenizerService.countTokens(char.input),
+                            prompt: t5TokenizerService.countTokens(char.prompt),
                             uc: t5TokenizerService.countTokens(char.uc)
                         }));
                         
-                        const finalTotalPromptTokens = finalPromptTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.input, 0);
+                        const finalTotalPromptTokens = finalPromptTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);
                         const finalTotalUCTokens = finalUCTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.uc, 0);
                         
-                        console.log('📊 FINAL TOKEN COUNTS AFTER REPLACEMENTS:');
-                        console.log(`   Base Prompt: ${finalPromptTokens} tokens`);
-                        console.log(`   Negative Prompt: ${finalUCTokens} tokens`);
-                        if (finalCharacterPrompts.length > 0) {
-                            finalCharacterTokenCounts.forEach((char, idx) => {
-                                console.log(`   Character ${idx + 1}: ${char.input} prompt tokens, ${char.uc} UC tokens`);
-                            });
+                        // Summarized console output
+                        logger.normal(`📊 Tokens: ${finalTotalPromptTokens}/512 prompt (${Math.round((finalTotalPromptTokens / 512) * 100)}%) | ${finalTotalUCTokens}/512 UC (${Math.round((finalTotalUCTokens / 512) * 100)}%)`);
+                        
+                        // Detailed file logging
+                        logger.logGeneration('FINAL_TOKEN_COUNTS', {
+                            basePrompt: finalPromptTokens,
+                            negativePrompt: finalUCTokens,
+                            characterPrompts: finalCharacterTokenCounts,
+                            totalPrompts: finalTotalPromptTokens,
+                            totalUC: finalTotalUCTokens,
+                            percentUsed: {
+                                prompts: Math.round((finalTotalPromptTokens / 512) * 100),
+                                uc: Math.round((finalTotalUCTokens / 512) * 100)
+                            }
+                        }, requestId);
+                        
+                        // Verbose console output
+                        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+                            console.log(`   Base Prompt: ${finalPromptTokens} tokens`);
+                            console.log(`   Negative Prompt: ${finalUCTokens} tokens`);
+                            if (finalCharacterPrompts.length > 0) {
+                                finalCharacterTokenCounts.forEach((char, idx) => {
+                                    console.log(`   Character ${idx + 1}: ${char.prompt} prompt tokens, ${char.uc} UC tokens`);
+                                });
+                            }
                         }
-                        console.log(`   TOTAL Prompts: ${finalTotalPromptTokens} / 512 tokens (${Math.round((finalTotalPromptTokens / 512) * 100)}% used)`);
-                        console.log(`   TOTAL UC: ${finalTotalUCTokens} / 512 tokens (${Math.round((finalTotalUCTokens / 512) * 100)}% used)`);
                         
                         // If token limit exceeded and we have more attempts, ask AI to reduce
                         if ((finalTotalPromptTokens > 512 || finalTotalUCTokens > 512) && attempt < maxAttempts - 1) {
                             console.warn(`⚠️ Token limit exceeded after applying replacements! Prompt: ${finalTotalPromptTokens}/512, UC: ${finalTotalUCTokens}/512`);
                             console.warn(`Requesting AI to reduce token usage on attempt ${attempt + 2}...`);
                             
-                            // Add the assistant's response to the conversation history
-                            messages.push({
-                                role: 'assistant',
-                                content: JSON.stringify(candidateData)
-                            });
+                            // Only add assistant's response if we DON'T have previous_response_id
+                            // With previous_response_id, the API already has the full conversation context
+                            if (!previousResponseId) {
+                                messages.push({
+                                    role: 'assistant',
+                                    content: [{
+                                        type: 'output_text',
+                                        text: JSON.stringify(candidateData)
+                                    }]
+                                });
+                            }
                             
                             // Build token reduction request message
                             const tokenReductionMessage = {
                                 role: 'user',
                                 content: [
                                     {
-                                        type: 'text',
+                                        type: 'input_text',
                                         text: [
                                             '🚨 **TOKEN LIMIT EXCEEDED** - Modifications required',
                                             `Attempt ${attempt + 2} of ${maxAttempts}`,
@@ -11432,9 +14380,9 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                             '## Current Token Usage (AFTER your replacements):',
                                             `**Base Prompt**: ${finalPromptTokens} tokens`,
                                             `**Negative Prompt**: ${finalUCTokens} tokens`,
-                                            finalCharacterPrompts.length > 0 ? finalCharacterTokenCounts.map((char, idx) =>
-                                                `**Character ${idx + 1}**: ${char.input} prompt tokens, ${char.uc} UC tokens`
-                                            ).join('\n') : '',
+                            finalCharacterPrompts.length > 0 ? finalCharacterTokenCounts.map((char, idx) =>
+                                `**Character ${idx + 1}**: ${char.prompt} prompt tokens, ${char.uc} UC tokens`
+                            ).join('\n') : '',
                                             `**TOTAL Prompt Tokens**: ${finalTotalPromptTokens} / 512 ${finalTotalPromptTokens > 512 ? '⚠️ OVER LIMIT!' : ''}`,
                                             `**TOTAL UC Tokens**: ${finalTotalUCTokens} / 512 ${finalTotalUCTokens > 512 ? '⚠️ OVER LIMIT!' : ''}`,
                                             '',
@@ -11453,17 +14401,20 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                             '**Character Prompts (ORIGINAL):**',
                                             characterPrompts.length > 0 ?
                                                 characterPrompts.map((char, index) =>
-                                                    `Character ${index + 1} (${char.name || 'Unnamed'}):\n  Input: ${char.input || 'No input'}\n  UC: ${char.uc || 'No UC'}`
+                                                    `Character ${index + 1} (${char.chara_name || 'Unnamed'}):\n  Prompt: ${char.prompt || 'No prompt'}\n  UC: ${char.uc || 'No UC'}`
                                                 ).join('\n\n') :
                                                 'No character prompts provided',
                                             '',
-                                            '## 🚨 MANDATORY Token Reduction Requirements',
-                                            '1. **Merge descriptions** - Combine multiple related elements into single, concise descriptions',
-                                            '2. **Use stronger tokens with fewer token counts** - Replace weak multi-token words with strong single-token alternatives',
-                                            '3. **Remove redundancy** - Eliminate duplicate or unnecessary descriptors',
-                                            '4. **Prioritize quality over quantity** - Keep only the most impactful modifications',
-                                            '5. **Be surgical** - Make targeted, precise changes that reduce bloat',
-                                            '6. **Condense verbose phrases** - Replace long phrases with shorter, equally effective alternatives',
+                                            '## 🚨 Token Reduction Requirements',
+                                            '**Your modifications added too many tokens. You need to be more efficient:**',
+                                            '',
+                                            '1. **Merge descriptions** - Combine related elements into concise descriptions',
+                                            '2. **Use stronger single-token alternatives** - Replace weak multi-token phrases when possible',
+                                            '3. **Remove true redundancy** - Eliminate duplicate or genuinely unnecessary descriptors',
+                                            '4. **Prioritize impactful changes** - Keep the most visually important modifications',
+                                            '5. **Condense verbose phrases** - Shorter phrasing with same meaning',
+                                            '',
+                                            '**IMPORTANT**: Don\'t delete meaningful content - find more efficient ways to express the same ideas.',
                                             '',
                                             '## Example of Token Reduction:',
                                             '❌ **Before (verbose)**:',
@@ -11478,7 +14429,14 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                 ]
                             };
                             
-                            messages.push(tokenReductionMessage);
+                            // Only push to messages array if we're NOT using previous_response_id
+                            // With previous_response_id, we'll send just this message in the next iteration
+                            if (!previousResponseId) {
+                                messages.push(tokenReductionMessage);
+                            } else {
+                                // Replace messages array with just the retry message for next iteration
+                                messages = [tokenReductionMessage];
+                            }
                             
                             // Send progress update
                             if (ws && handler) {
@@ -11504,6 +14462,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 }
                 
                 modifiedData = candidateData;
+                
+                // Auto-save insight_memory entries as global knowledge memories (only on validation pass)
+                autoSaveInsightMemories(modifiedData.insight_memory, 'Phase 1');
+                
                 break;
             }
 
@@ -11532,8 +14494,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     allFailedReplacements.push(...validationResults.uc.failedReplacements.map(text => ({ type: 'uc', text })));
                 }
                 validationResults.characterPrompts.forEach((charResult, index) => {
-                    if (!charResult.input.success) {
-                        allFailedReplacements.push(...charResult.input.failedReplacements.map(text => ({ type: `character_${index}_input`, text })));
+                    if (!charResult.prompt.success) {
+                        allFailedReplacements.push(...charResult.prompt.failedReplacements.map(text => ({ type: `character_${index}_prompt`, text })));
                     }
                     if (!charResult.uc.success) {
                         allFailedReplacements.push(...charResult.uc.failedReplacements.map(text => ({ type: `character_${index}_uc`, text })));
@@ -11578,7 +14540,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                 '**Character Prompts (ORIGINAL):**',
                                 characterPrompts.length > 0 ?
                                     characterPrompts.map((char, index) =>
-                                        `Character ${index + 1} (${char.name || 'Unnamed'}):\n  Input: ${char.input || 'No input'}\n  UC: ${char.uc || 'No UC'}`
+                                        `Character ${index + 1} (${char.name || 'Unnamed'}):\n  Prompt: ${char.prompt || 'No prompt'}\n  UC: ${char.uc || 'No UC'}`
                                     ).join('\n\n') :
                                     'No character prompts provided',
                                 '',
@@ -11638,6 +14600,19 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             }
         }
 
+        // If chain was rejected, return with chainRejected flag so caller can retry
+        if (chainRejected) {
+            console.log(`🔄 Chain rejected - returning to caller for restart with clean state`);
+            
+            return {
+                success: false,
+                chainRejected: true,
+                error: 'Chain update rejected by AI',
+                dialogs: [],
+                processed: false
+            };
+        }
+
         // If we exhausted all attempts without success, return error
         if (!modifiedData) {
             return {
@@ -11648,30 +14623,277 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             };
         }
 
-        console.log('✅ Dynamic generation core completed:', JSON.stringify(modifiedData, null, 2));
+        logger.normal('✅ Dynamic generation Phase 1 completed');
+        logger.logGeneration('PHASE_1_COMPLETE', modifiedData, requestId);
 
-        // Send completion update
+        // Prepare Phase 1 results
+        const phase1Results = {
+            success: true,
+            prompt: prompt, // Store original prompt for hash validation
+            uc: uc, // Store original UC for hash validation
+            characterPrompts: characterPrompts, // Store original character prompts for hash validation
+            modifiedCharacterPrompts: finalCharacterPrompts, // Store modified character prompts for application
+            text_replacements: modifiedData.text_replacements,
+            dialogs: modifiedData.dialogs || [],
+            generated_image_name: modifiedData.generated_image_name || null, // Suggested image name
+            character_names: modifiedData.character_names || null, // Suggested character names
+            context: context,
+            processed: true,
+            previousResponseId: previousResponseId,
+            initialResponseId: initialResponseId, // Save initial response ID separately
+            request_hash: currentRequestHash, // Include request hash for cache validation
+            prompt_hash: currentPromptHash, // Include prompt hash for cache validation
+            directive_hash: currentDirectiveHash, // Include directive hash for separate tracking
+            timestamp: Date.now(), // Add timestamp for cache expiration checks
+            generation_chain: generationChainNumber, // Current generation in chain
+            errors: modifiedData.errors || [], // AI-registered errors
+            warnings: modifiedData.warnings || [], // AI-registered warnings
+            isOptimized: false,
+            applied_preset_controls: appliedPresetControls, // Pass through preset controls for client use
+            apiCalls: apiCalls // Include Phase 1 API calls for usage tracking
+        };
+
+        // Check if Phase 2 (optimization) should run - only in 2-stage mode
+        let finalResults = phase1Results;
+
+        if (dynamicConfig.optimize?.tokenCount === true && dynamicConfig.optimize?.twoStage === true) {
+            console.log('🔧 Running Phase 2 optimization pass (2-stage mode)...');
+
+            try {
+                // Run Phase 2 optimization
+                finalResults = await processDynamicGenerationPhase2(
+                    phase1Results,
+                    dynamicConfig,
+                    prompt,
+                    uc,
+                    characterPrompts,
+                    requestId,
+                    ws,
+                    handler,
+                    wsServer,
+                    context,
+                    datasetConfig
+                );
+                
+                // Merge Phase 2 apiCalls with Phase 1 apiCalls and update finalResults
+                if (finalResults.apiCalls && Array.isArray(finalResults.apiCalls)) {
+                    apiCalls = apiCalls.concat(finalResults.apiCalls);
+                    // Update finalResults to include all API calls (both phase1 and phase2)
+                    finalResults.apiCalls = apiCalls;
+                } else {
+                    // If phase2 didn't return apiCalls, ensure finalResults has phase1 calls
+                    finalResults.apiCalls = apiCalls;
+                }
+
+                console.log('✅ Phase 2 optimization completed successfully');
+            } catch (phase2Error) {
+                console.error('❌ Phase 2 optimization failed, using Phase 1 results:', phase2Error.message);
+
+                // Send Phase 2 error update
+                if (ws && handler) {
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'optimization_error',
+                        data: {
+                            error: phase2Error.message,
+                            fallback: 'Using Phase 1 results'
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+
+                // Keep Phase 1 results as fallback
+                finalResults = {
+                    ...phase1Results,
+                    phase2Error: phase2Error.message,
+                    isOptimized: false,
+                    apiCalls: apiCalls // Ensure apiCalls is included even on phase2 error
+                };
+            }
+        } else {
+            if (dynamicConfig.optimize?.tokenCount === true && dynamicConfig.optimize?.twoStage === false) {
+                console.log('⚡ Single-stage mode - Phase 2 optimization skipped');
+            } else {
+                console.log('⚡ Optimization disabled, skipping Phase 2');
+            }
+            // Ensure finalResults has apiCalls when Phase 2 doesn't run
+            if (!finalResults.apiCalls) {
+                finalResults.apiCalls = apiCalls;
+            }
+        }
+
+        // Accumulate usage data from all phases
+        // Use finalResults.apiCalls which should contain both phase1 and phase2 calls
+        const allApiCalls = finalResults.apiCalls && Array.isArray(finalResults.apiCalls) ? finalResults.apiCalls : [];
+        
+        // Debug: Log apiCalls state
+        logger.detailed(`💾 Accumulating usage data: allApiCalls.length=${allApiCalls.length}, phase1=${allApiCalls.filter(c => c.phase === 'phase1').length}, phase2=${allApiCalls.filter(c => c.phase === 'phase2').length}`);
+        
+        let totalUsageData = null;
+        
+        // Get usage from Phase 1 - calculate from apiCalls array
+        const phase1CallsForTotal = allApiCalls.filter(call => call.phase === 'phase1');
+        if (phase1CallsForTotal.length > 0) {
+            totalUsageData = {
+                total: 0,
+                input: 0,
+                output: 0,
+                cache: 0,
+                reasoning: 0
+            };
+            phase1CallsForTotal.forEach(call => {
+                if (call.usage) {
+                    totalUsageData.total += call.usage.total || 0;
+                    totalUsageData.input += call.usage.input || 0;
+                    totalUsageData.output += call.usage.output || 0;
+                    totalUsageData.cache += call.usage.cache || 0;
+                    totalUsageData.reasoning += call.usage.reasoning || 0;
+                } else {
+                    logger.detailed(`⚠️ Phase 1 call missing usage data: ${JSON.stringify(call)}`);
+                }
+            });
+        }
+        
+        // Get usage for totalUsage based on the last call's usage (stateful APIs return cumulative totals)
+        // Prefer the last call with usage data regardless of phase. If none found, keep null.
+        const lastCallWithUsage = [...allApiCalls].reverse().find(call => call && call.usage);
+        totalUsageData = lastCallWithUsage ? {
+            total: lastCallWithUsage.usage.total || 0,
+            input: lastCallWithUsage.usage.input || 0,
+            output: lastCallWithUsage.usage.output || 0,
+            cache: lastCallWithUsage.usage.cache || 0,
+            reasoning: lastCallWithUsage.usage.reasoning || 0
+        } : totalUsageData || null;
+        
+        // Add total usage and structured usage data to final results for saving to compiled_prompt
+        finalResults.totalUsage = totalUsageData || null;
+        
+        // Debug: Log what we calculated
+        logger.detailed(`💾 Calculated totalUsage: ${totalUsageData ? JSON.stringify(totalUsageData) : 'null'}`);
+        
+        // Structure usage data with phase1 and phase2 objects
+        const structuredUsage = {
+            phase1: {
+                total: null,
+                calls: []
+            },
+            phase2: {
+                total: null,
+                calls: []
+            }
+        };
+        
+        // Group apiCalls by phase and calculate phase totals
+        // Use finalResults.apiCalls which should contain both phase1 and phase2 calls
+        const phase1Calls = allApiCalls.filter(call => call.phase === 'phase1');
+        const phase2Calls = allApiCalls.filter(call => call.phase === 'phase2');
+        
+        // Calculate Phase 1 total based on the last call's usage for that phase
+        if (phase1Calls.length > 0) {
+            const lastPhase1WithUsage = [...phase1Calls].reverse().find(call => call && call.usage);
+            structuredUsage.phase1.total = lastPhase1WithUsage ? {
+                total: lastPhase1WithUsage.usage.total || 0,
+                input: lastPhase1WithUsage.usage.input || 0,
+                output: lastPhase1WithUsage.usage.output || 0,
+                cache: lastPhase1WithUsage.usage.cache || 0,
+                reasoning: lastPhase1WithUsage.usage.reasoning || 0
+            } : null;
+            structuredUsage.phase1.calls = phase1Calls;
+        }
+        
+        // Calculate Phase 2 total based on the last call's usage for that phase
+        if (phase2Calls.length > 0) {
+            const lastPhase2WithUsage = [...phase2Calls].reverse().find(call => call && call.usage);
+            structuredUsage.phase2.total = lastPhase2WithUsage ? {
+                total: lastPhase2WithUsage.usage.total || 0,
+                input: lastPhase2WithUsage.usage.input || 0,
+                output: lastPhase2WithUsage.usage.output || 0,
+                cache: lastPhase2WithUsage.usage.cache || 0,
+                reasoning: lastPhase2WithUsage.usage.reasoning || 0
+            } : null;
+            structuredUsage.phase2.calls = phase2Calls;
+        }
+        
+        // Only include phases that have data
+        if (structuredUsage.phase1.total === null && structuredUsage.phase1.calls.length === 0) {
+            delete structuredUsage.phase1;
+        }
+        if (structuredUsage.phase2.total === null && structuredUsage.phase2.calls.length === 0) {
+            delete structuredUsage.phase2;
+        }
+        
+        // Add structured usage to final results (only if we have at least one phase with data)
+        // If both phases are empty, set usage to null
+        if (Object.keys(structuredUsage).length === 0 || (!structuredUsage.phase1 && !structuredUsage.phase2)) {
+            finalResults.usage = null;
+            logger.detailed(`⚠️ No structured usage data - both phases empty or no data`);
+        } else {
+            finalResults.usage = structuredUsage;
+        }
+        
+        // Ensure apiCalls is included in finalResults (should already be set, but double-check)
+        if (!finalResults.apiCalls && allApiCalls.length > 0) {
+            finalResults.apiCalls = allApiCalls;
+            logger.detailed(`💾 Added apiCalls to finalResults: ${allApiCalls.length} calls`);
+        }
+        
+        // Debug: Verify usage is set
+        logger.detailed(`💾 Final results usage data: totalUsage=${finalResults.totalUsage ? JSON.stringify(finalResults.totalUsage) : 'null'}, usage=${finalResults.usage ? JSON.stringify(finalResults.usage) : 'null'}`);
+        logger.detailed(`💾 Final results has apiCalls: ${!!finalResults.apiCalls}, length: ${finalResults.apiCalls?.length || 0}`);
+        
+        // Log total usage to detailed generation log
+        if (totalUsageData && requestId) {
+            const totalTokens = totalUsageData.total || 0;
+            logger.logGeneration('DYNAMIC_GENERATION_TOTAL_USAGE', {
+                phase1Usage: phase1Results.phase1Usage || null,
+                phase1TotalUsage: phase1Results.phase1TotalUsage || null, // Cumulative usage from all Phase 1 attempts
+                phase2Usage: finalResults.phase2Usage || null,
+                totalUsage: totalUsageData,
+                total: totalTokens,
+                input: totalUsageData.input || 0,
+                output: totalUsageData.output || 0,
+                cache: totalUsageData.cache || 0,
+                reasoning: totalUsageData.reasoning || 0,
+                phasesCompleted: dynamicConfig.optimize?.tokenCount === true ? 2 : 1,
+                pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK')
+            }, requestId);
+        }
+        
+        // Send final completion update
         if (ws && handler) {
             handler.sendToClient(ws, {
                 type: 'dynamic_generation_progress_update',
                 phase: 'completion',
+                data: {
+                    phasesCompleted: dynamicConfig.optimize?.tokenCount === true ? 2 : 1,
+                    optimized: finalResults.isOptimized || false,
+                    usage: totalUsageData || null
+                },
                 timestamp: new Date().toISOString()
             });
         }
 
         // Return processed results (same structure as WebSocket response)
         // Note: text replacement application is now handled in buildOptions
-        return {
-            success: true,
-            text_replacements: modifiedData.text_replacements, // Pass text replacements to buildOptions
-            dialogs: modifiedData.dialogs || [], // Pass dialogs for display
-            context: context, // Include full context for stage-to-stage consistency
-            processed: true,
-            previousResponseId: previousResponseId // Save for future requests with same config
-        };
+        return finalResults;
 
     } catch (error) {
         console.error('❌ Dynamic generation core error:', error);
+        
+        // Check if this is a JSON parsing error that should trigger chain restart
+        const isParsingError = error.message && error.message.includes('JSON parsing failed for structured response');
+        
+        if (isParsingError) {
+            console.log('🔄 JSON parsing failed - setting chainRejected to restart generation with clean state');
+            return {
+                success: false,
+                chainRejected: true,
+                error: error.message || 'JSON parsing failed - restarting generation',
+                dialogs: [], // Empty dialogs on error
+                processed: false
+            };
+        }
+        
         // Return error structure (same as WebSocket error response)
         return {
             success: false,
@@ -11683,24 +14905,627 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 }
 
 /**
+ * Phase 2: Token Optimization & Quality Refinement Pass
+ * Uses previous response ID and adds optimization tools
+ * @param {Object} phase1Results - Results from Phase 1 processing
+ * @param {Object} dynamicConfig - Dynamic configuration object
+ * @param {string} prompt - Original base prompt
+ * @param {string} uc - Original negative prompt
+ * @param {Array} characterPrompts - Character prompts array
+ * @param {string} requestId - Request ID for tracking
+ * @param {Object} ws - WebSocket connection
+ * @param {Object} handler - WebSocket handler
+ * @param {Object} wsServer - WebSocket server
+ * @param {Object} context - Compiled context
+ * @param {Object} datasetConfig - Dataset configuration
+ * @returns {Object} Optimized results
+ */
+async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prompt, uc, characterPrompts, requestId, ws, handler, wsServer, context, datasetConfig) {
+    const maxAttempts = 3;
+    let previousResponseId = phase1Results.previousResponseId;
+    const generationChainNumber = (dynamicConfig.compiled_prompt?.generation_chain || 0) + 1;
+    
+    // Track Phase 2 API calls separately
+    let phase2ApiCalls = [];
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        try {
+            console.log(`🔧 Processing Phase 2 optimization (attempt ${attempt + 1}/${maxAttempts}): ${requestId}`);
+
+            // Send Phase 2 progress update
+            if (ws && handler) {
+                handler.sendToClient(ws, {
+                    type: 'dynamic_generation_progress_update',
+                    phase: 'optimization',
+                    data: {
+                        phase: 2,
+                        totalPhases: 2,
+                        attempt: attempt + 1,
+                        maxAttempts: maxAttempts,
+                        description: attempt === 0 ? 'Optimizing tokens and refining quality' : `Retry ${attempt}: Fixing validation errors`
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            
+            // Build Phase 2 message - continuation of conversation
+            const isRetry = attempt > 0;
+            
+            // Initialize validationResults outside for retry access
+            let validationResults = {
+                prompt: { success: true, failedReplacements: [] },
+                uc: { success: true, failedReplacements: [] },
+                characterPrompts: []
+            };
+            
+            const phase2Message = {
+                type: "input_text",
+                text: (isRetry ? [
+                    '# 🔧 PHASE 2 RETRY: FIX VALIDATION ERRORS',
+                    '',
+                    '## Previous Attempt Failed',
+                    'Your last Phase 2 response had validation errors. The text replacements could not be applied.',
+                    '',
+                    '**Validation Errors:**',
+                    validationResults.prompt && !validationResults.prompt.success ? 
+                        `• **Prompt failures**: ${validationResults.prompt.failedReplacements.join(', ')}` : '',
+                    validationResults.uc && !validationResults.uc.success ?
+                        `• **UC failures**: ${validationResults.uc.failedReplacements.join(', ')}` : '',
+                    validationResults.characterPrompts?.some(c => !c.prompt.success || !c.uc.success) ?
+                        `• **Character failures**: Check character prompt replacements` : '',
+                    '',
+                    '• Look for "# 🎯 PHASE 1: CONTEXT INTEGRATION" in your conversation history',
+                    '• Look for "# 🔧 PHASE 2: TOKEN OPTIMIZATION" for your previous attempt',
+                    '• Review what you proposed and what failed',
+                    '',
+                    '**YOUR TASK:**',
+                    '1. **Review conversation history** - Find Phase 1 and previous Phase 2 tagged responses',
+                    '2. **Call tools to validate** - Use `validateTextReplacement` to test before submitting',
+                    '3. **Fix validation errors** - Adjust select_text to match ORIGINAL prompts',
+                    '4. **Return COMPLETE arrays** - All replacements needed (not incremental changes)',
+                    '',
+                    '**CRITICAL:** Don\'t regenerate from scratch. Build on your previous work from conversation history.',
+                ].filter(Boolean) : [
+                    '# 🔧 PHASE 2: TOKEN OPTIMIZATION & QUALITY REFINEMENT',
+                    '',
+                    '## Previous Phase Results',
+                    'You have successfully completed Phase 1 (context integration and directive processing). Now perform Phase 2 optimization:',
+                    '',
+                    '**IMPORTANT CONTEXT:**',
+                    '• You can access ALL your previous responses via conversation history',
+                    '• Look for "# 🎯 PHASE 1: CONTEXT INTEGRATION" to find your Phase 1 response',
+                    '• This is an ongoing series of requests - leverage your full conversation history',
+                    '',
+                    '**CRITICAL UNDERSTANDING:**',
+                    '• Phase 1 replacements were proposed but NOT applied to prompts',
+                    '• You must reason about Phase 1 + create optimized complete replacement arrays',
+                    '• Validate against ORIGINAL prompts using tools',
+                    '',
+                    '## Phase 2 Objectives',
+                    ]).concat([
+                    '1. **MANDATORY: Call Tools First** - DO NOT generate text responses. Start by calling optimization tools.',
+                    '2. **Token Optimization**: Use the T5 tokenizer vocabulary to optimize ALL prompts',
+                    '3. **Quality Refinement**: Improve the effectiveness of Phase 1 replacements',
+                    '4. **Validation**: Ensure all replacements work correctly',
+                    '',
+                    '**🚨 CRITICAL INSTRUCTION: Your response MUST start with tool calls, not text.**',
+                    '',
+                    '**REQUIRED WORKFLOW - Execute these tool calls in order:**',
+                    '',
+                    '**1. `analyzeTokenCount` - CALL THIS FIRST**',
+                    '```javascript',
+                    'analyzeTokenCount({',
+                    '  texts: [currentPrompt, currentNegativePrompt, ...characterPrompts],',
+                    '  includeBreakdown: true',
+                    '})',
+                    '```',
+                    '',
+                    '**2. `validateTextReplacement` - CALL THIS SECOND**',
+                    '```javascript',
+                    'validateTextReplacement({',
+                    '  textReplacements: { prompt: [...], uc: [...], character_prompts: [...] }',
+                    '})',
+                    '// NOTE: basePrompt/negativePrompt/characterPrompts injected automatically',
+                    '```',
+                    '',
+                    '**DO NOT generate any text until tools complete their analysis.**',
+                    '',
+                    '## Available Tools',
+                    'You now have access to optimization tools:',
+                    '',
+                    '**`analyzeTokenCount`** - Quick token analysis for multiple text strings',
+                    '• Input: Array of text strings to analyze',
+                    '• Output: Token counts, efficiency ratings, and optional detailed breakdowns',
+                    '• Use: A/B testing different prompt versions, checking token limits',
+                    '',
+                    '**`validateTextReplacement`** - Comprehensive replacement validation with token counting',
+                    '• Input: textReplacements object (system automatically provides basePrompt/negativePrompt/characterPrompts)',
+                    '• Output: Validation results, applied replacements, token analysis (original vs modified)',
+                    '• **REQUIRED**: You MUST use this to validate all replacements before submitting',
+                    '• **CRITICAL**: If validation fails, you MUST fix the reported issues and call this tool again - failures cannot be ignored',
+                    '• **terminateOnPass=true**: Use ONLY when ready to complete with ALL replacements AND you expect all validations to pass - if validation passes, auto-completes without needing completeTooling()',
+                    '• **For testing**: Call WITHOUT terminateOnPass to validate during your work',
+                    '',
+                    '**Tag Search Tools (USE THESE FOR TAG RESEARCH)**:',
+                    ...(secureConfig.grok?.tagWikiCollectionId ? [
+                        '• `file_search` ⭐ - PRIMARY: Search comprehensive tag wiki collection (replaces all local tag tools)',
+                        '  - Read wiki entries with descriptions and context',
+                        '  - More efficient than local tools - single search covers all tag information',
+                        '• `searchTagDatabase` - NovelAI official API (model-specific)',
+                    ] : [
+                        '• `searchTagsBatch` - ⭐ PREFERRED: Batch lookup multiple tags efficiently',
+                        '• `getTagDetails` - ⭐ PREFERRED: Read tag descriptions and usage information',
+                        '• `resolveTagLinks` - ⭐ PREFERRED: Check tag relations and find alternatives',
+                        '• `suggestBetterTags` - AI-powered tag improvement and alternative suggestions',
+                        '• `searchByDescription` - Natural language tag discovery and matching',
+                        '• `getBodyChunk` - Paginated access to detailed tag descriptions',
+                        '• `searchTagDatabase` - Individual tag search (prefer searchTagsBatch for multiple tags)',
+                    ]),
+                    '',
+                    '**Optimization Tools**:',
+                    '• `searchTagDatabase` - Search the Official NovelAI API tag search (with model-aware results), Danbooru tags, and e621 tags',
+                    '',
+                    '**Optional Web Tools**:',
+                    ...(secureConfig.grok?.useWebSearch === true ? [
+                        '• `web_search` ⭐ - Search the web with image understanding for current events, recent data, or information not available in the tag database',
+                        '• `x_search` ⭐ - Search X/Twitter with image understanding for current data, trends',
+                        '  - More efficient than local tools - Web search and social media search with image understanding',
+                    ] : [
+                        '• Use these tools ONLY when user explicitly provides URLs or you have gathered a url from the results of a tool and need to view the content for analysis',
+                        '• `webSearch` - OPTIONAL: Current events, recent data, trends (Exa API)',
+                        '• `fetchUrl` - OPTIONAL: Fetch and extract text from a URL',
+                        '• `fetchImage` - OPTIONAL: Download and analyze images from URLs',
+                    ]),
+                    '',
+                    '**Required Tool**:',
+                    '• `completeTooling` - Call this when you have gathered all necessary information from tools and are ready to provide the final structured response. This signals that tool usage is complete and the system should expect your structured output.',
+                    '',
+                    '## Token Optimization Requirements',
+                    '**MANDATORY**: Optimize ALL prompts during this pass by:',
+                    '',
+                    '**1. Analyze Current Token Usage**:',
+                    '```javascript',
+                    'analyzeTokenCount({',
+                    '  texts: [currentPrompt, currentNegativePrompt, ...characterPrompts],',
+                    '  includeBreakdown: true',
+                    '})',
+                    '```',
+                    '',
+                    '**2. Optimize Token Efficiency**:',
+                    '• Reference strong tokens (≥8.0 strength) from T5 breakdown',
+                    '• Replace weak tokens (<4.0) with stronger alternatives',
+                    '• Use tag search tools to find better/more efficient tags',
+                    '',
+                    '**3. Generate COMPLETE Optimization Replacements**:',
+                    '• Review Phase 1 replacements (from your previous response)',
+                    '• Incorporate Phase 1\'s good ideas and concepts + the tools results + your smart token optimizations skills',
+                    '• Return COMPLETE replacement arrays (not just additions)',
+                    '',
+                    '**4. Apply optimization to ALL prompts**:',
+                    '• Positive prompts (main generation)',
+                    '• Negative prompts (UC - things to avoid)',
+                    '• Character prompts (character-specific details)',
+                    '',
+                    '## Token Limits',
+                    `**Total Prompt Tokens**: ${context.tokenCounts?.totalPrompt || 'Unknown'} / 512`,
+                    `**Total UC Tokens**: ${context.tokenCounts?.totalUC || 'Unknown'} / 512`,
+                    '',
+                    '## Validation Requirements',
+                    '**MANDATORY VALIDATION**: Use `validateTextReplacement` to test complete replacement workflows:',
+                    '',
+                    '**What to Validate:**',
+                    '• Selector uniqueness (no overlapping select_text values)',
+                    '• Selector existence (all select_text appears in base prompts)',
+                    '• Replacement application success',
+                    '• Token count changes (original vs modified)',
+                    '',
+                    '**Fix Validation Failures:**',
+                    '• Adjust select_text to match actual prompt content',
+                    '• Resolve overlapping selectors',
+                    '• Ensure selectors are unique within replacement arrays',
+                    '• Check token limits after modifications',
+                    '',
+                    '## 📋 CRITICAL: Understanding Phase 1 State',
+                    '',
+                    '**PHASE 1 REPLACEMENTS WERE NOT APPLIED**',
+                    '• Look for "# 🎯 PHASE 1: CONTEXT INTEGRATION" in your conversation history',
+                    '• Phase 1 proposed replacements but they were NOT executed',
+                    '• You must call tools on the ORIGINAL prompts to analyze them',
+                    '',
+                    '## Your Deliverable',
+                    '',
+                    '**YOU MUST RETURN COMPLETE REPLACEMENT ARRAYS**',
+                    '• Review your Phase 1 response from conversation history',
+                    '• Understand what you were trying to achieve in Phase 1',
+                    '• Use tools to validate against ORIGINAL prompts',
+                    '• Generate a COMPLETE set of replacements (not just Phase 2 additions)',
+                    '',
+                    '**DO NOT:**',
+                    '• Assume Phase 1 replacements were applied',
+                    '• Return only incremental Phase 2 changes',
+                    '• Reference text that doesn\'t exist in the original prompts',
+                    '',
+                    '**DO:**',
+                    '• Return complete replacement arrays for prompt, uc, and character_prompts',
+                    '• Include dialogs array (' + (dialogsCount || 6) + ' context-aware character dialogs)',
+                    '• **🚨 REQUIRED**: Include generated_image_name (descriptive name with proper capitalization) - this field is MANDATORY',
+                    '• **🚨 REQUIRED if placeholders detected**: Include character_names array if generic "Character #" names need replacement',
+                    '• Incorporate your Phase 1 ideas into your complete output',
+                    '• Validate everything against the ORIGINAL prompts',
+                    '',
+                    '## Output Format',
+                    'Return the SAME structure as Phase 1, with COMPLETE replacement arrays plus dialogs, generated_image_name, and character_names.'
+                ]).join('\n')
+            };
+
+            // Prepare AI options for Phase 2
+            const aiOptions = {
+                model: 'grok-4-fast-reasoning',
+                timeout: 30000,
+                liveSearch: true,
+                store: true,
+                responseSchema: createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts),
+                extractKeys: ['*.reason', '*.reason_display'],
+                totalKeys: getZodSchemaKeyCount(createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts)),
+                ws: ws,
+                handler: handler,
+                requestId: `${requestId}_phase2_attempt${attempt + 1}`,
+                enableOptimize: true,
+                previous_response_id: previousResponseId, // Continue conversation
+                tools: (dynamicConfig?.fast_mode === true) ? filterToolsForFastMode(getAllToolDefinitions()) : getAllToolDefinitions(),
+                toolLoops: (dynamicConfig?.fast_mode === true) ? 4 : (dynamicConfig.tool_passes || 12),
+                buildOptions: { 
+                    ...dynamicConfig,
+                    // Inject original prompts for tool access (validateTextReplacement)
+                    basePrompt: prompt,
+                    negativePrompt: uc,
+                    characterPrompts: characterPrompts
+                }
+            };
+
+            // Call AI for Phase 2
+            console.log(`🤖 Calling AI for Phase 2 optimization (attempt ${attempt + 1}, continuation of ${previousResponseId})...`);
+
+            const aiResponse = await callDirectorAIWithStructuredOutput(
+                [{ role: 'user', content: [phase2Message] }], // Only send the Phase 2 message
+                aiOptions,
+                // Streaming callback
+                (content, fullResponse, extractedKeys) => {
+                    if (ws && handler && extractedKeys && extractedKeys.length > 0) {
+                        extractedKeys.forEach((keyInfo) => {
+                            if (keyInfo.value && typeof keyInfo.value === 'string' &&
+                                keyInfo.value !== 'object' && keyInfo.type === 'value') {
+                                handler.sendToClient(ws, {
+                                    type: 'dynamic_generation_progress_update',
+                                    phase: 'optimization_streaming',
+                                    data: { reason: keyInfo.value },
+                                    timestamp: new Date().toISOString()
+                                });
+                            }
+                        });
+                    }
+                }
+            );
+
+            // Capture response ID for potential future phases
+            const phase2ResponseId = aiResponse.responseId;
+            console.log(`✅ Phase 2 attempt ${attempt + 1} completed with response ID: ${phase2ResponseId}`);
+            
+            // Log Phase 2 usage data and add to apiCalls array (ALL calls, including failed ones)
+            // Note: Even failed calls cost money, so we track them all
+            // Handle simplified format (total, input, output, cache, reasoning) or old format (for backward compatibility)
+            if (aiResponse?.usage && requestId) {
+                const usageData = aiResponse.usage;
+                
+                // Check if already in simplified format (from grokService)
+                let totalTokens, promptTokens, completionTokens, cachedTokens, reasoningTokens;
+                if (usageData.total !== undefined) {
+                    // Simplified format
+                    totalTokens = usageData.total || 0;
+                    promptTokens = usageData.input || 0;
+                    completionTokens = usageData.output || 0;
+                    cachedTokens = usageData.cache || 0;
+                    reasoningTokens = usageData.reasoning || 0;
+                } else {
+                    // Old format - handle both naming conventions: input_tokens/output_tokens (actual API) or prompt_tokens/completion_tokens (docs)
+                    const promptDetails = usageData.prompt_tokens_details || usageData.input_tokens_details || null;
+                    const completionDetails = usageData.completion_tokens_details || usageData.output_tokens_details || null;
+                    
+                    totalTokens = usageData.total_tokens || 0;
+                    promptTokens = usageData.prompt_tokens || usageData.input_tokens || 0;
+                    completionTokens = usageData.completion_tokens || usageData.output_tokens || 0;
+                    cachedTokens = promptDetails?.cached_tokens || 0;
+                    reasoningTokens = completionDetails?.reasoning_tokens || 0;
+                }
+                
+                // Add individual API calls from AI response (each iteration/tool call is tracked separately)
+                // If aiResponse has apiCalls array, use those individual calls, otherwise create a single aggregated entry
+                if (aiResponse.apiCalls && Array.isArray(aiResponse.apiCalls) && aiResponse.apiCalls.length > 0) {
+                    // Add each individual call with phase and attempt info
+                    aiResponse.apiCalls.forEach(call => {
+                        phase2ApiCalls.push({
+                            phase: 'phase2',
+                            attempt: attempt + 1,
+                            iteration: call.iteration,
+                            callType: call.callType || 'request', // 'request' or 'tool_call'
+                            timestamp: call.timestamp || Date.now(),
+                            duration: call.duration || null, // Duration in milliseconds
+                            usage: call.usage,
+                            pricing_tier_128k: call.pricing_tier_128k,
+                            responseId: call.responseId || aiResponse.responseId || null,
+                            toolCalls: call.toolCalls || 0,
+                            tools: call.tools || [], // Array of tool information (name, reason, parameters)
+                            hasResponseId: call.hasResponseId || false,
+                            success: null // Will be set after validation
+                        });
+                    });
+                } else {
+                    // Fallback: Create single aggregated entry if apiCalls not available
+                    const callEntry = {
+                        phase: 'phase2',
+                        callType: 'ai_call',
+                        attempt: attempt + 1,
+                        timestamp: Date.now(),
+                        usage: {
+                            total: totalTokens,
+                            input: promptTokens,
+                            output: completionTokens,
+                            cache: cachedTokens,
+                            reasoning: reasoningTokens
+                        },
+                        pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
+                        responseId: aiResponse.responseId || null,
+                        success: null // Will be set after validation
+                    };
+                    phase2ApiCalls.push(callEntry);
+                }
+                
+                logger.logGeneration('PHASE_2_ATTEMPT_USAGE', {
+                    attempt: attempt + 1,
+                    total: totalTokens,
+                    input: promptTokens,
+                    output: completionTokens,
+                    cache: cachedTokens,
+                    reasoning: reasoningTokens,
+                    pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK')
+                }, requestId);
+            }
+
+            // Extract phase2Data from AI response
+            const phase2Data = aiResponse.content || aiResponse; // Handle both response formats
+
+            // Check if Phase 2 provided any text replacements
+            const hasPhase2Replacements = 
+                (phase2Data.text_replacements?.prompt && phase2Data.text_replacements.prompt.length > 0) ||
+                (phase2Data.text_replacements?.uc && phase2Data.text_replacements.uc.length > 0) ||
+                (phase2Data.text_replacements?.character_prompts && phase2Data.text_replacements.character_prompts.length > 0);
+
+            if (!hasPhase2Replacements) {
+                console.log('ℹ️ Phase 2 provided no text replacements - using Phase 1 results');
+                return {
+                    ...phase1Results,
+                    phase2Reason: phase2Data.reason || 'No updates needed',
+                    isOptimized: true, // Still considered optimized since Phase 2 confirmed Phase 1 is good
+                    phase2Usage: aiResponse?.usage || null, // Include Phase 2 usage data
+                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array
+                };
+            }
+
+            // Reset validationResults for this attempt
+            validationResults = {
+                prompt: { success: true, failedReplacements: [] },
+                uc: { success: true, failedReplacements: [] },
+                characterPrompts: []
+            };
+
+            if (phase2Data.text_replacements?.prompt && phase2Data.text_replacements.prompt.length > 0) {
+                const result = applyDynamicReplacements(prompt, phase2Data.text_replacements, 'prompt');
+                validationResults.prompt = result;
+            }
+
+            if (phase2Data.text_replacements?.uc && phase2Data.text_replacements.uc.length > 0) {
+                const result = applyDynamicReplacements(uc, phase2Data.text_replacements, 'uc');
+                validationResults.uc = result;
+            }
+
+            if (characterPrompts.length > 0 && phase2Data.text_replacements?.character_prompts) {
+                for (let i = 0; i < characterPrompts.length; i++) {
+                    const charReplacements = phase2Data.text_replacements.character_prompts[i];
+                    if (charReplacements) {
+                        const charValidation = { prompt: { success: true, failedReplacements: [] }, uc: { success: true, failedReplacements: [] } };
+
+                        if (charReplacements.prompt) {
+                            const result = applyDynamicReplacements(characterPrompts[i].prompt, charReplacements, 'character', i, 'prompt');
+                            charValidation.prompt = result;
+                        }
+
+                        if (charReplacements.uc) {
+                            const result = applyDynamicReplacements(characterPrompts[i].uc, charReplacements, 'character', i, 'uc');
+                            charValidation.uc = result;
+                        }
+
+                        validationResults.characterPrompts.push(charValidation);
+                    }
+                }
+            }
+
+            // Check if all validations passed
+            const allValid = validationResults.prompt.success &&
+                           validationResults.uc.success &&
+                           validationResults.characterPrompts.every(c => c.prompt.success && c.uc.success);
+
+            // Update success status of the last Phase 2 API call based on validation
+            if (phase2ApiCalls.length > 0) {
+                const lastCall = phase2ApiCalls[phase2ApiCalls.length - 1];
+                if (lastCall.phase === 'phase2' && lastCall.attempt === attempt + 1) {
+                    lastCall.success = allValid;
+                }
+            }
+
+            if (allValid) {
+                console.log('✅ Phase 2 validation passed - all replacements are valid');
+                
+                // Send Phase 2 completion update
+                if (ws && handler) {
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'optimization_complete',
+                        data: {
+                            phase: 2,
+                            totalPhases: 2,
+                            validationResults: validationResults
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
+
+                // Phase 2 returns COMPLETE replacement arrays, not incremental
+                // The AI has reasoned about Phase 1 replacements and delivered the entire updated set
+
+                // Auto-save insight_memory entries from Phase 2 (only on validation pass)
+                autoSaveInsightMemories(phase2Data.insight_memory, 'Phase 2');
+                
+                // Build modified character prompts with applied replacements and character names from Phase 2
+                const phase2ModifiedCharacterPrompts = characterPrompts.map((char, index) => {
+                    const charResult = validationResults.characterPrompts[index];
+                    // Use Phase 2 character names if available, otherwise fall back to Phase 1, then original
+                    const newName = phase2Data.character_names?.[index] || 
+                                   phase1Results.character_names?.[index] || 
+                                   char.name;
+                    
+                    return {
+                        ...char, // Preserve other properties like center, enabled, etc.
+                        prompt: charResult?.prompt?.result || char.prompt || '',
+                        uc: charResult?.uc?.result || char.uc || '',
+                        name: newName
+                    };
+                });
+                
+                // Log Phase 2 updates
+                if (phase2Data.generated_image_name && phase2Data.generated_image_name !== phase1Results.generated_image_name) {
+                    console.log(`🖼️ Phase 2 image name: "${phase2Data.generated_image_name}"`);
+                }
+                
+                if (phase2Data.character_names && phase2Data.character_names.length > 0) {
+                    const hasChanges = phase2Data.character_names.some((name, i) => 
+                        name && name !== phase1Results.character_names?.[i]
+                    );
+                    if (hasChanges) {
+                        console.log('✨ Phase 2 character names updated:');
+                        phase2Data.character_names.forEach((name, index) => {
+                            const oldName = phase1Results.character_names?.[index] || characterPrompts[index]?.name || 'Unknown';
+                            if (name && name !== oldName) {
+                                console.log(`   Character ${index + 1}: "${oldName}" → "${name}"`);
+                            }
+                        });
+                    }
+                }
+
+                // Return Phase 2 optimized results with COMPLETE replacements from Phase 2
+                return {
+                    success: true,
+                    prompt: phase1Results.prompt, // Carry forward original prompt for hash validation
+                    uc: phase1Results.uc, // Carry forward original UC for hash validation
+                    characterPrompts: phase1Results.characterPrompts, // Carry forward original character prompts for hash validation
+                    modifiedCharacterPrompts: phase2ModifiedCharacterPrompts, // Phase 2 modified character prompts with names
+                    text_replacements: phase2Data.text_replacements,
+                    dialogs: phase2Data.dialogs || phase1Results.dialogs, // Use Phase 2 dialogs if available, otherwise keep Phase 1
+                    generated_image_name: phase2Data.generated_image_name || phase1Results.generated_image_name || null, // Use Phase 2 if available, otherwise Phase 1
+                    character_names: phase2Data.character_names || phase1Results.character_names || null, // Use Phase 2 if available, otherwise Phase 1
+                    context: context,
+                    processed: true,
+                    previousResponseId: phase2ResponseId,
+                    initialResponseId: phase1Results.initialResponseId, // Preserve initial response ID from Phase 1
+                    request_hash: phase1Results.request_hash, // Carry forward request hash for cache validation
+                    prompt_hash: phase1Results.prompt_hash, // Carry forward prompt hash for cache validation
+                    directive_hash: phase1Results.directive_hash, // Carry forward directive hash for cache validation
+                    timestamp: phase1Results.timestamp, // Carry forward timestamp
+                    generation_chain: generationChainNumber, // Current generation in chain
+                    phase1Results: phase1Results, // Store Phase 1 for reference
+                    phase2Results: phase2Data, // Store Phase 2 for reference
+                    validationResults: validationResults,
+                    errors: phase2Data.errors || phase1Results.errors || [], // Use Phase 2 errors if available, otherwise keep Phase 1
+                    warnings: phase2Data.warnings || phase1Results.warnings || [], // Use Phase 2 warnings if available, otherwise keep Phase 1
+                    isOptimized: true,
+                    phase2Usage: aiResponse?.usage || null, // Include Phase 2 usage data
+                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array
+                };
+            } else {
+                // Validation failed - retry if we have attempts left
+                console.warn(`⚠️ Phase 2 validation failed on attempt ${attempt + 1}/${maxAttempts}`);
+                
+                if (attempt < maxAttempts - 1) {
+                    // Update previousResponseId for retry (continue the chain)
+                    previousResponseId = phase2ResponseId;
+                    
+                    // Log specific failures
+                    if (!validationResults.prompt.success) {
+                        console.log(`   ❌ Prompt failures: ${validationResults.prompt.failedReplacements.join(', ')}`);
+                    }
+                    if (!validationResults.uc.success) {
+                        console.log(`   ❌ UC failures: ${validationResults.uc.failedReplacements.join(', ')}`);
+                    }
+                    
+                    // Continue to next attempt
+                    continue;
+                } else {
+                    // Max retries reached - return Phase 1 results
+                    console.error('❌ Phase 2 validation failed after max retries, returning Phase 1 results');
+                    return {
+                        ...phase1Results,
+                        phase2Error: 'Validation failed after retries',
+                        phase2ValidationResults: validationResults,
+                        isOptimized: false,
+                        apiCalls: phase2ApiCalls // Include Phase 2 API calls array (even on failure)
+                    };
+                }
+            }
+
+        } catch (attemptError) {
+            console.error(`❌ Phase 2 attempt ${attempt + 1} error:`, attemptError);
+            
+            if (attempt < maxAttempts - 1) {
+                console.log(`⚠️ Retrying Phase 2 (attempt ${attempt + 2}/${maxAttempts})...`);
+                // Continue to next attempt
+                continue;
+            } else {
+                // Return Phase 1 results as fallback
+                console.log('⚠️ Phase 2 failed after max attempts, returning Phase 1 results as fallback');
+                return {
+                    ...phase1Results,
+                    phase2Error: attemptError.message,
+                    isOptimized: false,
+                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array (even on failure)
+                };
+            }
+        }
+    }
+    
+    // Should never reach here, but return Phase 1 as ultimate fallback
+    console.error('❌ Phase 2 loop exited unexpectedly, returning Phase 1 results');
+    return {
+        ...phase1Results,
+        phase2Error: 'Unexpected loop exit',
+        isOptimized: false,
+        apiCalls: phase1Results.apiCalls || [] // Ensure apiCalls is included
+    };
+}
+
+// ============================================================================
+// Optimization Tool Handlers
+// ============================================================================
+
+/**
  * Resolve dynamic generation context without AI processing
  * Returns the actual values that would be used for generation
  * Uses compileContext to avoid duplicating resolution logic
  */
 async function resolveDynamicContext(dynamicConfig, clientIP = null) {
     try {
-        console.log('🔍 Resolving dynamic context:', dynamicConfig);
-
-        // Use compileContext to do all the heavy lifting - it already handles
-        // location resolution, time/date parsing, weather fetching, etc.
         const context = await compileContext(dynamicConfig, clientIP);
-
-        // Format the resolved context for carousel display
         const result = formatContextForCarousel(context);
-
-        console.log('✅ Dynamic context resolved:', result);
         return result;
-
     } catch (error) {
         console.error('❌ Error resolving dynamic context:', error);
         throw error;
@@ -11740,7 +15565,7 @@ function formatContextForCarousel(context) {
         } : null,
         date: dateItem,
         timeOfDay: context.timePeriod ? {
-            name: context.timePeriod.periodKey || null,
+            name: normalizePeriodKey(context.timePeriod.periodKey) || null,
             description: context.timePeriod.period || null
         } : null,
         weather: context.weather ? {
@@ -11748,8 +15573,8 @@ function formatContextForCarousel(context) {
             feelsLike: context.weather.feelsLike,
             condition: context.weather.condition
         } : null,
-        season: context.season || null,
-        holiday: context.holidayInfo?.name || null,
+        season: typeof context.season === 'string' ? context.season : context.season?.season || null,
+        holidayInfo: context.season?.holidayInfo || null,
         creative: context.creative || false,
         location: context.location ? {
             latitude: context.location.latitude,
@@ -11762,14 +15587,17 @@ function formatContextForCarousel(context) {
 }
 
 module.exports = {
+    generateDynamicTaskList,
     processDynamicGenerationCore,
     applyDynamicReplacements,
     cleanupPromptSyntax,
     generateRequestHash,
     generatePromptHash,
+    generateDirectiveHash,
     expandShorthandTags,
     getTimezoneByCoordinates,
     resolveDynamicContext,
     compileContext,
-    formatContextForCarousel
+    formatContextForCarousel,
+    createCounterManager
 };
