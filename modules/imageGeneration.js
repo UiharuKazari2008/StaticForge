@@ -10,7 +10,35 @@ const { z } = require('zod');
 const { loadPromptConfig, applyTextReplacements } = require('./textReplacements');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const { callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
-const t5TokenizerService = require('./t5-tokenizer-service');
+const globalResources = require('./globalResources');
+const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore } = require('./dynamicGenerationHandlers');
+const logger = require('./logger');
+
+/**
+ * Normalizes legacy period keys to new period key names
+ * @param {string} periodKey - The period key to normalize
+ * @returns {string} - Normalized period key
+ */
+function normalizePeriodKey(periodKey) {
+    if (!periodKey || typeof periodKey !== 'string') {
+        return periodKey;
+    }
+    
+    const normalized = periodKey.toLowerCase().trim();
+    
+    // Legacy to new mappings
+    const legacyMappings = {
+        'earlymorning': 'morning',
+        'early_morning': 'morning',
+        'earlyevening': 'night',
+        'early_evening': 'night',
+        'evening': 'night',
+        'lateevening': 'night',
+        'late_evening': 'night'
+    };
+    
+    return legacyMappings[normalized] || normalized;
+}
 
 /**
  * Calculate stage hex IDs from stage data array
@@ -77,16 +105,13 @@ function getCurrentPeriodKey() {
     // This is a rough approximation - could be enhanced with location-based sunrise/sunset
     if (currentHour >= 5 && currentHour < 6) return 'dawn';
     if (currentHour >= 6 && currentHour < 7) return 'sunrise';
-    if (currentHour >= 7 && currentHour < 9) return 'earlymorning';
-    if (currentHour >= 9 && currentHour < 11) return 'morning';
+    if (currentHour >= 7 && currentHour < 11) return 'morning';  // Merged earlymorning into morning
     if (currentHour >= 11 && currentHour < 12) return 'latemorning';
     if (currentHour >= 12 && currentHour < 16) return 'afternoon';
     if (currentHour >= 16 && currentHour < 18) return 'goldenhour';
     if (currentHour >= 18 && currentHour < 19) return 'sunset';
     if (currentHour >= 19 && currentHour < 20) return 'dusk';
-    if (currentHour >= 20 && currentHour < 21) return 'earlyevening';
-    if (currentHour >= 21 && currentHour < 23) return 'evening';
-    if (currentHour >= 23 || currentHour < 2) return 'lateevening';
+    if (currentHour >= 20 || currentHour < 2) return 'night';  // Merged earlyevening, evening, lateevening into night
     // Late night/early morning before dawn
     return 'midnight';
 }
@@ -107,12 +132,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
     let processedPrompt = prompt;
     let processedNegativePrompt = negativePrompt;
     let processedCharacterPrompts = characterPrompts ? [...characterPrompts] : [];
-
-    // Helper function to apply bias to text (e.g., "1.5::nsfw")
-    function applyBias(text, bias = 1.0) {
-        if (!text || bias === 1.0) return text;
-        return `${bias.toFixed(1)}::${text}`;
-    }
+    
+    // Track what modifications were made
+    const modifications = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
 
     // Helper function to add text to end of prompt (before ", Text:" if it exists)
     function addToPrompt(text, addition) {
@@ -225,22 +247,30 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
         // Apply additions
         if (nsfwPreset.add) {
             if (nsfwPreset.add.base) {
-                processedPrompt = addToPrompt(processedPrompt, applyBias(nsfwPreset.add.base, nsfwBias));
+                const addedText = applyBiasToText(nsfwPreset.add.base, nsfwBias);
+                processedPrompt = addToPrompt(processedPrompt, addedText);
+                modifications.prompt.push(addedText);
             }
             if (nsfwPreset.add.uc) {
-                processedNegativePrompt = addToPrompt(processedNegativePrompt, applyBias(nsfwPreset.add.uc, nsfwBias));
+                const addedText = applyBiasToText(nsfwPreset.add.uc, nsfwBias);
+                processedNegativePrompt = addToPrompt(processedNegativePrompt, addedText);
+                modifications.uc.push(addedText);
             }
             if (nsfwPreset.add.chara_base) {
+                const addedText = applyBiasToText(nsfwPreset.add.chara_base, nsfwBias);
                 processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                     ...char,
-                    prompt: addToPrompt(char.prompt, applyBias(nsfwPreset.add.chara_base, nsfwBias))
+                    prompt: addToPrompt(char.prompt, addedText)
                 }));
+                modifications.character_prompts.push(addedText);
             }
             if (nsfwPreset.add.chara_uc) {
+                const addedText = applyBiasToText(nsfwPreset.add.chara_uc, nsfwBias);
                 processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                     ...char,
-                    uc: addToPrompt(char.uc, applyBias(nsfwPreset.add.chara_uc, nsfwBias))
+                    uc: addToPrompt(char.uc, addedText)
                 }));
+                modifications.character_uc.push(addedText);
             }
         }
     } else {
@@ -258,7 +288,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                     uc: removeFromText(char.uc, ['nsfw'])
                 }));
                 // STEP 2: Then add to base prompt
-                processedPrompt = addToPrompt(processedPrompt, applyBias('nsfw', nsfwBias));
+                const addedText1 = applyBiasToText('nsfw', nsfwBias);
+                processedPrompt = addToPrompt(processedPrompt, addedText1);
+                modifications.prompt.push(addedText1);
                 break;
 
             case -1: // Remove: remove from all prompts and UCs first, then add nsfw to the base UC
@@ -271,7 +303,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                     uc: removeFromText(char.uc, ['nsfw'])
                 }));
                 // STEP 2: Then add to base UC
-                processedNegativePrompt = addToPrompt(processedNegativePrompt, applyBias('nsfw', nsfwBias));
+                const addedTextUc1 = applyBiasToText('nsfw', nsfwBias);
+                processedNegativePrompt = addToPrompt(processedNegativePrompt, addedTextUc1);
+                modifications.uc.push(addedTextUc1);
                 break;
 
             case 3: // Nude: remove from all first, then add values to base prompt
@@ -284,7 +318,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                     uc: removeFromText(char.uc, ['nsfw'])
                 }));
                 // STEP 2: Then add to base prompt
-                processedPrompt = addToPrompt(processedPrompt, applyBias('nsfw', nsfwBias));
+                const addedText3 = applyBiasToText('nsfw', nsfwBias);
+                processedPrompt = addToPrompt(processedPrompt, addedText3);
+                modifications.prompt.push(addedText3);
                 break;
 
             case 2: // Skimpy: remove from all first, then add values to base prompt
@@ -297,7 +333,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                     uc: removeFromText(char.uc, ['nsfw'])
                 }));
                 // STEP 2: Then add to base prompt
-                processedPrompt = addToPrompt(processedPrompt, applyBias('nsfw', nsfwBias));
+                const addedText2 = applyBiasToText('nsfw', nsfwBias);
+                processedPrompt = addToPrompt(processedPrompt, addedText2);
+                modifications.prompt.push(addedText2);
                 break;
 
             case -2: // Clense: remove from all first, then add values to base prompt
@@ -310,7 +348,9 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                     uc: removeFromText(char.uc, ['nsfw'])
                 }));
                 // STEP 2: Then add to base prompt
-                processedPrompt = addToPrompt(processedPrompt, applyBias('nsfw', nsfwBias));
+                const addedTextN2 = applyBiasToText('nsfw', nsfwBias);
+                processedPrompt = addToPrompt(processedPrompt, addedTextN2);
+                modifications.prompt.push(addedTextN2);
                 break;
 
             default:
@@ -326,7 +366,7 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
         }
     }
 
-    return { processedPrompt, processedNegativePrompt, processedCharacterPrompts };
+    return { processedPrompt, processedNegativePrompt, processedCharacterPrompts, modifications };
 }
 
 /**
@@ -340,42 +380,52 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
-    // Preprocessing: Ensure input has proper terminator if it doesn't end with "::" not preceded by a number
-    if (!input.match(/\d::$/)) {
-        input = input + '::';
+    // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
+    const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
+    
+    // Check if input contains any bias groups
+    const hasBiasGroups = /(-?\d+\.?\d*)::/g.test(input);
+
+    if (isCompleteGroup) {
+        // Input is already wrapped - add or subtract based on bias value
+        let result = input.replace(/(-?\d+\.?\d*)::/g, (match, biasValue) => {
+            const currentBias = parseFloat(biasValue);
+            let newBias;
+            
+            if (bias >= 1.0) {
+                // Increase emphasis - add the bias value
+                newBias = currentBias + bias;
+            } else {
+                // Decrease emphasis
+                const difference = 1.0 - bias;
+                if (currentBias < 0) {
+                    // For negative emphasis, add to make less negative
+                    newBias = currentBias + difference;
+                } else {
+                    // For positive emphasis, subtract to reduce
+                    newBias = currentBias - difference;
+                }
+            }
+            
+            const rounded = Math.round(newBias * 10) / 10; // Round to 1 decimal place
+            return `${rounded.toFixed(1)}::`;
+        });
+        return result;
+    } else if (hasBiasGroups) {
+        // Input has bias groups but not wrapped - add/subtract adjustment and wrap
+        const biasAdjustment = bias - 1.0;
+        let result = input.replace(/(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::).)*?)::(?=(?:[^:]|$))/g, (match, innerBias, content) => {
+            const innerBiasValue = parseFloat(innerBias);
+            const newInnerBias = innerBiasValue + biasAdjustment;
+            const rounded = Math.round(newInnerBias * 10) / 10;
+            
+            return `${rounded.toFixed(1)}::${content}, ${bias}::`;
+        });
+        return `${bias}::${result}::`;
+    } else {
+        // No bias groups - wrap the entire input
+        return `${bias}::${input}::`;
     }
-
-    // Calculate the bias adjustment (difference from 1.0)
-    const biasAdjustment = bias - 1.0;
-
-    // First, scan for numeric emphasis patterns in the input and adjust them
-    // Handle both single : and double :: terminators
-    // Content stops at commas, spaces, or other punctuation to avoid matching across multiple emphasis blocks
-    let result = input.replace(/(-?\d*\.?\d+)::([^\s:,;]+)(:*)/g, (match, innerBias, content, terminator) => {
-        const innerBiasValue = parseFloat(innerBias);
-        let newInnerBias;
-
-        // For negative inner biases, make them more negative (subtract the adjustment)
-        // For positive inner biases, add the adjustment
-        if (innerBiasValue < 0) {
-            newInnerBias = innerBiasValue - Math.abs(biasAdjustment);
-        } else {
-            newInnerBias = innerBiasValue + biasAdjustment;
-        }
-
-        newInnerBias = Math.round(newInnerBias * 10) / 10; // Round to 1 decimal place
-        // Only add terminator if the original had one
-        const terminatorPart = terminator ? ` ${bias}::` : '';
-        return `${newInnerBias}::${content}${terminatorPart}`;
-    });
-
-    // Clean up malformed emphasis patterns (number:: with no content)
-    result = result.replace(/\d+(?:\.\d+)?::(?:\s|$)/g, '');
-
-    // Wrap the entire result with the main bias
-    // If result already ends with "::", don't add another "::" to avoid double termination
-    const trailingTerminator = result.endsWith('::') ? '' : '::';
-    return `${bias}::${result}${trailingTerminator}`;
 }
 
 const {
@@ -1188,11 +1238,13 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
 
     // Log what was removed if anything was cleaned
     if (removedPhrases.length > 0) {
-        console.log(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s) that appeared in prompt:`);
-        removedPhrases.forEach(phrase => {
-            const coreText = stripEmphasisSyntax(phrase);
-            console.log(`   - "${phrase}" (core: "${coreText}")`);
-        });
+        logger.detailed(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s)`);
+        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+            removedPhrases.forEach(phrase => {
+                const coreText = stripEmphasisSyntax(phrase);
+                console.log(`   - "${phrase}" (core: "${coreText}")`);
+            });
+        }
     }
 
     // Join the cleaned phrases back together
@@ -1236,16 +1288,20 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
     
     try {
         // Get periodKey from dynamic generation context if available, otherwise current time
-        const periodKey = body.dynamic_generation?.compiled_prompt?.context?.time?.periodKey || getCurrentPeriodKey();
+        let periodKey = body.dynamic_generation?.compiled_prompt?.context?.time?.periodKey || getCurrentPeriodKey();
+        // Normalize legacy period keys (periodKey is already normalized from determineTimePeriod, but normalize here for safety)
+        if (periodKey) {
+            periodKey = normalizePeriodKey(periodKey);
+        }
 
         // Handle locked text replacements if provided
         let lockedReplacements = null;
         if (body.text_replacements_seed && Array.isArray(body.text_replacements_seed)) {
             lockedReplacements = body.text_replacements_seed;
-            console.log(`🔒 Using ${lockedReplacements.length} locked text replacements`);
+            logger.detailed(`🔒 Using ${lockedReplacements.length} locked text replacements`);
         } else if (preset?.text_replacements_seed && Array.isArray(preset.text_replacements_seed)) {
             lockedReplacements = preset.text_replacements_seed;
-            console.log(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
+            logger.detailed(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
         }
 
         // Create stageData for request body replacements (stub for stage 0 - base generation)
@@ -1259,8 +1315,42 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         let processedPromptResult = applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
         let processedNegativePromptResult = applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
 
+        // Initialize processed prompts and character prompts
         let processedPrompt = processedPromptResult.text;
         let processedNegativePrompt = processedNegativePromptResult.text;
+        let processedCharacterPrompts = body.allCharacterPrompts || preset?.allCharacterPrompts || undefined;
+
+        // Define marker for dynamic append-to-end operations (inserted before presets)
+        const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
+        
+        // Add marker to prompt before "Text:" if it exists, otherwise at the end of the prompt
+        if (processedPrompt.includes('Text:')) {
+            const textIndex = processedPrompt.indexOf('Text:');
+            const beforeText = processedPrompt.substring(0, textIndex).trim();
+            const afterText = processedPrompt.substring(textIndex);
+            processedPrompt = beforeText + (beforeText ? ', ' : '') + APPEND_MARKER + ', ' + afterText;
+        } else {
+            // Add to end of first group (before "|" if it exists)
+            const groups = processedPrompt.split('|').map(group => group.trim());
+            if (groups.length > 0) {
+                groups[0] = groups[0] + (groups[0] ? ', ' : '') + APPEND_MARKER;
+                processedPrompt = groups.join(' | ');
+            } else {
+                processedPrompt = processedPrompt + (processedPrompt ? ', ' : '') + APPEND_MARKER;
+            }
+        }
+        
+        // Add marker to UC at the end
+        processedNegativePrompt = processedNegativePrompt + (processedNegativePrompt ? ', ' : '') + APPEND_MARKER;
+        
+        // Add marker to character prompts at the end
+        if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+            processedCharacterPrompts = processedCharacterPrompts.map(char => ({
+                ...char,
+                prompt: (char.prompt || '') + (char.prompt ? ', ' : '') + APPEND_MARKER,
+                uc: (char.uc || '') + (char.uc ? ', ' : '') + APPEND_MARKER
+            }));
+        }
 
         // Process NSFW removal from negative prompt
         if (processedNegativePrompt && processedNegativePrompt.startsWith("nsfw")) {
@@ -1286,7 +1376,6 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         }
 
         // Process character prompts with text replacements
-        let processedCharacterPrompts = body.allCharacterPrompts || preset?.allCharacterPrompts || undefined;
         let characterTextReplacementSeeds = [];
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map((char, charIndex) => {
@@ -1315,14 +1404,29 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
         }
 
+        // Expand any shorthand tag sections to full keywords (always run for consistency)
+        processedPrompt = expandShorthandTags(processedPrompt);
+        processedNegativePrompt = expandShorthandTags(processedNegativePrompt);
 
+        if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+            processedCharacterPrompts = processedCharacterPrompts.map(char => ({
+                ...char,
+                prompt: expandShorthandTags(char.prompt || ''),
+                uc: expandShorthandTags(char.uc || '')
+            }));
+        }
+
+        // Apply Preset Controls
+        //
+        // Track preset controls applied - will be passed to dynamic generation
+        const appliedPresetControls = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
+        
         // Process vibe append text injection for each vibe transfer (moved before baseOptions assignment)
         if (body.vibe_transfer && Array.isArray(body.vibe_transfer) && body.vibe_transfer.length > 0) {
             for (const vibeTransfer of body.vibe_transfer) {
                 try {
                     // Skip text injection if disabled for this vibe
                     if (vibeTransfer.inject_text === false) {
-                        console.log(`🎨 Skipping text injection for vibe ${vibeTransfer.id} (disabled)`);
                         continue;
                     }
 
@@ -1353,6 +1457,12 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                     console.log(`🎨 Appended vibe prompt text for ${vibeTransfer.id}`);
                                 }
                             }
+                            
+                            // Track this modification
+                            appliedPresetControls.prompt.push({
+                                action: 'vibe_text_injection',
+                                text: vibePromptText
+                            });
                         }
 
                         // Inject UC text if available
@@ -1367,11 +1477,279 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                 processedNegativePrompt = processedNegativePrompt + ', ' + vibeUcText;
                                 console.log(`🚫 Appended vibe UC text for ${vibeTransfer.id}`);
                             }
+                            
+                            // Track this modification
+                            appliedPresetControls.uc.push({
+                                action: 'vibe_text_injection',
+                                text: vibeUcText
+                            });
                         }
                     }
                 } catch (error) {
                     console.warn(`⚠️ Failed to process vibe text injection for ${vibeTransfer.id}:`, error.message);
                 }
+            }
+        }
+        
+        // Process NSFW settings from dataset_config
+        const nsfwValue = body.dataset_config?.nsfw;
+        const nsfwBias = body.dataset_config?.nsfw_bias || 1.0;
+
+        if (nsfwValue !== undefined && nsfwValue !== 0) {
+            let nsfwModifications = { prompt: [], uc: [], character_prompts: [], character_uc: [] };
+            ({ processedPrompt, processedNegativePrompt, processedCharacterPrompts, modifications: nsfwModifications } = applyNsfwProcessing(
+                processedPrompt,
+                processedNegativePrompt,
+                processedCharacterPrompts,
+                nsfwValue,
+                nsfwBias,
+                currentPromptConfig
+            ));
+            
+            // Track this modification with what was actually added/removed
+            if (nsfwModifications.prompt.length > 0) {
+                appliedPresetControls.prompt.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwModifications.prompt.join(', ')
+                });
+            }
+            if (nsfwModifications.uc.length > 0) {
+                appliedPresetControls.uc.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwModifications.uc.join(', ')
+                });
+            }
+            if (nsfwModifications.character_prompts.length > 0) {
+                appliedPresetControls.character_prompts.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwModifications.character_prompts.join(', ')
+                });
+            }
+            if (nsfwModifications.character_uc.length > 0) {
+                appliedPresetControls.character_uc.push({
+                    action: 'nsfw_processing',
+                    bias: nsfwBias,
+                    text: nsfwModifications.character_uc.join(', ')
+                });
+            }
+        }
+
+        // Handle dataset processing - datasets are prepended, preset-type datasets are appended (exclude for V3 models)
+        const isV3Model = body.model === 'v3' || body.model === 'v3_furry';
+        if (!isV3Model && body.dataset_config && body.dataset_config.include && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0) {
+            // Build dataset mappings and config lookup dynamically from config
+            const datasetMappings = {};
+            const datasetConfigLookup = {};
+            if (currentPromptConfig.datasets) {
+                currentPromptConfig.datasets.forEach(dataset => {
+                    datasetMappings[dataset.value] = `${dataset.value}`;
+                    datasetConfigLookup[dataset.value] = dataset;
+                });
+            }
+            
+            const datasetPrepends = [];
+            const datasetAppends = [];
+            
+            body.dataset_config.include.forEach(dataset => {
+                if (datasetMappings[dataset]) {
+                    let datasetText = datasetMappings[dataset];
+                    const datasetConfig = datasetConfigLookup[dataset];
+                    
+                    // Determine if this is a preset-type dataset or regular dataset
+                    const isPresetType = datasetConfig?.type === 'preset';
+                    
+                    // Get bias value and apply negative if configured
+                    let biasValue = body.dataset_config.bias && body.dataset_config.bias[dataset] !== undefined ? 
+                        body.dataset_config.bias[dataset] : 
+                        (datasetConfig?.default !== undefined ? datasetConfig.default : 1.0);
+                    
+                    // Apply negative multiplier if configured
+                    if (datasetConfig?.negative === true) {
+                        biasValue = -1.0 * biasValue;
+                    }
+                    
+                    // Use applyBiasToText for bias application
+                    if (biasValue !== 1.0) {
+                        datasetText = applyBiasToText(datasetText, biasValue);
+                    }
+                    
+                    // Add to appropriate array based on type
+                    if (isPresetType) {
+                        datasetAppends.push(datasetText);
+                    } else {
+                        datasetPrepends.push(datasetText);
+                    }
+                    
+                    // Add sub-toggle values for the dataset if enabled (follow parent's rule)
+                    if (body.dataset_config.settings && body.dataset_config.settings[dataset]) {
+                        const datasetSettings = body.dataset_config.settings[dataset];
+                        
+                        // Get sub_toggles config for this dataset
+                        const subTogglesConfig = datasetConfig?.sub_toggles || [];
+                        const subToggleConfigLookup = {};
+                        subTogglesConfig.forEach(st => {
+                            subToggleConfigLookup[st.id] = st;
+                        });
+                        
+                        Object.keys(datasetSettings).forEach(settingId => {
+                            const setting = datasetSettings[settingId];
+                            if (setting.enabled && setting.value) {
+                                const subToggleConfig = subToggleConfigLookup[settingId];
+                                
+                                // Get bias value and apply negative if configured
+                                let settingBiasValue = setting.bias !== undefined ? setting.bias : 
+                                    (subToggleConfig?.default !== undefined ? subToggleConfig.default : 1.0);
+                                
+                                // Apply negative multiplier if configured
+                                if (subToggleConfig?.negative === true) {
+                                    settingBiasValue = -1.0 * settingBiasValue;
+                                }
+                                
+                                // Use applyBiasToText for bias application
+                                let settingText = setting.value;
+                                if (settingBiasValue !== 1.0) {
+                                    settingText = applyBiasToText(settingText, settingBiasValue);
+                                }
+                                
+                                // Sub-toggles follow the same rule as their parent
+                                if (isPresetType) {
+                                    datasetAppends.push(settingText);
+                                } else {
+                                    datasetPrepends.push(settingText);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+            
+            // Apply dataset prepends at the beginning
+            if (datasetPrepends.length > 0) {
+                const datasetString = datasetPrepends.join(', ');
+                processedPrompt = datasetString + ', ' + processedPrompt;
+                console.log(`🗂️ Applied dataset prepends: ${datasetString}`);
+                
+                // Track this modification
+                appliedPresetControls.prompt.push({
+                    action: 'dataset_prepend',
+                    text: datasetString
+                });
+            }
+            
+            // Apply dataset preset appends (before "Text:" if it exists, otherwise at the end)
+            if (datasetAppends.length > 0) {
+                const datasetAppendString = datasetAppends.join(', ');
+                
+                // Check if prompt contains "Text:" and handle accordingly
+                if (processedPrompt.includes('Text:')) {
+                    // Find the first instance of "Text:" and insert before it
+                    const textIndex = processedPrompt.indexOf('Text:');
+                    const beforeText = processedPrompt.substring(0, textIndex).trim();
+                    const afterText = processedPrompt.substring(textIndex);
+
+                    if (beforeText) {
+                        // If there's content before "Text:", add dataset appends with ", " separator
+                        processedPrompt = beforeText + ', ' + datasetAppendString + ', ' + afterText;
+                    } else {
+                        // If "Text:" is at the beginning, just add dataset appends before it
+                        processedPrompt = datasetAppendString + ', ' + afterText;
+                    }
+                } else {
+                    // Original logic for prompts without "Text:"
+                    // Split prompt by "|", add to end of first group, then rejoin with " | "
+                    const groups = processedPrompt.split('|').map(group => group.trim());
+                    if (groups.length > 0) {
+                        groups[0] = groups[0] + ', ' + datasetAppendString;
+                        processedPrompt = groups.join(' | ');
+                    } else {
+                        processedPrompt = processedPrompt + ', ' + datasetAppendString;
+                    }
+                }
+                
+                logger.detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
+                
+                // Track this modification
+                appliedPresetControls.prompt.push({
+                    action: 'dataset_preset_append',
+                    text: datasetAppendString
+                });
+            }
+        }
+
+        // Handle enhanced preset selections
+        let selectedQualityId = null;
+        let selectedUcId = null;
+
+        // Handle append_quality with enhanced preset selection
+        if (body.append_quality && currentPromptConfig.quality_presets) {
+            const modelKey = body.model.toLowerCase();
+            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
+            const selectedQuality = selectPresetItem(currentPromptConfig.quality_presets, modelKey, combinedPrompt, body.append_quality_id);
+
+            if (selectedQuality) {
+                // Apply bias wrapper if quality_preset_bias is set and not 1.0
+                let qualityText = selectedQuality.value;
+                if (body.quality_preset_bias !== undefined && body.quality_preset_bias !== 1.0) {
+                    qualityText = applyBiasToText(qualityText, body.quality_preset_bias);
+                }
+
+                // Check if prompt contains "Text:" and handle accordingly
+                if (processedPrompt.includes('Text:')) {
+                    // Find the first instance of "Text:" and insert quality before it
+                    const textIndex = processedPrompt.indexOf('Text:');
+                    const beforeText = processedPrompt.substring(0, textIndex).trim();
+                    const afterText = processedPrompt.substring(textIndex);
+
+                    if (beforeText) {
+                        // If there's content before "Text:", add quality with ", " separator
+                        processedPrompt = beforeText + ', ' + qualityText + ', ' + afterText;
+                    } else {
+                        // If "Text:" is at the beginning, just add quality before it
+                        processedPrompt = qualityText + ', ' + afterText;
+                    }
+                } else {
+                    // Original logic for prompts without "Text:"
+                    // Split prompt by "|", add quality to end of first group, then rejoin with " | "
+                    const groups = processedPrompt.split('|').map(group => group.trim());
+                    if (groups.length > 0) {
+                        groups[0] = groups[0] + ', ' + qualityText;
+                        processedPrompt = groups.join(' | ');
+                    } else {
+                        processedPrompt = processedPrompt + ', ' + qualityText;
+                    }
+                }
+                selectedQualityId = selectedQuality.id;
+                logger.detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
+                
+                // Track this modification
+                appliedPresetControls.prompt.push({
+                    action: 'quality_preset',
+                    bias: body.quality_preset_bias !== undefined ? body.quality_preset_bias : 1.0,
+                    text: qualityText
+                });
+            }
+        }
+        
+        // Handle append_uc with enhanced preset selection
+        if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
+            const modelKey = body.model.toLowerCase();
+            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
+            const selectedUc = selectPresetItem(currentPromptConfig.uc_presets, modelKey, combinedPrompt, body.append_uc_id || body.append_uc);
+            
+            if (selectedUc) {
+                // Add UC preset to the start of the UC and separate the original UC with ", "
+                processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
+                selectedUcId = selectedUc.id;
+                logger.detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
+                
+                // Track this modification
+                appliedPresetControls.uc.push({
+                    action: 'uc_preset',
+                    text: selectedUc.value
+                });
             }
         }
         
@@ -1427,9 +1805,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Log when applying overlay
                 const pipelineDisabledNote = pipelinesDisabled && (isAllStages || hasBaseStage00) ? ' (pipelines disabled, applying always)' : '';
                 if (isAllStages) {
-                    console.log(`📝 Applying text overlay "${text}" to stage ${currentStageHexId} (targets: All Stages)${pipelineDisabledNote}`);
+                    logger.detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (All Stages)${pipelineDisabledNote}`);
                 } else if (overlayStages.length > 0) {
-                    console.log(`📝 Applying text overlay "${text}" to stage ${currentStageHexId} (targets: ${overlayStages.join(', ')})${pipelineDisabledNote}`);
+                    logger.detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (${overlayStages.join(', ')})${pipelineDisabledNote}`);
                 }
                 if (!text.trim()) {
                     if (body.dynamic_generation !== undefined) {
@@ -1445,19 +1823,42 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 const tags = textTags[type]?.tags || 'english text, speech bubble';
                 const targetIndex = overlay.target || 0;
                 
+                // Calculate emphasis for tags based on text length
+                // Range: 1.5 (short text) to 5.5 (long text)
+                // More text = higher emphasis to prevent tags from being overshadowed
+                const textLength = text.length;
+                let tagEmphasis;
+                
+                if (textLength <= 10) {
+                    // Very short text: minimum emphasis
+                    tagEmphasis = 1.5;
+                } else if (textLength >= 200) {
+                    // Very long text: maximum emphasis
+                    tagEmphasis = 5.5;
+                } else {
+                    // Scale linearly between 1.5 and 5.5 based on text length
+                    // Formula: 1.5 + ((length - 10) / (200 - 10)) * (5.5 - 1.5)
+                    tagEmphasis = 1.5 + ((textLength - 10) / 190) * 4.0;
+                    // Round to 1 decimal place
+                    tagEmphasis = Math.round(tagEmphasis * 10) / 10;
+                }
+                
+                // Apply emphasis to tags using applyBiasToText to properly handle inner emphasis groups
+                const emphasizedTags = applyBiasToText(tags, tagEmphasis);
+                
                 // Build the text append string
-                const textAppend = `, ${tags}, Text: ${text}`;
-                console.log(`📝 Text overlay append string: "${textAppend}"`);
+                const textAppend = `, ${emphasizedTags}, Text: ${text}`;
+                logger.verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 
                 // Determine which prompt to append to
                 if (targetIndex === 0) {
                     // Apply to base prompt
                     if (processedPrompt) {
                         // Remove "no text" from prompt (case-insensitive)
-                        processedPrompt = processedPrompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
+                        //processedPrompt = processedPrompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
                         // Append text overlay at the very end
                         processedPrompt += textAppend;
-                        console.log(`📝 Applied text overlay to base prompt: "${text}" (type: ${type})`);
+                        logger.detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
                     }
                 } else {
                     // Apply to character prompt (targetIndex - 1 gives array index)
@@ -1466,7 +1867,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         const char = processedCharacterPrompts[charIndex];
                         if (char.prompt) {
                             // Remove "no text" from character prompt
-                            char.prompt = char.prompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
+                            //char.prompt = char.prompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
                             // Append text overlay at the very end
                             char.prompt += textAppend;
                             console.log(`📝 Applied text overlay to character ${targetIndex} prompt: "${text}" (type: ${type})`);
@@ -1493,34 +1894,16 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 body.dynamic_generation.use_cache_responses = preset.use_cache_responses_preset;
             }
         }
-
-        // Expand any shorthand tag sections to full keywords (always run for consistency)
-        const { expandShorthandTags, cleanupPromptSyntax } = require('./dynamicGenerationHandlers');
-
-        processedPrompt = expandShorthandTags(processedPrompt);
-        processedNegativePrompt = expandShorthandTags(processedNegativePrompt);
-
-        if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
-            processedCharacterPrompts = processedCharacterPrompts.map(char => ({
-                ...char,
-                input: expandShorthandTags(char.input || ''),
-                uc: expandShorthandTags(char.uc || '')
-            }));
-        }
         
         if (dynamic_generation) {
-            const { applyDynamicReplacements } = require('./dynamicGenerationHandlers');
-
             // Generate consistent prompt hash using utility function
-            const { generatePromptHash } = require('./dynamicGenerationHandlers');
             const currentPromptHash = generatePromptHash(
                 rawPrompt,
                 rawNegativePrompt,
                 body.allCharacterPrompts || preset?.allCharacterPrompts || []
             );
 
-            // Generate consistent request hash using utility function
-            const { generateRequestHash } = require('./dynamicGenerationHandlers');
+            // Generate consistent request hash using utility function (context only - no directive)
             const requestConfigForHash = body.dynamic_generation ? {
                 tod: body.dynamic_generation.tod,
                 weather: body.dynamic_generation.weather,
@@ -1530,25 +1913,44 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 location: body.dynamic_generation.location,
                 optimize: body.dynamic_generation.optimize,
                 creative: body.dynamic_generation.creative,
-                directive: body.dynamic_generation.directive,
                 clothing: body.dynamic_generation.clothing,
                 observeHoliday: body.dynamic_generation.observeHoliday
             } : null;
 
             const currentRequestHash = requestConfigForHash ? generateRequestHash(requestConfigForHash) : null;
+            const currentDirectiveHash = body.dynamic_generation?.directive ? generateDirectiveHash(body.dynamic_generation.directive) : null;
 
             // Check if this is a stage with inherited compiled prompt - pass through normal flow
             if (body.stageIndex !== undefined && dynamic_generation?.compiled_prompt) {
-                body.dynamic_generation.locked = true;
+                body.dynamic_generation.context_locked = true;
+                body.dynamic_generation.cache_locked = true;
                 console.log(`🎯 Stage ${body.stageIndex}: Inheriting compiled prompt from previous stage`);
             }
             
             // Check if we have a cached compiled prompt with valid conditions
             // Skip entirely if compiled_prompt has success: false
+            // Only validate directive_hash if a directive is being used
+            const requiresDirective = !!body?.dynamic_generation?.directive;
             let hasValidCache = body?.dynamic_generation?.compiled_prompt &&
                 body?.dynamic_generation?.compiled_prompt?.success !== false &&
                 !!body?.dynamic_generation?.compiled_prompt?.prompt_hash &&
-                !!body?.dynamic_generation?.compiled_prompt?.request_hash;
+                !!body?.dynamic_generation?.compiled_prompt?.request_hash &&
+                (!requiresDirective || !!body?.dynamic_generation?.compiled_prompt?.directive_hash);
+            
+            // Debug: Log why cache might be invalid
+            if (!hasValidCache) {
+                if (!body?.dynamic_generation?.compiled_prompt) {
+                    console.log('❌ No compiled_prompt exists');
+                } else if (body?.dynamic_generation?.compiled_prompt?.success === false) {
+                    console.log('❌ Previous generation failed (success: false)');
+                } else if (!body?.dynamic_generation?.compiled_prompt?.prompt_hash) {
+                    console.log('❌ Missing prompt_hash in compiled_prompt');
+                } else if (!body?.dynamic_generation?.compiled_prompt?.request_hash) {
+                    console.log('❌ Missing request_hash in compiled_prompt');
+                } else if (requiresDirective && !body?.dynamic_generation?.compiled_prompt?.directive_hash) {
+                    console.log('❌ Missing directive_hash in compiled_prompt (directive is being used)');
+                }
+            }
 
             // If dyna_no_cache is explicitly set to true, never use cache
             if (body?.dynamic_generation?.dyna_no_cache === true) {
@@ -1559,11 +1961,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             if (body?.dynamic_generation?.backgroundFocus === true) {
                 hasValidCache = false;
                 console.log('🌳 Background focus enabled, forcing regeneration');
-                // Keep context from compiled prompt even when forcing regeneration
-                // The locked flag will ensure context is reused in processDynamicGenerationCore
-                if (!body.dynamic_generation.locked && body.dynamic_generation.compiled_prompt?.context) {
-                    body.dynamic_generation.locked = true;
-                    console.log('🔒 Preserved locked flag for context reuse despite cache invalidation');
+                if (body.dynamic_generation.compiled_prompt?.context) {
+                    body.dynamic_generation.context_locked = true;
+                    console.log('🔒 Preserved context locked flag for context reuse despite cache invalidation');
                 }
             }
 
@@ -1593,6 +1993,17 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         hasValidCache = false;
                     }
 
+                    // Check if directive changed (only if using directive)
+                    if (requiresDirective && compiledPrompt.directive_hash !== currentDirectiveHash) {
+                        console.log('🔄 Directive hash modified, invalidating cache');
+                        hasValidCache = false;
+                    }
+
+                    if (body?.dynamic_generation?.force_context_refresh === true) {
+                        console.log('🔄 Force context refresh requested, invalidating cache');
+                        hasValidCache = false;
+                    }
+
                     // Try to apply text replacements - create backups first
                     if (hasValidCache && compiledPrompt.text_replacements) {
                         // Create backups of original prompts
@@ -1603,7 +2014,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         try {
                             // Apply replacements to prompt
                             if (compiledPrompt.text_replacements.prompt && compiledPrompt.text_replacements.prompt.length > 0) {
-                                console.log(`🔄 Applying ${compiledPrompt.text_replacements.prompt.length} cached prompt replacements`);
+                                logger.verbose(`🔄 Applying ${compiledPrompt.text_replacements.prompt.length} cached prompt replacements`);
                                 const result = applyDynamicReplacements(processedPrompt, compiledPrompt.text_replacements, 'prompt');
                                 if (!result.success) {
                                     throw new Error(`Failed to apply cached prompt replacements: ${result.failedReplacements.join(', ')}`);
@@ -1630,13 +2041,13 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                     }
                                     let updatedChar = { ...char };
 
-                                    if (charReplacements.input && charReplacements.input.length > 0) {
-                                        console.log(`🔄 Applying ${charReplacements.input.length} cached input replacements to character ${index}`);
-                                        const result = applyDynamicReplacements(char.input || '', compiledPrompt.text_replacements, 'character', index, 'input');
+                                    if (charReplacements.prompt && charReplacements.prompt.length > 0) {
+                                        console.log(`🔄 Applying ${charReplacements.prompt.length} cached prompt replacements to character ${index}`);
+                                        const result = applyDynamicReplacements(char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
                                         if (!result.success) {
-                                            throw new Error(`Failed to apply cached character ${index} input replacements: ${result.failedReplacements.join(', ')}`);
+                                            throw new Error(`Failed to apply cached character ${index} prompt replacements: ${result.failedReplacements.join(', ')}`);
                                         }
-                                        updatedChar.input = result.result;
+                                        updatedChar.prompt = result.result;
                                     }
 
                                     if (charReplacements.uc && charReplacements.uc.length > 0) {
@@ -1650,6 +2061,21 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                                     return updatedChar;
                                 });
+                            }
+                            
+                            // Apply character names from cached compiled prompt
+                            if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names) && compiledPrompt.character_names.length > 0) {
+                                processedCharacterPrompts = processedCharacterPrompts || [];
+                                if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+                                    compiledPrompt.character_names.forEach((name, index) => {
+                                        if (name && processedCharacterPrompts[index]) {
+                                            // Update both chara_name and name properties for compatibility
+                                            processedCharacterPrompts[index].chara_name = name;
+                                            processedCharacterPrompts[index].name = name;
+                                            console.log(`✨ Applied cached character name "${name}" to character ${index + 1}`);
+                                        }
+                                    });
+                                }
                             }
                         } catch (error) {
                             console.error('❌ Error applying cached text replacements:', error);
@@ -1676,24 +2102,20 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 if (!hasValidCache) {
                     console.log(`🗑️ ${isCacheLocked ? 'Locked' : 'Cached'} prompt invalidated - will regenerate`);
                     
-                    // Clear preview_image from invalidated cache ONLY if prompts changed
-                    // This ensures preview is regenerated when:
-                    // - Prompt hash mismatch (prompts changed)
-                    // - Failed to apply text replacements
-                    // Preview is NOT regenerated for parameter-only changes (request hash mismatch, cache expired, etc)
                     const promptsChanged = body.dynamic_generation?.compiled_prompt?.prompt_hash !== currentPromptHash;
-                    if (initialPromptAware && body.dynamic_generation?.compiled_prompt?.preview_image && promptsChanged) {
+                    const directiveChanged = body.dynamic_generation?.compiled_prompt?.directive_hash !== currentDirectiveHash; 
+                    if (initialPromptAware && (body.dynamic_generation?.compiled_prompt?.preview_image || body.dynamic_generation?.compiled_prompt?.preview_image_hash) && promptsChanged) {
                         console.log('🗑️ Prompts changed - clearing old preview image for regeneration');
                         delete body.dynamic_generation.compiled_prompt.preview_image;
                         delete body.dynamic_generation.compiled_prompt.preview_metadata;
-                    } else if (initialPromptAware && body.dynamic_generation?.compiled_prompt?.preview_image && !promptsChanged) {
+                    } else if (initialPromptAware && (body.dynamic_generation?.compiled_prompt?.preview_image || body.dynamic_generation?.compiled_prompt?.preview_image_hash) && !promptsChanged) {
                         console.log('✅ Prompts unchanged - keeping existing preview image');
                     }
                 }
             }
 
             if (hasValidCache) {
-                console.log('✅ Using successfully transformed cached prompt');
+                logger.detailed('✅ Using cached prompt');
 
                 // Send progress update indicating AI processing is complete (cached)
                 if (ws && handler) {
@@ -1715,8 +2137,25 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Check if Initial Prompt Aware is enabled and we need to generate a preview
                 // Preview is regenerated ONLY when cache was invalidated (which means we're here)
                 // AND there's no existing preview (either never existed or was cleared during invalidation)
+                let hasValidPreview = false;
+                if (body.dynamic_generation?.compiled_prompt?.preview_image_hash) {
+                    // Check if the preview file actually exists on disk
+                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                    const previewFilePath = path.join(dynGenPreviewDir, `${body.dynamic_generation.compiled_prompt.preview_image_hash}.png`);
+                    hasValidPreview = fs.existsSync(previewFilePath);
+                    if (!hasValidPreview) {
+                        console.log(`⚠️ Preview hash exists but file not found, will regenerate`);
+                    } else {
+                        console.log(`✅ Valid preview found, skipping regeneration`);
+                    }
+                } else if (body.dynamic_generation?.compiled_prompt?.preview_image) {
+                    // Legacy base64 format
+                    hasValidPreview = true;
+                    console.log(`✅ Legacy preview found, skipping regeneration`);
+                }
+                
                 const needsPreview = initialPromptAware &&
-                                     !body.dynamic_generation?.compiled_prompt?.preview_image &&
+                                     !hasValidPreview &&
                                      !body.stageIndex; // Only generate preview for initial generation, not pipeline stages
                 
                 if (needsPreview) {
@@ -1782,7 +2221,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     const previewResult = await handleGeneration(previewOptions, true, null, body.workspace, null, streamCb, ws, handler);
                     
                     if (previewResult && previewResult.buffer) {
-                        console.log('✅ Preview generated successfully');
+                        logger.detailed('✅ Preview generated');
                         
                         // Trace: attach generated preview (use actual requestId)
                         try {
@@ -1795,12 +2234,22 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                             }
                         } catch {}
                         
-                        // Convert preview buffer to base64
-                        const previewBase64 = previewResult.buffer.toString('base64');
+                        // Generate hash from preview buffer
+                        const previewHash = crypto.createHash('sha256').update(previewResult.buffer).digest('hex');
                         
-                        // Store preview in dynamic_generation for the actual generation
+                        // Save preview to .cache/dynGenPreview/ directory
+                        const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                        if (!fs.existsSync(dynGenPreviewDir)) {
+                            fs.mkdirSync(dynGenPreviewDir, { recursive: true });
+                        }
+                        
+                        const previewFilePath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                        fs.writeFileSync(previewFilePath, previewResult.buffer);
+                        console.log(`💾 Saved preview to cache: ${previewHash}.png`);
+                        
+                        // Store only the hash in dynamic_generation for the actual generation
                         body.dynamic_generation.compiled_prompt = body.dynamic_generation.compiled_prompt || {};
-                        body.dynamic_generation.compiled_prompt.preview_image = previewBase64;
+                        body.dynamic_generation.compiled_prompt.preview_image_hash = previewHash;
                         body.dynamic_generation.compiled_prompt.preview_metadata = {
                             width: previewWidth,
                             height: previewHeight,
@@ -1808,7 +2257,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                             seed: body.seed // Store seed used for preview
                         };
                         
-                        console.log(`🖼️ Preview stored (seed: ${body.seed}), proceeding with full generation`);
+                        console.log(`🖼️ Preview stored with hash ${previewHash.substring(0, 8)}... (seed: ${body.seed}), proceeding with full generation`);
                     } else {
                         console.warn('⚠️ Preview generation failed, proceeding without preview');
                     }
@@ -1822,26 +2271,118 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     });
                 }
 
-                // Import the core AI processing function
-                const { processDynamicGenerationCore } = require('./dynamicGenerationHandlers');
-
                 // Call the actual AI processing (same as client WebSocket handler)
                 let dynaRequest = body.dynamic_generation;
 
-                const dynamicResult = await processDynamicGenerationCore(
-                    dynaRequest,
-                    processedPrompt,
-                    processedNegativePrompt,
-                    processedCharacterPrompts,
-                    body.requestId || 'buildOptions', // Use actual requestId
-                    ws,
-                    handler,
-                    wsServer,
-                    dynaRequest.backgroundFocus || false,
-                    dynaRequest.lastGeneratedImage || null,
-                    dynaRequest.stageContext || null,
-                    body.dataset_config // Pass dataset config for NSFW level
-                );
+                // Retry loop for chain rejection - if AI rejects the chain, retry with clean state
+                let dynamicResult = null;
+                let chainRetries = 0;
+                const maxChainRetries = 3;
+                
+                // Remove append marker from prompts before passing to AI
+                // AI shouldn't see the marker - it's only for internal processing
+                const markerRegex = new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g');
+                const promptForAI = processedPrompt.replace(markerRegex, '');
+                const ucForAI = processedNegativePrompt.replace(markerRegex, '');
+                const characterPromptsForAI = (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) 
+                    ? processedCharacterPrompts.map(char => ({
+                        ...char,
+                        prompt: char.prompt ? char.prompt.replace(markerRegex, '') : char.prompt,
+                        uc: char.uc ? char.uc.replace(markerRegex, '') : char.uc
+                    }))
+                    : [];
+                
+                while (chainRetries < maxChainRetries) {
+                    try {
+                        dynamicResult = await processDynamicGenerationCore(
+                            dynaRequest,
+                            promptForAI,
+                            ucForAI,
+                            characterPromptsForAI,
+                            body.requestId || 'buildOptions', // Use actual requestId
+                            ws,
+                            handler,
+                            wsServer,
+                            dynaRequest.backgroundFocus || false,
+                            dynaRequest.lastGeneratedImage || null,
+                            dynaRequest.stageContext || null,
+                            body.dataset_config, // Pass dataset config for NSFW level
+                            appliedPresetControls, // Pass preset controls for AI awareness
+                            { // Pass pre-calculated hashes for consistency
+                                promptHash: currentPromptHash,
+                                requestHash: currentRequestHash,
+                                directiveHash: currentDirectiveHash
+                            }
+                        );
+
+                        // Check if chain was rejected
+                        if (dynamicResult.chainRejected === true) {
+                            chainRetries++;
+                            console.log(`🔄 Chain rejected (retry ${chainRetries}/${maxChainRetries}) - restarting with clean state`);
+
+                            // Clear compiled_prompt state for next attempt
+                            dynaRequest = {
+                                ...dynaRequest,
+                                compiled_prompt: dynaRequest.compiled_prompt ? {
+                                    ...dynaRequest.compiled_prompt,
+                                    previousResponseId: null,
+                                    request_hash: null,
+                                    prompt_hash: null,
+                                    directive_hash: null
+                                } : null
+                            };
+
+                            // Continue to next iteration with clean state
+                            continue;
+                        }
+
+                        // Success or failure (not chain rejection) - break out
+                        break;
+
+                    } catch (dynamicError) {
+                        // Handle hydration errors and other exceptions by treating them as chain rejections
+                        console.warn(`⚠️ Dynamic generation error (attempt ${chainRetries + 1}/${maxChainRetries}):`, dynamicError.message);
+
+                        chainRetries++;
+                        if (chainRetries < maxChainRetries) {
+                            console.log(`🔄 Retrying dynamic generation due to error (attempt ${chainRetries + 1}/${maxChainRetries})`);
+
+                            // Clear compiled_prompt state for next attempt
+                            dynaRequest = {
+                                ...dynaRequest,
+                                compiled_prompt: dynaRequest.compiled_prompt ? {
+                                    ...dynaRequest.compiled_prompt,
+                                    previousResponseId: null,
+                                    request_hash: null,
+                                    prompt_hash: null,
+                                    directive_hash: null
+                                } : null
+                            };
+
+                            // Continue to next iteration
+                            continue;
+                        } else {
+                            // Max retries exceeded, create error result
+                            console.error(`❌ Dynamic generation failed after ${maxChainRetries} attempts:`, dynamicError.message);
+                            dynamicResult = {
+                                success: false,
+                                error: `Dynamic generation processing failed: ${dynamicError.message}`,
+                                processed: false
+                            };
+                            break;
+                        }
+                    }
+                }
+                
+                // If we exhausted retries due to chain rejection, return error
+                if (chainRetries >= maxChainRetries && dynamicResult.chainRejected) {
+                    console.error(`❌ Chain rejected ${maxChainRetries} times, giving up`);
+                    dynamicResult = {
+                        success: false,
+                        error: 'Dynamic generation chain rejected too many times',
+                        processed: false
+                    };
+                }
 
                 // Check if processing was successful
                 if (!dynamicResult.success) {
@@ -1859,6 +2400,71 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         });
                     }
                     
+                    // Try to reuse text_replacements from previous compiled_prompt if available
+                    const previousCompiledPrompt = body.dynamic_generation?.compiled_prompt;
+                    let reusedTextReplacements = dynamicResult.text_replacements;
+                    
+                    if (!reusedTextReplacements && previousCompiledPrompt?.text_replacements && previousCompiledPrompt.success !== false) {
+                        console.log('💾 Reusing text_replacements from previous successful compiled_prompt');
+                        reusedTextReplacements = previousCompiledPrompt.text_replacements;
+                        
+                        // Apply the reused text replacements
+                        try {
+                            // Apply replacements to prompt
+                            if (reusedTextReplacements.prompt && reusedTextReplacements.prompt.length > 0) {
+                                console.log(`🔄 Applying ${reusedTextReplacements.prompt.length} reused prompt replacements`);
+                                const result = applyDynamicReplacements(processedPrompt, reusedTextReplacements, 'prompt');
+                                if (result.success) {
+                                    processedPrompt = result.result;
+                                } else {
+                                    console.warn(`⚠️ Some reused prompt replacements failed: ${result.failedReplacements.join(', ')}`);
+                                }
+                            }
+
+                            // Apply replacements to negative prompt
+                            if (reusedTextReplacements.uc && reusedTextReplacements.uc.length > 0) {
+                                console.log(`🔄 Applying ${reusedTextReplacements.uc.length} reused UC replacements`);
+                                const result = applyDynamicReplacements(processedNegativePrompt, reusedTextReplacements, 'uc');
+                                if (result.success) {
+                                    processedNegativePrompt = result.result;
+                                } else {
+                                    console.warn(`⚠️ Some reused UC replacements failed: ${result.failedReplacements.join(', ')}`);
+                                }
+                            }
+
+                            // Apply replacements to character prompts
+                            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts) && processedCharacterPrompts.length > 0 && reusedTextReplacements.character_prompts) {
+                                processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
+                                    const charReplacements = reusedTextReplacements.character_prompts[index];
+                                    if (!charReplacements) {
+                                        return char;
+                                    }
+                                    let updatedChar = { ...char };
+
+                                    if (charReplacements.prompt && charReplacements.prompt.length > 0) {
+                                        console.log(`🔄 Applying ${charReplacements.prompt.length} reused prompt replacements to character ${index}`);
+                                        const result = applyDynamicReplacements(char.prompt || '', reusedTextReplacements, 'character', index, 'prompt');
+                                        if (result.success) {
+                                            updatedChar.prompt = result.result;
+                                        }
+                                    }
+
+                                    if (charReplacements.uc && charReplacements.uc.length > 0) {
+                                        console.log(`🔄 Applying ${charReplacements.uc.length} reused UC replacements to character ${index}`);
+                                        const result = applyDynamicReplacements(char.uc || '', reusedTextReplacements, 'character', index, 'uc');
+                                        if (result.success) {
+                                            updatedChar.uc = result.result;
+                                        }
+                                    }
+
+                                    return updatedChar;
+                                });
+                            }
+                        } catch (error) {
+                            console.error('❌ Error applying reused text replacements:', error);
+                        }
+                    }
+                    
                     // Store failed result with success: false
                     dynamic_generation.compiled_prompt = {
                         prompt: dynamicResult.prompt,
@@ -1868,18 +2474,29 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         reasoning: dynamicResult.reasoning,
                         citations: dynamicResult.citations,
                         context: dynamicResult.context, // Include weather/time/season context
-                        text_replacements: dynamicResult.text_replacements, // Store text replacements for caching
+                        text_replacements: reusedTextReplacements, // Store text replacements (reused or new)
                         dialogs: dynamicResult.dialogs || [], // Store character dialogs for display
+                        character_names: dynamicResult.character_names || null, // Store character names from AI
+                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from AI
                         prompt_hash: currentPromptHash, // Store hash for cache validation
                         request_hash: currentRequestHash, // Store hash for cache validation
+                        directive_hash: currentDirectiveHash, // Store hash for cache validation
+                        preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
                         timestamp: Date.now(),
                         success: false,
                         error: dynamicResult?.error?.message || 'Dynamic generation processing failed',
+                        errors: dynamicResult.errors || [], // Save AI-registered errors
+                        warnings: dynamicResult.warnings || [], // Save AI-registered warnings
                         cache_locked: body.dynamic_generation.cache_locked || false,
                         context_locked: body.dynamic_generation.context_locked || false,
-                        preview_image: body.dynamic_generation?.compiled_prompt?.preview_image,
-                        preview_metadata: body.dynamic_generation?.compiled_prompt?.preview_image ? body.dynamic_generation?.compiled_prompt?.preview_metadata : undefined,
-                        previousResponseId: dynamicResult.previousResponseId // Save response ID for stateful continuation
+                        generation_chain: dynamicResult.generation_chain, // Save generation chain number for incrementing
+                        preview_metadata: body.dynamic_generation?.compiled_prompt?.preview_image_hash ? body.dynamic_generation?.compiled_prompt?.preview_metadata : undefined,
+                        previousResponseId: dynamicResult.previousResponseId, // Save response ID for stateful continuation
+                        initialResponseId: dynamicResult.initialResponseId, // Save initial response ID separately
+                        text_replacements_reused: !dynamicResult.text_replacements && !!reusedTextReplacements, // Flag to indicate reuse
+                        totalUsage: dynamicResult.totalUsage || null, // Save total usage data even on error for cost tracking
+                        usage: dynamicResult.usage || null, // Save structured usage data with phase1 and phase2 breakdowns (if any)
+                        apiCalls: dynamicResult?.apiCalls || null // Save detailed API calls array even on error
                     };
                 } else {
                     // Store the compiled result
@@ -1893,15 +2510,25 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         context: dynamicResult.context, // Include weather/time/season context
                         text_replacements: dynamicResult.text_replacements, // Store text replacements for caching
                         dialogs: dynamicResult.dialogs || [], // Store character dialogs for display
+                        character_names: dynamicResult.character_names || null, // Store character names from AI
+                        generated_image_name: dynamicResult.generated_image_name || null, // Store generated image name from AI
                         prompt_hash: currentPromptHash, // Store hash for cache validation
                         request_hash: currentRequestHash, // Store hash for cache validation
+                        directive_hash: currentDirectiveHash, // Store hash for cache validation
+                        preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
                         timestamp: Date.now(),
                         success: true,
+                        errors: dynamicResult.errors || [], // Save AI-registered errors
+                        warnings: dynamicResult.warnings || [], // Save AI-registered warnings
                         cache_locked: body.dynamic_generation.cache_locked || false,
                         context_locked: body.dynamic_generation.context_locked || false,
-                        preview_image: body.dynamic_generation?.compiled_prompt?.preview_image,
-                        preview_metadata: body.dynamic_generation?.compiled_prompt?.preview_image ? body.dynamic_generation?.compiled_prompt?.preview_metadata : undefined,
-                        previousResponseId: dynamicResult.previousResponseId // Save response ID for stateful continuation
+                        preview_metadata: body.dynamic_generation?.compiled_prompt?.preview_image_hash ? body.dynamic_generation?.compiled_prompt?.preview_metadata : undefined,
+                        previousResponseId: dynamicResult.previousResponseId, // Save response ID for stateful continuation
+                        initialResponseId: dynamicResult.initialResponseId, // Save initial response ID separately
+                        generation_chain: dynamicResult.generation_chain, // Save generation chain number for incrementing
+                        totalUsage: dynamicResult?.totalUsage || null, // Save total usage data for cost tracking
+                        usage: dynamicResult?.usage !== undefined ? dynamicResult.usage : null, // Save structured usage data with phase1 and phase2 breakdowns
+                        apiCalls: dynamicResult?.apiCalls || null // Save detailed API calls array for granular tracking
                     };
                     
                     if (dynamicResult.text_replacements) {
@@ -1942,22 +2569,22 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                 dynamicResult.text_replacements.character_prompts.forEach((charReplacements, index) => {
                                     if (charReplacements) {
                                         if (processedCharacterPrompts[index]) {
-                                            if (charReplacements.input && charReplacements.input.length > 0) {
+                                            if (charReplacements.prompt && charReplacements.prompt.length > 0) {
                                                 try {
                                                     const result = applyDynamicReplacements(
-                                                        processedCharacterPrompts[index].input || '',
+                                                        processedCharacterPrompts[index].prompt || '',
                                                         dynamicResult.text_replacements,
                                                         'character',
                                                         index,
-                                                        'input'
+                                                        'prompt'
                                                     );
                                                     if (!result.success) {
-                                                        console.error(`❌ Failed to apply character ${index} input replacements: ${result.failedReplacements.join(', ')}`);
+                                                        console.error(`❌ Failed to apply character ${index} prompt replacements: ${result.failedReplacements.join(', ')}`);
                                                     } else {
-                                                        processedCharacterPrompts[index].input = result.result;
+                                                        processedCharacterPrompts[index].prompt = result.result;
                                                     }
                                                 } catch (error) {
-                                                    console.error(`❌ Error applying character ${index} input replacements:`, error);
+                                                    console.error(`❌ Error applying character ${index} prompt replacements:`, error);
                                                 }
                                             }
 
@@ -1985,11 +2612,26 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                 });
                             }
                         }
+                        
+                        // Apply character names from AI to character prompts
+                        if (dynamicResult.character_names && Array.isArray(dynamicResult.character_names) && dynamicResult.character_names.length > 0) {
+                            processedCharacterPrompts = processedCharacterPrompts || [];
+                            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+                                dynamicResult.character_names.forEach((name, index) => {
+                                    if (name && processedCharacterPrompts[index]) {
+                                        // Update both chara_name and name properties for compatibility
+                                        processedCharacterPrompts[index].chara_name = name;
+                                        processedCharacterPrompts[index].name = name;
+                                        console.log(`✨ Applied character name "${name}" to character ${index + 1}`);
+                                    }
+                                });
+                            }
+                        }
                         const totalReplacements = (dynamicResult.text_replacements.prompt?.length || 0) +
                                                     (dynamicResult.text_replacements.uc?.length || 0) +
                                                     (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
-                                                        (char.input?.length || 0) + (char.uc?.length || 0), 0) || 0);
-                        console.log(`🔄 Applied ${totalReplacements} text replacements (primary method)`);
+                                                        (char.prompt?.length || 0) + (char.uc?.length || 0), 0) || 0);
+                        logger.normal(`🔄 Applied ${totalReplacements} text replacements`);
                     } else {
                         console.log('⚠️ No text replacements provided, falling back to compiled prompt');
                         processedPrompt = compiledPrompt.prompt;
@@ -1999,7 +2641,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                     // Store in the dynamic_generation object for caching
                     dynamic_generation.compiled_prompt = compiledPrompt;
-                    console.log('💾 Created and stored compiled prompt in dynamic_generation');
+                    logger.verbose('💾 Stored compiled prompt');
 
                     // If this is a preset generation, save the compiled prompt directly to the preset
                     if (!!preset &&body.presetName) {
@@ -2033,164 +2675,6 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 hasDynamicGen: false
             });
         }
-        
-        // Process NSFW settings from dataset_config
-        const nsfwValue = body.dataset_config?.nsfw;
-        const nsfwBias = body.dataset_config?.nsfw_bias || 1.0;
-
-        if (nsfwValue !== undefined && nsfwValue !== 0) {
-            ({ processedPrompt, processedNegativePrompt, processedCharacterPrompts } = applyNsfwProcessing(
-                processedPrompt,
-                processedNegativePrompt,
-                processedCharacterPrompts,
-                nsfwValue,
-                nsfwBias,
-                currentPromptConfig
-            ));
-        }
-
-        // Handle dataset prepending (exclude for V3 models)
-        const isV3Model = body.model === 'v3' || body.model === 'v3_furry';
-        if (!isV3Model && body.dataset_config && body.dataset_config.include && Array.isArray(body.dataset_config.include) && body.dataset_config.include.length > 0) {
-            // Build dataset mappings and config lookup dynamically from config
-            const datasetMappings = {};
-            const datasetConfigLookup = {};
-            if (currentPromptConfig.datasets) {
-                currentPromptConfig.datasets.forEach(dataset => {
-                    datasetMappings[dataset.value] = `${dataset.value}`;
-                    datasetConfigLookup[dataset.value] = dataset;
-                });
-            }
-            
-            const datasetPrepends = [];
-            
-            body.dataset_config.include.forEach(dataset => {
-                if (datasetMappings[dataset]) {
-                    let datasetText = datasetMappings[dataset];
-                    const datasetConfig = datasetConfigLookup[dataset];
-                    
-                    // Get bias value and apply negative if configured
-                    let biasValue = body.dataset_config.bias && body.dataset_config.bias[dataset] !== undefined ? 
-                        body.dataset_config.bias[dataset] : 
-                        (datasetConfig?.default !== undefined ? datasetConfig.default : 1.0);
-                    
-                    // Apply negative multiplier if configured
-                    if (datasetConfig?.negative === true) {
-                        biasValue = -Math.abs(biasValue);
-                    }
-                    
-                    // Use applyBiasToText for bias application
-                    if (biasValue !== 1.0) {
-                        datasetText = applyBiasToText(datasetText, biasValue);
-                    }
-                    
-                    datasetPrepends.push(datasetText);
-                    
-                    // Add sub-toggle values for the dataset if enabled
-                    if (body.dataset_config.settings && body.dataset_config.settings[dataset]) {
-                        const datasetSettings = body.dataset_config.settings[dataset];
-                        
-                        // Get sub_toggles config for this dataset
-                        const subTogglesConfig = datasetConfig?.sub_toggles || [];
-                        const subToggleConfigLookup = {};
-                        subTogglesConfig.forEach(st => {
-                            subToggleConfigLookup[st.id] = st;
-                        });
-                        
-                        Object.keys(datasetSettings).forEach(settingId => {
-                            const setting = datasetSettings[settingId];
-                            if (setting.enabled && setting.value) {
-                                const subToggleConfig = subToggleConfigLookup[settingId];
-                                
-                                // Get bias value and apply negative if configured
-                                let settingBiasValue = setting.bias !== undefined ? setting.bias : 
-                                    (subToggleConfig?.default !== undefined ? subToggleConfig.default : 1.0);
-                                
-                                // Apply negative multiplier if configured
-                                if (subToggleConfig?.negative === true) {
-                                    settingBiasValue = -Math.abs(settingBiasValue);
-                                }
-                                
-                                // Use applyBiasToText for bias application
-                                let settingText = setting.value;
-                                if (settingBiasValue !== 1.0) {
-                                    settingText = applyBiasToText(settingText, settingBiasValue);
-                                }
-                                
-                                datasetPrepends.push(settingText);
-                            }
-                        });
-                    }
-                }
-            });
-            
-            if (datasetPrepends.length > 0) {
-                const datasetString = datasetPrepends.join(', ');
-                processedPrompt = datasetString + ', ' + processedPrompt;
-                console.log(`🗂️ Applied dataset prepends: ${datasetString}`);
-            }
-        }
-
-        // Handle enhanced preset selections
-        let selectedQualityId = null;
-        let selectedUcId = null;
-
-        // Handle append_quality with enhanced preset selection
-        if (body.append_quality && currentPromptConfig.quality_presets) {
-            const modelKey = body.model.toLowerCase();
-            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
-            const selectedQuality = selectPresetItem(currentPromptConfig.quality_presets, modelKey, combinedPrompt, body.append_quality_id);
-
-            if (selectedQuality) {
-                // Apply bias wrapper if quality_preset_bias is set and not 1.0
-                let qualityText = selectedQuality.value;
-                if (body.quality_preset_bias !== undefined && body.quality_preset_bias !== 1.0) {
-                    qualityText = applyBiasToText(qualityText, body.quality_preset_bias);
-                }
-
-                // Check if prompt contains "Text:" and handle accordingly
-                if (processedPrompt.includes('Text:')) {
-                    // Find the first instance of "Text:" and insert quality before it
-                    const textIndex = processedPrompt.indexOf('Text:');
-                    const beforeText = processedPrompt.substring(0, textIndex).trim();
-                    const afterText = processedPrompt.substring(textIndex);
-
-                    if (beforeText) {
-                        // If there's content before "Text:", add quality with ", " separator
-                        processedPrompt = beforeText + ', ' + qualityText + ', ' + afterText;
-                    } else {
-                        // If "Text:" is at the beginning, just add quality before it
-                        processedPrompt = qualityText + ', ' + afterText;
-                    }
-                } else {
-                    // Original logic for prompts without "Text:"
-                    // Split prompt by "|", add quality to end of first group, then rejoin with " | "
-                    const groups = processedPrompt.split('|').map(group => group.trim());
-                    if (groups.length > 0) {
-                        groups[0] = groups[0] + ', ' + qualityText;
-                        processedPrompt = groups.join(' | ');
-                    } else {
-                        processedPrompt = processedPrompt + ', ' + qualityText;
-                    }
-                }
-                selectedQualityId = selectedQuality.id;
-                console.log(`🎨 Applied quality preset for ${modelKey}: ${qualityText}${body.quality_preset_bias !== undefined && body.quality_preset_bias !== 1.0 ? ` (bias: ${body.quality_preset_bias})` : ''} (ID: ${selectedQuality.id})`);
-            }
-        }
-        
-        // Handle append_uc with enhanced preset selection
-        if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
-            const modelKey = body.model.toLowerCase();
-            const combinedPrompt = processedPrompt + (processedCharacterPrompts ? processedCharacterPrompts.map(c => c.prompt).join(', ') : '');
-            const selectedUc = selectPresetItem(currentPromptConfig.uc_presets, modelKey, combinedPrompt, body.append_uc_id || body.append_uc);
-            
-            if (selectedUc) {
-                // Add UC preset to the start of the UC and separate the original UC with ", "
-                processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
-                selectedUcId = selectedUc.id;
-                console.log(`🚫 Applied UC preset for ${modelKey}: ${selectedUc.value} (ID: ${selectedUc.id})`);
-            }
-        }
 
         // Clean up prompt syntax (remove % % wrappers and unreplaced placeholders)
         processedPrompt = cleanupPromptSyntax(processedPrompt);
@@ -2199,7 +2683,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                 ...char,
-                input: cleanupPromptSyntax(char.input),
+                prompt: cleanupPromptSyntax(char.prompt),
                 uc: cleanupPromptSyntax(char.uc)
             }));
         }
@@ -2618,6 +3102,24 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
         }
 
+        // Remove the append marker from all prompts at the very end (after all presets have been applied)
+        // APPEND_MARKER is already defined at the top of this function
+        const markerRegex = new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g');
+        
+        if (baseOptions.prompt) {
+            baseOptions.prompt = baseOptions.prompt.replace(markerRegex, '');
+        }
+        if (baseOptions.negative_prompt) {
+            baseOptions.negative_prompt = baseOptions.negative_prompt.replace(markerRegex, '');
+        }
+        if (baseOptions.allCharacterPrompts && Array.isArray(baseOptions.allCharacterPrompts)) {
+            baseOptions.allCharacterPrompts = baseOptions.allCharacterPrompts.map(char => ({
+                ...char,
+                prompt: char.prompt ? char.prompt.replace(markerRegex, '') : char.prompt,
+                uc: char.uc ? char.uc.replace(markerRegex, '') : char.uc
+            }));
+        }
+
         // Trace: store full buildOptions output (no sanitization per user request)
         try {
             if (body.requestId) {
@@ -2647,8 +3149,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     } else if (opts.action === Action.IMG2IMG) {
         opts.color_correct = false;
     }
-    console.log(`🚀 Starting image generation (seed: ${seed})...`);
-    console.log(`🎬 Streaming callback provided: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
+    logger.normal(`🚀 Generating (seed: ${seed})`);
+    logger.detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
 
     let img;
     
@@ -2724,11 +3226,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 
             // Check if response is an AsyncGenerator (streaming)
             if (streamingResponse && typeof streamingResponse[Symbol.asyncIterator] === "function") {
-                console.log("🎬 Streaming generation started...");
-
+                logger.detailed("🎬 Streaming generation started");
                 for await (const event of streamingResponse) {
                     if (event.event_type === EventType.INTERMEDIATE) {
-
                         // Send unified progress update
                         if (ws && handler) {
                             const progressData = {
@@ -2756,12 +3256,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                             image: Buffer.from(event.image.data),
                             timestamp: Date.now()
                         });
+                        
                     } else if (event.event_type === EventType.FINAL) {
-                        console.log("✅ Final image received");
                         img = event.image;
                         break
-                    } else {
-                        console.log("🔄 Unknown event type:", event.event_type);
                     }
                 }
             } else {
@@ -2925,6 +3423,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         if (opts.dynamic_generation !== undefined) {
             forgeData.dynamic_generation = opts.dynamic_generation;
+            
+            // Extract generated_image_name from compiled_prompt if available
+            if (opts.dynamic_generation?.compiled_prompt?.generated_image_name) {
+                forgeData.generated_image_name = opts.dynamic_generation.compiled_prompt.generated_image_name;
+            }
         }
 
         // Add text replacement seeds to forge data if any replacements were used
@@ -3010,7 +3513,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         
         if (shouldSave) {
             fs.writeFileSync(path.join(imagesDir, name), finalBuffer);
-            console.log(`💾 Saved: ${name}`);
+            logger.normal(`💾 Saved: ${name}`);
             
             // Add file to workspace
             context.addToWorkspaceArray('files', name, targetWorkspaceId);
@@ -3050,7 +3553,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            console.log(`📸 Generated previews for ${baseName}`);
+            logger.detailed(`📸 Generated previews for ${baseName}`);
 
             // Send completion progress update
             if (ws && handler) {
@@ -3152,17 +3655,17 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 handler.sendGenerationProgress(ws, opts.requestId || 'generation', progressData);
             }
 
-            // Return result with appropriate seed information
-            const result = {
-                buffer: updatedScaledBuffer,
-                filename: name,
-                saved: shouldSave,
-                seed: seed,
-                compiled_prompt: opts.dynamic_generation?.compiled_prompt,
-                text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
-                stageData: stageData // Only populated for pipeline stages
-            };
-            return result;
+        // Return result with appropriate seed information
+        const result = {
+            buffer: updatedScaledBuffer,
+            filename: name,
+            saved: shouldSave,
+            seed: seed,
+            compiled_prompt: opts.dynamic_generation?.compiled_prompt,
+            text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
+            stageData: stageData // Only populated for pipeline stages
+        };
+        return result;
         }
         
         // Return result with appropriate seed information
@@ -3188,7 +3691,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Generate both main and @2x previews for mobile devices
             await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            console.log(`📸 Generated previews for ${baseName}`);
+            logger.detailed(`📸 Generated previews for ${baseName}`);
         }
         
         // Return result with appropriate seed information
@@ -3283,7 +3786,7 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
             console.log(`🎬 Starting staged generation with ${body.pipeline.length} stages`);
             return await handleStagedGeneration(bodyData, sessionId, streamingCallback, ws, handler, wsServer);
         } else {
-            console.log(`🎬 Pipeline stages defined but stage generation is disabled - running base generation only`);
+            logger.detailed(`🎬 Pipeline stages disabled - running base only`);
             // Continue to regular single generation below
         }
 
@@ -3343,6 +3846,12 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         let savedFilenames = []; // Array to track all saved stage filenames
         let previousStageBody = { ...bodyData };
         
+        // Extract client-provided compiled prompts array (for rerolls from saved images)
+        let clientCompiledPrompts = bodyData.stage_compiled_prompts || null;
+        if (clientCompiledPrompts && Array.isArray(clientCompiledPrompts)) {
+            console.log(`📋 Received ${clientCompiledPrompts.length} compiled prompts from client`);
+        }
+        
         // Deep copy dynamic_generation to prevent shared reference issues
         if (previousStageBody.dynamic_generation) {
             previousStageBody.dynamic_generation = JSON.parse(JSON.stringify(previousStageBody.dynamic_generation));
@@ -3351,6 +3860,9 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         // Separate variables to track compiled prompts for inheritance
         let normalCompiledPrompt = null;
         let backgroundFocusCompiledPrompt = null;
+        
+        // Shared context across all stages (weather, time, season should be consistent)
+        let sharedContext = null;
         
         let isInBranchChain = false;
         let preBranchState = null; // Stores {buffer, body} - seeds continue normally
@@ -3494,9 +4006,40 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         if (baseResult.compiled_prompt && baseResult.compiled_prompt.success !== false) {
             normalCompiledPrompt = baseResult.compiled_prompt;
             console.log('🔍 Set base normal compiled prompt for inheritance');
+            
+            // If dynamic generation ran successfully, clear client-provided compiled prompts
+            // This ensures pipeline stages use fresh data instead of stale client prompts
+            if (clientCompiledPrompts) {
+                console.log('🔄 Dynamic generation ran successfully - clearing client-provided compiled prompts');
+                clientCompiledPrompts = null;
+            }
+            
+            // Extract and store shared context for all pipeline stages
+            if (baseResult.compiled_prompt.context) {
+                sharedContext = baseResult.compiled_prompt.context;
+                console.log('🌍 Set shared context for all pipeline stages:', {
+                    hasWeather: !!sharedContext.weather,
+                    hasTime: !!sharedContext.time,
+                    hasSeason: !!sharedContext.season
+                });
+            }
         } else if (baseResult.compiled_prompt && baseResult.compiled_prompt.success === false) {
-            console.warn('⚠️ Base dynamic generation failed - not passing to downstream stages');
-            normalCompiledPrompt = null;
+            console.warn('⚠️ Base dynamic generation failed - but preserving context if available');
+            // Even if generation failed, preserve context for pipeline stages
+            // Context (weather, time, season) is still valid and expensive to regenerate
+            if (baseResult.compiled_prompt.context) {
+                sharedContext = baseResult.compiled_prompt.context;
+                normalCompiledPrompt = {
+                    context: sharedContext
+                };
+                console.log(`💾 Preserved base context for all pipeline stages:`, {
+                    hasWeather: !!sharedContext.weather,
+                    hasTime: !!sharedContext.time,
+                    hasSeason: !!sharedContext.season
+                });
+            } else {
+                normalCompiledPrompt = null;
+            }
         }
 
         // Track saved filename if base generation was saved
@@ -3622,24 +4165,112 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 // Determine which compiled prompt to inherit based on current stage's background focus state
                 const isCurrentStageBackgroundFocus = stage.type === 'expand-canvas' && stage.backgroundFocus;
                 
+                // Check for compiled prompt from previous stage - prioritize client-provided, then runtime stageSeeds
+                let previousStageCompiledPrompt = null;
+                
+                // First priority: Client-provided compiled prompts (from rerolling saved images)
+                // clientCompiledPrompts[0] = first pipeline stage, [1] = second pipeline stage, etc.
+                if (clientCompiledPrompts && Array.isArray(clientCompiledPrompts)) {
+                    // For first pipeline stage (i === 0), check if base generation had a compiled prompt (index would be -1, which doesn't exist)
+                    // For subsequent stages, check the previous pipeline stage
+                    if (i > 0) {
+                        const prevStageIndex = i - 1;
+                        if (clientCompiledPrompts[prevStageIndex]) {
+                            previousStageCompiledPrompt = clientCompiledPrompts[prevStageIndex];
+                            console.log(`📋 Stage ${stageIndex}: Using client-provided compiled prompt from pipeline stage ${prevStageIndex}`);
+                        }
+                    }
+                    // Note: For i === 0 (first pipeline stage), we skip client-provided check and fall through to runtime or base
+                }
+                
+                // Second priority: Runtime-generated stageSeeds array (from current generation session)
+                if (!previousStageCompiledPrompt && stageSeeds.length > 0) {
+                    // Get the last stage's data (the immediate previous stage)
+                    const previousStageSeedData = stageSeeds[stageSeeds.length - 1];
+                    if (previousStageSeedData?.dynamic_generation?.success) {
+                        previousStageCompiledPrompt = previousStageSeedData.dynamic_generation;
+                        console.log(`📋 Stage ${stageIndex}: Using runtime compiled prompt from previous stage (stage ${stageSeeds.length - 1})`);
+                    }
+                }
+                
                 // Inject the appropriate compiled prompt for this stage
-                if (isCurrentStageBackgroundFocus && backgroundFocusCompiledPrompt) {
+                if (previousStageCompiledPrompt) {
+                    // Use compiled prompt from previous stage in seeds array (priority)
+                    if (!stageRequestBody.dynamic_generation) {
+                        stageRequestBody.dynamic_generation = {};
+                    }
+                    stageRequestBody.dynamic_generation.compiled_prompt = { ...previousStageCompiledPrompt };
+                    
+                    // Always merge in shared context to ensure consistency
+                    if (sharedContext) {
+                        stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
+                        console.log(`📋 Stage ${stageIndex}: Using previous stage compiled prompt with shared context`);
+                    } else {
+                        console.log(`📋 Stage ${stageIndex}: Using previous stage compiled prompt for inheritance`);
+                    }
+                } else if (isCurrentStageBackgroundFocus && backgroundFocusCompiledPrompt) {
                     // Use background focus compiled prompt for background focus stages
                     if (!stageRequestBody.dynamic_generation) {
                         stageRequestBody.dynamic_generation = {};
                     }
-                    stageRequestBody.dynamic_generation.compiled_prompt = backgroundFocusCompiledPrompt;
-                    console.log(`🌳 Stage ${stageIndex}: Using background focus compiled prompt for inheritance`);
+                    stageRequestBody.dynamic_generation.compiled_prompt = { ...backgroundFocusCompiledPrompt };
+                    
+                    // Always merge in shared context to ensure consistency
+                    if (sharedContext) {
+                        stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
+                        console.log(`🌳 Stage ${stageIndex}: Using background focus compiled prompt with shared context`);
+                    } else {
+                        console.log(`🌳 Stage ${stageIndex}: Using background focus compiled prompt for inheritance`);
+                    }
                 } else if (!isCurrentStageBackgroundFocus && normalCompiledPrompt) {
                     // Use normal compiled prompt for non-background focus stages
                     if (!stageRequestBody.dynamic_generation) {
                         stageRequestBody.dynamic_generation = {};
                     }
-                    stageRequestBody.dynamic_generation.compiled_prompt = normalCompiledPrompt;
-                    console.log(`🔍 Stage ${stageIndex}: Using normal compiled prompt for inheritance`);
+                    stageRequestBody.dynamic_generation.compiled_prompt = { ...normalCompiledPrompt };
+                    
+                    // Always merge in shared context to ensure consistency
+                    if (sharedContext && normalCompiledPrompt.context !== sharedContext) {
+                        stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
+                        console.log(`🔍 Stage ${stageIndex}: Using normal compiled prompt with shared context`);
+                    } else {
+                        console.log(`🔍 Stage ${stageIndex}: Using normal compiled prompt for inheritance`);
+                    }
                 } else if (isCurrentStageBackgroundFocus && !backgroundFocusCompiledPrompt) {
-                    // No background focus compiled prompt available, will trigger regeneration
-                    console.log(`🌳 Stage ${stageIndex}: No background focus compiled prompt available, will trigger regeneration`);
+                    // No background focus compiled prompt available - fallback to normal compiled prompt
+                    if (!stageRequestBody.dynamic_generation) {
+                        stageRequestBody.dynamic_generation = {};
+                    }
+                    
+                    if (normalCompiledPrompt) {
+                        // Copy normal compiled prompt for background focus stage
+                        stageRequestBody.dynamic_generation.compiled_prompt = { ...normalCompiledPrompt };
+                        
+                        // Override with shared context to ensure consistency
+                        if (sharedContext) {
+                            stageRequestBody.dynamic_generation.compiled_prompt.context = sharedContext;
+                            console.log(`🌳 Stage ${stageIndex}: No background focus prompt, using normal compiled prompt with shared context`);
+                        } else {
+                            console.log(`🌳 Stage ${stageIndex}: No background focus prompt, using normal compiled prompt`);
+                        }
+                    } else if (sharedContext) {
+                        // No compiled prompts at all, but we have shared context
+                        stageRequestBody.dynamic_generation.compiled_prompt = {
+                            context: sharedContext
+                        };
+                        console.log(`🌳 Stage ${stageIndex}: No compiled prompts available, but using shared context`);
+                    } else {
+                        console.log(`🌳 Stage ${stageIndex}: No background focus compiled prompt available, will trigger regeneration`);
+                    }
+                } else if (!isCurrentStageBackgroundFocus && !normalCompiledPrompt && sharedContext) {
+                    // No normal compiled prompt but we have shared context
+                    if (!stageRequestBody.dynamic_generation) {
+                        stageRequestBody.dynamic_generation = {};
+                    }
+                    stageRequestBody.dynamic_generation.compiled_prompt = {
+                        context: sharedContext
+                    };
+                    console.log(`🔍 Stage ${stageIndex}: No compiled prompt, but using shared context`);
                 }
                 
 
@@ -3834,10 +4465,11 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
 
                 // Add stage context for pipeline-aware dynamic generation
                 if (stageRequestBody.dynamic_generation) {
-                    // Set locked flag if we have a compiled prompt from a previous stage
+                    // Set locked flags if we have a compiled prompt from a previous stage
                     if (stageRequestBody.dynamic_generation.compiled_prompt) {
-                        stageRequestBody.dynamic_generation.locked = true;
-                        console.log(`🔒 Stage ${stageIndex}: Locked mode enabled - will reuse compiled prompt context`);
+                        stageRequestBody.dynamic_generation.context_locked = true;
+                        stageRequestBody.dynamic_generation.cache_locked = true;
+                        console.log(`🔒 Stage ${stageIndex}: Locked mode enabled - will reuse compiled prompt context and cache`);
                     }
                     
                     // Debug logging to trace context preservation
@@ -3855,7 +4487,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                         isInitial: i === 0, // First stage in pipeline
                         isBackgroundFocus: stage.type === 'expand-canvas' && stage.backgroundFocus,
                         isEnhance: stage.type !== 'expand-canvas',
-                        hasPreview: !!stageRequestBody.dynamic_generation.compiled_prompt?.preview_image
+                        hasPreview: !!stageRequestBody.dynamic_generation.compiled_prompt?.preview_image_hash
                     };
                     stageRequestBody.dynamic_generation.stageContext = stageContext;
                     
@@ -3993,6 +4625,13 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 
                 // Update compiled prompt variables for next stage only if successful
                 if (stageResult.stageData.dynamic_generation?.success) {
+                    // If dynamic generation ran successfully in this stage, clear client-provided prompts
+                    // This ensures subsequent stages use fresh data instead of stale client prompts
+                    if (clientCompiledPrompts) {
+                        console.log(`🔄 Stage ${stageIndex}: Dynamic generation ran - clearing client-provided compiled prompts`);
+                        clientCompiledPrompts = null;
+                    }
+                    
                     // Store compiled prompt based on whether this stage had background focus
                     const isBackgroundFocusStage = stage.type === 'expand-canvas' && stage.backgroundFocus;
                     
@@ -4006,12 +4645,32 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                         console.log(`🔍 Saved stage ${stageIndex} compiled_prompt for next stage`);
                     }
                     
+                    // Update shared context if this stage generated new context
+                    if (stageResult.stageData.dynamic_generation?.context) {
+                        sharedContext = stageResult.stageData.dynamic_generation.context;
+                        console.log(`🌍 Updated shared context from stage ${stageIndex}`);
+                    }
+                    
                     // Debug logging
                     console.log(`🔍 Saved stage ${stageIndex} compiled_prompt for next stage:`, {
                         isBackgroundFocus: isBackgroundFocusStage,
                         hasContext: !!stageResult.stageData.dynamic_generation?.context,
                         hasWeather: !!stageResult.stageData.dynamic_generation?.context?.weather,
                         hasTime: !!stageResult.stageData.dynamic_generation?.context?.time
+                    });
+                } else if (stageResult.stageData.dynamic_generation?.context) {
+                    // Even if generation failed, preserve context for all subsequent stages
+                    // Context (weather, time, season) is still valid and expensive to regenerate
+                    const preservedContext = stageResult.stageData.dynamic_generation.context;
+                    
+                    // Update shared context - this applies to ALL subsequent stages
+                    sharedContext = preservedContext;
+                    
+                    console.log(`💾 Stage ${stageIndex} generation failed but preserving context for all subsequent stages`);
+                    console.log(`🌍 Updated shared context:`, {
+                        hasWeather: !!preservedContext.weather,
+                        hasTime: !!preservedContext.time,
+                        hasSeason: !!preservedContext.season
                     });
                 }
                 

@@ -1,3 +1,6 @@
+// Global tracking for open dropdowns
+const openDropdowns = new Set();
+
 /**
  * Renders a grouped dropdown menu.
  * @param {HTMLElement} menu - The dropdown menu element.
@@ -47,11 +50,22 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
 }
 
 /**
- * Opens a dropdown menu.
+ * Opens a dropdown menu. Automatically closes any other open dropdowns.
  */
 function openDropdown(menu, button) {
+    // Close all other open dropdowns first
+    openDropdowns.forEach(dropdown => {
+        if (dropdown.menu !== menu) {
+            closeDropdown(dropdown.menu, dropdown.button);
+        }
+    });
+    
+    // Open this dropdown
     menu.classList.remove('hidden');
     if (button) button.classList.add('active');
+    
+    // Track this dropdown as open
+    openDropdowns.add({ menu, button });
 }
 
 /**
@@ -60,6 +74,13 @@ function openDropdown(menu, button) {
 function closeDropdown(menu, button) {
     menu.classList.add('hidden');
     if (button) button.classList.remove('active');
+    
+    // Remove from tracking
+    openDropdowns.forEach(dropdown => {
+        if (dropdown.menu === menu) {
+            openDropdowns.delete(dropdown);
+        }
+    });
 }
 
 /**

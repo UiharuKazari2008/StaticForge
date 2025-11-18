@@ -2,28 +2,51 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const logger = require('./logger');
-const SpellChecker = require('./spellChecker');
-const FurryTagSearch = require('./furryTagSearch');
-const AnimeTagSearch = require('./animeTagSearch');
+const globalResources = require('./globalResources');
 const { createJSONCheckpointManager } = require('./jsonCheckpoint');
+const { Model } = require('nekoai-js');
+const mainConfig = require('../config.json');
+
+/**
+ * Normalizes legacy period keys to new period key names
+ * @param {string} periodKey - The period key to normalize
+ * @returns {string} - Normalized period key
+ */
+function normalizePeriodKey(periodKey) {
+    if (!periodKey || typeof periodKey !== 'string') {
+        return periodKey;
+    }
+    
+    const normalized = periodKey.toLowerCase().trim();
+    
+    // Legacy to new mappings
+    const legacyMappings = {
+        'earlymorning': 'morning',
+        'early_morning': 'morning',
+        'earlyevening': 'night',
+        'early_evening': 'night',
+        'evening': 'night',
+        'lateevening': 'night',
+        'late_evening': 'night'
+    };
+    
+    return legacyMappings[normalized] || normalized;
+}
 
 // Generate UUID for presets
 function generateUUID() {
     return crypto.randomUUID();
 }
 
-// Load character data for auto-complete
-let characterDataArray = [];
-try {
-    const characterDataPath = path.join(__dirname, '../characters.json');
-    if (fs.existsSync(characterDataPath)) {
-        const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
-        characterDataArray = data.data || [];
-        logger.bootSubStep(`Loaded ${characterDataArray.length} characters for auto-complete`);
+// Character data is now loaded via globalResources
+// This function provides access to it with fallback
+function getCharacterData() {
+    if (globalResources.isInitialized()) {
+        return globalResources.getCharacterData();
     }
-} catch (error) {
-    console.error('❌ Error loading character data:', error.message);
-    process.exit(1);
+    // Fallback for early initialization
+    console.warn('⚠️  Character data accessed before global resources initialized');
+    return [];
 }
 // Dynamic prompt config loading
 let promptConfig = null;
@@ -266,7 +289,12 @@ const shouldApplyReplacement = (replacement, currentStage) => {
 const applyTextReplacements = (text, presetName, model = null, periodKey = null, lockedReplacements = null, stageData = null) => {
     const _currentPromptConfig = loadPromptConfig();
     let textReplacements = { ..._currentPromptConfig?.text_replacements };
-    if (!text || !textReplacements) return { text: text, replacements: [] };
+    if (!text || !textReplacements) return { text: text || '', replacements: [] };
+
+    // Normalize legacy period keys
+    if (periodKey) {
+        periodKey = normalizePeriodKey(periodKey);
+    }
 
     let result = text.replace(/!PRESET_NAME/g, presetName);
     const replacements = [];
@@ -858,6 +886,10 @@ const applyTextReplacements = (text, presetName, model = null, periodKey = null,
 
 // Get all possible options for a text replacement pattern
 const getTextReplacementOptions = (pattern, presetName, model = null, periodKey = null) => {
+    // Normalize legacy period keys
+    if (periodKey) {
+        periodKey = normalizePeriodKey(periodKey);
+    }
     const currentPromptConfig = loadPromptConfig();
     if (!currentPromptConfig.text_replacements) return [];
 
@@ -1020,9 +1052,12 @@ const getTextReplacementOptions = (pattern, presetName, model = null, periodKey 
 // Search functionality module
 class SearchService {
     constructor(context = {}) {
-        this.spellChecker = new SpellChecker();
-        this.furryTagSearch = new FurryTagSearch();
-        this.animeTagSearch = new AnimeTagSearch();
+        // Tag search services will be lazy-loaded when needed
+        // This prevents loading 380MB+ of data at server startup
+        this.spellChecker = null;
+        this.furryTagSearch = null;
+        this.animeTagSearch = null;
+        this._servicesInitialized = false;
         this.context = context;
         
         // Session-based rate limiting with rolling window
@@ -1044,6 +1079,31 @@ class SearchService {
 
     setContext(context) {
         this.context = context;
+    }
+    
+    /**
+     * Lazy-initialize tag search services (loads 380MB+ of data)
+     */
+    async ensureServicesInitialized() {
+        if (this._servicesInitialized) return;
+        
+        if (globalResources.isInitialized()) {
+            // Get from global resources (will lazy-load if needed)
+            this.spellChecker = globalResources.getSpellChecker();
+            this.furryTagSearch = await globalResources.getFurryTagSearch();
+            this.animeTagSearch = await globalResources.getAnimeTagSearch();
+        } else {
+            // Fallback: create new instances
+            console.log('⚠️  Creating local tag search instances (global resources not initialized)');
+            const SpellChecker = require('./spellChecker');
+            const AnimeTagSearch = require('./animeTagSearch');
+            const FurryTagSearch = require('./furryTagSearch');
+            this.spellChecker = new SpellChecker();
+            this.furryTagSearch = new FurryTagSearch();
+            this.animeTagSearch = new AnimeTagSearch();
+        }
+        
+        this._servicesInitialized = true;
     }
     
     // Session+Model-based rate limiting with rolling window
@@ -1723,27 +1783,24 @@ class SearchService {
             if (!this.context.config) {
                 throw new Error('Config not available in context');
             }
-            if (!characterDataArray) {
+            const characterDataArray = getCharacterData();
+            if (!characterDataArray || characterDataArray.length === 0) {
                 throw new Error('Character data array not available in context');
             }
 
             // Check if model exists
             const Model = this.context.Model;
-            if (!Model || !Model[model.toUpperCase()]) {
+            if (!Model || !Model[model.toLowerCase()]) {
                 return [];
             }
 
             const searchTerm = query.trim().toLowerCase();
             const queryHash = this.generateQueryHash(searchTerm, model);
-            
-            // Cache is available as instance property
-            if (!characterDataArray) {
-                return [];
-            }
 
             // ALWAYS search through character data array first and send results immediately
             const characterResults = [];
-            characterDataArray.forEach((character, index) => {
+            const characters = getCharacterData();
+            characters.forEach((character, index) => {
                 if (character.name && character.name.toLowerCase().includes(searchTerm)) {
                     // Calculate similarity score
                     const nameSimilarity = this.calculateSimilarity(searchTerm, character.name.toLowerCase());
@@ -1819,7 +1876,8 @@ class SearchService {
         
         // Search through character data array directly
         const characterResults = [];
-        characterDataArray.forEach((character, index) => {
+        const characters = characterDataArray || getCharacterData();
+        characters.forEach((character, index) => {
             if (character.name && character.name.toLowerCase().includes(searchTerm)) {
                 // Calculate similarity score
                 const nameSimilarity = this.calculateSimilarity(searchTerm, character.name.toLowerCase());
@@ -1847,12 +1905,12 @@ class SearchService {
 
     async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
         const https = require('https');
-        const config = this.context.config;
+        const { tagSuggestionsCache } = require('./cache');
         
         const makeTagRequest = async (apiModel) => {
             // Check cache first for this specific model
-            if (this.context.tagSuggestionsCache.isQueryCached(query, apiModel)) {
-                const cachedTags = this.context.tagSuggestionsCache.getCachedQuery(query, apiModel);
+            if (tagSuggestionsCache.isQueryCached(query, apiModel)) {
+                const cachedTags = tagSuggestionsCache.getCachedQuery(query, apiModel);
                 return {
                     tags: cachedTags.map(tag => ({
                         tag: tag.tag,
@@ -1862,13 +1920,22 @@ class SearchService {
                 };
             }
             
-            // Use enhanced rate limiting with rolling window for API calls
+            // Use enhanced rate limiting with rolling window for API calls (only if sessionId and ws are provided)
             const localRequestId = `${apiModel}_${Date.now()}`;
-            const abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, localRequestId, ws);
+            let abortSignal;
             
-            // Check if this request was aborted while waiting
-            if (!abortSignal || abortSignal?.aborted) {
-                throw new Error('Request was superseded by a newer search');
+            if (sessionId && ws) {
+                // Use rate limiting for WebSocket-based requests
+                abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, localRequestId, ws);
+                
+                // Check if this request was aborted while waiting
+                if (!abortSignal || abortSignal?.aborted) {
+                    throw new Error('Request was superseded by a newer search');
+                }
+            } else {
+                // For tool calls without WebSocket, create a simple abort signal that's never aborted
+                const abortController = new AbortController();
+                abortSignal = abortController.signal;
             }
             
             const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(query)}`;
@@ -1877,7 +1944,7 @@ class SearchService {
                 headers: {
                     'accept': '*/*',
                     'accept-language': 'en-US,en;q=0.9',
-                    'authorization': `Bearer ${config.apiKey}`,
+                    'authorization': `Bearer ${mainConfig.apiKey}`,
                     'cache-control': 'no-cache',
                     'content-type': 'application/json',
                     'dnt': '1',
@@ -2017,7 +2084,8 @@ class SearchService {
         
         try {
             // Determine models to query
-            const currentModel = this.context.Model[model.toUpperCase()] || 'nai-diffusion-4-5-full';
+            // Map model string (e.g., 'v4_5') to API model name (e.g., 'nai-diffusion-4-5-full')
+            const currentModel = Model[model.toUpperCase()] || 'nai-diffusion-4-5-full';
 
             // Get models to query for API calls
             let models = [currentModel];
@@ -2099,7 +2167,7 @@ class SearchService {
                                 model: apiModel
                             };
                             
-                            const tagId = this.context.tagSuggestionsCache.addTag(apiModel, tagData);
+                            const tagId = tagSuggestionsCache.addTag(apiModel, tagData);
                             modelTagIds.push(tagId); // Collect the tag ID
                             
                             // Store object with tag data for later processing
@@ -2121,7 +2189,7 @@ class SearchService {
                         
                         // Store query results for this model immediately
                         if (modelTagIds.length > 0) {
-                            this.context.tagSuggestionsCache.storeQueryResults(query, apiModel, modelTagIds);
+                            tagSuggestionsCache.storeQueryResults(query, apiModel, modelTagIds);
                         }
                     }
                     
@@ -2572,6 +2640,9 @@ class SearchService {
 
     // New helper method for independent tag search
     async performTagSearch(query, model, ws = null, sessionId = null, requestId = null) {
+        // Lazy-load tag search services if not already loaded
+        await this.ensureServicesInitialized();
+        
         try {
             if (!query || query.trim().length < 2) {
                 return [];
@@ -2669,10 +2740,9 @@ class SearchService {
     }
 
     async webSearch(query) {
-        // Implement MCP Exa search here
-        // Assuming access to mcp_Exa_Search_web_search_exa
-        // For code, use fetch or OpenAI SDK if needed
-        return []; // Placeholder
+        // Use the web search tool from grokService
+        const { handleWebSearch } = require('./aiServices/grokService');
+        return await handleWebSearch({ query, numResults: 5, includeContents: false });
     }
 }
 

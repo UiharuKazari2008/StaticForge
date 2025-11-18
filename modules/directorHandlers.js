@@ -2,11 +2,34 @@
 // Extracted from websocketHandlers.js to separate director-specific logic
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 const sharp = require('sharp');
-const https = require('https');
 const { z } = require('zod');
-const t5TokenizerService = require('./t5-tokenizer-service');
+
+/**
+ * Normalizes legacy period keys to new period key names
+ * @param {string} periodKey - The period key to normalize
+ * @returns {string} - Normalized period key
+ */
+function normalizePeriodKey(periodKey) {
+    if (!periodKey || typeof periodKey !== 'string') {
+        return periodKey;
+    }
+    
+    const normalized = periodKey.toLowerCase().trim();
+    
+    // Legacy to new mappings
+    const legacyMappings = {
+        'earlymorning': 'morning',
+        'early_morning': 'morning',
+        'earlyevening': 'night',
+        'early_evening': 'night',
+        'evening': 'night',
+        'lateevening': 'night',
+        'late_evening': 'night'
+    };
+    
+    return legacyMappings[normalized] || normalized;
+}
 
 /**
  * Get the current time period key based on current time
@@ -21,16 +44,13 @@ function getCurrentPeriodKey() {
     // This is a rough approximation - could be enhanced with location-based sunrise/sunset
     if (currentHour >= 5 && currentHour < 6) return 'dawn';
     if (currentHour >= 6 && currentHour < 7) return 'sunrise';
-    if (currentHour >= 7 && currentHour < 9) return 'earlymorning';
-    if (currentHour >= 9 && currentHour < 11) return 'morning';
+    if (currentHour >= 7 && currentHour < 11) return 'morning';  // Merged earlymorning into morning
     if (currentHour >= 11 && currentHour < 12) return 'latemorning';
     if (currentHour >= 12 && currentHour < 16) return 'afternoon';
     if (currentHour >= 16 && currentHour < 18) return 'goldenhour';
     if (currentHour >= 18 && currentHour < 19) return 'sunset';
     if (currentHour >= 19 && currentHour < 20) return 'dusk';
-    if (currentHour >= 20 && currentHour < 21) return 'earlyevening';
-    if (currentHour >= 21 && currentHour < 23) return 'evening';
-    if (currentHour >= 23 || currentHour < 2) return 'lateevening';
+    if (currentHour >= 20 || currentHour < 2) return 'night';  // Merged earlyevening, evening, lateevening into night
     // Late night/early morning before dawn
     return 'midnight';
 }
@@ -52,7 +72,7 @@ const {
 } = require('./directorDatabase');
 
 const { 
-    callDirectorAIWithStructuredOutput
+    callDirectorAIWithCompletion
 } = require('./aiServices/grokService');
 const TextReplacements = require('./textReplacements');
 
@@ -411,7 +431,7 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
         ' * Concise Language: Avoid redundancy. Use synonyms. Max 512, 100-150 ideal.',
         ' * Natural Language: Use sentences for complex scenes, tags for simple elements.',
         ' * High Weight Tags: Compress tokens without sacrificing accuracy/detail.',
-        ' * Tag Verification: Use anime_tag_search, furry_tag_search, or novelai_tag_search tools to verify high weight tags',
+        ' * Tag Verification: Use searchTagDatabase tools to verify high weight tags',
         ' * High Weight Priority: Prefer tags with high d_count or n_count values when appropriate',
         ' * Token Efficiency: Balance detail with token count for optimal generation quality',
         '',
@@ -820,24 +840,30 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
 
 async function compileDirectorPrompts(inputPrompt) {
     // Get periodKey from dynamic generation context if available, otherwise current time
-    const periodKey = inputPrompt?.context?.time?.periodKey || getCurrentPeriodKey();
+    let periodKey = inputPrompt?.context?.time?.periodKey || getCurrentPeriodKey();
+    // Normalize legacy period keys
+    if (periodKey) {
+        periodKey = normalizePeriodKey(periodKey);
+    }
 
     // Apply text replacements to base prompts
-    let processedPrompt = TextReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
-    let processedNegativePrompt = TextReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
+    const processedPromptResult = TextReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
+    const processedNegativePromptResult = TextReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
+    let processedPrompt = processedPromptResult.text || '';
+    let processedNegativePrompt = processedNegativePromptResult.text || '';
 
     // Process character prompts with text replacements
     let processedCharacterPrompts = inputPrompt.chara || [];
     if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
         processedCharacterPrompts = processedCharacterPrompts.map(char => {
             // Apply text replacements to character prompt and UC
-            const processedCharPrompt = TextReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
-            const processedCharUC = TextReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
+            const processedCharPromptResult = TextReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
+            const processedCharUCResult = TextReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
 
             return {
                 ...char,
-                input: processedCharPrompt,
-                uc: processedCharUC
+                input: processedCharPromptResult.text || '',
+                uc: processedCharUCResult.text || ''
             };
         });
     }
@@ -895,8 +921,11 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         const inputPromptDisplay = typeof rawInputPrompt === 'string' ? rawInputPrompt :
                                  ((typeof rawInputPrompt === 'object' || Array.isArray(rawInputPrompt)) && rawInputPrompt !== null) ?
                                    (rawInputPrompt.base_input ?
-                                     `base_input="${rawInputPrompt.base_input}", base_uc="${rawInputPrompt.base_uc || ''}", characters: ${JSON.stringify(rawInputPrompt.chara || [])}` :
-                                     Array.isArray(rawInputPrompt) ? rawInputPrompt.join(', ') : JSON.stringify(rawInputPrompt)) :
+                                     (() => {
+                                         const charList = (rawInputPrompt.chara || []).map((c, idx) => `Character ${idx + 1}: ${typeof c === 'string' ? c : (c.name || 'unnamed')}`).join(', ');
+                                         return `Base Input: "${rawInputPrompt.base_input}", Base UC: "${rawInputPrompt.base_uc || ''}", Characters: ${charList || 'none'}`;
+                                     })() :
+                                     Array.isArray(rawInputPrompt) ? rawInputPrompt.join(', ') : String(rawInputPrompt)) :
                                  String(rawInputPrompt || '');
         
         if (!model) {
@@ -1347,6 +1376,9 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
             timestamp: new Date().toISOString()
         });
         
+        // Extract usage data from AI response if available
+        const usageData = aiResponse?.usage || null;
+        
         // Send the AI response
         handler.sendToClient(ws, {
             type: 'director_message_response',
@@ -1354,7 +1386,8 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
                 success: true,
                 sessionId: sessionId,
                 messageId: assistantMessageId,
-                data: clientResponse
+                data: clientResponse,
+                usage: usageData || null
             },
             timestamp: new Date().toISOString()
         });
@@ -1532,6 +1565,9 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         // This prevents race conditions where client reloads before data is visible
         await new Promise(resolve => setTimeout(resolve, 1000));
 
+        // Extract usage data from AI response if available
+        const usageData = aiResponse?.usage || null;
+        
         handler.sendToClient(ws, {
             type: 'director_send_message_response',
             requestId: message.requestId,
@@ -1540,7 +1576,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 userMessageId: userMessageId,
                 assistantMessageId: assistantMessageId,
                 data: clientResponse,
-                error: assistantMessageId === null ? 'AI service failed to respond' : null
+                error: assistantMessageId === null ? 'AI service failed to respond' : null,
+                usage: usageData || null
             },
             timestamp: new Date().toISOString()
         });
@@ -1645,7 +1682,8 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             ' * User Input: ' + (content && content?.trim()?.length > 0 ? content : 'Progress the scene and enhance/exaggerate key character attributes.'),
                         ]
                         if (compiledInputPrompt && typeof compiledInputPrompt === 'object' && compiledInputPrompt.base_input) {
-                            messageContent.inputText.push(' *  Current Prompt Structure: base_input="' + compiledInputPrompt.base_input + '", base_uc="' + (compiledInputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(compiledInputPrompt.chara || []));
+                            const charList = (compiledInputPrompt.chara || []).map((c, idx) => `Character ${idx + 1}: ${typeof c === 'string' ? c : (c.name || 'unnamed')}`).join(', ');
+                            messageContent.inputText.push(' *  Current Prompt Structure:\n   - Base Input: "' + compiledInputPrompt.base_input + '"\n   - Base UC: "' + (compiledInputPrompt.base_uc || '') + '"\n   - Characters: ' + (charList || 'none'));
                         }
                         messageContent.responseText = [
                             ' * SuggestedName',
@@ -1675,7 +1713,8 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             ' * Analysis Focus: Evaluate prompt efficiency and suggest specific improvements',
                         ]
                         if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input) {
-                            messageContent.inputText.push(' * Current Prompt Structure to Analyze: base_input="' + inputPrompt.base_input + '", base_uc="' + (inputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(inputPrompt.chara || []));
+                            const charList = (inputPrompt.chara || []).map((c, idx) => `Character ${idx + 1}: ${typeof c === 'string' ? c : (c.name || 'unnamed')}`).join(', ');
+                            messageContent.inputText.push(' * Current Prompt Structure to Analyze:\n   - Base Input: "' + inputPrompt.base_input + '"\n   - Base UC: "' + (inputPrompt.base_uc || '') + '"\n   - Characters: ' + (charList || 'none'));
                         } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
                             messageContent.inputText.push(' * Current Prompt to Analyze: ' + inputPrompt);
                         } else {
@@ -1736,7 +1775,8 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             (content && content?.trim()?.length > 0) ? ' * User Request: ' + content : '',
                         ]
                         if (compiledInputPrompt && typeof compiledInputPrompt === 'object' && compiledInputPrompt.base_input) {
-                            messageContent.inputText.push(' * Current Prompt Structure: base_input="' + compiledInputPrompt.base_input + '", base_uc="' + (compiledInputPrompt.base_uc || '') + '", characters: ' + JSON.stringify(compiledInputPrompt.chara || []));
+                            const charList = (compiledInputPrompt.chara || []).map((c, idx) => `Character ${idx + 1}: ${typeof c === 'string' ? c : (c.name || 'unnamed')}`).join(', ');
+                            messageContent.inputText.push(' * Current Prompt Structure:\n   - Base Input: "' + compiledInputPrompt.base_input + '"\n   - Base UC: "' + (compiledInputPrompt.base_uc || '') + '"\n   - Characters: ' + (charList || 'none'));
                         } else if (inputPrompt && typeof inputPrompt === 'string' && inputPrompt.trim()){
                             messageContent.inputText.push(' * Current Prompt: ' + inputPrompt);
                         }
@@ -2198,6 +2238,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                         let lastSendTime = 0;
                         return (chunk, fullContent, extractedKeys = []) => {
                             const now = Date.now();
+                            
                             // Throttle updates to maximum every 250ms
                             if (now - lastSendTime >= 250) {
                                 lastSendTime = now;
@@ -2215,21 +2256,14 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                             timestamp: new Date().toISOString()
                                         });
                                     } catch (sendError) {
-                                        console.error('❌ Error sending streaming update:', sendError.message);
+                                        console.error(`❌ Error sending streaming update: ${sendError.message}`);
                                     }
-                                } else {
-                                    console.warn('⚠️ Streaming callback called but WebSocket context is not available', {
-                                        hasWs: !!wsRef,
-                                        hasHandler: !!handlerRef,
-                                        hasSendToClient: !!(handlerRef && typeof handlerRef.sendToClient === 'function'),
-                                        sessionId: sessionIdRef
-                                    });
                                 }
                             }
                         };
                     })(ws, handler, sessionId);
 
-                    aiResponse = await callDirectorAIWithStructuredOutput(conversationMessages, {
+                    aiResponse = await callDirectorAIWithCompletion(conversationMessages, {
                         model: selectedModel,
                         reasoningEffort,
                         timeout,

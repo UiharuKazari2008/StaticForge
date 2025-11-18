@@ -459,19 +459,20 @@ function renderManualSamplerDropdown(selectedVal) {
  */
 function selectManualSampler(value) {
     manualSelectedSampler = value;
-    
+
     // Auto-set noise scheduler based on sampler selection
     if (value === 'k_dpmpp_2m') {
         selectManualNoiseScheduler('exponential');
     } else {
         selectManualNoiseScheduler('karras');
     }
-    
+
     updateSamplerDisplay();
-    
+
     // Update pipeline stages inherited values
     updateAllStagesInheritedValues();
 }
+
 
 /**
  * Update sampler display with current sampler and noise scheduler
@@ -599,6 +600,7 @@ function renderManualModelDropdown(selectedVal) {
     renderGroupedDropdown(manualModelDropdownMenu, modelGroups, selectManualModel, closeManualModelDropdown, selectedVal, (opt, group) => `<span>${opt.name}</span>`, { preventFocusTransfer: true });
 }
 
+
 function renderManualWorkspaceDropdown(selectedVal) {
     if (!manualWorkspaceDropdownMenu) return;
 
@@ -667,7 +669,7 @@ function closeManualWorkspaceDropdown() {
  * TODO: Move function implementation from app.js
  */
 function selectManualModel(value, group, preventPropagation = false) {
-    manualSelectedModel = value;
+    manualSelectedModel = value.toLowerCase();
 
     // If group is not provided, find it automatically
     if (!group) {
@@ -895,7 +897,7 @@ function renderDatasetDropdown() {
     const datasets = window.optionsData?.datasets || [
         { value: 'anime dataset', display: 'Anime', icon: 'nai-sakura', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
         { value: 'furry dataset', display: 'Furry', icon: 'nai-paw', type: 'dataset', min: -3, max: 5, default: 1.0, negative: false, sub_toggles: [] },
-        { value: 'backgrounds dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
+        { value: 'background dataset', display: 'Backgrounds', icon: 'fas fa-tree', type: 'dataset', min: -3, max: 5, default: 0.75, negative: false, sub_toggles: [] }
     ];
 
     // Add quality preset as a special preset type item
@@ -938,7 +940,7 @@ function renderDatasetDropdown() {
             // Special handling for quality preset
             if (dataset.isQualityPreset) {
                 const qualityToggleOption = document.createElement('div');
-                qualityToggleOption.className = 'custom-dropdown-option dataset-quality-toggle';
+                qualityToggleOption.className = 'custom-dropdown-option';
                 const isSelected = appendQuality;
                 if (isSelected) {
                     qualityToggleOption.classList.add('selected');
@@ -1017,7 +1019,7 @@ function renderDatasetDropdown() {
 
             // Regular dataset rendering
             const option = document.createElement('div');
-            option.className = 'custom-dropdown-option dataset-dropdown-option';
+            option.className = 'custom-dropdown-option';
             option.dataset.value = dataset.value;
 
             const isSelected = selectedDatasets.includes(dataset.value);
@@ -1292,133 +1294,162 @@ function renderSubTogglesDropdown() {
         return;
     }
 
-    selectedDatasetsWithToggles.forEach(dataset => {
-        const datasetGroup = document.createElement('div');
-        datasetGroup.className = 'sub-toggle-dataset-group';
+    // Helper function to create a toggle option element
+    const createToggleOption = (dataset, subToggle) => {
+        const toggleOption = document.createElement('div');
+        toggleOption.className = 'custom-dropdown-option';
+        toggleOption.dataset.dataset = dataset.value;
+        toggleOption.dataset.toggle = subToggle.id;
 
-        const datasetHeader = document.createElement('div');
-        datasetHeader.className = 'sub-toggle-dataset-header';
-        datasetHeader.textContent = dataset.display;
-        datasetGroup.appendChild(datasetHeader);
+        // Check if this toggle is enabled
+        const isEnabled = window.datasetSettings && 
+                        window.datasetSettings[dataset.value] && 
+                        window.datasetSettings[dataset.value][subToggle.id] ?
+                        window.datasetSettings[dataset.value][subToggle.id].enabled :
+                        (subToggle.default_enabled || false);
 
-        // Group sub_toggles by type
-        const togglesByType = dataset.sub_toggles.reduce((acc, toggle) => {
-            const type = toggle.type || 'preset';
-            if (!acc[type]) acc[type] = [];
-            acc[type].push(toggle);
-            return acc;
-        }, {});
+        if (isEnabled) {
+            toggleOption.classList.add('selected');
+        }
 
-        // Render sub_toggles grouped by type
-        const typeOrder = ['dataset', 'preset'];
-        typeOrder.forEach((type, typeIndex) => {
-            if (!togglesByType[type] || togglesByType[type].length === 0) return;
+        const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
+        const biasValue = (window.datasetSettings && 
+                         window.datasetSettings[dataset.value] && 
+                         window.datasetSettings[dataset.value][subToggle.id]) ?
+                         window.datasetSettings[dataset.value][subToggle.id].bias : 
+                         defaultBias;
 
-            // Add section separator if not first section within this dataset
-            if (typeIndex > 0) {
-                const typeDivider = document.createElement('div');
-                typeDivider.className = 'custom-dropdown-separator';
-                datasetGroup.appendChild(typeDivider);
-            }
+        const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
 
-            togglesByType[type].forEach(subToggle => {
-                const toggleOption = document.createElement('div');
-                toggleOption.className = 'custom-dropdown-option dataset-dropdown-option';
-                toggleOption.dataset.dataset = dataset.value;
-                toggleOption.dataset.toggle = subToggle.id;
+        // Use icon from config, fallback to default
+        const icon = subToggle.icon || 'fas fa-toggle-on';
 
-                // Check if this toggle is enabled
-                const isEnabled = window.datasetSettings && 
-                                window.datasetSettings[dataset.value] && 
-                                window.datasetSettings[dataset.value][subToggle.id] ?
-                                window.datasetSettings[dataset.value][subToggle.id].enabled :
-                                (subToggle.default_enabled || false);
-
-                if (isEnabled) {
-                    toggleOption.classList.add('selected');
-                }
-
-                const defaultBias = subToggle.default !== undefined ? subToggle.default : (subToggle.default_bias !== undefined ? subToggle.default_bias : 1.0);
-                const biasValue = (window.datasetSettings && 
-                                 window.datasetSettings[dataset.value] && 
-                                 window.datasetSettings[dataset.value][subToggle.id]) ?
-                                 window.datasetSettings[dataset.value][subToggle.id].bias : 
-                                 defaultBias;
-
-                const biasDisplay = biasValue !== 1.0 ? biasValue.toFixed(1) : '1.0';
-
-                // Use icon from config, fallback to default
-                const icon = subToggle.icon || 'fas fa-toggle-on';
-
-                toggleOption.innerHTML = `
-                    <div class="dataset-option-content">
-                        <div class="dataset-option-left">
-                            <i class="${icon}" style="font-size: 14px;"></i>
-                            <span class="dataset-name">${subToggle.name}</span>
-                            ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+        toggleOption.innerHTML = `
+            <div class="dataset-option-content">
+                <div class="dataset-option-left">
+                    <i class="${icon}" style="font-size: 14px;"></i>
+                    <span class="dataset-name">${subToggle.name}</span>
+                    ${isEnabled ? '<i class="fas fa-check dataset-check-icon"></i>' : ''}
+                </div>
+                <div class="dataset-option-right">
+                    ${isEnabled ? `
+                        <div class="dataset-bias-controls">
+                            <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
+                            <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
+                                <i class="fas fa-plus"></i>
+                            </button>
                         </div>
-                        <div class="dataset-option-right">
-                            ${isEnabled ? `
-                                <div class="dataset-bias-controls">
-                                    <button type="button" class="dataset-bias-decrease" title="Decrease bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                        <i class="fas fa-minus"></i>
-                                    </button>
-                                    <span class="dataset-bias-value" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">${biasDisplay}</span>
-                                    <button type="button" class="dataset-bias-increase" title="Increase bias" data-dataset="${dataset.value}" data-toggle="${subToggle.id}">
-                                        <i class="fas fa-plus"></i>
-                                    </button>
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
+                    ` : ''}
+                </div>
+            </div>
+        `;
 
-                // Add click handler for the main option (toggle selection)
-                const optionLeft = toggleOption.querySelector('.dataset-option-left');
-                optionLeft.addEventListener('click', (e) => {
-                        e.preventDefault();
-                    e.stopPropagation();
-                    toggleSubToggle(dataset.value, subToggle.id, subToggle);
-                });
-
-                // Add click handlers for bias controls (only if toggle is enabled)
-                if (isEnabled) {
-                    const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
-                    const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
-                    const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
-
-                    decreaseBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        adjustSubToggleBias(dataset.value, subToggle.id, -0.1, subToggle);
-                    });
-
-                    increaseBtn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        adjustSubToggleBias(dataset.value, subToggle.id, 0.1, subToggle);
-                    });
-
-                    // Add wheel event for bias value span
-                    biasValueSpan.addEventListener('wheel', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const delta = e.deltaY > 0 ? -0.1 : 0.1;
-                        adjustSubToggleBias(dataset.value, subToggle.id, delta, subToggle);
-                        
-                        // Add visual feedback
-                        biasValueSpan.classList.add('scrolling');
-                        setTimeout(() => {
-                            biasValueSpan.classList.remove('scrolling');
-                        }, 200);
-                    });
-                }
-
-                datasetGroup.appendChild(toggleOption);
-            });
+        // Add click handler for the main option (toggle selection)
+        const optionLeft = toggleOption.querySelector('.dataset-option-left');
+        optionLeft.addEventListener('click', (e) => {
+                e.preventDefault();
+            e.stopPropagation();
+            toggleSubToggle(dataset.value, subToggle.id, subToggle);
         });
 
-        subTogglesDropdownMenu.appendChild(datasetGroup);
+        // Add click handlers for bias controls (only if toggle is enabled)
+        if (isEnabled) {
+            const decreaseBtn = toggleOption.querySelector('.dataset-bias-decrease');
+            const increaseBtn = toggleOption.querySelector('.dataset-bias-increase');
+            const biasValueSpan = toggleOption.querySelector('.dataset-bias-value');
+
+            decreaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustSubToggleBias(dataset.value, subToggle.id, -0.1, subToggle);
+            });
+
+            increaseBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                adjustSubToggleBias(dataset.value, subToggle.id, 0.1, subToggle);
+            });
+
+            // Add wheel event for bias value span
+            biasValueSpan.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                adjustSubToggleBias(dataset.value, subToggle.id, delta, subToggle);
+                
+                // Add visual feedback
+                biasValueSpan.classList.add('scrolling');
+                setTimeout(() => {
+                    biasValueSpan.classList.remove('scrolling');
+                }, 200);
+            });
+        }
+
+        return toggleOption;
+    };
+
+    // Group all toggles by type across all datasets
+    const togglesByType = { dataset: [], preset: [] };
+    selectedDatasetsWithToggles.forEach(dataset => {
+        dataset.sub_toggles.forEach(subToggle => {
+            const type = subToggle.type || 'preset';
+            if (togglesByType[type]) {
+                togglesByType[type].push({ dataset, subToggle });
+            }
+        });
+    });
+
+    // Render dataset-type toggles first, then preset-type toggles
+    const typeOrder = ['dataset', 'preset'];
+    let hasRenderedDatasetType = false;
+    
+    typeOrder.forEach((type) => {
+        if (!togglesByType[type] || togglesByType[type].length === 0) return;
+
+        // Add separator after dataset-type toggles, before preset-type toggles
+        if (type === 'preset' && hasRenderedDatasetType) {
+            const typeDivider = document.createElement('div');
+            typeDivider.className = 'custom-dropdown-separator';
+            subTogglesDropdownMenu.appendChild(typeDivider);
+        }
+
+        // Group toggles by dataset for this type
+        const togglesByDataset = {};
+        togglesByType[type].forEach(({ dataset, subToggle }) => {
+            if (!togglesByDataset[dataset.value]) {
+                togglesByDataset[dataset.value] = {
+                    dataset,
+                    toggles: []
+                };
+            }
+            togglesByDataset[dataset.value].toggles.push(subToggle);
+        });
+
+        // Render each dataset group for this type
+        Object.values(togglesByDataset).forEach(({ dataset, toggles }) => {
+            const datasetGroup = document.createElement('div');
+            datasetGroup.className = 'sub-toggle-dataset-group';
+
+            const datasetHeader = document.createElement('div');
+            datasetHeader.className = 'custom-dropdown-group';
+            datasetHeader.textContent = dataset.display;
+            datasetGroup.appendChild(datasetHeader);
+
+            // Add all toggles for this dataset and type
+            toggles.forEach(subToggle => {
+                const toggleOption = createToggleOption(dataset, subToggle);
+                datasetGroup.appendChild(toggleOption);
+            });
+
+            subTogglesDropdownMenu.appendChild(datasetGroup);
+        });
+
+        if (type === 'dataset') {
+            hasRenderedDatasetType = true;
+        }
     });
 }
 
@@ -1942,42 +1973,52 @@ function applyBiasToText(input, bias) {
         return input;
     }
 
-    // Preprocessing: Ensure input has proper terminator if it doesn't end with "::" not preceded by a number
-    if (!input.match(/\d::$/)) {
-        input = input + '::';
+    // Check if input is already a complete emphasis group (starts with BIAS:: and ends with ::)
+    const isCompleteGroup = /^(-?\d+\.?\d*)::.+::$/s.test(input);
+    
+    // Check if input contains any bias groups
+    const hasBiasGroups = /(-?\d+\.?\d*)::/g.test(input);
+
+    if (isCompleteGroup) {
+        // Input is already wrapped - add or subtract based on bias value
+        let result = input.replace(/(-?\d+\.?\d*)::/g, (match, biasValue) => {
+            const currentBias = parseFloat(biasValue);
+            let newBias;
+            
+            if (bias >= 1.0) {
+                // Increase emphasis - add the bias value
+                newBias = currentBias + bias;
+            } else {
+                // Decrease emphasis
+                const difference = 1.0 - bias;
+                if (currentBias < 0) {
+                    // For negative emphasis, add to make less negative
+                    newBias = currentBias + difference;
+                } else {
+                    // For positive emphasis, subtract to reduce
+                    newBias = currentBias - difference;
+                }
+            }
+            
+            const rounded = Math.round(newBias * 10) / 10; // Round to 1 decimal place
+            return `${rounded.toFixed(1)}::`;
+        });
+        return result;
+    } else if (hasBiasGroups) {
+        // Input has bias groups but not wrapped - add/subtract adjustment and wrap
+        const biasAdjustment = bias - 1.0;
+        let result = input.replace(/(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::).)*?)::(?=(?:[^:]|$))/g, (match, innerBias, content) => {
+            const innerBiasValue = parseFloat(innerBias);
+            const newInnerBias = innerBiasValue + biasAdjustment;
+            const rounded = Math.round(newInnerBias * 10) / 10;
+            
+            return `${rounded.toFixed(1)}::${content}, ${bias}::`;
+        });
+        return `${bias}::${result}::`;
+    } else {
+        // No bias groups - wrap the entire input
+        return `${bias}::${input}::`;
     }
-
-    // Calculate the bias adjustment (difference from 1.0)
-    const biasAdjustment = bias - 1.0;
-
-    // First, scan for numeric emphasis patterns in the input and adjust them
-    // Handle both single : and double :: terminators
-    // Content stops at commas, spaces, or other punctuation to avoid matching across multiple emphasis blocks
-    let result = input.replace(/(-?\d*\.?\d+)::([^\s:,;]+)(:*)/g, (match, innerBias, content, terminator) => {
-        const innerBiasValue = parseFloat(innerBias);
-        let newInnerBias;
-
-        // For negative inner biases, make them more negative (subtract the adjustment)
-        // For positive inner biases, add the adjustment
-        if (innerBiasValue < 0) {
-            newInnerBias = innerBiasValue - Math.abs(biasAdjustment);
-        } else {
-            newInnerBias = innerBiasValue + biasAdjustment;
-        }
-
-        newInnerBias = Math.round(newInnerBias * 10) / 10; // Round to 1 decimal place
-        // Only add terminator if the original had one
-        const terminatorPart = terminator ? ` ${bias}::` : '';
-        return `${newInnerBias}::${content}${terminatorPart}`;
-    });
-
-    // Clean up malformed emphasis patterns (number:: with no content)
-    result = result.replace(/\d+(?:\.\d+)?::(?:\s|$)/g, '');
-
-    // Wrap the entire result with the main bias
-    // If result already ends with "::", don't add another "::" to avoid double termination
-    const trailingTerminator = result.endsWith('::') ? '' : '::';
-    return `${bias}::${result}${trailingTerminator}`;
 }
 
 /**
@@ -2211,7 +2252,7 @@ function renderNsfwDropdown() {
 
     nsfwOptions.forEach(option => {
         const optionElement = document.createElement('div');
-        optionElement.className = 'custom-dropdown-option dataset-dropdown-option';
+        optionElement.className = 'custom-dropdown-option';
         optionElement.dataset.value = option.value;
 
         const isSelected = selectedNsfwValue === option.value;

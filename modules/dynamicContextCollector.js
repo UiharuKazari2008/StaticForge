@@ -14,8 +14,34 @@ const sharp = require('sharp');
 
 const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHandlers.timeCalc');
 
-// Import T5 tokenizer service for token counting
-const t5TokenizerService = require('./t5-tokenizer-service');
+/**
+ * Normalizes legacy period keys to new period key names
+ * @param {string} periodKey - The period key to normalize
+ * @returns {string} - Normalized period key
+ */
+function normalizePeriodKey(periodKey) {
+    if (!periodKey || typeof periodKey !== 'string') {
+        return periodKey;
+    }
+    
+    const normalized = periodKey.toLowerCase().trim();
+    
+    // Legacy to new mappings
+    const legacyMappings = {
+        'earlymorning': 'morning',
+        'early_morning': 'morning',
+        'earlyevening': 'night',
+        'early_evening': 'night',
+        'evening': 'night',
+        'lateevening': 'night',
+        'late_evening': 'night'
+    };
+    
+    return legacyMappings[normalized] || normalized;
+}
+
+// Import global resources for token counting
+const globalResources = require('./globalResources');
 
 // Import clothing database for dynamic clothing selection
 const ClothingDatabase = require('./clothingDatabase');
@@ -155,10 +181,10 @@ const HOLIDAY_DATA = {
     },
     'thanksgiving': {
         name: 'Thanksgiving',
-        decorations: 'autumn leaves, harvest decorations, turkeys',
-        atmosphere: 'grateful, warm, family-oriented, abundant',
-        colors: 'orange, brown, yellow, red',
-        activities: 'family dinners, gratitude expressions, parades',
+        decorations: 'autumn leaves, harvest decorations, roasted turkeys, cornucopias, pumpkins, gourds, fall centerpieces, pies, seasonal floral arrangements, fall wreaths, rustic table settings, candlelit dinners',
+        atmosphere: 'grateful, warm, family-oriented, abundant, nostalgic, homey, welcoming, traditional, intergenerational, cozy, appreciative, togetherness',
+        colors: 'orange, brown, yellow, gold, deep reds, burgundy, earth tones, amber, rust, warm neutrals',
+        activities: 'family dinners, cooking together, preparing traditional recipes, sharing gratitude, watching football games, Thanksgiving parades, playing board games, taking family photos, sharing stories, enjoying dessert, relaxing after the meal',
         priority: 6,
         region: 'north_america',
         season: 'autumn'
@@ -1708,7 +1734,8 @@ async function compileContext(dynamicConfig, clientIP = null) {
                     currentLocation = {
                         lat: latitude,
                         lon: longitude,
-                        timezone: getTimezoneByCoordinates(latitude, longitude)
+                        timezone: getTimezoneByCoordinates(latitude, longitude),
+                        source: 'static' // Mark as static/manual location
                     };
                     console.log(`📍 Using custom weather location: ${latitude}, ${longitude} (timezone: ${currentLocation.timezone})`);
                 } else {
@@ -1887,8 +1914,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
         const timeMappings = {
             'dawn': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.dawnStart), minute: Math.round((astronomicalTimes.dawnStart % 1) * 60) } : { hour: 6, minute: 0 },
             'sunrise': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise), minute: Math.round((astronomicalTimes.sunrise % 1) * 60) } : { hour: 7, minute: 0 },
-            'earlymorning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 0.25), minute: 0 } : { hour: 7, minute: 30 },
-            'morning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 1), minute: 0 } : { hour: 9, minute: 0 },
+            'morning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 0.25), minute: 0 } : { hour: 7, minute: 30 },
             'latemorning': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunrise + 2.5), minute: 30 } : { hour: 10, minute: 30 },
             'daytime': astronomicalTimes ? { hour: Math.floor((astronomicalTimes.sunrise + astronomicalTimes.sunset) / 2), minute: 0 } : { hour: 13, minute: 0 },
             'noon': astronomicalTimes ? { hour: Math.floor((astronomicalTimes.sunrise + astronomicalTimes.sunset) / 2), minute: 0 } : { hour: 12, minute: 0 },
@@ -1897,18 +1923,17 @@ async function compileContext(dynamicConfig, clientIP = null) {
             'goldenhour': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset - 0.75), minute: 0 } : { hour: 17, minute: 30 },
             'sunset': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset), minute: Math.round((astronomicalTimes.sunset % 1) * 60) } : { hour: 18, minute: 0 },
             'dusk': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.duskEnd), minute: Math.round((astronomicalTimes.duskEnd % 1) * 60) } : { hour: 19, minute: 30 },
-            'earlyevening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 0.75), minute: 0 } : { hour: 19, minute: 0 },
-            'evening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 1.5), minute: 0 } : { hour: 20, minute: 0 },
-            'lateevening': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 3), minute: 0 } : { hour: 22, minute: 0 },
-            'night': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 3), minute: 0 } : { hour: 22, minute: 0 },
+            'night': astronomicalTimes ? { hour: Math.floor(astronomicalTimes.sunset + 0.75), minute: 0 } : { hour: 19, minute: 0 },
             'midnight': { hour: 0, minute: 0 }
         };
 
         // Check if we have a named time to process (either from single tod or from time_date format)
         const timeToProcess = namedTimeForLater || tod;
-        if (timeMappings[timeToProcess]) {
-            let customHour = timeMappings[timeToProcess].hour;
-            let customMinute = timeMappings[timeToProcess].minute;
+        const normalizedTimeToProcess = normalizePeriodKey(timeToProcess);
+        
+        if (timeMappings[normalizedTimeToProcess]) {
+            let customHour = timeMappings[normalizedTimeToProcess].hour;
+            let customMinute = timeMappings[normalizedTimeToProcess].minute;
 
             // Check if the requested astronomical time has already passed today
             // If so, we want tomorrow's occurrence of that time
@@ -1922,7 +1947,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
             if (requestedTimeToday < today) {
                 targetDateTime = new Date(requestedTimeToday);
                 targetDateTime.setDate(targetDateTime.getDate() + 1); // Move to next calendar day
-                console.log(`🌅 "${timeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
+                console.log(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
             }
 
             // Use getCurrentTime to create the proper time object for the custom astronomical time
@@ -1938,9 +1963,9 @@ async function compileContext(dynamicConfig, clientIP = null) {
 
             if (astronomicalTimes) {
                 const timeDescription = requestedTimeToday < today ? 'tomorrow' : 'today';
-                console.log(`🌅 Using actual astronomical time for "${timeToProcess}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
+                console.log(`🌅 Using actual astronomical time for "${normalizedTimeToProcess}" (${timeDescription}): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')} (sunrise: ${astronomicalTimes.sunrise.toFixed(2)}, sunset: ${astronomicalTimes.sunset.toFixed(2)})`);
             } else {
-                console.log(`⏰ Using fallback time approximation for "${timeToProcess}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
+                console.log(`⏰ Using fallback time approximation for "${normalizedTimeToProcess}": ${customHour}:${customMinute.toString().padStart(2, '0')}`);
             }
         }
     }
@@ -2135,18 +2160,20 @@ async function compileContext(dynamicConfig, clientIP = null) {
     }
 
     // Create context object with all gathered data
+    // Always include holidayInfo field (even if null) for consistency in saved metadata
     const context = {
         time: baseTime,
         timePeriod: timePeriod,
         season: currentSeason,
-        holidayInfo: holidayInfo,
+        holidayInfo: holidayInfo || null, // Always include, even if null
         weather: weatherData,
         location: currentLocation ? {
             latitude: currentLocation.lat,
             longitude: currentLocation.lon,
             timezone: currentLocation.timezone,
             city: currentLocation.city,
-            country: currentLocation.country
+            country: currentLocation.country,
+            source: currentLocation.source || 'unknown' // Include source to distinguish static vs auto-detected
         } : null,
         creative: creative || false
     };

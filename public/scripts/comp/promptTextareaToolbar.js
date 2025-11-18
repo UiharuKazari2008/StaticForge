@@ -203,7 +203,7 @@ class PromptTextareaToolbar {
                     dropdownMenu,
                     () => this.renderToolbarActionsDropdown(`${dropdown.id.replace('Dropdown', 'DropdownMenu')}`, [
                         { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                        { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                        { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
                         { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
                     ]),
                     () => null,
@@ -362,10 +362,11 @@ class PromptTextareaToolbar {
                 dropdownMenu,
                 () => this.renderToolbarActionsDropdown('promptActionsDropdownMenu', [
                     { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
                     { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
                     { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
+                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
                 ]),
                 () => null, // No getSelectedValue needed
                 {
@@ -387,9 +388,11 @@ class PromptTextareaToolbar {
                 ucDropdownMenu,
                 () => this.renderToolbarActionsDropdown('ucActionsDropdownMenu', [
                     { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
                     { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
-                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
+                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
+                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
                 ]),
                 () => null,
                 {
@@ -411,10 +414,11 @@ class PromptTextareaToolbar {
                 creativeTabDropdownMenu,
                 () => this.renderToolbarActionsDropdown('creativeTabPromptActionsDropdownMenu', [
                     { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
                     { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
                     { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-                    { value: 'manage-director-rules', display: 'Manage Rule(s)', icon: 'fas fa-book-law' }
+                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
+                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
                 ]),
                 () => null,
                 {
@@ -493,6 +497,11 @@ class PromptTextareaToolbar {
                 break;
             case 'manage-director-rules':
                 showDirectorRulesManager();
+                break;
+            case 'enshutsuka-memories':
+                if (typeof openKnowledgeMemoriesModal === 'function') {
+                    openKnowledgeMemoriesModal();
+                }
                 break;
             case 'autofill':
                 this.toggleAutofill(toolbar);

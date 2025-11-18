@@ -166,33 +166,8 @@ async function initializePhotoSwipe() {
                 
                 // Update upscale button visibility based on image dimensions
                 const upscaleButton = bottomBar.querySelector('.pswp__button--upscale-button');
-                if (upscaleButton && currentItem.data.data) {
-                    const imageData = currentItem.data.data;
-                    
-                    // Try to get dimensions from various sources
-                    let width = currentItem.width;
-                    let height = currentItem.height;
-                    
-                    // Check metadata if direct properties aren't available
-                    if (!width || !height) {
-                        if (imageData.metadata) {
-                            width = imageData.metadata.actual_width || imageData.metadata.width;
-                            height = imageData.metadata.actual_height || imageData.metadata.height;
-                        }
-                    }
-                    
-                    // Check if upscaling is available for these dimensions
-                    if (width && height && typeof calculateUpscaleInfo === 'function') {
-                        const upscaleInfo = calculateUpscaleInfo(width, height);
-                        if (upscaleInfo.available) {
-                            upscaleButton.classList.remove('hidden');
-                        } else {
-                            upscaleButton.classList.add('hidden');
-                        }
-                    } else {
-                        // Default to showing if dimensions unknown
-                        upscaleButton.classList.remove('hidden');
-                    }
+                if (upscaleButton) {
+                    upscaleButton.classList.remove('hidden');
                 }
             }
         };
@@ -313,6 +288,25 @@ async function initializePhotoSwipe() {
                                     // Close PhotoSwipe first, then open expansion modal
                                     pswp.close();
                                     rerollImageWithEdit(currentItem.data?.data, e);
+                                }
+                            }
+                        },
+                        {
+                            className: 'chat-button',
+                            icon: '<i class="fa-light fa-person-to-portal"></i>',
+                            label: 'Create Persona',
+                            onClick: () => {
+                                const currentItem = pswp.currSlide;
+                                if (currentItem && currentItem.data?.data) {
+                                    // Get the filename - prefer upscaled, fallback to original
+                                    const imageData = currentItem.data.data;
+                                    const filename = imageData.upscaled || imageData.original || imageData.filename;
+                                    if (filename && window.chatSystem) {
+                                        // Close PhotoSwipe first, then open chat modal
+                                        pswp.close();
+                                        const characterName = imageData.characterName || imageData.metadata?.character_name || null;
+                                        window.chatSystem.openChatModal(filename, characterName);
+                                    }
                                 }
                             }
                         },

@@ -951,7 +951,7 @@ class Director {
         // Define mode-specific content
         const modeContent = {
             analyse: {
-                title: 'Welcome to Image Director!',
+                title: 'Welcome to Enshutsuka!',
                 description: 'I\'ll analyze this image to craft the perfect prompt.',
                 tips: [
                     'Be specific about the subject, style, and mood you want',
@@ -961,7 +961,7 @@ class Director {
                 ]
             },
             efficiency: {
-                title: 'Welcome to Image Director!',
+                title: 'Welcome to Enshutsuka!',
                 description: 'I\'ll analyze this image and your existing prompt to optimize accuracy.',
                 tips: [
                     'Describe what aspects of the current result you want improved',
@@ -971,7 +971,7 @@ class Director {
                 ]
             },
             create: {
-                title: 'Welcome to Image Director!',
+                title: 'Welcome to Enshutsuka!',
                 description: 'I\'ll help you create a creative prompt from your text input.',
                 tips: [
                     'Just enter your ideas or concepts in text form',
@@ -1995,7 +1995,7 @@ class Director {
             role: role,
             content: messageContent,
             timestamp: new Date().toISOString(),
-            data: data.data || null // Store preprocessed data from server
+            data: data.data || null
         };
 
         // Add message to current session data

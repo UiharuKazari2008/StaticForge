@@ -2,6 +2,7 @@
 class ChatSystem {
     constructor() {
         this.currentChatId = null;
+        this.pendingChatId = null; // Track chatId being created to handle streaming events early
         this.currentFilename = null;
         this.personaSettings = null;
         this.chatSessions = [];
@@ -221,6 +222,9 @@ class ChatSystem {
         startBtn.disabled = true;
         startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
         
+        // Clear any pending chat ID
+        this.pendingChatId = null;
+        
         try {
             // Always use grok-4-fast-reasoning
             const chatData = {
@@ -234,15 +238,22 @@ class ChatSystem {
                 model: 'grok-4-fast-reasoning'
             };
             
+            // Open chat interface modal BEFORE sending request so we can receive streaming events
+            // We'll set the actual chatId when the response arrives
+            this.closeChatModal();
+            this.openChatInterfaceModal();
+            
+            // Send the create request (this will trigger persona establishment which streams)
             const response = await window.wsClient.createChatSession(chatData);
             
             if (response && response.success) {
+                // Set both currentChatId and clear pendingChatId
                 this.currentChatId = response.chatId;
-                this.closeChatModal();
-                this.openChatInterfaceModal();
+                this.pendingChatId = null;
+                
                 await this.loadAllChatSessions();
                 
-                // Load initial messages and wait for AI response
+                // Load initial messages (streaming events may have already arrived)
                 await this.loadChatMessages();
                 
                 // Show typing indicator while waiting for AI response
@@ -252,10 +263,15 @@ class ChatSystem {
                 this.resetSendButton();
             } else {
                 const errorMsg = response?.message || response?.error || 'Failed to create chat session';
+                // Close the modal if creation failed
+                this.closeChatInterfaceModal();
                 throw new Error(errorMsg);
             }
         } catch (error) {
             console.error('❌ Failed to start chat:', error);
+            // Close the modal if creation failed
+            this.closeChatInterfaceModal();
+            this.pendingChatId = null;
             // Show error toast
             if (window.showToast) {
                 const errorMsg = error.message || 'Failed to start chat';
@@ -264,7 +280,7 @@ class ChatSystem {
         } finally {
             this.isLoading = false;
             startBtn.disabled = false;
-            startBtn.innerHTML = '<span>Start Conversation</span><i class="mdi mdi-1-5 mdi-chat"></i>';
+            startBtn.innerHTML = '<span>Create Persona</span><i class="fas fa-person-to-portal"></i>';
         }
     }
 
@@ -491,6 +507,7 @@ class ChatSystem {
                 // Render user message directly
                 const messageElement = document.createElement('div');
                 messageElement.className = `chat-message user`;
+                messageElement.dataset.messageId = group.message.id; // Store message ID for deletion
             
                 let avatarSrc = '/static_images/icon-96x96.png';
                 if (this.personaSettings?.profile_photo_base64) {
@@ -503,6 +520,10 @@ class ChatSystem {
                         <div class="chat-message-text">${this.escapeHtml(group.message.content)}</div>
                     </div>
                 `;
+                
+                // Add context menu for message deletion
+                this.attachMessageContextMenu(messageElement, group.message.id);
+                
                 container.appendChild(messageElement);
             } else if (group.type === 'assistant_response') {
                 // Group by timestamp and render each timestamp as a separate message
@@ -599,18 +620,36 @@ class ChatSystem {
                 }
             });
             
+            // Check if actions and sfx should be visible
+            const showActionsSfx = container && container.classList.contains('show-actions-sfx');
+            
             // Only create message if there's actual content
-            if (messageContent || actions || sfx) {
+            if (messageContent || (showActionsSfx && (actions || sfx))) {
                 const messageElement = document.createElement('div');
                 messageElement.className = 'chat-message assistant';
+                
+                // Find the latest message ID from this group (for deletion)
+                // Sort events by ID (assuming higher ID = newer message)
+                const sortedEvents = [...visibleEvents].sort((a, b) => (b.id || 0) - (a.id || 0));
+                const latestMessageId = sortedEvents[0]?.id || null;
+                
+                if (latestMessageId) {
+                    messageElement.dataset.messageId = latestMessageId;
+                }
                 
                 messageElement.innerHTML = `
                     <div class="chat-message-content">
                         ${messageContent ? `<div class="chat-message-text">${this.escapeHtml(messageContent)}</div>` : ''}
-                        ${actions ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
-                        ${sfx ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
+                        ${(showActionsSfx && actions) ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
+                        ${(showActionsSfx && sfx) ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
                     </div>
                 `;
+                
+                // Add context menu for message deletion
+                if (latestMessageId) {
+                    this.attachMessageContextMenu(messageElement, latestMessageId);
+                }
+                
                 container.appendChild(messageElement);
             }
         }
@@ -619,6 +658,11 @@ class ChatSystem {
         metadataEvents.forEach(event => {
             const messageElement = document.createElement('div');
             messageElement.className = `chat-message assistant metadata-message ${event.event_type}`;
+            
+            // Store message ID for deletion
+            if (event.id) {
+                messageElement.dataset.messageId = event.id;
+            }
             
             // Get event display name
             const eventDisplayNames = {
@@ -644,6 +688,12 @@ class ChatSystem {
                     <div class="chat-message-text">${this.escapeHtml(event.content)}</div>
                 </div>
             `;
+            
+            // Add context menu for message deletion
+            if (event.id) {
+                this.attachMessageContextMenu(messageElement, event.id);
+            }
+            
             container.appendChild(messageElement);
         });
     }
@@ -656,10 +706,86 @@ class ChatSystem {
             // Save preference to localStorage
             const isShowing = container.classList.contains('show-metadata');
             localStorage.setItem('chat-show-metadata', isShowing);
+        }
+    }
+
+    toggleActionsSfxVisibility() {
+        const container = document.getElementById('chatMessagesList');
+        if (container) {
+            container.classList.toggle('show-actions-sfx');
             
-            // Show toast notification
+            // Save preference to localStorage
+            const isShowing = container.classList.contains('show-actions-sfx');
+            localStorage.setItem('chat-show-actions-sfx', isShowing);
+            
+            // Re-render messages to apply the toggle
+            if (this.currentChatId) {
+                this.renderChatMessages();
+            }
+        }
+    }
+
+    attachMessageContextMenu(messageElement, messageId) {
+        if (!window.contextMenu || !messageId) return;
+        
+        window.contextMenu.attachToElement(messageElement, {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'mdi mdi-1-5 mdi-delete',
+                            text: 'Delete',
+                            action: 'delete-message',
+                            className: 'danger',
+                            data: { messageId: messageId }
+                        }
+                    ]
+                }
+            ],
+            onAction: (action, target, item) => {
+                if (action === 'delete-message') {
+                    this.handleDeleteMessage(item.data.messageId);
+                }
+            }
+        });
+    }
+
+    async handleDeleteMessage(messageId) {
+        if (!messageId) return;
+        
+        // Confirm deletion
+        const confirmed = await showConfirmationDialog(
+            'Are you sure you want to delete this message? This action cannot be undone.',
+            [
+                { text: 'Delete', value: true, className: 'btn-danger' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ]
+        );
+        
+        if (!confirmed) return;
+        
+        try {
+            const response = await window.wsClient.deleteChatMessage(messageId);
+            
+            if (response && response.success) {
+                if (window.showToast) {
+                    window.showToast('Message deleted successfully', 'success');
+                }
+                
+                // Reload messages to reflect the deletion
+                if (this.currentChatId) {
+                    await this.loadChatMessages();
+                }
+            } else {
+                const errorMsg = response?.message || response?.error || 'Failed to delete message';
+                throw new Error(errorMsg);
+            }
+        } catch (error) {
+            console.error('Failed to delete message:', error);
             if (window.showToast) {
-                window.showToast(isShowing ? '4th Wall events visible' : '4th Wall events hidden', 'info');
+                const errorMsg = error.message || 'Failed to delete message';
+                window.showToast('Failed to delete message: ' + errorMsg, 'error');
             }
         }
     }
@@ -667,9 +793,15 @@ class ChatSystem {
     initializeMetadataToggle() {
         // Restore preference from localStorage
         const showMetadata = localStorage.getItem('chat-show-metadata') === 'true';
+        const showActionsSfx = localStorage.getItem('chat-show-actions-sfx') === 'true';
         const container = document.getElementById('chatMessagesList');
-        if (container && showMetadata) {
-            container.classList.add('show-metadata');
+        if (container) {
+            if (showMetadata) {
+                container.classList.add('show-metadata');
+            }
+            if (showActionsSfx) {
+                container.classList.add('show-actions-sfx');
+            }
         }
         
         // Add context menu to chat messages container
@@ -683,6 +815,11 @@ class ChatSystem {
                                 icon: 'mdi mdi-1-5 mdi-eye',
                                 text: 'Toggle 4th Wall Events',
                                 action: 'toggle-metadata'
+                            },
+                            {
+                                icon: 'mdi mdi-1-5 mdi-eye',
+                                text: 'Toggle Actions & SFX',
+                                action: 'toggle-actions-sfx'
                             }
                         ]
                     }
@@ -690,6 +827,8 @@ class ChatSystem {
                 onAction: (action, target, item) => {
                     if (action === 'toggle-metadata') {
                         this.toggleMetadataVisibility();
+                    } else if (action === 'toggle-actions-sfx') {
+                        this.toggleActionsSfxVisibility();
                     }
                 }
             });
@@ -875,12 +1014,16 @@ class ChatSystem {
             }
         }
         
+        // Check if actions and sfx should be visible
+        const messagesContainer = document.getElementById('chatMessagesList');
+        const showActionsSfx = messagesContainer && messagesContainer.classList.contains('show-actions-sfx');
+        
         messageElement.innerHTML = `
             <img src="${avatarSrc}" alt="Avatar" class="chat-message-avatar">
             <div class="chat-message-content">
                 <div class="chat-message-text">${this.escapeHtml(messageContent)}</div>
-                ${actions ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
-                ${sfx ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
+                ${(showActionsSfx && actions) ? `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>` : ''}
+                ${(showActionsSfx && sfx) ? `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>` : ''}
             </div>
         `;
         
@@ -1131,11 +1274,28 @@ class ChatSystem {
     }
     
     handleStreamingStart(message) {
-
-        // Check if modal is open and this is the active chat
-        if (!this.isChatInterfaceModalOpen() || message.chatId !== this.currentChatId) {
+        // Check if modal is open
+        if (!this.isChatInterfaceModalOpen()) {
             return;
         }
+        
+        // Handle streaming for current chat OR pending chat (being created)
+        const isCurrentChat = message.chatId && message.chatId === this.currentChatId;
+        const isPendingChat = message.chatId && message.chatId === this.pendingChatId;
+        
+        // If this is a new chat being created, store the chatId and use it
+        if (message.chatId && !this.currentChatId && !this.pendingChatId) {
+            console.log(`✅ New chat detected from streaming start: ${message.chatId}`);
+            this.pendingChatId = message.chatId;
+        }
+        
+        // Only process if it's for the current or pending chat
+        if (!isCurrentChat && !isPendingChat && message.chatId !== this.pendingChatId) {
+            return;
+        }
+        
+        // Use the chatId from the message (could be currentChatId or pendingChatId)
+        const activeChatId = message.chatId;
 
         // Hide typing indicator if it's showing
         this.hideTypingIndicator();
@@ -1147,9 +1307,15 @@ class ChatSystem {
             return;
         }
         
+        // Remove any existing streaming message for this chat
+        const existingStreaming = document.getElementById(`streaming-${activeChatId}`);
+        if (existingStreaming) {
+            existingStreaming.remove();
+        }
+        
         const streamingMessage = document.createElement('div');
         streamingMessage.className = 'chat-message assistant streaming';
-        streamingMessage.id = `streaming-${message.chatId}`;
+        streamingMessage.id = `streaming-${activeChatId}`;
         streamingMessage.dataset.accumulatedEvents = JSON.stringify([]); // Store accumulated events
         
         // For reasoning models, show live typing with thought process
@@ -1170,13 +1336,243 @@ class ChatSystem {
     }
     
     handleStreamingUpdate(message) {
-        return;
+        // Check if modal is open
+        if (!this.isChatInterfaceModalOpen()) {
+            return;
+        }
+        
+        // Handle streaming for current chat OR pending chat (being created)
+        const isCurrentChat = message.chatId && message.chatId === this.currentChatId;
+        const isPendingChat = message.chatId && message.chatId === this.pendingChatId;
+        
+        // If this is a new chat being created, store the chatId and use it
+        if (message.chatId && !this.currentChatId && !this.pendingChatId) {
+            console.log(`✅ New chat detected from streaming update: ${message.chatId}`);
+            this.pendingChatId = message.chatId;
+        }
+        
+        // Only process if it's for the current or pending chat
+        if (!isCurrentChat && !isPendingChat && message.chatId !== this.pendingChatId) {
+            return;
+        }
+        
+        // Use the chatId from the message
+        const activeChatId = message.chatId;
+        
+        let streamingElement = document.getElementById(`streaming-${activeChatId}`);
+        if (!streamingElement) {
+            // Streaming message not found, try to create it (streaming start might have been missed)
+            console.log('⚠️ Streaming message not found, creating it from update');
+            this.handleStreamingStart(message);
+            // Re-fetch the element after creating it
+            streamingElement = document.getElementById(`streaming-${activeChatId}`);
+            if (!streamingElement) {
+                console.error('❌ Failed to create streaming message');
+                return;
+            }
+        }
+        
+        // Get accumulated events
+        let accumulatedEvents = [];
+        try {
+            const stored = streamingElement.dataset.accumulatedEvents;
+            if (stored) {
+                accumulatedEvents = JSON.parse(stored);
+            }
+        } catch (e) {
+            console.error('Failed to parse accumulated events:', e);
+            accumulatedEvents = [];
+        }
+        
+        // Add new events from this update
+        if (message.events && Array.isArray(message.events)) {
+            // Define visible event types (events that should be displayed)
+            const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
+            
+            // Check if this is the first update with displayable events
+            const hasVisibleEvents = message.events.some(e => visibleEventTypes.includes(e.type) && e.content);
+            const wasEmpty = accumulatedEvents.length === 0;
+            
+            // Hide typing indicator when first displayable content arrives
+            if (hasVisibleEvents && wasEmpty) {
+                this.hideTypingIndicator();
+            }
+            
+            // Merge new events, avoiding duplicates based on timestamp and type
+            message.events.forEach(newEvent => {
+                const existingIndex = accumulatedEvents.findIndex(
+                    e => e.timestamp === newEvent.timestamp && e.type === newEvent.type
+                );
+                if (existingIndex >= 0) {
+                    // Update existing event
+                    accumulatedEvents[existingIndex] = newEvent;
+                } else {
+                    // Add new event
+                    accumulatedEvents.push(newEvent);
+                }
+            });
+            
+            // Sort by timestamp
+            accumulatedEvents.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            
+            // Update stored events
+            streamingElement.dataset.accumulatedEvents = JSON.stringify(accumulatedEvents);
+            
+            // Render the accumulated events
+            this.renderStreamingEvents(streamingElement, accumulatedEvents);
+            
+            // Scroll to bottom as content updates
+            this.scrollToBottom();
+        }
+    }
+    
+    renderStreamingEvents(streamingMessage, events) {
+        if (!events || events.length === 0) {
+            // Show typing indicator if no events yet
+            streamingMessage.innerHTML = `
+                <div class="chat-message-content">
+                    <div class="chat-message-text">
+                        <div class="director-typing-dots">
+                            <div class="director-typing-dot"></div>
+                            <div class="director-typing-dot"></div>
+                            <div class="director-typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Define which events are "4th wall metadata" (same as in renderEventGroup)
+        const metadataEventTypes = ['memory', 'environment', 'sensory', 'emotion', 'location', 'timeofday', 'innerspeech', 'currplan', 'futureplans', 'trustlevel', 'inventory', 'offlinemessage'];
+        const visibleEventTypes = ['speechdirect', 'speech', 'reply', 'actions', 'sfx', 'myname'];
+        
+        // Separate events into visible and metadata
+        const visibleEvents = events.filter(e => visibleEventTypes.includes(e.type));
+        const metadataEvents = events.filter(e => metadataEventTypes.includes(e.type));
+        
+        let contentHtml = '';
+        
+        // Render visible events as a single message bubble if present
+        if (visibleEvents.length > 0) {
+            let messageContent = '';
+            let actions = '';
+            let sfx = '';
+            
+            visibleEvents.forEach(event => {
+                const eventType = event.type;
+                const content = event.content;
+                
+                if (!content) return;
+                
+                switch(eventType) {
+                    case 'speechdirect':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'speech':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'reply':
+                        if (!messageContent) messageContent = content;
+                        break;
+                    case 'actions':
+                        actions = content;
+                        break;
+                    case 'sfx':
+                        sfx = content;
+                        break;
+                    case 'myname':
+                        if (!messageContent) messageContent = `My name is ${content}`;
+                        break;
+                }
+            });
+            
+            // Check if actions and sfx should be visible
+            const messagesContainer = document.getElementById('chatMessagesList');
+            const showActionsSfx = messagesContainer && messagesContainer.classList.contains('show-actions-sfx');
+            
+            // Only create message if there's actual content
+            if (messageContent || (showActionsSfx && (actions || sfx))) {
+                contentHtml += '<div class="chat-message-content">';
+                if (messageContent) {
+                    contentHtml += `<div class="chat-message-text">${this.escapeHtml(messageContent)}</div>`;
+                }
+                if (showActionsSfx && actions) {
+                    contentHtml += `<div class="chat-message-actions">*${this.escapeHtml(actions)}*</div>`;
+                }
+                if (showActionsSfx && sfx) {
+                    contentHtml += `<div class="chat-message-sfx">~${this.escapeHtml(sfx)}~</div>`;
+                }
+                contentHtml += '</div>';
+            }
+        }
+        
+        // Render metadata events (if metadata is visible)
+        const messagesContainer = document.getElementById('chatMessagesList');
+        const showMetadata = messagesContainer && messagesContainer.classList.contains('show-metadata');
+        
+        if (showMetadata && metadataEvents.length > 0) {
+            const eventDisplayNames = {
+                'memory': '🧠 Memory',
+                'environment': '🌍 Environment',
+                'sensory': '👁️ Sensory',
+                'emotion': '💭 Emotion',
+                'location': '📍 Location',
+                'timeofday': '🕐 Time',
+                'innerspeech': '💬 Inner Thought',
+                'currplan': '📋 Current Plan',
+                'futureplans': '🔮 Future Plans',
+                'trustlevel': '🤝 Trust',
+                'inventory': '🎒 Inventory',
+                'offlinemessage': '📱 Message'
+            };
+            
+            metadataEvents.forEach(event => {
+                const eventLabel = eventDisplayNames[event.type] || event.type;
+                contentHtml += `<div class="chat-message-content metadata-message ${event.type}">`;
+                contentHtml += `<div class="metadata-label">${eventLabel}</div>`;
+                contentHtml += `<div class="chat-message-text">${this.escapeHtml(event.content || '')}</div>`;
+                contentHtml += '</div>';
+            });
+        }
+        
+        // If we have content, show it; otherwise show typing indicator
+        if (contentHtml) {
+            streamingMessage.innerHTML = contentHtml;
+        } else {
+            // Still processing, show typing indicator
+            streamingMessage.innerHTML = `
+                <div class="chat-message-content">
+                    <div class="chat-message-text">
+                        <div class="director-typing-dots">
+                            <div class="director-typing-dot"></div>
+                            <div class="director-typing-dot"></div>
+                            <div class="director-typing-dot"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
     }
     
     handleStreamingComplete(message) {
-        // Check if modal is open and this is the active chat
-        if (!this.isChatInterfaceModalOpen() || message.chatId !== this.currentChatId) {
+        // Check if modal is open
+        if (!this.isChatInterfaceModalOpen()) {
             return;
+        }
+        
+        // Handle streaming for current chat OR pending chat (being created)
+        const isCurrentChat = message.chatId && message.chatId === this.currentChatId;
+        const isPendingChat = message.chatId && message.chatId === this.pendingChatId;
+        
+        // Only process if it's for the current or pending chat
+        if (!isCurrentChat && !isPendingChat && message.chatId !== this.pendingChatId) {
+            return;
+        }
+        
+        // Clear pendingChatId once we have currentChatId
+        if (this.pendingChatId && this.currentChatId) {
+            this.pendingChatId = null;
         }
 
         

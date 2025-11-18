@@ -17,6 +17,32 @@
 // DOM ELEMENTS (MOVED FROM app.js)
 // ============================================================================
 
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/**
+ * Update the display of the generated image name
+ * @param {string|null} imageName - The generated image name to display, or null to hide
+ */
+function updateGeneratedImageNameDisplay(imageName) {
+    const displayElement = document.getElementById('generatedImageNameDisplay');
+    const textElement = document.getElementById('generatedImageNameText');
+    
+    if (!displayElement || !textElement) {
+        return;
+    }
+    
+    if (imageName && imageName.trim()) {
+        textElement.textContent = imageName;
+        displayElement.classList.remove('hidden');
+        displayElement.title = `Generated Name: ${imageName}`;
+    } else {
+        displayElement.classList.add('hidden');
+        textElement.textContent = '';
+    }
+}
+
 // Manual Modal DOM Elements - Move these from app.js
 const manualModal = document.getElementById('manualModal');
 const manualLoadingOverlay = document.getElementById('manualLoadingOverlay');
@@ -56,6 +82,7 @@ const deleteImageBaseBtn = document.getElementById('deleteImageBaseBtn');
 const previewBaseImageBtn = document.getElementById('previewBaseImageBtn');
 const manualPreviewDownloadBtn = document.getElementById('manualPreviewDownloadBtn');
 const manualPreviewCopyBtn = document.getElementById('manualPreviewCopyBtn');
+const manualPreviewChatBtn = document.getElementById('manualPreviewChatBtn');
 const manualPreviewUpscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
 const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
 const manualPreviewVariationBtn = document.getElementById('manualPreviewVariationBtn');
@@ -104,10 +131,8 @@ const textReplacementLockModal = document.getElementById('textReplacementLockMod
 const closeTextReplacementLockModalBtn = document.getElementById('closeTextReplacementLockModalBtn');
 const selectAllTextReplacementsBtn = document.getElementById('selectAllTextReplacementsBtn');
 const deselectAllTextReplacementsBtn = document.getElementById('deselectAllTextReplacementsBtn');
-const applyTextReplacementLocksBtn = document.getElementById('applyTextReplacementLocksBtn');
 // Creative directive elements
 const creativeDirectiveInput = document.getElementById('creativeDirectiveInput');
-const creativeDirectiveTemperature = document.getElementById('creativeDirectiveTemperature');
 
 // Dynamic Generation System
 const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
@@ -116,10 +141,8 @@ const todBtn = document.getElementById('todBtn');
 const weatherBtn = document.getElementById('weatherBtn');
 const seasonBtn = document.getElementById('seasonBtn');
 const creativeBtn = document.getElementById('creativeBtn');
-const optimizeBtn = document.getElementById('optimizeBtn');
 const dynamicGenerationUndoBtn = document.getElementById('dynamicGenerationUndoBtn');
-const dynamicGenerationViewBtn = document.getElementById('dynamicGenerationViewBtn');
-const dynamicGenerationLockedBtn = document.getElementById('lockBtn');
+const dynamicCarousel = document.getElementById('dynamicCarousel');
 
 // Director Reference Elements
 const directorReferenceSection = document.getElementById('directorReferenceSection');
@@ -155,6 +178,7 @@ let selectedPositionCell = null;
 let lastPromptState = null;
 let savedRandomPromptState = null;
 let forcePaidRequest = false;
+
 
 // ============================================================================
 // SPROUT SEED CONTEXT MENU FUNCTIONS
@@ -242,6 +266,7 @@ function handleSproutSeedContextMenuAction(action, target, item) {
         }
     }
 }
+
 
 // ============================================================================
 // MANUAL MODAL MANAGEMENT FUNCTIONS (MOVED FROM app.js)
@@ -858,15 +883,18 @@ function clearManualForm() {
     if (ucPresetsDropdownBtn) {
         ucPresetsDropdownBtn.dataset.autoClean = 'on';
     }
+    
+    // Clear generated image name display
+    window.lastGeneratedImageName = null;
+    updateGeneratedImageNameDisplay(null);
 
     // Reset dynamic generation buttons to default states
     const dynamicGenButtons = [
         { btn: todBtn, defaultState: 'off' },
         { btn: weatherBtn, defaultState: 'off' },
         { btn: seasonBtn, defaultState: 'off' },
-        { btn: dynamicGenerationLockedBtn, defaultState: 'off' },
-        { btn: creativeBtn, defaultState: 'off' },
-        { btn: optimizeBtn, defaultState: 'off' }
+        { btn: dynamicCarousel, defaultState: 'off' },
+        { btn: creativeBtn, defaultState: 'off' }
     ];
 
     dynamicGenButtons.forEach(({ btn, defaultState }) => {
@@ -897,9 +925,21 @@ function clearManualForm() {
             if (btn.id === 'seasonBtn') {
                 btn.setAttribute('data-toggle-holiday', 'true');
             }
+
+            // Reset dynamicCarousel specific attributes
+            if (btn === dynamicCarousel) {
+                btn.removeAttribute('data-fast-mode');
+                btn.removeAttribute('data-chain-updates');
+                btn.removeAttribute('data-expire-preview');
+                btn.removeAttribute('data-force-refresh');
+                btn.removeAttribute('data-use-cache');
+                btn.removeAttribute('data-creative-directive-strategy');
+                btn.removeAttribute('data-creative-directive-tool-passes');
+                btn.removeAttribute('data-creative-directive-dialogs');
+                btn.removeAttribute('data-ai-temperature');
+            }
         }
     });
-    dynamicGenerationLockedBtn?.classList.add('hidden');
 
     // Clear dynamic generation data
     if (window.dynamicGenerationData) {
@@ -947,11 +987,6 @@ function clearManualForm() {
     // Reset creative directive input
     if (creativeDirectiveInput) {
         creativeDirectiveInput.value = '';
-    }
-    
-    // Reset temperature to default
-    if (creativeDirectiveTemperature) {
-        creativeDirectiveTemperature.value = '1.0';
     }
     
     // Reset creative tab state and show-both mode
@@ -1101,7 +1136,7 @@ function clearManualForm() {
     manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
 
     // Reset dynamic generation buttons and clear stored data
-    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn', 'optimizeBtn'];
+    const dynamicGenerationButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn'];
     dynamicGenerationButtons.forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn) {
@@ -1325,14 +1360,14 @@ function extractLockedDynamicReplacements() {
     // Extract locked replacements from character prompts
     if (textReplacements.character_prompts && Array.isArray(textReplacements.character_prompts)) {
         textReplacements.character_prompts.forEach((char, charIndex) => {
-            if (char?.input && Array.isArray(char.input)) {
-                char.input.forEach(rep => {
+            if (char?.prompt && Array.isArray(char.prompt)) {
+                char.prompt.forEach(rep => {
                     if (rep.locked === true) {
                         lockedReplacements.push({
                             ...rep,
                             targetType: 'character',
                             targetSource: charIndex,
-                            targetField: 'input'
+                            targetField: 'prompt'
                         });
                     }
                 });
@@ -1414,7 +1449,6 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     const weatherBtn = document.getElementById('weatherBtn');
     const seasonBtn = document.getElementById('seasonBtn');
     const creativeBtn = document.getElementById('creativeBtn');
-    const optimizeBtn = document.getElementById('optimizeBtn');
 
     // Collect current button states
     const dynamicData = {
@@ -1425,23 +1459,33 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         clothing: creativeBtn?.dataset.toggleClothing === 'true',
         action: creativeBtn?.dataset.toggleAction === 'true',
         creative: creativeBtn?.dataset.state === 'on',
-        optimize: optimizeBtn?.dataset.state === 'on' ? {
+        optimize: dynamicCarousel?.dataset.optimizeEnabled === 'true' ? {
             enabled: true,
-            tokenCount: optimizeBtn.dataset.tokenCount === 'true',
-            lockSubject: optimizeBtn.dataset.lockSubject === 'true',
-            pipelineAware: optimizeBtn.dataset.pipelineAware === 'true',
-            initialPromptAware: optimizeBtn.dataset.initialPromptAware === 'true'
+            tokenCount: dynamicCarousel.dataset.tokenCount === 'true',
+            pipelineAware: dynamicCarousel.dataset.pipelineAware === 'true',
+            initialPromptAware: dynamicCarousel.dataset.initialPromptAware === 'true',
+            twoStage: dynamicCarousel.dataset.twoStage === 'true'
         } : false,
-        cache_locked: dynamicGenerationLockedBtn?.dataset.state === 'on',
-        context_locked: dynamicGenerationLockedBtn?.dataset.contextLocked === 'true',
-        expire_preview: dynamicGenerationLockedBtn?.dataset.expirePreview === 'true',
-        use_cache_responses: dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'false' ? false : undefined
+        lockSubject: dynamicCarousel?.dataset.lockSubject === 'true',
+        fast_mode: dynamicCarousel?.dataset.fastMode === 'true',
+        cache_locked: dynamicCarousel?.dataset.state === 'on',
+        context_locked: dynamicCarousel?.dataset.contextLocked === 'true',
+        expire_preview: dynamicCarousel?.dataset.expirePreview === 'true',
+        use_cache_responses: dynamicCarousel?.getAttribute('data-use-cache') === 'false' ? false : undefined,
+        chain_updates: dynamicCarousel?.dataset.chainUpdates === 'false' ? false : true, // Default to true on client
+        force_context_refresh: dynamicCarousel?.dataset.forceRefresh === 'true' ? true : undefined // Force context update in chain mode
     };
 
     // Add weather location data if available
     if (weatherBtn && dynamicData.weather && weatherBtn.getAttribute('data-location')) {
         dynamicData.location = weatherBtn.getAttribute('data-location');
     }
+
+    // Add AI temperature if available
+    if (dynamicCarousel && dynamicCarousel.dataset.aiTemperature) {
+        dynamicData.ai_temperature = parseFloat(dynamicCarousel.dataset.aiTemperature);
+    }
+
     // Always include dynamic_generation if any button has been configured (even if turned off)
     // This ensures the server receives the seasonal parameter even when set to false
     const hasAnyConfiguration = Object.values(dynamicData).some(value =>
@@ -1457,16 +1501,33 @@ function addSharedFieldsToRequestBody(requestBody, values) {
             compiled_prompt: existingData.compiled_prompt // Always include compiled_prompt (preserves previousResponseId for stateful conversation)
         };
         
-        // Add creative directive if present
+        // Add creative directive if present (regardless of optimize button state)
+        // Directive should always be collected when dynamic generation is enabled
         if (creativeDirectiveInput && creativeDirectiveInput.value && creativeDirectiveInput.value.trim() !== '') {
             fullDynamicData.directive = creativeDirectiveInput.value.trim();
         }
         
-        // Add temperature setting from creative directive toolbar
-        if (creativeDirectiveTemperature && creativeDirectiveTemperature.value) {
-            const temperature = parseFloat(creativeDirectiveTemperature.value);
-            if (!isNaN(temperature) && temperature >= 0 && temperature <= 2) {
-                fullDynamicData.temperature = temperature;
+        // Add forced strategy if set (null means auto, so only add if explicitly set)
+        const strategyValue = dynamicCarousel?.dataset.creativeDirectiveStrategy;
+        if (strategyValue && strategyValue !== '' && strategyValue !== null && strategyValue !== undefined) {
+            fullDynamicData.force_strategy = strategyValue;
+        }
+        
+        // Add tool passes setting from carousel dataset
+        const toolPassesValue = dynamicCarousel?.dataset.creativeDirectiveToolPasses;
+        if (toolPassesValue) {
+            const parsedValue = parseInt(toolPassesValue);
+            if (!isNaN(parsedValue)) {
+                fullDynamicData.tool_passes = parsedValue;
+            }
+        }
+        
+        // Add dialogs count setting from carousel dataset
+        const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+        if (dialogsValue) {
+            const parsedValue = parseInt(dialogsValue);
+            if (!isNaN(parsedValue)) {
+                fullDynamicData.dialogs_count = parsedValue;
             }
         }
 
@@ -1528,6 +1589,22 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         // Add skip_pipeline_stages flag
         if (enableStageGenerationBtn?.dataset.state === 'off') {
             requestBody.skip_pipeline_stages = true;
+        }
+        
+        // Add compiled prompts array if we have stage seeds loaded
+        if (window.lastGenerationStageSeeds && Array.isArray(window.lastGenerationStageSeeds)) {
+            const compiledPrompts = [];
+            window.lastGenerationStageSeeds.forEach((stageSeed) => {
+                if (stageSeed?.dynamic_generation) {
+                    compiledPrompts.push(stageSeed.dynamic_generation);
+                } else {
+                    compiledPrompts.push(null);
+                }
+            });
+            if (compiledPrompts.length > 0) {
+                requestBody.stage_compiled_prompts = compiledPrompts;
+                console.log(`📋 Sending ${compiledPrompts.length} compiled prompts with request`);
+            }
         }
     }
     
@@ -1893,7 +1970,11 @@ function hideManualModal(e, preventModalReset = false) {
         window.currentRequestType = null;
         window.initialEdit = null;
         window.lastGeneration = null;
+        window.lastGeneratedImageName = null;
         // Director new session functionality is always available
+        
+        // Clear generated image name display
+        updateGeneratedImageNameDisplay(null);
 
         // Reset random prompt state
         savedRandomPromptState = null;
@@ -2075,10 +2156,6 @@ async function loadIntoManualForm(source, image = null) {
             }
         }
         
-        // Restore temperature setting from metadata
-        if (creativeDirectiveTemperature && data.dynamic_generation && data.dynamic_generation.temperature !== undefined) {
-            creativeDirectiveTemperature.value = data.dynamic_generation.temperature;
-        }
         selectManualModel(data.model || 'v4_5', '');
 
         // Handle resolution loading with proper custom dimension support
@@ -2261,12 +2338,29 @@ async function loadIntoManualForm(source, image = null) {
 
             // Load dataset settings
             if (data.dataset_config.settings) {
+                const invalidSettings = [];
+                
                 Object.keys(data.dataset_config.settings).forEach(dataset => {
                     const datasetSettings = data.dataset_config.settings[dataset];
+                    
+                    // Find the dataset config from server options
+                    const datasetConfig = window.optionsData?.datasets?.find(d => d.value === dataset);
+                    
                     Object.keys(datasetSettings).forEach(settingId => {
                         const setting = datasetSettings[settingId];
-                        if (setting.enabled !== undefined) {
-                            // Store setting state for UI updates
+                        
+                        // Validate that the setting still exists in the server configuration
+                        const settingExists = datasetConfig?.sub_toggles?.some(toggle => toggle.id === settingId);
+                        
+                        if (!settingExists) {
+                            // Track invalid settings for notification
+                            invalidSettings.push({
+                                dataset: dataset,
+                                settingId: settingId,
+                                datasetDisplay: datasetConfig?.display || dataset
+                            });
+                        } else if (setting.enabled !== undefined) {
+                            // Store setting state for UI updates (only if it exists)
                             if (!window.datasetSettings) window.datasetSettings = {};
                             if (!window.datasetSettings[dataset]) window.datasetSettings[dataset] = {};
                             window.datasetSettings[dataset][settingId] = {
@@ -2277,6 +2371,22 @@ async function loadIntoManualForm(source, image = null) {
                         }
                     });
                 });
+                
+                // Show persistent notification if any settings are invalid
+                if (invalidSettings.length > 0) {
+                    const settingsList = invalidSettings
+                        .map(s => `${s.datasetDisplay}: ${s.settingId}`)
+                        .join(', ');
+                    
+                    showGlassToast(
+                        'warning',
+                        'Dataset Settings',
+                        `The following settings are no longer available on the server: ${settingsList}`,
+                        false,
+                        0, // No timeout - persistent
+                        '<i class="fas fa-exclamation-triangle"></i>'
+                    );
+                }
             }
 
             // Load NSFW settings
@@ -2693,24 +2803,74 @@ async function loadIntoManualForm(source, image = null) {
         if (data.dynamic_generation) {
             window.dynamicGenerationData = data.dynamic_generation;
 
-            // Update lock button cache attributes
-            if (dynamicGenerationLockedBtn) {
-                dynamicGenerationLockedBtn.setAttribute('data-has-cache', (!!window.dynamicGenerationData.compiled_prompt).toString());
+            // Update carousel cache attributes
+            if (dynamicCarousel) {
+                dynamicCarousel.setAttribute('data-has-cache', (!!window.dynamicGenerationData.compiled_prompt).toString());
                 // Check if cache is not expired (15 minutes)
                 if (Date.now() - window.dynamicGenerationData.compiled_prompt?.timestamp < 1000 * 60 * 15) {
-                    dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
+                    dynamicCarousel.setAttribute('data-use-cache', 'true');
+                }
+
+                // Restore fast_mode from dynamic_generation if present
+                if (window.dynamicGenerationData.fast_mode !== undefined) {
+                    dynamicCarousel.setAttribute('data-fast-mode', window.dynamicGenerationData.fast_mode.toString());
+                }
+
+                // Restore AI temperature if present
+                if (window.dynamicGenerationData.ai_temperature !== undefined && window.dynamicGenerationData.ai_temperature !== null) {
+                    dynamicCarousel.dataset.aiTemperature = window.dynamicGenerationData.ai_temperature.toString();
+                } else {
+                    dynamicCarousel.removeAttribute('data-ai-temperature');
                 }
 
                 // Restore lock states from compiled prompt
                 const compiledPrompt = window.dynamicGenerationData.compiled_prompt;
                 if (compiledPrompt) {
                     if (compiledPrompt.cache_locked !== undefined) {
-                        dynamicGenerationLockedBtn.setAttribute('data-state', compiledPrompt.cache_locked ? 'on' : 'off');
+                        dynamicCarousel.setAttribute('data-state', compiledPrompt.cache_locked ? 'on' : 'off');
                     }
                     if (compiledPrompt.context_locked !== undefined) {
-                        dynamicGenerationLockedBtn.setAttribute('data-context-locked', compiledPrompt.context_locked ? 'true' : 'false');
+                        dynamicCarousel.setAttribute('data-context-locked', compiledPrompt.context_locked ? 'true' : 'false');
                     }
+                    // Only set chain_updates if it's explicitly true, otherwise leave undefined (defaults to true on client)
+                    if (compiledPrompt.chain_updates === true) {
+                        dynamicCarousel.setAttribute('data-chain-updates', 'true');
+                    } else if (compiledPrompt.chain_updates === false) {
+                        dynamicCarousel.setAttribute('data-chain-updates', 'false');
+                    }
+                    // If undefined, leave attribute unset (client will default to true)
                 }
+                
+                // Load character names from compiled_prompt if available
+                if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
+                    const charaContainers = document.querySelectorAll('.character-container');
+                    compiledPrompt.character_names.forEach((name, index) => {
+                        if (name && charaContainers[index]) {
+                            const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
+                            if (nameInput) {
+                                nameInput.value = name;
+                                console.log(`✨ Loaded character name ${index + 1}: "${name}"`);
+                            }
+                        }
+                    });
+                    
+                    // Update character prompt item names
+                    updateCharacterPromptItemNames(compiledPrompt.character_names);
+                }
+                
+                // Display generated image name if available, clear if not
+                if (compiledPrompt.generated_image_name) {
+                    window.lastGeneratedImageName = compiledPrompt.generated_image_name;
+                    console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
+                    updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
+                } else {
+                    window.lastGeneratedImageName = null;
+                    updateGeneratedImageNameDisplay(null);
+                }
+            } else {
+                // No dynamic_generation data, clear display
+                window.lastGeneratedImageName = null;
+                updateGeneratedImageNameDisplay(null);
             }
 
             // Update dynamic generation button states based on loaded data
@@ -2721,9 +2881,9 @@ async function loadIntoManualForm(source, image = null) {
                 observeHoliday: 'seasonBtn',
                 clothing: 'creativeBtn',
                 action: 'creativeBtn',
-                locked: 'dynamicGenerationLockedBtn',
+                locked: 'dynamicCarousel',
                 creative: 'creativeBtn',
-                optimize: 'optimizeBtn'
+                optimize: 'dynamicCarousel'
             };
 
             let hasAnyEnabled = false;
@@ -2745,29 +2905,37 @@ async function loadIntoManualForm(source, image = null) {
                         return;
                     }
 
-                    // Special handling for optimize button - restore tokenCount and lockSubject attributes
+                    // Special handling for optimize - restore to dynamicCarousel dataset attributes
                     if (key === 'optimize' && typeof window.dynamicGenerationData[key] === 'object') {
                         const optimizeData = window.dynamicGenerationData[key];
-                        const state = optimizeData.enabled ? 'on' : 'off';
-                        btn.setAttribute('data-state', state);
-                        btn.classList.toggle('active', state === 'on');
+                        const optimizeEnabled = optimizeData.enabled ? 'true' : 'false';
+                        dynamicCarousel.setAttribute('data-optimize-enabled', optimizeEnabled);
                         
-                        // Restore tokenCount and lockSubject attributes
+                        // Restore optimize-related attributes to dynamicCarousel
                         if (optimizeData.tokenCount !== undefined) {
-                            btn.setAttribute('data-token-count', optimizeData.tokenCount.toString());
-                        }
-                        if (optimizeData.lockSubject !== undefined) {
-                            btn.setAttribute('data-lock-subject', optimizeData.lockSubject.toString());
+                            dynamicCarousel.setAttribute('data-token-count', optimizeData.tokenCount.toString());
                         }
                         if (optimizeData.pipelineAware !== undefined) {
-                            btn.setAttribute('data-pipeline-aware', optimizeData.pipelineAware.toString());
+                            dynamicCarousel.setAttribute('data-pipeline-aware', optimizeData.pipelineAware.toString());
                         }
                         if (optimizeData.initialPromptAware !== undefined) {
-                            btn.setAttribute('data-initial-prompt-aware', optimizeData.initialPromptAware.toString());
+                            dynamicCarousel.setAttribute('data-initial-prompt-aware', optimizeData.initialPromptAware.toString());
+                        }
+                        if (optimizeData.twoStage !== undefined) {
+                            dynamicCarousel.setAttribute('data-two-stage', optimizeData.twoStage.toString());
                         }
                         
-                        if (state === 'on') {
+                        if (optimizeData.enabled) {
                             hasAnyEnabled = true;
+                        }
+                        return;
+                    }
+
+                    // Special handling for fast_mode - restore to dynamicCarousel
+                    if (key === 'fast_mode' && window.dynamicGenerationData[key] !== undefined) {
+                        const fastModeValue = window.dynamicGenerationData[key];
+                        if (dynamicCarousel) {
+                            dynamicCarousel.setAttribute('data-fast-mode', fastModeValue.toString());
                         }
                         return;
                     }
@@ -2805,8 +2973,37 @@ async function loadIntoManualForm(source, image = null) {
             } else {
                 dynamicGenerationGroup.classList.add('hidden');
             }
+            
+            // Restore creative directive settings from dynamicGenerationData
+            if (window.dynamicGenerationData.force_strategy !== undefined) {
+                const strategyValue = window.dynamicGenerationData.force_strategy;
+                if (strategyValue === null || strategyValue === '') {
+                    dynamicCarousel.removeAttribute('data-creative-directive-strategy');
+                } else {
+                    dynamicCarousel.setAttribute('data-creative-directive-strategy', strategyValue);
+                }
+            }
+            if (window.dynamicGenerationData.tool_passes !== undefined) {
+                dynamicCarousel.setAttribute('data-creative-directive-tool-passes', window.dynamicGenerationData.tool_passes.toString());
+            }
+            if (window.dynamicGenerationData.dialogs_count !== undefined) {
+                dynamicCarousel.setAttribute('data-creative-directive-dialogs', window.dynamicGenerationData.dialogs_count.toString());
+            }
         } else {
             dynamicGenerationGroup.classList.add('hidden');
+        }
+        
+        // Check for compiled prompt context and switch carousel to compiled mode
+        // Do this outside the hasAnyEnabled check so hasCompiledContext is accessible later
+        let hasCompiledContext = false;
+        if (window.dynamicGenerationData?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
+            const context = window.dynamicGenerationData.compiled_prompt.context;
+            // Store compiled context and switch to compiled mode
+            if (typeof updateDynamicCarousel === 'function') {
+                // Update carousel with compiled context and switch to compiled mode
+                updateDynamicCarousel(context, 'compiled');
+                hasCompiledContext = true;
+            }
         }
         
         // Update creative directive visibility after dynamic generation visibility changes
@@ -2836,6 +3033,12 @@ async function loadIntoManualForm(source, image = null) {
             // Load pipeline stages
             const pipelineStages = data.forge_data.pipeline;
             const stageSeeds = data.forge_data.stage_seeds || data.stage_seeds || null;
+            
+            // Store stage seeds globally so they can be sent with reroll requests
+            if (stageSeeds && Array.isArray(stageSeeds) && stageSeeds.length > 0) {
+                window.lastGenerationStageSeeds = stageSeeds;
+                console.log(`💾 Stored ${stageSeeds.length} stage seeds for potential reroll`);
+            }
             
             if (pipelineStages.length > 0) {
                 // Clear existing stages first
@@ -2896,7 +3099,9 @@ async function loadIntoManualForm(source, image = null) {
         updatePromptStatusIcons();
         updatePipelineStagesHeaderVisibility();
         updateMainLockButtonState();
-        requestDynamicContextResolution();
+        if (!hasCompiledContext) {
+            requestDynamicContextResolution();
+        }
     } catch (error) {
         console.error('Error loading into form:', error);
         showError('Failed to load data');
@@ -2939,27 +3144,6 @@ function autoResizeTextareasAfterModalShow() {
         creativeDirectiveInput.addEventListener('input', () => {
             autoResizeTextarea(creativeDirectiveInput, 23);
         });
-    }
-    
-    // Temperature input: Add scroll-to-change and fix focus behavior
-    if (creativeDirectiveTemperature) {
-        // Allow scroll to change value
-        creativeDirectiveTemperature.addEventListener('wheel', (e) => {
-            // Only handle wheel when hovering over the input
-            if (document.activeElement !== creativeDirectiveTemperature) {
-                e.preventDefault();
-                const step = parseFloat(creativeDirectiveTemperature.step) || 0.1;
-                const currentValue = parseFloat(creativeDirectiveTemperature.value) || 1.0;
-                const min = parseFloat(creativeDirectiveTemperature.min) || 0;
-                const max = parseFloat(creativeDirectiveTemperature.max) || 2;
-                
-                // Scroll up = increase, scroll down = decrease
-                const delta = e.deltaY < 0 ? step : -step;
-                const newValue = Math.max(min, Math.min(max, currentValue + delta));
-                
-                creativeDirectiveTemperature.value = newValue.toFixed(1);
-            }
-        }, { passive: false });
     }
 }
 
@@ -3126,10 +3310,10 @@ async function handleManualGeneration(e) {
 
         const result = await window.wsClient.generateImage(generationParams, null, true); // Enable streaming
 
-        // Reset expire_preview flag after request is sent (ephemeral flag)
-        const lockBtn = document.getElementById('lockBtn');
-        if (lockBtn) {
-            lockBtn.dataset.expirePreview = 'false';
+        // Reset ephemeral flags after request is sent
+        if (dynamicCarousel) {
+            dynamicCarousel.dataset.expirePreview = 'false';
+            dynamicCarousel.dataset.forceRefresh = 'false'; // Auto-clear force refresh after use
         }
 
         // Show completion phase if dynamic generation overlay is active
@@ -3145,6 +3329,11 @@ async function handleManualGeneration(e) {
                 window.lastGenerationTextReplacements = text_replacements_seed;
                 // Update the main lock button state
                 updateMainLockButtonState();
+                
+                // Refresh the text replacement lock modal if it's currently open
+                if (typeof refreshTextReplacementLockModalIfOpen === 'function') {
+                    refreshTextReplacementLockModalIfOpen();
+                }
             }
 
             // Store stage_seeds if this was a staged generation
@@ -3163,17 +3352,17 @@ async function handleManualGeneration(e) {
             if (compiled_prompt && window.dynamicGenerationData) {
                 window.dynamicGenerationData.compiled_prompt = compiled_prompt;
 
-                // Update lock button attributes
-                if (dynamicGenerationLockedBtn) {
-                    dynamicGenerationLockedBtn.setAttribute('data-has-cache', 'true');
-                    dynamicGenerationLockedBtn.setAttribute('data-use-cache', 'true');
+                // Update carousel attributes
+                if (dynamicCarousel) {
+                    dynamicCarousel.setAttribute('data-has-cache', 'true');
+                    dynamicCarousel.setAttribute('data-use-cache', 'true');
 
                     // Restore lock states from compiled prompt
                     if (compiled_prompt.cache_locked !== undefined) {
-                        dynamicGenerationLockedBtn.setAttribute('data-state', compiled_prompt.cache_locked ? 'on' : 'off');
+                        dynamicCarousel.setAttribute('data-state', compiled_prompt.cache_locked ? 'on' : 'off');
                     }
                     if (compiled_prompt.context_locked !== undefined) {
-                        dynamicGenerationLockedBtn.setAttribute('data-context-locked', compiled_prompt.context_locked ? 'true' : 'false');
+                        dynamicCarousel.setAttribute('data-context-locked', compiled_prompt.context_locked ? 'true' : 'false');
                     }
                 }
 
@@ -3182,8 +3371,23 @@ async function handleManualGeneration(e) {
                     updateDynamicGenerationToggleBtn();
                 }
 
+                // Update text replacement lock button to show if there are text replacements
+                if (typeof updateMainLockButtonState === 'function') {
+                    updateMainLockButtonState();
+                }
+
+                // Refresh the text replacement lock modal if it's currently open
+                if (typeof refreshTextReplacementLockModalIfOpen === 'function') {
+                    refreshTextReplacementLockModalIfOpen();
+                }
+
                 // Clear any stored request data
                 delete window.dynamicGenerationRequestData;
+                
+                // Update carousel with compiled prompt context and switch to compiled mode
+                if (compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
+                    updateDynamicCarousel(compiled_prompt.context, 'compiled');
+                }
             }
 
             // For streaming, the image was already displayed via intermediate updates
@@ -3209,6 +3413,42 @@ async function handleManualGeneration(e) {
                 window.lastGeneration = metadata;
                 window.lastGeneration.filename = filename;
                 // Director new session functionality is always available
+                
+                // Update character names and generated image name from metadata
+                if (metadata?.dynamic_generation?.compiled_prompt) {
+                    const compiledPrompt = metadata.dynamic_generation.compiled_prompt;
+                    
+                    // Load character names into inputs
+                    if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
+                        const charaContainers = document.querySelectorAll('.character-container');
+                        compiledPrompt.character_names.forEach((name, index) => {
+                            if (name && charaContainers[index]) {
+                                const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
+                                if (nameInput && nameInput.value !== name) {
+                                    nameInput.value = name;
+                                    console.log(`✨ Updated character name ${index + 1}: "${name}"`);
+                                }
+                            }
+                        });
+                        
+                        // Update character prompt item names
+                        updateCharacterPromptItemNames(compiledPrompt.character_names);
+                    }
+                    
+                    // Display generated image name, clear if not provided
+                    if (compiledPrompt.generated_image_name) {
+                        window.lastGeneratedImageName = compiledPrompt.generated_image_name;
+                        console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
+                        updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
+                    } else {
+                        window.lastGeneratedImageName = null;
+                        updateGeneratedImageNameDisplay(null);
+                    }
+                } else {
+                    // No dynamic_generation data, clear display
+                    window.lastGeneratedImageName = null;
+                    updateGeneratedImageNameDisplay(null);
+                }
             }
 
             // Extract seed if available and add to history
@@ -3307,8 +3547,47 @@ async function handleImageResult(blob, successMsg, clearContextFn, seed = null, 
                 window.lastGeneration.filename = filename;
                 manualPreviewOriginalImage.classList.remove('hidden');
                 // Director new session functionality is always available
+                
+                // Update character names and generated image name from metadata
+                if (metadata?.dynamic_generation?.compiled_prompt) {
+                    const compiledPrompt = metadata.dynamic_generation.compiled_prompt;
+                    
+                    // Load character names into inputs
+                    if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names)) {
+                        const charaContainers = document.querySelectorAll('.character-container');
+                        compiledPrompt.character_names.forEach((name, index) => {
+                            if (name && charaContainers[index]) {
+                                const nameInput = charaContainers[index].querySelector('input[id^="charaName"]');
+                                if (nameInput && nameInput.value !== name) {
+                                    nameInput.value = name;
+                                    console.log(`✨ Updated character name ${index + 1}: "${name}"`);
+                                }
+                            }
+                        });
+                        
+                        // Update character prompt item names
+                        updateCharacterPromptItemNames(compiledPrompt.character_names);
+                    }
+                    
+                    // Display generated image name, clear if not provided
+                    if (compiledPrompt.generated_image_name) {
+                        window.lastGeneratedImageName = compiledPrompt.generated_image_name;
+                        console.log(`🖼️ Generated image name: "${compiledPrompt.generated_image_name}"`);
+                        updateGeneratedImageNameDisplay(compiledPrompt.generated_image_name);
+                    } else {
+                        window.lastGeneratedImageName = null;
+                        updateGeneratedImageNameDisplay(null);
+                    }
+                } else {
+                    // No dynamic_generation data, clear display
+                    window.lastGeneratedImageName = null;
+                    updateGeneratedImageNameDisplay(null);
+                }
             } catch (error) {
                 console.warn('Failed to fetch metadata for generated image:', error);
+                // Clear display on error
+                window.lastGeneratedImageName = null;
+                updateGeneratedImageNameDisplay(null);
             }
         }
     }
@@ -3554,6 +3833,17 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             updateProgressStatus('Reading Response...');
             addProgressReasoning(data?.reason);
             break;
+        case 'tool_execution':
+            if (overlay?.classList?.contains('hidden')) return;
+            if (data?.currentKey && data?.totalKeys) {
+                updateProgressStatus(`Executing Tools (${data.currentKey}/${data.totalKeys})...`);
+            } else {
+                updateProgressStatus('Executing Tools...');
+            }
+            if (data?.reason) {
+                addProgressReasoning(data.reason, data?.toolName, data?.toolState, data?.toolReasoningId, data);
+            }
+            break;
         case 'optimizing':
             updateProgressStatus('Optimizing...');
             // Clear existing reasoning items to make room for optimization text
@@ -3586,16 +3876,20 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             if (overlay?.classList?.contains('hidden')) return;
             updateProgressStatus('Starting Generation...');
             progressOverlayCompleting = true; // Prevent further shows
-            // Show completion for 2 seconds then hide
-            setTimeout(() => {
-                if (typeof hideDynamicGenerationProgressOverlay === 'function') {
-                    hideDynamicGenerationProgressOverlay();
-                }
-            }, 2000);
+            // Show completion for 2 seconds then hide (unless debug flag is set)
+            if (!window.DEBUG_KEEP_REASONING_OVERLAY) {
+                setTimeout(() => {
+                    if (typeof hideDynamicGenerationProgressOverlay === 'function') {
+                        hideDynamicGenerationProgressOverlay();
+                    }
+                }, 2000);
+            } else {
+                console.log('🔧 DEBUG_KEEP_REASONING_OVERLAY enabled - overlay will not hide');
+            }
             break;
         case 'error':
             if (overlay?.classList?.contains('hidden')) return;
-            updateProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
+            updateProgressStatus('Error: ' + (data?.error || 'Enshutsuka processing failed'));
             progressOverlayCompleting = true; // Prevent further shows
             // Hide overlay after showing error for 3 seconds
             setTimeout(() => {
@@ -3640,17 +3934,19 @@ function updateProgressContext(data) {
         dateElement.textContent = formattedDate;
     }
 
-    // Update season
+    // Update season - handle both object and string formats (for backward compatibility with compiled prompts)
     const seasonElement = document.getElementById('progressSeason');
     if (seasonElement && data.season) {
-        seasonElement.textContent = data.season;
+        // Extract season name from object or use string directly
+        const seasonName = typeof data.season === 'object' && data.season.name ? data.season.name : data.season;
+        seasonElement.textContent = seasonName;
     }
 
     // Update holiday (only show if present)
     const holidayElement = document.getElementById('progressHoliday');
     if (holidayElement) {
-        if (data.holiday) {
-            holidayElement.textContent = data.holiday;
+        if (data.holiday?.primaryHoliday?.name) {
+            holidayElement.textContent = data.holiday.primaryHoliday.name;
             holidayElement.style.display = 'inline';
         } else {
             holidayElement.style.display = 'none';
@@ -3727,20 +4023,105 @@ function checkReasoningOverlap(x, y, existingPositions, minDistance = 15) {
 const reasoningPositions = [];
 
 // Add reasoning text progressively as individual divs at random positions
-function addProgressReasoning(reason) {
+function addProgressReasoning(reason, toolName = null, toolState = 'completed', toolReasoningId = null, data = null) {
     if (!reason) return;
 
     const reasoningContainer = document.getElementById('progressReasoningContainer');
     if (!reasoningContainer) return;
 
+    // If this is a tool with an ID and we already have an item, update it
+    if (toolName && toolReasoningId) {
+        const existingDiv = document.getElementById(toolReasoningId);
+        if (existingDiv) {
+            const toolStyle = getToolIconAndBackground(toolName, toolState);
+            
+            // Update background and border
+            existingDiv.style.background = toolStyle.backgroundColor;
+            existingDiv.style.borderLeft = `3px solid ${toolStyle.borderColor}`;
+            
+            // Update icon in row 1
+            const iconSpan = existingDiv.querySelector('.tool-icon');
+            if (iconSpan) {
+                iconSpan.innerHTML = toolStyle.icon;
+            }
+            
+            // Update status in row 2
+            const statusRow = existingDiv.querySelector('.tool-status-row');
+            if (statusRow && toolState === 'completed') {
+                statusRow.textContent = reason.trim();
+            } else if (statusRow && toolState === 'executing' && !data?.appendReason) {
+                // Update action text while executing (but not for append operations)
+                statusRow.textContent = getToolActionText(toolName);
+            } else if (statusRow && data?.appendReason) {
+                // For batch operations, append to row 3 instead of row 2
+                const reasoningRow = existingDiv.querySelector('.tool-reasoning-row');
+                if (reasoningRow) {
+                    const currentText = reasoningRow.textContent;
+                    reasoningRow.textContent = currentText ? `${currentText}\n${reason.trim()}` : reason.trim();
+                }
+            }
+            
+            return; // Don't create a new item
+        }
+    }
+
     // Create new div for this reasoning
     const reasonDiv = document.createElement('div');
     reasonDiv.className = 'progress-reasoning-item';
-
-    const reasonSpan = document.createElement('span');
-    reasonSpan.textContent = reason.trim();
-
-    reasonDiv.appendChild(reasonSpan);
+    
+    // Set ID if this is a tool
+    if (toolName && toolReasoningId) {
+        reasonDiv.id = toolReasoningId;
+    }
+    
+    // Apply tool-specific styling if this is a tool execution
+    if (toolName && typeof getToolIconAndBackground === 'function') {
+        const toolStyle = getToolIconAndBackground(toolName, toolState);
+        reasonDiv.classList.add('tool-reasoning-item');
+        reasonDiv.style.background = toolStyle.backgroundColor;
+        reasonDiv.style.borderLeft = `3px solid ${toolStyle.borderColor}`;
+        
+        // Create 3-row layout for tools
+        // Row 1: Icon + Tool Name
+        const headerRow = document.createElement('div');
+        headerRow.className = 'tool-header-row';
+        
+        const iconSpan = document.createElement('span');
+        iconSpan.className = 'tool-icon';
+        iconSpan.innerHTML = toolStyle.icon;
+        
+        const toolNameSpan = document.createElement('span');
+        toolNameSpan.className = 'tool-name';
+        toolNameSpan.textContent = getToolDisplayName(toolName);
+        
+        headerRow.appendChild(iconSpan);
+        headerRow.appendChild(toolNameSpan);
+        reasonDiv.appendChild(headerRow);
+        
+        // Row 2: Status/result (skip for completeTooling since it has no executing state)
+        if (toolName !== 'completeTooling') {
+            const statusRow = document.createElement('div');
+            statusRow.className = 'tool-status-row';
+            if (toolState === 'completed') {
+                statusRow.textContent = reason.trim();
+            } else {
+                // Show appropriate action text based on tool type
+                statusRow.textContent = getToolActionText(toolName);
+            }
+            reasonDiv.appendChild(statusRow);
+        }
+             
+        // Row 3: Original reasoning
+        const reasoningRow = document.createElement('div');
+        reasoningRow.className = 'tool-reasoning-row';
+        reasoningRow.textContent = reason.trim();
+        reasonDiv.appendChild(reasoningRow);
+    } else {
+        // Non-tool reasoning (standard format)
+        const reasonSpan = document.createElement('span');
+        reasonSpan.textContent = reason.trim();
+        reasonDiv.appendChild(reasonSpan);
+    }
     reasoningContainer.appendChild(reasonDiv);
     
     // Generate random position as percentages, avoiding center and existing text

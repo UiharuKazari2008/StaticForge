@@ -301,18 +301,26 @@ class CustomScrollbar {
 
             // Calculate thumb position for static height
             const maxScrollDistance = scrollHeight - clientHeight;
-            const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
-            const scrollRatio = maxScrollDistance > 0 ? scrollTop / maxScrollDistance : 0;
+            const thumbHeight = 80; // Height of the scrollbar thumb in pixels
+            const scrollbarTrackHeight = scrollbar.offsetHeight;
+            const maxThumbPosition = scrollbarTrackHeight - thumbHeight;
+            
+            // Clamp scrollRatio between 0 and 1
+            const scrollRatio = maxScrollDistance > 0 
+                ? Math.max(0, Math.min(1, scrollTop / maxScrollDistance)) 
+                : 0;
 
             // Update thumb position
             const isReversed = element.classList.contains('reverse-scroll');
             if (isReversed) {
-                const thumbTop = -1 * (scrollRatio * scrollbarTrackHeight);
+                // Clamp thumbTop to not exceed maxThumbPosition (negative for reversed)
+                const thumbTop = Math.max(-maxThumbPosition, Math.min(0, -1 * (scrollRatio * maxThumbPosition)));
                 // For reversed scrollbars, use bottom positioning
                 thumb.style.bottom = `${thumbTop}px`;
                 thumb.style.top = 'auto';
             } else {
-                const thumbTop = scrollRatio * scrollbarTrackHeight;
+                // Clamp thumbTop to not exceed maxThumbPosition
+                const thumbTop = Math.max(0, Math.min(maxThumbPosition, scrollRatio * maxThumbPosition));
                 // For normal scrollbars, use top positioning
                 thumb.style.top = `${thumbTop}px`;
                 thumb.style.bottom = 'auto';

@@ -4,7 +4,7 @@
 let creditCostDialogActive = false;
 
 // Create and show credit cost confirmation dialog
-function showCreditCostDialog(cost, event = null, outputResolution = null) {
+function showCreditCostDialog(cost, event = null, outputResolution = null, isUpscaling = false, imageWidth = null, imageHeight = null, isFreeUpscaling = false) {
     return new Promise((resolve, reject) => {
         // Create fresh dialog elements each time
         const dialog = document.createElement('div');
@@ -19,39 +19,167 @@ function showCreditCostDialog(cost, event = null, outputResolution = null) {
         header.className = 'credit-cost-header';
 
         const icon = document.createElement('i');
-        icon.className = 'nai-anla';
+        icon.className = isUpscaling ? 'nai-upscale' : 'nai-anla';
         header.appendChild(icon);
 
         const title = document.createElement('span');
-        title.textContent = 'Payment Required';
+        title.textContent = isUpscaling ? 'Upscale Image' : 'Payment Required';
         header.appendChild(title);
 
         const message = document.createElement('div');
         message.className = 'credit-cost-message';
-        message.textContent = 'This will cost ';
 
-        const costContainer = document.createElement('div');
-        costContainer.className = 'credit-cost-cost';
+        // ESRGAN options for upscaling
+        let selectedUpscaler = 'novelai';
+        let selectedScale = 4;
 
-        const costIcon = document.createElement('i');
-        costIcon.className = 'nai-anla';
-        costContainer.appendChild(costIcon);
+        if (isUpscaling) {
+            // Calculate upscale info to determine NovelAI availability
+            let upscaleInfo = null;
+            let novelaiAvailable = false;
+            if (imageWidth && imageHeight) {
+                upscaleInfo = calculateUpscaleInfo(imageWidth, imageHeight);
+                novelaiAvailable = upscaleInfo.available;
+            }
 
-        const costText = document.createElement('strong');
-        costText.textContent = cost;
-        costContainer.appendChild(costText);
+            // If NovelAI is not available, default to ESRGAN
+            if (!novelaiAvailable) {
+                selectedUpscaler = 'esrgan';
+                selectedScale = 4;
+            }
 
-        message.appendChild(costContainer);
-        
-        // Add output resolution if provided
-        if (outputResolution && outputResolution.width && outputResolution.height) {
-            message.appendChild(document.createTextNode(' to generate (→ '));
-            const resolutionSpan = document.createElement('strong');
-            resolutionSpan.textContent = `${outputResolution.width}×${outputResolution.height}`;
-            message.appendChild(resolutionSpan);
-            message.appendChild(document.createTextNode(')'));
+            // For upscaling, show method selection dropdown
+            message.textContent = 'Choose upscaling method:';
+
+            // Create upscale method dropdown
+            const methodContainer = document.createElement('div');
+            methodContainer.className = 'upscale-method-container';
+
+            const methodDropdown = document.createElement('div');
+            methodDropdown.id = 'upscaleMethodDropdown';
+            methodDropdown.className = 'custom-dropdown dropup dark';
+
+            const methodDropdownBtn = document.createElement('button');
+            methodDropdownBtn.type = 'button';
+            methodDropdownBtn.id = 'upscaleMethodDropdownBtn';
+            methodDropdownBtn.className = 'custom-dropdown-btn hover-show colored';
+            methodDropdownBtn.style.width = '100%';
+            methodDropdownBtn.style.maxWidth = '300px';
+            methodDropdownBtn.textContent = novelaiAvailable ? 'NovelAI (4x)' : 'ESRGAN (4x)';
+            
+            methodDropdown.appendChild(methodDropdownBtn);
+
+            const methodMenu = document.createElement('div');
+            methodMenu.id = 'upscaleMethodDropdownMenu';
+            methodMenu.className = 'custom-dropdown-menu hidden';
+            methodMenu.style.maxHeight = '300px';
+            methodMenu.style.overflowY = 'auto';
+
+            // Add NovelAI option only if available
+            if (novelaiAvailable) {
+                const novelaiOption = document.createElement('div');
+                novelaiOption.className = 'custom-dropdown-option selected';
+                novelaiOption.dataset.method = 'novelai';
+                novelaiOption.dataset.scale = '4';
+                const costText = isFreeUpscaling ? 'Free' : `${cost} credits`;
+                novelaiOption.textContent = `NovelAI - ${costText} → ${outputResolution ? outputResolution.width + '×' + outputResolution.height : '4x'}`;
+                novelaiOption.addEventListener('click', () => {
+                    selectUpscaleMethod('novelai', 4);
+                    closeUpscaleMethodDropdown();
+                });
+                methodMenu.appendChild(novelaiOption);
+            }
+
+            // Add ESRGAN options
+            const scaleOptions = [2, 3, 4, 8];
+            scaleOptions.forEach(scale => {
+                const esrganOption = document.createElement('div');
+                // Select first ESRGAN 4x option if NovelAI is not available
+                const isSelected = !novelaiAvailable && scale === 4;
+                esrganOption.className = 'custom-dropdown-option' + (isSelected ? ' selected' : '');
+                esrganOption.dataset.method = 'esrgan';
+                esrganOption.dataset.scale = scale.toString();
+                const outputRes = imageWidth && imageHeight ? `${imageWidth * scale}×${imageHeight * scale}` : `${scale}x`;
+                esrganOption.textContent = `ESRGAN ${scale}x - ${outputRes}`;
+                esrganOption.addEventListener('click', () => {
+                    selectUpscaleMethod('esrgan', scale);
+                    closeUpscaleMethodDropdown();
+                });
+                methodMenu.appendChild(esrganOption);
+            });
+
+            methodDropdown.appendChild(methodMenu);
+            methodContainer.appendChild(methodDropdown);
+            message.appendChild(methodContainer);
+
+            // Setup dropdown functionality
+            setupDropdown(methodDropdown, methodDropdownBtn, methodMenu, () => {
+                // Render function - already populated above
+            }, () => ({
+                method: selectedUpscaler,
+                scale: selectedScale
+            }), { preventFocusTransfer: true });
+
+            // Method selection function
+            function selectUpscaleMethod(method, scale) {
+                selectedUpscaler = method;
+                selectedScale = scale;
+
+                const displayText = method === 'novelai' ?
+                    `NovelAI (4x)` :
+                    `ESRGAN (${scale}x)`;
+                methodDropdownBtn.textContent = displayText;
+
+                // Update button text
+                if (method === 'esrgan') {
+                    confirmBtn.textContent = 'Upscale ';
+                } else {
+                    const buttonText = isFreeUpscaling ? 'Upscale ' : `Upscale (${cost} credits) `;
+                    confirmBtn.textContent = buttonText;
+                }
+                const arrowIcon = document.createElement('i');
+                arrowIcon.className = 'fas fa-arrow-right';
+                confirmBtn.appendChild(arrowIcon);
+
+                // Update selected state in dropdown
+                methodMenu.querySelectorAll('.custom-dropdown-option').forEach(opt => {
+                    opt.classList.remove('selected');
+                    if (opt.dataset.method === method && opt.dataset.scale === scale.toString()) {
+                        opt.classList.add('selected');
+                    }
+                });
+            }
+
+            function closeUpscaleMethodDropdown() {
+                closeDropdown(methodMenu, methodDropdownBtn);
+            }
         } else {
-            message.appendChild(document.createTextNode(' to generate'));
+            // Normal cost dialog for non-upscaling requests
+            message.textContent = 'This will cost ';
+
+            const costContainer = document.createElement('div');
+            costContainer.className = 'credit-cost-cost';
+
+            const costIcon = document.createElement('i');
+            costIcon.className = 'nai-anla';
+            costContainer.appendChild(costIcon);
+
+            const costText = document.createElement('strong');
+            costText.textContent = cost;
+            costContainer.appendChild(costText);
+
+            message.appendChild(costContainer);
+
+            // Add output resolution if provided
+            if (outputResolution && outputResolution.width && outputResolution.height) {
+                message.appendChild(document.createTextNode(' to generate (→ '));
+                const resolutionSpan = document.createElement('strong');
+                resolutionSpan.textContent = `${outputResolution.width}×${outputResolution.height}`;
+                message.appendChild(resolutionSpan);
+                message.appendChild(document.createTextNode(')'));
+            } else {
+                message.appendChild(document.createTextNode(' to generate'));
+            }
         }
 
         const buttons = document.createElement('div');
@@ -65,11 +193,31 @@ function showCreditCostDialog(cost, event = null, outputResolution = null) {
         const confirmBtn = document.createElement('button');
         confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
         confirmBtn.type = 'button';
-        confirmBtn.textContent = 'Generate ';
 
-        const arrowIcon = document.createElement('i');
-        arrowIcon.className = 'fas fa-arrow-right';
-        confirmBtn.appendChild(arrowIcon);
+        if (isUpscaling) {
+            // Button text depends on selected upscaler
+            // Calculate upscale info to determine NovelAI availability
+            let novelaiAvailableForButton = false;
+            if (imageWidth && imageHeight) {
+                const upscaleInfoForButton = calculateUpscaleInfo(imageWidth, imageHeight);
+                novelaiAvailableForButton = upscaleInfoForButton.available;
+            }
+
+            if (novelaiAvailableForButton) {
+                const buttonText = isFreeUpscaling ? 'Upscale ' : `Upscale (${cost} credits) `;
+                confirmBtn.textContent = buttonText;
+            } else {
+                confirmBtn.textContent = 'Upscale ';
+            }
+            const arrowIcon = document.createElement('i');
+            arrowIcon.className = 'fas fa-arrow-right';
+            confirmBtn.appendChild(arrowIcon);
+        } else {
+            confirmBtn.textContent = 'Generate ';
+            const arrowIcon = document.createElement('i');
+            arrowIcon.className = 'fas fa-arrow-right';
+            confirmBtn.appendChild(arrowIcon);
+        }
 
         buttons.appendChild(cancelBtn);
         buttons.appendChild(confirmBtn);
@@ -85,7 +233,15 @@ function showCreditCostDialog(cost, event = null, outputResolution = null) {
         const handleConfirm = (e) => {
             e.preventDefault();
             cleanupCreditCostDialog(dialog);
-            resolve(true);
+            if (isUpscaling) {
+                resolve({
+                    confirmed: true,
+                    upscaler: selectedUpscaler,
+                    scale: selectedScale
+                });
+            } else {
+                resolve(true);
+            }
         };
 
         const handleCancel = (e) => {

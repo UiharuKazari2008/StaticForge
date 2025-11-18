@@ -591,9 +591,9 @@ function renderExpansionBiasDropdown(selectedVal) {
     
     const biasOptions = [
         { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-        { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
+        { value: '1', display: '⅖' + (isPortraitImage ? ' Top' : ' Left') },
         { value: '2', display: 'Center' },
-        { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
+        { value: '3', display: '⅘' + (isPortraitImage ? ' Bottom' : ' Right') },
         { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
     ];
     
@@ -645,9 +645,9 @@ function selectExpansionBias(value) {
         
         const biasLabels = [
             isPortraitImage ? 'Top' : 'Left',
-            isPortraitImage ? 'Mid-Top' : 'Mid-Left',
+            '⅖' + (isPortraitImage ? ' Top' : ' Left'),
             'Center',
-            isPortraitImage ? 'Mid-Bottom' : 'Mid-Right',
+            '⅘' + (isPortraitImage ? ' Bottom' : ' Right'),
             isPortraitImage ? 'Bottom' : 'Right'
         ];
         

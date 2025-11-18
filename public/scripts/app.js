@@ -666,38 +666,23 @@ function updateManualPresetPlaceholder() {
 // Dynamic Generation Functions
 function updateDynamicGenerationToggleBtn() {
     const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
-    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn', 'optimizeBtn']
+    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn']
         .some(btnId => {
             const btn = document.getElementById(btnId);
             return btn && btn.dataset.state === 'on' && btn.getAttribute('data-override');
-        });
+        }) || (dynamicCarousel && dynamicCarousel.dataset.optimizeEnabled === 'true');
     const hasCompiledPrompt = window.dynamicGenerationData && window.dynamicGenerationData.compiled_prompt;
 
     let state = 'off'; // default
 
-    dynamicGenerationLockedBtn.classList.remove('hidden');
     if (isOpen) {
         state = 'open'; // group is open but no active overrides
     } else if (hasActiveOverrides && hasCompiledPrompt) {
         state = 'on'; // has active overrides
-    } else {
-        dynamicGenerationLockedBtn.classList.add('hidden');
     }
 
     // Update button state
     dynamicGenerationToggleBtn.setAttribute('data-state', state);
-    
-    // Sync creative tab button state
-    const creativeTabDynamicBtn = document.getElementById('creativeTabDynamicGenerationBtn');
-    if (creativeTabDynamicBtn) {
-        creativeTabDynamicBtn.setAttribute('data-state', state);
-    }
-
-    if (hasCompiledPrompt) {
-        if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = '';
-    } else {
-        if (dynamicGenerationViewBtn) dynamicGenerationViewBtn.disabled = 'true';
-    }
 }
 
 // Dynamic Generation Carousel
@@ -705,85 +690,309 @@ let carouselData = [];
 let carouselCurrentIndex = 0;
 let carouselInterval = null;
 let carouselPaused = false;
+let carouselMode = 'current'; // 'current' or 'compiled'
+let currentContextData = null;
+let compiledContextData = null;
 
 function formatCarouselItems(data) {
     const items = [];
 
-    // Time with timezone and analog clock icon
+    // Time with timezone and analog clock icon (always show if time exists)
     if (data.time) {
         // Compute analog clock icon on client
-        const analogIcon = getAnalogClockIcon(data.time.hour, data.time.minute);
+        const hour = data.time.hour;
+        const minute = data.time.minute;
+        
+        // Format time if not already formatted (handle both formatted and raw time objects)
+        let formattedTime = data.time.formatted;
+        if (!formattedTime && hour !== undefined && minute !== undefined) {
+            formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+        }
+        
+        if (formattedTime) {
+            const analogIcon = getAnalogClockIcon(hour, minute);
 
-        // Compute timezone info on client
-        const timezoneInfo = data.time.timezone ? formatTimezoneInfo(data.time.timezone) : null;
+            // Compute timezone info on client
+            const timezone = data.time.timezone;
+            const timezoneInfo = timezone ? formatTimezoneInfo(timezone) : null;
 
-        const timeText = timezoneInfo && timezoneInfo.offset !== 0
-            ? `${data.time.formatted} <span class="timezone-dimmed">${timezoneInfo.formatted}</span>`
-            : data.time.formatted;
+            let timeText = timezoneInfo && timezoneInfo.offset !== 0
+                ? `${formattedTime} <span class="timezone-dimmed">${timezoneInfo.formatted}</span>`
+                : formattedTime;
+            
+            // Add holiday and date next to time - only for compiled context or if explicitly set
+            // Check if we're in compiled mode or if date was explicitly set in request
+            const isCompiledContext = carouselMode === 'compiled';
+            const hasExplicitDate = data.date?.formatted !== undefined;
+            // Holiday is always at data.season?.holiday (consistent structure for both live and compiled)
+            const holiday = data.season?.holiday;
+            const hasHoliday = holiday?.primaryHoliday?.name !== undefined;
 
-        items.push({
-            icon: 'fa-solid ' + analogIcon,
-            text: timeText
-        });
+            // Add holiday between time and date if available
+            if (hasHoliday) {
+                const holidayName = holiday.primaryHoliday.name;
+                const daysUntil = holiday.primaryHoliday.daysUntil ?? holiday.progressiveElements?.daysUntil;
+                const daysText = daysUntil !== undefined && daysUntil !== null ? ` (in ${daysUntil} day${daysUntil !== 1 ? 's' : ''})` : '';
+                timeText += ` <span class="carousel-separator">•</span> <i class="fa-solid fa-gifts carousel-inline-icon"></i> ${holidayName}${daysText}`;
+            }
+
+            if ((isCompiledContext || hasExplicitDate) && data.time.monthName && data.time.dayOfMonth !== undefined) {
+                // Format date as short month name and day number (e.g., "Nov 14")
+                const shortMonthName = data.time.monthName.substring(0, 3);
+                const dateText = `${shortMonthName} ${data.time.dayOfMonth}`;
+                timeText += ` <span class="carousel-separator">•</span> ${dateText}`;
+            } else if ((isCompiledContext || hasExplicitDate) && data.time.month !== undefined && data.time.dayOfMonth !== undefined) {
+                // Fallback: use month number if monthName is not available
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const monthIndex = typeof data.time.month === 'number' ? data.time.month - 1 : parseInt(data.time.month) - 1;
+                if (monthIndex >= 0 && monthIndex < 12) {
+                    const dateText = `${monthNames[monthIndex]} ${data.time.dayOfMonth}`;
+                    timeText += ` <span class="carousel-separator">•</span> ${dateText}`;
+                }
+            }
+
+            items.push({
+                icon: 'fa-solid ' + analogIcon,
+                text: timeText
+            });
+        }
     }
 
-    // Time of day as separate item
-    if (data.timeOfDay) {
-        // Determine icon based on time period
-        let todIcon = 'fa-regular fa-sun';
-        const timePeriod = data.timeOfDay.name.toLowerCase();
+    // Combine Time of Day and Season into one item
+    // Handle both timeOfDay (from current context) and timePeriod (from compiled context)
+    let timeOfDayData = null;
+    let timePeriodData = null;
+    
+    /**
+     * Normalizes legacy period keys to new period key names (client-side)
+     */
+    function normalizePeriodKey(periodKey) {
+        if (!periodKey || typeof periodKey !== 'string') {
+            return periodKey;
+        }
+        
+        const normalized = periodKey.toLowerCase().trim();
+        
+        const legacyMappings = {
+            'earlymorning': 'morning',
+            'early_morning': 'morning',
+            'earlyevening': 'night',
+            'early_evening': 'night',
+            'evening': 'night',
+            'lateevening': 'night',
+            'late_evening': 'night'
+        };
+        
+        return legacyMappings[normalized] || normalized;
+    }
 
-        if (timePeriod.includes('dawn') || timePeriod.includes('sunrise')) {
-            todIcon = 'fa-regular fa-sunrise';
-        } else if (timePeriod.includes('morning')) {
-            todIcon = 'fa-regular fa-coffee-pot';
-        } else if (timePeriod.includes('daytime')) {
-            todIcon = 'fa-regular fa-sun';
-        } else if (timePeriod.includes('afternoon')) {
-            todIcon = 'fa-regular fa-mug-tea-saucer';
-        } else if (timePeriod.includes('evening')) {
-            todIcon = 'fa-regular fa-sun-haze';
-        } else if (timePeriod.includes('dusk') || timePeriod.includes('sunset')) {
-            todIcon = 'fa-regular fa-sunset';
-        } else if (timePeriod.includes('night') || timePeriod.includes('midnight')) {
-            todIcon = 'fa-regular fa-moon';
+    // Helper function to extract periodKey from period string
+    function extractPeriodKeyFromPeriod(periodStr) {
+        if (!periodStr) return null;
+        const period = periodStr.toLowerCase();
+        
+        // Try to match period string to periodKey
+        if (period.includes('late morning') || period.includes('late-morning')) {
+            return 'latemorning';
+        } else if (period.includes('early afternoon') || period.includes('early-afternoon')) {
+            return 'earlyafternoon';
+        } else if (period.includes('late afternoon') || period.includes('late-afternoon')) {
+            return 'lateafternoon';
+        } else if (period.includes('late night') || period.includes('late-night')) {
+            return 'latenight';
+        } else if (period.includes('golden hour') || period.includes('golden-hour')) {
+            return 'goldenhour';
+        } else if (period.includes('pre-dawn') || period.includes('predawn')) {
+            return 'predawn';
+        } else {
+            // Try to extract the main word (morning, afternoon, evening, night, etc.)
+            const mainWords = ['dawn', 'sunrise', 'morning', 'noon', 'daytime', 'afternoon', 'sunset', 'dusk', 'twilight', 'night', 'midnight'];
+            for (const word of mainWords) {
+                if (period.includes(word)) {
+                    return word;
+                }
+            }
+        }
+        return null;
+    }
+    
+    // Check for timeOfDay structure (from current context)
+    if (data.timeOfDay && data.timeOfDay.name) {
+        // timeOfDay exists and has a valid name - use it
+        timeOfDayData = data.timeOfDay;
+    }
+    // Check for timePeriod structure (from compiled context)
+    // Process timePeriod if timeOfDay doesn't exist or doesn't have a valid name
+    else if (data.timePeriod) {
+        timePeriodData = data.timePeriod;
+        // Convert timePeriod to timeOfDay-like structure
+        if (typeof timePeriodData === 'object' && timePeriodData !== null) {
+            // Extract periodKey or infer from period
+            let periodKey = timePeriodData.periodKey;
+            
+            // If periodKey is missing but period exists, try to extract periodKey from period
+            if (!periodKey && timePeriodData.period) {
+                periodKey = extractPeriodKeyFromPeriod(timePeriodData.period);
+            }
+            
+            // Normalize legacy period keys
+            if (periodKey) {
+                periodKey = normalizePeriodKey(periodKey);
+            }
+            
+            timeOfDayData = {
+                name: periodKey || timePeriodData.period || null,
+                description: timePeriodData.period || null
+            };
+        } else if (typeof timePeriodData === 'string') {
+            // If timePeriod is a string, use it directly
+            const extractedKey = extractPeriodKeyFromPeriod(timePeriodData);
+            const normalizedKey = normalizePeriodKey(extractedKey || timePeriodData);
+            timeOfDayData = {
+                name: normalizedKey,
+                description: timePeriodData
+            };
+        }
+    }
+    // If timeOfDay exists but name is null, try to extract from description
+    else if (data.timeOfDay && data.timeOfDay.description) {
+        const extractedKey = extractPeriodKeyFromPeriod(data.timeOfDay.description);
+        if (extractedKey) {
+            timeOfDayData = {
+                name: extractedKey,
+                description: data.timeOfDay.description
+            };
+        }
+    }
+    
+    if (timeOfDayData || data.season) {
+        let timeIcon = '';
+        let timeText = '';
+        let seasonIcon = '';
+        let seasonText = '';
+
+        // Time of day - handle timeOfDayData structure
+        if (timeOfDayData && timeOfDayData.name) {
+            const periodName = timeOfDayData.name;
+            
+            if (periodName) {
+                // Determine icon based on time period
+                let todIcon = 'fa-regular fa-sun';
+                const timePeriod = periodName.toLowerCase();
+
+                if (timePeriod.includes('dawn') || timePeriod.includes('sunrise')) {
+                    todIcon = 'fa-regular fa-sunrise';
+                } else if (timePeriod.includes('morning')) {
+                    todIcon = 'fa-regular fa-coffee-pot';
+                } else if (timePeriod.includes('daytime')) {
+                    todIcon = 'fa-regular fa-sun';
+                } else if (timePeriod.includes('afternoon')) {
+                    todIcon = 'fa-regular fa-mug-tea-saucer';
+                } else if (timePeriod.includes('evening')) {
+                    todIcon = 'fa-regular fa-sun-haze';
+                } else if (timePeriod.includes('dusk') || timePeriod.includes('sunset')) {
+                    todIcon = 'fa-regular fa-sunset';
+                } else if (timePeriod.includes('night') || timePeriod.includes('midnight')) {
+                    todIcon = 'fa-regular fa-moon';
+                }
+
+                // Use the same periodKey mapping as the compiled prompt modal
+                let periodDisplayName = 'Time';
+                const periodKeyMap = {
+                    'predawn': 'Pre-Dawn',
+                    'pre_dawn': 'Pre-Dawn',
+                    'dawn': 'Dawn',
+                    'sunrise': 'Sunrise',
+                    'morning': 'Morning',
+                    'latemorning': 'Late Morning',
+                    'late_morning': 'Late Morning',
+                    'noon': 'Noon',
+                    'daytime': 'Daytime',
+                    'earlyafternoon': 'Early Afternoon',
+                    'early_afternoon': 'Early Afternoon',
+                    'afternoon': 'Afternoon',
+                    'lateafternoon': 'Late Afternoon',
+                    'late_afternoon': 'Late Afternoon',
+                    'goldenhour': 'Golden Hour',
+                    'golden_hour': 'Golden Hour',
+                    'sunset': 'Sunset',
+                    'dusk': 'Dusk',
+                    'twilight': 'Twilight',
+                    'night': 'Night',
+                    'midnight': 'Midnight',
+                    'latenight': 'Late Night',
+                    'late_night': 'Late Night'
+                };
+                
+                periodDisplayName = periodKeyMap[periodName.toLowerCase()] || 
+                    periodName
+                        .split('_')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
+
+                timeIcon = todIcon;
+                timeText = periodDisplayName;
+            }
+        }
+
+        // Season - handle both object and string formats (for backward compatibility with compiled prompts)
+        if (data.season) {
+            let seasonIconClass = 'fas fa-leaf-maple'; // default
+            // Extract season name from object or use string directly
+            let seasonName;
+            if (typeof data.season === 'object' && data.season !== null && data.season.name) {
+                seasonName = data.season.name;
+            } else if (typeof data.season === 'string') {
+                seasonName = data.season;
+            } else {
+                // Fallback: try to convert to string
+                seasonName = String(data.season);
+            }
+            const season = seasonName.toLowerCase();
+
+            if (season.includes('spring')) {
+                seasonIconClass = 'fas fa-flower-tulip';
+            } else if (season.includes('summer')) {
+                seasonIconClass = 'fas fa-hat-beach';
+            } else if (season.includes('autumn') || season.includes('fall')) {
+                seasonIconClass = 'fas fa-leaf';
+            } else if (season.includes('winter')) {
+                seasonIconClass = 'fas fa-snowflake';
+            }
+
+            seasonIcon = seasonIconClass;
+            seasonText = seasonName.charAt(0).toUpperCase() + seasonName.slice(1);
+        }
+
+        // Build text with icons inline - period icon with period text, season icon with season text
+        let displayText = '';
+        let displayIcon = '';
+        
+        if (timeText && seasonText) {
+            // Both exist - period icon at start, season icon after separator
+            displayText = `<i class="${timeIcon} carousel-inline-icon"></i> ${timeText} <span class="carousel-separator">•</span> <i class="${seasonIcon} carousel-inline-icon"></i> ${seasonText}`;
+            displayIcon = ''; // No icon container needed, icons are in text
+        } else if (timeText) {
+            // Only period
+            displayText = `<i class="${timeIcon} carousel-inline-icon"></i> ${timeText}`;
+            displayIcon = ''; // No icon container needed
+        } else if (seasonText) {
+            // Only season
+            displayText = `<i class="${seasonIcon} carousel-inline-icon"></i> ${seasonText}`;
+            displayIcon = ''; // No icon container needed
         }
 
         items.push({
-            icon: todIcon,
-            text: data.timeOfDay.name.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' '),
-            description: data.timeOfDay.description
+            icon: displayIcon,
+            text: displayText,
+            hasTime: !!timeText,
+            hasSeason: !!seasonText,
+            timeIcon: timeIcon,
+            seasonIcon: seasonIcon,
+            inlineIcons: true // Flag to indicate icons are in text
         });
     }
 
-    // Season with season-specific icon
-    if (data.season) {
-        let seasonIcon = 'fas fa-leaf-maple'; // default
-        const season = data.season.toLowerCase();
-
-        if (season.includes('spring')) {
-            seasonIcon = 'fas fa-flower-tulip';
-        } else if (season.includes('summer')) {
-            seasonIcon = 'fas fa-hat-beach';
-        } else if (season.includes('autumn') || season.includes('fall')) {
-            seasonIcon = 'fas fa-leaf';
-        } else if (season.includes('winter')) {
-            seasonIcon = 'fas fa-snowflake';
-        }
-
-        items.push({
-            icon: seasonIcon,
-            text: data.season.charAt(0).toUpperCase() + data.season.slice(1)
-        });
-    }
-
-    // Holiday
-    if (data.holiday) {
-        items.push({
-            icon: 'fa-solid fa-gifts',
-            text: data.holiday
-        });
-    }
 
     // Date - only shown if overridden (handled server-side)
     if (data.date?.formatted) {
@@ -842,25 +1051,57 @@ function formatCarouselItems(data) {
         });
     }
 
-    // Location (if available)
+    // Location (if available and static - not auto-detected from IP)
     if (data.location && (data.location.city || data.location.country)) {
-        const locationText = [data.location.city, data.location.country].filter(Boolean).join(', ');
-        items.push({
-            icon: 'fa-solid fa-location-dot',
-            text: locationText
-        });
+        // Check if location was manually set (static) or auto-detected from IP
+        // Static locations have source: 'static'
+        // Auto-detected locations have source: 'ipinfo', 'ipapi', or 'fallback'
+        const isStaticLocation = data.location.source === 'static';
+        
+        if (isStaticLocation) {
+            const locationText = [data.location.city, data.location.country].filter(Boolean).join(', ');
+            items.push({
+                icon: 'fa-solid fa-location-dot',
+                text: locationText
+            });
+        }
     }
 
     return items;
 }
 
-function updateDynamicCarousel(data) {
+function updateDynamicCarousel(data, mode = null) {
     if (!data) return;
+    if (!dynamicCarousel) return;
 
-    const carousel = document.getElementById('dynamicCarousel');
-    if (!carousel) return;
+    // Store data based on mode
+    if (mode === 'compiled') {
+        compiledContextData = data;
+        // Update mode if explicitly set to compiled
+        carouselMode = 'compiled';
+    } else if (mode === 'current') {
+        currentContextData = data;
+        // Update mode if explicitly set to current
+        carouselMode = 'current';
+    } else {
+        // No mode specified, store as current context
+        currentContextData = data;
+    }
 
-    carouselData = formatCarouselItems(data);
+    // Use specified mode or current mode
+    const targetMode = mode || carouselMode;
+    
+    // Determine which data to display
+    let displayData = targetMode === 'compiled' ? compiledContextData : currentContextData;
+    
+    // If target mode is compiled but no compiled data, use current data
+    if (targetMode === 'compiled' && !displayData) {
+        displayData = currentContextData;
+    }
+
+    if (!displayData) return;
+
+    carouselData = formatCarouselItems(displayData);
     
     if (carouselData.length === 0) {
         carouselData = [{
@@ -869,59 +1110,91 @@ function updateDynamicCarousel(data) {
         }];
     }
 
+    // Clear existing carousel items (but preserve indicators)
+    const indicators = dynamicCarousel.querySelector('.carousel-indicators');
+    dynamicCarousel.innerHTML = '';
+    if (indicators) {
+        dynamicCarousel.appendChild(indicators);
+    }
+
+    // Create all carousel items in the DOM (stacked)
+    carouselData.forEach((item, index) => {
+        const carouselItem = document.createElement('div');
+        carouselItem.className = 'carousel-item';
+        if (index === 0) {
+            carouselItem.classList.add('active');
+        }
+        carouselItem.dataset.index = index;
+
+        // If icons are inline in the text, don't create icon container
+        if (item.inlineIcons) {
+            // Icons are already in the text, just render the text
+            const textEl = document.createElement('span');
+            textEl.className = 'carousel-text';
+            textEl.innerHTML = item.text;
+            carouselItem.appendChild(textEl);
+        } else {
+            // Handle icon container for items with separate icons
+            const iconContainer = document.createElement('div');
+            iconContainer.className = 'carousel-icon-container';
+            
+            if (item.icon && item.icon.includes('|')) {
+                // Multiple icons
+                const icons = item.icon.split('|');
+                icons.forEach(icon => {
+                    if (icon.trim()) {
+                        const iconEl = document.createElement('i');
+                        iconEl.className = `carousel-icon ${icon.trim()}`;
+                        iconContainer.appendChild(iconEl);
+                    }
+                });
+            } else if (item.icon) {
+                // Single icon
+                const iconEl = document.createElement('i');
+                iconEl.className = `carousel-icon ${item.icon}`;
+                iconContainer.appendChild(iconEl);
+            }
+
+            const textEl = document.createElement('span');
+            textEl.className = 'carousel-text';
+            textEl.innerHTML = item.text;
+
+            carouselItem.appendChild(iconContainer);
+            carouselItem.appendChild(textEl);
+        }
+        
+        dynamicCarousel.insertBefore(carouselItem, indicators || null);
+    });
+
     carouselCurrentIndex = 0;
-    showCarouselItem(0);
+    updateCarouselIndicators();
     startCarousel();
 }
 
 function showCarouselItem(index) {
-    const carousel = document.getElementById('dynamicCarousel');
-    if (!carousel || carouselData.length === 0) return;
+    if (!dynamicCarousel || carouselData.length === 0) return;
 
-    const item = carouselData[index];
-    
-    // Get or create the active carousel item
-    let activeItem = carousel.querySelector('.carousel-item.active');
-    if (!activeItem) {
-        activeItem = carousel.querySelector('.carousel-item');
-    }
+    // Remove active class from all items
+    const allItems = dynamicCarousel.querySelectorAll('.carousel-item');
+    allItems.forEach(item => {
+        item.classList.remove('active');
+    });
 
-    if (activeItem) {
-        // Update content
-        const iconEl = activeItem.querySelector('.carousel-icon');
-        const textEl = activeItem.querySelector('.carousel-text');
-        
-        iconEl.className = `carousel-icon ${item.icon}`;
-        textEl.innerHTML = item.text;
+    // Add active class to current item - CSS handles the animation
+    const currentItem = dynamicCarousel.querySelector(`.carousel-item[data-index="${index}"]`);
+    if (currentItem) {
+        currentItem.classList.add('active');
     }
 }
 
 function advanceCarousel() {
     if (carouselPaused || carouselData.length <= 1) return;
 
-    const carousel = document.getElementById('dynamicCarousel');
-    if (!carousel) return;
-
-    const currentItem = carousel.querySelector('.carousel-item.active');
-    if (!currentItem) return;
-
     // Move to next index
     carouselCurrentIndex = (carouselCurrentIndex + 1) % carouselData.length;
-    const nextData = carouselData[carouselCurrentIndex];
-
-    // Start exit animation
-    currentItem.classList.add('exiting');
-
-    // After fade out, update content and fade back in
-    setTimeout(() => {
-        const iconEl = currentItem.querySelector('.carousel-icon');
-        const textEl = currentItem.querySelector('.carousel-text');
-        
-        if (iconEl) iconEl.className = `carousel-icon ${nextData.icon}`;
-        if (textEl) textEl.innerHTML = nextData.text;
-
-        currentItem.classList.remove('exiting');
-    }, 500); // Match transition time
+    
+    // Update active item - CSS handles the animation
+    showCarouselItem(carouselCurrentIndex);
 }
 
 function startCarousel() {
@@ -947,13 +1220,132 @@ function resumeCarousel() {
     carouselPaused = false;
 }
 
+function updateCarouselIndicators() {
+    const indicators = document.getElementById('carouselIndicators');
+    const currentIndicator = document.getElementById('currentContextIndicator');
+    const compiledIndicator = document.getElementById('compiledContextIndicator');
+    const lockIcon = document.getElementById('carouselLockIcon');
+    const fastIcon = document.getElementById('carouselFastIcon');
+	const cacheIcon = document.getElementById('carouselCacheIcon');
+    
+    if (!dynamicCarousel || !indicators || !currentIndicator || !compiledIndicator) return;
+    
+    // Show indicators only if compiled prompt context exists
+    // Check both window.dynamicGenerationData and compiledContextData
+    const hasCompiledPrompt = window.dynamicGenerationData?.compiled_prompt?.context || compiledContextData;
+    
+    if (hasCompiledPrompt) {
+        indicators.classList.remove('hidden');
+        dynamicCarousel.classList.add('has-indicators');
+        
+        // Show/hide lock icon based on freeze state
+        // Priority: Freeze Changes (lock icon) > Freeze Context (icicles icon)
+        if (lockIcon && dynamicCarousel) {
+            const isChangesLocked = dynamicCarousel.dataset.state === 'on'; // Freeze Changes
+            const isContextLocked = dynamicCarousel.dataset.contextLocked === 'true'; // Freeze Context
+            
+            if (isChangesLocked) {
+                // Freeze Changes takes priority - show lock icon
+                lockIcon.classList.remove('hidden');
+                lockIcon.className = 'carousel-lock-icon fa-solid fa-lock';
+                lockIcon.title = 'Changes Frozen';
+            } else if (isContextLocked) {
+                // Freeze Context - show icicles icon
+                lockIcon.classList.remove('hidden');
+                lockIcon.className = 'carousel-lock-icon fa-solid fa-icicles';
+                lockIcon.title = 'Context Frozen';
+            } else {
+                // Neither is locked - hide icon
+                lockIcon.classList.add('hidden');
+            }
+        }
+        
+        // Show/hide fast mode icon based on fast mode state
+        if (fastIcon && dynamicCarousel) {
+            const isFastMode = dynamicCarousel.dataset.fastMode === 'true';
+            if (isFastMode) {
+                fastIcon.classList.remove('hidden');
+            } else {
+                fastIcon.classList.add('hidden');
+            }
+        }
+
+		// Show/hide cache icon when compiled prompt exists and use-cache is enabled
+		if (cacheIcon && dynamicCarousel) {
+			const useCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
+			if (useCache) {
+				cacheIcon.classList.remove('hidden');
+			} else {
+				cacheIcon.classList.add('hidden');
+			}
+		}
+        
+        // Update active state
+        if (carouselMode === 'current') {
+            currentIndicator.classList.add('active');
+            compiledIndicator.classList.remove('active');
+        } else {
+            currentIndicator.classList.remove('active');
+            compiledIndicator.classList.add('active');
+        }
+    } else {
+        indicators.classList.add('hidden');
+        dynamicCarousel.classList.remove('has-indicators');
+        if (lockIcon) {
+            lockIcon.classList.add('hidden');
+        }
+        if (fastIcon) {
+            fastIcon.classList.add('hidden');
+        }
+		if (cacheIcon) {
+			cacheIcon.classList.add('hidden');
+		}
+    }
+}
+
+function toggleCarouselMode() {
+    // Check if compiled prompt context exists
+    const hasCompiledPrompt = window.dynamicGenerationData?.compiled_prompt?.context || compiledContextData;
+    
+    // Only toggle if compiled prompt exists
+    if (!hasCompiledPrompt) return;
+    
+    // Toggle mode
+    carouselMode = carouselMode === 'current' ? 'compiled' : 'current';
+    
+    // Update carousel with current mode's data
+    // Use the mode parameter to ensure correct display
+    if (carouselMode === 'compiled' && compiledContextData) {
+        updateDynamicCarousel(compiledContextData, 'compiled');
+    } else if (carouselMode === 'current') {
+        // If switching to current context and no context is loaded, refresh it
+        if (!currentContextData || (typeof currentContextData === 'object' && Object.keys(currentContextData).length === 0)) {
+            requestDynamicContextResolution();
+        } else {
+            updateDynamicCarousel(currentContextData, 'current');
+        }
+    } else {
+        // If data doesn't exist for the target mode, just update indicators
+        updateCarouselIndicators();
+    }
+}
+
 function initDynamicCarousel() {
-    const carousel = document.getElementById('dynamicCarousel');
-    if (!carousel) return;
+    if (!dynamicCarousel) return;
 
     // Add hover listeners for pause/resume
-    carousel.addEventListener('mouseenter', pauseCarousel);
-    carousel.addEventListener('mouseleave', resumeCarousel);
+    dynamicCarousel.addEventListener('mouseenter', pauseCarousel);
+    dynamicCarousel.addEventListener('mouseleave', resumeCarousel);
+    
+    // Add click handler to toggle between modes (only left-click, not right-click for context menu)
+    dynamicCarousel.addEventListener('click', (e) => {
+        // Don't toggle on right-click (context menu)
+        if (e.button === 2 || e.ctrlKey || e.metaKey) return;
+        // Don't toggle if clicking on indicators (they have their own handlers if needed)
+        if (e.target.closest('.carousel-indicators')) return;
+        
+        toggleCarouselMode();
+    });
 }
 
 async function requestDynamicContextResolution() {
@@ -998,16 +1390,60 @@ async function requestDynamicContextResolution() {
 
         const response = await wsClient.resolveDynamicContext(dynamicConfig);
         if (response) {
-            updateDynamicCarousel(response);
+            // Store as current context and update carousel
+            updateDynamicCarousel(response, 'current');
         }
     } catch (error) {
         console.error('❌ Error resolving dynamic context:', error);
     }
 }
 
+// Show loading state in carousel
+function showCarouselLoadingState() {
+    if (!dynamicCarousel) return;
+    
+    // Clear existing carousel items (but preserve indicators)
+    const indicators = dynamicCarousel.querySelector('.carousel-indicators');
+    dynamicCarousel.innerHTML = '';
+    if (indicators) {
+        dynamicCarousel.appendChild(indicators);
+    }
+    
+    // Create loading item
+    const loadingItem = document.createElement('div');
+    loadingItem.className = 'carousel-item active';
+    loadingItem.dataset.index = 0;
+    
+    const iconContainer = document.createElement('div');
+    iconContainer.className = 'carousel-icon-container';
+    const iconEl = document.createElement('i');
+    iconEl.className = 'carousel-icon fa-solid fa-spinner fa-spin';
+    iconContainer.appendChild(iconEl);
+    
+    const textEl = document.createElement('span');
+    textEl.className = 'carousel-text';
+    textEl.textContent = 'Please Wait...';
+    
+    loadingItem.appendChild(iconContainer);
+    loadingItem.appendChild(textEl);
+    
+    dynamicCarousel.insertBefore(loadingItem, indicators || null);
+    
+    // Update carousel state
+    carouselCurrentIndex = 0;
+    carouselData = [{
+        icon: 'fa-solid fa-spinner fa-spin',
+        text: 'Please Wait...'
+    }];
+    updateCarouselIndicators();
+}
+
 // Debounced version to prevent excessive server requests
 let debouncedRequestDynamicContextResolution = null;
 function createDebouncedContextResolution() {
+    // Show loading state immediately when function is called
+    showCarouselLoadingState();
+    
     // Create debounced function if it doesn't exist
     if (!debouncedRequestDynamicContextResolution) {
         debouncedRequestDynamicContextResolution = debounce(() => {
@@ -1027,16 +1463,16 @@ const CLIENT_HOLIDAY_MAP = {
     'independenceday': 'Independence Day',
     'valentinesday': 'Valentine\'s Day',
     'easter': 'Easter/Spring Holiday',
-    'stpatricksday': 'St. Patrick\'s Day',
-    'memorialday': 'Memorial Day',
-    'laborday': 'Labor Day',
-    'veteransday': 'Veterans Day',
+    'chinesenewyear': 'Chinese New Year',
+    'setsubun': 'Setsubun',
+    'hinamatsuri': 'Hinamatsuri',
+    'summerfestival': 'Summer Festival',
     'japanesenewyear': 'Japanese New Year (Oshogatsu)',
     'cherryblossom': 'Cherry Blossom Season (Hanami)',
     'tanabatafestival': 'Star Festival (Tanabata)',
     'goldenweek': 'Golden Week (Shukujitsu)',
     'childrensday': 'Children\'s Day (Kodomo no Hi)',
-    'tsukimi': 'Autumn Moon Festival (Tsukimi)',
+    'tsukimi': 'Mid-Autumn Festival (Tsukimi)',
     'obonfestival': 'Obon Festival (Bon Odori)',
     'nearest': 'nearest' // Special case for nearest holiday
 };
@@ -1052,7 +1488,11 @@ function getHolidayDateClient(holidayValue) {
         return now;
     }
 
-    const holidayName = CLIENT_HOLIDAY_MAP[holidayValue];
+    const normalizedValue = (holidayValue || '').startsWith('true_')
+        ? holidayValue.substring(5)
+        : holidayValue;
+
+    const holidayName = CLIENT_HOLIDAY_MAP[normalizedValue];
     if (!holidayName) return null;
 
     // Simplified holiday date calculation (basic implementation)
@@ -1061,39 +1501,27 @@ function getHolidayDateClient(holidayValue) {
         'New Year\'s Celebration': new Date(year, 0, 1), // Jan 1
         'Halloween': new Date(year, 9, 31), // Oct 31
         'Thanksgiving': (() => {
-            // Last Thursday in November
-            const november = new Date(year, 10, 1);
-            const thanksgiving = new Date(year, 10, 26); // Usually around Nov 26
+            // Last Thursday in November (approximation)
+            const thanksgiving = new Date(year, 10, 26);
             return thanksgiving;
         })(),
         'Independence Day': new Date(year, 6, 4), // Jul 4
         'Valentine\'s Day': new Date(year, 1, 14), // Feb 14
         'Easter/Spring Holiday': (() => {
-            // Simplified - March/April, actual calculation is complex
-            return new Date(year, 3, 4); // April 4 as approximation
+            // Simplified - actual calculation varies
+            return new Date(year, 3, 4); // Early April approximation
         })(),
-        'St. Patrick\'s Day': new Date(year, 2, 17), // Mar 17
-        'Memorial Day': (() => {
-            // Last Monday in May
-            const may = new Date(year, 4, 31);
-            const memorialDay = new Date(year, 4, 31 - may.getDay());
-            return memorialDay;
-        })(),
-        'Labor Day': (() => {
-            // First Monday in September
-            const sept = new Date(year, 8, 1);
-            const laborDay = new Date(year, 8, 1 + (7 - sept.getDay()));
-            return laborDay;
-        })(),
-        'Veterans Day': new Date(year, 10, 11), // Nov 11
-        // Japanese holidays - approximate dates
+        'Chinese New Year': new Date(year, 1, 5), // Early February approximation
+        'Setsubun': new Date(year, 1, 3), // Feb 3
+        'Hinamatsuri': new Date(year, 2, 3), // Mar 3
+        'Summer Festival': new Date(year, 6, 20), // Late July approximation
         'Japanese New Year (Oshogatsu)': new Date(year, 0, 1),
         'Cherry Blossom Season (Hanami)': new Date(year, 3, 1), // April
         'Star Festival (Tanabata)': new Date(year, 6, 7), // Jul 7
-        'Golden Week (Shukujitsu)': new Date(year, 4, 29), // Late May
+        'Golden Week (Shukujitsu)': new Date(year, 4, 29), // May 29
         'Children\'s Day (Kodomo no Hi)': new Date(year, 4, 5), // May 5
-        'Autumn Moon Festival (Tsukimi)': new Date(year, 8, 13), // Sep 13
-        'Obon Festival (Bon Odori)': new Date(year, 7, 16) // Aug 16
+        'Mid-Autumn Festival (Tsukimi)': new Date(year, 8, 15), // Mid-September
+        'Obon Festival (Bon Odori)': new Date(year, 7, 15) // Mid-August
     };
 
     return holidayDates[holidayName] || null;
@@ -1521,6 +1949,50 @@ function getLocationBadgeClass(source) {
     return '';
 }
 
+function getLocationIcon(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return '<i class="ri-code-block"></i>';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+        return '<i class="ri-eraser-fill"></i>';
+    } else if (sourceLower.includes('character')) {
+        return '<i class="fas fa-user"></i>';
+    }
+    return '<i class="fas fa-circle"></i>';
+}
+
+function getLocationColor(source) {
+    const sourceLower = source.toLowerCase();
+    if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
+        return '#81ffcb';
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+        return '#ff8199';
+    } else if (sourceLower.includes('character')) {
+        return '#b481ff';
+    }
+    return 'var(--text-secondary)';
+}
+
+function getReplacementTypeColor(type) {
+    switch (type) {
+        case 'incrementing':
+            return '#81b4ff'; // Blue for sequential/incrementing
+        case 'bracketed_incrementing':
+        case 'bracketed_expanded':
+        case 'bracketed_prefix':
+        case 'bracketed_expanded_pick':
+        case 'bracketed_prefix_pick':
+        case 'bracketed_expanded_combine':
+        case 'bracketed_prefix_combine':
+        case 'combine':
+            return '#ff81ff'; // Pink/purple for random/combine
+        case 'regular':
+            return '#ffb981'; // Orange for standard replacement
+        default:
+            return '#9ca3af'; // Gray for default
+    }
+}
+
 // Get icon for dynamic replacement category (based on schema-defined categories)
 function getCategoryIcon(category) {
     const categoryLower = (category || '').toLowerCase();
@@ -1558,6 +2030,154 @@ function getCategoryIcon(category) {
     return '<i class="fas fa-tag"></i>';
 }
 
+// Toggle compiled prompts section visibility
+function toggleCompiledPromptsSection() {
+    const toggleBtn = document.getElementById('toggleCompiledPromptsBtn');
+    const content = document.getElementById('compiledPromptsContent');
+    
+    if (!toggleBtn || !content) return;
+    
+    const isHidden = content.classList.contains('hidden');
+    
+    if (isHidden) {
+        content.classList.remove('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i><span>Hide Compiled Prompts</span>';
+    } else {
+        content.classList.add('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i><span>Show Compiled Prompts</span>';
+    }
+}
+
+// Populate compiled prompts section with emphasis highlighting
+function populateCompiledPromptsSection() {
+    const expandableSection = document.getElementById('compiledPromptExpandableSection');
+    const noDataMessage = document.getElementById('compiledPromptsNoData');
+    const basePromptDisplay = document.getElementById('compiledBasePromptDisplay');
+    const basePromptOverlay = document.getElementById('compiledBasePromptOverlay');
+    const basePromptContainer = document.getElementById('compiledBasePromptContainer');
+    const baseUcDisplay = document.getElementById('compiledBaseUcDisplay');
+    const baseUcOverlay = document.getElementById('compiledBaseUcOverlay');
+    const baseUcContainer = document.getElementById('compiledBaseUcContainer');
+    const characterPromptsContainer = document.getElementById('compiledCharacterPromptsContainer');
+    
+    if (!expandableSection) return;
+    
+    // Get metadata from the last generation or current preview image
+    let metadata = window.currentManualPreviewImage?.metadata || window.lastGeneration?.metadata;
+    
+    // Use compiled_prompt fields if available (the actual prompts sent to generation)
+    const finalPrompt = metadata?.compiled_prompt || '';
+    const finalUc = metadata?.compiled_uc || '';
+    const finalCharacterPrompts = metadata?.compiled_characterPrompts || [];
+    
+    if (!metadata || (!finalPrompt && !finalUc && (!finalCharacterPrompts || finalCharacterPrompts.length === 0))) {
+        // No metadata available, show message
+        if (noDataMessage) noDataMessage.classList.remove('hidden');
+        if (basePromptContainer) basePromptContainer.classList.add('hidden');
+        if (baseUcContainer) baseUcContainer.classList.add('hidden');
+        if (characterPromptsContainer) characterPromptsContainer.innerHTML = '';
+        return;
+    }
+    
+    // Hide no data message
+    if (noDataMessage) noDataMessage.classList.add('hidden');
+    
+    // Populate base prompt
+    if (finalPrompt && finalPrompt.trim()) {
+        basePromptContainer.classList.remove('hidden');
+        basePromptDisplay.textContent = finalPrompt;
+        
+        // Apply emphasis highlighting
+        const highlightedHtml = highlightEmphasisInText(finalPrompt);
+        basePromptOverlay.innerHTML = highlightedHtml;
+    } else {
+        basePromptContainer.classList.add('hidden');
+    }
+    
+    // Populate base UC
+    if (finalUc && finalUc.trim()) {
+        baseUcContainer.classList.remove('hidden');
+        baseUcDisplay.textContent = finalUc;
+        
+        // Apply emphasis highlighting
+        const highlightedHtml = highlightEmphasisInText(finalUc);
+        baseUcOverlay.innerHTML = highlightedHtml;
+    } else {
+        baseUcContainer.classList.add('hidden');
+    }
+    
+    // Populate character prompts
+    if (characterPromptsContainer) {
+        characterPromptsContainer.innerHTML = '';
+        
+        if (finalCharacterPrompts && Array.isArray(finalCharacterPrompts)) {
+            finalCharacterPrompts.forEach((char, index) => {
+                if (!char.prompt && !char.uc) return; // Skip if both are empty
+                
+                const charContainer = document.createElement('div');
+                charContainer.className = 'compiled-prompt-field-container';
+                
+                // Character name/label
+                const charName = char.chara_name || char.name || `Character ${index + 1}`;
+                
+                // Character input prompt
+                if (char.prompt && char.prompt.trim()) {
+                    const charInputLabel = document.createElement('label');
+                    charInputLabel.className = 'compiled-prompt-label';
+                    charInputLabel.innerHTML = `<i class="fas fa-user"></i> ${charName} - Prompt`;
+                    
+                    const charInputWrapper = document.createElement('div');
+                    charInputWrapper.className = 'compiled-prompt-display-wrapper';
+                    
+                    const charInputDisplay = document.createElement('div');
+                    charInputDisplay.className = 'compiled-prompt-display';
+                    charInputDisplay.textContent = char.prompt;
+                    
+                    const charInputOverlay = document.createElement('div');
+                    charInputOverlay.className = 'emphasis-highlight-overlay';
+                    
+                    // Apply emphasis highlighting
+                    charInputOverlay.innerHTML = highlightEmphasisInText(char.prompt);
+                    
+                    charInputWrapper.appendChild(charInputDisplay);
+                    charInputWrapper.appendChild(charInputOverlay);
+                    
+                    charContainer.appendChild(charInputLabel);
+                    charContainer.appendChild(charInputWrapper);
+                }
+                
+                // Character UC
+                if (char.uc && char.uc.trim()) {
+                    const charUcLabel = document.createElement('label');
+                    charUcLabel.className = 'compiled-prompt-label';
+                    charUcLabel.innerHTML = `<i class="fas fa-user"></i> ${charName} - UC`;
+                    
+                    const charUcWrapper = document.createElement('div');
+                    charUcWrapper.className = 'compiled-prompt-display-wrapper';
+                    
+                    const charUcDisplay = document.createElement('div');
+                    charUcDisplay.className = 'compiled-prompt-display';
+                    charUcDisplay.textContent = char.uc;
+                    
+                    const charUcOverlay = document.createElement('div');
+                    charUcOverlay.className = 'emphasis-highlight-overlay';
+                    
+                    // Apply emphasis highlighting
+                    charUcOverlay.innerHTML = highlightEmphasisInText(char.uc);
+                    
+                    charUcWrapper.appendChild(charUcDisplay);
+                    charUcWrapper.appendChild(charUcOverlay);
+                    
+                    charContainer.appendChild(charUcLabel);
+                    charContainer.appendChild(charUcWrapper);
+                }
+                
+                characterPromptsContainer.appendChild(charContainer);
+            });
+        }
+    }
+}
+
 // Open the text replacement lock modal
 function openTextReplacementLockModal() {
     const modal = document.getElementById('textReplacementLockModal');
@@ -1574,10 +2194,50 @@ function openTextReplacementLockModal() {
     // This would be populated from window.lastGenerationTextReplacements
     currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
 
+    // Populate compiled prompts section
+    populateCompiledPromptsSection();
+
     // Render the text replacement list
     renderTextReplacementLockList();
 
     openModal(modal);
+
+    // Scroll the list container to the top
+    const scrollableContainer = document.getElementById('textReplacementLockListContainer');
+    if (scrollableContainer) {
+        scrollableContainer.scrollTop = 0;
+    }
+}
+
+// Refresh the text replacement lock modal if it's currently open
+function refreshTextReplacementLockModalIfOpen() {
+    const modal = document.getElementById('textReplacementLockModal');
+    
+    // Check if modal exists and is currently visible (not hidden)
+    if (!modal || modal.classList.contains('hidden')) {
+        return;
+    }
+
+    // Modal is open, refresh its contents
+    const listContainer = document.getElementById('textReplacementLockList');
+    if (!listContainer) {
+        return;
+    }
+
+    // Update the current seeds from the latest generation
+    currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
+
+    // Re-populate compiled prompts section
+    populateCompiledPromptsSection();
+
+    // Re-render the text replacement list
+    renderTextReplacementLockList();
+
+    // Scroll the list container to the top
+    const scrollableContainer = document.getElementById('textReplacementLockListContainer');
+    if (scrollableContainer) {
+        scrollableContainer.scrollTop = 0;
+    }
 }
 
 // Select all text replacements
@@ -1596,6 +2256,10 @@ function selectAllTextReplacements() {
             currentTextReplacementSeeds[index].locked = true;
         }
     });
+    
+    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+    window.lockedTextReplacements = lockedSeeds;
+    
     updateLockStatusText();
 }
 
@@ -1615,25 +2279,11 @@ function deselectAllTextReplacements() {
             currentTextReplacementSeeds[index].locked = false;
         }
     });
+    
+    window.lockedTextReplacements = [];
+    
     updateLockStatusText();
 }
-
-// Apply the selected text replacement locks
-function applyTextReplacementLocks() {
-    // Get seeds that are marked as locked based on their locked property
-    const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
-
-    // Store the locked replacements for use in generation
-    window.lockedTextReplacements = lockedSeeds;
-
-    // Close the modal
-    const modal = document.getElementById('textReplacementLockModal');
-    closeModal(modal);
-
-    // Update the main lock button indicator
-    updateMainLockButtonState();
-}
-
 
 // Update the lock status text in the modal
 function updateLockStatusText() {
@@ -1679,7 +2329,7 @@ function updateMainLockButtonState() {
         if (dtr.uc) dynamicReplacementsCount += dtr.uc.length;
         if (dtr.character_prompts) {
             dtr.character_prompts.forEach(char => {
-                if (char?.input) dynamicReplacementsCount += char.input.length;
+                if (char?.prompt) dynamicReplacementsCount += char.prompt.length;
                 if (char?.uc) dynamicReplacementsCount += char.uc.length;
             });
         }
@@ -2008,7 +2658,7 @@ function renderTextReplacementLockList() {
     if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         const tr = window.dynamicGenerationData.compiled_prompt.text_replacements;
         hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) || 
-            (tr.character_prompts?.some(char => char?.input?.length > 0 || char?.uc?.length > 0));
+            (tr.character_prompts?.some(char => char?.prompt?.length > 0 || char?.uc?.length > 0));
     }
 
     if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
@@ -2038,38 +2688,42 @@ function renderTextReplacementLockList() {
         }
 
         const isStatic = seed.type === 'regular';
-        const locationBadgeClass = getLocationBadgeClass(seed.source);
+        const locationIcon = getLocationIcon(seed.source);
+        const locationColor = getLocationColor(seed.source);
         const typeIcon = getReplacementTypeIcon(seed.type);
+        const typeColor = getReplacementTypeColor(seed.type);
         
         itemDiv.innerHTML = `
             <div class="text-replacement-lock-content">
                 <div class="text-replacement-lock-info">
-                    <div class="text-replacement-lock-row">
-                        <div class="text-replacement-lock-pattern">
-                            ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
-                            <i class="fas fa-arrow-right text-replacement-arrow"></i>
-                            <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
-                        </div>
-                        <div class="text-replacement-lock-badges">
-                            <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${seed.source}</span>
-                            <span class="text-replacement-badge text-replacement-badge-type">${typeIcon} ${getReplacementTypeDisplay(seed.type)}</span>
-                        </div>
-                    </div>
                     <div class="text-replacement-full-value">${seed.value}</div>
                 </div>
-                <div class="text-replacement-lock-actions">
-                    <button type="button" class="text-replacement-manual-select-btn btn-secondary btn-small" title="Manual Selection" id="tr-manual-${index}">
-                        <i class="fas fa-list"></i>
-                    </button>
-                    <button type="button" class="text-replacement-random-btn btn-secondary btn-small" title="Random Selection" id="tr-random-${index}">
-                        <i class="fas fa-dice"></i>
-                    </button>
-                    <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
-                        <i class="fas fa-pen-field"></i>
-                    </button>
-                    <button type="button" class="text-replacement-lock-btn btn-secondary btn-small btn-toggle" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
-                        <i class="fas fa-lock"></i>
-                    </button>
+                <div class="text-replacement-lock-row">
+                    <div class="text-replacement-lock-badges">
+                        <span class="text-replacement-badge text-replacement-badge-combined">
+                            <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                            <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
+                        </span>
+                    </div>
+                    <div class="text-replacement-lock-pattern">
+                        ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
+                        <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                        <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
+                    </div>
+                    <div class="text-replacement-lock-actions">
+                        <button type="button" class="text-replacement-manual-select-btn btn-secondary btn-small" title="Manual Selection" id="tr-manual-${index}">
+                            <i class="fas fa-list"></i>
+                        </button>
+                        <button type="button" class="text-replacement-random-btn btn-secondary btn-small" title="Random Selection" id="tr-random-${index}">
+                            <i class="fas fa-dice"></i>
+                        </button>
+                        <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
+                            <i class="fas fa-pen-field"></i>
+                        </button>
+                        <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
+                            <i class="fas fa-lock"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -2119,29 +2773,33 @@ function renderTextReplacementLockList() {
             // For non-lockable replacements, show info only
             const originalPattern = seed.pattern || `!${seed.key}`;
             const isStatic = seed.type === 'regular';
-            const locationBadgeClass = getLocationBadgeClass(seed.source);
+            const locationIcon = getLocationIcon(seed.source);
+            const locationColor = getLocationColor(seed.source);
             const typeIcon = getReplacementTypeIcon(seed.type);
+            const typeColor = getReplacementTypeColor(seed.type);
             
             itemDiv.innerHTML = `
                 <div class="text-replacement-lock-content">
                     <div class="text-replacement-lock-info">
-                        <div class="text-replacement-lock-row">
-                            <div class="text-replacement-lock-pattern">
-                                ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
-                                <i class="fas fa-arrow-right text-replacement-arrow"></i>
-                                <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
-                            </div>
-                            <div class="text-replacement-lock-badges">
-                                <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${seed.source}</span>
-                                <span class="text-replacement-badge text-replacement-badge-type">${typeIcon} ${getReplacementTypeDisplay(seed.type)}</span>
-                            </div>
-                        </div>
                         <div class="text-replacement-full-value">${seed.value}</div>
                     </div>
-                    <div class="text-replacement-lock-actions">
-                        <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
-                            <i class="fas fa-pen-field"></i>
-                        </button>
+                    <div class="text-replacement-lock-row">
+                        <div class="text-replacement-lock-badges">
+                            <span class="text-replacement-badge text-replacement-badge-combined">
+                                <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                                <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
+                            </span>
+                        </div>
+                        <div class="text-replacement-lock-pattern">
+                            ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
+                            <i class="fas fa-arrow-right text-replacement-arrow"></i>
+                            <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
+                        </div>
+                        <div class="text-replacement-lock-actions">
+                            <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
+                                <i class="fas fa-pen-field"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -2157,27 +2815,28 @@ function renderTextReplacementLockList() {
         listContainer.appendChild(itemDiv);
     });
 
-    const dtr = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    // Check if dynamic replacements exist
+    const dtr = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
     const replacements = [];
 
-    // Collect all replacements from different sources
-    if (dtr.prompt && dtr.prompt.length > 0) {
+    // Collect all replacements from different sources (only if dtr exists)
+    if (dtr && dtr.prompt && dtr.prompt.length > 0) {
         dtr.prompt.forEach((rep, index) => {
             replacements.push({ ...rep, targetType: 'prompt', targetSource: 'base', index });
         });
     }
 
-    if (dtr.uc && dtr.uc.length > 0) {
+    if (dtr && dtr.uc && dtr.uc.length > 0) {
         dtr.uc.forEach((rep, index) => {
             replacements.push({ ...rep, targetType: 'uc', targetSource: 'base', index });
         });
     }
 
-    if (dtr.character_prompts && dtr.character_prompts.length > 0) {
+    if (dtr && dtr.character_prompts && dtr.character_prompts.length > 0) {
         dtr.character_prompts.forEach((char, charIndex) => {
-            if (char && char.input && char.input.length > 0) {
-                char.input.forEach((rep, index) => {
-                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'input', index });
+            if (char && char.prompt && char.prompt.length > 0) {
+                char.prompt.forEach((rep, index) => {
+                    replacements.push({ ...rep, targetType: 'character', targetSource: charIndex, targetField: 'prompt', index });
                 });
             }
             if (char && char.uc && char.uc.length > 0) {
@@ -2200,6 +2859,336 @@ function renderTextReplacementLockList() {
         `;
         listContainer.appendChild(sectionHeader);
 
+        // Add context cards from compiled prompt
+        const compiled = window.dynamicGenerationData?.compiled_prompt;
+        if (compiled && compiled.context) {
+            const contextCardsContainer = document.createElement('div');
+            contextCardsContainer.className = 'dynamic-replacements-context-cards';
+            
+            // Build context cards using the same logic from showCompiledPromptModal
+            const context = compiled.context;
+            const weather = context.weather || {};
+            const time = context.time || {};
+            
+            // Get unit preference
+            let useMetric = localStorage.getItem('weather_units_metric') !== 'false';
+            
+            // Helper functions (reuse from showCompiledPromptModal scope)
+            const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9/5) + 32);
+            const mpsToMph = (mps) => Math.round(mps * 2.237);
+            const getWeatherIcon = (condition) => {
+                if (!condition) return '<i class="wi wi-day-sunny"></i>';
+                const iconMap = {
+                    'clear sky': '<i class="wi wi-day-sunny"></i>',
+                    'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
+                    'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
+                    'overcast': '<i class="wi wi-cloudy"></i>',
+                    'fog': '<i class="wi wi-fog"></i>',
+                    'depositing rime fog': '<i class="wi wi-fog"></i>',
+                    'light drizzle': '<i class="wi wi-day-showers"></i>',
+                    'moderate drizzle': '<i class="wi wi-day-showers"></i>',
+                    'dense drizzle': '<i class="wi wi-day-showers"></i>',
+                    'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
+                    'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
+                    'slight rain': '<i class="wi wi-day-rain"></i>',
+                    'moderate rain': '<i class="wi wi-day-rain"></i>',
+                    'heavy rain': '<i class="wi wi-day-rain"></i>',
+                    'light freezing rain': '<i class="wi wi-day-snow"></i>',
+                    'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
+                    'slight snow fall': '<i class="wi wi-day-snow"></i>',
+                    'moderate snow fall': '<i class="wi wi-snow"></i>',
+                    'heavy snow fall': '<i class="wi wi-snow"></i>',
+                    'snow grains': '<i class="wi wi-snow"></i>',
+                    'slight rain showers': '<i class="wi wi-day-showers"></i>',
+                    'moderate rain showers': '<i class="wi wi-day-rain"></i>',
+                    'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
+                    'slight snow showers': '<i class="wi wi-day-snow"></i>',
+                    'heavy snow showers': '<i class="wi wi-snow"></i>',
+                    'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
+                    'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
+                    'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+                };
+                return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+            };
+            const getWindDirection = (degrees) => {
+                if (degrees === null || degrees === undefined) return 'N/A';
+                const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+                const index = Math.round(degrees / 22.5) % 16;
+                return directions[index];
+            };
+            
+            // Build weather content
+            let weatherContent = '';
+            if (weather.condition || weather.temperature !== undefined) {
+                const weatherIcon = getWeatherIcon(weather.condition);
+                const tempC = weather.temperature;
+                const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
+                const tempDisplay = useMetric ?
+                    (tempC !== undefined ? `${tempC}°C` : 'N/A') :
+                    (tempF !== undefined ? `${tempF}°F` : 'N/A');
+                const feelsC = weather.feelsLike;
+                const feelsF = feelsC !== undefined ? celsiusToFahrenheit(feelsC) : null;
+                const feelsDisplay = useMetric ?
+                    (feelsC !== undefined ? `${feelsC}°C` : 'N/A') :
+                    (feelsF !== undefined ? `${feelsF}°F` : 'N/A');
+                const windMps = weather.windSpeed;
+                const windMph = windMps !== undefined ? mpsToMph(windMps) : null;
+                const windDisplay = useMetric ?
+                    (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
+                    (windMph !== undefined ? `${windMph} mph` : 'N/A');
+                
+                const weatherCondition = weather.condition || 'Unknown';
+                const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
+                const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
+                
+                const displayTemp = useMetric ? tempC : tempF;
+                const displayFeels = useMetric ? feelsC : feelsF;
+                
+                // Determine card background
+                let cardBackgroundClass = '';
+                if (context.season && weather.pressure !== undefined) {
+                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                    const pressure = weather.pressure;
+                    
+                    if (season.includes('spring')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-spring-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-spring-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-spring-normal';
+                        else cardBackgroundClass = 'season-spring-stable';
+                    } else if (season.includes('summer')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-summer-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-summer-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-summer-normal';
+                        else cardBackgroundClass = 'season-summer-stable';
+                    } else if (season.includes('fall') || season.includes('autumn')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-fall-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-fall-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-fall-normal';
+                        else cardBackgroundClass = 'season-fall-stable';
+                    } else if (season.includes('winter')) {
+                        if (pressure < 1000) cardBackgroundClass = 'season-winter-stormy';
+                        else if (pressure < 1013) cardBackgroundClass = 'season-winter-unstable';
+                        else if (pressure < 1020) cardBackgroundClass = 'season-winter-normal';
+                        else cardBackgroundClass = 'season-winter-stable';
+                    }
+                } else if (context.season) {
+                    const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                    const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                    if (season.includes('spring')) cardBackgroundClass = 'season-spring-normal';
+                    else if (season.includes('summer')) cardBackgroundClass = 'season-summer-normal';
+                    else if (season.includes('fall') || season.includes('autumn')) cardBackgroundClass = 'season-fall-normal';
+                    else if (season.includes('winter')) cardBackgroundClass = 'season-winter-normal';
+                }
+                
+                const mainCardHtml = `
+                    <div class="weather-main-card ${cardBackgroundClass}">
+                        <div class="weather-current-temp">
+                            <div class="weather-temp-value">
+                                <span class="weather-temp-number">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                                <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
+                            </div>
+                            ${displayFeels !== undefined ? `<div class="weather-feels-like">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                        </div>
+                        <div class="weather-condition-display">
+                            <div class="weather-condition-icon">${weatherIcon}</div>
+                            <div class="weather-condition-text">${weatherCondition}</div>
+                            <div class="weather-condition-details">
+                                ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
+                                ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i>${windDisplay}${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                            </div>
+                        </div>
+                        ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
+                        <div class="weather-card-header">
+                            <div class="weather-quick-indicators">
+                                ${weather.uvIndex !== undefined ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-sun"></i>
+                                        <span>UV ${weather.uvIndex}</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill uv-index" style="width: ${Math.min((weather.uvIndex / 12) * 100, 100)}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                ${weather.cloudCoverage !== undefined ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-cloud"></i>
+                                        <span>${weather.cloudCoverage}%</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill cloud-coverage" style="width: ${weather.cloudCoverage}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                ${weather.visibility !== undefined ? `
+                                <div class="weather-quick-indicator">
+                                    <div class="weather-quick-indicator-label">
+                                        <i class="fa-solid fa-eye"></i>
+                                        <span>${(weather.visibility / 1000).toFixed(1)} km</span>
+                                    </div>
+                                    <div class="weather-quick-progress-bar">
+                                        <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+                
+                weatherContent = `<div class="weather-display">${mainCardHtml}</div>`;
+            }
+            
+            // Build period card
+            let periodCardHtml = '';
+            const timePeriodInfo = context.timePeriod || {};
+            if (context.season && timePeriodInfo.period) {
+                let periodBgClass = 'period-default';
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
+                const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
+                
+                if (season.includes('spring')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-spring-dawn';
+                    else if (period.includes('morning')) periodBgClass = 'period-spring-morning';
+                    else if (period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-spring-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-spring-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-spring-night';
+                } else if (season.includes('summer')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-summer-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-summer-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-summer-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-summer-night';
+                } else if (season.includes('fall') || season.includes('autumn')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-fall-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-fall-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-fall-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-fall-night';
+                } else if (season.includes('winter')) {
+                    if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-winter-dawn';
+                    else if (period.includes('morning') || period.includes('noon') || period.includes('afternoon')) periodBgClass = 'period-winter-day';
+                    else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-winter-dusk';
+                    else if (period.includes('night')) periodBgClass = 'period-winter-night';
+                }
+                
+                let shortTitle = 'Time';
+                if (timePeriodInfo.periodKey) {
+                    const periodKeyMap = {
+                        'predawn': 'Pre-Dawn', 'pre_dawn': 'Pre-Dawn',
+                        'dawn': 'Dawn', 'sunrise': 'Sunrise',
+                        'morning': 'Morning',
+                        'latemorning': 'Late Morning', 'late_morning': 'Late Morning',
+                        'noon': 'Noon', 'daytime': 'Daytime',
+                        'earlyafternoon': 'Early Afternoon', 'early_afternoon': 'Early Afternoon',
+                        'afternoon': 'Afternoon',
+                        'lateafternoon': 'Late Afternoon', 'late_afternoon': 'Late Afternoon',
+                        'goldenhour': 'Golden Hour', 'golden_hour': 'Golden Hour',
+                        'sunset': 'Sunset', 'dusk': 'Dusk', 'twilight': 'Twilight',
+                        'night': 'Night', 'midnight': 'Midnight',
+                        'latenight': 'Late Night', 'late_night': 'Late Night'
+                    };
+                    shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] || 
+                        timePeriodInfo.periodKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+                }
+                
+                const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
+                const dateStr = time.dayOfWeekName && time.monthName ? 
+                    `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` : 
+                    (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
+                        `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
+                const location = context.location || {};
+                const locationText = location.city && location.country ?
+                    `${location.city}, ${location.country}` :
+                    location.city || location.country || '';
+                
+                const perceivableLight = timePeriodInfo.perceivableLight !== undefined ? timePeriodInfo.perceivableLight : 0;
+                const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
+                const sunPhase = timePeriodInfo.sunPhase || 'rising';
+                let sunPositionPercent;
+                if (sunPhase === 'rising') {
+                    sunPositionPercent = (perceivableLight / 100) * 50;
+                } else if (sunPhase === 'setting') {
+                    sunPositionPercent = 50 + ((100 - perceivableLight) / 100) * 50;
+                } else {
+                    sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
+                }
+                
+                const seasonProgress = calculateSeasonProgress(time, context.season);
+                const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
+                
+                periodCardHtml = `
+                    <div class="period-info-card ${periodBgClass}">
+                        <div class="period-info-content">
+                            <div class="period-main-info">
+                                <div class="period-title-section">
+                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                        ${shortTitle}
+                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                    </div>
+                                    ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
+                                    ${time.hour !== undefined ? `
+                                    <div class="period-title-indicators">
+                                        ${context.season ? `
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Season</span>
+                                                <span class="period-title-indicator-value">${seasonProgress}%</span>
+                                            </div>
+                                            <div class="period-title-progress-bar season-position season-${seasonForTemplate.toLowerCase()}">
+                                                <div class="period-progress-marker" style="left: ${seasonProgress}%"></div>
+                                            </div>
+                                        </div>
+                                        ` : ''}
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Sun</span>
+                                            </div>
+                                            <div class="period-title-progress-bar sun-position">
+                                                <div class="period-progress-marker" style="left: ${sunPositionPercent}%"></div>
+                                            </div>
+                                        </div>
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Light</span>
+                                            </div>
+                                            <div class="period-title-progress-bar light-level">
+                                                <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                ${clockTime || dateStr || locationText ? `
+                                <div class="period-time-date">
+                                    ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
+                                    ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
+                                    ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="period-details hidden">
+                                ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
+                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
+                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Combine context cards
+            const contextCardsHtml = periodCardHtml + weatherContent;
+            if (contextCardsHtml) {
+                contextCardsContainer.innerHTML = contextCardsHtml;
+                listContainer.appendChild(contextCardsContainer);
+            }
+        }
+
         // Render each replacement (reuse the same function from textReplacementManager.js)
         replacements.forEach((replacement, globalIndex) => {
             if (typeof createDynamicReplacementItemForLockModal === 'function') {
@@ -2207,6 +3196,182 @@ function renderTextReplacementLockList() {
                 listContainer.appendChild(itemElement);
             }
         });
+    }
+
+    // Usage section (render phases, calls, per-tool rows with icons/background, reasons, token totals)
+    try {
+        const usageRoot =
+            window.dynamicGenerationData?.compiled_prompt?.usage ||
+            window.lastGeneration?.dynamic_generation?.compiled_prompt?.usage ||
+            null;
+        if (usageRoot && typeof usageRoot === 'object') {
+            // Header
+            const usageHeader = document.createElement('div');
+            usageHeader.className = 'dynamic-replacements-section-header';
+            usageHeader.innerHTML = `
+                <div class="section-title">
+                    <i class="fas fa-gauge-high"></i>
+                    <span>Compiler Timeline</span>
+                </div>
+            `;
+            listContainer.appendChild(usageHeader);
+
+            // Helpers
+            const getCallIcon = (call) => {
+                if (!call) return '<i class="fas fa-circle"></i>';
+                if (call.callType === 'tool_call') return '<i class="fas fa-wrench"></i>';
+                if (call.callType === 'request') return '<i class="fas fa-robot"></i>';
+                return '<i class="fas fa-circle"></i>';
+            };
+            const formatTokens = (u) => {
+                if (!u) return '';
+                const toNum = (v) => {
+                    if (typeof v === 'number') return v;
+                    const n = Number(v);
+                    return isNaN(n) ? 0 : n;
+                };
+                const fmt = (v) => toNum(v).toLocaleString();
+                const input = u.input ?? 0;
+                const output = u.output ?? 0;
+                const cache = u.cache ?? 0;
+                const reasoning = u.reasoning ?? 0;
+                const totalRaw = (u.total !== undefined && u.total !== null)
+                    ? u.total
+                    : (toNum(input) + toNum(output) + toNum(cache) + toNum(reasoning));
+                return `In: ${fmt(input)} • Out: ${fmt(output)} • Cache: ${fmt(cache)} • Reasoning: ${fmt(reasoning)} • Total: ${fmt(totalRaw)}`;
+            };
+
+            // Check if we have both phase1 and phase2 (2 passes)
+            const phaseKeys = Object.keys(usageRoot).filter(key => key === 'phase1' || key === 'phase2');
+            const hasTwoPasses = phaseKeys.length === 2 && usageRoot.phase1 && usageRoot.phase2;
+
+            Object.keys(usageRoot).forEach((phaseKey) => {
+                const phaseData = usageRoot[phaseKey];
+                if (!phaseData) return;
+
+                // Map phase keys to display names
+                const phaseDisplayName = phaseKey === 'phase1' ? 'Pass 1' : 
+                                        phaseKey === 'phase2' ? 'Pass 2' : 
+                                        phaseKey;
+
+                // Phase header with totals
+                const phaseTotals = phaseData.total || {};
+                const phaseHeader = document.createElement('div');
+                phaseHeader.className = 'usage-phase-header';
+                // Only show phase header when there are 2 passes
+                if (hasTwoPasses && (phaseKey === 'phase1' || phaseKey === 'phase2')) {
+                    phaseHeader.innerHTML = `
+                        <div class="phase-title">
+                            <i class="fas fa-diagram-project"></i>
+                            <span>${phaseDisplayName}</span>
+                        </div>
+                        ${phaseTotals ? `<div style="margin: 6px 0 0 0; color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
+                    `;
+                } else if (phaseTotals) {
+                    phaseHeader.innerHTML = `
+                        ${phaseTotals ? `<div style="margin: 6px 0 0 0; color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
+                    `;
+                }
+                listContainer.appendChild(phaseHeader);
+
+                const calls = Array.isArray(phaseData.calls) ? phaseData.calls : [];
+                calls.forEach((call) => {
+                    const callDiv = document.createElement('div');
+                    callDiv.className = 'text-replacement-lock-item usage-call';
+
+                    const typeIcon = getCallIcon(call);
+                    const tokens = formatTokens(call.usage || {});
+
+                if (call.callType === 'tool_call' && Array.isArray(call.tools) && call.tools.length > 0) {
+                        // Build inner per-tool rows: name row and reason row, colored with toast manager background/icon
+                    const toolsBlocks = call.tools.map((t) => {
+                            const toolName = t?.name || '';
+                            const toolStyle = (typeof getToolIconAndBackground === 'function')
+                                ? getToolIconAndBackground(toolName, 'completed')
+                                : { icon: '<i class="fas fa-cog"></i>', backgroundColor: 'rgba(156, 163, 175, 0.1)' };
+                            const display = (typeof getToolDisplayName === 'function' && toolName)
+                                ? getToolDisplayName(toolName) : toolName || 'Tool';
+                            const toolParams = t?.parameters || {};
+                            // Reason priority: tool.reason -> parameters.reason -> call.reason
+                        const toolReason = (t && t.reason) || (toolParams && toolParams.reason) || call.reason || '';
+                        const tagReasons = (toolName === 'searchTagsBatch' && Array.isArray(toolParams?.tags)) ? toolParams.tags : null;
+
+                            // Two stacked rows (name + reason), both with same background
+                            return `
+                                <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                    <div class="usage-tool-name-row">
+                                        <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                        <div class="text-replacement-lock-pattern">
+                                            <span class="usage-tool-name">${display}</span>
+                                        </div>
+                                    </div>
+                                ${Array.isArray(tagReasons) && tagReasons.length > 0 ? `
+                                    ${tagReasons.map(tr => {
+                                        const tagName = tr?.name || '';
+                                        const tagReason = tr?.reason || '';
+                                        const showReason = Boolean(tagReason && tagReason.trim());
+                                        return `
+                                            <div class="usage-tag-row">
+                                                <div class="usage-tool-icon"><i class="fas fa-tag"></i></div>
+                                                <div class="usage-tag-line">
+                                                    <span class="usage-tag-name">${tagName}</span>
+                                                    ${showReason ? `<span class="usage-tag-sep">•</span><span class="usage-tag-reason">${tagReason}</span>` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                ` : (toolReason ? `
+                                    <div class="usage-tool-reason-row">
+                                        <div class="text-replacement-lock-pattern">
+                                            <span class="usage-tool-reason">${toolReason}</span>
+                                        </div>
+                                    </div>
+                                ` : '')}
+                                </div>
+                            `;
+                        }).join('');
+
+                        callDiv.innerHTML = `
+                            <div class="text-replacement-lock-content">
+                                <div class="text-replacement-lock-row">
+                                    <div class="usage-type-icon">${typeIcon}</div>
+                                    <div class="text-replacement-lock-pattern">
+                                        <span class="usage-call-title">Tool Call</span>
+                                    </div>
+                                </div>
+                                <div class="usage-tool-rows">
+                                    ${toolsBlocks}
+                                </div>
+                                <div class="text-replacement-lock-row">
+                                    <div class="text-replacement-lock-pattern"><span class="usage-tokens">${tokens}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // Non-tool call (e.g., request): single line + optional reason + totals
+                        const displayName = (call.callType === 'request') ? 'Dynamic Generation Complete' : (call.functionName || call.callType || 'Call');
+                        const reason = call.reason || '';
+                        callDiv.innerHTML = `
+                            <div class="text-replacement-lock-content">
+                                <div class="text-replacement-lock-row">
+                                    <div class="usage-type-icon">${typeIcon}</div>
+                                    <div class="text-replacement-lock-pattern">
+                                        <span class="usage-call-title">${displayName}</span>
+                                    </div>
+                                </div>
+                                ${reason ? `<div class="text-replacement-lock-info"><div class="text-replacement-full-value">${reason}</div></div>` : ''}
+                                <div class="text-replacement-lock-row">
+                                    <div class="text-replacement-lock-pattern"><span class="usage-tokens">${tokens}</span></div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    listContainer.appendChild(callDiv);
+                });
+            });
+        }
+    } catch (err) {
+        console.warn('Failed to render usage section:', err);
     }
 
     updateLockStatusText();
@@ -2234,6 +3399,104 @@ function updateTextReplacementLockItem(index, updatedSeed) {
     if (currentTextReplacementSeeds && currentTextReplacementSeeds[index]) {
         currentTextReplacementSeeds[index] = updatedSeed;
     }
+}
+
+/**
+ * Get season Font Awesome icon
+ */
+function getSeasonIcon(season) {
+    if (!season) return '';
+    // Handle both object and string formats
+    const seasonName = typeof season === 'object' && season?.name ? season.name : season;
+    const seasonStr = typeof seasonName === 'string' ? seasonName : String(seasonName || '');
+    const icons = {
+        'spring': '<i class="fa-solid fa-seedling"></i>',
+        'summer': '<i class="fa-solid fa-sun"></i>',
+        'autumn': '<i class="fa-solid fa-leaf"></i>',
+        'fall': '<i class="fa-solid fa-leaf"></i>',
+        'winter': '<i class="fa-solid fa-snowflake"></i>'
+    };
+    return icons[seasonStr.toLowerCase()] || '';
+}
+
+/**
+ * Toggle period details visibility
+ */
+function togglePeriodDetails(titleElement) {
+    const periodDetails = titleElement.closest('.period-info-content').querySelector('.period-details');
+    const icon = titleElement.querySelector('.period-expand-icon');
+    
+    if (periodDetails) {
+        periodDetails.classList.toggle('hidden');
+        if (icon) {
+            icon.classList.toggle('expanded');
+        }
+    }
+}
+
+/**
+ * Calculate season progress (0-100%)
+ */
+function calculateSeasonProgress(time, season) {
+    if (!time || !season || time.month === undefined || time.dayOfMonth === undefined) {
+        return 50; // Default to middle if data is missing
+    }
+
+    // Handle both object and string formats
+    const seasonName = typeof season === 'object' && season?.name ? season.name : season;
+    const seasonStr = typeof seasonName === 'string' ? seasonName : String(seasonName || '');
+
+    const seasonBounds = {
+        spring: { start: { month: 2, day: 20 }, end: { month: 5, day: 20 } },  // Mar 20 - Jun 20
+        summer: { start: { month: 5, day: 21 }, end: { month: 8, day: 22 } },  // Jun 21 - Sep 22
+        autumn: { start: { month: 8, day: 23 }, end: { month: 11, day: 20 } }, // Sep 23 - Dec 20
+        fall: { start: { month: 8, day: 23 }, end: { month: 11, day: 20 } },   // Same as autumn
+        winter: { start: { month: 11, day: 21 }, end: { month: 2, day: 19 } }  // Dec 21 - Mar 19
+    };
+
+    const bounds = seasonBounds[seasonStr.toLowerCase()];
+    if (!bounds) return 50;
+
+    const currentMonth = time.month;
+    const currentDay = time.dayOfMonth;
+
+    // Helper: Get day of year
+    const getDayOfYear = (month, day) => {
+        const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let dayOfYear = 0;
+        for (let i = 0; i < month; i++) {
+            dayOfYear += daysInMonth[i];
+        }
+        dayOfYear += day;
+        return dayOfYear;
+    };
+
+    const currentDayOfYear = getDayOfYear(currentMonth, currentDay);
+    let startDayOfYear = getDayOfYear(bounds.start.month, bounds.start.day);
+    let endDayOfYear = getDayOfYear(bounds.end.month, bounds.end.day);
+
+    // Handle winter wrapping around year boundary
+    if (seasonStr.toLowerCase() === 'winter') {
+        if (currentMonth < 3) {
+            // We're in Jan-Feb, part of winter
+            const adjustedEnd = getDayOfYear(2, 19); // Feb 19
+            const seasonLength = adjustedEnd + (365 - getDayOfYear(11, 21)); // Days from Dec 21 to end + Jan-Feb
+            const daysSinceStart = 365 - getDayOfYear(11, 21) + currentDayOfYear;
+            return Math.max(0, Math.min(100, Math.round((daysSinceStart / seasonLength) * 100)));
+        } else if (currentMonth >= 11) {
+            // We're in Dec
+            const seasonLength = (365 - startDayOfYear) + getDayOfYear(2, 19);
+            const daysSinceStart = currentDayOfYear - startDayOfYear;
+            return Math.max(0, Math.min(100, Math.round((daysSinceStart / seasonLength) * 100)));
+        }
+    }
+
+    // For other seasons
+    const seasonLength = endDayOfYear - startDayOfYear;
+    const daysSinceStart = currentDayOfYear - startDayOfYear;
+    const progress = (daysSinceStart / seasonLength) * 100;
+
+    return Math.max(0, Math.min(100, Math.round(progress)));
 }
 
 // Show compiled prompt modal
@@ -2643,11 +3906,13 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const locationText = location.city && location.country ?
                 `${location.city}, ${location.country}` :
                 location.city || location.country || '';
+            const timezoneStr = time.timezone || '';
 
             // Determine main card background based on season and pressure
             let cardBackgroundClass = '';
             if (context.season && weather.pressure !== undefined) {
-                const season = context.season.toLowerCase();
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
                 const pressure = weather.pressure;
 
                 // Base season colors with pressure variations
@@ -2694,7 +3959,8 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 }
             } else if (context.season) {
                 // Fallback to season-only colors if no pressure data
-                const season = context.season.toLowerCase();
+                const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+                const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
                 if (season.includes('spring')) {
                     cardBackgroundClass = 'season-spring-normal';
                 } else if (season.includes('summer')) {
@@ -2721,8 +3987,6 @@ function showCompiledPromptModal(compiledPromptData = null) {
                         <div class="weather-condition-details">
                             ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
                             ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i>${windDisplay}${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
-                            ${cloudCoverValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-cloud"></i>${cloudCoverValue}</div>` : ''}
-                            ${uvIndexValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-sun"></i>${weather.uvIndex}</div>` : ''}
                             ${(() => {
                                 let precipElements = [];
 
@@ -2759,16 +4023,45 @@ function showCompiledPromptModal(compiledPromptData = null) {
                             })()}
                         </div>
                     </div>
+                    ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
                     <div class="weather-card-header">
-                        <div class="weather-date-time">
-                            <div class="time-text">${timeText || 'Time not available'}</div>
-                            <div class="date-season-container">
-                                ${seasonText ? `<div class="season-badge">${seasonText}</div>` : ''}
-                                <div class="date-text">${dateText || 'Date not available'}</div>
+                        <div class="weather-quick-indicators">
+                            ${weather.uvIndex !== undefined ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-sun"></i>
+                                    <span>UV ${weather.uvIndex}</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill uv-index" style="width: ${Math.min((weather.uvIndex / 12) * 100, 100)}%"></div>
+                                </div>
                             </div>
-                            ${locationText ? `<div class="location-text"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                            ` : ''}
+                            ${weather.cloudCoverage !== undefined ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-cloud"></i>
+                                    <span>${weather.cloudCoverage}%</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill cloud-coverage" style="width: ${weather.cloudCoverage}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
+                            ${weather.visibility !== undefined ? `
+                            <div class="weather-quick-indicator">
+                                <div class="weather-quick-indicator-label">
+                                    <i class="fa-solid fa-eye"></i>
+                                    <span>${(weather.visibility / 1000).toFixed(1)} km</span>
+                                </div>
+                                <div class="weather-quick-progress-bar">
+                                    <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
+                                </div>
+                            </div>
+                            ` : ''}
                         </div>
                     </div>
+                    ` : ''}
                 </div>
             `;
 
@@ -2796,11 +4089,17 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 `;
             };
 
-            // Build weather details grid
+            // Build weather details grid with progress bars
+            const cloudCoveragePercent = weather.cloudCoverage !== undefined ? weather.cloudCoverage : null;
+            const visibilityPercent = weather.visibility !== undefined ? Math.min((weather.visibility / 10000) * 100, 100) : null;
+            const uvPercent = weather.uvIndex !== undefined ? Math.min((weather.uvIndex / 12) * 100, 100) : null;
+            
+            // Only show heat index if it differs from actual temp by 2°C or more
+            const showHeatIndex = heatIndex !== null && tempC !== undefined && Math.abs(heatIndex - tempC) >= 2;
+            
             const detailCards = [
-                createWeatherDetailCard('Comfort Level', comfortLevel, '<i class="fa-solid fa-person"></i>'),
-                createWeatherDetailCard('Visibility', visibilityValue, '<i class="fa-solid fa-eye"></i>', null, true),
-                createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>'),
+                createWeatherDetailCard('Pressure', pressureValue, '<i class="fa-solid fa-gauge"></i>'),
+                showHeatIndex ? createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>') : null,
                 createWeatherDetailCard('Wind Chill', windChillValue, '<i class="fa-solid fa-snowflake"></i>'),
             ].filter(card => card);
 
@@ -2886,7 +4185,8 @@ function showCompiledPromptModal(compiledPromptData = null) {
             // Determine background class based on season + time period + lighting/atmosphere
             let periodBgClass = 'period-default';
 
-            const season = context.season.toLowerCase();
+            const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+            const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
             const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
             const lighting = timePeriodInfo.lighting ? timePeriodInfo.lighting.toLowerCase() : '';
             const atmosphere = timePeriodInfo.atmosphere ? timePeriodInfo.atmosphere.toLowerCase() : '';
@@ -2948,23 +4248,130 @@ function showCompiledPromptModal(compiledPromptData = null) {
             // Convert periodKey to pretty display name
             let shortTitle = 'Time';
             if (timePeriodInfo.periodKey) {
-                shortTitle = timePeriodInfo.periodKey
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
+                // Special handling for specific period keys
+                const periodKeyMap = {
+                    'predawn': 'Pre-Dawn',
+                    'pre_dawn': 'Pre-Dawn',
+                    'dawn': 'Dawn',
+                    'sunrise': 'Sunrise',
+                    'morning': 'Morning',
+                    'latemorning': 'Late Morning',
+                    'late_morning': 'Late Morning',
+                    'noon': 'Noon',
+                    'daytime': 'Daytime',
+                    'earlyafternoon': 'Early Afternoon',
+                    'early_afternoon': 'Early Afternoon',
+                    'afternoon': 'Afternoon',
+                    'lateafternoon': 'Late Afternoon',
+                    'late_afternoon': 'Late Afternoon',
+                    'goldenhour': 'Golden Hour',
+                    'golden_hour': 'Golden Hour',
+                    'sunset': 'Sunset',
+                    'dusk': 'Dusk',
+                    'twilight': 'Twilight',
+                    'night': 'Night',
+                    'midnight': 'Midnight',
+                    'latenight': 'Late Night',
+                    'late_night': 'Late Night'
+                };
+                
+                shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] || 
+                    timePeriodInfo.periodKey
+                        .split('_')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
             }
+
+            // Format time and date
+            const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
+            const dateStr = time.dayOfWeekName && time.monthName ? 
+                `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` : 
+                (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
+                    `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
+            const timezoneStr = time.timezone || '';
+            
+            // Location text for period card
+            const location = context.location || {};
+            const locationText = location.city && location.country ?
+                `${location.city}, ${location.country}` :
+                location.city || location.country || '';
+
+            // Progress bar data
+            const perceivableLight = timePeriodInfo.perceivableLight !== undefined ? timePeriodInfo.perceivableLight : 0;
+            const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
+            
+            // Calculate sun position for display
+            const sunPhase = timePeriodInfo.sunPhase || 'rising';
+            let sunPositionPercent;
+            if (sunPhase === 'rising') {
+                sunPositionPercent = (perceivableLight / 100) * 50;
+            } else if (sunPhase === 'setting') {
+                sunPositionPercent = 50 + ((100 - perceivableLight) / 100) * 50;
+            } else {
+                sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
+            }
+
+            // Calculate season progress
+            const seasonProgress = calculateSeasonProgress(time, context.season);
+            
+            // Extract season name for template (handle both object and string formats)
+            const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+            const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
 
             periodCardHtml = `
                 <div class="period-info-card ${periodBgClass}">
                     <div class="period-info-content">
                         <div class="period-main-info">
-                            <div class="period-title">${shortTitle}</div>
-                            <div class="period-details">
-                                ${context.season ? `<div class="period-detail"><i class="fa-solid fa-leaf"></i><div class="detail-content"><div class="detail-label">Season</div><div class="detail-value">${context.season}</div></div></div>` : ''}
-                                ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
-                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
-                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            <div class="period-title-section">
+                                <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                    ${shortTitle}
+                                    <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                </div>
+                                ${context.season ? `<div class="period-season-badge season-${seasonForTemplate.toLowerCase()}">${getSeasonIcon(seasonForTemplate)} ${seasonForTemplate}</div>` : ''}
+                                ${time.hour !== undefined ? `
+                                <div class="period-title-indicators">
+                                    ${context.season ? `
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Season</span>
+                                            <span class="period-title-indicator-value">${seasonProgress}%</span>
+                                        </div>
+                                        <div class="period-title-progress-bar season-position season-${seasonForTemplate.toLowerCase()}">
+                                            <div class="period-progress-marker" style="left: ${seasonProgress}%"></div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Sun</span>
+                                        </div>
+                                        <div class="period-title-progress-bar sun-position">
+                                            <div class="period-progress-marker" style="left: ${sunPositionPercent}%"></div>
+                                        </div>
+                                    </div>
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Light</span>
+                                        </div>
+                                        <div class="period-title-progress-bar light-level">
+                                            <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
                             </div>
+                            ${clockTime || dateStr || locationText ? `
+                            <div class="period-time-date">
+                                ${clockTime ? `<div class="period-time">${clockTime}</div>` : ''}
+                                ${dateStr ? `<div class="period-date">${dateStr}</div>` : ''}
+                                ${locationText ? `<div class="period-location"><i class="fas fa-map-marker-alt"></i> ${locationText}</div>` : ''}
+                            </div>
+                            ` : ''}
+                        </div>
+                        <div class="period-details hidden">
+                            ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
+                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
+                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -3063,9 +4470,20 @@ async function clearCompiledPrompt() {
 
     // Clear the compiled prompt
     delete window.dynamicGenerationData.compiled_prompt;
+    if (dynamicCarousel) {
+        dynamicCarousel.setAttribute('data-use-cache', 'false');
+        dynamicCarousel.setAttribute('data-state', 'off');
+    }
+
+    // Clear stage seeds array (used for rerolling with compiled prompts)
+    if (window.lastGenerationStageSeeds) {
+        delete window.lastGenerationStageSeeds;
+        console.log('🗑️ Cleared stage seeds array');
+    }
 
     // Update UI
     updateDynamicGenerationToggleBtn();
+	updateCarouselIndicators();
 }
 
 // Director Feedback Modal Functions
@@ -3143,6 +4561,8 @@ function closeDirectorFeedbackModal() {
 
 // Director Rules Manager Functions
 let directorRules = [];
+let directorFeedback = [];
+let currentDirectorView = 'rules'; // 'rules' or 'feedback'
 
 async function showDirectorRulesManager() {
     const modal = document.getElementById('directorRulesModal');
@@ -3151,11 +4571,25 @@ async function showDirectorRulesManager() {
         return;
     }
     
-    // Load rules
-    await loadDirectorRules();
+    // Reset to rules view
+    currentDirectorView = 'rules';
     
-    // Render the list
-    renderDirectorRulesList();
+    // Load rules and feedback
+    await loadDirectorRules();
+    await loadDirectorFeedback();
+    
+    // Setup dropdown if not already setup
+    setupDirectorViewDropdown();
+    
+    // Update UI based on current view
+    updateDirectorViewUI();
+    
+    // Render the list based on current view
+    if (currentDirectorView === 'rules') {
+        renderDirectorRulesList();
+    } else {
+        renderDirectorFeedbackList();
+    }
     
     // Show modal
     openModal(modal);
@@ -3325,6 +4759,260 @@ async function saveDirectorRules() {
     }
 }
 
+// Load director feedback
+async function loadDirectorFeedback() {
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.sendMessage('director_load_feedback', {});
+        
+        if (result && result.data && result.data.success) {
+            directorFeedback = result.data.feedback || [];
+            console.log('Director feedback loaded successfully:', directorFeedback.length, 'entries');
+        } else {
+            directorFeedback = [];
+            console.warn('Failed to load director feedback:', result);
+        }
+    } catch (error) {
+        console.error('Error loading director feedback:', error);
+        directorFeedback = [];
+        // Don't show error toast on initial load
+    }
+}
+
+// Render director feedback list
+function renderDirectorFeedbackList() {
+    const list = document.getElementById('directorRulesList');
+    if (!list) {
+        console.error('directorRulesList element not found');
+        return;
+    }
+    
+    console.log('Rendering feedback list, count:', directorFeedback.length);
+    
+    if (!directorFeedback || directorFeedback.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-comment-alt"></i>
+                <p>No feedback entries yet.</p>
+                <p class="text-muted">Feedback entries are created when you report issues with AI replacements.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    try {
+        list.innerHTML = directorFeedback.map((feedback) => {
+            if (!feedback || !feedback.id) {
+                console.warn('Invalid feedback entry:', feedback);
+                return '';
+            }
+            
+            const date = feedback.timestamp ? new Date(feedback.timestamp).toLocaleDateString() : 'Unknown date';
+            const selectText = feedback?.select_text || '';
+            const replaceText = feedback.replace_text || '';
+            const action = feedback.action || 'replace';
+            const aiReason = feedback.ai_reason || '(no reason provided)';
+            const userFeedback = feedback.user_feedback || '(no feedback provided)';
+            
+            return `<div class="director-rule-item director-feedback-item" data-feedback-id="${feedback.id}">
+<div class="director-rule-content">
+<div class="director-feedback-main">
+<div class="director-feedback-header">
+<div class="director-feedback-meta">
+<span class="director-feedback-date"><i class="fas fa-calendar-alt"></i> ${escapeHtml(date)}</span>
+${action ? `<span class="director-feedback-action"><i class="fas fa-exchange-alt"></i> ${escapeHtml(action)}</span>` : ''}
+</div>
+</div>
+<div class="director-rule-text" contenteditable="true" data-feedback-id="${feedback.id}" style="white-space: pre-wrap; min-height: 60px; max-height: 200px; overflow-y: auto;">${escapeHtml(userFeedback)}</div>
+<div class="director-feedback-details">
+${selectText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-left"></i> Original:</span><span class="detail-value">${escapeHtml(selectText)}</span></div>` : ''}
+${replaceText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-right"></i> Replacement:</span><span class="detail-value">${escapeHtml(replaceText)}</span></div>` : ''}
+<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-robot"></i> AI Reason:</span><span class="detail-value">${escapeHtml(aiReason)}</span></div>
+</div>
+</div>
+<div class="director-rule-actions">
+<button type="button" class="btn-danger btn-small delete-feedback-btn" data-feedback-id="${feedback.id}" title="Delete Feedback">
+<i class="fas fa-trash"></i>
+</button>
+</div>
+</div>
+</div>`;
+        }).filter(html => html).join('');
+        
+        // Add event listeners for delete buttons
+        list.querySelectorAll('.delete-feedback-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteDirectorFeedback(btn.dataset.feedbackId));
+        });
+        
+        // Add event listeners for editable feedback text
+        list.querySelectorAll('.director-rule-text[data-feedback-id]').forEach(element => {
+            element.addEventListener('blur', handleDirectorFeedbackEdit);
+            element.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    e.preventDefault();
+                    element.blur();
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Error rendering feedback list:', error);
+        list.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>Error rendering feedback entries.</p>
+                <p class="text-muted">${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    }
+}
+
+// Handle director feedback text edit
+async function handleDirectorFeedbackEdit(e) {
+    const element = e.target;
+    const feedbackId = element.dataset.feedbackId;
+    const newText = element.textContent.trim();
+    
+    if (!feedbackId || !newText) {
+        // Restore original text if empty
+        const feedback = directorFeedback.find(fb => fb.id === feedbackId);
+        if (feedback) {
+            element.textContent = feedback.user_feedback || '(no feedback provided)';
+        }
+        return;
+    }
+    
+    // Update local array
+    const feedback = directorFeedback.find(fb => fb.id === feedbackId);
+    if (feedback) {
+        feedback.user_feedback = newText;
+        // Note: We don't save feedback edits back to the server as feedback is typically read-only
+        // If you want to save edits, uncomment the following:
+        // await saveDirectorFeedback(feedback);
+    }
+}
+
+// Delete director feedback
+async function deleteDirectorFeedback(feedbackId) {
+    const confirmed = await showConfirmationDialog(
+        'Are you sure you want to delete this feedback entry?',
+        [
+            {
+                text: 'Delete',
+                value: true,
+                className: 'btn-danger',
+                icon: 'fas fa-trash'
+            },
+            {
+                text: 'Cancel',
+                value: false,
+                className: 'btn-secondary'
+            }
+        ]
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+        
+        const result = await window.wsClient.sendMessage('director_delete_feedback', {
+            feedbackId: feedbackId
+        });
+        
+        if (result && result.data && result.data.success) {
+            // Remove from local array
+            directorFeedback = directorFeedback.filter(fb => fb.id !== feedbackId);
+            
+            // Re-render list
+            renderDirectorFeedbackList();
+            
+            showGlassToast('success', null, 'Feedback deleted successfully.', false, undefined, '<i class="fas fa-check"></i>');
+        } else {
+            throw new Error(result?.data?.message || 'Failed to delete feedback');
+        }
+    } catch (error) {
+        console.error('Error deleting director feedback:', error);
+        showGlassToast('error', null, `Failed to delete feedback: ${error.message}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Setup director view dropdown
+function setupDirectorViewDropdown() {
+    const dropdown = document.getElementById('directorRulesViewDropdown');
+    const button = document.getElementById('directorRulesViewDropdownBtn');
+    const menu = document.getElementById('directorRulesViewDropdownMenu');
+    const selected = document.getElementById('directorRulesViewDropdownSelected');
+    
+    if (!dropdown || !button || !menu || !selected) return;
+    
+    const viewOptions = [
+        { value: 'rules', name: 'Global' },
+        { value: 'feedback', name: 'Feedback' }
+    ];
+    
+    function renderViewDropdown(selectedValue) {
+        renderSimpleDropdown(
+            menu,
+            viewOptions,
+            'value',
+            'name',
+            selectDirectorView,
+            closeDirectorViewDropdown,
+            selectedValue,
+            { preventFocusTransfer: true }
+        );
+    }
+    
+    async function selectDirectorView(value) {
+        currentDirectorView = value;
+        const option = viewOptions.find(opt => opt.value === value);
+        selected.textContent = option ? option.name : 'Global';
+        
+        // Update UI and render appropriate list
+        updateDirectorViewUI();
+        
+        if (currentDirectorView === 'rules') {
+            await loadDirectorRules();
+            renderDirectorRulesList();
+        } else {
+            await loadDirectorFeedback();
+            renderDirectorFeedbackList();
+        }
+    }
+    
+    function closeDirectorViewDropdown() {
+        closeDropdown(menu, button);
+    }
+    
+    function getSelectedView() {
+        return currentDirectorView;
+    }
+    
+    // Setup dropdown
+    setupDropdown(dropdown, button, menu, renderViewDropdown, getSelectedView, { preventFocusTransfer: true });
+}
+
+// Update UI based on current view
+function updateDirectorViewUI() {
+    const addBtn = document.getElementById('addDirectorRuleBtn');
+    const infoSection = document.querySelector('#directorRulesModal .info-section');
+    
+    if (currentDirectorView === 'rules') {
+        // Show add button and info section for rules
+        if (addBtn) addBtn.style.display = '';
+        if (infoSection) infoSection.style.display = '';
+    } else {
+        // Hide add button and info section for feedback
+        if (addBtn) addBtn.style.display = 'none';
+        if (infoSection) infoSection.style.display = 'none';
+    }
+}
+
 function closeDirectorRulesModal() {
     const modal = document.getElementById('directorRulesModal');
     if (modal) {
@@ -3396,11 +5084,11 @@ function getCurrentTodDisplay() {
             } else {
                 // Named time value
                 const timeNames = {
-                    'dawn': 'Dawn', 'sunrise': 'Sunrise', 'earlymorning': 'Early Morning',
+                    'dawn': 'Dawn', 'sunrise': 'Sunrise',
                     'morning': 'Morning', 'latemorning': 'Late Morning', 'daytime': 'Daytime',
                     'afternoon': 'Afternoon', 'lateafternoon': 'Late Afternoon', 'goldenhour': 'Golden Hour',
-                    'sunset': 'Sunset', 'dusk': 'Dusk', 'earlyevening': 'Early Evening',
-                    'evening': 'Evening', 'lateevening': 'Late Evening', 'midnight': 'Midnight'
+                    'sunset': 'Sunset', 'dusk': 'Dusk',
+                    'night': 'Night', 'midnight': 'Midnight'
                 };
                 timeDisplay = timeNames[timePart] || timePart;
             }
@@ -3453,11 +5141,11 @@ function getCurrentTodDisplay() {
     } else {
         // Single value without underscore
         const timeNames = {
-            'dawn': 'Dawn', 'sunrise': 'Sunrise', 'earlymorning': 'Early Morning',
+            'dawn': 'Dawn', 'sunrise': 'Sunrise',
             'morning': 'Morning', 'latemorning': 'Late Morning', 'daytime': 'Daytime',
             'afternoon': 'Afternoon', 'lateafternoon': 'Late Afternoon', 'goldenhour': 'Golden Hour',
-            'sunset': 'Sunset', 'dusk': 'Dusk', 'earlyevening': 'Early Evening',
-            'evening': 'Evening', 'lateevening': 'Late Evening', 'midnight': 'Midnight'
+            'sunset': 'Sunset', 'dusk': 'Dusk',
+            'night': 'Night', 'midnight': 'Midnight'
         };
 
         if (timeNames[currentOverride]) {
@@ -3495,6 +5183,59 @@ function getCurrentTodDisplay() {
     return 'Unknown';
 }
 
+// Helper functions to check if date/time overrides exist
+function hasDateOverride() {
+    const todBtn = document.getElementById('todBtn');
+    if (!todBtn) return false;
+    const currentOverride = todBtn.getAttribute('data-override');
+    if (!currentOverride || todBtn.dataset.state === 'off') return false;
+    
+    if (currentOverride.includes('_')) {
+        const parts = currentOverride.split('_');
+        const datePart = parts[1];
+        return !!datePart;
+    }
+    
+    // Check if it's a date-only value (not a time-only value)
+    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+    const isTimeOnly = timeNames.includes(currentOverride);
+    if (isTimeOnly) return false;
+    
+    // Check if it's a holiday, date value, or numeric date
+    if (typeof CLIENT_HOLIDAY_MAP !== 'undefined' && CLIENT_HOLIDAY_MAP[currentOverride]) return true;
+    if (currentOverride === 'today' || currentOverride === 'tomorrow') return true;
+    if (currentOverride.length === 4 && /^\d{4}$/.test(currentOverride)) return true;
+    
+    return false;
+}
+
+function hasTimeOverride() {
+    const todBtn = document.getElementById('todBtn');
+    if (!todBtn) return false;
+    const currentOverride = todBtn.getAttribute('data-override');
+    if (!currentOverride || todBtn.dataset.state === 'off') return false;
+    
+    if (currentOverride.includes('_')) {
+        const parts = currentOverride.split('_');
+        const timePart = parts[0];
+        return !!timePart;
+    }
+    
+    // Check if it's a time-only value
+    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+    if (timeNames.includes(currentOverride)) return true;
+    
+    // Check if it's HHmm format
+    if (currentOverride.length === 4 && /^\d{4}$/.test(currentOverride)) {
+        // Could be time or date, but if no underscore, assume it could be time
+        // We'll be conservative and check if hour is valid
+        const hour = parseInt(currentOverride.substring(0, 2));
+        if (hour >= 0 && hour <= 23) return true;
+    }
+    
+    return false;
+}
+
 function setupDynamicGenerationContextMenus() {
     // Time of Day options - Enhanced with detailed transitional periods
     const todMenuConfig = {
@@ -3509,11 +5250,27 @@ function setupDynamicGenerationContextMenus() {
                         action: 'openTimeDateModal'
                     },
                     {
+                        text: 'Use Current Time',
+                        icon: 'fas fa-clock',
+                        action: 'clearTodTimeOverride',
+                        initfn: function(item) {
+                            item.hidden = !hasTimeOverride();
+                        }
+                    },
+                    {
                         text: 'Tomorrow',
                         icon: 'fas fa-calendar-day',
                         action: 'setTodDateOverride',
                         value: 'tomorrow'
-                    }
+                    },
+                    {
+                        text: 'Use Current Date',
+                        icon: 'fas fa-calendar-check',
+                        action: 'clearTodDateOverride',
+                        initfn: function(item) {
+                            item.hidden = !hasDateOverride();
+                        }
+                    },
                 ]
             },
             {
@@ -3525,8 +5282,7 @@ function setupDynamicGenerationContextMenus() {
                         submenu: [
                             { text: 'Dawn - Pre-sunrise soft light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'dawn' },
                             { text: 'Sunrise - Sun rising, golden light', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'sunrise' },
-                            { text: 'Early Morning - Post-sunrise fresh air', icon: 'fas fa-sunrise', action: 'setTodTimeOverride', value: 'earlymorning' },
-                            { text: 'Morning - Mid-morning bright light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'morning' },
+                            { text: 'Morning - Post-sunrise bright daylight', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'morning' },
                             { text: 'Late Morning - Approaching noon', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'latemorning' },
                             { text: 'Daytime - Sun at highest point', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'daytime' },
                             { text: 'Afternoon - Full warm sunlight', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'afternoon' },
@@ -3534,9 +5290,7 @@ function setupDynamicGenerationContextMenus() {
                             { text: 'Golden Hour - Warm magical light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'goldenhour' },
                             { text: 'Sunset - Sun setting, dramatic colors', icon: 'fas fa-sunset', action: 'setTodTimeOverride', value: 'sunset' },
                             { text: 'Dusk - Fading light to twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'dusk' },
-                            { text: 'Early Evening - Residual twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'earlyevening' },
-                            { text: 'Evening - Full night atmosphere', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'evening' },
-                            { text: 'Late Evening - Deep night darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'lateevening' },
+                            { text: 'Night - Nighttime darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'night' },
                             { text: 'Midnight - Complete darkness', icon: 'fas fa-star', action: 'setTodTimeOverride', value: 'midnight' },
                         ]
                     },
@@ -3545,24 +5299,24 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-party-horn',
                         submenu: [
                             { text: 'Nearest Holiday', icon: 'fas fa-calendar-alt', action: 'setTodDateOverride', value: 'nearest' },
-                            { text: 'Christmas', icon: 'fas fa-gift', action: 'setTodDateOverride', value: 'christmas' },
-                            { text: 'New Year\'s', icon: 'fas fa-fireworks', action: 'setTodDateOverride', value: 'newyears' },
-                            { text: 'Halloween', icon: 'fas fa-ghost', action: 'setTodDateOverride', value: 'halloween' },
-                            { text: 'Thanksgiving', icon: 'fas fa-turkey', action: 'setTodDateOverride', value: 'thanksgiving' },
-                            { text: 'Independence Day', icon: 'fas fa-flag-usa', action: 'setTodDateOverride', value: 'independenceday' },
-                            { text: 'Valentine\'s Day', icon: 'fas fa-heart', action: 'setTodDateOverride', value: 'valentinesday' },
-                            { text: 'Easter', icon: 'fas fa-egg', action: 'setTodDateOverride', value: 'easter' },
-                            { text: 'St. Patrick\'s Day', icon: 'fas fa-shamrock', action: 'setTodDateOverride', value: 'stpatricksday' },
-                            { text: 'Memorial Day', icon: 'fas fa-umbrella-beach', action: 'setTodDateOverride', value: 'memorialday' },
-                            { text: 'Labor Day', icon: 'fas fa-football', action: 'setTodDateOverride', value: 'laborday' },
-                            { text: 'Veterans Day', icon: 'fas fa-medal', action: 'setTodDateOverride', value: 'veteransday' },
-                            { text: 'Japanese New Year', icon: 'fas fa-torii-gate', action: 'setTodDateOverride', value: 'japanesenewyear' },
-                            { text: 'Cherry Blossom', icon: 'fas fa-cherry-blossom', action: 'setTodDateOverride', value: 'cherryblossom' },
-                            { text: 'Tanabata Festival', icon: 'fas fa-star-and-crescent', action: 'setTodDateOverride', value: 'tanabatafestival' },
-                            { text: 'Golden Week', icon: 'fas fa-flag', action: 'setTodDateOverride', value: 'goldenweek' },
-                            { text: 'Children\'s Day', icon: 'fas fa-child', action: 'setTodDateOverride', value: 'childrensday' },
-                            { text: 'Tsukimi', icon: 'fas fa-moon', action: 'setTodDateOverride', value: 'tsukimi' },
-                            { text: 'Obon Festival', icon: 'fas fa-pray', action: 'setTodDateOverride', value: 'obonfestival' },
+                            { text: 'Christmas', icon: 'fas fa-gift', action: 'setTodDateOverride', value: 'christmas', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'New Year\'s', icon: 'fas fa-party-horn', action: 'setTodDateOverride', value: 'newyears', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Halloween', icon: 'fas fa-ghost', action: 'setTodDateOverride', value: 'halloween', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Thanksgiving', icon: 'fas fa-turkey', action: 'setTodDateOverride', value: 'thanksgiving', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Independence Day', icon: 'fas fa-flag-usa', action: 'setTodDateOverride', value: 'independenceday', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Valentine\'s Day', icon: 'fas fa-heart', action: 'setTodDateOverride', value: 'valentinesday', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Easter', icon: 'fas fa-egg', action: 'setTodDateOverride', value: 'easter', valueDisplay: '<i class=\"fas fa-flag-usa\"></i>' },
+                            { text: 'Chinese New Year', icon: 'fas fa-dragon', action: 'setTodDateOverride', value: 'chinesenewyear', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Setsubun', icon: 'fas fa-seedling', action: 'setTodDateOverride', value: 'setsubun', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Hinamatsuri', icon: 'fas fa-fan', action: 'setTodDateOverride', value: 'hinamatsuri', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Summer Festival', icon: 'fas fa-umbrella-beach', action: 'setTodDateOverride', value: 'summerfestival', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Japanese New Year', icon: 'fas fa-torii-gate', action: 'setTodDateOverride', value: 'japanesenewyear', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Cherry Blossom', icon: 'fas fa-leaf', action: 'setTodDateOverride', value: 'cherryblossom', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Tanabata Festival', icon: 'fas fa-star-and-crescent', action: 'setTodDateOverride', value: 'tanabatafestival', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Golden Week', icon: 'fas fa-flag', action: 'setTodDateOverride', value: 'goldenweek', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Children\'s Day', icon: 'fas fa-child', action: 'setTodDateOverride', value: 'childrensday', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Mid-Autumn Festival', icon: 'fas fa-moon', action: 'setTodDateOverride', value: 'tsukimi', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
+                            { text: 'Obon Festival', icon: 'fas fa-pray', action: 'setTodDateOverride', value: 'obonfestival', valueDisplay: '<i class=\"fas fa-flag\"></i>' },
                         ]
                     }
                 ]
@@ -3581,21 +5335,18 @@ function setupDynamicGenerationContextMenus() {
                     return locationDisplay ? `Weather (${locationDisplay})` : 'Weather';
                 },
                 items: [
-                    { text: 'Use Forecast', icon: 'fas fa-calendar', action: 'setWeatherOverride', value: 'forecast' },
-                    { separator: true },
-                    { text: 'Auto Location (IP)', icon: 'fas fa-globe-wifi', action: 'setIPLocation' },
-                    { text: 'Static Location (Lookup)', icon: 'fa-plane-departure', action: 'openWeatherLocationModal' },
-                    { text: 'Static Location (GPS)', icon: 'fas fa-location-crosshairs', action: 'setCurrentLocation' },
                     {
-                        text: 'Static Location (Server)',
-                        icon: 'fas fa-times',
-                        action: 'clearWeatherLocation',
-                        loadfn: function(item) {
+                        text: 'Forecast',
+                        icon: 'fas fa-calendar',
+                        action: 'toggleWeatherForecast',
+                        keepMenuOpen: true,
+                        loadfn: function(item, target) {
                             const weatherBtn = document.getElementById('weatherBtn');
-                            item.disabled = !weatherBtn || !weatherBtn.getAttribute('data-location');
+                            const useForecast = weatherBtn?.getAttribute('data-override') === 'forecast';
+                            item.checked = useForecast;
+                            item.className = useForecast ? 'text-success' : '';
                         }
                     },
-                    { separator: true },
                     {
                         text: 'Conditions',
                         icon: 'fas fa-cloud',
@@ -3640,6 +5391,19 @@ function setupDynamicGenerationContextMenus() {
                             { text: 'Heat Wave - Extremely hot conditions', icon: 'fas fa-thermometer-full', action: 'setWeatherOverride', value: 'heat_wave' },
                             { text: 'Cold Wave - Extremely cold conditions', icon: 'fas fa-thermometer-empty', action: 'setWeatherOverride', value: 'cold_wave' }
                         ]
+                    },
+                    { separator: true },
+                    { text: 'Auto Location (IP)', icon: 'fas fa-globe-wifi', action: 'setIPLocation' },
+                    { text: 'Static Location (Lookup)', icon: 'fas fa-plane-departure', action: 'openWeatherLocationModal' },
+                    { text: 'Static Location (GPS)', icon: 'fas fa-location-crosshairs', action: 'setCurrentLocation' },
+                    {
+                        text: 'Static Location (Server)',
+                        icon: 'fas fa-times',
+                        action: 'clearWeatherLocation',
+                        loadfn: function(item) {
+                            const weatherBtn = document.getElementById('weatherBtn');
+                            item.disabled = !weatherBtn || !weatherBtn.getAttribute('data-location');
+                        }
                     }
                 ]
             }
@@ -3654,17 +5418,26 @@ function setupDynamicGenerationContextMenus() {
                 title: 'Season',
                 items: [
                     {
-                        text: 'Observe Holidays',
+                        text: 'Holidays',
                         icon: 'fas fa-calendar-star',
                         action: 'toggleObserveHoliday',
                         keepMenuOpen: true,
                         loadfn: function(item, target) {
                             const observeHolidayEnabled = target.dataset.toggleHoliday === 'true';
-                            item.icon = observeHolidayEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                            item.checked = observeHolidayEnabled;
                             item.className = observeHolidayEnabled ? 'text-success' : '';
                         }
                     },
                     { separator: true },
+                    { 
+                        text: 'Use Date', 
+                        icon: 'fas fa-times', 
+                        action: 'setSeasonOverride', 
+                        value: false,
+                        initfn: function(item) {
+                            item.hidden = !seasonBtn?.hasAttribute('data-override');
+                        }
+                    },
                     { text: 'Spring', icon: 'fas fa-leaf', action: 'setSeasonOverride', value: 1 },
                     { text: 'Summer', icon: 'fas fa-sun', action: 'setSeasonOverride', value: 2 },
                     { text: 'Autumn', icon: 'fas fa-tree', action: 'setSeasonOverride', value: 3 },
@@ -3709,35 +5482,503 @@ function setupDynamicGenerationContextMenus() {
     };
 
     const lockMenuConfig = {
-        sections: [{
-            type: 'list',
-            title: 'Dynamic Generation',
-            loadfn: function(section) {
-                // Show timestamp in header if compiled prompt exists
-                const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
-                if (compiledPrompt && compiledPrompt.timestamp) {
-                    const date = new Date(compiledPrompt.timestamp);
-                    const timeString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    section.title = `Cache Responses (Last: ${timeString})`;
-                } else {
-                    section.title = 'Cache Responses';
+        sections: [
+            {
+                type: 'custom',
+                initfn: function(section, target) {
+                    const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                    const previewHash = compiledPrompt?.preview_image_hash;
+                    
+                    // Hide section if no preview exists
+                    section.hidden = !previewHash;
+                },
+                content: function(target) {
+                    const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                    const previewHash = compiledPrompt?.preview_image_hash;
+                    
+                    if (!previewHash) {
+                        return '';
+                    }
+                    
+                    const container = document.createElement('div');
+                    container.className = 'dyn-gen-preview-container';
+                    container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 175px; flex-shrink: 0;';
+                    
+                    const img = document.createElement('img');
+                    img.src = `/cache/dynGenPreview/${previewHash}.png`;
+                    img.alt = 'Enshutsuka Preview';
+                    img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+                    img.loading = 'lazy';
+                    
+                    // Add click handler to open in PhotoSwipe lightbox
+                    img.addEventListener('click', async function(e) {
+                        e.stopPropagation();
+                        
+                        // Close the context menu first
+                        if (window.contextMenu) {
+                            window.contextMenu.hideMenu();
+                        }
+                        
+                        // Open in standalone PhotoSwipe
+                        const standaloneData = [{
+                            src: img.src,
+                            width: img.naturalWidth || 1024,
+                            height: img.naturalHeight || 1024,
+                            data: {
+                                filename: 'Enshutsuka Preview',
+                                base: img.src,
+                                upscaled: img.src,
+                                original: img.src,
+                                isStandalone: true
+                            }
+                        }];
+                        
+                        if (typeof openStandalonePhotoSwipe === 'function') {
+                            await openStandalonePhotoSwipe(standaloneData);
+                        }
+                    });
+                    
+                    // Add error handler
+                    img.onerror = function() {
+                        container.style.minHeight = 'auto';
+                        container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text-muted);">Preview not available</div>';
+                    };
+                    
+                    container.appendChild(img);
+                    return container;
                 }
             },
+            {
+            type: 'list',
+            title: 'Enshutsuka Data',
             items: [
+                {
+                    text: 'Inspector',
+                    action: 'showInspector',
+                    icon: 'fas fa-glasses-round',
+                    loadfn: function(item) {
+                        item.disabled = !Boolean(window.dynamicGenerationData?.compiled_prompt);
+                    }
+                },
+                {
+                    text: 'Refresh',
+                    action: 'toggleForceRefresh',
+                    icon: 'fas fa-rotate',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const forceRefreshEnabled = dynamicCarousel?.dataset.forceRefresh === 'true';
+                        const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
+                        const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates !== 'false';
+
+                        // Only enable if chain updates are on and we have previous response
+                        item.disabled = !hasPreviousResponse || !chainUpdatesEnabled;
+                        item.checked = forceRefreshEnabled;
+                        item.className = forceRefreshEnabled ? 'text-warning' : '';
+                    }
+                },
+                {
+                    text: 'Fast Mode',
+                    action: 'toggleFastMode',
+                    icon: 'fas fa-bolt',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
+                        item.checked = fastModeEnabled;
+                        item.className = fastModeEnabled ? 'text-success' : '';
+                    }
+                },
+                {
+                    text: 'Optimization',
+                    icon: 'fas fa-merge',
+                    submenu: [
+                        {
+                            text: 'Enable',
+                            icon: 'fas fa-cog',
+                            action: 'toggleOptimize',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                const optimizeEnabled = dynamicCarousel?.dataset.optimizeEnabled === 'true';
+                                item.checked = optimizeEnabled;
+                                item.className = optimizeEnabled ? 'text-success' : '';
+                            }
+                        },
+                        {
+                            text: 'Token Optimization',
+                            icon: 'fas fa-cash-register',
+                            action: 'toggleTokenCount',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
+                                item.checked = tokenCountEnabled;
+                                item.className = tokenCountEnabled ? 'text-success' : '';
+                            }
+                        },
+                        {
+                            text: 'Two-Pass',
+                            icon: 'fas fa-layer-group',
+                            action: 'toggleTwoStage',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
+                                const twoStageEnabled = dynamicCarousel?.dataset.twoStage === 'true';
+                                const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
+                                
+                                item.checked = twoStageEnabled;
+                                item.className = twoStageEnabled ? 'text-success' : '';
+                                // Disable when optimize is off or fast mode is enabled
+                                item.disabled = !tokenCountEnabled || fastModeEnabled;
+                            }
+                        },
+                        {
+                            text: 'Chain Updates',
+                            action: 'toggleChainUpdates',
+                            icon: 'fas fa-link-horizontal',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                // Default to true (enabled) if not set
+                                const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates !== 'false';
+                                const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
+
+                                item.disabled = !hasPreviousResponse;
+                                item.checked = chainUpdatesEnabled;
+                                item.className = chainUpdatesEnabled ? 'text-info' : '';
+                            }
+                        },
+                        { 
+                            text: 'Visual Awareness',
+                            separator: true
+                        },
+                        {
+                            text: 'Prompt Preview',
+                            icon: 'fas fa-image-polaroid',
+                            action: 'toggleInitialPromptAware',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                const initialPromptAwareEnabled = dynamicCarousel?.dataset.initialPromptAware === 'true';
+                                item.checked = initialPromptAwareEnabled;
+                                item.className = initialPromptAwareEnabled ? 'text-success' : '';
+                            }
+                        },
+                        {
+                            text: 'Stage Results',
+                            icon: 'fas fa-arrow-down-triangle-square',
+                            action: 'togglePipelineAware',
+                            keepMenuOpen: true,
+                            loadfn: function(item, target) {
+                                const pipelineAwareEnabled = dynamicCarousel?.dataset.pipelineAware === 'true';
+                                item.checked = pipelineAwareEnabled;
+                                item.className = pipelineAwareEnabled ? 'text-success' : '';
+                                item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
+                            }
+                        }
+                    ]
+                },
+                {
+                    text: 'Strategy',
+                    icon: 'fas fa-route',
+                    valueDisplay: function(target) {
+                        const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                        return currentValue?.toUpperCase() || 'Auto';
+                    },
+                    submenu: [
+                        {
+                            text: 'Auto',
+                            action: 'setCreativeDirectiveStrategy',
+                            value: null,
+                            loadfn: function(item, target) {
+                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                item.checked = currentValue === '' || currentValue === null;
+                            }
+                        },
+                        {
+                            text: 'Tags Only',
+                            action: 'setCreativeDirectiveStrategy',
+                            value: 'A',
+                            loadfn: function(item, target) {
+                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                item.checked = currentValue === 'A';
+                            }
+                        },
+                        {
+                            text: 'Tags + Modifiers',
+                            action: 'setCreativeDirectiveStrategy',
+                            value: 'B',
+                            loadfn: function(item, target) {
+                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                item.checked = currentValue === 'B';
+                            }
+                        },
+                        {
+                            text: 'Descriptive Tags',
+                            action: 'setCreativeDirectiveStrategy',
+                            value: 'C',
+                            loadfn: function(item, target) {
+                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                item.checked = currentValue === 'C';
+                            }
+                        }
+                    ]
+                },
+                {
+                    text: 'Tool Calls',
+                    icon: 'fas fa-hammer',
+                    valueDisplay: function(target) {
+                        const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                        return currentValue.toString();
+                    },
+                    submenu: [
+                        {
+                            text: '4',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 4,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 4;
+                            }
+                        },
+                        {
+                            text: '6',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 6,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 6;
+                            }
+                        },
+                        {
+                            text: '8',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 8,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 8;
+                            }
+                        },
+                        {
+                            text: '10',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 10,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 10;
+                            }
+                        },
+                        {
+                            text: '12',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 12,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 12;
+                            }
+                        },
+                        {
+                            text: '16',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 16,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 16;
+                            }
+                        },
+                        {
+                            text: '20',
+                            action: 'setCreativeDirectiveToolPasses',
+                            value: 20,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                item.checked = currentValue === 20;
+                            }
+                        }
+                    ]
+                },
+                {
+                    text: 'Dialogs',
+                    icon: 'fas fa-comments',
+                    valueDisplay: function(target) {
+                        const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                        return currentValue.toString();
+                    },
+                    submenu: [
+                        {
+                            text: '4',
+                            action: 'setCreativeDirectiveDialogs',
+                            value: 4,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                item.checked = currentValue === 4;
+                            }
+                        },
+                        {
+                            text: '6',
+                            action: 'setCreativeDirectiveDialogs',
+                            value: 6,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                item.checked = currentValue === 6;
+                            }
+                        },
+                        {
+                            text: '8',
+                            action: 'setCreativeDirectiveDialogs',
+                            value: 8,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                item.checked = currentValue === 8;
+                            }
+                        },
+                        {
+                            text: '10',
+                            action: 'setCreativeDirectiveDialogs',
+                            value: 10,
+                            loadfn: function(item, target) {
+                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                item.checked = currentValue === 10;
+                            }
+                        }
+                    ]
+                },
+                {
+                    text: 'Temperature',
+                    icon: 'fas fa-thermometer-three-quarters',
+                    valueDisplay: function(target) {
+                        const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                        if (aiTemp) {
+                            return aiTemp;
+                        }
+                        return '';
+                    },
+                    submenu: [
+                        {
+                            text: 'Default',
+                            icon: 'fas fa-times',
+                            action: 'clearAiTemperature',
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.hidden = !aiTemp;
+                            }
+                        },
+                        { separator: true },
+                        {
+                            text: 'Deterministic (0.0)',
+                            icon: 'fas fa-lock',
+                            action: 'setAiTemperature',
+                            value: 0.0,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.0';
+                            }
+                        },
+                        {
+                            text: 'Very Low (0.1)',
+                            icon: 'fas fa-snowflake',
+                            action: 'setAiTemperature',
+                            value: 0.1,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.1';
+                            }
+                        },
+                        { 
+                            text: 'Low (0.3)', 
+                            icon: 'fas fa-thermometer-quarter', 
+                            action: 'setAiTemperature', 
+                            value: 0.3,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.3';
+                            }
+                        },
+                        { 
+                            text: 'Medium-Low (0.5)', 
+                            icon: 'fas fa-thermometer-half', 
+                            action: 'setAiTemperature', 
+                            value: 0.5,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.5';
+                            }
+                        },
+                        { 
+                            text: 'Medium (0.7)', 
+                            icon: 'fas fa-thermometer-half', 
+                            action: 'setAiTemperature', 
+                            value: 0.7,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.7';
+                            }
+                        },
+                        { 
+                            text: 'Default (0.8)', 
+                            icon: 'fas fa-thermometer-three-quarters', 
+                            action: 'setAiTemperature', 
+                            value: 0.8,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '0.8' || !aiTemp;
+                            }
+                        },
+                        { separator: true },
+                        { 
+                            text: 'Medium-High (1.0)', 
+                            icon: 'fas fa-thermometer-three-quarters', 
+                            action: 'setAiTemperature', 
+                            value: 1.0,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '1.0';
+                            }
+                        },
+                        { 
+                            text: 'High (1.2)', 
+                            icon: 'fas fa-thermometer-full', 
+                            action: 'setAiTemperature', 
+                            value: 1.2,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '1.2';
+                            }
+                        },
+                        { 
+                            text: 'Very High (1.5)', 
+                            icon: 'fas fa-fire', 
+                            action: 'setAiTemperature', 
+                            value: 1.5,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '1.5';
+                            }
+                        },
+                        { 
+                            text: 'Maximum (2.0)', 
+                            icon: 'fas fa-fire-flame-curved', 
+                            action: 'setAiTemperature', 
+                            value: 2.0,
+                            loadfn: function(item, target) {
+                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                item.checked = aiTemp === '2.0';
+                            }
+                        }
+                    ]
+                },
+                { 
+                    text: 'Freeze Data',
+                    separator: true
+                },
                 {
                     text: 'Freeze Context',
                     action: 'toggleLockContext',
-                    icon: 'fas fa-brain',
+                    icon: 'fas fa-icicles',
                     keepMenuOpen: true,
-                    loadfn: function(item) {
-                        const lockBtn = document.getElementById('lockBtn');
-                        const isContextLocked = lockBtn?.dataset.contextLocked === 'true';
+                    loadfn: function(item, target) {
+                        const isContextLocked = dynamicCarousel?.dataset.contextLocked === 'true';
                         const hasContext = Boolean(window.dynamicGenerationData?.compiled_prompt) && 
                                             Boolean(window.dynamicGenerationData?.compiled_prompt?.context);
+                        const isLocked = dynamicCarousel?.dataset.state === 'on';
 
-                        item.disabled = !hasContext;
-                        item.icon = isContextLocked ? 'fas fa-check-square' : 'fa-regular fa-square';
-                        item.className = isContextLocked ? 'text-primary' : '';
+                        item.disabled = !hasContext || isLocked;
+                        item.checked = isContextLocked || isLocked;
                     }
                 },
                 {
@@ -3745,48 +5986,47 @@ function setupDynamicGenerationContextMenus() {
                     action: 'toggleLockResults',
                     icon: 'fas fa-lock',
                     keepMenuOpen: true,
-                    loadfn: function(item) {
-                        const lockBtn = document.getElementById('lockBtn');
-                        const isResultsLocked = lockBtn?.dataset.state === 'on';
+                    loadfn: function(item, target) {
+                        const isResultsLocked = dynamicCarousel?.dataset.state === 'on';
                         const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
 
                         item.disabled = !hasCache;
-                        item.icon = isResultsLocked ? 'fas fa-check-square' : 'fa-regular fa-square';
-                        item.className = isResultsLocked ? 'text-warning' : '';
+                        item.checked = isResultsLocked;
                     }
                 },
-                { separator: true },
+                { 
+                    text: 'Cache Controls',
+                    separator: true
+                },
                 {
-                    text: 'Use Cache',
+                    text: 'Change Cache',
                     action: 'toggleUseCache',
                     icon: 'fas fa-floppy-disk',
                     keepMenuOpen: true,
-                    loadfn: function(item) {
+                    loadfn: function(item, target) {
                         const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
-                        const useCache = dynamicGenerationLockedBtn?.getAttribute('data-use-cache') === 'true';
+                        const useCache = dynamicCarousel?.getAttribute('data-use-cache') === 'true';
 
                         item.disabled = !hasCache;
-                        item.icon = useCache ? 'fas fa-check-square' : 'fa-regular fa-square';
-                        item.className = useCache ? 'text-success' : 'text-danger';
+                        item.checked = useCache;
                     },
                 },
                 {
                     text: 'Preview Cache',
                     action: 'toggleExpirePreview',
                     keepMenuOpen: true,
-                    icon: 'fas fa-clock',
-                    loadfn: function(item) {
-                        const lockBtn = document.getElementById('lockBtn');
-                        const expirePreview = lockBtn?.dataset.expirePreview === 'true';
-                        const hasPreview = Boolean(window.dynamicGenerationData?.compiled_prompt?.preview_image);
+                    icon: 'fas fa-image',
+                    loadfn: function(item, target) {
+                        const expirePreview = dynamicCarousel?.dataset.expirePreview === 'true';
+                        const hasPreview = Boolean(window.dynamicGenerationData?.compiled_prompt?.preview_image_hash || 
+                                                   window.dynamicGenerationData?.compiled_prompt?.preview_image);
                         
                         item.disabled = !hasPreview;
-                        item.icon = !expirePreview ? 'fas fa-check-square' : 'fa-regular fa-square';
-                        item.className = !expirePreview ? 'text-warning' : '';
+                        item.checked = !expirePreview;
                     }
                 },
                 {
-                    text: 'Clear Cache',
+                    text: 'Erase Cache',
                     action: 'clearCompiledPrompt',
                     className: 'text-danger',
                     icon: 'fas fa-fire',
@@ -3812,22 +6052,28 @@ function setupDynamicGenerationContextMenus() {
                     keepMenuOpen: true,
                     loadfn: function(item, target) {
                         const tokenCountEnabled = target.dataset.tokenCount === 'true';
-                        item.icon = tokenCountEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.checked = tokenCountEnabled;
                         item.className = tokenCountEnabled ? 'text-success' : '';
                     }
                 },
                 {
-                    text: 'Lock Subject',
-                    icon: 'fas fa-lock',
-                    action: 'toggleLockSubject',
+                    text: 'Dual Pass',
+                    icon: 'fas fa-layer-group',
+                    action: 'toggleTwoStage',
                     keepMenuOpen: true,
                     loadfn: function(item, target) {
-                        const lockSubjectEnabled = target.dataset.lockSubject === 'true';
-                        item.icon = lockSubjectEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
-                        item.className = lockSubjectEnabled ? 'text-success' : '';
+                        const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
+                        const twoStageEnabled = target.dataset.twoStage === 'true';
+                        item.checked = twoStageEnabled;
+                        item.className = twoStageEnabled ? 'text-success' : '';
+                        // Disable 2 stage mode when fast mode is enabled
+                        if (fastModeEnabled) {
+                            item.disabled = true;
+                        } else {
+                            item.disabled = false;
+                        }
                     }
                 },
-                { separator: true },
                 {
                     text: 'Pass Pipeline Stage Preview',
                     icon: 'fas fa-layer-group',
@@ -3835,7 +6081,7 @@ function setupDynamicGenerationContextMenus() {
                     action: 'togglePipelineAware',
                     loadfn: function(item, target) {
                         const pipelineAwareEnabled = target.dataset.pipelineAware === 'true';
-                        item.icon = pipelineAwareEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.checked = pipelineAwareEnabled;
                         item.className = pipelineAwareEnabled ? 'text-success' : '';
                         item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
                     }
@@ -3847,7 +6093,7 @@ function setupDynamicGenerationContextMenus() {
                     action: 'toggleInitialPromptAware',
                     loadfn: function(item, target) {
                         const initialPromptAwareEnabled = target.dataset.initialPromptAware === 'true';
-                        item.icon = initialPromptAwareEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.checked = initialPromptAwareEnabled;
                         item.className = initialPromptAwareEnabled ? 'text-success' : '';
                     }
                 }
@@ -3862,13 +6108,24 @@ function setupDynamicGenerationContextMenus() {
             title: 'Creative Options',
             items: [
                 {
+                    text: 'Lock Subject',
+                    icon: 'fas fa-lock',
+                    action: 'toggleLockSubject',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const lockSubjectEnabled = dynamicCarousel?.dataset.lockSubject === 'true';
+                        item.checked = lockSubjectEnabled;
+                        item.className = lockSubjectEnabled ? 'text-success' : '';
+                    }
+                },
+                {
                     text: 'Adapt Clothing',
                     icon: 'fas fa-shirt',
                     action: 'toggleClothing',
                     keepMenuOpen: true,
                     loadfn: function(item, target) {
                         const toggleClothingEnabled = target.dataset.toggleClothing === 'true';
-                        item.icon = toggleClothingEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.checked = toggleClothingEnabled;
                         item.className = toggleClothingEnabled ? 'text-success' : '';
                     }
                 },
@@ -3879,7 +6136,7 @@ function setupDynamicGenerationContextMenus() {
                     keepMenuOpen: true,
                     loadfn: function(item, target) {
                         const toggleActionEnabled = target.dataset.toggleAction === 'true';
-                        item.icon = toggleActionEnabled ? 'fas fa-check-square' : 'fa-regular fa-square';
+                        item.checked = toggleActionEnabled;
                         item.className = toggleActionEnabled ? 'text-success' : '';
                     }
                 }
@@ -3891,8 +6148,7 @@ function setupDynamicGenerationContextMenus() {
     window.contextMenu.attachToElement(document.getElementById('todBtn'), todMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('weatherBtn'), weatherMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('seasonBtn'), seasonMenuConfig);
-    window.contextMenu.attachToElement(document.getElementById('lockBtn'), lockMenuConfig);
-    window.contextMenu.attachToElement(document.getElementById('optimizeBtn'), optimizeMenuConfig);
+    window.contextMenu.attachToElement(dynamicCarousel, lockMenuConfig);
     window.contextMenu.attachToElement(document.getElementById('creativeBtn'), creativeMenuConfig);
 }
 
@@ -3998,20 +6254,77 @@ document.addEventListener('contextMenuAction', (e) => {
         setIPLocation();
     } else if (action === 'setSeasonOverride') {
         setSeasonOverride(document.getElementById('seasonBtn'), e.detail.item.value);
+    } else if (action === 'clearTodDateOverride') {
+        const todBtn = document.getElementById('todBtn');
+        const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+        
+        if (currentOverride && currentOverride.includes('_')) {
+            const parts = currentOverride.split('_');
+            const timePart = parts[0];
+            if (timePart && timePart !== 'auto' && timePart !== 'true') {
+                setDynamicOverride(todBtn, timePart);
+            } else {
+                todBtn.removeAttribute('data-override');
+            }
+        } else if (currentOverride && currentOverride.startsWith('auto_')) {
+            todBtn.removeAttribute('data-override');
+        }
+        updateTodButtonIcon();
+        updateDynamicGenerationToggleBtn();
+        updatePromptStatusIcons();
+        createDebouncedContextResolution();
+    } else if (action === 'clearTodTimeOverride') {
+        const todBtn = document.getElementById('todBtn');
+        const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
+        
+        if (currentOverride && currentOverride.includes('_')) {
+            const parts = currentOverride.split('_');
+            const datePart = parts[1];
+            if (datePart) {
+                setDynamicOverride(todBtn, `auto_${datePart}`);
+            } else {
+                todBtn.removeAttribute('data-override');
+            }
+        } else if (currentOverride && !currentOverride.includes('_')) {
+            const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+            const cleanTimeStr = currentOverride.startsWith('%') ? currentOverride.substring(1) : currentOverride;
+            if (timeNames.includes(currentOverride) || /^\d{4}$/.test(cleanTimeStr)) {
+                todBtn.removeAttribute('data-override');
+            }
+        }
+        updateTodButtonIcon();
+        updateDynamicGenerationToggleBtn();
+        updatePromptStatusIcons();
+        createDebouncedContextResolution();
+    } else if (action === 'showInspector') {
+        showCompiledPromptModal();
     } else if (action === 'clearCompiledPrompt') {
         clearCompiledPrompt();
     } else if (action === 'toggleUseCache') {
-        const currentUseCache = dynamicGenerationLockedBtn.getAttribute('data-use-cache') === 'true';
+        const currentUseCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
         const newUseCache = !currentUseCache;
-        dynamicGenerationLockedBtn.setAttribute('data-use-cache', newUseCache.toString());
+        dynamicCarousel.setAttribute('data-use-cache', newUseCache.toString());
+		updateCarouselIndicators();
+    } else if (action === 'toggleOptimize') {
+        const optimizeEnabled = dynamicCarousel.dataset.optimizeEnabled === 'true';
+        const newState = optimizeEnabled ? 'false' : 'true';
+        dynamicCarousel.dataset.optimizeEnabled = newState;
     } else if (action === 'toggleTokenCount') {
-        const optimizeBtn = document.getElementById('optimizeBtn');
-        const tokenCountEnabled = optimizeBtn.dataset.tokenCount === 'true';
-        optimizeBtn.dataset.tokenCount = tokenCountEnabled ? 'false' : 'true';
+        const tokenCountEnabled = dynamicCarousel.dataset.tokenCount === 'true';
+        dynamicCarousel.dataset.tokenCount = tokenCountEnabled ? 'false' : 'true';
+    } else if (action === 'toggleTwoStage') {
+        const fastModeEnabled = dynamicCarousel.dataset.fastMode === 'true';
+        
+        // Prevent enabling 2 stage mode when fast mode is enabled
+        if (fastModeEnabled) {
+            return; // Do nothing if fast mode is enabled
+        }
+        
+        const twoStageEnabled = dynamicCarousel.dataset.twoStage === 'true';
+        dynamicCarousel.dataset.twoStage = twoStageEnabled ? 'false' : 'true';
     } else if (action === 'toggleLockSubject') {
-        const optimizeBtn = document.getElementById('optimizeBtn');
-        const lockSubjectEnabled = optimizeBtn.dataset.lockSubject === 'true';
-        optimizeBtn.dataset.lockSubject = lockSubjectEnabled ? 'false' : 'true';
+        const lockSubjectEnabled = dynamicCarousel.dataset.lockSubject === 'true';
+        dynamicCarousel.dataset.lockSubject = lockSubjectEnabled ? 'false' : 'true';
     } else if (action === 'toggleClothing') {
         const creativeBtn = document.getElementById('creativeBtn');
         const toggleClothingEnabled = creativeBtn.dataset.toggleClothing === 'true';
@@ -4024,33 +6337,82 @@ document.addEventListener('contextMenuAction', (e) => {
         const seasonBtn = document.getElementById('seasonBtn');
         const observeHolidayEnabled = seasonBtn.dataset.toggleHoliday === 'true';
         seasonBtn.dataset.toggleHoliday = observeHolidayEnabled ? 'false' : 'true';
+    } else if (action === 'toggleWeatherForecast') {
+        const weatherBtn = document.getElementById('weatherBtn');
+        const useForecast = weatherBtn?.getAttribute('data-override') === 'forecast';
+        // Toggle forecast: set to 'forecast' if not set, clear if set
+        if (useForecast) {
+            weatherBtn.removeAttribute('data-override');
+        } else {
+            weatherBtn.setAttribute('data-override', 'forecast');
+        }
+        updateDynamicGenerationToggleBtn();
+        updatePromptStatusIcons();
+    } else if (action === 'setSeasonUseDate') {
+        const seasonBtn = document.getElementById('seasonBtn');
+        setSeasonOverride(seasonBtn, false);
     } else if (action === 'togglePipelineAware') {
-        const optimizeBtn = document.getElementById('optimizeBtn');
-        const pipelineAwareEnabled = optimizeBtn.dataset.pipelineAware === 'true';
-        optimizeBtn.dataset.pipelineAware = pipelineAwareEnabled ? 'false' : 'true';
+        const pipelineAwareEnabled = dynamicCarousel.dataset.pipelineAware === 'true';
+        dynamicCarousel.dataset.pipelineAware = pipelineAwareEnabled ? 'false' : 'true';
     } else if (action === 'toggleInitialPromptAware') {
-        const optimizeBtn = document.getElementById('optimizeBtn');
-        const initialPromptAwareEnabled = optimizeBtn.dataset.initialPromptAware === 'true';
-        optimizeBtn.dataset.initialPromptAware = initialPromptAwareEnabled ? 'false' : 'true';
+        const initialPromptAwareEnabled = dynamicCarousel.dataset.initialPromptAware === 'true';
+        dynamicCarousel.dataset.initialPromptAware = initialPromptAwareEnabled ? 'false' : 'true';
+    } else if (action === 'toggleFastMode') {
+        const fastModeEnabled = dynamicCarousel.dataset.fastMode === 'true';
+        const newFastModeState = fastModeEnabled ? 'false' : 'true';
+        dynamicCarousel.dataset.fastMode = newFastModeState;
+        if (newFastModeState === 'true') {
+            dynamicCarousel.dataset.twoStage = 'false';
+        }
+        updateCarouselIndicators();
     } else if (action === 'toggleLockContext') {
-        const lockBtn = document.getElementById('lockBtn');
-        const isContextLocked = lockBtn.dataset.contextLocked === 'true';
-        lockBtn.dataset.contextLocked = isContextLocked ? 'false' : 'true';
+        const isContextLocked = dynamicCarousel.dataset.contextLocked === 'true';
+        dynamicCarousel.dataset.contextLocked = isContextLocked ? 'false' : 'true';
+        // Update carousel lock icon visibility
+        updateCarouselIndicators();
     } else if (action === 'toggleLockResults') {
-        const lockBtn = document.getElementById('lockBtn');
-        const isResultsLocked = lockBtn.dataset.state === 'on';
-        lockBtn.dataset.state = isResultsLocked ? 'off' : 'on';
+        const isResultsLocked = dynamicCarousel.dataset.state === 'on';
+        dynamicCarousel.dataset.state = isResultsLocked ? 'off' : 'on';
+        // Update carousel lock icon visibility and type
+        updateCarouselIndicators();
+    } else if (action === 'toggleChainUpdates') {
+        // Default to true (enabled) if not set
+        const chainUpdatesEnabled = dynamicCarousel.dataset.chainUpdates !== 'false';
+        dynamicCarousel.dataset.chainUpdates = chainUpdatesEnabled ? 'false' : 'true';
+    } else if (action === 'toggleForceRefresh') {
+        const forceRefreshEnabled = dynamicCarousel.dataset.forceRefresh === 'true';
+        dynamicCarousel.dataset.forceRefresh = forceRefreshEnabled ? 'false' : 'true';
     } else if (action === 'toggleExpirePreview') {
-        const lockBtn = document.getElementById('lockBtn');
-        const expirePreview = lockBtn.dataset.expirePreview === 'true';
-        lockBtn.dataset.expirePreview = expirePreview ? 'false' : 'true';
+        const expirePreview = dynamicCarousel.dataset.expirePreview === 'true';
+        dynamicCarousel.dataset.expirePreview = expirePreview ? 'false' : 'true';
+    } else if (action === 'setCreativeDirectiveStrategy') {
+        const value = e.detail.item.value;
+        if (value === null || value === '') {
+            dynamicCarousel.removeAttribute('data-creative-directive-strategy');
+        } else {
+            dynamicCarousel.dataset.creativeDirectiveStrategy = value;
+        }
+    } else if (action === 'setCreativeDirectiveToolPasses') {
+        const value = e.detail.item.value;
+        dynamicCarousel.dataset.creativeDirectiveToolPasses = value.toString();
+    } else if (action === 'setCreativeDirectiveDialogs') {
+        const value = e.detail.item.value;
+        dynamicCarousel.dataset.creativeDirectiveDialogs = value.toString();
+    } else if (action === 'setAiTemperature') {
+        const value = e.detail.item.value;
+        if (dynamicCarousel) {
+            dynamicCarousel.dataset.aiTemperature = value.toString();
+        }
+    } else if (action === 'clearAiTemperature') {
+        if (dynamicCarousel) {
+            dynamicCarousel.removeAttribute('data-ai-temperature');
+        }
     }
 });
 
 function setDynamicOverride(btn, value) {
     btn.setAttribute('data-override', value);
     btn.dataset.state = 'on';
-    btn.classList.add('active');
 
     // Update TOD button icon if this is the TOD button
     if (btn.id === 'todBtn') {
@@ -4064,14 +6426,11 @@ function setDynamicOverride(btn, value) {
 function setSeasonOverride(btn, value) {
     if (value === false || value === null) {
         // Disable seasonal
-        btn.dataset.state = 'off';
         btn.removeAttribute('data-override');
-        btn.classList.remove('active');
     } else {
         // Season index (1-4)
         btn.setAttribute('data-override', value);
         btn.dataset.state = 'on';
-        btn.classList.add('active');
     }
 
     updateDynamicGenerationToggleBtn();
@@ -4686,6 +7045,7 @@ function setupEventListeners() {
                                             const currentlyLocked = currentSeed.locked === true;
                                             item.icon = currentlyLocked ? 'fas fa-lock' : 'fas fa-unlock';
                                             item.className = currentlyLocked ? 'text-success' : '';
+                                            item.checked = currentlyLocked;
                                         }
                                     }
                                 });
@@ -4718,7 +7078,20 @@ function setupEventListeners() {
     if (closeTextReplacementLockModalBtn) {
         closeTextReplacementLockModalBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            
+            // Ensure locked replacements are synced when closing
+            const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+            window.lockedTextReplacements = lockedSeeds;
+            
             closeModal(textReplacementLockModal);
+        });
+    }
+
+    const toggleCompiledPromptsBtn = document.getElementById('toggleCompiledPromptsBtn');
+    if (toggleCompiledPromptsBtn) {
+        toggleCompiledPromptsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleCompiledPromptsSection();
         });
     }
 
@@ -4733,13 +7106,6 @@ function setupEventListeners() {
         deselectAllTextReplacementsBtn.addEventListener('click', (e) => {
             e.preventDefault();
             deselectAllTextReplacements();
-        });
-    }
-
-    if (applyTextReplacementLocksBtn) {
-        applyTextReplacementLocksBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            applyTextReplacementLocks();
         });
     }
 
@@ -4940,6 +7306,18 @@ function setupEventListeners() {
                 if (showGlassToast) {
                     showGlassToast('error', 'Failed to copy image to clipboard', '', false, 3000, '<i class="fa-regular fa-clipboard"></i>');
                 }
+            }
+        }
+    });
+
+    manualPreviewChatBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (window.currentManualPreviewImage && window.chatSystem) {
+            const imageData = window.currentManualPreviewImage;
+            const filename = imageData.upscaled || imageData.original || imageData.filename;
+            if (filename) {
+                const characterName = imageData.characterName || imageData.metadata?.character_name || null;
+                window.chatSystem.openChatModal(filename, characterName);
             }
         }
     });
@@ -6348,16 +8726,7 @@ function setupEventListeners() {
     }
     
     // Creative tab toolbar buttons - sync with main buttons
-    const creativeTabDynamicGenerationBtn = document.getElementById('creativeTabDynamicGenerationBtn');
     const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
-    
-    if (creativeTabDynamicGenerationBtn) {
-        creativeTabDynamicGenerationBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            // Trigger the main button's click
-            dynamicGenerationToggleBtn.click();
-        });
-    }
     
     if (creativeTabShowBothBtn) {
         creativeTabShowBothBtn.addEventListener('click', (e) => {
@@ -6427,8 +8796,7 @@ function setupEventListeners() {
 
     // Dynamic Generation button click handlers
     // Buttons that affect carousel: todBtn, weatherBtn, seasonBtn, creativeBtn
-    // Buttons that don't affect carousel: dynamicGenerationLockedBtn, optimizeBtn
-    [todBtn, weatherBtn, seasonBtn, dynamicGenerationLockedBtn, creativeBtn, optimizeBtn].forEach(btn => {
+    [todBtn, weatherBtn, seasonBtn, creativeBtn].forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             const state = btn.dataset.state === 'on' ? 'off' : 'on';
@@ -6440,8 +8808,7 @@ function setupEventListeners() {
                 btn.removeAttribute('data-override');
                 btn.removeAttribute('data-location');
                 btn.removeAttribute('data-context-locked');
-            } else if (btn.id === 'lockBtn') {
-                btn.setAttribute('data-context-locked', 'true');
+                btn.removeAttribute('data-chain-updates');
             }
 
             // Update TOD button icon if this is the TOD button
@@ -6473,17 +8840,12 @@ function setupEventListeners() {
                         updateStageCreativeDirectiveVisibility(stageItem.id);
                     });
                 }
+
+                updateAllTextOverlayPlaceholders();
             }
         });
     });
 
-    // Dynamic Generation view compiled button
-    if (dynamicGenerationViewBtn) {
-        dynamicGenerationViewBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showCompiledPromptModal();
-        });
-    }
 
     // Compiled Prompt Modal close button
     const closeCompiledPromptBtn = document.getElementById('closeCompiledPromptBtn');
@@ -7579,20 +9941,18 @@ async function upscaleImage(image, event = null) {
     const height = image.height || 1024;
     const upscaleInfo = calculateUpscaleInfo(width, height);
     
-    // Check if upscaling is available
-    if (!upscaleInfo.available) {
-        showGlassToast('error', 'Upscale Failed', upscaleInfo.reason || 'Upscaling not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    // Show upscale options dialog (always show for upscaling)
+    // Even if NovelAI is not available, ESRGAN options will be shown
+    const isFreeUpscaling = upscaleInfo.available && upscaleInfo.cost === 0;
+    const confirmed = await showCreditCostDialog(upscaleInfo.cost, event, upscaleInfo.outputResolution, true, width, height, isFreeUpscaling);
+
+    if (!confirmed) {
         return;
     }
-    
-    // Check if user has already allowed paid requests
-    if (!forcePaidRequest && upscaleInfo.cost > 0) {
-        const confirmed = await showCreditCostDialog(upscaleInfo.cost, event, upscaleInfo.outputResolution);
-        
-        if (!confirmed) {
-            return;
-        }
-    }
+
+    // Extract upscaler and scale from confirmation result
+    const upscaler = confirmed.upscaler || 'novelai';
+    const scale = confirmed.scale || 4;
     
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
@@ -7626,7 +9986,9 @@ async function upscaleImage(image, event = null) {
         
         const upscaleParams = {
             filename: filename,
-            workspace: activeWorkspace || null
+            workspace: activeWorkspace || null,
+            upscaler: upscaler,
+            scale: scale
         };
 
         // Upscale image via WebSocket
@@ -8294,19 +10656,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+            if (manualPreviewChatBtn) manualPreviewChatBtn.classList.remove('hidden');
             
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
-                if (imageData.width && imageData.height) {
-                    const upscaleInfo = calculateUpscaleInfo(imageData.width, imageData.height);
-                    if (upscaleInfo.available) {
-                        upscaleBtn.classList.remove('hidden');
-                    } else {
-                        upscaleBtn.classList.add('hidden');
-                    }
-                } else {
-                    upscaleBtn.classList.remove('hidden'); // Default to shown if dimensions unknown
-                }
+                upscaleBtn.classList.remove('hidden');
             }
             
             if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
@@ -8470,6 +10824,14 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Update dynamic generation overlay
             const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
             updateDynamicGenerationOverlay(context);
+            
+            // Update carousel with compiled prompt context if available
+            if (context) {
+                // Update compiled context data and switch to compiled mode
+                compiledContextData = context;
+                carouselMode = 'compiled';
+                updateDynamicCarousel(context, 'compiled');
+            }
         }
     } finally {
         // Hide loading overlay if it was shown
@@ -8578,19 +10940,11 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
+            if (manualPreviewChatBtn) manualPreviewChatBtn.classList.remove('hidden');
             
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
-                if (imageObj.width && imageObj.height) {
-                    const upscaleInfo = calculateUpscaleInfo(imageObj.width, imageObj.height);
-                    if (upscaleInfo.available) {
-                        upscaleBtn.classList.remove('hidden');
-                    } else {
-                        upscaleBtn.classList.add('hidden');
-                    }
-                } else {
-                    upscaleBtn.classList.remove('hidden'); // Default to shown if dimensions unknown
-                }
+                upscaleBtn.classList.remove('hidden');
             }
             
             if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
@@ -8697,6 +11051,14 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Update dynamic generation overlay
             const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
             updateDynamicGenerationOverlay(context);
+            
+            // Update carousel with compiled prompt context if available
+            if (context) {
+                // Update compiled context data and switch to compiled mode
+                compiledContextData = context;
+                carouselMode = 'compiled';
+                updateDynamicCarousel(context, 'compiled');
+            }
         }
     } finally {
         // Hide loading overlay if it was shown
@@ -8830,11 +11192,17 @@ function resetManualPreview() {
         // Clear stored seed and current image
         window.lastGeneratedSeed = null;
         window.lastGeneration = null;
+        window.lastGeneratedImageName = null;
         sproutSeedBtn.classList.remove('available');
         updateSproutSeedButtonFromPreviewSeed();
         window.currentManualPreviewImage = null;
         window.currentManualPreviewIndex = null;
         // Director new session functionality is always available
+        
+        // Clear generated image name display
+        if (typeof updateGeneratedImageNameDisplay === 'function') {
+            updateGeneratedImageNameDisplay(null);
+        }
         
         // Reset blurred backgrounds
         const bg1 = document.getElementById('manualPreviewBlurBackground1');
@@ -11363,16 +13731,16 @@ function addCharacterPrompt() {
                     <input type="text" id="${escapeHtmlAttribute(characterId)}_preview" readonly placeholder="Click to expand and edit prompt..."></input>
                 </div>
                     <div class="character-prompt-controls">
-                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle btn-small" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn hidden" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
+                        <button type="button" class="btn-secondary position-btn hidden btn-small" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-crosshairs"></i>
                         </button>
-                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
+                        <button type="button" class="btn-danger btn-small" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-trash-alt"></i>
                         </button>
-                        <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
+                        <button type="button" class="btn-secondary indicator btn-small" id="${characterId}_enabled" data-state="on" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
                         </button>
                     </div>
@@ -12062,16 +14430,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                     <input type="text" id="${characterId}_preview" readonly placeholder="Click to expand and edit prompt..." value="${character.prompt || ''}"></input>
                 </div>
                     <div class="character-prompt-controls">
-                        <button type="button" class="btn-secondary character-prompt-collapse-toggle" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
+                        <button type="button" class="btn-secondary character-prompt-collapse-toggle btn-small" onclick="toggleCharacterPromptCollapse('${escapeHtmlAttribute(characterId)}')" title="Collapse/Expand">
                             <i class="nai-fold"></i>
                         </button>
-                        <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''}" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
+                        <button type="button" class="btn-secondary position-btn${positionBtnHidden ? ' hidden' : ''} btn-small" onclick="showPositionDialog('${escapeHtmlAttribute(characterId)}')">
                             ${positionBtnText}
                         </button>
-                        <button type="button" class="btn-danger" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
+                        <button type="button" class="btn-danger btn-small" onclick="deleteCharacterPrompt('${escapeHtmlAttribute(characterId)}')">
                             <i class="fas fa-trash-alt"></i>
                         </button>
-                        <button type="button" class="btn-secondary indicator" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
+                        <button type="button" class="btn-secondary indicator btn-small" id="${characterId}_enabled" data-state="${character.enabled ? 'on' : 'off'}" onclick="toggleCharacterPromptEnabled('${characterId}')" title="Enable/Disable Character">
                             <i class="fas fa-power-off"></i>
                         </button>
                     </div>
@@ -12295,6 +14663,36 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
     updateAutoPositionToggle();
 }
 
+/**
+ * Update character prompt item names from compiled_prompt.character_names
+ * @param {Array<string>} characterNames - Array of character names to apply
+ */
+function updateCharacterPromptItemNames(characterNames) {
+    if (!characterNames || !Array.isArray(characterNames)) {
+        return;
+    }
+
+    const characterItems = document.querySelectorAll('.character-prompt-item');
+    characterNames.forEach((name, index) => {
+        if (name && characterItems[index]) {
+            const characterItem = characterItems[index];
+            const nameInput = characterItem.querySelector('.character-name-input');
+            const placeholderElement = characterItem.querySelector('.character-name-input-placeholder');
+            
+            if (nameInput) {
+                nameInput.value = name;
+                characterItem.dataset.charaName = name;
+            }
+            
+            if (placeholderElement) {
+                placeholderElement.textContent = name;
+            }
+            
+            console.log(`✨ Updated character prompt item ${index + 1} name: "${name}"`);
+        }
+    });
+}
+
 // ============================================================================
 // TEXT OVERLAY SYSTEM
 // ============================================================================
@@ -12372,6 +14770,9 @@ function addTextOverlay() {
     updateAllTextOverlayTargetDropdowns();
     // Ensure stage dropdown visibility reflects current pipeline
     updateTextOverlayStageVisibility();
+    
+    // Update placeholder based on current creative mode state
+    updateTextOverlayPlaceholder(textOverlayId);
 }
 
 function setupTextOverlayDropdowns(textOverlayId) {
@@ -12782,7 +15183,36 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
         if (statusTypeIcon) {
             statusTypeIcon.className = typeIconClass;
         }
+
+        // Update placeholder based on new type and creative mode state
+        updateTextOverlayPlaceholder(textOverlayId);
     }
+}
+
+function updateTextOverlayPlaceholder(textOverlayId) {
+    const textArea = document.getElementById(`${textOverlayId}_text`);
+    const item = document.getElementById(textOverlayId);
+    if (!textArea || !item) return;
+
+    const creativeBtn = document.getElementById('creativeBtn');
+    const isCreativeEnabled = creativeBtn && creativeBtn.dataset.state === 'on';
+    const textType = item.dataset.textType || 'speech';
+
+    if (isCreativeEnabled) {
+        // Set placeholder to match the text type for creative mode
+        const typeUpper = textType.toUpperCase();
+        textArea.placeholder = `[${typeUpper}_TEXT_INSERT]`;
+    } else {
+        // Reset to default placeholder when creative is off
+        textArea.placeholder = 'Hello, how are you?';
+    }
+}
+
+function updateAllTextOverlayPlaceholders() {
+    const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
+    textOverlayItems.forEach(item => {
+        updateTextOverlayPlaceholder(item.id);
+    });
 }
 
 function toggleTextOverlayEnabled(textOverlayId) {
@@ -12897,7 +15327,7 @@ function getTextOverlayData() {
         // Get the original text with actual newlines
         // Use stored original value if available, otherwise convert display version back
         let text = '';
-        if (textArea.dataset.originalValue !== undefined) {
+        if (textArea.dataset.originalValue !== undefined && textArea.dataset.originalValue !== '') {
             text = textArea.dataset.originalValue.trim();
         } else {
             // If no stored original, check if current value is display version and convert
@@ -12910,6 +15340,11 @@ function getTextOverlayData() {
         }
         
         const enabled = document.getElementById(`${textOverlayId}_enabled`).getAttribute('data-state') === 'on';
+        
+        // If text is empty, use the placeholder
+        if (!text) {
+            text = textArea.placeholder;
+        }
         
         // Skip empty overlays unless both the overlay AND dynamic generation are enabled
         if (!text) {
@@ -13050,7 +15485,6 @@ function loadTextOverlays(textOverlays) {
         textOverlaysContainer.appendChild(textOverlayItem);
         setupTextOverlayDropdowns(textOverlayId);
         setupTextOverlayToolbarHandlers(textOverlayId);
-        // Update the stage display for loaded overlays
         updateTextOverlayStageDisplay(textOverlayId);
     });
     
@@ -13061,6 +15495,7 @@ function loadTextOverlays(textOverlays) {
     // Update visibility of target and stage dropdowns
     updateAllTextOverlayTargetDropdowns();
     updateTextOverlayStageVisibility();
+    updateAllTextOverlayPlaceholders();
 }
 
 function extractTextFromPrompt(prompt) {
@@ -13561,13 +15996,27 @@ function addPipelineStage(type, options = {}) {
             });
         }
     });
+    
+    // Lock prompt toggle button
+    const lockPromptBtn = document.createElement('button');
+    lockPromptBtn.type = 'button';
+    lockPromptBtn.id = `${stageId}_lockPromptToggle`;
+    lockPromptBtn.className = 'btn-secondary btn-small toggle-btn';
+    lockPromptBtn.dataset.state = 'off';
+    lockPromptBtn.title = 'Lock prompt (skip dynamic generation, apply text replacements only)';
+    lockPromptBtn.innerHTML = '<i class="fas fa-lock"></i>';
+    lockPromptBtn.addEventListener('click', () => {
+        const newState = lockPromptBtn.dataset.state === 'on' ? 'off' : 'on';
+        lockPromptBtn.dataset.state = newState;
+    });
 
     stageControls.appendChild(upscaleBtn);
     stageControls.appendChild(saveResultsBtn);
-    stageControls.appendChild(branchBtn);
+    stageControls.appendChild(lockPromptBtn);
     stageControls.appendChild(advancedToggleBtn);
-    stageControls.appendChild(deleteBtn);
+    stageControls.appendChild(branchBtn);
     stageControls.appendChild(stopBtn);
+    stageControls.appendChild(deleteBtn);
     
     stageHeader.appendChild(dragHandle);
     stageHeader.appendChild(stageTypeLabel);
@@ -15198,36 +17647,20 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             const currentHeight = parseInt(heightInput.value) || 1024;
             const currentArea = currentWidth * currentHeight;
 
-            // Adjust width by 64 pixels (step size)
-        let newWidth = currentWidth + delta;
-        newWidth = Math.floor(newWidth / 64) * 64; // Snap to 64
-        newWidth = Math.max(64, Math.min(2048, newWidth)); // Clamp to valid range
+            // Adjust width by 64 pixels (step size) based on scroll direction
+            const newWidth = currentWidth + delta;
 
-        // Calculate new height to maintain area, then clamp
-        let newHeight = Math.round(currentArea / newWidth);
-        newHeight = Math.floor(newHeight / 64) * 64; // Snap to 64
-        newHeight = Math.max(64, Math.min(2048, newHeight)); // Clamp to valid range
+            // Calculate new height to maintain area
+            const newHeight = Math.round(currentArea / newWidth);
 
             // Get max area for validation
-        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
-        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
 
-        // Recalculate area after snapping and clamping
-        let adjustedArea = newWidth * newHeight;
-        
-        // If area exceeds max, scale down while maintaining aspect ratio
-        if (adjustedArea > maxArea) {
-            const scaleFactor = Math.sqrt(maxArea / adjustedArea);
-            newWidth = Math.floor((newWidth * scaleFactor) / 64) * 64;
-            newHeight = Math.floor((newHeight * scaleFactor) / 64) * 64;
-            newWidth = Math.max(64, newWidth);
-            newHeight = Math.max(64, newHeight);
-        }
-
-        // Final validation with correctDimensions to ensure everything is correct
+            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
             const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
 
-            // Update inputs without triggering input events
+            // Update inputs without triggering input events (set directly)
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
 
@@ -15264,36 +17697,20 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             const currentHeight = parseInt(heightInput.value) || 1024;
             const currentArea = currentWidth * currentHeight;
 
-            // Adjust height by 64 pixels (step size)
-        let newHeight = currentHeight + delta;
-        newHeight = Math.floor(newHeight / 64) * 64; // Snap to 64
-        newHeight = Math.max(64, Math.min(2048, newHeight)); // Clamp to valid range
+            // Adjust height by 64 pixels (step size) based on scroll direction
+            const newHeight = currentHeight + delta;
 
-        // Calculate new width to maintain area, then clamp
-        let newWidth = Math.round(currentArea / newHeight);
-        newWidth = Math.floor(newWidth / 64) * 64; // Snap to 64
-        newWidth = Math.max(64, Math.min(2048, newWidth)); // Clamp to valid range
+            // Calculate new width to maintain area
+            const newWidth = Math.round(currentArea / newHeight);
 
             // Get max area for validation
-        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
-        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
 
-        // Recalculate area after snapping and clamping
-        let adjustedArea = newWidth * newHeight;
-        
-        // If area exceeds max, scale down while maintaining aspect ratio
-        if (adjustedArea > maxArea) {
-            const scaleFactor = Math.sqrt(maxArea / adjustedArea);
-            newWidth = Math.floor((newWidth * scaleFactor) / 64) * 64;
-            newHeight = Math.floor((newHeight * scaleFactor) / 64) * 64;
-            newWidth = Math.max(64, newWidth);
-            newHeight = Math.max(64, newHeight);
-        }
-
-        // Final validation with correctDimensions to ensure everything is correct
+            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
             const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
 
-            // Update inputs without triggering input events
+            // Update inputs without triggering input events (set directly)
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
 
@@ -17209,9 +19626,9 @@ function renderStageBiasDropdown(stageId, selectedValue) {
     // Create 5 bias options based on resolution orientation (like image bias dropdown)
     const biasOptions = [
         { value: '0', name: isPortrait ? 'Top' : 'Left' },
-        { value: '1', name: isPortrait ? 'Mid-Top' : 'Mid-Left' },
+        { value: '1', name: '⅖' + (isPortrait ? ' Top' : ' Left') },
         { value: '2', name: 'Center' },
-        { value: '3', name: isPortrait ? 'Mid-Bottom' : 'Mid-Right' },
+        { value: '3', name: '⅘' + (isPortrait ? ' Bottom' : ' Right') },
         { value: '4', name: isPortrait ? 'Bottom' : 'Right' }
     ];
     
@@ -17557,6 +19974,7 @@ function getExpandCanvasStageData(stageId) {
     const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
     const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
     const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+    const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
     const resolutionValue = document.getElementById(`${stageId}_resolution`)?.value || null;
     
     // Get background focus - handle three states: '' (inherit), 'on' (explicit), 'off' (explicit)
@@ -17582,6 +20000,7 @@ function getExpandCanvasStageData(stageId) {
         saveResults: saveResultsToggle?.dataset.state === 'on',
         upscale: upscaleToggle?.dataset.state === 'on',
         stopAtStage: stopToggle?.dataset.state === 'on',
+        lockPrompt: lockPromptToggle?.dataset.state === 'on',
         backgroundFocus: backgroundFocus,
         branch: branchToggle?.dataset.state === 'on'
     };
@@ -17647,6 +20066,7 @@ function getEnhanceStageData(stageId) {
     const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
     const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
     const stopToggle = document.getElementById(`${stageId}_stopToggle`);
+    const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
     const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
     const resInput = document.getElementById(`${stageId}_resolution`);
     
@@ -17660,6 +20080,7 @@ function getEnhanceStageData(stageId) {
         saveResults: saveResultsToggle?.dataset.state === 'on',
         upscale: upscaleToggle?.dataset.state === 'on',
         stopAtStage: stopToggle?.dataset.state === 'on',
+        lockPrompt: lockPromptToggle?.dataset.state === 'on',
         branch: branchToggle?.dataset.state === 'on'
     };
 
@@ -17944,6 +20365,14 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
         const stopToggle = document.getElementById(`${stageId}_stopToggle`);
         if (stopToggle) {
             stopToggle.dataset.state = stageData.stopAtStage ? 'on' : 'off';
+        }
+    }
+    
+    // Load lock prompt toggle
+    if (stageData.lockPrompt !== undefined) {
+        const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
+        if (lockPromptToggle) {
+            lockPromptToggle.dataset.state = stageData.lockPrompt ? 'on' : 'off';
         }
     }
     
@@ -18298,8 +20727,8 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
 // Helper function to get bias name (for 5-position system, orientation-agnostic)
 function getBiasName(value, isPortrait = false) {
     // Map to the 5-position system names based on orientation
-    const portraitNames = ['Top', 'Mid-Top', 'Center', 'Mid-Bottom', 'Bottom'];
-    const landscapeNames = ['Left', 'Mid-Left', 'Center', 'Mid-Right', 'Right'];
+    const portraitNames = ['Top', '⅖ Top', 'Center', '⅘ Bottom', 'Bottom'];
+    const landscapeNames = ['Left', '⅖ Left', 'Center', '⅘ Right', 'Right'];
     
     const names = isPortrait ? portraitNames : landscapeNames;
     const numValue = parseInt(value);
@@ -19229,15 +21658,20 @@ function setupMainMenuContextMenus() {
                             action: 'text-replacement-manager'
                         },
                         {
+                            icon: 'fa-light fa-user-doctor-message',
+                            text: 'Chat Persona',
+                            action: 'chat-manager'
+                        },
+                        {
+                            icon: 'fas fa-box-open-full',
+                            text: 'Memories',
+                            action: 'knowledge-memories'
+                        }/*,
+                        {
                             icon: 'fa-light fa-rotate',
                             text: 'Refresh Metadata',
                             action: 'refresh-metadata-cache'
                         },
-                        {
-                            icon: 'fa-light fa-messages',
-                            text: 'Chat Persona',
-                            action: 'chat-manager'
-                        }/*,
                         {
                             icon: 'fa-light fa-ban',
                             text: 'Blocked Clients',
@@ -19507,6 +21941,13 @@ function setupMainMenuContextMenus() {
             case 'cache-manager':
                 // Open cache manager modal directly
                 showCacheManagerModal();
+                break;
+            
+            case 'knowledge-memories':
+                // Open knowledge memories modal
+                if (typeof openKnowledgeMemoriesModal === 'function') {
+                    openKnowledgeMemoriesModal();
+                }
                 break;
                 
             case 'chat-manager':
@@ -20407,5 +22848,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
 
 

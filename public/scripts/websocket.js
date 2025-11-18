@@ -260,6 +260,11 @@ class BannerManager {
             'delete_text_replacement': 'Delete Text Replacement',
             'create_text_replacement': 'Create Text Replacement',
 
+            // Knowledge memory operations
+            'list_knowledge_memories': 'Get Enshutsuka Memories',
+            'get_knowledge_memory': 'Get Enshutsuka Memory',
+            'delete_knowledge_memory': 'Delete Enshutsuka Memory',
+
             // Gallery operations
             'request_gallery': 'Get Gallery',
             'request_image_metadata': 'Get Image Metadata',
@@ -282,9 +287,11 @@ class BannerManager {
 
             // AI operations
             'cancel_generation': 'Cancel Generation',
-            'dynamic_generation_progress_update': 'Dynamic Generation Progress Update',
-            'dynamic_generation_completed': 'Dynamic Generation Completed',
-            'dynamic_generation_failed': 'Dynamic Generation Failed',
+            'dynamic_generation_progress_update': 'Enshutsuka Progress Update',
+            'dynamic_generation_completed': 'Enshutsuka Completed',
+            'dynamic_generation_failed': 'Enshutsuka Failed',
+
+            
 
             // Director operations
             'director_get_sessions': 'Get Director Sessions',
@@ -1994,7 +2001,14 @@ class WebSocketClient {
 
         // Update carousel with context data when available
         if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
-            updateDynamicCarousel(data.carousel);
+            // Update current context during generation
+            updateDynamicCarousel(data.carousel, 'current');
+        }
+        
+        // Update compiled prompt context when preview data is updated
+        if (data?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
+            // Update compiled context and switch to compiled mode
+            updateDynamicCarousel(data.compiled_prompt.context, 'compiled');
         }
 
         // Import the progress overlay manager functions for both modals
@@ -2081,6 +2095,13 @@ class WebSocketClient {
                     case 'initializing':
                         statusMessage = 'Analyzing request...';
                         break;
+                    case 'tool_execution':
+                        if (data.currentKey && data.totalKeys) {
+                            statusMessage = `Executing tools (${data.currentKey}/${data.totalKeys})...`;
+                        } else {
+                            statusMessage = 'Executing tools...';
+                        }
+                        break;
                     case 'ai_streaming':
                         statusMessage = 'Processing AI response...';
                         break;
@@ -2156,7 +2177,11 @@ class WebSocketClient {
 
             // Handle reasoning display in 3rd line (only for actual reasoning)
             if (data.reasoning && typeof updateGlassToastReasoning === 'function') {
-                updateGlassToastReasoning(progressToastId, data.reasoning);
+                // Store toolState globally for toast manager to access
+                if (data.toolState) {
+                    window._lastToolState = data.toolState;
+                }
+                updateGlassToastReasoning(progressToastId, data.reasoning, data.toolName, data.phase);
             }
 
             // Handle image preview updates
@@ -2928,6 +2953,10 @@ class WebSocketClient {
 
     async getChatMessages(chatId, limit = 50, offset = 0) {
         return this.sendMessage('get_chat_messages', { chatId, limit, offset });
+    }
+
+    async deleteChatMessage(messageId) {
+        return this.sendMessage('delete_chat_message', { messageId });
     }
 
     // Cancel generation method

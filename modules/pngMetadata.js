@@ -462,6 +462,51 @@ async function extractRelevantFields(meta, filename) {
     
     // Extract character prompts from forge_data (includes disabled characters and character names)
     let characterPrompts = [];
+    let compiledCharacterPrompts = [];
+
+    if (meta.v4_prompt && meta.v4_prompt.caption.char_captions && Array.isArray(meta.v4_prompt.caption.char_captions) && meta.v4_prompt.caption.char_captions.length > 0) {
+        const positiveCaptions = meta.v4_prompt.caption.char_captions;
+        const negativeCaptions = meta.v4_negative_prompt && meta.v4_negative_prompt.caption.char_captions ? meta.v4_negative_prompt.caption.char_captions : [];
+        
+        // Process positive captions by index
+        positiveCaptions.forEach((caption, index) => {
+            compiledCharacterPrompts.push({
+                prompt: caption.char_caption,
+                uc: '',
+                center: caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
+                    ? caption.centers[0]
+                    : null,
+                enabled: true,
+                chara_name: ''
+            });
+        });
+        
+        // Process negative captions by index and merge with positive ones
+        negativeCaptions.forEach((caption, index) => {
+            if (caption.char_caption && compiledCharacterPrompts[index]) {
+                compiledCharacterPrompts[index].uc = caption.char_caption;
+            }
+        });
+        if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
+            // Insert disabled characters at their correct indices
+            forgeData.disabledCharacters.forEach(disabledChar => {
+                compiledCharacterPrompts.splice(disabledChar.index, 0, {
+                    prompt: disabledChar.prompt,
+                    uc: disabledChar.uc,
+                    center: disabledChar.center,
+                    enabled: false,
+                    chara_name: disabledChar.chara_name
+                });
+            });
+        }
+        if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
+            compiledCharacterPrompts.forEach((char, index) => {
+                if (forgeData.characterNames[index]) {
+                    compiledCharacterPrompts[index].chara_name = forgeData.characterNames[index];
+                }
+            });
+        }
+    }
     
     // First, process v4_prompt character data if available
     let hasCharacterPrompts = false;
@@ -517,7 +562,7 @@ async function extractRelevantFields(meta, filename) {
             if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
                 characterPrompts.forEach((char, index) => {
                     if (forgeData.characterNames[index]) {
-                        char.chara_name = forgeData.characterNames[index];
+                        characterPrompts[index].chara_name = forgeData.characterNames[index];
                     }
                 });
             }
@@ -581,7 +626,11 @@ async function extractRelevantFields(meta, filename) {
         ) : forgeData.use_coords || false,
         strength: meta.strength || forgeData.img2img_strength,
         noise: meta.noise || forgeData.img2img_noise,
-        dynamic_generation: forgeData.dynamic_generation
+        dynamic_generation: forgeData.dynamic_generation,
+        // Store the final compiled prompts (what was actually sent to generation)
+        compiled_prompt: meta.prompt || '',
+        compiled_uc: meta.uc || '',
+        compiled_characterPrompts: compiledCharacterPrompts
     };
 
     // If image_source is present, get width and height from the file and add to result
@@ -1090,9 +1139,77 @@ function formatResolution(resolution, width, height) {
     return '';
 }
 
+// Helper: Copy metadata from source image to target image buffer
+function copyMetadataToImage(sourceBuffer, targetBuffer, additionalForgeData = {}) {
+    try {
+        // Read metadata from source image
+        const sourceMetadata = readMetadata(sourceBuffer);
+
+        // Extract the Comment metadata (which contains forge_data)
+        let existingMetadata = {};
+        if (sourceMetadata.tEXt && sourceMetadata.tEXt.Comment) {
+            try {
+                existingMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
+            } catch (e) {
+                console.error('Error parsing source metadata:', e.message);
+                existingMetadata = {};
+            }
+        }
+
+        // Update the forge_data with upscaling information
+        if (!existingMetadata.forge_data) {
+            existingMetadata.forge_data = {};
+        }
+
+        // Merge additional forge data (like upscaling info)
+        existingMetadata.forge_data = { ...existingMetadata.forge_data, ...additionalForgeData };
+        existingMetadata.forge_data.software = 'StaticForge v1.0';
+
+        // Ensure history array exists
+        if (!existingMetadata.forge_data.history) {
+            existingMetadata.forge_data.history = [];
+        }
+
+        // Add history entry for the upscaling operation
+        if (additionalForgeData.generation_type === 'upscaled') {
+            const historyEntry = {
+                generation_type: 'upscaled',
+                upscaled_at: additionalForgeData.upscaled_at,
+                upscaler_provider: additionalForgeData.upscaler_provider,
+                upscale_ratio: additionalForgeData.upscale_ratio
+            };
+            existingMetadata.forge_data.history.push(historyEntry);
+        }
+
+        // Apply the metadata to the target buffer
+        return updateMetadataWithExisting(targetBuffer, existingMetadata);
+
+    } catch (error) {
+        console.error('Error copying metadata:', error.message);
+        // Fallback: just add the additional forge data to the target
+        return updateMetadata(targetBuffer, additionalForgeData);
+    }
+}
+
+// Helper: Update metadata with existing metadata object (internal function)
+function updateMetadataWithExisting(imageBuffer, existingMetadata) {
+    try {
+        // Create new Comment chunk with the merged metadata
+        const commentText = JSON.stringify(existingMetadata);
+
+        // Insert the Comment chunk into the PNG
+        return insertTextChunk(imageBuffer, 'Comment', commentText);
+
+    } catch (error) {
+        console.error('Error updating metadata with existing data:', error.message);
+        return imageBuffer;
+    }
+}
+
 module.exports = {
     readMetadata,
     updateMetadata,
+    copyMetadataToImage,
     stripPngTextChunks,
     insertTextChunk,
     extractNovelAIMetadata,

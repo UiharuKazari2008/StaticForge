@@ -320,11 +320,8 @@ class PromptManager {
         }
         
         // Format season
-        if (dynamicContext.season) {
-            const seasonStr = typeof dynamicContext.season === 'string' ? 
-                dynamicContext.season : 
-                dynamicContext.season.name || JSON.stringify(dynamicContext.season);
-            parts.push(`- Season: ${seasonStr}`);
+        if (dynamicContext.season?.name) {
+            parts.push(`- Season: ${dynamicContext.season.name}`);
         }
         
         // Format time period
@@ -333,8 +330,8 @@ class PromptManager {
         }
         
         // Format holiday info
-        if (dynamicContext.holidayInfo && dynamicContext.holidayInfo.name) {
-            parts.push(`- Holiday: ${dynamicContext.holidayInfo.name}`);
+        if (dynamicContext.season?.holiday?.primaryHoliday?.name) {
+            parts.push(`- Holiday: ${dynamicContext.season.holiday.primaryHoliday.name}`);
         }
         
         return parts.length > 0 ? parts.join('\n') : '';

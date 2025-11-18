@@ -970,20 +970,9 @@ function createGalleryItem(image, index) {
                             }
                         },
                         {
-                            icon: 'mdi mdi-1-5 mdi-chat',
-                            text: 'Start Conversation',
+                            icon: 'fas fa-person-to-portal',
+                            text: 'New Persona',
                             action: 'start-chat'
-                        }
-                    ]
-                },
-                {
-                    type: 'list',
-                    title: 'Reference',
-                    items: [
-                        {
-                            icon: 'nai-img2img',
-                            text: 'New Reference',
-                            action: 'create-reference'
                         }
                     ]
                 },
@@ -992,13 +981,18 @@ function createGalleryItem(image, index) {
                     title: 'Management',
                     items: [
                         {
+                            icon: 'nai-img2img',
+                            text: 'New Reference',
+                            action: 'create-reference'
+                        },
+                        {
                             icon: 'fas fa-folder-arrow-up',
                             text: 'Move to...',
                             optionsfn: getMoveWorkspaceOptions,
                             handlerfn: handleMoveWorkspaceAction
                         },
                         {
-                            icon: 'mdi mdi-1-5 mdi-archive',
+                            icon: 'mdi mdi-1-35 mdi-archive',
                             text: 'Scrap',
                             action: 'scrap',
                             loadfn: (menuItem, target) => {
@@ -1007,9 +1001,6 @@ function createGalleryItem(image, index) {
                                 if (currentView === 'scraps') {
                                     menuItem.tooltip = 'Restore';
                                     menuItem.icon = 'nai-dot-reset';
-                                } else {
-                                    menuItem.tooltip = 'Scrap';
-                                    menuItem.icon = 'mdi mdi-1-5 mdi-archive';
                                 }
                             }
                         },
@@ -1072,7 +1063,7 @@ function createGalleryItem(image, index) {
                             disabled: false
                         },
                         {
-                            icon: 'mdi mdi-1-5 mdi-archive',
+                            icon: 'mdi mdi-1-35 mdi-archive',
                             text: 'Move to Scraps',
                             action: 'bulk-move-scraps',
                             disabled: false || currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
@@ -3133,7 +3124,7 @@ function switchToBulkContextMenu() {
                         disabled: false
                     },
                     {
-                        icon: 'mdi mdi-1-5 mdi-archive',
+                        icon: 'mdi mdi-1-35 mdi-archive',
                         text: 'Move to Scraps',
                         action: 'bulk-move-scraps',
                         disabled: currentGalleryView === 'scraps' || currentGalleryView === 'pinned'
@@ -3261,7 +3252,7 @@ function setupBulkActionsContextMenu() {
                         disabled: false
                     },
                     {
-                        icon: 'mdi mdi-1-5 mdi-archive',
+                        icon: 'mdi mdi-1-35 mdi-archive',
                         text: 'Move to Scraps',
                         action: 'bulk-move-scraps',
                         disabled: currentGalleryView === 'scraps' || currentGalleryView === 'pinned'

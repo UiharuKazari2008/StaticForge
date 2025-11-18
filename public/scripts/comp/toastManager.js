@@ -323,11 +323,155 @@ function updateGlassToastMessage(toastId, message) {
 }
 
 /**
+ * Get action text for tool while executing
+ * @param {string} toolName - Tool name
+ * @returns {string} Action text
+ */
+function getToolActionText(toolName) {
+    const actionTexts = {
+        'searchTagDatabase': 'Searching database...',
+        'validateTextReplacement': 'Validating...',
+        'searchTagsBatch': 'Searching tags...',
+        'getTagDetails': 'Reading wiki...',
+        'resolveTagLinks': 'Resolving links...',
+        'suggestBetterTags': 'Finding alternatives...',
+        'searchByDescription': 'Searching...',
+        'getBodyChunk': 'Reading section...',
+        'analyzeTokenCount': 'Analyzing tokens...',
+        'webSearch': 'Searching web...',
+        'fetchUrl': 'Fetching content...',
+        'fetchImage': 'Fetching image...',
+        'saveKnowledgeMemory': 'Saving memory...',
+        'retrieveKnowledgeMemory': 'Loading memories...',
+        'searchKnowledgeMemories': 'Searching memories...',
+        'completeTooling': 'Complete'
+    };
+    return actionTexts[toolName] || 'Processing...';
+}
+
+/**
+ * Get display name for tools
+ * @param {string} toolName - Tool name
+ * @returns {string} Display name
+ */
+function getToolDisplayName(toolName) {
+    const displayNames = {
+        'searchTagDatabase': 'Tag Database Search',
+        'validateTextReplacement': 'Validate Prompt',
+        'searchTagsBatch': 'Search Tag Wiki',
+        'getTagDetails': 'Read Tag Wiki',
+        'resolveTagLinks': 'Resolve Tag Links',
+        'suggestBetterTags': 'Suggest Alternatives',
+        'searchByDescription': 'Search Tag Description',
+        'getBodyChunk': 'Read Wiki Section',
+        'analyzeTokenCount': 'Analyze Tokens Usage',
+        'webSearch': 'Search Web',
+        'fetchUrl': 'Fetch URL',
+        'fetchImage': 'Fetch Image',
+        'saveKnowledgeMemory': 'Save Knowledge Memory',
+        'retrieveKnowledgeMemory': 'Retrieve Knowledge Memory',
+        'searchKnowledgeMemories': 'Search Knowledge Memories',
+        'completeTooling': 'Complete Tooling'
+    };
+    return displayNames[toolName] || toolName;
+}
+
+/**
+ * Get tool icon and background color based on tool name
+ * @param {string} toolName - Name of the tool
+ * @param {string} toolState - State of the tool ('executing' or 'completed')
+ * @returns {Object} Object with icon and backgroundColor
+ */
+function getToolIconAndBackground(toolName, toolState = 'completed') {
+    
+    const toolConfig = {
+        'searchTagDatabase': {
+            icon: '<i class="fas fa-search"></i>',
+            backgroundColor: 'rgb(10 78 139 / 69%)', // Blue
+        },
+        'validateTextReplacement': {
+            icon: '<i class="fas fa-badge-check"></i>',
+            backgroundColor: 'rgb(68 101 6 / 84%)', // Green
+        },
+        'searchTagsBatch': {
+            icon: '<i class="fas fa-books"></i>',
+            backgroundColor: 'rgb(10 78 139 / 69%)', // Indigo
+        },
+
+        'getTagDetails': {
+            icon: '<i class="fas fa-info-circle"></i>',
+            backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
+        },
+        'resolveTagLinks': {
+            icon: '<i class="fas fa-link"></i>',
+            backgroundColor: 'rgb(48 42 121 / 84%)', // Pink
+        },
+        'suggestBetterTags': {
+            icon: '<i class="fas fa-lightbulb"></i>',
+            backgroundColor: 'rgb(48 42 121 / 84%)', // Amber
+        },
+        'searchByDescription': {
+            icon: '<i class="fas fa-file-alt"></i>',
+            backgroundColor: 'rgb(48 42 121 / 84%)', // Sky blue
+        },
+        'getBodyChunk': {
+            icon: '<i class="fas fa-puzzle-piece"></i>',
+            backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
+        },
+
+        'analyzeTokenCount': {
+            icon: '<i class="fas fa-scanner-keyboard"></i>',
+            backgroundColor: 'rgb(68 101 6 / 84%)', // Emerald
+        },
+
+        'webSearch': {
+            icon: '<i class="fas fa-globe"></i>',
+            backgroundColor: 'rgb(91 50 7 / 84%)', // Orange
+        },
+        'fetchUrl': {
+            icon: '<i class="fas fa-download"></i>',
+            backgroundColor: 'rgb(91 50 7 / 84%)', // Teal
+        },
+        'fetchImage': {
+            icon: '<i class="fas fa-image"></i>',
+            backgroundColor: 'rgb(91 50 7 / 84%)', // Pink
+        },
+        'saveKnowledgeMemory': {
+            icon: '<i class="fas fa-brain"></i>',
+            backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+        },
+        'retrieveKnowledgeMemory': {
+            icon: '<i class="fas fa-book-open"></i>',
+            backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+        },
+        'searchKnowledgeMemories': {
+            icon: '<i class="fas fa-search-location"></i>',
+            backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
+        },
+        'completeTooling': {
+            icon: '<i class="fas fa-check-double"></i>',
+            backgroundColor: 'rgb(0 71 58 / 84%)', // Green
+        }
+    };
+
+    let result = toolConfig[toolName] || {
+        icon: '<i class="fas fa-cog"></i>',
+        backgroundColor: 'rgba(156, 163, 175, 0.1)', // Gray
+    };
+    if (toolState === 'executing' && toolName !== 'completeTooling') {
+        result.icon = '<i class="fas fa-spinner fa-spin"></i>';
+    }
+    return result;
+}
+
+/**
  * Update reasoning text in toast (3rd line)
  * @param {string} toastId - Toast ID
  * @param {string} reasoning - Reasoning text to display
+ * @param {string} toolName - Name of the tool (optional, for tool-specific styling)
+ * @param {string} phase - Current phase (optional, to detect tool execution)
  */
-function updateGlassToastReasoning(toastId, reasoning) {
+function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = null) {
     const toast = document.getElementById(toastId);
     if (!toast) return;
 
@@ -339,24 +483,69 @@ function updateGlassToastReasoning(toastId, reasoning) {
         if (toastContent) {
             reasoningElement = document.createElement('div');
             reasoningElement.className = 'toast-reasoning';
-            reasoningElement.style.cssText = `
-                font-size: 0.85em;
-                color: var(--text-secondary);
-                margin-top: 4px;
-                line-height: 1.3;
-                max-height: 3em;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-            `;
             toastContent.appendChild(reasoningElement);
         }
     }
 
     if (reasoningElement) {
         if (reasoning) {
-            // Display reasoning items, ellipsied
-            reasoningElement.textContent = reasoning;
+            // Check if this is tool execution
+            const isToolExecution = phase === 'tool_execution' || toolName;
+            
+            if (isToolExecution && toolName) {
+                // Get tool-specific icon and background based on toolState from data
+                // This will be passed through from the websocket data
+                const toolStyle = getToolIconAndBackground(toolName, window._lastToolState || 'completed');
+                
+                // Apply tool-specific styling
+                reasoningElement.style.cssText = `
+                    font-size: 0.85em;
+                    color: var(--text-primary);
+                    margin-top: 6px;
+                    padding: 8px 12px;
+                    line-height: 1.4;
+                    max-height: 4em;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    background: ${toolStyle.backgroundColor};
+                    border-left: 3px solid ${toolStyle.borderColor};
+                    border-radius: 4px;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    transition: all 0.2s ease;
+                `;
+                
+                // Set content with icon
+                reasoningElement.innerHTML = `
+                    <span style="
+                        flex-shrink: 0;
+                        font-size: 1.1em;
+                        opacity: 0.8;
+                    ">${toolStyle.icon}</span>
+                    <span style="
+                        flex: 1;
+                        overflow: hidden;
+                        text-overflow: ellipsis;
+                        white-space: nowrap;
+                    ">${reasoning}</span>
+                `;
+            } else {
+                // Standard reasoning display (non-tool)
+                reasoningElement.style.cssText = `
+                    font-size: 0.85em;
+                    color: var(--text-secondary);
+                    margin-top: 4px;
+                    line-height: 1.3;
+                    max-height: 3em;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                `;
+                reasoningElement.textContent = reasoning;
+            }
+            
             reasoningElement.title = reasoning; // Show full text on hover
         } else {
             reasoningElement.remove();

@@ -91,9 +91,9 @@ async function renderImageBiasDropdown(selectedVal) {
     // Create bias options based on image orientation (exclude Custom from dropdown)
     const biasOptions = [
         { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-        { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
+        { value: '1', display: '⅖' + (isPortraitImage ? ' Top' : ' Left') },
         { value: '2', display: 'Center' },
-        { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
+        { value: '3', display: '⅘' + (isPortraitImage ? ' Bottom' : ' Right') },
         { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
     ];
 
@@ -204,9 +204,9 @@ function updateImageBiasDisplay(value) {
         // Show normal bias options
         const biasOptions = [
             { value: '0', display: isPortraitImage ? 'Top' : 'Left' },
-            { value: '1', display: isPortraitImage ? 'Mid-Top' : 'Mid-Left' },
+            { value: '1', display: '⅖' + (isPortraitImage ? ' Top' : ' Left') },
             { value: '2', display: 'Center' },
-            { value: '3', display: isPortraitImage ? 'Mid-Bottom' : 'Mid-Right' },
+            { value: '3', display: '⅘' + (isPortraitImage ? ' Bottom' : ' Right') },
             { value: '4', display: isPortraitImage ? 'Bottom' : 'Right' }
         ];
 
@@ -745,18 +745,18 @@ function getImageBiasPresetOptions() {
     if (!isPortrait) {
         return [
             { value: '0', display: 'Top' },
-            { value: '1', display: 'Mid-Top' },
+            { value: '1', display: '⅖ Top' },
             { value: '2', display: 'Center' },
-            { value: '3', display: 'Mid-Bottom' },
+            { value: '3', display: '⅘ Bottom' },
             { value: '4', display: 'Bottom' }
         ];
     } else {
         // Portrait - use vertical position names
         return [
             { value: '0', display: 'Left' },
-            { value: '1', display: 'Mid-Left' },
+            { value: '1', display: '⅖ Left' },
             { value: '2', display: 'Center' },
-            { value: '3', display: 'Mid-Right' },
+            { value: '3', display: '⅘ Right' },
             { value: '4', display: 'Right' }
         ];
     }

@@ -42,7 +42,7 @@ class SpellChecker {
         if (this.customWords.has(word.toLowerCase())) {
             return [];
         }
-        
+
         // Get suggestions from spellchecker
         return spellchecker.getCorrectionsForMisspelling(word);
     }

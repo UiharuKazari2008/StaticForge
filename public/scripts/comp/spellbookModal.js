@@ -169,6 +169,17 @@ class SpellbookModalManager {
                 this.updateSpellbookProgressStatus('Reading Response...');
                 this.addSpellbookProgressReasoning(data?.reason);
                 break;
+            case 'tool_execution':
+                if (overlay?.classList?.contains('hidden')) return;
+                if (data?.currentKey && data?.totalKeys) {
+                    this.updateSpellbookProgressStatus(`Executing Tools (${data.currentKey}/${data.totalKeys})...`);
+                } else {
+                    this.updateSpellbookProgressStatus('Executing Tools...');
+                }
+                if (data?.reason) {
+                    this.addSpellbookProgressReasoning(data.reason, data?.toolName, data?.toolState, data?.toolReasoningId, data);
+                }
+                break;
             case 'optimizing':
                 if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Optimizing...');
@@ -202,12 +213,16 @@ class SpellbookModalManager {
             case 'completion':
                 if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Starting Generation...');
-                // Show completion for 2 seconds then hide
-                this.hideSpellbookDynamicGenerationProgressOverlay();
+                // Show completion for 2 seconds then hide (unless debug flag is set)
+                if (!window.DEBUG_KEEP_REASONING_OVERLAY) {
+                    this.hideSpellbookDynamicGenerationProgressOverlay();
+                } else {
+                    console.log('🔧 DEBUG_KEEP_REASONING_OVERLAY enabled - overlay will not hide');
+                }
                 break;
             case 'error':
                 if (overlay?.classList?.contains('hidden')) return;
-                this.updateSpellbookProgressStatus('Error: ' + (data?.error || 'Dynamic generation failed'));
+                this.updateSpellbookProgressStatus('Error: ' + (data?.error || 'Enshutsuka processing failed'));
                 // Hide overlay after showing error for 3 seconds
                 this.hideSpellbookDynamicGenerationProgressOverlay();
                 break;
@@ -483,7 +498,7 @@ class SpellbookModalManager {
                     resSpan.className = 'preset-resolution';
 
                     // Get proper resolution display name and check if it's large/wallpaper
-                    let resolutionDisplay = (preset.resolution.toLowerCase() || 'normal_portrait?').split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1));
+                    let resolutionDisplay = ((preset.resolution || 'normal_portrait?').toLowerCase()).split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1));
 
                     if (resolutionDisplay[0] !== 'Normal') {
                         const resolutionText = document.createElement('span');
@@ -732,19 +747,7 @@ class SpellbookModalManager {
 
                 // Enable/show upscale button based on availability
                 if (this.upscaleBtn) {
-                    if (this.generatedWidth && this.generatedHeight) {
-                        const upscaleInfo = calculateUpscaleInfo(this.generatedWidth, this.generatedHeight);
-                        if (upscaleInfo.available) {
-                            this.upscaleBtn.disabled = false;
-                            this.upscaleBtn.classList.remove('hidden');
-                        } else {
-                            this.upscaleBtn.classList.add('hidden');
-                        }
-                    } else {
-                        // Default to enabled if dimensions unknown
-                        this.upscaleBtn.disabled = false;
-                        this.upscaleBtn.classList.remove('hidden');
-                    }
+                    this.upscaleBtn.classList.remove('hidden');
                 }
 
                 // Update blur background
@@ -1043,16 +1046,19 @@ class SpellbookModalManager {
             const height = this.generatedHeight || 1024;
             const upscaleInfo = calculateUpscaleInfo(width, height);
             
-            // Check for credit costs and show confirmation dialog for upscaling
-            if (upscaleInfo.cost > 0) {
-                const confirmed = await showCreditCostDialog(upscaleInfo.cost, null, upscaleInfo.outputResolution);
-                if (!confirmed) {
-                    // Reset button state
-                    this.upscaleBtn.disabled = false;
-                    this.upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
-                    return;
-                }
+            // Show upscale options dialog (always show for upscaling)
+            const isFreeUpscaling = upscaleInfo.cost === 0;
+            const confirmed = await showCreditCostDialog(upscaleInfo.cost, null, upscaleInfo.outputResolution, true, width, height, isFreeUpscaling);
+            if (!confirmed) {
+                // Reset button state
+                this.upscaleBtn.disabled = false;
+                this.upscaleBtn.innerHTML = '<i class="nai-upscale"></i>';
+                return;
             }
+
+            // Extract upscaler and scale from confirmation result
+            const upscaler = confirmed.upscaler || 'novelai';
+            const scale = confirmed.scale || 4;
 
             // Show progress toast
             toastId = showGlassToast('info', 'Upscaling Image', 'Upscaling image...', true, false, '<i class="nai-upscale"></i>');
@@ -1067,7 +1073,9 @@ class SpellbookModalManager {
             // Prepare upscaling parameters
             const upscaleParams = {
                 filename: this.generatedFilename,
-                workspace: this.generatedWorkspace || null
+                workspace: this.generatedWorkspace || null,
+                upscaler: upscaler,
+                scale: scale
             };
 
             // Upscale image via WebSocket
@@ -1342,18 +1350,103 @@ class SpellbookModalManager {
         }
     }
 
-    addSpellbookProgressReasoning(reason) {
+    addSpellbookProgressReasoning(reason, toolName = null, toolState = 'completed', toolReasoningId = null, data = null) {
         if (!reason) return;
 
         if (this.progressReasoningContainer) {
+            // If this is a tool with an ID and we already have an item, update it
+            if (toolName && toolReasoningId) {
+                const existingDiv = document.getElementById(toolReasoningId);
+                if (existingDiv) {
+                    const toolStyle = getToolIconAndBackground(toolName, toolState);
+                    
+                    // Update background and border
+                    existingDiv.style.background = toolStyle.backgroundColor;
+                    existingDiv.style.borderLeft = `3px solid ${toolStyle.borderColor}`;
+                    
+                    // Update icon in row 1
+                    const iconSpan = existingDiv.querySelector('.tool-icon');
+                    if (iconSpan) {
+                        iconSpan.innerHTML = toolStyle.icon;
+                    }
+                    
+                    // Update status in row 2
+                    const statusRow = existingDiv.querySelector('.tool-status-row');
+                    if (statusRow && toolState === 'completed') {
+                        statusRow.textContent = reason.trim();
+                    } else if (statusRow && toolState === 'executing' && !data?.appendReason) {
+                        // Update action text while executing (but not for append operations)
+                        statusRow.textContent = getToolActionText(toolName);
+                    } else if (statusRow && data?.appendReason) {
+                        // For batch operations, append to row 3 instead of row 2
+                        const reasoningRow = existingDiv.querySelector('.tool-reasoning-row');
+                        if (reasoningRow) {
+                            const currentText = reasoningRow.textContent;
+                            reasoningRow.textContent = currentText ? `${currentText}\n${reason.trim()}` : reason.trim();
+                        }
+                    }
+                    
+                    return; // Don't create a new item
+                }
+            }
+            
             // Create new div for this reasoning
             const reasonDiv = document.createElement('div');
             reasonDiv.className = 'progress-reasoning-item';
-
-            const reasonSpan = document.createElement('span');
-            reasonSpan.textContent = reason.trim();
-
-            reasonDiv.appendChild(reasonSpan);
+            
+            // Set ID if this is a tool
+            if (toolName && toolReasoningId) {
+                reasonDiv.id = toolReasoningId;
+            }
+            
+            // Apply tool-specific styling if this is a tool execution
+            if (toolName && typeof getToolIconAndBackground === 'function') {
+                const toolStyle = getToolIconAndBackground(toolName, toolState);
+                reasonDiv.classList.add('tool-reasoning-item');
+                reasonDiv.style.background = toolStyle.backgroundColor;
+                reasonDiv.style.borderLeft = `3px solid ${toolStyle.borderColor}`;
+                
+                // Create 3-row layout for tools
+                // Row 1: Icon + Tool Name
+                const headerRow = document.createElement('div');
+                headerRow.className = 'tool-header-row';
+                
+                const iconSpan = document.createElement('span');
+                iconSpan.className = 'tool-icon';
+                iconSpan.innerHTML = toolStyle.icon;
+                
+                const toolNameSpan = document.createElement('span');
+                toolNameSpan.className = 'tool-name';
+                toolNameSpan.textContent = getToolDisplayName(toolName);
+                
+                headerRow.appendChild(iconSpan);
+                headerRow.appendChild(toolNameSpan);
+                reasonDiv.appendChild(headerRow);
+                
+                // Row 2: Status/result (skip for completeTooling since it has no executing state)
+                if (toolName !== 'completeTooling') {
+                    const statusRow = document.createElement('div');
+                    statusRow.className = 'tool-status-row';
+                    if (toolState === 'completed') {
+                        statusRow.textContent = reason.trim();
+                    } else {
+                        // Show appropriate action text based on tool type
+                        statusRow.textContent = getToolActionText(toolName);
+                    }
+                    reasonDiv.appendChild(statusRow);
+                }
+                
+                // Row 3: Original reasoning
+                const reasoningRow = document.createElement('div');
+                reasoningRow.className = 'tool-reasoning-row';
+                reasoningRow.textContent = reason.trim();
+                reasonDiv.appendChild(reasoningRow);
+            } else {
+                // Non-tool reasoning (standard format)
+                const reasonSpan = document.createElement('span');
+                reasonSpan.textContent = reason.trim();
+                reasonDiv.appendChild(reasonSpan);
+            }
             this.progressReasoningContainer.appendChild(reasonDiv);
             
             // Generate random position as percentages, avoiding center and existing text
@@ -1476,13 +1569,15 @@ class SpellbookModalManager {
             this.progressDate.textContent = formattedDate;
         }
 
-        // Update season and holiday in progress overlay
+        // Update season and holiday in progress overlay - handle both object and string formats (for backward compatibility with compiled prompts)
         if (this.progressSeason && data.season) {
-            this.progressSeason.textContent = data.season;
+            // Extract season name from object or use string directly
+            const seasonName = typeof data.season === 'object' && data.season.name ? data.season.name : data.season;
+            this.progressSeason.textContent = seasonName;
         }
         if (this.progressHoliday) {
-            if (data.holiday) {
-                this.progressHoliday.textContent = data.holiday;
+            if (data.holiday?.primaryHoliday?.name) {
+                this.progressHoliday.textContent = data.holiday.primaryHoliday.name;
                 this.progressHoliday.style.display = 'inline';
             } else {
                 this.progressHoliday.style.display = 'none';

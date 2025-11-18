@@ -476,6 +476,7 @@
                                     </div>
                                 </div>
 
+                                <!-- Preset Manager -->
                                 <div id="manualPresetGroup" class="form-row hidden">
                                     <button type="button" id="manualPresetManagerBtn" class="btn-secondary">
                                         <i class="fas fa-list-ul"></i>
@@ -489,6 +490,7 @@
                                     </button>
                                 </div>
 
+                                <!-- Prompt Tabs -->
                                 <div class="form-group">
                                     <div class="prompt-tabs">
                                         <div class="tab-header">
@@ -517,6 +519,7 @@
                                                 </button>
                                             </div>
                                         </div>
+
                                         <div class="tab-content">
                                             <div class="tab-pane active" id="prompt-tab" data-label="Base Prompt">
                                                 <div class="prompt-textarea-container">
@@ -597,7 +600,7 @@
                                                             <!-- Regular Toolbar Buttons -->
                                                             <div class="toolbar-regular-buttons">
                                                                 <!-- Dataset Dropdown -->
-                                                                <div id="datasetDropdown" class="custom-dropdown dark">
+                                                                <div id="datasetDropdown" class="custom-dropdown dark dropright">
                                                                     <button type="button" id="datasetDropdownBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dataset Selection">
                                                                         <i id="datasetIcon" class="nai-sakura"></i>
                                                                         <span id="datasetSelected" class="badge hidden"></span>
@@ -605,14 +608,14 @@
                                                                     <div id="datasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
                                                                 <!-- Sub Toggles Dropdown -->
-                                                                <div id="subTogglesDropdown" class="custom-dropdown dark">
+                                                                <div id="subTogglesDropdown" class="custom-dropdown dark dropright">
                                                                     <!-- Sub Toggles Button -->
                                                                     <button type="button" id="subTogglesBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dataset Adjustment Toggles">
                                                                         <i class="fas fa-diamond-half-stroke"></i>
                                                                     </button>
                                                                     <div id="subTogglesDropdownMenu" class="custom-dropdown-menu hidden"></div>
                                                                 </div>
-                                                                <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dynamic Generation Options">
+                                                                <button type="button" id="dynamicGenerationToggleBtn" class="btn-secondary btn-small toggle-btn btn-wide toolbar-btn" data-state="off" title="演出家 (Enshutsuka) Options">
                                                                     <i class="ri-pencil-ai-2-fill"></i>
                                                                 </button>
                                                                 <div class="divider"></div>
@@ -647,10 +650,7 @@
                                                     <textarea id="creativeDirectiveInput" class="form-control prompt-textarea textarea-inset" placeholder="Dear Kamisama..." rows="1" autocapitalize="false"></textarea>
                                                     <div class="prompt-textarea-toolbar hidden">
                                                         <div class="toolbar-left">
-                                                            <div class="toolbar-regular-buttons info-container">
-                                                                <i class="fas fa-temperature-high"></i>
-                                                                <input type="number" id="creativeDirectiveTemperature" class="form-control hover-show colored" placeholder="Temp" min="0" max="2" step="0.1" value="1.0" title="AI Temperature (0-2, default 1.0)" style="width: 60px;">
-                                                                
+                                                            <div class="toolbar-regular-buttons">
                                                             </div>
                                                             <!-- Search Mode Elements (Hidden by default) -->
                                                             <div class="toolbar-search-elements">
@@ -663,10 +663,6 @@
                                                         </div>
                                                         <div class="toolbar-right">
                                                             <div class="toolbar-regular-buttons">
-                                                                <button type="button" id="creativeTabDynamicGenerationBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" title="Dynamic Generation Options">
-                                                                    <i class="ri-pencil-ai-2-fill"></i>
-                                                                </button>
-                                                                <div class="divider"></div>
                                                                 <button type="button" id="creativeTabShowBothBtn" class="btn-secondary btn-small toolbar-btn toggle-btn" data-state="off" title="Show Both Prompt and UC Panes">
                                                                     <i class="nai-detatch-up"></i>
                                                                 </button>
@@ -810,34 +806,43 @@
                                                 </div>
                                             </div>
                                         </div>
+
                                         <!-- Dynamic Generation Section -->
                                         <div id="dynamicGenerationGroup" class="form-row hidden">
                                             <div class="dynamic-generation-container">
-                                                <div class="dynamic-generation-carousel" id="dynamicCarousel">
+                                                <div class="dynamic-generation-carousel" id="dynamicCarousel" data-state="off" data-use-cache="true" data-has-cache="false" data-context-locked="false" data-expire-preview="false" data-chain-updates="true" data-fast-mode="false" data-force-refresh="false" data-token-count="false" data-two-stage="false" data-pipeline-aware="false" data-initial-prompt-aware="false" data-lock-subject="false" data-optimize-enabled="false">
                                                     <div class="carousel-item active">
-                                                        <i class="carousel-icon fa-regular fa-clock"></i>
+                                                        <div class="carousel-icon-container">
+                                                            <i class="carousel-icon fa-regular fa-clock"></i>
+                                                        </div>
                                                         <span class="carousel-text">Loading...</span>
+                                                    </div>
+                                                    <div class="carousel-indicators hidden" id="carouselIndicators">
+                                                        <i class="carousel-fast-icon fa-regular fa-circle-check hidden" id="carouselCacheIcon" title="Using Cache"></i>
+                                                        <i class="carousel-lock-icon fa-solid fa-icicles hidden" id="carouselLockIcon" title="Context Frozen"></i>
+                                                        <i class="carousel-fast-icon fa-solid fa-bolt hidden" id="carouselFastIcon" title="Fast Mode"></i>
+                                                        <div class="carousel-indicators-dots">
+                                                            <div class="carousel-indicator" id="currentContextIndicator" data-mode="current" title="Current Context">
+                                                                <div class="carousel-indicator-dot"></div>
+                                                            </div>
+                                                            <div class="carousel-indicator" id="compiledContextIndicator" data-mode="compiled" title="Compiled Context">
+                                                                <div class="carousel-indicator-dot"></div>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <div class="dynamic-generation-actions">
-                                                    <button type="button" id="todBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" title="Time of Day">
-                                                        <i class="fa-regular fa-clock"></i>
-                                                    </button>
-                                                    <button type="button" id="weatherBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" title="Weather">
+                                                    <button type="button" id="weatherBtn" class="btn-secondary btn-small toggle-btn toolbar-btn btn-wide" data-state="off" data-override="" title="Weather">
                                                         <i class="fa-regular fa-cloud-sun"></i>
                                                     </button>
-                                                    <button type="button" id="seasonBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-override="" data-toggle-holiday="true" title="Season">
+                                                    <button type="button" id="todBtn" class="btn-secondary btn-small toggle-btn toolbar-btn btn-wide" data-state="off" data-override="" title="Time of Day">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                    <button type="button" id="seasonBtn" class="btn-secondary btn-small toggle-btn toolbar-btn btn-wide" data-state="off" data-override="" data-toggle-holiday="true" title="Season">
                                                         <i class="fas fa-leaf-maple"></i>
                                                     </button>
-                                                    <button type="button" id="creativeBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-toggle-clothing="false" data-toggle-action="false" title="Creative Mode">
+                                                    <button type="button" id="creativeBtn" class="btn-secondary btn-small toggle-btn toolbar-btn btn-wide" data-state="off" data-toggle-clothing="false" data-toggle-action="false" title="Creative Mode">
                                                         <i class="fas fa-paintbrush-pencil"></i>
-                                                    </button>
-                                                    <button type="button" id="optimizeBtn" class="btn-secondary btn-small indicator toolbar-btn" data-state="off" data-token-count="true" data-lock-subject="false" data-pipeline-aware="false" data-initial-prompt-aware="false" data-context-menu="optimize-options" title="Token Optimization">
-                                                        <i class="fas fa-washing-machine"></i>
-                                                    </button>
-                                                    <div class="divider"></div>
-                                                    <button type="button" id="dynamicGenerationViewBtn" class="btn-secondary btn-small toolbar-btn" disabled title="View Compiled Prompt">
-                                                        <i class="fa-regular fa-glasses-round"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -866,25 +871,12 @@
                                         <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator" data-state="on" title="Normalize vibe strengths">
                                             <i class="fa-regular fa-equals"></i>
                                         </button>
-                                        <button type="button" id="enableStageGenerationBtn" class="btn-secondary toggle-btn" data-state="on" title="Enable Stage Generations" style="margin-left: auto;">
-                                            <i class="fas fa-arrow-down-square-triangle"></i>
-                                        </button>
                                         <!-- Add Item Dropdown -->
                                         <div id="addItemDropdown" class="custom-dropdown dropright dark">
                                             <button type="button" id="addItemDropdownBtn" class="btn-primary">
                                                 <i class="nai-plus"></i>
                                             </button>
                                             <div id="addItemDropdownMenu" class="custom-dropdown-menu hidden">
-                                                <div class="custom-dropdown-option" data-value="character">
-                                                    <i class="fas fa-user"></i> Character
-                                                </div>
-                                                <div class="custom-dropdown-separator"></div>
-                                                <div class="custom-dropdown-option" data-value="expand-canvas">
-                                                    <i class="mdi mdi-1-25 mdi-relative-scale"></i> Expand Canvas
-                                                </div>
-                                                <div class="custom-dropdown-option" data-value="enhance">
-                                                    <i class="fas fa-diagram-venn"></i> Enhance
-                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -894,9 +886,11 @@
                                 <div id="textOverlaysContainer" class="text-overlays-container hidden">
                                 </div>
 
+                                <!-- Character Prompts Section -->
                                 <div id="characterPromptsContainer" class="character-prompts-container hidden">
                                 </div>
                                 
+                                <!-- Transformation Section -->
                                 <div id="transformationRow" class="transforms-container form-row">
                                     <!-- Transformation Section -->
                                     <div id="transformationSection" class="transformation-image-container">
@@ -992,6 +986,7 @@
                                             </button>
                                         </div>
                                     </div>
+                                    <!-- Vibe References Section -->
                                     <div id="vibeReferencesContainer" class="vibe-references-container">
                                         <!-- Vibe reference items will be added here -->
                                     </div>
@@ -1161,10 +1156,17 @@
                                         </button>
                                     </div>
                                     <div class="manual-preview-controls-center">
+                                        <div id="generatedImageNameDisplay" class="generated-image-name hidden">
+                                            <i class="fas fa-sparkles"></i>
+                                            <span id="generatedImageNameText"></span>
+                                        </div>
                                     </div>
                                     <div class="manual-preview-controls-right">
                                         <button type="button" id="manualPreviewPinBtn" class="btn-secondary round-button hidden">
                                             <i class="fa-regular fa-star"></i>
+                                        </button>
+                                        <button type="button" id="manualPreviewChatBtn" class="btn-secondary round-button hidden" title="Start Conversation">
+                                            <i class="fas fa-person-to-portal"></i>
                                         </button>
                                         <button type="button" id="manualPreviewCopyBtn" class="btn-secondary round-button hidden">
                                             <i class="nai-clipboard"></i>
@@ -1184,10 +1186,15 @@
                                         <button type="button" id="manualPreviewDeleteBtn" class="btn-danger round-button hidden">
                                             <i class="fas fa-fire"></i>
                                         </button>
-                                        <button type="submit" id="manualGenerateBtn" class="btn-primary round-button wide-button">
-                                            <span>Generate</span>
-                                            <i id="manualGenerateBtnIcon" class="nai-sparkles"></i>
-                                        </button>
+                                        <div class="round-button-row">
+                                            <button type="button" id="enableStageGenerationBtn" class="btn-secondary round-button indicator" data-state="on" title="Enable Stage Generations">
+                                                <i class="fas fa-arrow-down-square-triangle"></i>
+                                            </button>
+                                            <button type="submit" id="manualGenerateBtn" class="btn-primary round-button wide-button">
+                                                <span>Generate</span>
+                                                <i id="manualGenerateBtnIcon" class="nai-sparkles"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="manual-preview-controls-top-left">
@@ -1442,9 +1449,6 @@
                                     <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator hidden" data-state="off" title="Lock Text Replacements">
                                         <i class="fas fa-lambda"></i>
                                     </button>
-                                    <button type="button" id="lockBtn" class="btn-secondary indicator hidden" data-state="off" data-use-cache="true" data-has-cache="false" data-context-locked="false" data-expire-preview="false" title="Lock Results and Context">
-                                        <i class="ri-ai-generate-3d-line"></i>
-                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1583,6 +1587,12 @@
                 <button type="button" id="deselectAllTextReplacementsBtn" class="btn-secondary btn-small">
                     <i class="fas fa-square"></i>
                 </button>
+                <button type="button" id="openGlobalReplacementsBtn" class="btn-secondary btn-small" title="Global Text Replacements">
+                    <i class="fas fa-book-font"></i>
+                </button>
+                <button type="button" id="openRequestBodyReplacementsBtn" class="btn-secondary btn-small" title="Local Text Replacements">
+                    <i class="fas fa-notebook"></i>
+                </button>
                 <button type="button" id="closeTextReplacementLockModalBtn" class="btn-danger close-btn btn-small">
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
@@ -1590,26 +1600,42 @@
             <div class="modal-content text-replacement-lock-modal-content">
                 <div class="modal-body">
                     <div id="textReplacementLockListContainer" class="text-replacement-lock-list-container form-section-scroll">
+                        <!-- Expandable Compiled Prompts Section -->
+                        <div id="compiledPromptExpandableSection" class="compiled-prompt-expandable-section">
+                            <button type="button" id="toggleCompiledPromptsBtn" class="btn-secondary btn-small" style="width: 100%; margin-bottom: var(--spacing-sm);">
+                                <i class="fas fa-chevron-down"></i>
+                                <span>Show Compiled Prompts</span>
+                            </button>
+                            <div id="compiledPromptsContent" class="compiled-prompts-content hidden">
+                                <div id="compiledPromptsNoData" class="compiled-prompts-no-data hidden">
+                                    <i class="fas fa-info-circle"></i> No compiled prompt data available
+                                </div>
+                                <!-- Base Prompt -->
+                                <div id="compiledBasePromptContainer" class="compiled-prompt-field-container">
+                                    <label class="compiled-prompt-label"><i class="fas fa-comment-lines"></i> Base Prompt</label>
+                                    <div class="compiled-prompt-display-wrapper">
+                                        <div id="compiledBasePromptDisplay" class="compiled-prompt-display"></div>
+                                        <div class="emphasis-highlight-overlay" id="compiledBasePromptOverlay"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Base UC -->
+                                <div id="compiledBaseUcContainer" class="compiled-prompt-field-container">
+                                    <label class="compiled-prompt-label"><i class="fas fa-ban"></i> Undesired Content</label>
+                                    <div class="compiled-prompt-display-wrapper">
+                                        <div id="compiledBaseUcDisplay" class="compiled-prompt-display"></div>
+                                        <div class="emphasis-highlight-overlay" id="compiledBaseUcOverlay"></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Character Prompts Container -->
+                                <div id="compiledCharacterPromptsContainer"></div>
+                            </div>
+                        </div>
+                        
                         <div id="textReplacementLockList" class="text-replacement-lock-list">
                             <!-- Text replacement items will be populated here -->
                         </div>
-                    </div>
-                </div>
-                <div class="modal-footer modal-footer-padded">
-                    <div class="modal-footer-left">
-                        <button type="button" id="openRequestBodyReplacementsBtn" class="btn-secondary" title="Local Text Replacements">
-                            <i class="fas fa-notebook"></i>
-                        </button>
-                        <button type="button" id="openGlobalReplacementsBtn" class="btn-secondary" title="Global Text Replacements">
-                            <i class="fas fa-book-font"></i>
-                            <span>Global</span>
-                        </button>
-                    </div>
-                    <div class="modal-footer-right">
-                        <button type="button" id="applyTextReplacementLocksBtn" class="btn-primary">
-                            <span>Save</span>
-                            <i class="fas fa-floppy-disk"></i>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -1650,6 +1676,132 @@
                                 <span>Write</span>
                                 <i class="fas fa-floppy-disk"></i>
                             </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Knowledge Memories Modal -->
+        <div id="knowledgeMemoriesModal" class="modal hidden resizeable-window">
+            <div class="modal-window-title">
+                <div class="modal-window-title-main">
+                    <i class="fas fa-box-open-full"></i>
+                    <span>Enshutsuka Memories</span>
+                </div>
+            </div>
+            <div class="modal-window-controls">
+                <button type="button" id="toggleMemorySearchBtn" class="btn-secondary" title="Toggle Search">
+                    <i class="fas fa-search"></i>
+                </button>
+                <div id="memoryCategoryFilterDropdown" class="custom-dropdown">
+                    <button type="button" id="memoryCategoryFilterBtn" class="btn-secondary">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                    <div id="memoryCategoryFilterMenu" class="custom-dropdown-menu hidden">
+                        <!-- Options will be populated by JavaScript -->
+                    </div>
+                </div>
+                <button type="button" id="refreshKnowledgeMemoriesBtn" class="btn-secondary">
+                    <i class="fas fa-refresh"></i>
+                </button>
+                <button type="button" id="closeKnowledgeMemoriesModalBtn" class="btn-danger close-btn btn-small">
+                    <i class="fa-regular fa-xmark-large"></i>
+                </button>
+            </div>
+            <div class="modal-content knowledge-memories-modal-content">
+                <div class="modal-body">
+                    <!-- Memories List Section -->
+                    <div id="knowledgeMemoriesListContainer" class="knowledge-memories-list-container form-section-scroll">
+                        <!-- Search Section (toggleable) -->
+                        <div class="knowledge-memories-search-section hidden">
+                            <div class="form-group">
+                                <label for="memorySearchInput">Search</label>
+                                <input type="text" id="memorySearchInput" class="form-control hover-show colored" placeholder="Search memories...">
+                            </div>
+                        </div>
+                        <div id="knowledgeMemoriesLoading" class="knowledge-memories-loading">
+                            <i class="fas fa-spinner fa-spin"></i> Loading Enshutsuka memories...
+                        </div>
+                        <div id="knowledgeMemoriesList" class="knowledge-memories-list hidden">
+                            <!-- Memory items will be populated here -->
+                        </div>
+                        <div id="knowledgeMemoriesEmpty" class="knowledge-memories-empty hidden">
+                            <i class="fas fa-info-circle"></i> No Enshutsuka memories found
+                        </div>
+                    </div>
+
+                    <!-- Memory Details/Edit Section -->
+                    <div id="knowledgeMemoryDetailsContainer" class="knowledge-memory-details-container hidden">
+                        <div class="knowledge-memory-details-header">
+                            <button type="button" id="backToMemoriesListBtn" class="btn-secondary">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <h3 id="memoryDetailsName">Memory Details</h3>
+                            <button type="button" id="deleteMemoryBtn" class="btn-danger">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="knowledge-memory-details-body form-section-scroll">
+                            <div class="form-group">
+                                <label>Description</label>
+                                <div id="memoryDetailsDescription" class="memory-detail-value"></div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Category</label>
+                                    <div id="memoryDetailsCategory" class="memory-detail-value"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Confidence</label>
+                                    <div id="memoryDetailsConfidence" class="memory-detail-value"></div>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Usage Count</label>
+                                    <div id="memoryDetailsUsageCount" class="memory-detail-value"></div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Last Used</label>
+                                    <div id="memoryDetailsLastUsed" class="memory-detail-value"></div>
+                                </div>
+                            </div>
+
+                            <!-- Entities Section -->
+                            <div class="knowledge-memory-section">
+                                <h4><i class="fas fa-cubes"></i> Entities</h4>
+                                <div id="memoryDetailsEntities" class="knowledge-memory-entities">
+                                    <!-- Entities will be populated here -->
+                                </div>
+                            </div>
+
+                            <!-- Relations Section -->
+                            <div class="knowledge-memory-section">
+                                <h4><i class="fas fa-project-diagram"></i> Relations</h4>
+                                <div id="memoryDetailsRelations" class="knowledge-memory-relations">
+                                    <!-- Relations will be populated here -->
+                                </div>
+                            </div>
+
+                            <!-- Observations Section -->
+                            <div class="knowledge-memory-section">
+                                <h4><i class="fas fa-eye"></i> Observations</h4>
+                                <div id="memoryDetailsObservations" class="knowledge-memory-observations">
+                                    <!-- Observations will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer modal-footer-padded">
+                    <div class="modal-footer-left">
+                        <div id="memoryStatsDisplay" class="memory-stats-display">
+                            <!-- Stats will be populated here -->
                         </div>
                     </div>
                 </div>
@@ -2377,10 +2529,17 @@ Examples:
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-book-law"></i>
-                    <span>Director Rules Manager</span>
+                    <span>Enshutsuka Rules</span>
                 </div>
             </div>
             <div class="modal-window-controls">
+                <div id="directorRulesViewDropdown" class="custom-dropdown dropright">
+                    <button type="button" id="directorRulesViewDropdownBtn" class="btn-secondary" title="Select View">
+                        <span id="directorRulesViewDropdownSelected">Global</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div id="directorRulesViewDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                </div>
                 <button type="button" id="addDirectorRuleBtn" class="btn-primary" title="Add New Rule">
                     <i class="fas fa-plus"></i>
                 </button>
@@ -2388,26 +2547,12 @@ Examples:
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
-            <div class="modal-content modal-padding">
+            <div class="modal-content director-rules-modal-content">
                 <div class="modal-body">
-                    <div class="info-section">
-                        <div class="info-header">
-                            <i class="fas fa-info-circle"></i>
-                            <span>About Director Rules</span>
+                    <div id="directorRulesListContainer" class="director-rules-list-container form-section-scroll">
+                        <div id="directorRulesList" class="director-rules-list">
+                            <!-- Rules will be populated by JavaScript -->
                         </div>
-                        <div class="info-content">
-                            <p>Rules are instructions given to the Director AI to guide its behavior. These rules are applied to every generation and help the AI understand your preferences and constraints.</p>
-                            <p><strong>Examples:</strong></p>
-                            <ul>
-                                <li>"Never modify artist: tags or style: tags"</li>
-                                <li>"Always preserve weighted emphasis markers like {{{ }}}"</li>
-                                <li>"Avoid adding seasonal decorations unless specifically requested"</li>
-                                <li>"Keep character names exactly as provided"</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div id="directorRulesList" class="director-rules-list">
-                        <!-- Rules will be populated by JavaScript -->
                     </div>
                 </div>
             </div>
@@ -2791,7 +2936,7 @@ Examples:
                                         <i class="fas fa-paintbrush-pencil"></i>
                                     </button>
                                     <button type="button" id="updatePresetOptimizeBtn" class="btn-secondary indicator" data-state="off" title="Token Optimization">
-                                        <i class="fas fa-washing-machine"></i>
+                                        <i class="fas fa-merge"></i>
                                     </button>
                                     <div class="divider"></div>
                                     <button type="button" id="updatePresetUseCacheResponsesBtn" class="btn-secondary indicator" data-state="on" title="Use Cache Responses (Preset Only)">
@@ -3282,7 +3427,7 @@ Examples:
                 <div class="gallery-move-left-panel">
                     <img id="chatBackgroundImage" src="/static_images/background.jpg" alt="Character image" class="gallery-move-background-image">
                     <div class="gallery-move-left-header">
-                        <h3 id="chatModalTitle"><i class="mdi mdi-1-5 mdi-chat"></i> Start Conversation</h3>
+                        <h3 id="chatModalTitle"><i class="fas fa-person-to-portal"></i> Birth Persona</h3>
                     </div>
                     <div class="gallery-move-overlay">
                         <div class="gallery-move-image-info-overlay">
@@ -3333,8 +3478,8 @@ Examples:
                     </div>
                     <div class="modal-footer">
                         <button type="button" id="startChatBtn" class="btn-primary">
-                            <span>Start Conversation</span>
-                            <i class="mdi mdi-1-5 mdi-chat"></i>
+                            <span>Birth</span>
+                            <i class="fas fa-person-to-portal"></i>
                         </button>
                     </div>
                 </div>
@@ -3346,7 +3491,7 @@ Examples:
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="mdi mdi-1-5 mdi-chat"></i>
-                    <span>Chat Conversations</span>
+                    <span>Chat</span>
                 </div>
             </div>
             <div class="modal-window-controls">
@@ -4284,6 +4429,7 @@ Examples:
         <script src="scripts/comp/promptTextareaToolbar.js"></script>
         <script src="scripts/comp/galleryView.js"></script>
         <script src="scripts/comp/fileSearch.js"></script>
+        <script src="scripts/comp/knowledgeMemoriesModal.js"></script>
         <script src="scripts/ipManagement.js"></script>
         <script src="scripts/director.js"></script>
 

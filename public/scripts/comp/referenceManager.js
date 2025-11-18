@@ -919,7 +919,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     // Create preview button
     const previewBtn = document.createElement('button');
     previewBtn.type = 'button';
-    previewBtn.className = 'btn-secondary blur';
+    previewBtn.className = 'btn-secondary blur btn-small';
     previewBtn.innerHTML = '<i class="fas fa-eye"></i>';
     previewBtn.title = 'Preview image';
     previewBtn.addEventListener('click', (e) => {
@@ -947,7 +947,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     if (vibeRef.comment && vibeRef.comment.trim() !== '') {
         const commentBtn = document.createElement('button');
         commentBtn.type = 'button';
-        commentBtn.className = 'btn-secondary blur';
+        commentBtn.className = 'btn-secondary blur btn-small';
         commentBtn.innerHTML = '<i class="fas fa-comment"></i>';
         commentBtn.title = 'View comment';
         commentBtn.addEventListener('click', (e) => {
@@ -961,7 +961,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     // Create toggle button for enabling/disabling the vibe reference
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
-    toggleBtn.className = 'indicator btn-secondary blur';
+    toggleBtn.className = 'indicator btn-secondary blur btn-small';
     toggleBtn.setAttribute('data-state', toggleState); // Use passed toggle state
     toggleBtn.innerHTML = '<i class="fas fa-power-off"></i>';
     toggleBtn.title = toggleState === 'on' ? 'Toggle vibe reference (enabled)' : 'Toggle vibe reference (disabled)';
@@ -988,7 +988,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     // Create text injection toggle button
     const textInjectionToggle = document.createElement('button');
     textInjectionToggle.type = 'button';
-    textInjectionToggle.className = 'indicator btn-secondary blur';
+    textInjectionToggle.className = 'indicator btn-secondary blur btn-small';
     textInjectionToggle.setAttribute('data-state', textInjectionState);
     textInjectionToggle.innerHTML = '<i class="fas fa-indent"></i>';
     textInjectionToggle.title = textInjectionState === 'on' ? 'Text injection enabled' : 'Text injection disabled';
@@ -1015,7 +1015,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     // Create delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
-    deleteBtn.className = 'btn-danger blur';
+    deleteBtn.className = 'btn-danger blur btn-small';
     deleteBtn.innerHTML = '<i class="nai-thin-cross"></i>';
     deleteBtn.title = 'Remove vibe reference';
     deleteBtn.addEventListener('click', (e) => {
@@ -8303,8 +8303,8 @@ async function createDirectorSessionWithImage(cacheImage) {
             // Update toast to success (existing listener will handle the response)
             updateGlassToastComplete(toastId, {
                 type: 'success',
-                title: 'Director Session Created',
-                message: 'Director session created successfully! Open the editor to access the new session.',
+                title: 'Enshutsuka Session Created',
+                message: 'Enshutsuka session created successfully! Open the editor to access the new session.',
                 customIcon: '<i class="xai-icon"></i>',
                 showProgress: false
             });

@@ -278,8 +278,7 @@ function updateChatSession(chatId, updates) {
             }
         });
         
-        if (fields.length === 0) return false;
-        
+        // Always update updated_at timestamp, even if no other fields are being updated
         fields.push('updated_at = strftime(\'%s\', \'now\')');
         values.push(chatId);
         
@@ -379,6 +378,48 @@ function getChatMessageCount(chatSessionId) {
     } catch (error) {
         console.error('❌ Error getting chat message count:', error.message);
         return 0;
+    }
+}
+
+function deleteChatMessage(messageId) {
+    try {
+        // First, get the message to find its chat_session_id
+        const message = db.prepare('SELECT chat_session_id, created_at FROM chat_messages WHERE id = ?').get(messageId);
+        
+        if (!message) {
+            console.error(`❌ Message ${messageId} not found`);
+            return false;
+        }
+        
+        const chatSessionId = message.chat_session_id;
+        
+        // Delete the message
+        const stmt = db.prepare('DELETE FROM chat_messages WHERE id = ?');
+        const result = stmt.run(messageId);
+        
+        if (result.changes > 0) {
+            // Get the most recent remaining message's timestamp to set as the session's updated_at
+            const lastMessage = getLastChatMessage(chatSessionId);
+            const updateStmt = db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?');
+            
+            if (lastMessage && lastMessage.created_at) {
+                // Set updated_at to the most recent remaining message's timestamp
+                updateStmt.run(lastMessage.created_at, chatSessionId);
+                console.log(`🗑️ Deleted chat message ${messageId} from session ${chatSessionId}, updated session timestamp to ${lastMessage.created_at}`);
+            } else {
+                // No messages remain, update to current time
+                const now = Math.floor(Date.now() / 1000);
+                updateStmt.run(now, chatSessionId);
+                console.log(`🗑️ Deleted chat message ${messageId} from session ${chatSessionId}, no messages remain`);
+            }
+            
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error('❌ Error deleting chat message:', error.message);
+        return false;
     }
 }
 
@@ -568,6 +609,7 @@ module.exports = {
     addChatMessage,
     getChatMessages,
     getChatMessageCount,
+    deleteChatMessage,
     getLastChatMessage,
     getConversationData,
     updateConversationData,

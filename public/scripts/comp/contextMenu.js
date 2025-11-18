@@ -52,6 +52,11 @@ class ContextMenuController {
 
     // Filter items based on mobile/desktop visibility
     shouldShowItem(item) {
+        // Check if item is explicitly hidden
+        if (item.hidden === true) {
+            return false;
+        }
+        
         const isMobile = this.isMobile();
 
         // Check mobile-only items
@@ -340,6 +345,9 @@ class ContextMenuController {
         // Call loadfn for all sections after menu is fully rendered and positioned
         this.executeLoadFunctions(config, target);
         
+        // Update indicator dots after loadfn has set item.checked values
+        this.updateIndicatorDots(config);
+        
         this.isOpen = true;
         this.currentTarget = target;
 
@@ -544,6 +552,26 @@ class ContextMenuController {
             if (item.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
+                
+                // Support named separators with optional icon
+                if (item.text) {
+                    const nameElement = document.createElement('div');
+                    nameElement.className = 'context-menu-separator-name';
+                    
+                    // Add icon if provided
+                    if (item.icon) {
+                        const iconElement = document.createElement('i');
+                        iconElement.className = item.icon;
+                        nameElement.appendChild(iconElement);
+                    }
+                    
+                    const textElement = document.createElement('span');
+                    textElement.textContent = item.text;
+                    nameElement.appendChild(textElement);
+                    
+                    separator.appendChild(nameElement);
+                }
+                
                 sectionElement.appendChild(separator);
                 return;
             }
@@ -595,12 +623,45 @@ class ContextMenuController {
                 }
             }
 
-            // Submenu arrow
+            // Value display for submenu items (shows current selection)
             if ((item.submenu && Array.isArray(item.submenu)) || item.optionsfn) {
+                if (item.valueDisplay) {
+                    const valueDisplayElement = document.createElement('span');
+                    valueDisplayElement.className = 'context-menu-item-value';
+                    const valueDisplayContent = typeof item.valueDisplay === 'function' ? item.valueDisplay(target) : item.valueDisplay;
+                    if (typeof valueDisplayContent === 'string') {
+                        valueDisplayElement.innerHTML = valueDisplayContent;
+                    } else if (valueDisplayContent instanceof HTMLElement) {
+                        valueDisplayElement.appendChild(valueDisplayContent);
+                    }
+                    itemElement.appendChild(valueDisplayElement);
+                }
+                
+                // Submenu arrow
                 const arrowElement = document.createElement('i');
                 arrowElement.className = 'context-menu-submenu-arrow fas fa-chevron-right';
                 itemElement.appendChild(arrowElement);
                 itemElement.classList.add('has-submenu');
+            }
+
+            // Indicator dot for toggle items (keepMenuOpen: true)
+            if (item.keepMenuOpen) {
+                const indicatorDot = document.createElement('span');
+                indicatorDot.className = 'context-menu-item-indicator';
+                // Apply checked class if item.checked is already set (from loadfn called earlier)
+                if (item.checked === true) {
+                    indicatorDot.classList.add('checked');
+                }
+                itemElement.appendChild(indicatorDot);
+                itemElement.classList.add('has-toggle-indicator');
+            }
+
+            // Apply className if it exists
+            if (item.className) {
+                const classes = Array.isArray(item.className) ? item.className : item.className.split(' ');
+                classes.forEach(cls => {
+                    if (cls) itemElement.classList.add(cls);
+                });
             }
 
             // Disabled state
@@ -670,6 +731,9 @@ class ContextMenuController {
                 }
             }
 
+            // Store reference to DOM element on item for later updates
+            item._element = itemElement;
+
             sectionElement.appendChild(itemElement);
         });
 
@@ -699,6 +763,26 @@ class ContextMenuController {
             if (icon.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
+                
+                // Support named separators with optional icon
+                if (icon.text) {
+                    const nameElement = document.createElement('div');
+                    nameElement.className = 'context-menu-separator-name';
+                    
+                    // Add icon if provided
+                    if (icon.icon) {
+                        const iconElement = document.createElement('i');
+                        iconElement.className = icon.icon;
+                        nameElement.appendChild(iconElement);
+                    }
+                    
+                    const textElement = document.createElement('span');
+                    textElement.textContent = icon.text;
+                    nameElement.appendChild(textElement);
+                    
+                    separator.appendChild(nameElement);
+                }
+                
                 iconsContainer.appendChild(separator);
                 return;
             }
@@ -1014,6 +1098,146 @@ class ContextMenuController {
             itemElement.classList.remove('disabled');
             itemElement.removeAttribute('aria-disabled');
         }
+
+        // Update indicator dot for toggle items
+        this.updateItemIndicatorDot(itemElement, item);
+        
+        // Update value display for submenu items
+        if ((item.submenu && Array.isArray(item.submenu)) || item.optionsfn) {
+            if (item.valueDisplay) {
+                let valueDisplayElement = itemElement.querySelector('.context-menu-item-value');
+                if (!valueDisplayElement) {
+                    valueDisplayElement = document.createElement('span');
+                    valueDisplayElement.className = 'context-menu-item-value';
+                    const arrowElement = itemElement.querySelector('.context-menu-submenu-arrow');
+                    if (arrowElement) {
+                        itemElement.insertBefore(valueDisplayElement, arrowElement);
+                    } else {
+                        itemElement.appendChild(valueDisplayElement);
+                    }
+                }
+                const valueDisplayContent = typeof item.valueDisplay === 'function' ? item.valueDisplay(target) : item.valueDisplay;
+                if (typeof valueDisplayContent === 'string') {
+                    valueDisplayElement.innerHTML = valueDisplayContent;
+                } else if (valueDisplayContent instanceof HTMLElement) {
+                    valueDisplayElement.innerHTML = '';
+                    valueDisplayElement.appendChild(valueDisplayContent);
+                } else {
+                    valueDisplayElement.textContent = valueDisplayContent || '';
+                }
+            }
+        }
+    }
+
+    updateItemIndicatorDot(itemElement, item) {
+        if (item.keepMenuOpen) {
+            const indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
+            if (indicatorDot) {
+                // Show dot if item.checked is true, hide if false or undefined
+                if (item.checked === true) {
+                    indicatorDot.classList.add('checked');
+                } else {
+                    indicatorDot.classList.remove('checked');
+                }
+            }
+        }
+    }
+
+    refreshSubmenuItemDisplay(subItemElement, subItem, target) {
+        // Skip items with custom content - they manage their own updates
+        if (subItem.content) {
+            // For custom content, just call loadfn if it exists
+            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+                try {
+                    subItem.loadfn(subItem, target);
+                } catch (error) {
+                    console.error('Error executing submenu item loadfn:', error);
+                }
+            }
+            return;
+        }
+
+        // Call loadfn to update subItem properties
+        if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+            try {
+                subItem.loadfn(subItem, target);
+            } catch (error) {
+                console.error('Error executing submenu item loadfn:', error);
+                return;
+            }
+        }
+
+        // Update icon if it exists
+        const iconElement = subItemElement.querySelector('i');
+        if (subItem.icon) {
+            const iconValue = typeof subItem.icon === 'function' ? subItem.icon(target) : subItem.icon;
+            if (iconElement) {
+                iconElement.className = iconValue;
+            } else {
+                // Create icon if it doesn't exist
+                const newIconElement = document.createElement('i');
+                newIconElement.className = iconValue;
+                subItemElement.insertBefore(newIconElement, subItemElement.firstChild);
+            }
+        } else if (iconElement) {
+            // Remove icon if it no longer exists
+            iconElement.remove();
+        }
+
+        // Update text if it exists
+        const textElement = subItemElement.querySelector('.context-menu-item-text');
+        if (subItem.text) {
+            const textValue = typeof subItem.text === 'function' ? subItem.text(target) : subItem.text;
+            if (textElement) {
+                textElement.textContent = textValue;
+            } else {
+                // Create text element if it doesn't exist
+                const newTextElement = document.createElement('span');
+                newTextElement.className = 'context-menu-item-text';
+                newTextElement.textContent = textValue;
+                subItemElement.appendChild(newTextElement);
+            }
+        } else if (textElement) {
+            // Remove text if it no longer exists
+            textElement.remove();
+        }
+
+        // Update className if it exists
+        if (subItem.className) {
+            // Remove old className from subItem element
+            subItemElement.classList.remove('text-success', 'text-danger', 'text-warning', 'text-info');
+            // Add new className (handle both string and array)
+            const classes = Array.isArray(subItem.className) ? subItem.className : [subItem.className];
+            classes.forEach(cls => {
+                if (cls) subItemElement.classList.add(cls);
+            });
+        }
+
+        // Update disabled state
+        if (subItem.disabled) {
+            subItemElement.classList.add('disabled');
+            subItemElement.setAttribute('aria-disabled', 'true');
+        } else {
+            subItemElement.classList.remove('disabled');
+            subItemElement.removeAttribute('aria-disabled');
+        }
+
+        // Update indicator dot for toggle items
+        this.updateItemIndicatorDot(subItemElement, subItem);
+    }
+
+    updateIndicatorDots(config) {
+        if (!config.sections || !Array.isArray(config.sections)) return;
+
+        config.sections.forEach((section) => {
+            if (section.type === 'list' && section.items && Array.isArray(section.items)) {
+                section.items.forEach((item) => {
+                    if (item.keepMenuOpen && item._element) {
+                        this.updateItemIndicatorDot(item._element, item);
+                    }
+                });
+            }
+        });
     }
 
     refreshIconDisplay(iconElement, icon, target) {
@@ -1168,6 +1392,14 @@ class ContextMenuController {
         // Keep parent item active
         parentItem.classList.add('keyboard-selected');
 
+        // Store submenu state for refreshing all items when toggling
+        this.currentSubmenuState = {
+            parentItem: parentItem,
+            submenuItems: submenuItems,
+            target: target,
+            customHandler: customHandler
+        };
+
         // Create submenu container
         const submenu = document.createElement('div');
         submenu.className = 'context-menu-submenu';
@@ -1177,8 +1409,37 @@ class ContextMenuController {
             if (subItem.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
+                
+                // Support named separators with optional icon
+                if (subItem.text) {
+                    const nameElement = document.createElement('div');
+                    nameElement.className = 'context-menu-separator-name';
+                    
+                    // Add icon if provided
+                    if (subItem.icon) {
+                        const iconElement = document.createElement('i');
+                        iconElement.className = subItem.icon;
+                        nameElement.appendChild(iconElement);
+                    }
+                    
+                    const textElement = document.createElement('span');
+                    textElement.textContent = subItem.text;
+                    nameElement.appendChild(textElement);
+                    
+                    separator.appendChild(nameElement);
+                }
+                
                 submenu.appendChild(separator);
                 return;
+            }
+
+            // Call loadfn if it exists to update subItem properties before rendering
+            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+                try {
+                    subItem.loadfn(subItem, target);
+                } catch (error) {
+                    console.error('Error executing submenu item loadfn:', error);
+                }
             }
 
             const subItemElement = document.createElement('div');
@@ -1216,6 +1477,26 @@ class ContextMenuController {
                 }
             }
 
+            // Indicator dot for toggle items (keepMenuOpen: true)
+            if (subItem.keepMenuOpen) {
+                const indicatorDot = document.createElement('span');
+                indicatorDot.className = 'context-menu-item-indicator';
+                // Apply checked class if subItem.checked is already set (from loadfn called earlier)
+                if (subItem.checked === true) {
+                    indicatorDot.classList.add('checked');
+                }
+                subItemElement.appendChild(indicatorDot);
+                subItemElement.classList.add('has-toggle-indicator');
+            }
+
+            // Apply className if it exists
+            if (subItem.className) {
+                const classes = Array.isArray(subItem.className) ? subItem.className : subItem.className.split(' ');
+                classes.forEach(cls => {
+                    if (cls) subItemElement.classList.add(cls);
+                });
+            }
+
             // Disabled state
             if (subItem.disabled) {
                 subItemElement.classList.add('disabled');
@@ -1232,17 +1513,32 @@ class ContextMenuController {
                 subItemElement.addEventListener('click', () => {
                     if (!subItem.disabled) {
                         customHandler(subItem, target);
-                        this.hideMenu();
+                        // Only hide menu if keepMenuOpen is not set to true
+                        if (!subItem.keepMenuOpen) {
+                            this.hideMenu();
+                        } else {
+                            // If menu stays open, refresh all submenu items (call all loadfns)
+                            this.refreshAllSubmenuItems();
+                        }
                     }
                 });
             } else if (subItem.action && typeof subItem.action === 'string') {
                 subItemElement.addEventListener('click', () => {
                     if (!subItem.disabled) {
                         this.executeAction(subItem.action, target, subItem);
-                        this.hideMenu();
+                        // Only hide menu if keepMenuOpen is not set to true
+                        if (!subItem.keepMenuOpen) {
+                            this.hideMenu();
+                        } else {
+                            // If menu stays open, refresh all submenu items (call all loadfns)
+                            this.refreshAllSubmenuItems();
+                        }
                     }
                 });
             }
+
+            // Store reference to DOM element on subItem for later updates
+            subItem._element = subItemElement;
 
             submenu.appendChild(subItemElement);
         });
@@ -1350,11 +1646,37 @@ class ContextMenuController {
         this.submenuClickHandler = submenuClickHandler;
     }
     
+    refreshAllSubmenuItems() {
+        if (!this.currentSubmenuState || !this.currentSubmenu) return;
+
+        const { submenuItems, target } = this.currentSubmenuState;
+
+        // Call loadfn for all submenu items
+        submenuItems.forEach((subItem) => {
+            if (subItem.separator || !subItem._element) return;
+
+            // Call loadfn to update subItem properties
+            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+                try {
+                    subItem.loadfn(subItem, target);
+                } catch (error) {
+                    console.error('Error executing submenu item loadfn:', error);
+                }
+            }
+
+            // Refresh the display of this submenu item
+            this.refreshSubmenuItemDisplay(subItem._element, subItem, target);
+        });
+    }
+
     hideSubmenu() {
         if (this.currentSubmenu) {
             this.currentSubmenu.remove();
             this.currentSubmenu = null;
         }
+        
+        // Clear submenu state
+        this.currentSubmenuState = null;
         
         // Remove active state from any parent items
         const activeItems = this.menu.querySelectorAll('.context-menu-item.keyboard-selected');

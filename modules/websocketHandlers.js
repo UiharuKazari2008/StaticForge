@@ -2,6 +2,7 @@ const TextReplacements = require('./textReplacements');
 const { resolvePresetOrGroup } = require('./textReplacements');
 const geo2city = require('geo2city');
 const DatasetTagService = require('./datasetTagService');
+const logger = require('./logger');
 const FavoritesManager = require('./favorites');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const { 
@@ -55,7 +56,8 @@ const {
     restartChatSession,
     addChatMessage, 
     getChatMessages, 
-    getChatMessageCount, 
+    getChatMessageCount,
+    deleteChatMessage,
     getLastChatMessage 
 } = require('./chatDatabase');
 const { createPersonaChatSession, establishPersona, continueConversation, getCharacterMemories: getGrokMemories, addCharacterMemory: addGrokMemory, getConversationSummary: getGrokSummary, updateConversationSummary: updateGrokSummary, callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
@@ -245,6 +247,7 @@ class WebSocketMessageHandlers {
             'director_send_message',
             'director_rollback_message',
             'rebuild_metadata_cache',
+            'delete_knowledge_memory',
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -706,9 +709,12 @@ class WebSocketMessageHandlers {
                 await this.handleUpdateChatContext(ws, message, clientInfo, wsServer);
                 break;
 
-            case 'get_chat_messages':
-                await this.handleGetChatMessages(ws, message, clientInfo, wsServer);
-                break;
+                case 'get_chat_messages':
+                    await this.handleGetChatMessages(ws, message, clientInfo, wsServer);
+                    break;
+                case 'delete_chat_message':
+                    await this.handleDeleteChatMessage(ws, message, clientInfo, wsServer);
+                    break;
                 
             case 'cancel_generation':
                 await this.handleCancelGeneration(ws, message, clientInfo, wsServer);
@@ -754,6 +760,14 @@ class WebSocketMessageHandlers {
             case 'director_save_rules':
                 await this.handleDirectorSaveRules(ws, message, clientInfo, wsServer);
                 break;
+            
+            case 'director_load_feedback':
+                await this.handleDirectorLoadFeedback(ws, message, clientInfo, wsServer);
+                break;
+            
+            case 'director_delete_feedback':
+                await this.handleDirectorDeleteFeedback(ws, message, clientInfo, wsServer);
+                break;
 
             // Dynamic Generation Progress handlers
             case 'dynamic_generation_progress':
@@ -779,6 +793,19 @@ class WebSocketMessageHandlers {
                 
             case 'get_ip_blocking_reasons':
                 await this.handleGetIPBlockingReasons(ws, message, clientInfo, wsServer);
+                break;
+            
+            // Knowledge Memory handlers
+            case 'list_knowledge_memories':
+                await this.handleListKnowledgeMemories(ws, message, clientInfo, wsServer);
+                break;
+            
+            case 'get_knowledge_memory':
+                await this.handleGetKnowledgeMemory(ws, message, clientInfo, wsServer);
+                break;
+            
+            case 'delete_knowledge_memory':
+                await this.handleDeleteKnowledgeMemory(ws, message, clientInfo, wsServer);
                 break;
                 
             default:
@@ -3532,6 +3559,15 @@ class WebSocketMessageHandlers {
                     const previewFile = getPreviewFilename(baseName);
                     const previewPath = path.join(previewsDir, previewFile);
 
+                    // Define all preview files that may exist
+                    const previewFiles = [
+                        path.join(previewsDir, `${baseName}.webp`),
+                        path.join(previewsDir, `${baseName}@2x.webp`),
+                        path.join(previewsDir, `${baseName}@lq.webp`),
+                        path.join(previewsDir, `${baseName}@blur.webp`),
+                        previewPath // Legacy preview format
+                    ];
+
                     // Always delete both the base and upscaled version
                     const filesToDelete = [];
                     const filenamesToRemoveFromWorkspaces = [];
@@ -3551,6 +3587,29 @@ class WebSocketMessageHandlers {
                     if (fs.existsSync(originalPath)) {
                         filesToDelete.push({ path: originalPath, type: 'original' });
                         filenamesToRemoveFromWorkspaces.push(originalFilename);
+                        
+                        // Try to extract and delete dynGenPreview file from original
+                        try {
+                            const imageBuffer = fs.readFileSync(originalPath);
+                            const metadata = readMetadata(imageBuffer);
+                            if (metadata?.tEXt?.Comment) {
+                                const commentData = JSON.parse(metadata.tEXt.Comment);
+                                const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
+                                
+                                if (previewHash) {
+                                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                                    const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                                    
+                                    if (fs.existsSync(dynGenPreviewPath)) {
+                                        filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                                        console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                    }
+                                }
+                            }
+                        } catch (metadataError) {
+                            // Silently ignore metadata extraction errors
+                            console.debug(`Could not extract metadata for preview cleanup: ${metadataError.message}`);
+                        }
                     }
 
                     // Add upscaled file if exists
@@ -3560,9 +3619,11 @@ class WebSocketMessageHandlers {
                         filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                     }
 
-                    // Add the preview file
-                    if (fs.existsSync(previewPath)) {
-                        filesToDelete.push({ path: previewPath, type: 'preview' });
+                    // Add all preview files (webp and legacy formats)
+                    for (const previewFilePath of previewFiles) {
+                        if (fs.existsSync(previewFilePath)) {
+                            filesToDelete.push({ path: previewFilePath, type: 'preview' });
+                        }
                     }
 
                     // Remove files from workspaces first
@@ -3677,9 +3738,19 @@ class WebSocketMessageHandlers {
                     const previewFile = `${baseName}_preview.png`;
                     const previewPath = path.join(__dirname, '..', 'previews', previewFile);
 
+                    // Define all preview files that may exist
+                    const previewFiles = [
+                        path.join(previewsDir, `${baseName}.webp`),
+                        path.join(previewsDir, `${baseName}@2x.webp`),
+                        path.join(previewsDir, `${baseName}@lq.webp`),
+                        path.join(previewsDir, `${baseName}@blur.webp`),
+                        previewPath // Legacy preview format
+                    ];
+
                     // Find all related files
                     const filesToMove = [];
                     const filesToDelete = [];
+                    const filenamesToRemoveFromWorkspaces = [];
 
                     // Determine base/original and upscaled filenames
                     let originalFilename, upscaledFilename;
@@ -3696,6 +3767,30 @@ class WebSocketMessageHandlers {
                     if (fs.existsSync(originalPath)) {
                         filesToMove.push({ source: originalPath, type: 'original' });
                         filesToDelete.push(originalPath);
+                        filenamesToRemoveFromWorkspaces.push(originalFilename);
+                        
+                        // Try to extract and delete dynGenPreview file from original
+                        try {
+                            const imageBuffer = fs.readFileSync(originalPath);
+                            const metadata = readMetadata(imageBuffer);
+                            if (metadata?.tEXt?.Comment) {
+                                const commentData = JSON.parse(metadata.tEXt.Comment);
+                                const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
+                                
+                                if (previewHash) {
+                                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                                    const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                                    
+                                    if (fs.existsSync(dynGenPreviewPath)) {
+                                        filesToDelete.push(dynGenPreviewPath);
+                                        console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
+                                    }
+                                }
+                            }
+                        } catch (metadataError) {
+                            // Silently ignore metadata extraction errors
+                            console.debug(`Could not extract metadata for preview cleanup: ${metadataError.message}`);
+                        }
                     }
 
                     // Add upscaled file if exists
@@ -3703,11 +3798,14 @@ class WebSocketMessageHandlers {
                     if (fs.existsSync(upscaledPath)) {
                         filesToMove.push({ source: upscaledPath, type: 'upscaled' });
                         filesToDelete.push(upscaledPath);
+                        filenamesToRemoveFromWorkspaces.push(upscaledFilename);
                     }
 
-                    // Add preview file if exists
-                    if (fs.existsSync(previewPath)) {
-                        filesToDelete.push(previewPath);
+                    // Add all preview files (webp and legacy formats)
+                    for (const previewFilePath of previewFiles) {
+                        if (fs.existsSync(previewFilePath)) {
+                            filesToDelete.push(previewFilePath);
+                        }
                     }
 
                     // Move files to sequenzia folder
@@ -3730,6 +3828,14 @@ class WebSocketMessageHandlers {
                         // Remove files from workspaces first
                         if (filenamesToRemoveFromWorkspaces.length > 0) {
                             removeFilesFromWorkspaces(filenamesToRemoveFromWorkspaces);
+                        }
+                        
+                        // Remove metadata from cache
+                        removeImageMetadata(filenamesToRemoveFromWorkspaces);
+                        
+                        // Delete reference metadata for moved files
+                        for (const fn of filenamesToRemoveFromWorkspaces) {
+                            this.referenceMetadataDb.deleteMetadata(fn);
                         }
                     }
 
@@ -7051,6 +7157,8 @@ class WebSocketMessageHandlers {
                 hasDynamicGen: progressData.hasDynamicGen || false,
                 isUpscaling: progressData.isUpscaling || false,
                 reasoning: progressData.reasoning || null, // for 3rd line display
+                toolName: progressData.toolName || null, // tool name for icon/styling
+                toolReason: progressData.toolReason || null, // tool-specific reason
                 imageData: progressData.imageData || null, // base64 image data for preview
                 // Staged generation fields
                 totalStages: progressData.totalStages || null,
@@ -8334,15 +8442,38 @@ class WebSocketMessageHandlers {
         try {
             const { requestId: _, enableStreaming, ...data } = message;
 
-            console.log(`🚀 Processing image generation request: ${requestId} (streaming: ${enableStreaming})`);
-            console.log('📋 Generation data:', JSON.stringify(data, null, 2));
+            // Initialize generation log for this request
+            logger.initGenerationLog(requestId);
+            
+            // Summarized console output
+            console.log(`🚀 Processing image generation: ${requestId} | Model: ${data.model || 'unknown'} | Resolution: ${data.resolution || 'unknown'} | ${enableStreaming ? 'streaming' : 'batch'}`);
+            
+            // Detailed file logging
+            logger.logGeneration('REQUEST_DATA', {
+                requestId,
+                enableStreaming,
+                model: data.model,
+                resolution: data.resolution,
+                steps: data.steps,
+                guidance: data.guidance,
+                sampler: data.sampler,
+                workspace: data.workspace,
+                hasDynamicGen: !!data.dynamic_generation,
+                fullData: data
+            }, requestId);
+            
+            // Verbose console output (only if verbosity is VERBOSE)
+            if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+                console.log('📋 Generation data:', JSON.stringify(data, null, 2));
+            }
 
             // Start keep-alive for long-running image generation
             this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds for image generation
 
             if (enableStreaming) {
                 // Handle streaming generation
-                console.log('🎬 Starting streaming image generation...');
+                logger.detailed('🎬 Starting streaming image generation...');
+                logger.logGeneration('STREAMING_START', 'Initializing streaming generation pipeline', requestId);
 
                 // Create callback to send intermediate images via websocket
                 const streamingCallback = async (event) => {
@@ -8516,18 +8647,31 @@ class WebSocketMessageHandlers {
 
         // Handle image upscaling requests
     async handleImageUpscaling(ws, message, clientInfo, wsServer) {
+        const requestId = message.requestId || 'unknown';
+        
         try {
-            const { requestId, ...data } = message;
+            const { requestId: _, ...data } = message;
             console.log(`📏 Processing image upscaling request: ${requestId}`);
             console.log('📋 Upscaling data:', data);
 
+            // Start keep-alive for long-running upscaling (especially for ESRGAN)
+            this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds
+
             // Call the WebSocket-native upscaling function directly
             const result = await upscaleImageWebSocket(
-                data.filename, 
-                data.workspace, 
-                clientInfo.userType, 
-                clientInfo.sessionId
+                data.filename,
+                data.workspace,
+                clientInfo.userType,
+                clientInfo.sessionId,
+                data.upscaler || 'novelai',
+                data.scale || 4,
+                ws,
+                this,
+                requestId
             );
+            
+            // Stop keep-alive on success
+            this.stopKeepAliveInterval(requestId);
             
             // Send success response with upscaled image data using _response pattern
             this.sendToClient(ws, {
@@ -8542,9 +8686,13 @@ class WebSocketMessageHandlers {
             
         } catch (error) {
             console.error('❌ Image upscaling error:', error);
+            
+            // Stop keep-alive on error
+            this.stopKeepAliveInterval(requestId);
+            
             this.sendToClient(ws, {
                 type: 'image_upscaling_error',
-                requestId: message.requestId,
+                requestId: requestId,
                 data: null,
                 error: error.message || 'Image upscaling failed',
                 timestamp: new Date().toISOString()
@@ -9248,7 +9396,11 @@ class WebSocketMessageHandlers {
                     }
                 }
                 
-                console.log('📝 Initial AI response received, length:', aiResponse.length);
+                // Extract usage data and content from response
+                const usageData = aiResponse?.usage || null;
+                const responseContent = aiResponse?.content || aiResponse || '';
+                
+                console.log('📝 Initial AI response received, length:', responseContent.length);
 
                 // Send streaming complete message only if streaming was enabled
                 // Don't include requestId here - create_chat_session request was already resolved
@@ -9256,7 +9408,8 @@ class WebSocketMessageHandlers {
                     this.sendToClient(ws, {
                         type: 'chat_streaming_complete',
                         chatId: chatId,
-                        finalResponse: aiResponse
+                        finalResponse: responseContent,
+                        usage: usageData || null
                     });
                 }
 
@@ -9264,7 +9417,7 @@ class WebSocketMessageHandlers {
                 let parsedResponse;
                 try {
                     // Clean the response - remove markdown code blocks if present
-                    let cleanResponse = aiResponse.trim();
+                    let cleanResponse = (typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent)).trim();
                     if (cleanResponse.startsWith('```json')) {
                         cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
                     } else if (cleanResponse.startsWith('```')) {
@@ -9361,7 +9514,7 @@ class WebSocketMessageHandlers {
                     parsedResponse = {
                         actions: [],
                         sfx: [],
-                        reply: [aiResponse || 'Hello! I\'m here and ready to chat with you.'],
+                        reply: [responseContent || 'Hello! I\'m here and ready to chat with you.'],
                         speech: [],
                         innerspeech: [],
                         emotion: [],
@@ -9386,6 +9539,9 @@ class WebSocketMessageHandlers {
                 // Only store again if this is NOT from persona establishment (e.g., if no persona was established)
                 // The parsed response is already stored by establishPersona, we just need to send it to the client
                 
+                // Extract usage data if not already extracted
+                const responseUsageData = usageData || aiResponse?.usage || null;
+                
                 // Send the AI response to the client
                 this.sendToClient(ws, {
                     type: 'chat_message_response',
@@ -9393,8 +9549,9 @@ class WebSocketMessageHandlers {
                         success: true,
                         chatId: chatId,
                         response: parsedResponse,
-                        rawResponse: aiResponse,
-                        streaming: config.chat_streaming_enabled
+                        rawResponse: responseContent,
+                        streaming: config.chat_streaming_enabled,
+                        usage: responseUsageData || null
                     },
                     timestamp: new Date().toISOString()
                 });
@@ -9598,7 +9755,11 @@ class WebSocketMessageHandlers {
                     aiResponse = await aiServiceManager.continueConversation(chatId, userMessage);
                 }
                 
-                console.log('📝 AI response received, length:', aiResponse.length);
+                // Extract usage data and content from response
+                const usageData = aiResponse?.usage || null;
+                const responseContent = aiResponse?.content || aiResponse || '';
+                
+                console.log('📝 AI response received, length:', responseContent.length);
 
                 // Send streaming complete message only if streaming was enabled
                 if (config.chat_streaming_enabled) {
@@ -9606,14 +9767,15 @@ class WebSocketMessageHandlers {
                         type: 'chat_streaming_complete',
                         requestId: message.requestId,
                         chatId: chatId,
-                        finalResponse: aiResponse
+                        finalResponse: responseContent,
+                        usage: usageData || null
                     });
                 } else {
                     // Parse AI response for non-streaming mode
                     let parsedResponse;
                     try {
                         // Clean the response - remove markdown code blocks if present
-                        let cleanResponse = aiResponse.trim();
+                        let cleanResponse = (typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent)).trim();
                         if (cleanResponse.startsWith('```json')) {
                             cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '');
                         } else if (cleanResponse.startsWith('```')) {
@@ -9699,7 +9861,7 @@ class WebSocketMessageHandlers {
                             sfx: [],
                             speechdirect: [],
                             speech: [],
-                            reply: [aiResponse || 'I apologize, but I could not generate a response.'],
+                            reply: [responseContent || 'I apologize, but I could not generate a response.'],
                             innerspeech: [],
                             emotion: [],
                             environment: [],
@@ -9727,8 +9889,9 @@ class WebSocketMessageHandlers {
                             success: true,
                             chatId: chatId,
                             response: parsedResponse,
-                            rawResponse: aiResponse,
-                            streaming: false
+                            rawResponse: responseContent,
+                            streaming: false,
+                            usage: usageData || null
                         },
                         timestamp: new Date().toISOString()
                     });
@@ -9807,6 +9970,37 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error getting chat messages:', error);
             this.sendError(ws, 'Failed to get chat messages', error.message, message.requestId);
+        }
+    }
+
+    async handleDeleteChatMessage(ws, message, clientInfo, wsServer) {
+        try {
+            const data = message.data || message;
+            const { messageId } = data;
+            
+            if (!messageId) {
+                this.sendError(ws, 'Message ID is required', null, message.requestId);
+                return;
+            }
+
+            const success = deleteChatMessage(messageId);
+            
+            if (success) {
+                this.sendToClient(ws, {
+                    type: 'delete_chat_message_response',
+                    requestId: message.requestId,
+                    data: {
+                        success: true,
+                        message: 'Message deleted successfully'
+                    },
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                this.sendError(ws, 'Failed to delete message', null, message.requestId);
+            }
+        } catch (error) {
+            console.error('❌ Error deleting chat message:', error);
+            this.sendError(ws, 'Failed to delete chat message', error.message, message.requestId);
         }
     }
 
@@ -10307,6 +10501,120 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Handle director feedback loading
+    async handleDirectorLoadFeedback(ws, message, clientInfo, wsServer) {
+        try {
+            // Load current director config
+            const directorConfigPath = path.join(__dirname, '../director.config.json');
+            let directorConfig = {};
+            
+            if (fs.existsSync(directorConfigPath)) {
+                try {
+                    const configData = fs.readFileSync(directorConfigPath, 'utf8');
+                    directorConfig = JSON.parse(configData);
+                } catch (parseError) {
+                    console.error('Error parsing director.config.json:', parseError);
+                }
+            }
+            
+            // Ensure feedback structure exists
+            if (!directorConfig.feedback) {
+                directorConfig.feedback = {
+                    description: "Collection of past generation issues and lessons learned to improve future generations",
+                    entries: []
+                };
+            }
+            
+            if (!Array.isArray(directorConfig.feedback.entries)) {
+                directorConfig.feedback.entries = [];
+            }
+            
+            console.log(`📚 Loaded ${directorConfig.feedback.entries.length} director feedback entries`);
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'director_load_feedback_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    feedback: directorConfig.feedback.entries
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error loading director feedback:', error);
+            this.sendError(ws, 'Failed to load feedback', error.message, message.requestId);
+        }
+    }
+
+    // Handle director feedback deletion
+    async handleDirectorDeleteFeedback(ws, message, clientInfo, wsServer) {
+        try {
+            const { feedbackId } = message;
+            
+            if (!feedbackId) {
+                this.sendError(ws, 'Feedback ID is required', 'VALIDATION_ERROR', message.requestId);
+                return;
+            }
+            
+            // Load current director config
+            const directorConfigPath = path.join(__dirname, '../director.config.json');
+            let directorConfig = {};
+            
+            if (fs.existsSync(directorConfigPath)) {
+                try {
+                    const configData = fs.readFileSync(directorConfigPath, 'utf8');
+                    directorConfig = JSON.parse(configData);
+                } catch (parseError) {
+                    console.error('Error parsing director.config.json:', parseError);
+                }
+            }
+            
+            // Ensure feedback structure exists
+            if (!directorConfig.feedback) {
+                directorConfig.feedback = {
+                    description: "Collection of past generation issues and lessons learned to improve future generations",
+                    entries: []
+                };
+            }
+            
+            if (!Array.isArray(directorConfig.feedback.entries)) {
+                directorConfig.feedback.entries = [];
+            }
+            
+            // Find and remove the feedback entry
+            const initialLength = directorConfig.feedback.entries.length;
+            directorConfig.feedback.entries = directorConfig.feedback.entries.filter(entry => entry.id !== feedbackId);
+            
+            if (directorConfig.feedback.entries.length === initialLength) {
+                this.sendError(ws, 'Feedback entry not found', 'NOT_FOUND', message.requestId);
+                return;
+            }
+            
+            // Save updated config
+            fs.writeFileSync(directorConfigPath, JSON.stringify(directorConfig, null, 2), 'utf8');
+            
+            console.log(`🗑️ Director feedback deleted: ${feedbackId}`);
+            
+            // Send success response
+            this.sendToClient(ws, {
+                type: 'director_delete_feedback_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Feedback deleted successfully',
+                    totalEntries: directorConfig.feedback.entries.length
+                },
+                timestamp: new Date().toISOString()
+            });
+            
+        } catch (error) {
+            console.error('Error deleting director feedback:', error);
+            this.sendError(ws, 'Failed to delete feedback', error.message, message.requestId);
+        }
+    }
+
     async handleResolveDynamicContext(ws, message, clientInfo, wsServer) {
         try {
             const { dynamicConfig, requestId } = message;
@@ -10332,6 +10640,134 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('❌ Error resolving dynamic context:', error);
             this.sendError(ws, 'Failed to resolve dynamic context', error.message, message.requestId);
+        }
+    }
+
+    // KNOWLEDGE MEMORY HANDLERS
+    async handleListKnowledgeMemories(ws, message, clientInfo, wsServer) {
+        try {
+            const { requestId } = message;
+            
+            const globalResources = require('./globalResources');
+            const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+            
+            if (!knowledgeMemoryDb) {
+                this.sendError(ws, 'Knowledge memory database not available', 'DB_NOT_AVAILABLE', requestId);
+                return;
+            }
+            
+            // Get list of memories
+            const memories = knowledgeMemoryDb.listKnowledgeMemories();
+            
+            // Get stats
+            const stats = knowledgeMemoryDb.getKnowledgeMemoryStats();
+            
+            console.log(`📚 Listed ${memories.length} knowledge memories`);
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'list_knowledge_memories_response',
+                data: {
+                    success: true,
+                    memories: memories,
+                    stats: stats
+                },
+                timestamp: new Date().toISOString(),
+                requestId: requestId
+            });
+            
+        } catch (error) {
+            console.error('❌ Error listing knowledge memories:', error);
+            this.sendError(ws, 'Failed to list knowledge memories', error.message, message.requestId);
+        }
+    }
+
+    async handleGetKnowledgeMemory(ws, message, clientInfo, wsServer) {
+        try {
+            const { name, requestId } = message;
+            
+            if (!name) {
+                this.sendError(ws, 'Memory name is required', 'MISSING_NAME', requestId);
+                return;
+            }
+            
+            const globalResources = require('./globalResources');
+            const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+            
+            if (!knowledgeMemoryDb) {
+                this.sendError(ws, 'Knowledge memory database not available', 'DB_NOT_AVAILABLE', requestId);
+                return;
+            }
+            
+            // Get memory details without incrementing usage (UI viewing)
+            // Pass false to prevent incrementing usage count - only AI access should increment
+            const memory = knowledgeMemoryDb.getKnowledgeMemory(name, false);
+            
+            if (!memory) {
+                this.sendError(ws, `Memory "${name}" not found`, 'MEMORY_NOT_FOUND', requestId);
+                return;
+            }
+            
+            console.log(`👁️ Viewed knowledge memory (no usage increment): ${name}`);
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'get_knowledge_memory_response',
+                data: {
+                    success: true,
+                    memory: memory
+                },
+                timestamp: new Date().toISOString(),
+                requestId: requestId
+            });
+            
+        } catch (error) {
+            console.error('❌ Error getting knowledge memory:', error);
+            this.sendError(ws, 'Failed to get knowledge memory', error.message, message.requestId);
+        }
+    }
+
+    async handleDeleteKnowledgeMemory(ws, message, clientInfo, wsServer) {
+        try {
+            const { name, requestId } = message;
+            
+            if (!name) {
+                this.sendError(ws, 'Memory name is required', 'MISSING_NAME', requestId);
+                return;
+            }
+            
+            const globalResources = require('./globalResources');
+            const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+            
+            if (!knowledgeMemoryDb) {
+                this.sendError(ws, 'Knowledge memory database not available', 'DB_NOT_AVAILABLE', requestId);
+                return;
+            }
+            
+            // Delete memory
+            const success = knowledgeMemoryDb.deleteKnowledgeMemory(name);
+            
+            if (!success) {
+                this.sendError(ws, `Memory "${name}" not found`, 'MEMORY_NOT_FOUND', requestId);
+                return;
+            }
+            
+            console.log(`🗑️ Deleted knowledge memory: ${name}`);
+            
+            // Send response
+            this.sendToClient(ws, {
+                type: 'delete_knowledge_memory_response',
+                data: {
+                    success: true,
+                    message: `Memory "${name}" deleted successfully`
+                },
+                timestamp: new Date().toISOString(),
+                requestId: requestId
+            });
+            
+        } catch (error) {
+            console.error('❌ Error deleting knowledge memory:', error);
+            this.sendError(ws, 'Failed to delete knowledge memory', error.message, message.requestId);
         }
     }
 }

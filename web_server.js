@@ -37,6 +37,7 @@ const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceA
 const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification, getImageMetadata } = require('./modules/metadataDatabase');
 const { initializeChatDatabase } = require('./modules/chatDatabase');
 const { initializeDirectorDatabase } = require('./modules/directorDatabase');
+const { initializeKnowledgeMemoryDatabase } = require('./modules/knowledgeMemoryDatabase');
 const imageCounter = require('./modules/imageCounter');
 const { generateMobilePreviews } = require('./modules/previewUtils');
 const ParallelPreviewGenerator = require('./modules/parallelPreviewGenerator');
@@ -4329,6 +4330,9 @@ async function handleSendCommand(data) {
     // Initialize boot tree logging
     logger.startBoot();
     
+    // Rotate generation log on startup
+    logger.rotateGenerationLog();
+    
     // Start server early to accept connections and provide status updates
     updateServerStage('initializing');
     
@@ -4356,13 +4360,15 @@ async function handleSendCommand(data) {
         updateServerStage('database_init');
         initializeChatDatabase();
         initializeDirectorDatabase();
+        initializeKnowledgeMemoryDatabase();
     });
     
     // Service Initialization
     await logger.bootStep('Service Initialization', async () => {
-        // T5 Tokenizer
-        const t5TokenizerService = require('./modules/t5-tokenizer-service');
-        await t5TokenizerService.initialize();
+        // Global Resources (Tag databases, tokenizer, spell checker, search services)
+        updateServerStage('loading_global_resources');
+        const globalResources = require('./modules/globalResources');
+        await globalResources.initialize();
         
         // Clear temp downloads
         clearTempDownloads();

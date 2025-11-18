@@ -1449,7 +1449,7 @@ async function removeFavorite(type, index) {
 
 // Validate if a dynamic replacement can be applied client-side
 function validateDynamicReplacementCanApply(replacement) {
-    const action = replacement.action || 'replace';
+    const action = replacement.action?.toLowerCase() || 'replace';
     
     // For append without select_text, always can apply
     if (action === 'append' && !replacement.select_text) {
@@ -1462,7 +1462,7 @@ function validateDynamicReplacementCanApply(replacement) {
         return false; // Can't access target
     }
 
-    const selectText = (replacement.select_text || '').trim();
+    const selectText = (replacement?.select_text || '').trim();
     if (!selectText && action !== 'append') {
         return false; // No text to find for delete/replace
     }
@@ -1510,9 +1510,9 @@ function getDynamicReplacementTargetText(replacement) {
         
         const characterItem = characterItems[characterIndex];
         const characterId = characterItem.id;
-        const field = replacement.targetField || 'input'; // 'input' or 'uc'
+        const field = replacement.targetField || 'prompt'; // 'prompt' or 'uc'
         
-        const textarea = document.getElementById(`${characterId}_${field === 'input' ? 'prompt' : 'uc'}`);
+        const textarea = document.getElementById(`${characterId}_${field}`);
         return textarea ? textarea.value : null;
     }
     return null;
@@ -1520,8 +1520,11 @@ function getDynamicReplacementTargetText(replacement) {
 
 // Apply a dynamic replacement client-side (mimics server logic)
 function applyDynamicReplacementClientSide(replacement) {
-    const action = replacement.action || 'replace';
+    const action = replacement.action?.toLowerCase() || 'replace';
     const targetType = replacement.targetType;
+    
+    // Define the append marker constant (must match server-side)
+    const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
     
     // Get the target textarea
     let textarea = null;
@@ -1545,9 +1548,9 @@ function applyDynamicReplacementClientSide(replacement) {
         
         const characterItem = characterItems[characterIndex];
         const characterId = characterItem.id;
-        const field = replacement.targetField || 'input'; // 'input' or 'uc'
+        const field = replacement.targetField || 'prompt'; // 'prompt' or 'uc'
         
-        textarea = document.getElementById(`${characterId}_${field === 'input' ? 'prompt' : 'uc'}`);
+        textarea = document.getElementById(`${characterId}_${field}`);
     }
 
     if (!textarea) {
@@ -1555,7 +1558,7 @@ function applyDynamicReplacementClientSide(replacement) {
     }
 
     let result = textarea.value;
-    const selectText = (replacement.select_text || '').trim();
+    const selectText = (replacement?.select_text || '').trim();
     const replaceText = replacement.replace_text || '';
     const fallbackSelectText = replacement.fallback_select_text ? replacement.fallback_select_text.trim() : null;
     const alternativeText = replacement.alternative_text || null;
@@ -1666,6 +1669,22 @@ function applyDynamicReplacementClientSide(replacement) {
                 textToAppend = alternativeText;
                 method = 'alternative';
             }
+        } else {
+            // No select_text provided, append to end
+            // Look for the append marker to insert before presets
+            const markerIndex = result.indexOf(APPEND_MARKER);
+            if (markerIndex !== -1) {
+                // Found marker, insert before it
+                insertPosition = markerIndex;
+                // Check if there's a comma before the marker that we should remove
+                if (insertPosition > 2 && result.substring(insertPosition - 2, insertPosition) === ', ') {
+                    insertPosition -= 2; // Remove the comma and space before marker
+                }
+                console.log(`📍 Found append marker, inserting before presets`);
+            } else {
+                // No marker found, append to end (fallback)
+                insertPosition = result.length;
+            }
         }
 
         // Insert at determined position
@@ -1678,6 +1697,10 @@ function applyDynamicReplacementClientSide(replacement) {
     if (!appliedSuccessfully) {
         return { success: false, error: 'Failed to apply replacement' };
     }
+
+    // Remove the append marker before applying to textarea
+    // Handle both ", MARKER" and standalone "MARKER" patterns
+    result = result.replace(new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g'), '');
 
     // Update the textarea
     textarea.value = result;
@@ -1701,7 +1724,7 @@ function applyDynamicReplacementClientSide(replacement) {
 // Create a dynamic replacement item for the lock modal (matches existing layout)
 function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     const item = document.createElement('div');
-    const action = replacement.action || 'replace';
+    const action = replacement.action?.toLowerCase() || 'replace';
     item.className = `text-replacement-lock-item dynamic-replacement-type dynamic-action-${action}`;
     item.dataset.globalIndex = globalIndex;
 
@@ -1745,18 +1768,37 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
         return '<i class="fas fa-tag"></i>';
     };
     
-    // Determine target label (for location badge)
+    // Determine target label and icon (for location badge)
     let targetLabel = '';
-    let locationBadgeClass = '';
+    let locationIcon = '';
+    let locationColor = '';
     if (replacement.targetType === 'prompt') {
         targetLabel = 'Prompt';
-        locationBadgeClass = 'location-prompt';
+        locationIcon = '<i class="ri-code-block"></i>';
+        locationColor = '#81ffcb';
     } else if (replacement.targetType === 'uc') {
         targetLabel = 'Negative';
-        locationBadgeClass = 'location-uc';
+        locationIcon = '<i class="ri-eraser-fill"></i>';
+        locationColor = '#ff8199';
     } else if (replacement.targetType === 'character') {
-        targetLabel = `Character ${replacement.targetSource + 1} ${replacement.targetField === 'input' ? 'Prompt' : 'Negative'}`;
-        locationBadgeClass = replacement.targetField === 'input' ? 'location-prompt' : 'location-uc';
+        targetLabel = `Character ${replacement.targetSource + 1} ${replacement.targetField === 'prompt' ? 'Prompt' : 'Negative'}`;
+        if (replacement.targetField === 'prompt') {
+            locationIcon = '<i class="ri-code-block"></i>';
+            locationColor = '#81ffcb';
+        } else {
+            locationIcon = '<i class="ri-eraser-fill"></i>';
+            locationColor = '#ff8199';
+        }
+    }
+
+    // Get action type color
+    let actionColor = '#9ca3af'; // Default gray
+    if (action === 'replace') {
+        actionColor = '#ffb981'; // Orange for replace
+    } else if (action === 'append') {
+        actionColor = '#81ffcb'; // Cyan for append/add
+    } else if (action === 'delete') {
+        actionColor = '#ff8199'; // Pink/red for delete
     }
 
     // Get application method for type badge
@@ -1771,19 +1813,30 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     let statusIcon = '';
     let statusClass = '';
     let statusTitle = '';
+    let statusColor = '';
     
-    if (replacement.used_fallback || replacement.application_method === 'fallback') {
+    // Check if replacement failed to apply
+    if (replacement.applied === false || replacement.error) {
+        statusIcon = '<i class="fas fa-times"></i>';
+        statusClass = 'status-failed';
+        statusTitle = replacement.error ? `Failed to apply: ${replacement.error}` : 'Failed to apply';
+        statusColor = '#ff8181';
+    } else if (replacement.used_fallback || replacement.application_method === 'fallback') {
         statusIcon = '<i class="fas fa-exclamation-triangle"></i>';
         statusClass = 'status-fallback';
         statusTitle = 'Applied using fallback text';
+        statusColor = '#ffc981';
     } else if (replacement.used_alternative || replacement.application_method === 'alternative') {
         statusIcon = '<i class="fas fa-rotate"></i>';
         statusClass = 'status-alternative';
         statusTitle = 'Applied using alternative text';
-    } else if (replacement.select_text || action !== 'append') {
+        statusColor = '#81d4ff';
+    } else if (replacement.applied !== false) {
+        // Only show success if not explicitly marked as failed
         statusIcon = '<i class="fas fa-check"></i>';
         statusClass = 'status-direct';
         statusTitle = 'Applied successfully';
+        statusColor = '#81ffb3';
     }
 
     // Helper function to convert category to CSS class name
@@ -1809,22 +1862,36 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     // Build the replacement display
     let replaceTextPattern = '';
     if (action === 'delete') {
-        replaceTextPattern = replacement.count 
-            ? `<i>Delete ${replacement.count} occurrence(s)</i>` 
-            : '<i>Delete all</i>';
+        if (replacement.select_text) {
+            replaceTextPattern = `"${escapeHtml(replacement.select_text)}"`;
+            if (replacement.count) {
+                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(${replacement.count} occurrence(s))</span>`;
+            } else {
+                replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(all occurrences)</span>`;
+            }
+        } else {
+            replaceTextPattern = replacement.count 
+                ? `<i>Delete ${replacement.count} occurrence(s)</i>` 
+                : '<i>Delete all</i>';
+        }
     } else {
         replaceTextPattern = replacement.replace_text 
             ? `"${escapeHtml(replacement.replace_text)}"` 
             : '<i>N/A</i>';
     }
 
-    // Build status indicator icons
+    // Build status indicator badges
     let statusIndicators = '';
-    if (replacement.used_fallback && replacement.actual_select_text) {
-        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-warning" title="Used fallback: ${escapeHtml(replacement.actual_select_text)}"><i class="fas fa-exclamation-triangle"></i> Fallback</span>`;
-    }
-    if (replacement.used_alternative && replacement.alternative_text_used) {
-        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Used alternative: ${escapeHtml(replacement.alternative_text_used)}"><i class="fas fa-rotate"></i> Alternative</span>`;
+    if (replacement.applied === false || replacement.error) {
+        const errorMsg = replacement.error ? escapeHtml(replacement.error) : 'Failed to apply';
+        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-danger" title="${errorMsg}"><i class="fas fa-times"></i> Failed</span>`;
+    } else {
+        if (replacement.used_fallback && replacement.actual_select_text) {
+            statusIndicators += `<span class="text-replacement-badge text-replacement-badge-warning" title="Used fallback: ${escapeHtml(replacement.actual_select_text)}"><i class="fas fa-exclamation-triangle"></i> Fallback</span>`;
+        }
+        if (replacement.used_alternative && replacement.alternative_text_used) {
+            statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Used alternative: ${escapeHtml(replacement.alternative_text_used)}"><i class="fas fa-rotate"></i> Alternative</span>`;
+        }
     }
 
     // Validate if can be applied client-side
@@ -1836,39 +1903,59 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     item.innerHTML = `
         <div class="text-replacement-lock-content">
             <div class="text-replacement-lock-info">
-                <div class="text-replacement-lock-row">
-                    <div class="text-replacement-lock-pattern">
-                        ${statusIcon ? `<span class="status-icon ${statusClass}" title="${statusTitle}">${statusIcon}</span>` : ''}
-                        ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${getCategoryClass(replacement.replacement_category)}">${getCategoryIconLocal(replacement.replacement_category)} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
-                    </div>
-                    <div class="text-replacement-lock-badges">
-                        <span class="text-replacement-badge text-replacement-badge-location ${locationBadgeClass}">${targetLabel}</span>
-                        <span class="text-replacement-badge text-replacement-badge-type"><i class="fas ${actionIcon}"></i> ${actionDisplay}</span>
-                        ${statusIndicators}
-                    </div>
-                </div>
-                ${replacement.select_text || action !== 'delete' ? `<div class="text-replacement-full-value">
+                ${(action === 'append' ? !!replacement.select_text : action !== 'delete' || !replacement.select_text) ? `<div class="text-replacement-full-value">
                     <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">Find:</div>
                     ${selectTextPattern}
-                </div>` : ''}
-                ${action !== 'delete' || replacement.replace_text ? `<div class="text-replacement-full-value">
-                    <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">${action === 'delete' ? 'Action:' : (action === 'append' ? 'Insert:' : 'Replace with:')}</div>
+</div>` : ''}
+                ${action !== 'delete' || replacement.replace_text || replacement.select_text ? `<div class="text-replacement-full-value">
+                    <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">${action === 'delete' ? 'Delete:' : (action === 'append' ? 'Insert:' : 'Replace with:')}</div>
                     ${replaceTextPattern}
                 </div>` : ''}
                 ${replacement.reason ? `<div style="color: var(--text-secondary); font-size: 0.75em; padding: var(--spacing-xs) 0; line-height: 1.3;">
                     <i class="fas fa-info-circle"></i> ${escapeHtml(replacement.reason)}
                 </div>` : ''}
+                ${replacement.references && replacement.references.length > 0 ? `<div class="text-replacement-references" style="font-size: 0.7em;">
+                    <div style="font-weight: 600; margin-bottom: var(--spacing-xs); opacity: 0.8;">
+                        <i class="fas fa-book"></i> Research Sources:
+                    </div>
+                    ${replacement.references.map(ref => {
+                        let refContent = '';
+                        if (ref.type === 'web_search') {
+                            refContent = `<i class="fas fa-globe"></i> Web: <a href="${escapeHtml(ref.url || '#')}" target="_blank" style="color: var(--primary-color);">${escapeHtml(ref.query || 'Search')}</a>`;
+                        } else if (ref.type === 'tag_search') {
+                            refContent = `<i class="fas fa-tags"></i> Tags: ${ref.tags ? ref.tags.map(t => escapeHtml(t)).join(', ') : escapeHtml(ref.query || '')}`;
+                        } else if (ref.type === 'tag_description') {
+                            refContent = `<i class="fas fa-search"></i> ${escapeHtml(ref.description || ref.query || 'Tag description')}${ref.tags && ref.tags.length > 0 ? ` (${ref.tags.join(', ')})` : ''}`;
+                        } else if (ref.type === 'tokenizer') {
+                            refContent = `<i class="fas fa-calculator"></i> ${escapeHtml(ref.description || 'Token analysis')}`;
+                        }
+                        return `<div style="padding: 2px 1em; opacity: 0.9;">${refContent}</div>`;
+                    }).join('')}
+                </div>` : ''}
             </div>
-            <div class="text-replacement-lock-actions">
-                <button type="button" class="btn-danger btn-small feedback-btn btn-small" data-rep-id="${repId}" data-select-text="${escapeHtml(replacement.select_text || '')}" data-replace-text="${escapeHtml(replacement.replace_text || '')}" data-action="${action}" data-reason="${escapeHtml(replacement.reason || '')}" title="Report Issue">
-                    <i class="fas fa-flag"></i>
-                </button>
-                ${canApply ? `<button type="button" class="text-replacement-replace-btn btn-secondary btn-small" data-global-index="${globalIndex}" title="Apply to Prompt">
-                    <i class="fas fa-pen-field"></i>
-                </button>` : ''}
-                <button type="button" class="text-replacement-lock-btn btn-secondary btn-small btn-toggle" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
-                    <i class="fas fa-lock"></i>
-                </button>
+            <div class="text-replacement-lock-row">
+                <div class="text-replacement-lock-badges">
+                    <span class="text-replacement-badge text-replacement-badge-combined">
+                        <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                        <span class="badge-icon-type" style="color: ${actionColor};"><i class="fas ${actionIcon}"></i></span>
+                        ${statusIcon ? `<span class="badge-icon-status" style="color: ${statusColor};" title="${statusTitle}">${statusIcon}</span>` : ''}
+                    </span>
+                    ${statusIndicators}
+                </div>
+                <div class="text-replacement-lock-pattern">
+                    ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${getCategoryClass(replacement.replacement_category)}">${getCategoryIconLocal(replacement.replacement_category)} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
+                </div>
+                <div class="text-replacement-lock-actions">
+                    <button type="button" class="btn-danger btn-small feedback-btn btn-small" data-rep-id="${repId}" data-select-text="${escapeHtml(replacement?.select_text || '')}" data-replace-text="${escapeHtml(replacement.replace_text || '')}" data-action="${action}" data-reason="${escapeHtml(replacement.reason || '')}" title="Report Issue">
+                        <i class="fas fa-flag"></i>
+                    </button>
+                    ${canApply ? `<button type="button" class="text-replacement-replace-btn btn-secondary btn-small" data-global-index="${globalIndex}" title="Apply to Prompt">
+                        <i class="fas fa-pen-field"></i>
+                    </button>` : ''}
+                    <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
+                        <i class="fas fa-lock"></i>
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -1896,7 +1983,7 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
             e.stopPropagation();
             const selectText = feedbackBtn.dataset.selectText;
             const replaceText = feedbackBtn.dataset.replaceText;
-            const action = feedbackBtn.dataset.action;
+            const action = feedbackBtn.dataset.action.toLowerCase();
             const reason = feedbackBtn.dataset.reason;
             if (typeof showDirectorFeedbackModal === 'function') {
                 showDirectorFeedbackModal(selectText, replaceText, action, reason);
@@ -1910,7 +1997,7 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
 // Apply dynamic replacement from lock modal
 function applyDynamicReplacementFromLockModal(globalIndex) {
     if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
-        showGlassToast('error', null, 'No dynamic generation data available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        showGlassToast('error', null, 'No Enshutsuka data available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
 
@@ -1919,27 +2006,29 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
     let replacement = null;
     let replacementArrayRef = null;
     let replacementArrayIndex = -1;
+    let replacementMetadata = null;
     let currentIndex = 0;
 
     const arrays = [
-        { arr: textReplacements.prompt, type: 'prompt' },
-        { arr: textReplacements.uc, type: 'uc' }
+        { arr: textReplacements.prompt, type: 'prompt', targetSource: 'base' },
+        { arr: textReplacements.uc, type: 'uc', targetSource: 'base' }
     ];
 
     if (textReplacements.character_prompts) {
         textReplacements.character_prompts.forEach((char, charIndex) => {
-            if (char?.input) arrays.push({ arr: char.input, type: 'character' });
-            if (char?.uc) arrays.push({ arr: char.uc, type: 'character' });
+            if (char?.prompt) arrays.push({ arr: char.prompt, type: 'character', targetSource: charIndex, targetField: 'prompt' });
+            if (char?.uc) arrays.push({ arr: char.uc, type: 'character', targetSource: charIndex, targetField: 'uc' });
         });
     }
 
-    for (const { arr } of arrays) {
+    for (const { arr, type, targetSource, targetField } of arrays) {
         if (!arr) continue;
         for (let i = 0; i < arr.length; i++) {
             if (currentIndex === globalIndex) {
                 replacement = arr[i];
                 replacementArrayRef = arr;
                 replacementArrayIndex = i;
+                replacementMetadata = { type, targetSource, targetField };
                 break;
             }
             currentIndex++;
@@ -1953,8 +2042,16 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
         return;
     }
 
+    // Add targetType metadata to the replacement object
+    const replacementWithMetadata = {
+        ...replacement,
+        targetType: replacementMetadata.type,
+        targetSource: replacementMetadata.targetSource,
+        targetField: replacementMetadata.targetField
+    };
+
     // Apply the replacement using client-side logic
-    const result = applyDynamicReplacementClientSide(replacement);
+    const result = applyDynamicReplacementClientSide(replacementWithMetadata);
     
     if (result.success) {
         // Mark as applied
@@ -2000,7 +2097,7 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
 
     if (textReplacements.character_prompts) {
         textReplacements.character_prompts.forEach((char, charIndex) => {
-            if (char?.input) arrays.push({ arr: char.input, type: 'character' });
+            if (char?.prompt) arrays.push({ arr: char.prompt, type: 'character' });
             if (char?.uc) arrays.push({ arr: char.uc, type: 'character' });
         });
     }
@@ -2034,6 +2131,37 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     } else {
         lockBtn.classList.remove('active');
         item.classList.remove('selected');
+    }
+
+    // Update the saved locked replacements array
+    if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        const lockedReplacements = [];
+        const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+        
+        // Collect all locked dynamic replacements
+        const arrays = [
+            textReplacements.prompt,
+            textReplacements.uc
+        ];
+        
+        if (textReplacements.character_prompts) {
+            textReplacements.character_prompts.forEach(char => {
+                if (char?.prompt) arrays.push(char.prompt);
+                if (char?.uc) arrays.push(char.uc);
+            });
+        }
+        
+        arrays.forEach(arr => {
+            if (arr) {
+                arr.forEach(rep => {
+                    if (rep.locked === true) {
+                        lockedReplacements.push(rep);
+                    }
+                });
+            }
+        });
+        
+        window.lockedDynamicReplacements = lockedReplacements;
     }
 
     // Update the main lock button state
