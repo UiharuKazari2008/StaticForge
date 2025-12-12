@@ -1,22 +1,13 @@
-const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
-const { createDatabaseCheckpointManager } = require('./databaseCheckpoint');
+const { asyncSQLiteManager } = require('./sqliteAsyncWrapper');
 
 // Database file path
 const dbPath = path.join(__dirname, '..', '.cache', 'chat.db');
 
-// Ensure cache directory exists
-const cacheDir = path.dirname(dbPath);
-if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-}
-
+// Get database instance from async manager
 let db = null;
-
-// Initialize checkpoint manager for chat database
-const chatCheckpointManager = createDatabaseCheckpointManager(dbPath, 5);
 
 // Track message count for periodic checkpointing
 let messagesSinceLastCheckpoint = 0;
@@ -25,23 +16,26 @@ const CHECKPOINT_INTERVAL = 10; // Create checkpoint every N messages
 /**
  * Initialize the SQLite database for chat system
  */
-function initializeChatDatabase() {
+async function initializeChatDatabase() {
     try {
-        // Open database (creates if doesn't exist)
-        db = new Database(dbPath);
+        // Get database instance from async manager with checkpointing enabled
+        db = asyncSQLiteManager.getDatabase(dbPath, {
+            idleTimeoutMinutes: 30,
+            maxCheckpoints: 5,
+            enableCheckpointing: true
+        });
         
-        // Enable WAL mode for better concurrency
-        db.pragma('journal_mode = WAL');
-        db.pragma('synchronous = NORMAL');
-        db.pragma('cache_size = 10000');
-        db.pragma('temp_store = MEMORY');
+        // Open database (creates if doesn't exist)
+        await db.open();
         
         // Create tables if they don't exist
-        createChatTables();
+        await createChatTables();
         
+        logger.bootSubStep('Chat database ready');
         return true;
     } catch (error) {
-        logger.error('Error initializing SQLite chat database:', error.message);
+        logger.error('Error initializing SQLite chat database:', error);
+        console.error('Full error stack:', error.stack);
         return false;
     }
 }
@@ -49,9 +43,9 @@ function initializeChatDatabase() {
 /**
  * Create database tables for chat system
  */
-function createChatTables() {
+async function createChatTables() {
     // Persona settings table
-    db.exec(`
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS persona_settings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_name TEXT,
@@ -64,7 +58,7 @@ function createChatTables() {
     `);
     
     // Chat sessions table
-    db.exec(`
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS chat_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_name TEXT,
@@ -83,26 +77,25 @@ function createChatTables() {
     
     // Add token usage tracking columns for Responses API
     try {
-        db.exec(`ALTER TABLE chat_sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
+        await db.exec(`ALTER TABLE chat_sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
     } catch (error) {
         // Column already exists, ignore error
     }
     
     try {
-        db.exec(`ALTER TABLE chat_sessions ADD COLUMN last_response_usage TEXT`);
+        await db.exec(`ALTER TABLE chat_sessions ADD COLUMN last_response_usage TEXT`);
     } catch (error) {
         // Column already exists, ignore error
     }
     
     try {
-        db.exec(`ALTER TABLE chat_sessions ADD COLUMN story_context TEXT`);
+        await db.exec(`ALTER TABLE chat_sessions ADD COLUMN story_context TEXT`);
     } catch (error) {
         // Column already exists, ignore error
     }
-    
 
     // Chat messages table
-    db.exec(`
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_session_id INTEGER NOT NULL,
@@ -122,31 +115,29 @@ function createChatTables() {
     `);
     
     // Create indexes for better performance
-    db.exec(`
+    await db.exec(`
         CREATE INDEX IF NOT EXISTS idx_chat_sessions_filename ON chat_sessions (filename);
         CREATE INDEX IF NOT EXISTS idx_chat_sessions_created_at ON chat_sessions (created_at);
         CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages (chat_session_id);
         CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages (created_at);
     `);
-    
-    logger.bootSubStep('Chat database ready');
 }
 
 /**
  * Close database connection
  */
-function closeChatDatabase() {
+async function closeChatDatabase() {
     if (db) {
-        db.close();
+        await db.close();
         db = null;
     }
 }
 
 // Persona Settings Functions
-function getPersonaSettings() {
+async function getPersonaSettings() {
     try {
-        const stmt = db.prepare('SELECT * FROM persona_settings ORDER BY id DESC LIMIT 1');
-        return stmt.get() || {
+        const result = await db.get('SELECT * FROM persona_settings ORDER BY id DESC LIMIT 1');
+        return result || {
             user_name: '',
             profile_photo_base64: '',
             backstory: '',
@@ -158,19 +149,18 @@ function getPersonaSettings() {
     }
 }
 
-function savePersonaSettings(settings) {
+async function savePersonaSettings(settings) {
     try {
-        const stmt = db.prepare(`
+        await db.run(`
             INSERT OR REPLACE INTO persona_settings 
             (id, user_name, profile_photo_base64, backstory, default_verbosity, updated_at)
             VALUES (1, ?, ?, ?, ?, strftime('%s', 'now'))
-        `);
-        stmt.run(
+        `, [
             settings.user_name,
             settings.profile_photo_base64,
             settings.backstory,
             settings.default_verbosity
-        );
+        ]);
         return true;
     } catch (error) {
         console.error('❌ Error saving persona settings:', error.message);
@@ -179,10 +169,10 @@ function savePersonaSettings(settings) {
 }
 
 // Chat Session Functions
-function createChatSession(sessionData) {
+async function createChatSession(sessionData) {
     try {
         // Check if old columns still exist
-        const tableInfo = db.prepare("PRAGMA table_info(chat_sessions)").all();
+        const tableInfo = await db.all("PRAGMA table_info(chat_sessions)");
         const hasOldColumns = tableInfo.some(col => col.name === 'chat_model') && tableInfo.some(col => col.name === 'chat_service');
         
         let sql, params;
@@ -227,46 +217,42 @@ function createChatSession(sessionData) {
             ];
         }
         
-        const stmt = db.prepare(sql);
-        const result = stmt.run(...params);
-        return result.lastInsertRowid;
+        const result = await db.run(sql, params);
+        return result.lastID;
     } catch (error) {
         console.error('❌ Error creating chat session:', error.message);
         return null;
     }
 }
 
-function getChatSession(chatId) {
+async function getChatSession(chatId) {
     try {
-        const stmt = db.prepare('SELECT * FROM chat_sessions WHERE id = ?');
-        return stmt.get(chatId);
+        return await db.get('SELECT * FROM chat_sessions WHERE id = ?', [chatId]);
     } catch (error) {
         console.error('❌ Error getting chat session:', error.message);
         return null;
     }
 }
 
-function getChatSessionsByFilename(filename) {
+async function getChatSessionsByFilename(filename) {
     try {
-        const stmt = db.prepare('SELECT * FROM chat_sessions WHERE filename = ? ORDER BY created_at DESC');
-        return stmt.all(filename);
+        return await db.all('SELECT * FROM chat_sessions WHERE filename = ? ORDER BY created_at DESC', [filename]);
     } catch (error) {
         console.error('❌ Error getting chat sessions by filename:', error.message);
         return [];
     }
 }
 
-function getAllChatSessions() {
+async function getAllChatSessions() {
     try {
-        const stmt = db.prepare('SELECT * FROM chat_sessions ORDER BY updated_at DESC');
-        return stmt.all();
+        return await db.all('SELECT * FROM chat_sessions ORDER BY updated_at DESC');
     } catch (error) {
         console.error('❌ Error getting all chat sessions:', error.message);
         return [];
     }
 }
 
-function updateChatSession(chatId, updates) {
+async function updateChatSession(chatId, updates) {
     try {
         const fields = [];
         const values = [];
@@ -282,8 +268,7 @@ function updateChatSession(chatId, updates) {
         fields.push('updated_at = strftime(\'%s\', \'now\')');
         values.push(chatId);
         
-        const stmt = db.prepare(`UPDATE chat_sessions SET ${fields.join(', ')} WHERE id = ?`);
-        const result = stmt.run(...values);
+        const result = await db.run(`UPDATE chat_sessions SET ${fields.join(', ')} WHERE id = ?`, values);
         return result.changes > 0;
     } catch (error) {
         console.error('❌ Error updating chat session:', error.message);
@@ -291,10 +276,9 @@ function updateChatSession(chatId, updates) {
     }
 }
 
-function deleteChatSession(chatId) {
+async function deleteChatSession(chatId) {
     try {
-        const stmt = db.prepare('DELETE FROM chat_sessions WHERE id = ?');
-        const result = stmt.run(chatId);
+        const result = await db.run('DELETE FROM chat_sessions WHERE id = ?', [chatId]);
         return result.changes > 0;
     } catch (error) {
         console.error('❌ Error deleting chat session:', error.message);
@@ -302,16 +286,14 @@ function deleteChatSession(chatId) {
     }
 }
 
-function restartChatSession(chatId) {
+async function restartChatSession(chatId) {
     try {
         // Delete all messages for this chat session
-        const deleteMessagesStmt = db.prepare('DELETE FROM chat_messages WHERE chat_session_id = ?');
-        deleteMessagesStmt.run(chatId);
+        await db.run('DELETE FROM chat_messages WHERE chat_session_id = ?', [chatId]);
         
         // Update the chat session's updated_at timestamp
-        const updateStmt = db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?');
         const now = Math.floor(Date.now() / 1000);
-        const result = updateStmt.run(now, chatId);
+        const result = await db.run('UPDATE chat_sessions SET updated_at = ? WHERE id = ?', [now, chatId]);
         
         return result.changes > 0;
     } catch (error) {
@@ -321,70 +303,67 @@ function restartChatSession(chatId) {
 }
 
 // Chat Message Functions
-function addChatMessage(chatSessionId, messageType, content, jsonData = null, responseId = null, conversationData = null, previousMessageId = null, eventType = null, eventMetadata = null, reasoningContent = null, responseOutput = null) {
+async function addChatMessage(chatSessionId, messageType, content, jsonData = null, responseId = null, conversationData = null, previousMessageId = null, eventType = null, eventMetadata = null, reasoningContent = null, responseOutput = null) {
     try {
         // Calculate expiration date (30 days from now)
         const expiresAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
         
-        const stmt = db.prepare(`
+        const result = await db.run(`
             INSERT INTO chat_messages (chat_session_id, message_type, content, json_data, response_id, conversation_data, expires_at, previous_message_id, event_type, event_metadata, reasoning_content, response_output)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const result = stmt.run(chatSessionId, messageType, content, jsonData, responseId, conversationData, expiresAt, previousMessageId, eventType, eventMetadata, reasoningContent, responseOutput);
+        `, [chatSessionId, messageType, content, jsonData, responseId, conversationData, expiresAt, previousMessageId, eventType, eventMetadata, reasoningContent, responseOutput]);
         
         // Update chat session's updated_at timestamp
-        updateChatSession(chatSessionId, {});
+        await updateChatSession(chatSessionId, {});
         
         // Automatic checkpointing: create checkpoint every N messages
         messagesSinceLastCheckpoint++;
         if (messagesSinceLastCheckpoint >= CHECKPOINT_INTERVAL) {
-            try {
-                chatCheckpointManager.createCheckpointWithBackup();
+            // Fire-and-forget async checkpoint (don't block message save)
+            db.createCheckpointIfDirty().then(() => {
                 messagesSinceLastCheckpoint = 0;
                 console.log('💾 Auto-checkpoint created');
-            } catch (checkpointError) {
+            }).catch((checkpointError) => {
                 console.warn('⚠️  Auto-checkpoint failed:', checkpointError.message);
                 // Don't fail the message save if checkpoint fails
-            }
+            });
         }
         
-        return result.lastInsertRowid;
+        return result.lastID;
     } catch (error) {
         console.error('❌ Error adding chat message:', error.message);
         return null;
     }
 }
 
-function getChatMessages(chatSessionId, limit = 50, offset = 0) {
+async function getChatMessages(chatSessionId, limit = 50, offset = 0) {
     try {
-        const stmt = db.prepare(`
+        return await db.all(`
             SELECT * FROM chat_messages 
             WHERE chat_session_id = ? 
             ORDER BY created_at DESC 
             LIMIT ? OFFSET ?
-        `);
-        return stmt.all(chatSessionId, limit, offset);
+        `, [chatSessionId, limit, offset]);
     } catch (error) {
         console.error('❌ Error getting chat messages:', error.message);
         return [];
     }
 }
 
-function getChatMessageCount(chatSessionId) {
+async function getChatMessageCount(chatSessionId) {
     try {
-        const stmt = db.prepare('SELECT COUNT(*) as count FROM chat_messages WHERE chat_session_id = ?');
-        const result = stmt.get(chatSessionId);
-        return result.count;
+        const result = await db.get('SELECT COUNT(*) as count FROM chat_messages WHERE chat_session_id = ?', [chatSessionId]);
+        return result?.count || 0;
     } catch (error) {
         console.error('❌ Error getting chat message count:', error.message);
         return 0;
     }
 }
 
-function deleteChatMessage(messageId) {
+async function deleteChatMessage(messageId) {
     try {
         // First, get the message to find its chat_session_id
-        const message = db.prepare('SELECT chat_session_id, created_at FROM chat_messages WHERE id = ?').get(messageId);
+        const message = await db.get('SELECT chat_session_id, created_at FROM chat_messages WHERE id = ?', [messageId]);
         
         if (!message) {
             console.error(`❌ Message ${messageId} not found`);
@@ -394,22 +373,20 @@ function deleteChatMessage(messageId) {
         const chatSessionId = message.chat_session_id;
         
         // Delete the message
-        const stmt = db.prepare('DELETE FROM chat_messages WHERE id = ?');
-        const result = stmt.run(messageId);
+        const result = await db.run('DELETE FROM chat_messages WHERE id = ?', [messageId]);
         
         if (result.changes > 0) {
             // Get the most recent remaining message's timestamp to set as the session's updated_at
-            const lastMessage = getLastChatMessage(chatSessionId);
-            const updateStmt = db.prepare('UPDATE chat_sessions SET updated_at = ? WHERE id = ?');
+            const lastMessage = await getLastChatMessage(chatSessionId);
             
             if (lastMessage && lastMessage.created_at) {
                 // Set updated_at to the most recent remaining message's timestamp
-                updateStmt.run(lastMessage.created_at, chatSessionId);
+                await db.run('UPDATE chat_sessions SET updated_at = ? WHERE id = ?', [lastMessage.created_at, chatSessionId]);
                 console.log(`🗑️ Deleted chat message ${messageId} from session ${chatSessionId}, updated session timestamp to ${lastMessage.created_at}`);
             } else {
                 // No messages remain, update to current time
                 const now = Math.floor(Date.now() / 1000);
-                updateStmt.run(now, chatSessionId);
+                await db.run('UPDATE chat_sessions SET updated_at = ? WHERE id = ?', [now, chatSessionId]);
                 console.log(`🗑️ Deleted chat message ${messageId} from session ${chatSessionId}, no messages remain`);
             }
             
@@ -423,47 +400,56 @@ function deleteChatMessage(messageId) {
     }
 }
 
-function getLastChatMessage(chatSessionId) {
+async function getLastChatMessage(chatSessionId) {
     try {
-        const stmt = db.prepare(`
+        return await db.get(`
             SELECT * FROM chat_messages 
             WHERE chat_session_id = ? 
             ORDER BY created_at DESC 
             LIMIT 1
-        `);
-        return stmt.get(chatSessionId);
+        `, [chatSessionId]);
     } catch (error) {
         console.error('❌ Error getting last chat message:', error.message);
         return null;
     }
 }
 
-function getConversationData(chatSessionId) {
+async function getConversationData(chatSessionId) {
     try {
-        const stmt = db.prepare(`
+        return await db.get(`
             SELECT response_id, conversation_data, created_at, response_output 
             FROM chat_messages 
             WHERE chat_session_id = ? AND response_id IS NOT NULL 
             ORDER BY created_at DESC 
             LIMIT 1
-        `);
-        return stmt.get(chatSessionId);
+        `, [chatSessionId]);
     } catch (error) {
         console.error('❌ Error getting conversation data:', error.message);
         return null;
     }
 }
 
-function updateConversationData(chatSessionId, responseId, conversationData) {
+async function updateConversationData(chatSessionId, responseId, conversationData) {
     try {
-        const stmt = db.prepare(`
-            UPDATE chat_messages 
-            SET response_id = ?, conversation_data = ? 
+        // Note: SQLite doesn't support LIMIT in UPDATE, so we need a different approach
+        // Get the most recent assistant message ID first
+        const lastMessage = await db.get(`
+            SELECT id FROM chat_messages 
             WHERE chat_session_id = ? AND message_type = 'assistant' 
             ORDER BY created_at DESC 
             LIMIT 1
-        `);
-        const result = stmt.run(responseId, conversationData, chatSessionId);
+        `, [chatSessionId]);
+        
+        if (!lastMessage) {
+            return false;
+        }
+        
+        const result = await db.run(`
+            UPDATE chat_messages 
+            SET response_id = ?, conversation_data = ? 
+            WHERE id = ?
+        `, [responseId, conversationData, lastMessage.id]);
+        
         return result.changes > 0;
     } catch (error) {
         console.error('❌ Error updating conversation data:', error.message);
@@ -471,11 +457,10 @@ function updateConversationData(chatSessionId, responseId, conversationData) {
     }
 }
 
-function cleanupExpiredMessages() {
+async function cleanupExpiredMessages() {
     try {
         const now = Math.floor(Date.now() / 1000);
-        const stmt = db.prepare('DELETE FROM chat_messages WHERE expires_at < ?');
-        const result = stmt.run(now);
+        const result = await db.run('DELETE FROM chat_messages WHERE expires_at < ?', [now]);
         
         if (result.changes > 0) {
             console.log(`🧹 Cleaned up ${result.changes} expired messages`);
@@ -489,11 +474,11 @@ function cleanupExpiredMessages() {
 }
 
 // Database statistics
-function getChatDatabaseStats() {
+async function getChatDatabaseStats() {
     try {
-        const sessionCount = db.prepare('SELECT COUNT(*) as count FROM chat_sessions').get().count;
-        const messageCount = db.prepare('SELECT COUNT(*) as count FROM chat_messages').get().count;
-        const personaSettings = db.prepare('SELECT COUNT(*) as count FROM persona_settings').get().count;
+        const sessionCount = (await db.get('SELECT COUNT(*) as count FROM chat_sessions'))?.count || 0;
+        const messageCount = (await db.get('SELECT COUNT(*) as count FROM chat_messages'))?.count || 0;
+        const personaSettings = (await db.get('SELECT COUNT(*) as count FROM persona_settings'))?.count || 0;
         
         return {
             sessions: sessionCount,
@@ -505,94 +490,6 @@ function getChatDatabaseStats() {
         return null;
     }
 }
-
-// Checkpoint management functions for chat database
-function getChatCheckpointInfo() {
-    return chatCheckpointManager.getCheckpointInfo();
-}
-
-function createChatCheckpoint() {
-    try {
-        return chatCheckpointManager.createCheckpointWithBackup();
-    } catch (error) {
-        console.error('❌ Error creating chat checkpoint:', error);
-        throw error;
-    }
-}
-
-function restoreChatFromCheckpoint(checkpointFilename) {
-    try {
-        const success = chatCheckpointManager.restoreFromCheckpoint(checkpointFilename);
-        if (success) {
-            // Reinitialize database connection after restore
-            closeChatDatabase();
-            initializeChatDatabase();
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('❌ Error restoring chat from checkpoint:', error);
-        throw error;
-    }
-}
-
-function restoreChatFromLatestCheckpoint() {
-    try {
-        const success = chatCheckpointManager.restoreFromLatestCheckpoint();
-        if (success) {
-            // Reinitialize database connection after restore
-            closeChatDatabase();
-            initializeChatDatabase();
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error('❌ Error restoring chat from latest checkpoint:', error);
-        throw error;
-    }
-}
-
-function clearChatCheckpoints() {
-    try {
-        return chatCheckpointManager.clearAllCheckpoints();
-    } catch (error) {
-        console.error('❌ Error clearing chat checkpoints:', error);
-        throw error;
-    }
-}
-
-function verifyChatDatabaseIntegrity() {
-    try {
-        return chatCheckpointManager.verifyDatabaseIntegrity();
-    } catch (error) {
-        console.error('❌ Error verifying chat database integrity:', error);
-        return false;
-    }
-}
-
-// Initialize database on module load
-let dbInitialized = false;
-try {
-    dbInitialized = initializeChatDatabase();
-    if (!dbInitialized) {
-        throw new Error('Failed to initialize chat database');
-    }
-    // Logging happens in createChatTables during boot
-} catch (error) {
-    logger.error('Failed to initialize chat database:', error.message);
-    process.exit(1);
-}
-
-// Graceful shutdown
-process.on('SIGINT', () => {
-    closeChatDatabase();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    closeChatDatabase();
-    process.exit(0);
-});
 
 module.exports = {
     initializeChatDatabase,
@@ -614,13 +511,5 @@ module.exports = {
     getConversationData,
     updateConversationData,
     cleanupExpiredMessages,
-    getChatDatabaseStats,
-    
-    // Checkpoint management
-    getChatCheckpointInfo,
-    createChatCheckpoint,
-    restoreChatFromCheckpoint,
-    restoreChatFromLatestCheckpoint,
-    clearChatCheckpoints,
-    verifyChatDatabaseIntegrity
+    getChatDatabaseStats
 };

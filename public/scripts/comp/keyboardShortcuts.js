@@ -4,9 +4,17 @@
 let altKeyPressed = false;
 let shortcutsOverlay = null;
 
+// Window switcher state
+let windowSwitcherActive = false;
+let windowSwitcherOverlay = null;
+let windowSwitcherWindows = [];
+let windowSwitcherSelectedIndex = 0;
+let ctrlKeyPressed = false;
+
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
     createShortcutsOverlay();
+    createWindowSwitcherOverlay();
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
 }
@@ -122,16 +130,83 @@ function createShortcutsOverlay() {
     document.body.appendChild(shortcutsOverlay);
 }
 
+// Create the window switcher overlay
+function createWindowSwitcherOverlay() {
+    windowSwitcherOverlay = document.createElement('div');
+    windowSwitcherOverlay.id = 'windowSwitcherOverlay';
+    windowSwitcherOverlay.className = 'window-switcher-overlay';
+    windowSwitcherOverlay.innerHTML = `
+        <div class="window-switcher-content">
+            <div class="window-switcher-title"></div>
+            <div class="window-switcher-icons"></div>
+        </div>
+    `;
+    document.body.appendChild(windowSwitcherOverlay);
+}
+
 // Handle key down events
 function handleKeyDown(event) {
+    // Check if we're in desktop mode for window switcher
+    const isDesktopMode = document.body.classList.contains('desktop-mode');
+    
+    // Handle CTRL+TAB for window switcher (only in desktop mode)
+    if (isDesktopMode && event.ctrlKey && event.key === 'Tab' && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        if (!windowSwitcherActive) {
+            startWindowSwitcher();
+            // Force navigation to next window to ensure it's selected
+            if (windowSwitcherWindows.length > 1) {
+                navigateWindowSwitcher(1);
+            }
+        } else {
+            // Navigate to next window
+            navigateWindowSwitcher(1);
+        }
+        ctrlKeyPressed = true;
+        return;
+    }
+    
+    // Handle CTRL+SHIFT+TAB for reverse navigation (only in desktop mode)
+    if (isDesktopMode && event.ctrlKey && event.key === 'Tab' && event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        
+        if (!windowSwitcherActive) {
+            startWindowSwitcher();
+        } else {
+            // Navigate to previous window
+            navigateWindowSwitcher(-1);
+        }
+        ctrlKeyPressed = true;
+        return;
+    }
+    
     const textReplacementModal = document.getElementById('textReplacementManagerModal');
     const createTextReplacementModal = document.getElementById('createTextReplacementModal');
     
     const isTextReplacementModalOpen = textReplacementModal && !textReplacementModal.classList.contains('hidden');
     const isCreateTextReplacementModalOpen = createTextReplacementModal && !createTextReplacementModal.classList.contains('hidden');
     
-    // Only handle shortcuts when relevant modals are open
-    if (manualModal.classList.contains('hidden') && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
+    // Check if manualModal is open
+    const isManualModalOpen = !manualModal.classList.contains('hidden');
+    
+    // If manualModal is open, check if it should handle keyboard actions
+    let shouldHandleManualModalActions = false;
+    if (isManualModalOpen) {
+        if (isDesktopMode) {
+            // In desktop mode, only handle if manualModal is the active main window
+            shouldHandleManualModalActions = manualModal.classList.contains('active-window');
+        } else {
+            // Not in desktop mode, handle if modal is open
+            shouldHandleManualModalActions = true;
+        }
+    }
+    
+    // Only handle shortcuts when relevant modals are open (and window switcher is not active)
+    if (windowSwitcherActive) return;
+    if (!shouldHandleManualModalActions && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -196,25 +271,9 @@ function handleKeyDown(event) {
             event.preventDefault();
             event.stopPropagation();
             // Check if manual modal is open
-            const manualModal = document.getElementById('manualModal');
-            const isInModal = manualModal && !manualModal.classList.contains('hidden');
-            
-            if (isInModal) {
-                // In modal: trigger generation
-                const manualGenerateBtn = document.getElementById('manualGenerateBtn');
-                if (manualGenerateBtn && !manualGenerateBtn.disabled) {
-                    manualGenerateBtn.click();
-                }
-            } else {
-                // Not in modal: show refresh confirmation
-                if (typeof showExitConfirmation === 'function') {
-                    showExitConfirmation(event, 'refresh');
-                } else {
-                    // Fallback: show browser confirmation
-                    if (confirm('Are you sure you want to restart the application?')) {
-                        window.location.reload();
-                    }
-                }
+            const manualGenerateBtn = document.getElementById('manualGenerateBtn');
+            if (manualGenerateBtn && !manualGenerateBtn.disabled) {
+                manualGenerateBtn.click();
             }
             break;
         case 'F6':
@@ -275,6 +334,7 @@ function handleKeyDown(event) {
             }
             forcePaidRequest = true;
             paidRequestToggle.setAttribute('data-state', 'on');
+            if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'on');
             manualUpscale.setAttribute('data-state', 'off');
             break;
         case 'ALT+F8':
@@ -282,6 +342,7 @@ function handleKeyDown(event) {
             event.stopPropagation();
             paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
             forcePaidRequest = !forcePaidRequest;
+            if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
             break;
         case 'F8':
             event.preventDefault();
@@ -418,6 +479,186 @@ function handleKeyUp(event) {
         altKeyPressed = false;
         hideShortcutsOverlay();
     }
+    
+    // Handle CTRL release for window switcher
+    if (event.key === 'Control' && windowSwitcherActive) {
+        activateSelectedWindow();
+        stopWindowSwitcher();
+        ctrlKeyPressed = false;
+    }
+}
+
+// Start window switcher
+function startWindowSwitcher() {
+    // Get window usage stack (most recent first) if available
+    let orderedWindows = [];
+    if (typeof getWindowUsageStack === 'function') {
+        const usageStack = getWindowUsageStack(); // Returns most recent first
+        // Filter to only include open windows
+        orderedWindows = usageStack.filter(modal => 
+            modal && 
+            !modal.classList.contains('hidden') && 
+            !modal.classList.contains('closing') &&
+            modal.querySelector('.modal-window-title')
+        );
+    }
+    
+    // Get all open windows (modals that are not hidden and not closing)
+    const allOpenModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
+        .filter(modal => !modal.classList.contains('closing') && modal.querySelector('.modal-window-title'));
+    
+    if (allOpenModals.length === 0) {
+        return; // No windows to switch
+    }
+    
+    // If we have a usage stack, use it; otherwise fall back to all open modals
+    if (orderedWindows.length > 0) {
+        // Add any windows not in the usage stack to the end
+        const orderedIds = new Set(orderedWindows.map(m => m.id));
+        const remainingWindows = allOpenModals.filter(m => !orderedIds.has(m.id));
+        windowSwitcherWindows = [...orderedWindows, ...remainingWindows];
+    } else {
+        windowSwitcherWindows = allOpenModals;
+    }
+    
+    windowSwitcherActive = true;
+    
+    // Find current active window index, start with current window
+    const currentActiveWindow = document.querySelector('.modal.active-window:not(.minimised)');
+    if (currentActiveWindow) {
+        const index = windowSwitcherWindows.indexOf(currentActiveWindow);
+        if (index >= 0) {
+            // Start with the current window (will navigate to next after)
+            windowSwitcherSelectedIndex = index;
+        } else {
+            windowSwitcherSelectedIndex = 0;
+        }
+    } else {
+        // No active window, start at the first one (most recent)
+        windowSwitcherSelectedIndex = 0;
+    }
+    
+    updateWindowSwitcherDisplay();
+    showWindowSwitcher();
+}
+
+// Navigate window switcher
+function navigateWindowSwitcher(direction) {
+    if (windowSwitcherWindows.length === 0) return;
+    
+    windowSwitcherSelectedIndex += direction;
+    
+    // Wrap around
+    if (windowSwitcherSelectedIndex < 0) {
+        windowSwitcherSelectedIndex = windowSwitcherWindows.length - 1;
+    } else if (windowSwitcherSelectedIndex >= windowSwitcherWindows.length) {
+        windowSwitcherSelectedIndex = 0;
+    }
+    
+    updateWindowSwitcherDisplay();
+}
+
+// Update window switcher display
+function updateWindowSwitcherDisplay() {
+    if (!windowSwitcherOverlay || windowSwitcherWindows.length === 0) return;
+    
+    const titleEl = windowSwitcherOverlay.querySelector('.window-switcher-title');
+    const iconsEl = windowSwitcherOverlay.querySelector('.window-switcher-icons');
+    
+    if (!titleEl || !iconsEl) return;
+    
+    const selectedModal = windowSwitcherWindows[windowSwitcherSelectedIndex];
+    if (!selectedModal) return;
+    
+    // Get window title and icon using existing functions
+    const title = typeof getModalTitle === 'function' ? getModalTitle(selectedModal) : (selectedModal.id || 'Window');
+    const icon = typeof getModalIcon === 'function' ? getModalIcon(selectedModal) : 'fas fa-window';
+    
+    // Update title
+    titleEl.textContent = title;
+    
+    // Update icons
+    iconsEl.innerHTML = '';
+    windowSwitcherWindows.forEach((modal, index) => {
+        const iconEl = document.createElement('div');
+        iconEl.className = 'window-switcher-icon';
+        if (index === windowSwitcherSelectedIndex) {
+            iconEl.classList.add('selected');
+        }
+        // Use getModalIcons to get both icon and imageIcon for dual icon rendering
+        if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
+            const icons = getModalIcons(modal);
+            iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null);
+        } else if (typeof getModalIcon === 'function' && typeof getIconHTML === 'function') {
+            // Fallback to single icon mode
+            const modalIcon = getModalIcon(modal);
+            iconEl.innerHTML = getIconHTML(modalIcon);
+        } else {
+            // Final fallback
+            iconEl.innerHTML = `<i class="fas fa-window"></i>`;
+        }
+        iconsEl.appendChild(iconEl);
+    });
+}
+
+// Show window switcher
+function showWindowSwitcher() {
+    if (windowSwitcherOverlay) {
+        windowSwitcherOverlay.classList.add('visible');
+    }
+}
+
+// Hide window switcher
+function hideWindowSwitcher() {
+    if (windowSwitcherOverlay) {
+        windowSwitcherOverlay.classList.remove('visible');
+    }
+}
+
+// Stop window switcher
+function stopWindowSwitcher() {
+    windowSwitcherActive = false;
+    windowSwitcherWindows = [];
+    windowSwitcherSelectedIndex = 0;
+    hideWindowSwitcher();
+}
+
+// Activate selected window
+function activateSelectedWindow() {
+    if (windowSwitcherWindows.length === 0 || windowSwitcherSelectedIndex < 0 || windowSwitcherSelectedIndex >= windowSwitcherWindows.length) {
+        return;
+    }
+    
+    const selectedModal = windowSwitcherWindows[windowSwitcherSelectedIndex];
+    if (!selectedModal) return;
+    
+    // Unminimize if minimized
+    if (selectedModal.classList.contains('minimised')) {
+        // Get or create taskbar item for animation
+        const taskbarItem = typeof getOrCreateTaskbarItem === 'function' ? getOrCreateTaskbarItem(selectedModal) : null;
+        if (taskbarItem && typeof setMinimizeTargetVariables === 'function') {
+            setMinimizeTargetVariables(selectedModal, taskbarItem);
+        }
+        
+        selectedModal.classList.remove('minimised');
+        selectedModal.classList.add('unminimising');
+        
+        const unminimisingHandler = (e) => {
+            if (e.target === selectedModal && e.animationName === 'modalUnminimize' && selectedModal.classList.contains('unminimising')) {
+                selectedModal.removeEventListener('animationend', unminimisingHandler);
+                selectedModal.classList.remove('unminimising');
+            }
+        };
+        selectedModal.addEventListener('animationend', unminimisingHandler);
+    }
+    
+    // Show if hidden
+    if (selectedModal.classList.contains('hidden')) {
+        selectedModal.classList.remove('hidden');
+    }
+    
+    // Bring to front
+    openModal(selectedModal);
 }
 
 let shortcutOverlayTimeout = null;
@@ -446,6 +687,10 @@ function cleanupManualModalShortcuts() {
     
     if (shortcutsOverlay && shortcutsOverlay.parentNode) {
         shortcutsOverlay.parentNode.removeChild(shortcutsOverlay);
+    }
+    
+    if (windowSwitcherOverlay && windowSwitcherOverlay.parentNode) {
+        windowSwitcherOverlay.parentNode.removeChild(windowSwitcherOverlay);
     }
 } 
 

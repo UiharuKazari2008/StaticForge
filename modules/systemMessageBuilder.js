@@ -1,25 +1,16 @@
 /**
- * System Message Builder - Modular construction of AI system messages
+ * System Message Builder - Modular construction of Rentan (dynamic generation system) system messages
  * Organizes content by cognitive flow phases for optimal comprehension
+ * 
+ * Terminology:
+ * - Rentan: The dynamic generation system (the AI itself)
+ * - Tanei Text Replacements: The text_replacements package you create (with segment_index, before processing)
+ * - Tendai Text Replacements: The text_replacements package after processing (ready for application/verification)
  */
 
 const path = require('path');
 const fs = require('fs');
-
-/**
- * Load director configuration (rules and feedback)
- */
-function loadDirectorConfig() {
-    try {
-        const directorConfigPath = path.join(__dirname, '../director.config.json');
-        if (fs.existsSync(directorConfigPath)) {
-            return JSON.parse(fs.readFileSync(directorConfigPath, 'utf8'));
-        }
-    } catch (error) {
-        console.error('⚠️ Failed to load director configuration:', error);
-    }
-    return null;
-}
+const globalResources = require('./globalResources');
 
 /**
  * Build system message in logical cognitive flow order
@@ -36,7 +27,7 @@ function loadDirectorConfig() {
  * 9. VALIDATION - Is my work correct?
  * 10. OUTPUT - Formatting response
  */
-function buildSystemMessage(context, config) {
+async function buildSystemMessage(context, config) {
     const {
         time,
         weather,
@@ -63,39 +54,40 @@ function buildSystemMessage(context, config) {
     // ========================================
     // PHASE 1: ORIENTATION
     // ========================================
-    sections.push(...buildPhase1_Orientation(
+    sections.push(...(await buildPhase1_Orientation(
         optimize,
         creative,
         toolPasses || 8,
-        dialogsCount || 6,
+        dialogsCount,
         fast_mode || false,
         availableMemories,
         topRelevantMemories
-    ));
+    )));
 
     // CORE TASK OVERVIEW (slimmed task list)
-    sections.push(...buildTaskOverviewSection(creative, dialogsCount || 6));
+    sections.push(...buildTaskOverviewSection(creative, dialogsCount));
 
     // ========================================
     // PHASE 2: UNDERSTANDING
     // ========================================
-    sections.push(...buildPhase2_Understanding(
+    sections.push(...(await buildPhase2_Understanding(
         stageContext,
         backgroundFocus,
         dynamicConfig,
         directive,
         fast_mode || false
-    ));
+    )));
 
     // ========================================
     // CONDITIONAL: Director Rules & Feedback
     // ========================================
-    const directorConfig = loadDirectorConfig();
-    if (directorConfig) {
-        if (directorConfig.rules && directorConfig.rules.entries && directorConfig.rules.entries.length > 0) {
+    const directorConfig = globalResources.getDirectorConfig();
+    // Only add sections if config loaded successfully and has content
+    if (directorConfig && typeof directorConfig === 'object') {
+        if (directorConfig.rules && directorConfig.rules.entries && Array.isArray(directorConfig.rules.entries) && directorConfig.rules.entries.length > 0) {
             sections.push(...buildDirectorRulesSection(directorConfig.rules.entries));
         }
-        if (directorConfig.feedback && directorConfig.feedback.entries) {
+        if (directorConfig.feedback && directorConfig.feedback.entries && Array.isArray(directorConfig.feedback.entries)) {
             const unresolvedFeedback = directorConfig.feedback.entries.filter(entry => !entry.resolved);
             if (unresolvedFeedback.length > 0) {
                 sections.push(...buildFeedbackSection(unresolvedFeedback));
@@ -174,7 +166,7 @@ function buildSystemMessage(context, config) {
         optimize,
         weather,
         time,
-        dialogsCount || 6,
+        dialogsCount,
         context.season,
         context.season?.holiday
     ));
@@ -186,7 +178,7 @@ function buildSystemMessage(context, config) {
 
     // Add spelling correction reminder
     sections.push(
-        '**SPELLING CORRECTION**: Correct spelling errors throughout the prompt, negative prompt, and character prompts using text_replacements. Fix typos and misspellings to ensure accurate generation.',
+        '**SPELLING CORRECTION**: Correct spelling errors throughout the prompt, negative prompt, and character prompts using Tanei Text Replacements. Fix typos and misspellings to ensure accurate generation.',
         ''
     );
 
@@ -197,14 +189,14 @@ function buildSystemMessage(context, config) {
  * PHASE 1: ORIENTATION
  * Who am I, what can I do, what resources are available?
  */
-function buildPhase1_Orientation(optimize, creative, toolPasses = 8, dialogsCount = 6, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
+async function buildPhase1_Orientation(optimize, creative, toolPasses = 8, dialogsCount, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
     const toolDescription = fastModeEnabled 
         ? `**You have access to memory tools, verification tools, and completion tools with ${toolPasses} tool loops. FAST MODE: You must use memories only to generate results.**`
         : `**You have access to powerful research and validation tools with ${toolPasses} tool loops. Tool usage is MANDATORY for all research and validation.**`;
 
     const roleLine = creative
-        ? 'You are an expert image generation prompt engineer for NovelAI v4.5 specializing in contextual adaptation with nuance reasoning and creative enhancement. You are allowed to be creative and innovative.'
-        : 'You are an expert image generation prompt engineer for NovelAI v4.5. Focus on precise, minimal, modifications that satisfy the directive, weather/time/season rules. Use nuance reasoning to understand the context and make the best modifications.';
+        ? 'You are Rentan, an expert image generation prompt engineer for NovelAI v4.5 specializing in contextual adaptation with nuance reasoning and creative enhancement. You are allowed to be creative and innovative. You create Tsubo (text replacements) within a Tanei package to make changes to prompts.'
+        : 'You are Rentan, an expert image generation prompt engineer for NovelAI v4.5. Focus on precise, minimal, modifications that satisfy the directive, weather/time/season rules. Use nuance reasoning to understand the context and make the best modifications. You create Tsubo (text replacements) within a Tanei package.';
 
     const sections = [
         '# 🎯 SYSTEM ORIENTATION',
@@ -237,39 +229,51 @@ function buildPhase1_Orientation(optimize, creative, toolPasses = 8, dialogsCoun
  * CORE TASK OVERVIEW
  * Slimmed high-level task list to reduce cognitive load
  */
-function buildTaskOverviewSection(creative, dialogsCount = 6) {
+function buildTaskOverviewSection(creative, dialogsCount) {
+    const dialogsEnabled = dialogsCount != null ? dialogsCount > 0 : true;
+    
     const sections = [
         '## ✅ CORE TASK OVERVIEW',
         '',
         '**Your job is to make safe, minimal, correct prompt edits that satisfy the directive and context.**',
         '',
-        '### 1. Read Inputs',
-        '- Read **base prompt**, **negative prompt (UC)**, and **all character prompts** shown in the user message.',
-        '- If an image is provided, treat it as ground truth for appearance, pose, and environment (do not contradict it).',
+        '**⚠️ WORKFLOW: Follow these steps sequentially. Each step unlocks the next.**',
         '',
-        '### 2. Use Context & Directive',
-        '- Apply provided **time, weather, season, and holiday** data when enabled.',
-        '- Implement **every explicit request** from the user directive using visual, photographable tags/phrases.',
+        '### STEP 1: ANALYSIS (MUST COMPLETE FIRST)',
+        '- **Read all inputs** - Read **base prompt**, **negative prompt (UC)**, and **all character prompts** shown in the user message.',
+        '- **Analyze prompts and images** - Extract existing context (time, season, location, weather, character details, clothing, actions, etc.). If images provided, use vision to analyze.',
+        '- **Call `publishAnalysisResults` tool** - Document findings: prompt breakdown, image analysis (if provided), existing context, and prompt structure.',
+        '- **CRITICAL**: Only after calling `publishAnalysisResults` will you receive update instructions and unlock planning tools.',
         '',
-        '### 3. Maintain Locked / Chain / Adaptation',
-        '- If locked replacements are present: keep their **intent**, update `segment_index` to match current prompt segments, and return them with `"locked": true`.',
-        '- If continuing a chain or adaptation: reuse previous valid replacements when they still apply, otherwise regenerate a **complete** replacement set.',
+        '### STEP 2: PLANNING (ONLY AFTER ANALYSIS PUBLISHED - MANDATORY)',
+        '- **After `publishAnalysisResults` is accepted** - You will receive context data and update instructions.',
+        '- **Plan your Tsubo (text replacements)** - Document which segments to update, what tags to use, and integration approach for your Tanei package.',
+        '- **Call `planTextReplacements` tool (MANDATORY)** - Document planned Tsubo, research tracking, and conflicts. Do NOT create actual Tanei package yet.',
+        '   - **Research.completed**: List all research you\'ve already done, citing the tool call number and tool name for each',
+        '   - **Research.needed**: List research still needed, optionally including the tool name you plan to use',
+        '- **CRITICAL**: Only after calling `planTextReplacements` will execution tools become available.',
         '',
-        '### 4. Build `text_replacements` Using Segment Indices',
-        '- **Use `segment_index` (0-based) to target segments** in the prompts – see the segment lists shown after each prompt in the user message.',
-        '- For outer segments: use integer indices (0, 1, 2, ...) to target comma-separated segments.',
-        '- For inner items in emphasis groups: use float indices like `0.1` to target the second item inside segment 0\'s emphasis group.',
-        '- **Never guess or invent segment indices** – only use indices shown in the segment lists.',
-        '- Avoid overlapping selectors: each segment can only be modified once.',
+        '### STEP 3: RESEARCH & VERIFICATION (AVAILABLE AFTER ANALYSIS)',
+        '- **Research tools available** - Use tag searches, memory searches, web search. Verify tag quality before creating Tsubo.',
+        '- **Apply context data** - Use provided time, weather, season, holiday data when enabled.',
+        '- **Implement directive** - Apply every explicit request using visual, photographable tags/phrases.',
         '',
-        '### 5. Validate & Finalize',
-        `- Call \`validateTextReplacement\` with **complete** arrays (prompt, uc, character_prompts) and \`dialogs\` (about ${dialogsCount}).`,
-        '- If validation fails: fix every reported issue (missing/invalid `segment_index`, `replace_text`, overlaps, incomplete groups, etc.) and **retry**.',
-        '- Always return a **generated_image_name** and **character_names** when placeholders are present.',
+        '### STEP 4: EXECUTION (ONLY AFTER PLANNING ACCEPTED)',
+        '- **Build Tanei package** - Create Tsubo with `segment_index` to target segments. Use integer indices (0,1,2...) for outer segments, float (0.1,0.2...) for inner items.',
+        '- **Only use indices shown in segment lists** - Never guess. Each segment can only be modified once.',
+        '- **If locked Tsubo exist** - Keep intent and update `segment_index`. For chains, reuse valid replacements.',
+        '',
+        '### STEP 5: VALIDATION & FINALIZATION (EXECUTION PHASE)',
+        ...(dialogsEnabled 
+            ? [`- **Call validateTextReplacement** - Validate your Tanei package; the system verifies that Tanei correctly hydrates to Tendai with **complete** arrays (prompt, uc, character_prompts) and dialogs (about ${dialogsCount != null ? dialogsCount : '3-10'}).`]
+            : ['- **Call validateTextReplacement** - Validate your Tanei package; the system verifies that Tanei correctly hydrates to Tendai with **complete** arrays (prompt, uc, character_prompts).']),
+        '- **Fix validation errors** - If validation fails, fix every reported issue and retry.',
+        '- **Return metadata** - Always return `generated_image_name` and `character_names` when placeholders are present.',
+        '- **Call `completeTooling`** - When finished, call this tool to signal completion.',
         '',
         creative
-            ? '### 6. Creativity (When Enabled)\n- After all required changes validate cleanly, you may add concise creative enhancements that respect tokens and all safety rules.'
-            : '### 6. Creativity (When Disabled)\n- Do **not** add extra creative flourishes or new descriptive tags beyond what is required by directive and context.',
+            ? '### STEP 6: CREATIVITY (When Enabled)\n- After all required changes validate cleanly, you may add concise creative enhancements that respect tokens and all safety rules.'
+            : '### STEP 6: CREATIVITY (When Disabled)\n- Do **not** add extra creative flourishes or new descriptive tags beyond what is required by directive and context.',
         '',
         '---',
         ''
@@ -281,19 +285,16 @@ function buildTaskOverviewSection(creative, dialogsCount = 6) {
 /**
  * Tools Reference Section
  * @param {number} toolPasses - Number of available tool passes (default: 8)
- * @param {number} dialogsCount - Number of dialogs to generate (default: 6)
+ * @param {number} dialogsCount - Number of dialogs to generate (undefined/null = auto/3-10)
  * @param {boolean} fastModeEnabled - Whether fast mode is enabled (default: false)
  */
-function buildToolsReference(toolPasses = 8, dialogsCount = 6, fastModeEnabled = false) {
+function buildToolsReference(toolPasses = 8, dialogsCount, fastModeEnabled = false) {
     // Check if tag wiki collection is configured
-    let secureConfig;
-    try {
-        secureConfig = require('../secure.config.json');
-    } catch (error) {
-        secureConfig = {};
-    }
-    const useCollectionSearch = secureConfig.grok?.tagWikiCollectionId;
-    const useWebSearch = secureConfig.grok?.useWebSearch === true;
+    const grokConfig = globalResources.getSecureConfig({ path: 'grok' });
+    const useCollectionSearch = grokConfig?.tagWikiCollectionId;
+    const useWebSearch = grokConfig?.useWebSearch === true;
+    
+    const dialogsEnabled = dialogsCount != null ? dialogsCount > 0 : true;
 
     // Fast mode: memory + validation only
     if (fastModeEnabled) {
@@ -307,7 +308,9 @@ function buildToolsReference(toolPasses = 8, dialogsCount = 6, fastModeEnabled =
             '- `searchKnowledgeMemories` – Search and retrieve memories by keyword or category.',
             '',
             '### Validation & Completion',
-            `- \`validateTextReplacement\` (required) – Validate text_replacements and dialogs (about ${dialogsCount}).`,
+            dialogsEnabled 
+                ? `- \`validateTextReplacement\` (required) – Validate Tanei (system verifies Tanei → Tendai hydration) and dialogs (about ${dialogsCount != null ? dialogsCount : '3-10'}).`
+                : '- `validateTextReplacement` (required) – Validate Tanei (system verifies Tanei → Tendai hydration).',
             '- `completeTooling` – Manual completion when not using `terminateOnPass: true`.',
             '',
             ''
@@ -320,12 +323,17 @@ function buildToolsReference(toolPasses = 8, dialogsCount = 6, fastModeEnabled =
         '',
         `**${toolPasses} tool loops. Use tools for research & validation. Do NOT guess.**`,
         '',
+        '- `publishAnalysisResults` (STEP 1) – Publish analysis of prompts and images. Required before planning.',
+        '- `planTextReplacements` (STEP 2) – Plan Tanei. Document segments, tags, approach. Required before execution.',
+        '',
+        '',
         '### Tag Research',
         ...(useCollectionSearch ? [
             '- `file_search` – Search the tag wiki collection for tag meanings and relationships.'
         ] : [
             '- `searchTagsBatch` – Batch research tags (meanings/quality/strength).',
-            '- `searchTagDatabase` – NovelAI official tag API search.'
+            '- `searchTagDatabase` – NovelAI official tag API search.',
+            '- `getDatasetGroupContents` – Explore hierarchical tag groups and their contents. Supports fuzzy path matching (partial paths or just ending element). Returns ranked tags (simplified list by default) and full hierarchy tree showing progression path with all siblings at each level for navigation.'
         ]),
         '',
         '### Knowledge Memory',
@@ -333,11 +341,11 @@ function buildToolsReference(toolPasses = 8, dialogsCount = 6, fastModeEnabled =
         '- `searchKnowledgeMemories` – Find and load relevant memories in one call.',
         '',
         '### Validation & Completion',
-        '- `validateTextReplacement` (required) – Check all replacements against original prompts; fix every failure before finishing.',
+        '- `validateTextReplacement` (required) – Check all Tanei; the system verifies Tanei → Tendai hydration. Fix every failure before finishing.',
         '- `completeTooling` – Manual completion if you did not use `terminateOnPass: true`.',
         '',
-        '### Optimization (Optional)',
-        '- `analyzeTokenCount` – Analyze token usage for prompts and UC.',
+        '### Token Analysis & Optimization',
+        '- `analyzeTokenCount` – Analyze token usage and prompt effectiveness.',
         '',
         '### Web / External Research (Optional)',
         ...(useWebSearch ? [
@@ -381,27 +389,6 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
             categorizedMemories[category].push(mem);
         });
         
-        // // Use pre-selected top relevant memories (selected in core function)
-        // if (topRelevantMemories && topRelevantMemories.length > 0) {
-        //     sections.push('**Related Memories (Based on Prompt and Context, Do not limit yourself to these):**');
-        //     sections.push('');
-        //     sections.push('| Name | Category | Usage | Description |');
-        //     sections.push('|------|----------|-------|-------------|');
-        //     // Build table rows
-        //     topRelevantMemories.forEach(mem => {
-        //         const usageStr = mem.usage_count > 0 ? `${mem.usage_count}x` : '-';
-        //         // Truncate description to first 120 chars for brevity
-        //         const desc = mem.description.length > 120 
-        //             ? mem.description.substring(0, 120) + '...' 
-        //             : mem.description;
-        //         const name = mem.name.replace(/\|/g, '\\|');
-        //         const category = mem.category.replace(/\|/g, '\\|');
-        //         const description = desc.replace(/\|/g, '\\|');
-        //         sections.push(`| **${name}** | ${category} | ${usageStr} | ${description} |`);
-        //     });
-        //     sections.push('');
-        // }
-        
         // List remaining memories by category (names only, more compact)
         const categoryOrder = ['anatomy', 'character_design', 'character_specific', 'environment', 'scenario_specific', 'tag_preference', 'token_optimization', 'technique', 'style', 'effect', 'composition', 'lighting'];
         const listedCategories = Object.keys(categorizedMemories)
@@ -431,7 +418,7 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
         sections.push('**To use**: Call `retrieveKnowledgeMemory("name")` for exact names, or `searchKnowledgeMemories("query", "category")` to search and retrieve in one call.');
         sections.push('');
     } else {
-        sections.push('**No memories available yet.** Use `saveKnowledgeMemory()` to create reusable knowledge.');
+        sections.push('**No memories available yet.** Create memories using the `insight_memory` field in your response.');
         sections.push('');
     }
     
@@ -463,8 +450,8 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
         '**Memory-Complete Path (FASTEST):**',
         '- **If memories provide ALL information needed:**',
         '   * Skip web requests and tag searches',
-        '   * Go directly to creating text_replacements',
-        '   * Use memory knowledge to build replacements immediately',
+        '   * Go directly to creating Tanei package with Tsubo (text replacements)',
+        '   * Use memory knowledge to build text replacements immediately',
         '   * Validate and complete (terminateOnPass: true)',
         '   * **This is the fastest path - use it when possible!**',
         '',
@@ -514,30 +501,27 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
     );
 
     // Check if tag wiki collection is configured
-    let secureConfig;
-    try {
-        secureConfig = require('../secure.config.json');
-    } catch (error) {
-        secureConfig = {};
-    }
-    const useCollectionSearch = secureConfig.grok?.tagWikiCollectionId;
-    const useWebSearch = secureConfig.grok?.useWebSearch === true;
+    const grokConfig = globalResources.getSecureConfig({ path: 'grok' });
+    const useCollectionSearch = grokConfig?.tagWikiCollectionId;
+    const useWebSearch = grokConfig?.useWebSearch === true;
 
     if (useCollectionSearch) {
         sections.push(
             '',
             '### 📖 Danbooru Tag Wiki Collection (Primary Tag Research Tool)',
             '',
-            '**⚠️ CRITICAL: You MUST use `file_search` FIRST before ANY other tools or actions.**',
+            '**⚠️ CRITICAL FLOW: Analysis → Research → Execution**',
             '',
             '**🚨 MANDATORY WORKFLOW:**',
-            '1. **ALWAYS search FIRST** - Use `file_search` to understand context, inputs, tags, and concepts',
-            '2. **Research before acting** - Search to better understand what you\'re working with',
-            '3. **Then create replacements** - Only AFTER understanding context through search',
+            '1. **Complete Analysis** - Read inputs, extract context, call `publishAnalysisResults` tool',
+            '2. **Plan Tanei** - After analysis accepted, call `planTextReplacements` tool',
+            '3. **THEN: Research tags** - Use `file_search` to understand tags, concepts, and relationships',
+            '4. **FINALLY: Create Tanei package** - Create Tsubo (text replacements) only AFTER analysis, planning, and research are complete',
             '',
             '**MANDATORY RULES:**',
-            '* **BEFORE creating ANY text replacements**: Use `file_search` to understand tags, concepts, and inputs',
-            '* **ALWAYS search first**: Search to better understand the context and inputs before making modifications',
+            '* **BEFORE doing ANY research**: Complete analysis phase and call `publishAnalysisResults`',
+            '* **BEFORE creating ANY Tanei**: Use `file_search` to understand tags, concepts, and inputs',
+            '* **ALWAYS analyze first, then research**: Analysis extracts existing context, research verifies tag quality',
             '* **Search comprehensively**: Use `file_search` for ALL tags, concepts, characters, and terms you encounter',
             '',
             '**What the collection contains:**',
@@ -548,7 +532,7 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
             '* Tag group information',
             '',
             '**How to use `file_search`:**',
-            '* **MUST be used** to read tag descriptions and definitions before including it in replacements',
+            '* **MUST be used** to read tag descriptions and definitions before including it in Tanei',
             '* **MUST search** to understand context and inputs before making modifications',
             '* Use natural language queries: tag names, descriptions, concepts, character names',
             '* Returns relevant wiki entries with full context',
@@ -566,7 +550,7 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
             '**Workflow Order (MANDATORY):**',
             '1. **Search** - Use `file_search` to understand context, inputs, and tags',
             '2. **Understand** - Review search results to better understand what you\'re working with',
-            '3. **Then act** - Only AFTER searching and understanding, create text_replacements',
+            '3. **Then act** - Only AFTER searching and understanding, create Tanei package with Tsubo (text replacements)',
             '',
             '**Note:** The file search is handled automatically by Grok - you just call the tool with your query.',
             ''
@@ -637,7 +621,7 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
  * PHASE 2: UNDERSTANDING
  * What am I being asked to do? What are the priorities?
  */
-function buildPhase2_Understanding(stageContext, backgroundFocus, dynamicConfig, directive, fastModeEnabled = false) {
+async function buildPhase2_Understanding(stageContext, backgroundFocus, dynamicConfig, directive, fastModeEnabled = false) {
     const sections = [
         '# 🎯 TASK UNDERSTANDING',
         '',
@@ -696,6 +680,9 @@ function buildPhase2_Understanding(stageContext, backgroundFocus, dynamicConfig,
         ''
     );
 
+    // Add hierarchical category list
+    sections.push(...(await buildDatasetCategoryHierarchySection()));
+
     return sections;
 }
 
@@ -712,7 +699,7 @@ function buildPipelineStageSection(stageContext, backgroundFocus) {
         '**Focus**: Subject detail and positioning',
         '',
         '**Approach**:',
-        '* Make text replacements knowing later stages will fill in background details',
+        '* Make Tanei knowing later stages will fill in background details',
         '* Keep focus on subject - background will be expanded in subsequent stages',
         '* Ensure subject well-defined and positioned appropriately for future expansion',
         '* Don\'t over-detail the background - save that for background expansion stage',
@@ -753,13 +740,13 @@ function buildStateManagementSection(backgroundFocus, optimize = null, fastModeE
         ? [
             '2. **Regenerate with Memories** (if prompts changed)',
             '   - USE MEMORIES: Retrieve relevant knowledge memories',
-            '   - Use memory knowledge to create new text_replacements for current prompt state',
+            '   - Use memory knowledge to create new Tanei for current prompt state',
             ''
         ]
         : [
             '2. **Regenerate with Tools** (if prompts changed)',
             '   - USE TOOLS: Research new tags with searchTagsBatch',
-            '   - Create new text_replacements for current prompt state',
+            '   - Create new Tanei for current prompt state',
             ''
         ];
     
@@ -781,7 +768,7 @@ function buildStateManagementSection(backgroundFocus, optimize = null, fastModeE
         '',
         '**Choose Strategy**:',
         '1. **Update Existing** (most efficient if no prompt changes)',
-        '   - Review previous text_replacements from conversation history',
+        '   - Review previous Tanei from conversation history',
         '   - Update only what needs to change based on context shifts',
         '   - Use validateTextReplacement (terminateOnPass: true when ready)',
         '',
@@ -809,29 +796,29 @@ function buildStateManagementSection(backgroundFocus, optimize = null, fastModeE
  */
 function buildLockedReplacementsSection(lockedReplacements) {
     return [
-        '## LOCKED REPLACEMENTS SYSTEM',
+        '## LOCKED TANEI SYSTEM',
         '',
-        `**You have ${lockedReplacements.length} locked replacement(s) to maintain.**`,
+        `**You have ${lockedReplacements.length} locked Tsubo (text replacement item(s)) to maintain in your Tanei package.**`,
         '',
         '### Requirements',
         '',
-        '**1. Maintain Replacement Concepts**',
-        '* Keep the INTENT and PURPOSE of each locked replacement',
-        '* If locked replacement adds weather, continue weather enhancements',
-        '* If locked replacement enhances lighting, continue lighting enhancements',
+        '**1. Maintain Tsubo Concepts**',
+        '* Keep the INTENT and PURPOSE of each locked Tsubo',
+        '* If locked Tsubo adds weather, continue weather enhancements',
+        '* If locked Tsubo enhances lighting, continue lighting enhancements',
         '',
         '**2. Adapt to Current Context**',
         '* Update segment_index to match current prompt segment structure (check segment lists)',
         '* Update replace_text to fit new weather/time/season/context',
-        '* Ensure replacement still makes logical sense',
+        '* Ensure Tsubo still makes logical sense',
         '',
         '**3. Return as Locked**',
-        '* Mark ALL maintained replacements with "locked": true',
+        '* Mark ALL maintained Tsubo with "locked": true',
         '* Include clear reason explaining any adaptations made',
         '',
-        '### Locked Replacements Provided',
+        '### Locked Tsubo Provided',
         '',
-        '**Note**: Locked replacement data will be provided in the user message. Follow the rules above to maintain them.',
+        '**Note**: Locked Tsubo data will be provided in the user message. Follow the rules above to maintain them in your Tanei package.',
         ''
     ];
 }
@@ -879,7 +866,7 @@ function buildFeedbackSection(unresolvedFeedback) {
     const sections = [
         '# 📝 LESSONS LEARNED FROM PAST GENERATIONS',
         '',
-        '**CRITICAL**: These are real issues reported from previous text replacement attempts.',
+        '**CRITICAL**: These are real issues reported from previous Tanei attempts.',
         '**Learn from these mistakes and avoid repeating them.**',
         '',
         '## Past Issues to Avoid:',
@@ -888,12 +875,10 @@ function buildFeedbackSection(unresolvedFeedback) {
 
     unresolvedFeedback.forEach((entry, index) => {
         const entryNumber = index + 1;
-        // Show segment_index if available (new format), otherwise select_text (backwards compatibility)
+        // Show segment_index
         const segmentDisplay = entry.segment_index !== null && entry.segment_index !== undefined 
             ? `**Segment Index**: ${Array.isArray(entry.segment_index) ? `[${entry.segment_index.join(', ')}]` : entry.segment_index}`
-            : entry.select_text 
-                ? `**Original Text**: "${entry.select_text}"` 
-                : '';
+            : '';
         
         sections.push(
             `### Issue ${entryNumber}`,
@@ -930,7 +915,7 @@ function buildDirectiveHandlingOverview() {
         '2. **Analyze Mode**',
         '   * Instructions ("add rain") -> Implement directly',
         '   * Narrative ("She\'s been walking...") -> Extract visual implications',
-        '3. **List ALL Elements** - Every sentence/detail needs text_replacements',
+        '3. **List ALL Elements** - Every sentence/detail needs a Tsubo (text replacement) in your Tanei package',
         '4. **Transform to Visuals** - Apply visual-only rule, proper syntax',
         '5. **Verify** - No verbatim copying, no concepts, all photographable',
         '',
@@ -1024,7 +1009,7 @@ function buildOptimizationModeSection(optimize, fastModeEnabled = false) {
             '',
             '**Stage 1 (Current Stage - YOU):**',
             '1. Focus on context integration and semantic improvements',
-            '2. Create high-quality text replacements with token efficiency awareness',
+            '2. Create high-quality Tanei with token efficiency awareness',
             '3. Use `analyzeTokenCount` to verify optimal token counts',
             '4. If confident optimization is complete AND validation passes:',
             '   * Set `terminateOnPass: true` in `validateTextReplacement`',
@@ -1033,11 +1018,14 @@ function buildOptimizationModeSection(optimize, fastModeEnabled = false) {
             '* Will review your work for further optimization opportunities',
             '* Will only provide updates if improvements are needed',
             '',
-            '**Recommended Tool Usage:**',
-            '1. Create your text_replacements',
-            '2. Call analyzeTokenCount({ texts: [...], reason: "..." })',
-            '3. Review results - all showing "Optimal token count"?',
-            '4. If YES: Call validateTextReplacement({ ..., terminateOnPass: true })',
+            '**Tool Usage:**',
+            '1. Create your Tanei',
+            '2. Call analyzeTokenCount({ texts: [...], includeBreakdown: true, show_tag_suggestions: true, reason: "..." })',
+            '   - Review token counts AND prompt analysis effectiveness scores',
+            '   - Check for weak segments and tag suggestions',
+            '3. Call validateTextReplacement with your Tanei (system verifies Tanei → Tendai hydration)',
+            '4. Re-analyze the final output with analyzeTokenCount to verify results',
+            '5. If all results show "Optimal token count" AND high effectiveness: Set terminateOnPass: true',
             '',
             ''
         );
@@ -1047,14 +1035,19 @@ function buildOptimizationModeSection(optimize, fastModeEnabled = false) {
         '### 🎯 Optimization Strategies by Token Pressure',
         '',
         '**🔴 CRITICAL (>512 tokens):**',
+        '[✓] Use analyzeTokenCount with includeBreakdown=true before and after changes',
         '[✓] Prefer pure tags (Strategy A) for maximum efficiency',
         '[✓] Use researched tags (≥95% quality, ≥8.0 strength)',
+        '[✓] Target segments with <40% effectiveness scores from prompt analysis',
+        '[✓] Apply tag suggestions from NovelAI Search and Danbooru/e621 Search results',
         '[✓] Merge redundant descriptions into concise phrases',
         '[✓] Replace weak multi-token phrases with strong single-token alternatives',
         '[⨉] Don\'t delete meaningful content just for token savings',
         '',
         '**🟠 HIGH (450-512 tokens):**',
+        '[✓] Use analyzeTokenCount with includeBreakdown=true to identify optimization opportunities',
         '[✓] Prefer pure tags (Strategy A) for efficiency',
+        '[✓] Focus on segments with low effectiveness scores (<60%)',
         '[✓] Look for weak multi-token phrases that could be stronger single tokens',
         '[✓] Replace obvious redundancy if spotted',
         '[⨉] Don\'t force optimization where it\'s not needed',
@@ -1102,7 +1095,7 @@ function buildProtectedContentSection() {
         '',
         '**", Text:" Boundary:**',
         '* Everything after ", Text:" is overlay text (speech/thought/captions from text overlays) that will be generated by the AI and not part of the prompt.',
-        'Default: Replacements work BEFORE ", Text:" only',
+        'Default: Tanei work BEFORE ", Text:" only',
         'Exceptions: Categories "Spelling" and "Text Overlay" can modify after',
         '',
 
@@ -1177,10 +1170,13 @@ function buildTagUsagePhilosophy(optimize, fastModeEnabled = false) {
             '',
             '## 🔍 MANDATORY Research Workflow',
             '',
-            '1. **Search FIRST**: Use `file_search` to understand context, inputs, tags, and concepts',
-            '2. **Research**: Use file_search to research tags (understand meanings, relationships, usage)',
-            '3. **Understand**: Review search results to better understand what you\'re working with',
-            '4. **Choose Strategy**: Based on token budget, search results, and quality data (see below)',
+            '** Warning: Complete analysis phase FIRST before starting research.**',
+            '',
+            '1. **Complete Analysis**: Read inputs, extract existing context, call `publishAnalysisResults` tool',
+            '2. **Search FIRST**: Use `file_search` to understand context, inputs, tags, and concepts',
+            '3. **Research**: Use file_search to research tags (understand meanings, relationships, usage)',
+            '4. **Understand**: Review search results to better understand what you\'re working with',
+            '5. **Choose Strategy**: Based on token budget, search results, and quality data (see below)',
         ];
     
     return [
@@ -1272,7 +1268,7 @@ function buildContentTransformationRules() {
         '**Transform to visible:**',
         '[⨉] "22kmh wind" -> [✓] "wind-swept hair"',
         '[⨉] "18°C" -> [✓] "cool comfortable air" OR "light jacket"',
-        '[⨉] "overcast" -> [✓] "cloudy sky, diffused lighting"',
+        '[⨉] "cloudy" -> [✓] "cloudy, diffused lighting"',
         '',
         '**Two-Test Validation:**',
         '1. **Can I photograph this?** (physical visibility)',
@@ -1295,9 +1291,9 @@ function buildPhase6_ModificationSystem(weather, time, season, holiday, directiv
     const sections = [
         '# 🔧 MODIFICATION SYSTEM',
         '',
-        '## 📝 TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE',
+        '## 📝 RENTAN TANEI SYSTEM - COMPLETE REFERENCE',
         '',
-        '**`text_replacements` is the ONLY modification method**',
+        '**Tanei (`text_replacements`) is the ONLY modification method** - Your Tanei package (containing Tsubo/text replacements) is automatically transformed to Tendai during processing.',
         '',
         '### 🎯 Three Actions: REPLACE, APPEND, DELETE',
         '',
@@ -1314,9 +1310,9 @@ function buildPhase6_ModificationSystem(weather, time, season, holiday, directiv
         '### 📍 Segment Index Format',
         '',
         '**`segment_index` is REQUIRED for ALL actions (use -1 for append-to-end)**',
-        '* **Integer (0-based)**: `0`, `1`, `2`, ... targets a single comma-separated segment',
-        '* **Float for inner items**: `0.1` targets a single inner item inside segment 0\'s emphasis group',
-        '* **Array of indices**: `[0, 1, 2]` or `[0.1, 1.0]` targets multiple segments/inner items in one replacement (for replace/delete only)',
+        '* **Integer (0-based)**: `0`, `1`, `2`, ... targets a single segment',
+        '* **Float for inner items**: `0.1` targets a single inner item within a segment',
+        '* **Array of indices**: `[0, 1, 2]` or `[0.1, 1.0]` targets multiple segments/inner items in one Tsubo (for replace/delete only)',
         '* **REPLACE with arrays**: Array MUST be continuous - `[0, 1, 2]` is valid, `[0, 2, 5]` is NOT',
         '* **DELETE with arrays**: Array CAN be non-continuous - `[0, 2, 5]` is valid',
         '* **For APPEND**: Use `segment_index: -1` to add at the end, or provide a segment index to add after that segment',
@@ -1380,31 +1376,15 @@ function buildUniquenessRules() {
         '* **Use only segment indices shown in the segment lists** after each prompt in the user message',
         '* **For inner items**: Use float format `X.Y` where X is outer segment index and Y is inner item index (e.g., `0.1` for segment 0, inner item 1)',
         '* Selectors must NOT overlap - each segment can only be modified once',
-        '* Emphasis groups MUST be complete in replace_text: `"1.2::content::"` (weight::text::)',
+        '* **CRITICAL:** Do NOT manually create emphasis formatting in `replace_text` - always use plain text and the `segment_emphasis` parameter instead',
         '',
         '**What is NOT the original prompt?**',
         '* ❌ Memories - Memories are reference information, NOT the actual prompt text',
         '* ❌ Text you plan to add - You cannot target text that doesn\'t exist yet (use APPEND instead)',
-        '* ❌ Text from previous replacement attempts - Only use segment indices from the ORIGINAL prompt segment lists',
-        '* ❌ Text replacement seed values - These are replaced before your replacements run',
+        '* ❌ Text from previous Tanei attempts - Only use segment indices from the ORIGINAL prompt segment lists',
+        '* ❌ Text replacement seed values - These are replaced before your Tanei run',
         '',
-        '**Every `segment_index` MUST:**',
-        '* ✅ Reference a valid segment index shown in the segment lists after prompts',
-        '* ✅ Be an integer (0-based) for outer segments: `0`, `1`, `2`, ...',
-        '* ✅ Be a float `X.Y` for inner items in emphasis groups (X = outer segment, Y = inner item, e.g., `0.1`)',
-        '* ✅ Target segments that EXIST in the original prompt structure',
-        '',
-        '**Common mistakes:**',
-        '* ❌ Using segment_index `5` when only segments 0-3 exist → ✅ Check segment list, use valid index',
-        '* ❌ Using `"0.5"` when segment 0 has no inner items → ✅ Check inner items list for that segment',
-        '* ❌ Guessing indices without checking segment lists → ✅ Always use indices from the segment lists shown',
-        '* ❌ Using invalid format like `"segment_0"` → ✅ Use integer `0` or float `0.1` format',
-        '',
-        '**Before using any segment_index:**',
-        '* 1. Look at the segment lists shown after each prompt in the user message',
-        '* 2. Find the segment index (or inner item index) that targets the text you want to modify',
-        '* 3. Verify the index exists in the list',
-        '* 4. If the segment doesn\'t exist, use APPEND instead (use segment_index: -1 to add at end)',
+        '**segment_index format:** Integer (0,1,2...) for outer segments, float (0.1,0.2...) for inner items. Only use indices from segment lists shown. If segment doesn\'t exist, use APPEND instead.',
         '',
 
         ''
@@ -1418,7 +1398,7 @@ function buildRequiredFields() {
     return [
         '## 📋 Required Fields Reference',
         '',
-        '**CRITICAL: EVERY replacement MUST include ALL of these fields. Missing any field will cause validation to FAIL:**',
+        '**CRITICAL: EVERY Tsubo (text replacement) MUST include ALL of these fields. Missing any field will cause validation (Tanei → Tendai hydration) to FAIL:**',
         '',
         '**`reason`** (REQUIRED - string):',
         '* Brief explanation of WHY this change was made (short sentence)',
@@ -1432,36 +1412,21 @@ function buildRequiredFields() {
         '* **MANDATORY** - Every replacement MUST have this field',
         '* See "Replacement Category Reference" section below',
         '* MUST be exactly one of the allowed category values',
-        '* When time/weather/season/holiday/directive features are enabled, you MUST include at least one replacement with the corresponding category',
+        '* When time/weather/season/holiday/directive features are enabled, you MUST include at least one Tsubo (text replacement) with the corresponding category in your Tanei package',
         '',
         '**Optional fields**:',
         '',
-        '**`segment_index`** (REQUIRED for ALL actions):',
-        '* **Integer (0-based)**: `0`, `1`, `2`, ... targets a single comma-separated segment',
-        '* **Float for inner items**: `0.1` targets a single inner item inside segment 0\'s emphasis group',
-        '* **Array of indices**: `[0, 1, 2]` or `[0.1, 1.0]` targets multiple segments/inner items in a single replacement (for replace/delete only)',
-        '* **For REPLACE with arrays**: Array MUST be continuous (e.g., `[0, 1, 2]` - NOT `[0, 2, 5]`)',
-        '* **For DELETE with arrays**: Array CAN be non-continuous (e.g., `[0, 2, 5]` is valid)',
-        '* **For REPLACE/DELETE**: Must point to valid segment(s) shown in segment lists',
-        '* **For APPEND**: Use `-1` to append at end, or provide a segment index to append after that segment',
-        '* **See segment lists in user message** after each prompt for available indices and emphasis weights',
+        '**`segment_index`** (REQUIRED for ALL actions - see "Segment Index Format" section above for details):',
         '',
         '**`replace_text`** (REQUIRED for REPLACE/APPEND, must be omitted for DELETE):',
-        '* Text to insert or replace with',
+        '* Plain text to insert or replace with (no formatting)',
         '* Must be consistent with surrounding prompt and not contradict existing tags',
-        '* For emphasis groups, use complete format: `"1.2::content::"` (weight::text::)',
-        '* **Note:** If `segment_emphasis` is set, the system will automatically wrap the text with emphasis groups',
+        '* Use `segment_emphasis` parameter to set `segment_emphasis` values',
         '',
         '**`segment_emphasis`** (optional - number, range: -5.0 to 8.0):',
-        '* Emphasis multiplier to apply to the replacement text',
-        '* If set, the replacement text will be automatically wrapped with an emphasis group (e.g., `2.4::text::`)',
-        '* **Automatic behavior:** If the selected text segment was already wrapped in an emphasis group and `segment_emphasis` is not defined, the previous emphasis value will be automatically applied to preserve emphasis',
-        '* **Priority:** If `segment_emphasis` is explicitly set, it takes precedence over automatic extraction from selected text',
-        '* **When to use:** Use when you want to apply or change emphasis on replacement text in the safest way without manually formatting emphasis groups in `replace_text`',
-        '* **Examples:**',
-        '  - `segment_emphasis: 2.4` -> wraps `replace_text` as `"2.4::replace_text::"`',
-        '  - `segment_emphasis: -1.5` -> wraps `replace_text` as `"-1.5::replace_text::"` (negative emphasis)',
-        '  - If selected text is `"2.0::original text ::"` and `segment_emphasis` is not set -> automatically applies `2.0` to replacement',
+        '* `segment_emphasis` value to apply to replacement text',
+        '* If not set, preserves `segment_emphasis` from the original segment',
+        '* If set, applies the specified `segment_emphasis` value',
         '',
         '**`is_critical`** (optional - boolean, defaults to true):',
         '* `true`: Critical changes. Failure triggers retry.',
@@ -1487,7 +1452,7 @@ function buildCategoryReference() {
     return [
         '## 🏷️ Replacement Category Reference',
         '',
-        '**CRITICAL: replacement_category is REQUIRED for EVERY replacement. Validation WILL FAIL if any replacement is missing this field.**',
+        '**CRITICAL: replacement_category is REQUIRED for EVERY Tsubo (text replacement). Validation (Tanei → Tendai hydration) WILL FAIL if any Tsubo is missing this field.**',
         '',
         '**CRITICAL: You MUST use EXACTLY one of these 12 categories. No variations, no custom categories.**',
         '',
@@ -1542,19 +1507,20 @@ function buildCategoryRequirementNotes(weather, time, season, holiday, directive
     );
 
     if (weather) {
-        requirements.push('* Weather (user message → WEATHER DATA LCD panel) → Include at least one replacement with category "Weather"');
+        requirements.push('* Weather (user message → WEATHER DATA LCD panel) → Include at least one Tsubo (text replacement) with category "Weather" in your Tanei package');
     }
     if (time) {
-        requirements.push('* Time (user message → TIME DATA LCD panel) → Include at least one replacement with category "Time of Day"');
+        requirements.push('* Time (user message → TIME DATA LCD panel) → Include at least one Tsubo (text replacement) with category "Time of Day" in your Tanei package');
     }
     if (season) {
-        requirements.push('* Season (user message → Season/Guidelines block) → Include at least one replacement with category "Seasonal"');
+        requirements.push('* Season (user message → Season/Guidelines block) → Include at least one Tsubo (text replacement) with category "Seasonal" in your Tanei package');
     }
-    if (holiday) {
-        requirements.push('* Holiday (user message → Holiday/Decorations block) → Include at least one replacement with category "Holiday"');
+    // Holiday category only required on day of (daysUntil === 0) or day before (daysUntil === 1)
+    if (holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1) {
+        requirements.push('* Holiday (user message → Holiday/Decorations block) → Include at least one Tsubo (text replacement) with category "Holiday" in your Tanei package');
     }
     if (directive) {
-        requirements.push('* Directive (user message → Directive summary) → Include at least one replacement with category "Directive"');
+        requirements.push('* Directive (user message → Directive summary) → Include at least one Tsubo (text replacement) with category "Directive" in your Tanei package');
     }
 
     requirements.push(
@@ -1571,112 +1537,38 @@ function buildCategoryRequirementNotes(weather, time, season, holiday, directive
  */
 function buildEmphasisGroupsGuide() {
     return [
-        '## 🎯 EMPHASIS GROUPS GUIDE',
+        '## 🎯 EMPHASIS VALUES',
         '',
-        '**⚠️ VALIDATION WILL FAIL for malformed emphasis groups - fix immediately**',
+        '**Prompts are organized into segments** - each segment appears in the segment list with its index and emphasis value',
         '',
-        '**Syntax:** `weight::content ::` where weight = -9.0 to 5.0+',
-        '**CRITICAL RULES:**',
-        '* **Always include weight number** (e.g., `1.5::content ::`, NOT `::content ::`)',
-        '* **Always include space before closing `::`** (e.g., `1.5::content ::`, NOT `1.5::content::`)',
-        '* **Always include BOTH start AND end markers** (e.g., `1.5::content ::`, NOT `1.5::content` or `content ::`)',
-        '* **Check what follows** - NO terminator needed if followed by another weight prefix',
-        '',
-        '**COMMON ERRORS (VALIDATION FAILS - FIX IMMEDIATELY):**',
-        '* ❌ `expert lighting:::` - Missing weight number before `:::`',
-        '* ❌ `2::deep shadows` - Missing end marker `::` (should be `2::deep shadows ::`)',
-        '* ❌ `1.5::content::` - Missing space before closing `::`',
-        '* ❌ `::content ::` - Missing weight number',
-        '* ❌ `content ::` - Missing weight number',
-        '* ❌ `(append): Missing replace_text` - APPEND actions MUST have replace_text field',
-        '',
-        '**✅ CORRECT EXAMPLES:**',
-        '* `1.5::expert lighting ::` - Single group with terminator',
-        '* `1.5::rainy 2.0::wet ::` - Multiple groups, first auto-terminates',
-        '* `1.5::deep shadows ::, city lights` - Group followed by regular text',
-        '',
-        '**Weight Ranges:**',
-        '```',
-        'Range      | Effect           | Example',
-        '──────────────────────────────────────────────────',
-        '1.3-1.5    | Subtle boost     | 1.4::evening ::',
-        '1.5-2.0    | Moderate         | 1.8::heavy rain ::',
-        '2.0-3.0    | Strong           | 2.5::intense ::',
-        '3.0+       | Extreme (rare)   | 3.0::dominant ::',
-        '-0.5 to -2.5| Remove/conflict | -2.0::sunny ::',
-        '0.4-0.9    | De-emphasize     | 0.7::subtle ::',
-        '```',
-        '',
-        '**Modifying Groups - CRITICAL RULES:**',
-        '',
-        '**When targeting emphasis groups, you MUST:**',
-        '* **Use segment_index to target the entire group**: Use integer index if group is its own segment, or float `X.Y` (e.g., `0.1`) to target inner items',
-        '* **Check segment lists** after each prompt to find the correct index for emphasis groups',
-        '* **For REPLACE**: Use segment_index pointing to the group, replace with complete group format: `"2.4::new content ::"`',
-        '* **For inner items**: Use float format `X.Y` where X is segment index and Y is inner item index (e.g., `0.1`)',
+        '**Segment Structure:**',
+        '* Each segment has an index (0, 1, 2, etc.) and may have a `segment_emphasis` value',
+        '* Segments may contain inner items (accessed as `X.0`, `X.1`, etc.)',
+        '* Check the segment lists in the user message to see available segments and their emphasis values',
         '',
         '**Using `segment_emphasis` Parameter:**',
-        '* **Automatic emphasis application:** Instead of manually formatting emphasis groups in `replace_text`, you can use `segment_emphasis` to automatically apply emphasis',
-        '* **Preserves existing emphasis:** If the selected text segment has emphasis (e.g., `"2.0::original ::"`) and you don\'t set `segment_emphasis`, the system automatically preserves the original emphasis value',
-        '* **Override with explicit value:** Setting `segment_emphasis` explicitly will use that value instead of extracting from selected text',
-        '* **Range:** Valid values are -5.0 to 8.0 (matches emphasis group weight ranges)',
-        '* **Examples:**',
-        '  - Replacing `"2.0::sunny day ::"` with `replace_text: "cloudy day"` and no `segment_emphasis` -> automatically becomes `"2.0::cloudy day ::"`',
-        '  - Replacing `"2.0::sunny day ::"` with `replace_text: "cloudy day"` and `segment_emphasis: 3.0` -> becomes `"3.0::cloudy day ::"`',
-        '  - Replacing regular text with `replace_text: "important detail"` and `segment_emphasis: 2.4` -> becomes `"2.4::important detail ::"`',
+        '* Set `segment_emphasis` to apply emphasis to replacement text',
+        '* Range: -5.0 to 8.0',
+        '* If not set, preserves emphasis from the original segment',
+        '* **ALWAYS use plain text in `replace_text`** - system handles all emphasis formatting automatically',
         '',
-        '**NEVER do these:**',
-        '[⨉] Use invalid segment_index like `5` when only segments 0-3 exist',
-        '[⨉] Use `"0.5"` when segment 0 has no inner items',
-        '[⨉] Create replacement without end marker: `replace_text: "2.4::new content"` (missing ` ::`)',
-        '[⨉] Create replacement without start marker: `replace_text: "new content ::"` (missing `2.4::`)',
+        '**Segment Lists:**',
+        '* Check segment lists in user message for available indices and `segment_emphasis` values',
+        '* Use integer indices (0, 1, 2) for segments',
+        '* Use float indices (0.1, 0.2) for inner items within segments',
+        '* [⨉] DO NOT use any formatting markers in `replace_text` - always use plain text and `segment_emphasis` parameter',
         '',
         '**Best Practices:**',
-        '* **REPLACE action**: Use segment_index to target group, replace with complete group format: `"2.4::new content ::"`',
-        '  - **IMPORTANT:** When creating replacements, CHECK what follows to determine if terminator is needed',
-        '  - If followed by another emphasis prefix: `"2.4::content 1.5::next ::"` (no terminator on first)',
-        '  - If followed by regular text or end: `"2.4::content ::"` (terminator required)',
-        '* **For inner items**: Use float `X.Y` format (e.g., `0.1`) to modify specific items inside emphasis groups',
-        '* **APPEND action**: Use segment_index: -1 to add at end, or provide a segment index to add after that segment',
+        '* **REPLACE action**: Use `segment_index` to target segment, use plain text in `replace_text`, and use `segment_emphasis` to set emphasis',
+        '* **For inner items**: Use float `X.Y` format (e.g., `0.1`) to modify specific items within segments - use plain text in `replace_text`',
+        '* **APPEND action**: Use `segment_index: -1` to add at end, or provide a segment index to add after that segment - use plain text in `replace_text`',
         '',
         '**Examples:**',
-        '[✓]: `segment_index: 0` (where segment 0 is `"2.4::detailed background ::"`) -> `replace_text: "2.4::detailed midnight background ::"`',
-        '[✓]: `segment_index: 0.1` (targeting inner item inside segment 0) -> `replace_text: "midnight background"` (keeps weight)',
-        '[✓]: `segment_index: 0` -> `replace_text: ", with frost"` (append to segment, keeps weight)',
+        '[✓]: `segment_index: 0` with `replace_text: "detailed midnight background"` and `segment_emphasis: 2.4`',
+        '[✓]: `segment_index: 0.1` (targeting inner item) with `replace_text: "midnight background"` (preserves emphasis automatically)',
+        '[✓]: `segment_index: 0` with `replace_text: ", with frost"` (preserves emphasis automatically)',
         '[⨉]: Using segment_index that doesn\'t exist in the segment list',
-        '[⨉]: `replace_text: "2.4::new"` (missing end markers ` ::`)',
-        '',
-        '**Consecutive Groups - Auto-Termination:**',
-        '* **CRITICAL:** Check what comes AFTER your emphasis group before adding a terminator',
-        '* **NO terminator needed** if immediately followed (after optional whitespace/comma) by:',
-        '  - Another emphasis prefix: `1.5::rainy 2.0::wet ::` (first group auto-terminates at `2.0::`)',
-        '  - A closing terminator: `1.5::rainy ::` (group ends at the `::`)',
-        '* **Terminator REQUIRED** if followed by regular text or nothing: `1.5::rainy ::, background`',
-        '',
-        '**Examples:**',
-        '- `1.5::rainy 2.0::wet ::` = two groups, first auto-terminates, only last needs ` ::`',
-        '- `1.5::rainy :: 2.0::wet ::` = two groups, both have explicit terminators',
-        '- `1.5::rainy ::, background` = one group with terminator, followed by regular text',
-        '[⨉] `1.5::rainy, background` = missing terminator (regular text follows)',
-        '',
-        '**Nested Groups - AVOID WHEN POSSIBLE:**',
-        '* **GENERAL RULE:** Avoid nesting weight groups inside other weight groups (e.g., `2.4::1.5::content:: ::`)',
-        '* **BETTER ALTERNATIVES:**',
-        '  - Use legacy emphasis inside weight groups: `2.4::content {{emphasized}} rest ::` (no nested weight group)',
-        '  - Legacy emphasis works inside weight groups: `{element}` = light, `{{element}}` = strong, `[[element]]` = de-emphasis',
-        '  - Restructure to avoid nesting: Split into separate groups',
-        '* **IF YOU MUST NEST:** Instead of ending inner group with `::`, restart the outer weight:',
-        '  - [⨉]: `2.4::content 1.5::emphasized:: ::` (nested terminator breaks outer group)',
-        '  - [✓] Correct: `2.4::content 1.5::emphasized 2.4::rest ::` (restart outer weight after inner)',
-        '  - Pattern: `outerWeight::content innerWeight::emphasized outerWeight::rest ::`',
-        '',
-        '**Negative Emphasis:** For stubborn attributes (use with UC)',
-        'Three-step: 1) REPLACE text, 2) UC opposites, 3) Negative emphasis in prompt',
-        '',
-        '**Legacy (still supported):** `{element}` = light, `{{element}}` = strong, `[[element]]` = de-emphasis',
-        'Each additional {} around the element increases the emphasis by 0.05x',
-        'Where as each additional [] around the element decreases the emphasis by 0.05x',
-        '**Use legacy inside weight groups** to avoid nesting: `2.4::content {{emphasized}} rest ::` (legacy emphasis, no nested weight group)',
+        '[⨉]: Manually formatting emphasis in `replace_text` (DO NOT do this - use `segment_emphasis` parameter instead)',
         '',
 
         ''
@@ -1688,9 +1580,9 @@ function buildEmphasisGroupsGuide() {
  */
 function buildReplacementPlanning() {
     return [
-        '## 🎯 REPLACEMENT PLANNING',
+        '## 🎯 TANEI PLANNING',
         '',
-        '**BEFORE creating text_replacements:**',
+        '**BEFORE creating your Tanei package (`text_replacements`) with Tsubo (text replacements):**',
         '',
         '1. **⚠️ CHECK SEGMENT LISTS** - Every `segment_index` MUST reference valid segments shown in the segment lists',
         '   - Check the segment lists shown after each prompt in the user message',
@@ -1698,25 +1590,102 @@ function buildReplacementPlanning() {
         '   - For inner items, use float `X.Y` format (e.g., `0.1`) where X and Y are valid indices',
         '   - If the segment doesn\'t exist, use APPEND (use segment_index: -1 to add at end)',
         '2. **NEVER VERBATIM COPY** - Transform ALL input/context/directive text',
-        '3. **PLAN COMPLETE ARRAY** - Think through all replacements first',
+        '3. **PLAN COMPLETE TANEI PACKAGE** - Think through all Tsubo (text replacements) first',
         '4. **NO OVERLAPPING** - Each segment_index targets distinct segments',
-        '5. **⚠️ CRITICAL - NO CHAINS** - Never modify your own additions (target ORIGINAL prompt segments only)',
-        '   - **VALIDATION FAILS** if segment_index references segments modified by your own replacements',
-        '   - Example: If you replace segment 0 in replacement #1, you CANNOT use segment 0 again in replacement #2',
+        '5. **⚠️ CRITICAL - AVOID REPLACING YOUR OWN ADDITIONS (CHAINING)** - Never modify your own additions (target ORIGINAL prompt segments only and use APPEND to add new text after the original text)',
+        '   - **VALIDATION FAILS** if segment_index references segments modified by your own Tanei',
+        '   - Example: If you replace segment 0 in Tsubo #1, you CANNOT use segment 0 again in Tsubo #2',
         '6. **TRY APPEND FIRST** - Default to `APPEND` for enhancements; reserve `REPLACE` for conflicts/outdated descriptions',
         '',
+        '## 🔧 AUTOMATIC HYDRATION & DECONFLICTION (Tanei → Tendai)',
+        '',
+        '**The system automatically handles complex scenarios during hydration (converting Tanei to Tendai):**',
+        '',
+        '1. **Order Processing** - Replacements are processed in order (replaces/deletes before appends)',
+        '2. **Change Tracking** - The system maintains a "container" that tracks all modifications without shifting segment indexes',
+        '3. **Auto-Deconfliction** - If a replacement targets a segment that was already modified:',
+        '   - The system automatically updates to match the current modified state',
+        '   - Appends targeting modified segments are automatically updated to the correct target',
+        '4. **Type Conversion** - If a REPLACE has `replace_text` that overlaps with existing text (prefix overlap):',
+        '   - The system automatically converts it to an APPEND action',
+        '   - Removes the overlapping prefix from `replace_text`',
+        '   - This prevents redundant text duplication',
+        '5. **Mitigation Tracking** - All automatic adjustments are logged in a `mitigations` array on each replacement',
+        '   - Check this array to see what corrections were applied',
+        '   - Types include: `converted_to_append`, `updated_target`, `updated_append_target`',
+        '',
+        '**What this means:** Create Tsubo in any order - system processes correctly. Always target ORIGINAL segment indices. Segment indexes never shift after DELETE - they remain fixed.',
+        '',
+        '## 📦 SEGMENT CONTAINERIZATION & INNER ITEMS',
+        '',
+        '**Emphasis Groups with Inner Items:** Outer segment (X) contains full group. Inner items accessed as `X.0`, `X.1`, `X.2`. If you REPLACE entire segment, all inner items are lost and those indices become invalid.',
+        '',
+        '**To replace with new emphasis group:** DELETE segment first, then APPEND after previous segment.',
+        '',
+        '## 🎯 ADVANCED: GRANULAR APPEND & REPLACE (Optional - Not Default)',
+        '',
+        '**⚠️ These features are OPTIONAL and should NOT be your default approach.**',
+        'Only use when you understand what you\'re doing or have a specific need:',
+        '',
+        '### Granular Append (append_after)',
+        '',
+        'Insert text at a specific position WITHIN a segment (not after the entire segment):',
+        '',
+        '* **When to use**: Spelling corrections, inserting specific words within a segment',
+        '* **append_after**: String (word to find) or number (word position, 0-indexed)',
+        '* **append_delimiter**: "space" (default), "comma", or "none" (for direct mode)',
+        '* **append_standalone**: How to handle spacing:',
+        '  - `standalone`: Tag in a list - auto-handles commas (e.g., "tag1, tag2, NEW_TAG")',
+        '  - `simple`: Word insertion - auto-adds space if needed (default)',
+        '  - `direct`: Literal insertion - you control all spacing/punctuation',
+        '',
         '**Examples:**',
-        '[⨉] Chain: R1: segment_index 0 -> "rainy city", R2: segment_index 0 -> "dark rainy city" (using same segment twice)',
-        '[✓] Single: segment_index 0 -> "dark rainy city" (one replacement)',
+        '  - Append "very" after word "happy" in segment 5: `append_after: "happy", append_delimiter: "space"`',
+        '  - Append after 2nd word in segment: `append_after: 2`',
         '',
-        '[⨉] segment_index: 5 (when only segments 0-3 exist)',
-        '[✓] Check segment list, use valid index like segment_index: 2',
+        '**Note**: Tanei → Tendai hydration will create the proper anchor and padding automatically.',
         '',
-        '[⨉] segment_index: "0.5" (when segment 0 has no inner items)',
-        '[✓] Check inner items list, use valid outer segment like segment_index: 0, or APPEND instead',
+        '### Granular Replace (replace_part)',
         '',
-        '**Validation:** See Phase 9 for complete pre-submission checklist',
+        'Replace a specific part WITHIN a segment (not the entire segment):',
         '',
+        '* **When to use**: Spelling corrections, fixing typos, replacing specific words',
+        '* **replace_part**: Exact text within the segment to replace',
+        '* **replace_text**: What to replace it with',
+        '',
+        '**Example:**',
+        '  - Segment: "beautiful happy smile"',
+        '  - Replace "happy" with "joyful": `replace_part: "happy", replace_text: "joyful"`',
+        '',
+        '**Note**: Hydration will create the proper anchor context automatically.',
+        '',
+        '## 🎯 ANCHORING STRATEGY (Prefix Overlap Conversion)',
+        '',
+        '**You can use REPLACE with overlapping prefix as an anchoring strategy:**',
+        '',
+        'If you want to "anchor" an addition to specific text, you can:',
+        '',
+        '1. **Use REPLACE** with `replace_text` that starts with the same text as the existing segment',
+        '2. **Set is_critical: true** if you want the anchor to be required (model may have done this intentionally)',
+        '3. **Set is_critical: false** if the anchor is just for positioning (won\'t auto-append if anchor fails)',
+        '',
+        '**What happens:**',
+        '',
+        '* The system will **automatically convert** REPLACE → APPEND when prefix overlap is detected',
+        '* The **overlapping prefix is preserved as `anchor_text`** for precise positioning',
+        '* If **critical**: Anchor is required - append will happen after the anchor',
+        '* If **not critical**: Anchor is preserved but won\'t force append if anchor not found',
+        '',
+        '**Example:**',
+        '  - Segment: "happy smile"',
+        '  - REPLACE with: "happy very smile" (overlaps with "happy")',
+        '  - System converts to: APPEND "very smile" after anchor "happy"',
+        '  - Result: "happy very smile"',
+        '',
+        '**⚠️ IMPORTANT:**',
+        '* ❌ **DO NOT use as default** - Use standard segment-level replacements when possible',
+        '* ✅ **Use for**: Spelling corrections, specific word insertions, anchoring additions to specific text',
+        '* ⚠️ **Risk**: More complex, harder to validate, may fail if exact text not found',
         ''
     ];
 }
@@ -1729,16 +1698,72 @@ function buildPhase7_Analysis(weather, time, clothing) {
     const sections = [
         '# 🔍 ANALYSIS & PLANNING',
         '',
-        '## 🎬 Analysis Process',
+        '## 🎬 Analysis Process (STEP 1 - COMPLETE FIRST - BEFORE ANY RESEARCH)',
+        '',
+        '**⚠️ CRITICAL FLOW ORDER (YOU MUST FOLLOW THIS SEQUENCE):**',
+        '1. **FIRST**: Read and analyze all inputs (prompts, images, context data)',
+        '2. **SECOND**: Call `publishAnalysisResults` tool with your findings (see tool definition in Phase 8)',
+        '3. **THIRD**: After analysis is published and accepted, you will receive update instructions',
+        '4. **FOURTH (MANDATORY)**: Call `planTextReplacements` tool to plan your changes. **YOU MUST CALL THIS TOOL** - execution tools will NOT be available until you do. (see tool definition in Phase 8)',
+        '5. **FIFTH**: After planning is accepted, execute with all tools available',
+        '',
+        '',
+        '**Step-by-Step Analysis (Do this FIRST, before any research):**',
         '',
         '1. **Read prompts & images** - Subject, composition, conditions, conflicts',
         ...(time || weather ? [
-            '2. **Parse context** -' + (time ? ' Time (clock, period, sun, light)' : '') + 
+            '2. **Parse provided context** -' + (time ? ' Time (clock, period, sun, light)' : '') + 
             (time && weather ? ',' : '') + (weather ? ' Weather (temp, condition, wind, precip)' : '')
         ] : []),
-        '3. **Scene understanding** - Environment type (indoor/outdoor/mixed), intent, characters, style',
-        '4. **Identify conflicts** - Time/weather/seasonal mismatches',
-        '5. **Enhancement opportunities** - Integration points, missing details',
+        '3. **Analyze existing context** - Extract what currently exists in prompts (see detailed steps below)',
+        '4. **Scene understanding** - Environment type (indoor/outdoor/mixed), intent, characters, style',
+        '5. **Identify conflicts** - Time/weather/seasonal mismatches',
+        '6. **Determine planned changes** - What needs updating based on provided context vs existing context',
+        '7. **Enhancement opportunities** - Integration points, missing details',
+        '',
+        '## 📊 MANDATORY: Document Your Analysis',
+        '',
+        '**BEFORE doing ANY research or creating Tanei, you MUST:**',
+        '1. Complete the analysis steps below',
+        '2. Call `publishAnalysisResults` tool with your findings (see tool definition in Phase 8)',
+        '3. Wait for acceptance and update instructions',
+        '4. Only then proceed to planning and research',
+        '',
+        '### Step-by-Step Analysis Process:',
+        '',
+        '**1. Analyze Base Prompt - Extract Existing Context:**',
+        '',
+        '**Time/Season/Holiday/Weather/Sky/Location Analysis:**',
+        '- Scan segments for relevant tags. Map to enum values. Note segment_index where found. Set found:true/false, value, segment_index.',
+        '- **Scene type:** Indoor (bedroom, kitchen, etc.) / Outdoor (park, forest, etc.) / Mixed / Unknown',
+        '- **Lighting intensity:** Map brightness indicators to enum: "very_dark", "dark", "dim", "moderate", "bright", "very_bright", "extreme"',
+        '',
+        '**2. Analyze Character Prompts:**',
+        '',
+        '**For each character prompt:** Extract clothing (wearing, dress, shirt, etc.), actions (standing, walking, etc.), and attributes (slender, muscular, etc.). Note segment_index for each.',
+        '',
+        '**3. Analyze Preview Image (if provided):**',
+        '',
+        '**If preview image provided:** Use vision to analyze scene type, lighting, weather, time indicators, character clothing/poses/attributes. Combine with prompt analysis.',
+        '',
+        '**4. Determine What Needs Updating (planned object):**',
+        '',
+        '**Compare existing vs provided context:** If time/weather/season/holiday doesn\'t match → needs_update:true, set new_value and reason. If scene_type unknown but context suggests it → needs_update:true.',
+        '- **Indoor scenes:** DO NOT add visible breath, leaves, wind effects, or direct precipitation.',
+        '- **Character updates:** If weather/time requires clothing/action changes → needs_update:true per character.',
+        '- **enhancements**: Array of enhancement opportunities. **directive**: Array of directive requests to implement.',
+        '',
+        '**5. Call `publishAnalysisResults` Tool (MANDATORY - STEP 1):**',
+        '',
+        '- Fill out `publishAnalysisResults` tool with complete analysis: `prompt_breakdown`, `image_analysis` (if provided), `existing_context`, `prompt_structure`.',
+        '- **CRITICAL**: Only after calling this tool will you receive update instructions and unlock planning tools.',
+        '',
+        '**6. Call `planTextReplacements` Tool (MANDATORY - STEP 2 - REQUIRED TO PROCEED):**',
+        '',
+        '- **MANDATORY**: After `publishAnalysisResults` is accepted, call `planTextReplacements` tool. Document `planned_changes`, `research` (with `completed` and `needed` arrays), `conflicts_to_resolve`. Do NOT create actual Tanei package yet.',
+        '   - **Research.completed**: Must cite each research item with tool call number and tool name (e.g., {topic: "volumetric lighting", call_number: 3, tool_name: "searchTagDatabase"})',
+        '   - **Research.needed**: Can optionally include planned tool name for tracking (e.g., {topic: "hair rendering", tool_name: "getTagDetails"})',
+        '- **CRITICAL**: Only after calling this tool will execution tools become available.',
         '',
         ''
     ];
@@ -1784,10 +1809,17 @@ function buildPhase8_Execution(weather, time, clothing, creative, nsfw_level, ac
     const sections = [
         '# ⚙️ EXECUTION STRATEGIES',
         '',
+        '## ⚠️ REMINDER: Research Phase (After Analysis)',
+        '',
+        '**Before creating your Tanei package with Tsubo (text replacements), ensure you have:**',
+        '1. ✅ Completed analysis and called `publishAnalysisResults`',
+        '2. ✅ Conducted necessary research (tag searches, memory lookups, verification)',
+        '3. ✅ Verified tag quality and meanings for planned changes',
+        '',
         '## 🎯 Modification Hierarchy',
         '',
         '**Apply in this order:**',
-        '1. **Conflict resolution** - Remove contradicting elements first',
+        '1. **Conflict resolution** - Remove contradicting elements first in your Tsubo (text replacements)',
         ...(weather || time ? [`2. **${time && weather ? 'Time & weather' : time ? 'Time' : 'Weather'} integration** - Add required context markers`] : ['2. **Atmospheric enhancement** - Add mood and tone']),
         '3. **Character integration** - Adapt actions and responses to conditions',
         '4. **Atmospheric refinement** - Polish and enhance overall scene',
@@ -1848,6 +1880,7 @@ function buildTimeIntegrationSection() {
         '',
         '**Step 1: Identify time markers**',
         '* Extract period name (night, morning, etc.)',
+        '* **CRITICAL**: You should have the at least the time period tags alone in the prompt. You can add other tags as well, but there should always by a high usage of time period tag present that is not combined with other tag or description.',
         '',
         '**Step 2: Interpret sun position**',
         '* Understand where sun is in sky',
@@ -1857,17 +1890,38 @@ function buildTimeIntegrationSection() {
         '* Use outdoor light level to determine brightness',
         '* 0/10 = complete darkness, 10/10 = bright midday',
         '',
-        '**Step 4: Add time markers WITH EMPHASIS**',
-        '* Apply emphasis to time period tags based on light level',
+        '**Step 4: Add time markers WITH `segment_emphasis`**',
+        '* Apply `segment_emphasis` to time period tags based on light level',
         '',
         '**Time Emphasis Reference:**',
         '```',
-        'Light Level | Context        | Weight  | Example Tag',
-        '0-2         | Deep night     | 1.5-1.8 | 1.6::night ::',
-        '3-4         | Dawn/Dusk      | 1.4-1.6 | 1.5::dusk ::',
-        '5-7         | Standard day   | 1.3-1.4 | 1.3::morning ::',
-        '8-10        | Bright/peak    | 1.3-1.5 | 1.4::bright daylight ::',
+        'Light Level | Context        | segment_emphasis Range | Example',
+        '0-2         | Deep night     | 1.5-1.8                | "night" (segment_emphasis: 1.6)',
+        '3-4         | Dawn/Dusk      | 1.4-1.6                | "dusk" (segment_emphasis: 1.5)',
+        '5-7         | Standard day   | 1.3-1.4                | "morning" (segment_emphasis: 1.3)',
+        '8-10        | Bright/peak    | 1.3-1.5                | "bright daylight" (segment_emphasis: 1.4)',
         '```',
+        '',
+        '**Step 4b: Using Lighting Elements Bias Tables (Reasoning-Based Approach)**',
+        '',
+        '**When the "💡 LIGHTING ELEMENTS" table is provided in the user message:**',
+        '* The table shows lighting elements with bias values indicating their **calculated relative importance**',
+        '* **DO NOT directly apply these bias values as `segment_emphasis`**',
+        '* Instead, **reason independently** about what emphasis should actually be used:',
+        '  * Consider the full context of the scene and prompt',
+        '  * Evaluate the relative importance of each lighting element in the overall composition',
+        '  * Assess how lighting elements interact with other elements (weather, characters, setting)',
+        '  * Determine the desired visual balance and emphasis hierarchy',
+        '* Use bias values to **understand relative importance** (higher bias = more important, lower bias = less important)',
+        '* **Not all elements from the table need to be applied** - select and emphasize only what makes sense for the specific context',
+        '* The bias values indicate calculated importance, but your reasoning about actual `segment_emphasis` should consider the full context',
+        '',
+        '**Reasoning Example:**',
+        '* If table shows "sunrise, golden hour" with bias 1.8:',
+        '  * Is sunrise the primary focus? → Use `segment_emphasis: 2.0-2.5` (stronger than bias)',
+        '  * Is sunrise a subtle background element? → Use `segment_emphasis: 1.2-1.5` (weaker than bias)',
+        '  * Does the scene already have strong emphasis elsewhere? → Balance accordingly',
+        '  * The bias (1.8) indicates importance, but your reasoning determines the actual `segment_emphasis` value',
         '',
         '**Step 5: Create visual lighting descriptions**',
         '',
@@ -1879,6 +1933,7 @@ function buildTimeIntegrationSection() {
         '* Sun is below horizon - contributes ZERO light',
         '* Only artificial lights (streetlights, windows) or celestial bodies (moon/stars)',
         '* Sky provides NO ambient lighting - complete darkness overhead',
+        '* **DO NOT define cloud conditions at night** - if the sun is not visible, clouds are not visible either',
         '',
 
         ''
@@ -1921,7 +1976,7 @@ function buildWeatherIntegrationSection() {
         '',
         '### Weather Data Components',
         '* **Temperature**: Feels-like temperature in °C',
-        '* **Condition**: Weather condition name (clear sky, overcast, rain, etc.)',
+        '* **Condition**: Weather condition name (clear sky, cloudy, rain, etc.)',
         '* **Wind**: Speed (km/h) + character-relative direction',
         '* **Cloud Coverage**: 0-10 bars (0% to 100%)',
         '* **Visibility**: 0-10 bars (fog to excellent)',
@@ -1937,49 +1992,63 @@ function buildWeatherIntegrationSection() {
         '',
         '**Step 2: Identify scene type**',
         '* **INDOOR**: Weather affects indirectly (windows, temperature)',
+        '  * **DO NOT add**: visible breath, leaves, wind-blown objects, direct precipitation on characters',
+        '  * **ONLY add**: weather visible through windows, temperature effects, condensation on glass',
         '* **OUTDOOR**: Weather affects directly (wetness, wind on skin)',
-        '* **MIXED**: Contextual (direct for outdoor, indirect for indoor)',
+        '  * **CAN add**: visible breath in cold, leaves/debris in wind, direct rain/snow, wind effects',
+        '* **MIXED**: Contextual (direct for outdoor areas, indirect for indoor areas)',
         '',
         '**Step 3: Transform to visuals**',
         '* Convert readings into atmospheric descriptions',
         '* ⚠️ NEVER copy readings verbatim (18°C -> "cool air")',
         '',
-        '**Step 4: Add weather markers WITH EMPHASIS**',
-        '* Apply emphasis based on intensity and visual impact',
+        '**Step 4: Add weather markers WITH `segment_emphasis`**',
+        '* Apply `segment_emphasis` based on intensity and visual impact',
         '',
         '**Weather Emphasis Reference:**',
         '```',
-        'Condition           | Intensity        | Weight  | Example',
-        '─────────────────────────────────────────────────────────────',
-        'Precipitation       | Heavy (>10mm/hr) | 1.7-2.0 | 1.8::heavy rain ::',
-        '                    | Moderate (3-10)  | 1.5-1.7 | 1.5::rain ::',
-        '                    | Light (<3)       | 1.3-1.5 | 1.4::drizzle ::',
-        'Clouds              | Heavy (80-100%)  | 1.4-1.5 | 1.5::overcast ::',
-        '                    | Partial (40-80%) | 1.3     | 1.3::cloudy ::',
-        '                    | Clear (<40%)     | 1.3     | 1.3::clear sky ::',
-        'Temperature         | Extreme cold <-10| 1.5-1.7 | 1.6::freezing cold ::',
-        '                    | Cold (0 to -10)  | 1.4-1.5 | 1.4::freezing ::',
-        '                    | Hot (28-35°C)    | 1.4-1.6 | 1.5::hot ::',
-        '                    | Extreme >35°C    | 1.6-1.8 | 1.7::scorching ::',
-        '                    | Comfortable      | 1.3     | 1.3::mild ::',
-        'Visibility          | Poor (<1000m)    | 1.6-1.8 | 1.7::dense fog ::',
-        '                    | Reduced (1-5km)  | 1.4-1.5 | 1.5::fog ::',
-        'Wind                | Strong (>15m/s)  | 1.5-1.7 | 1.6::strong winds ::',
-        '                    | Moderate (8-15)  | 1.4     | 1.4::windy ::',
-        '                    | Light (<8)       | 1.3     | 1.3::breeze ::',
+        'Condition           | Intensity        | segment_emphasis Range | Example',
+        '─────────────────────────────────────────────────────────────────────────────',
+        'Precipitation       | Heavy (>10mm/hr) | 1.7-2.0                | "heavy rain" (segment_emphasis: 1.8)',
+        '                    | Moderate (3-10)  | 1.5-1.7                | "rain" (segment_emphasis: 1.5)',
+        '                    | Light (<3)       | 1.3-1.5                | "drizzle" (segment_emphasis: 1.4)',
+        'Clouds              | Heavy (80-100%)  | 1.4-1.5                | "cloudy" (segment_emphasis: 1.5)',
+        '                    | Partial (40-80%) | 1.3                    | "cloudy" (segment_emphasis: 1.3)',
+        '                    | Clear (<40%)     | 1.3                    | "clear sky" (segment_emphasis: 1.3)',
+        'Temperature         | Extreme cold <-10| 1.5-1.7                | "freezing cold" (segment_emphasis: 1.6)',
+        '                    | Cold (0 to -10)  | 1.4-1.5                | "freezing" (segment_emphasis: 1.4)',
+        '                    | Hot (28-35°C)    | 1.4-1.6                | "hot" (segment_emphasis: 1.5)',
+        '                    | Extreme >35°C    | 1.6-1.8                | "scorching" (segment_emphasis: 1.7)',
+        '                    | Comfortable      | 1.3                    | "mild" (segment_emphasis: 1.3)',
+        'Visibility          | Poor (<1000m)    | 1.6-1.8                | "dense fog" (segment_emphasis: 1.7)',
+        '                    | Reduced (1-5km)  | 1.4-1.5                | "fog" (segment_emphasis: 1.5)',
+        'Wind                | Strong (>15m/s)  | 1.5-1.7                | "strong winds" (segment_emphasis: 1.6)',
+        '                    | Moderate (8-15)  | 1.4                    | "windy" (segment_emphasis: 1.4)',
+        '                    | Light (<8)       | 1.3                    | "breeze" (segment_emphasis: 1.3)',
         '```',
         '**Note:** High humidity (>70%) with heat: increase weight by 0.1-0.2',
         '',
+        '**⚠️ CRITICAL - Cloud Conditions at Night:**',
+        '* **DO NOT define cloud conditions (cloudy, cloudy, clear sky) at night time**',
+        '* If the sun is not visible (night, midnight, deep night), clouds are NOT visible either',
+        '* Defining cloud conditions at night will incorrectly modify the generation to evening time',
+        '* At night: Only use precipitation, temperature, wind, and visibility conditions - NO cloud coverage tags',
+        '* Cloud conditions should ONLY be used during daylight hours (dawn, morning, midday, afternoon, dusk)',
+        '',
         '**Step 5: Apply to characters**',
-        '* Show physical responses (sweating, shivering, wind effects)',
+        '* Show physical responses (sweating, shivering, wind effects) - OUTDOOR ONLY',
         '',
         '### Protection (UC Opposites)',
-        '* Add a single consolidated UC append with direct opposites for weather context (e.g., rain -> "sunny, dry, clear sky"; clear -> "rain, wet, overcast") to prevent contradictions. See UC Strategy.',
+        '* Add a single consolidated UC append with direct opposites for weather context (e.g., rain -> "sunny, dry, clear sky"; clear -> "rain, wet, cloudy") to prevent contradictions. See UC Strategy.',
         '',
         '### 🌡️ Temperature Integration - Quick Reference',
         '',
+        '**⚠️ CRITICAL: Temperature effects apply ONLY to OUTDOOR scenes**',
+        '* Indoor scenes: Temperature affects comfort/clothing choices but NO direct physical effects (no visible breath, no shivering, no sweating from heat)',
+        '* Outdoor scenes: All temperature effects apply normally',
+        '',
         '```',
-        'Range      | Environment              | Character Effects',
+        'Range      | Environment              | Character Effects (OUTDOOR ONLY)',
         '─────────────────────────────────────────────────────────────────────',
         '<0°C       | Frost, ice, steam        | Visible breath*, shiver, red face',
         '0-10°C     | Cool air, dew            | Breath <5°C, light shiver, jacket',
@@ -1989,13 +2058,17 @@ function buildWeatherIntegrationSection() {
         '32-40°C    | Intense heat, heavy air  | Heavy sweat, glistening, damp clothes',
         '>40°C      | Dangerous, severe shimmer| Profuse sweat, exhaustion, minimal wear',
         '```',
-        '**Modifiers:** High humidity (>70%) = more visible sweat, sticky clothes. Heavier builds = more profuse sweating.',
+        '**Modifiers (OUTDOOR ONLY):** High humidity (>70%) = more visible sweat, sticky clothes. Heavier builds = more profuse sweating.',
         '',
         '### 👤 Character Adjustment Guide by Temperature',
         '',
-        '**When adjusting characters based on temperature, consider these aspects:**',
+        '**⚠️ CRITICAL: All temperature effects below apply ONLY to OUTDOOR scenes**',
+        '* **INDOOR**: Temperature may influence clothing choices and atmosphere, but NO direct physical effects',
+        '* **OUTDOOR**: All temperature effects apply normally',
         '',
-        '#### ❄️ Cold Temperatures (<10°C)',
+        '**When adjusting characters based on temperature (OUTDOOR ONLY), consider these aspects:**',
+        '',
+        '#### ❄️ Cold Temperatures (<10°C) - OUTDOOR ONLY',
         '',
         '**Clothing Adjustments:**',
         '* Add layers: jackets, coats, sweaters, scarves, gloves, hats',
@@ -2007,7 +2080,7 @@ function buildWeatherIntegrationSection() {
         '* Arms crossed or hands in pockets for warmth',
         '* Shoulders slightly hunched or raised',
         '* Body slightly curled inward (defensive posture against cold)',
-        '* Hands near face or mouth (warming breath)',
+        '* Hands near face or mouth (warming breath) - OUTDOOR ONLY',
         '* Stiff or tense posture from cold',
         '',
         '**Facial Expressions & Physical Responses:**',
@@ -2094,6 +2167,7 @@ function buildWeatherIntegrationSection() {
         '* Physical build affects response (heavier = more sweat in heat, slender = more affected by cold)',
         '',
         '### 🌬️ Wind Integration',
+        '* **OUTDOOR ONLY**: Wind effects apply ONLY when scene_type is "outdoor" or "mixed" (outdoor areas)',
         '* Hair movement (direction: left/right/facing/behind)',
         '* Loose clothing billowing, tight clothing shows contours',
         '* Wind chill makes cold feel colder',
@@ -2101,24 +2175,46 @@ function buildWeatherIntegrationSection() {
         '* Leaves, debris, dust in motion',
         '',
         '### 💧 Humidity Integration (Hot Weather Only)',
+        '* **OUTDOOR ONLY**: Humidity effects apply primarily to outdoor scenes',
         '* Low (<40%): Dry heat, sweat evaporates quickly',
         '* Moderate (40-60%): Normal sweat response',
         '* High (60-80%): Sweat doesn\'t evaporate, sticky, clothing clings',
         '* Very High (>80%): Oppressive, heavy air, profuse sweating, damp clothing',
         '',
-        '**Visual markers:** Sweat glistening, clothing sticking, moisture in air, condensation',
+        '**Visual markers (OUTDOOR):** Sweat glistening, clothing sticking, moisture in air',
+        '**Visual markers (INDOOR):** Condensation on windows, temperature effects, but NO visible breath or outdoor weather elements',
         '',
         '### 🌧️ Precipitation Integration',
-        '* Slick reflective surfaces',
-        '* Dripping water from edges, hair, clothing',
-        '* Puddles forming',
-        '* Soaked appearance on exposed areas',
-        '* Rain-darkened materials',
+        '* **OUTDOOR ONLY**: Direct precipitation effects apply ONLY when scene_type is "outdoor" or "mixed" (outdoor areas)',
+        '* Slick reflective surfaces - OUTDOOR ONLY',
+        '* Dripping water from edges, hair, clothing - OUTDOOR ONLY',
+        '* Puddles forming - OUTDOOR ONLY',
+        '* Soaked appearance on exposed areas - OUTDOOR ONLY',
+        '* Rain-darkened materials - OUTDOOR ONLY',
+        '* **INDOOR**: Precipitation visible through windows only, NO direct wetness, NO dripping water, NO puddles',
         '',
-        '### Scene Type Application',
-        '* **INDOOR**: Weather through windows, temperature effects, condensation',
-        '* **OUTDOOR**: Direct wetness, wind on skin, temperature felt directly',
-        '* **MIXED**: Contextual application based on area',
+        '### Scene Type Application - CRITICAL RULES',
+        '* **INDOOR**: Weather and temperature effects are INDIRECT ONLY',
+        '  * NO visible breath (breath only visible outdoors)',
+        '  * NO leaves, debris, or wind-blown objects (these are outdoor-only)',
+        '  * NO direct precipitation on characters (rain/snow visible through windows only)',
+        '  * NO temperature-based physical effects (no shivering, no sweating from heat, no visible breath)',
+        '  * Weather shows through windows, temperature affects atmosphere/clothing but NOT direct physical effects',
+        '  * Condensation on glass is acceptable for indoor scenes',
+        '* **OUTDOOR**: Weather effects are DIRECT',
+        '  * Visible breath in cold weather (<5°C)',
+        '  * Leaves, debris, dust in motion (wind effects)',
+        '  * Direct wetness from rain/snow on skin and clothing',
+        '  * Wind on skin, hair movement, clothing billowing',
+        '  * Temperature felt directly on exposed skin',
+        '* **MIXED**: Apply effects contextually based on area',
+        '  * Indoor areas: indirect effects only',
+        '  * Outdoor areas: direct effects',
+        '',
+        '**MANDATORY**: Before adding weather effects, check location.scene_type from `publishAnalysisResults`:',
+        '* If scene_type is "indoor" → DO NOT add visible breath, leaves, wind-blown objects, or direct precipitation',
+        '* If scene_type is "outdoor" → Weather effects apply normally',
+        '* If scene_type is "mixed" → Apply effects only to outdoor portions of scene',
         '',
         '### Physical Characteristics Modifiers',
         '* **Heavier builds**: Sweat MORE in heat, show exertion sooner',
@@ -2127,12 +2223,12 @@ function buildWeatherIntegrationSection() {
         '',
         '### Translation Examples',
         '**Transform readings - DON\'T copy verbatim:**',
-        '* 18°C + 90% clouds -> "1.5::overcast sky ::, diffused lighting"',
-        '* -5°C + night -> "1.4::freezing 1.6::night ::, visible breath mist"',
-        '* 30°C + 85% humidity -> "1.6::oppressive humid heat ::, sweat glistening"',
-        '* 15mm/hr rain -> "1.8::heavy rain ::, wet reflecting surfaces"',
+        '* 18°C + 90% clouds -> "cloudy" (segment_emphasis: 1.5), "diffused lighting"',
+        '* -5°C + night -> "freezing" (segment_emphasis: 1.4), "night" (segment_emphasis: 1.6), "visible breath mist"',
+        '* 30°C + 85% humidity -> "oppressive humid heat" (segment_emphasis: 1.6), "sweat glistening"',
+        '* 15mm/hr rain -> "heavy rain" (segment_emphasis: 1.8), "wet reflecting surfaces"',
         '',
-        '**Strong Tokens:** condensation:9.6, shimmer:9.53, dawn:9.4, humid:9.36, breeze:9.3, damp:9.28, sweat:9.18',
+        '**Strong Tokens:** condensation, shimmer, dawn, humid, breeze, damp, sweat',
         '',
 
         ''
@@ -2149,7 +2245,8 @@ function buildWeatherIntegrationSummarySection() {
         '**Goal**: Turn weather sensor data into simple, photographable visual tags and descriptions.',
         '',
         '### How to Use Weather',
-        '- **Condition → tags**: Map overall condition (clear, overcast, rain, snow, fog) to tags such as `clear sky`, `overcast`, `heavy rain`, `snow`, `fog`.',
+        '- **Condition → tags**: Map overall condition (clear, cloudy, rain, snow, fog) to tags such as `clear sky`, `cloudy`, `heavy rain`, `snow`, `fog`.',
+        '- **⚠️ CRITICAL**: **DO NOT define cloud conditions (cloudy, cloudy, clear sky) at night** - if the sun is not visible, clouds are not visible either. Cloud conditions should ONLY be used during daylight hours.',
         '- **Intensity → emphasis**: Use strength (e.g., heavy vs light rain) to decide how strongly to emphasize those tags.',
         '- **Temperature & humidity**: Describe how it feels (freezing, cool, mild, hot, oppressive humid heat) instead of copying degrees.',
         '- **Wind**: Show effects on hair, clothing, and environment (leaves, dust, waves) using simple tags like `breeze`, `windy`, `strong winds`.',
@@ -2164,7 +2261,7 @@ function buildWeatherIntegrationSummarySection() {
         '- Show character responses: shivering in cold, visible breath in freezing air, sweat and clinging clothes in heat.',
         '',
         '### UC Protection',
-        '- Add one UC append with opposite weather context (e.g., rain → "sunny, dry, clear sky"; clear → "rain, wet, overcast") to avoid contradictions.',
+        '- Add one UC append with opposite weather context (e.g., rain → "sunny, dry, clear sky"; clear → "rain, wet, cloudy") to avoid contradictions.',
         '',
         ''
     ];
@@ -2193,16 +2290,59 @@ function buildCombinedIntegrationSection() {
         '* Choose emphasis weights based on BOTH time and weather guidelines',
         '* Apply stronger emphasis to the more dominant/extreme condition',
         '',
+        '**Step 4b: Using Lighting & Atmospheric Elements Bias Tables (Reasoning-Based Approach)**',
+        '',
+        '**When "💡 LIGHTING ELEMENTS" and "🌬️ ATMOSPHERIC ELEMENTS" tables are provided in the user message:**',
+        '* These tables show elements with bias values indicating their **calculated relative importance**',
+        '* **DO NOT directly apply these bias values as `segment_emphasis`**',
+        '* Instead, **reason independently** about what emphasis should actually be used:',
+        '  * Consider the full context of the scene, prompt, time, and weather together',
+        '  * Evaluate the relative importance of each element in the overall composition',
+        '  * Assess how lighting and atmospheric elements interact with each other and with other scene elements',
+        '  * Determine the desired visual balance and emphasis hierarchy across all elements',
+        '* Use bias values to **understand relative importance** (higher bias = more important, lower bias = less important)',
+        '* **Not all elements from the tables need to be applied** - select and emphasize only what makes sense for the specific combined context',
+        '* The bias values indicate calculated importance, but your reasoning about actual `segment_emphasis` should consider the full integrated context',
+        '',
+        '**Reasoning Example:**',
+        '* If lighting table shows "sunrise, golden hour" (bias 1.8) and atmosphere shows "cool air, light breeze" (bias 1.3):',
+        '  * Is this a sunrise-focused scene? → Emphasize lighting more (2.0-2.5)',
+        '  * Is this a weather-focused scene? → Emphasize atmosphere more (1.5-2.0)',
+        '  * Are both equally important? → Balance both (1.5-1.8 for each)',
+        '  * The bias values guide relative importance, but your reasoning determines actual `segment_emphasis` values',
+        '',
+        '**Step 4c: Using Seasonal Guidelines & Modifications (Reasoning-Based Approach)**',
+        '',
+        '**When seasonal "IDEAS" section is provided in the user message:**',
+        '* The guidelines and modifications are **suggestions for consideration**, not direct commands to follow',
+        '* **DO NOT blindly apply all suggestions** - instead, **reason independently** about which elements to use:',
+        '  * Consider the full context of the scene, prompt, time, weather, and other factors',
+        '  * Evaluate which seasonal elements enhance the scene vs. which might conflict or be unnecessary',
+        '  * Assess how seasonal elements interact with lighting, atmosphere, and other scene elements',
+        '  * Determine the desired visual balance - some scenes may benefit from subtle seasonal touches, others from stronger seasonal presence',
+        '* **Not all suggestions need to be applied** - select and use only what makes sense for the specific context',
+        '* The suggestions indicate calculated seasonal relevance, but your reasoning about actual application should consider the full integrated context',
+        '',
+        '**Reasoning Example:**',
+        '* If winter suggestions include "frost on windows, snow accumulation" but the scene is indoor with no windows:',
+        '  * Skip window frost (not applicable)',
+        '  * Consider if snow accumulation is visible from indoors (through windows) or if it should be skipped',
+        '  * Focus on indoor winter elements that make sense (warm lighting, cozy atmosphere)',
+        '* If spring suggestions include "blooming elements" but the scene is at night:',
+        '  * Consider if flowers are visible at night (moonlight, artificial lighting)',
+        '  * Focus on spring elements that work in low light (fresh air, lighter clothing, spring colors)',
+        '  * Skip elements that require daylight visibility',
+        '',
         '**Step 5: Create unified visuals**',
         '* Integrate both into cohesive atmosphere',
         '',
         '**Protection:** Add a single consolidated UC append covering direct opposites for BOTH time and weather (see UC Strategy) to prevent contradictory interpretations.',
         '',
         '### Integration Examples',
-        '* Night + Rain + Overcast -> "1.6::dark rainy night ::, wet pavement reflecting streetlights"',
-        '* Bright Afternoon + Hot -> "1.4::bright sunny afternoon, 1.5::harsh sunlight ::, heat shimmer"',
-        '* Dawn + Fog -> "1.7::dense misty dawn ::, diffused light, reduced visibility"',
-        '* Evening + Strong Wind -> "1.5::darkening evening, 1.6::strong winds ::, hair streaming"',
+        '* Night + Rain -> "dark rainy night" (segment_emphasis: 1.6), "wet pavement reflecting streetlights" (NO cloud conditions at night)',
+        '* Bright Afternoon + Hot -> "bright sunny afternoon" (segment_emphasis: 1.4), "harsh sunlight" (segment_emphasis: 1.5), "heat shimmer"',
+        '* Dawn + Fog -> "dense misty dawn" (segment_emphasis: 1.7), "diffused light, reduced visibility"',
+        '* Evening + Strong Wind -> "darkening evening" (segment_emphasis: 1.5), "strong winds" (segment_emphasis: 1.6), "hair streaming"',
         '',
 
         ''
@@ -2329,7 +2469,7 @@ function buildNSFWGuidelines(nsfw_level) {
             '* Use maximum sexual intensity and explicitness',
             '',
             '**Technical Requirements:**',
-            '* Use emphasis weights (1.5::keyword ::, 2.0::keyword ::) for critical elements',
+            '* Use `segment_emphasis` values (1.5-2.0) for critical elements',
             '* Use medical/anatomical terminology for explicit content',
             '* Document visible physical changes from sexual activities',
             '* For multi-character: define power dynamics, contact points, intensity',
@@ -2399,18 +2539,18 @@ function buildPhase9_Validation(weather, time, season, holiday, directive) {
         '## 📋 Pre-Submission Validation',
         '',
         '**ALL must pass:**',
-        '[✓] No duplicate/overlapping/chain replacements | [✓] Original text only',
+        '[✓] No duplicate/overlapping/chain Tsubo (text replacements) | [✓] Original text only',
         '[✓] No verbatim copying | [✓] Visual only (no concepts/measurements)',
         '[✓] Comma separation | [✓] Required fields present (REPLACE: segment_index+replace_text, APPEND: segment_index(-1)+replace_text, DELETE: segment_index)',
-        '[✓] **replacement_category REQUIRED** - Every replacement MUST have replacement_category field (validation fails if missing)',
+        '[✓] **replacement_category REQUIRED** - Every Tsubo (text replacement) MUST have replacement_category field (Tanei → Tendai hydration validation fails if missing)',
         '[✓] **UC placement** - UC opposites go in uc array ONLY, never in prompt array',
         '[✓] Valid categories | [✓] Order independent (randomize test)',
         '[✓] **Category assignment** - Each requested change MUST be assigned to its appropriate category',
-        ...(weather ? ['[✓] **Required category present** - At least one "Weather" category replacement (validation will fail if missing)'] : []),
-        ...(time ? ['[✓] **Required category present** - At least one "Time of Day" category replacement (validation will fail if missing)'] : []),
-        ...(season ? ['[✓] **Required category present** - At least one "Seasonal" category replacement (validation will fail if missing)'] : []),
-        ...(holiday ? ['[✓] **Required category present** - At least one "Holiday" category replacement (validation will fail if missing)'] : []),
-        ...(directive ? ['[✓] **Required category present** - At least one "Directive" category replacement (validation will fail if missing)'] : []),
+        ...(weather ? ['[✓] **Required category present** - At least one "Weather" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
+        ...(time ? ['[✓] **Required category present** - At least one "Time of Day" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
+        ...(season ? ['[✓] **Required category present** - At least one "Seasonal" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
+        ...(holiday ? (holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1 ? ['[✓] **Required category present** - At least one "Holiday" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] :  ['[✓] Considered adding a "Holiday" category Tsubo']) : []),
+        ...(directive ? ['[✓] **Required category present** - At least one "Directive" category Tsubo in Tanei (Tanei → Tendai hydration validation will fail if missing)'] : []),
         '[✓] No protected content (artist tags, !%blocks%, presets)',
         '[✓] **character_prompts structure correct** - Each entry has `prompt: []` and `uc: []` arrays (even if empty)',
         '',
@@ -2456,7 +2596,7 @@ function buildUCStrategySection(weather, time) {
         '───────────────────────────────────────────────────',
         'Night      | daytime, sunlight, bright, sunny, clear sky',
         'Rain       | sunny, dry, clear sky',
-        'Clear/Sunny| rain, wet, storms, overcast, cloudy',
+        'Clear/Sunny| rain, wet, storms, cloudy, cloudy',
         'Cold/Winter| warm, summer, tropical, green leaves',
         'Hot/Summer | cold, winter, snow',
         'Humid      | rain, showers, precipitation, wet',
@@ -2465,7 +2605,7 @@ function buildUCStrategySection(weather, time) {
         '**Three Methods:**',
         '1. **Direct Opposites** - Block conflicting conditions',
         '2. **Interpretation Prevention** - Stop AI misreading (humid≠rain)',
-        '3. **Stubborn Blockers** - Negative emphasis in PROMPT: "-2.0::sunny ::"',
+        '3. **Stubborn Blockers** - Negative emphasis in PROMPT: use `segment_emphasis: -2.0` with text "sunny"',
         '',
         '**Critical:** Consolidate ALL UC into SINGLE append to text_replacements.uc array',
         '[⨉] Multiple UC appends | [✓] One append with all: ", sunny, bright, clear sky"',
@@ -2504,32 +2644,32 @@ function buildIntegrationVerificationSection(weather, time, season, holiday, dir
         '**⚠️ CRITICAL: Each requested change MUST be assigned to its appropriate category:**',
         '',
         ...(weather ? [
-            '- **Weather data provided** -> Did I add weather-related text_replacements?',
-            '  - ⚠️ **REQUIRED:** At least one replacement MUST have category "Weather" or validation will fail',
+            '- **Weather data provided** -> Did I add weather-related Tsubo (text replacements)?',
+            '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Weather" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign weather-related changes to "Weather" category**'
         ] : []),
         ...(time ? [
-            '- **Time data provided** -> Did I add time-related text_replacements?',
-            '  - ⚠️ **REQUIRED:** At least one replacement MUST have category "Time of Day" or validation will fail',
+            '- **Time data provided** -> Did I add time-related Tsubo (text replacements)?',
+            '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Time of Day" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign time-related changes to "Time of Day" category**'
         ] : []),
         ...(season ? [
-            '- **Season data provided** -> Did I add seasonal-related text_replacements?',
-            '  - ⚠️ **REQUIRED:** At least one replacement MUST have category "Seasonal" or validation will fail',
+            '- **Season data provided** -> Did I add seasonal-related Tsubo (text replacements)?',
+            '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Seasonal" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign seasonal-related changes to "Seasonal" category**'
         ] : []),
-        ...(holiday ? [
-            '- **Holiday data provided** -> Did I add holiday-related text_replacements?',
-            '  - ⚠️ **REQUIRED:** At least one replacement MUST have category "Holiday" or validation will fail',
+        ...(holiday && holiday.primaryHoliday && holiday.primaryHoliday.daysUntil <= 1 ? [
+            '- **Holiday data provided** -> Did I add holiday-related Tsubo (text replacements)?',
+            '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Holiday" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign holiday-related changes to "Holiday" category**'
         ] : []),
         ...(directive ? [
-            '- **Directive provided** -> Did I add directive-related text_replacements?',
-            '  - ⚠️ **REQUIRED:** At least one replacement MUST have category "Directive" or validation will fail',
+            '- **Directive provided** -> Did I add directive-related Tsubo (text replacements)?',
+            '  - ⚠️ **REQUIRED:** At least one Tsubo MUST have category "Directive" in your Tanei package or Tanei → Tendai hydration validation will fail',
             '  - **Assign directive-related changes to "Directive" category**'
         ] : []),
-        '- **Are explicit markers present** in my replacements?',
-        ...(weather ? ['  - Weather markers: "clear sky", "overcast", "rain", "snow", "cloudy", "sunny"'] : []),
+        '- **Are explicit markers present** in my Tsubo (text replacements)?',
+        ...(weather ? ['  - Weather markers: "clear sky", "cloudy", "rain", "snow", "cloudy", "sunny"'] : []),
         ...(time ? ['  - Time markers: "night", "daytime", "dawn", "dusk", "evening", "morning"'] : []),
         ...(season ? ['  - Seasonal markers: "autumn leaves", "spring flowers", "winter snow", "summer heat"'] : []),
         ...(holiday ? ['  - Holiday markers: "decorations", "celebrations", "festive", "holiday themes"'] : []),
@@ -2559,54 +2699,59 @@ function buildQualityStandardsSection() {
 /**
  * PHASE 10: OUTPUT
  */
-function buildPhase10_Output(creative, directive, optimize, weather, time, dialogsCount = 6, season, holiday) {
-    const sections = [
-        '# 📤 OUTPUT REQUIREMENTS',
-        '',
-        '## 📄 Response Structure',
-        '',
-        '```',
-        'text_replacements: {',
-        '  prompt: [],',
-        '  uc: [],',
-        '  character_prompts: [',
-        '    { prompt: [], uc: [] },  // Character 1 - REQUIRED arrays even if empty',
-        '    { prompt: [], uc: [] },  // Character 2 - REQUIRED arrays even if empty',
-        '    ...                       // One entry per character',
-        '  ]',
-        '}',
-        'dialogs: [' + dialogsCount + ' objects] (REQUIRED)',
-        'generated_image_name: "Name" (REQUIRED)',
-        'character_names: [] (REQUIRED)',
-        'insight_memory: [] (optional)',
-        '',
-        'Replacement fields:',
-        '  segment_index (REQUIRED for ALL actions - use -1 for append-to-end), replace_text (REQUIRED for REPLACE/APPEND),',
-        '  action, reason, reason_display, replacement_category, is_critical, alternative_text (optional), count (DELETE only)',
-        '```',
-        '',
-        '**⚠️ CRITICAL: character_prompts Structure:**',
-        '* **If character_prompts array exists, each entry MUST have `prompt` and `uc` arrays**',
-        '* **Even if no replacements for a character, include empty arrays:** `{ prompt: [], uc: [] }`',
-        '* **Array length must match number of characters** (one entry per character)',
-        '* **Missing arrays cause validation failures** - always include both arrays',
-        '',
-        '**⚠️ CRITICAL: JSON FORMATTING - VALIDATION WILL FAIL FOR MALFORMED JSON**',
-        '* **Output MUST be valid JSON** - no trailing commas, unterminated strings, or syntax errors',
-        '* **Use proper escaping** - escape quotes in strings with `\\"`',
-        '* **Complete all arrays/objects** - ensure all brackets are closed',
-        '* **Test JSON validity** - malformed JSON causes generation restart',
-        '',
-        '**⚠️ RESPONSE FORMAT: Keep reasoning BRIEF - focus on what/why, not how**',
-        '* **Reason field**: 1-2 sentences maximum explaining the change',
-        '* **Avoid verbose explanations** - be direct and actionable',
-        '',
+function buildPhase10_Output(creative, directive, optimize, weather, time, dialogsCount, season, holiday) {
+    const dialogsEnabled = dialogsCount != null ? dialogsCount > 0 : true;
+    
+    const sections = [];
+    // const sections = [
+    //     '# 📤 OUTPUT REQUIREMENTS',
+    //     '',
+    //     '## 📄 Response Structure',
+    //     '',
+    //     '```',
+    //     'text_replacements: {  // This is your Tanei package containing Tsubo (text replacements) - will be hydrated to Tendai during processing',
+    //     '  prompt: [],',
+    //     '  uc: [],',
+    //     '  character_prompts: [',
+    //     '    { prompt: [], uc: [] },  // Character 1 - REQUIRED arrays even if empty',
+    //     '    { prompt: [], uc: [] },  // Character 2 - REQUIRED arrays even if empty',
+    //     '    ...                       // One entry per character',
+    //     '  ]',
+    //     '}',
+    //     ...(dialogsEnabled ? [`dialogs: [${dialogsCount != null ? dialogsCount : '3-10'} objects] (REQUIRED)`] : []),
+    //     'generated_image_name: "Name" (REQUIRED)',
+    //     'character_names: [] (REQUIRED)',
+    //     'insight_memory: [] (optional)',
+    //     '',
+    //     'Tsubo fields (each text replacement item in the arrays above):',
+    //     '  segment_index (REQUIRED for ALL actions - use -1 for append-to-end), replace_text (REQUIRED for REPLACE/APPEND),',
+    //     '  action, reason, reason_display, replacement_category, is_critical, alternative_text (optional), count (DELETE only)',
+    //     '```',
+    //     '',
+    //     '**⚠️ CRITICAL: character_prompts Structure:**',
+    //     '* **If character_prompts array exists, each entry MUST have `prompt` and `uc` arrays**',
+    //     '* **Even if no replacements for a character, include empty arrays:** `{ prompt: [], uc: [] }`',
+    //     '* **Array length must match number of characters** (one entry per character)',
+    //     '* **Missing arrays cause validation failures** - always include both arrays',
+    //     '',
+    //     '**⚠️ CRITICAL: JSON FORMATTING - VALIDATION WILL FAIL FOR MALFORMED JSON**',
+    //     '* **Output MUST be valid JSON** - no trailing commas, unterminated strings, or syntax errors',
+    //     '* **Use proper escaping** - escape quotes in strings with `\\"`',
+    //     '* **Complete all arrays/objects** - ensure all brackets are closed',
+    //     '* **Test JSON validity** - malformed JSON causes generation restart',
+    //     '',
+    //     '**⚠️ RESPONSE FORMAT: Keep reasoning BRIEF - focus on what/why, not how**',
+    //     '* **Reason field**: 1-2 sentences maximum explaining the change',
+    //     '* **Avoid verbose explanations** - be direct and actionable',
+    //     '',
 
-        ''
-    ];
+    //     ''
+    // ];
 
-    // Add dialog generation guide
-    sections.push(...buildDialogGenerationGuide(creative, directive, dialogsCount));
+    // Add dialog generation guide only if dialogs are enabled
+    if (dialogsEnabled) {
+        sections.push(...buildDialogGenerationGuide(creative, directive, dialogsCount));
+    }
 
     // Add metadata fields guide
     sections.push(...buildMetadataFieldsGuide(creative));
@@ -2629,13 +2774,18 @@ function buildPhase10_Output(creative, directive, optimize, weather, time, dialo
  * Dialog Generation Guide
  * @param {boolean} creative - Whether creative mode is enabled
  * @param {string} directive - User directive
- * @param {number} dialogsCount - Number of dialogs to generate (default: 6)
+ * @param {number} dialogsCount - Number of dialogs to generate (undefined/null = auto/3-10)
  */
-function buildDialogGenerationGuide(creative, directive, dialogsCount = 6) {
+function buildDialogGenerationGuide(creative, directive, dialogsCount) {
+    // Return empty array if dialogs are disabled
+    if (dialogsCount != null && dialogsCount <= 0) {
+        return [];
+    }
+    
     return [
         '## 💬 CHARACTER DIALOG GENERATION',
         '',
-        `**Generate ${dialogsCount} context-aware dialogs capturing lived experience.**`,
+        `**Generate ${dialogsCount != null ? dialogsCount : '3-10'} context-aware dialogs capturing lived experience.**`,
         '',
         '### Analysis',
         '1. **Physical** - What they feel (temperature, sensations, environment)',
@@ -2782,6 +2932,39 @@ function buildSubjectLockSection() {
 
         ''
     ];
+}
+
+/**
+ * Build hierarchical dataset category list section
+ * Uses database query function to get the hierarchy
+ */
+async function buildDatasetCategoryHierarchySection() {
+    try {
+        const treeItems = await globalResources.getTagDatabase().getDatasetCategoryHierarchy();
+        
+        const sections = [
+            '## 📚 DATASET TAG CATEGORIES',
+            '',
+            '**Complete hierarchical list of all available tag categories:**',
+            '',
+            '**Usage:** Use these paths with the `getDatasetGroupContents` tool to access tag arrays.',
+            '',
+            '**Path Format:** `["category", "subcategory", ...]` (e.g., `["attire", "attire", "bottom"]` for bottomwear tags)',
+            '',
+            '---',
+            ''
+        ];
+        
+        sections.push(...treeItems);
+        sections.push('');
+        sections.push('---');
+        sections.push('');
+
+        return sections;
+    } catch (error) {
+        console.error('Error building dataset category hierarchy:', error);
+        return [];
+    }
 }
 
 // Export the builder function

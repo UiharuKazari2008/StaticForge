@@ -46,7 +46,6 @@ function initializeRequestBodyReplacementsModal() {
 function initializeCreateRequestBodyReplacementModal() {
     const modal = document.getElementById('createRequestBodyReplacementModal');
     const closeBtn = document.getElementById('closeCreateRequestBodyReplacementBtn');
-    const cancelBtn = document.getElementById('createRequestBodyReplacementCancelBtn');
     const saveBtn = document.getElementById('createRequestBodyReplacementSaveBtn');
     const typeSelect = document.getElementById('requestBodyReplacementTypeSelect');
     const extendBtn = document.getElementById('requestBodyReplacementExtendBtn');
@@ -62,10 +61,6 @@ function initializeCreateRequestBodyReplacementModal() {
 
     if (closeBtn) {
         closeBtn.addEventListener('click', hideCreateRequestBodyReplacementModal);
-    }
-
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', hideCreateRequestBodyReplacementModal);
     }
 
     if (saveBtn) {
@@ -842,7 +837,7 @@ function renderRequestBodyReplacementsList() {
     listContainer.innerHTML = '';
 
     if (requestBodyReplacements.length === 0) {
-        listContainer.innerHTML = `
+        listContainer.innerHTML += `
             <div class="text-replacement-empty">
                 <p><i class="fas fa-search"></i> No request body replacements found</p>
             </div>

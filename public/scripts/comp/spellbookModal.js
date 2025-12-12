@@ -284,10 +284,10 @@ class SpellbookModalManager {
         }, 100);
     }
 
-    closeModal() {
+    async closeModal() {
         if (!this.modal) return;
 
-        closeModal(this.modal);
+        await closeModal(this.modal);
         
         if (this.dynamicGenerationOverlay) {
             this.dynamicGenerationOverlay.classList.add('hidden');
@@ -855,7 +855,7 @@ class SpellbookModalManager {
 
             // Set the new image on the inactive background
             if (inactiveBg) {
-                inactiveBg.style.backgroundImage = `url(${blurPreviewUrl})`;
+                inactiveBg.style.backgroundImage = `url("${blurPreviewUrl}")`;
                 inactiveBg.style.opacity = '0';
             }
 
@@ -1608,8 +1608,11 @@ class SpellbookModalManager {
                 if (tempNumber) tempNumber.textContent = tempData.number;
                 if (tempUnit) tempUnit.textContent = tempData.unit;
             }
+            // Determine if it's night based on timePeriod
+            const isNight = data.timePeriod?.isDaytime === false;
+            
             if (this.overlayWeatherIcon && data.weather.condition) {
-                const weatherIconHtml = this.getWeatherIcon(data.weather.condition);
+                const weatherIconHtml = this.getWeatherIcon(data.weather.condition, isNight);
                 this.overlayWeatherIcon.innerHTML = weatherIconHtml;
             }
 
@@ -1633,7 +1636,7 @@ class SpellbookModalManager {
                 if (tempUnit) tempUnit.textContent = tempData.unit;
             }
             if (this.progressWeatherIcon && data.weather.condition) {
-                const weatherIconHtml = this.getWeatherIcon(data.weather.condition);
+                const weatherIconHtml = this.getWeatherIcon(data.weather.condition, isNight);
                 this.progressWeatherIcon.innerHTML = weatherIconHtml;
             }
         }
@@ -1730,40 +1733,54 @@ class SpellbookModalManager {
         this.hideSpellbookDynamicGenerationProgressOverlay();
     }
 
-    getWeatherIcon(condition) {
-        if (!condition) return '<i class="wi wi-day-sunny"></i>';
+    getWeatherIcon(condition, isNight = false) {
+        if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
 
-        const iconMap = {
-            'clear sky': '<i class="wi wi-day-sunny"></i>',
-            'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
-            'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
-            'overcast': '<i class="wi wi-cloudy"></i>',
-            'fog': '<i class="wi wi-fog"></i>',
-            'depositing rime fog': '<i class="wi wi-fog"></i>',
-            'light drizzle': '<i class="wi wi-day-showers"></i>',
-            'moderate drizzle': '<i class="wi wi-day-showers"></i>',
-            'dense drizzle': '<i class="wi wi-day-showers"></i>',
-            'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
-            'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
-            'slight rain': '<i class="wi wi-day-rain"></i>',
-            'moderate rain': '<i class="wi wi-day-rain"></i>',
-            'heavy rain': '<i class="wi wi-day-rain"></i>',
-            'light freezing rain': '<i class="wi wi-day-snow"></i>',
-            'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
-            'slight snow fall': '<i class="wi wi-day-snow"></i>',
-            'moderate snow fall': '<i class="wi wi-snow"></i>',
-            'heavy snow fall': '<i class="wi wi-snow"></i>',
-            'snow grains': '<i class="wi wi-snow"></i>',
-            'slight rain showers': '<i class="wi wi-day-showers"></i>',
-            'moderate rain showers': '<i class="wi wi-day-rain"></i>',
-            'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
-            'slight snow showers': '<i class="wi wi-day-snow"></i>',
-            'heavy snow showers': '<i class="wi wi-snow"></i>',
-            'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
-            'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
-            'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+        const timePrefix = isNight ? 'night-alt' : 'day';
+        
+        // Icons that don't change between day/night (no sun/moon influence)
+        const timeNeutralIcons = {
+            'overcast': 'cloudy',
+            'fog': 'fog',
+            'depositing rime fog': 'fog',
+            'moderate snow fall': 'snow',
+            'heavy snow fall': 'snow',
+            'snow grains': 'snow',
+            'heavy snow showers': 'snow'
         };
-        return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+
+        // Check if this condition uses a time-neutral icon
+        if (timeNeutralIcons[condition]) {
+            return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
+        }
+
+        // Time-dependent icons (different for day/night)
+        const iconMap = {
+            'clear sky': isNight ? 'night-clear' : 'day-sunny',
+            'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
+            'partly cloudy': `${timePrefix}-cloudy`,
+            'light drizzle': `${timePrefix}-showers`,
+            'moderate drizzle': `${timePrefix}-showers`,
+            'dense drizzle': `${timePrefix}-showers`,
+            'light freezing drizzle': `${timePrefix}-snow`,
+            'dense freezing drizzle': `${timePrefix}-snow`,
+            'slight rain': `${timePrefix}-rain`,
+            'moderate rain': `${timePrefix}-rain`,
+            'heavy rain': `${timePrefix}-rain`,
+            'light freezing rain': `${timePrefix}-snow`,
+            'heavy freezing rain': `${timePrefix}-snow`,
+            'slight snow fall': `${timePrefix}-snow`,
+            'slight rain showers': `${timePrefix}-showers`,
+            'moderate rain showers': `${timePrefix}-rain`,
+            'violent rain showers': `${timePrefix}-storm-showers`,
+            'slight snow showers': `${timePrefix}-snow`,
+            'thunderstorm': `${timePrefix}-thunderstorm`,
+            'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
+            'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
+        };
+
+        const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
+        return `<i class="wi wi-${iconClass}"></i>`;
     }
 
     // Utility functions

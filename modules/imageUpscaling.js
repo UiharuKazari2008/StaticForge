@@ -2,27 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
+const globalResources = require('./globalResources');
 
 // Import modules
-const { 
-    updateMetadata, 
-    getBaseName
-} = require('./pngMetadata');
 const { 
     getImageDimensions
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
 
-// Context object for dependency injection
-let context = {};
-
-// Set context for dependency injection
-function setContext(newContext) {
-    context = { ...newContext };
-}
-
-const imagesDir = path.resolve(__dirname, '../images');
-const previewsDir = path.resolve(__dirname, '../.previews');
 
 const upscaleImageCore = async (imageBuffer, scale = 4, width, height, upscaler = 'novelai', ws = null, handler = null, requestId = null) => {
     const actualScale = scale === true ? 4 : scale;
@@ -49,6 +36,11 @@ const upscaleImageCore = async (imageBuffer, scale = 4, width, height, upscaler 
 };
 
 const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
+    const apiKey = globalResources.getApiKeyManager().getActiveApiKey('novelai');
+    if (!apiKey) {
+        throw new Error('NovelAI API key is not configured. Add one to secure.config.json or set NOVELAI_API_KEY.');
+    }
+
     const payload = {
         height,
         image: imageBuffer.toString('base64'),
@@ -65,7 +57,7 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
         headers: {
             "accept": "*/*",
             "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-            "authorization": `Bearer ${context.config.apiKey}`,
+            "authorization": `Bearer ${apiKey}`,
             "content-type": "application/json",
             "content-length": Buffer.byteLength(postData),
             "priority": "u=1, i",
@@ -128,12 +120,12 @@ const upscaleWithNovelAI = async (imageBuffer, scale, width, height) => {
 };
 
 const upscaleWithESRGAN = async (imageBuffer, scale, width, height, upscaler, ws = null, handler = null, requestId = null) => {
-    const secureConfig = require('../secure.config.json');
-    const endpointId = secureConfig.runpod.esrganWorkerId;
-    const apiKey = secureConfig.runpod.apiKey;
+    const runpodConfig = globalResources.getSecureConfig({ path: 'runpod' }) || {};
+    const endpointId = runpodConfig.esrganWorkerId;
+    const apiKey = globalResources.getApiKeyManager().getActiveApiKey('runpod');
 
     if (!endpointId || !apiKey) {
-        throw new Error('ESRGAN RunPod configuration is incomplete. Please configure runpod.esrganEndpoint and runpod.apiKey in config.json');
+        throw new Error('ESRGAN RunPod configuration is incomplete. Please configure runpod.esrganWorkerId and runpod keys in secure.config.json.');
     }
 
     // Prepare payload in RunPod's expected format
@@ -267,7 +259,7 @@ async function upscaleImage(filename, workspaceId, req, res, upscaler = 'novelai
         return res.status(403).json({ error: 'Non-Administrator Login: This operation is not allowed for read-only users' });
     }
     try {
-        const filePath = path.join(imagesDir, filename);
+        const filePath = path.join(globalResources.getPath("images"), filename);
 
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: 'Image not found' });
@@ -293,18 +285,18 @@ async function upscaleImage(filename, workspaceId, req, res, upscaler = 'novelai
 
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
+        const upscaledPath = path.join(globalResources.getPath("images"), upscaledFilename);
         fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
-        const targetWorkspaceId = workspaceId || context.getActiveWorkspace(req.session?.id);
-        context.addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
+        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(req.session?.id);
+        globalResources.getWorkspaceManager().addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
         
         // Generate preview for the base image (if not exists)
-        const baseName = getBaseName(filename);
+        const baseName = globalResources.getPngMetadata().getBaseName(filename);
         const previewFile = `${baseName}.webp`
-        const previewPath = path.join(previewsDir, previewFile);
+        const previewPath = path.join(globalResources.getPath("previews"), previewFile);
         
         if (!fs.existsSync(previewPath)) {
             // Generate both main and @2x previews for mobile devices
@@ -330,7 +322,7 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId,
     }
     
     try {
-        const filePath = path.join(imagesDir, filename);
+        const filePath = path.join(globalResources.getPath("images"), filename);
         
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
@@ -352,22 +344,22 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId,
             generation_type: 'upscaled',
             upscaler_provider: upscaler
         };
-        const updatedUpscaledBuffer = updateMetadata(upscaledBuffer, upscaledForgeData);
+        const updatedUpscaledBuffer = globalResources.getPngMetadata().updateMetadata(upscaledBuffer, upscaledForgeData);
         
         // Save upscaled image
         const upscaledFilename = filename.replace('.png', '_upscaled.png');
-        const upscaledPath = path.join(imagesDir, upscaledFilename);
+        const upscaledPath = path.join(globalResources.getPath("images"), upscaledFilename);
         fs.writeFileSync(upscaledPath, updatedUpscaledBuffer);
         console.log(`💾 Saved upscaled: ${upscaledFilename}`);
 
         // Add upscaled file to workspace
-        const targetWorkspaceId = workspaceId || context.getActiveWorkspace(sessionId);
-        context.addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
+        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
+        globalResources.getWorkspaceManager().addToWorkspaceArray('files', upscaledFilename, targetWorkspaceId);
         
         // Generate preview for the base image (if not exists)
-        const baseName = getBaseName(filename);
+        const baseName = globalResources.getPngMetadata().getBaseName(filename);
         const previewFile = `${baseName}.webp`
-        const previewPath = path.join(previewsDir, previewFile);
+        const previewPath = path.join(globalResources.getPath("previews"), previewFile);
         
         if (!fs.existsSync(previewPath)) {
             // Generate both main and @2x previews for mobile devices
@@ -392,6 +384,5 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId,
 module.exports = {
     upscaleImage,
     upscaleImageWebSocket,
-    upscaleImageCore,
-    setContext
+    upscaleImageCore
 };

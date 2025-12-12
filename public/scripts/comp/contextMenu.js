@@ -53,7 +53,11 @@ class ContextMenuController {
     // Filter items based on mobile/desktop visibility
     shouldShowItem(item) {
         // Check if item is explicitly hidden
-        if (item.hidden === true) {
+        if (typeof item.hidden === 'function') {
+            if (item.hidden()) {
+                return false;
+            }
+        } else if (item.hidden === true) {
             return false;
         }
         
@@ -656,6 +660,14 @@ class ContextMenuController {
                 itemElement.classList.add('has-toggle-indicator');
             }
 
+            // Apply tooltip if it exists
+            if (item.tooltip !== undefined) {
+                const tooltipValue = typeof item.tooltip === 'function' ? item.tooltip(target) : item.tooltip;
+                if (tooltipValue) {
+                    itemElement.title = tooltipValue;
+                }
+            }
+
             // Apply className if it exists
             if (item.className) {
                 const classes = Array.isArray(item.className) ? item.className : item.className.split(' ');
@@ -664,8 +676,9 @@ class ContextMenuController {
                 });
             }
 
-            // Disabled state
-            if (item.disabled) {
+            // Disabled state - evaluate function if it's a function
+            const isDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+            if (isDisabled) {
                 itemElement.classList.add('disabled');
                 itemElement.setAttribute('aria-disabled', 'true');
             }
@@ -678,7 +691,8 @@ class ContextMenuController {
             // Click handler
             if (item.action && typeof item.action === 'string') {
                 itemElement.addEventListener('click', () => {
-                    if (!item.disabled) {
+                    const isItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+                    if (!isItemDisabled) {
                         this.executeAction(item.action, target, item);
                         // Only hide menu if keepMenuOpen is not set to true
                         if (!item.keepMenuOpen) {
@@ -705,7 +719,8 @@ class ContextMenuController {
             if (item.submenu && Array.isArray(item.submenu)) {
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    if (!item.disabled) {
+                    const isSubmenuItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+                    if (!isSubmenuItemDisabled) {
                         this.showSubmenu(itemElement, item.submenu, target);
                     }
                 });
@@ -715,9 +730,14 @@ class ContextMenuController {
                     this.addSubmenuHoverSupport(itemElement, item, target);
                 }
             } else if (item.optionsfn && typeof item.optionsfn === 'function') {
+                // Store optionsfn and handlerfn for refreshing
+                itemElement._optionsfn = item.optionsfn;
+                itemElement._handlerfn = item.handlerfn;
+                
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    if (!item.disabled) {
+                    const isOptionsItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+                    if (!isOptionsItemDisabled) {
                         const submenuOptions = item.optionsfn(target);
                         if (submenuOptions && Array.isArray(submenuOptions)) {
                             this.showSubmenu(itemElement, submenuOptions, target, item.handlerfn);
@@ -818,8 +838,9 @@ class ContextMenuController {
                 iconElement.title = tooltipValue;
             }
 
-            // Disabled state
-            if (icon.disabled) {
+            // Disabled state - evaluate function if it's a function
+            const isIconDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
+            if (isIconDisabled) {
                 iconElement.classList.add('disabled');
                 iconElement.setAttribute('aria-disabled', 'true');
             }
@@ -828,7 +849,8 @@ class ContextMenuController {
             if (icon.action && typeof icon.action === 'string') {
                 iconElement.setAttribute('data-action', icon.action);
                 iconElement.addEventListener('click', () => {
-                    if (!icon.disabled) {
+                    const isIconItemDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
+                    if (!isIconItemDisabled) {
                         this.executeAction(icon.action, target, icon);
                         // Only hide menu if keepMenuOpen is not set to true
                         if (!icon.keepMenuOpen) {
@@ -1079,6 +1101,16 @@ class ContextMenuController {
             textElement.remove();
         }
 
+        // Update tooltip if it exists
+        if (item.tooltip !== undefined) {
+            const tooltipValue = typeof item.tooltip === 'function' ? item.tooltip(target) : item.tooltip;
+            if (tooltipValue) {
+                itemElement.title = tooltipValue;
+            } else {
+                itemElement.removeAttribute('title');
+            }
+        }
+
         // Update className if it exists
         if (item.className) {
             // Remove old className from item element
@@ -1090,8 +1122,9 @@ class ContextMenuController {
             });
         }
 
-        // Update disabled state
-        if (item.disabled) {
+        // Update disabled state - evaluate function if it's a function
+        const isItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+        if (isItemDisabled) {
             itemElement.classList.add('disabled');
             itemElement.setAttribute('aria-disabled', 'true');
         } else {
@@ -1130,7 +1163,7 @@ class ContextMenuController {
     }
 
     updateItemIndicatorDot(itemElement, item) {
-        if (item.keepMenuOpen) {
+        if (item.keepMenuOpen && !item.noIndicator) {
             const indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
             if (indicatorDot) {
                 // Show dot if item.checked is true, hide if false or undefined
@@ -1213,8 +1246,9 @@ class ContextMenuController {
             });
         }
 
-        // Update disabled state
-        if (subItem.disabled) {
+        // Update disabled state - evaluate function if it's a function
+        const isSubItemRefreshDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+        if (isSubItemRefreshDisabled) {
             subItemElement.classList.add('disabled');
             subItemElement.setAttribute('aria-disabled', 'true');
         } else {
@@ -1283,8 +1317,9 @@ class ContextMenuController {
             iconElement.removeAttribute('data-state');
         }
 
-        // Update disabled state
-        if (icon.disabled) {
+        // Update disabled state - evaluate function if it's a function
+        const isIconItemDisabled = typeof icon.disabled === 'function' ? icon.disabled() : icon.disabled;
+        if (isIconItemDisabled) {
             iconElement.classList.add('disabled');
             iconElement.setAttribute('aria-disabled', 'true');
         } else {
@@ -1325,7 +1360,8 @@ class ContextMenuController {
             this.clearHoverTimers();
             
             this.hoverTimers.openTimer = setTimeout(() => {
-                if (!item.disabled) {
+                const isHoverItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
+                if (!isHoverItemDisabled) {
                     let submenuOptions = null;
                     
                     if (item.submenu && Array.isArray(item.submenu)) {
@@ -1397,7 +1433,9 @@ class ContextMenuController {
             parentItem: parentItem,
             submenuItems: submenuItems,
             target: target,
-            customHandler: customHandler
+            customHandler: customHandler,
+            optionsfn: parentItem._optionsfn,
+            handlerfn: customHandler || parentItem._handlerfn
         };
 
         // Create submenu container
@@ -1477,8 +1515,8 @@ class ContextMenuController {
                 }
             }
 
-            // Indicator dot for toggle items (keepMenuOpen: true)
-            if (subItem.keepMenuOpen) {
+            // Indicator dot for toggle items (keepMenuOpen: true, unless noIndicator is set)
+            if (subItem.keepMenuOpen && !subItem.noIndicator) {
                 const indicatorDot = document.createElement('span');
                 indicatorDot.className = 'context-menu-item-indicator';
                 // Apply checked class if subItem.checked is already set (from loadfn called earlier)
@@ -1497,8 +1535,9 @@ class ContextMenuController {
                 });
             }
 
-            // Disabled state
-            if (subItem.disabled) {
+            // Disabled state - evaluate function if it's a function
+            const isSubItemDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+            if (isSubItemDisabled) {
                 subItemElement.classList.add('disabled');
                 subItemElement.setAttribute('aria-disabled', 'true');
             }
@@ -1510,28 +1549,62 @@ class ContextMenuController {
 
             // Click handler
             if (customHandler && typeof customHandler === 'function') {
-                subItemElement.addEventListener('click', () => {
-                    if (!subItem.disabled) {
+                subItemElement.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent click from bubbling to click-outside handler
+                    const isSubItemClickDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+                    if (!isSubItemClickDisabled) {
                         customHandler(subItem, target);
                         // Only hide menu if keepMenuOpen is not set to true
                         if (!subItem.keepMenuOpen) {
                             this.hideMenu();
                         } else {
-                            // If menu stays open, refresh all submenu items (call all loadfns)
-                            this.refreshAllSubmenuItems();
+                            // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
+                            // For static submenus, just refresh items (call loadfn again)
+                            // For dynamic submenus (optionsfn), regenerate the entire submenu
+                            // If not in a submenu at all, just refresh the item display
+                            if (this.currentSubmenuState) {
+                                if (this.currentSubmenuState.optionsfn) {
+                                    // Dynamic submenu - regenerate from optionsfn
+                                    this.refreshSubmenu();
+                                } else {
+                                    // Static submenu - just refresh items (call loadfn again)
+                                    this.refreshAllSubmenuItems();
+                                }
+                            } else {
+                                // Not in a submenu - just refresh this item's display
+                                // This shouldn't happen for submenu items, but handle it gracefully
+                                this.refreshListItemDisplay(subItemElement, subItem, target);
+                            }
                         }
                     }
                 });
             } else if (subItem.action && typeof subItem.action === 'string') {
-                subItemElement.addEventListener('click', () => {
-                    if (!subItem.disabled) {
+                subItemElement.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent click from bubbling to click-outside handler
+                    const isSubItemActionDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+                    if (!isSubItemActionDisabled) {
                         this.executeAction(subItem.action, target, subItem);
                         // Only hide menu if keepMenuOpen is not set to true
                         if (!subItem.keepMenuOpen) {
                             this.hideMenu();
                         } else {
-                            // If menu stays open, refresh all submenu items (call all loadfns)
-                            this.refreshAllSubmenuItems();
+                            // If menu stays open, check if this is a dynamic submenu (optionsfn) or static submenu
+                            // For static submenus, just refresh items (call loadfn again)
+                            // For dynamic submenus (optionsfn), regenerate the entire submenu
+                            // If not in a submenu at all, just refresh the item display
+                            if (this.currentSubmenuState) {
+                                if (this.currentSubmenuState.optionsfn) {
+                                    // Dynamic submenu - regenerate from optionsfn
+                                    this.refreshSubmenu();
+                                } else {
+                                    // Static submenu - just refresh items (call loadfn again)
+                                    this.refreshAllSubmenuItems();
+                                }
+                            } else {
+                                // Not in a submenu - just refresh this item's display
+                                // This shouldn't happen for submenu items, but handle it gracefully
+                                this.refreshListItemDisplay(subItemElement, subItem, target);
+                            }
                         }
                     }
                 });
@@ -1543,6 +1616,67 @@ class ContextMenuController {
             submenu.appendChild(subItemElement);
         });
 
+        // Position the submenu (this also sets opacity to 1)
+        this.positionSubmenu(submenu, parentItem);
+        
+        this.currentSubmenu = submenu;
+
+        // Add click outside handler for submenu
+        const submenuClickHandler = (e) => {
+            // Only handle clicks that are actually outside the submenu
+            if (!submenu.contains(e.target) && !parentItem.contains(e.target)) {
+                e.stopPropagation(); // Prevent bubbling to overlay handlers
+                this.hideSubmenu();
+            }
+        };
+
+        document.addEventListener('click', submenuClickHandler);
+        this.submenuClickHandler = submenuClickHandler;
+    }
+    
+    refreshAllSubmenuItems() {
+        if (!this.currentSubmenuState || !this.currentSubmenu) return;
+
+        const { submenuItems, target } = this.currentSubmenuState;
+
+        // Call loadfn for all submenu items
+        submenuItems.forEach((subItem) => {
+            if (subItem.separator || !subItem._element) return;
+
+            // Call loadfn to update subItem properties
+            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+                try {
+                    subItem.loadfn(subItem, target);
+                } catch (error) {
+                    console.error('Error executing submenu item loadfn:', error);
+                }
+            }
+
+            // Refresh the display of this submenu item
+            this.refreshSubmenuItemDisplay(subItem._element, subItem, target);
+        });
+    }
+
+    hideSubmenu() {
+        if (this.currentSubmenu) {
+            this.currentSubmenu.remove();
+            this.currentSubmenu = null;
+        }
+        
+        // Clear submenu state
+        this.currentSubmenuState = null;
+        
+        // Remove active state from any parent items
+        const activeItems = this.menu.querySelectorAll('.context-menu-item.keyboard-selected');
+        activeItems.forEach(item => item.classList.remove('keyboard-selected'));
+        
+        if (this.submenuClickHandler) {
+            document.removeEventListener('click', this.submenuClickHandler);
+            this.submenuClickHandler = null;
+        }
+    }
+    
+    positionSubmenu(submenu, parentItem) {
         // Get parent and viewport information
         const parentRect = parentItem.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
@@ -1628,63 +1762,67 @@ class ContextMenuController {
         submenu.style.left = `${submenuX}px`;
         submenu.style.top = `${submenuY}px`;
         submenu.classList.add(`submenu-${submenuDirection}`);
-
-        // Make submenu visible with fade animation
+        
+        // Make submenu visible
         submenu.style.opacity = '1';
-        this.currentSubmenu = submenu;
-
-        // Add click outside handler for submenu
-        const submenuClickHandler = (e) => {
-            // Only handle clicks that are actually outside the submenu
-            if (!submenu.contains(e.target) && !parentItem.contains(e.target)) {
-                e.stopPropagation(); // Prevent bubbling to overlay handlers
-                this.hideSubmenu();
-            }
-        };
-
-        document.addEventListener('click', submenuClickHandler);
-        this.submenuClickHandler = submenuClickHandler;
     }
     
-    refreshAllSubmenuItems() {
-        if (!this.currentSubmenuState || !this.currentSubmenu) return;
-
-        const { submenuItems, target } = this.currentSubmenuState;
-
-        // Call loadfn for all submenu items
-        submenuItems.forEach((subItem) => {
-            if (subItem.separator || !subItem._element) return;
-
-            // Call loadfn to update subItem properties
-            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
-                try {
-                    subItem.loadfn(subItem, target);
-                } catch (error) {
-                    console.error('Error executing submenu item loadfn:', error);
-                }
+    refreshSubmenu() {
+        if (!this.currentSubmenuState) return;
+        
+        // Preserve state before showSubmenu clears it
+        const state = { ...this.currentSubmenuState };
+        const { parentItem, target, customHandler, submenuItems: oldSubmenuItems } = state;
+        
+        // Get optionsfn from the parent item or use stored one
+        const getOptionsFn = state.optionsfn || parentItem._optionsfn;
+        if (!getOptionsFn || typeof getOptionsFn !== 'function') return;
+        
+        // Call optionsfn to get new submenu items
+        const newSubmenuItems = getOptionsFn(target);
+        
+        if (newSubmenuItems && Array.isArray(newSubmenuItems)) {
+            // Preserve loadfn from old items to new items by matching actions
+            // This allows indicators to refresh correctly
+            if (oldSubmenuItems && Array.isArray(oldSubmenuItems)) {
+                const oldItemsMap = new Map();
+                oldSubmenuItems.forEach(oldItem => {
+                    if (oldItem.action && oldItem.loadfn) {
+                        oldItemsMap.set(oldItem.action, oldItem.loadfn);
+                    }
+                });
+                
+                // Apply loadfn to new items if they have the same action
+                newSubmenuItems.forEach(newItem => {
+                    if (newItem.action && oldItemsMap.has(newItem.action)) {
+                        newItem.loadfn = oldItemsMap.get(newItem.action);
+                    }
+                });
             }
-
-            // Refresh the display of this submenu item
-            this.refreshSubmenuItemDisplay(subItem._element, subItem, target);
-        });
-    }
-
-    hideSubmenu() {
-        if (this.currentSubmenu) {
-            this.currentSubmenu.remove();
+            
+            // Temporarily remove click handler to prevent closing during refresh
+            const oldClickHandler = this.submenuClickHandler;
+            if (oldClickHandler) {
+                document.removeEventListener('click', oldClickHandler);
+            }
+            
+            // Remove current submenu but preserve state
+            if (this.currentSubmenu) {
+                this.currentSubmenu.remove();
+            }
             this.currentSubmenu = null;
-        }
-        
-        // Clear submenu state
-        this.currentSubmenuState = null;
-        
-        // Remove active state from any parent items
-        const activeItems = this.menu.querySelectorAll('.context-menu-item.keyboard-selected');
-        activeItems.forEach(item => item.classList.remove('keyboard-selected'));
-        
-        if (this.submenuClickHandler) {
-            document.removeEventListener('click', this.submenuClickHandler);
-            this.submenuClickHandler = null;
+            
+            // Show new submenu with updated items (this will set new state)
+            this.showSubmenu(parentItem, newSubmenuItems, target, state.handlerfn || customHandler || parentItem._handlerfn);
+            
+            // Recalculate position after refresh (height may have changed)
+            if (this.currentSubmenu && parentItem) {
+                this.positionSubmenu(this.currentSubmenu, parentItem);
+            }
+            
+            // Refresh all submenu items to update indicators and other dynamic properties
+            // This ensures loadfn is called for items that need their state refreshed
+            this.refreshAllSubmenuItems();
         }
     }
 

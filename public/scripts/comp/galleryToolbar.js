@@ -289,7 +289,7 @@ function showGalleryMoveModal(filename) {
         modal.className = 'modal';
         modal.innerHTML = `
             <div class="modal-window-controls">
-                <button class="btn-secondary btn-small modal-close" type="button">
+                <button class="btn-secondary btn-small modal-close close-btn" type="button" title="Close">
                     <i class="fa-regular fa-xmark-large"></i>
                 </button>
             </div>
@@ -536,10 +536,10 @@ function renderGalleryMoveWorkspaceDropdown() {
 }
 
 // Hide gallery move modal
-function hideGalleryMoveModal() {
+async function hideGalleryMoveModal() {
     const modal = document.getElementById('galleryMoveModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
     
     // Stop cross-fade animation

@@ -1,7 +1,6 @@
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
-const FavoritesManager = require('./favorites');
 
 /**
  * Dataset Tag Service
@@ -12,12 +11,15 @@ const FavoritesManager = require('./favorites');
  * - Navigating nested tag categories
  */
 class DatasetTagService {
-    constructor() {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('DatasetTagService requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.datasetTagGroups = null;
         this.datasetTagGroupsPath = path.join(__dirname, '../dataset_tag_groups.json');
         this.tagToPathIndex = null;
         this.tagToPathIndexPath = path.join(__dirname, '../.cache/tag_to_path_index.json');
-        this.favoritesManager = new FavoritesManager();
     }
 
     /**
@@ -68,8 +70,8 @@ class DatasetTagService {
             // include favorites as the first item
             if (path.length === 0 && searchQuery === '*') {
                 // Calculate actual total count of favorites
-                const tagFavorites = this.favoritesManager.getFavorites('tags');
-                const textReplacementFavorites = this.favoritesManager.getFavorites('textReplacements');
+                const tagFavorites = this.globalResources.getFavoritesManager().getFavorites('tags');
+                const textReplacementFavorites = this.globalResources.getFavoritesManager().getFavorites('textReplacements');
                 const totalFavorites = tagFavorites.length + textReplacementFavorites.length;
                 
                 results.push({
@@ -85,9 +87,7 @@ class DatasetTagService {
 
                 // Add All Text Replacements entry
                 try {
-                    const { loadPromptConfig } = require('./textReplacements');
-                    const promptConfig = loadPromptConfig();
-                    const allTextReplacements = promptConfig.text_replacements || {};
+                    const allTextReplacements = this.globalResources.getPromptConfig({ path: 'text_replacements' }) || {};
                     const textReplacementCount = Object.keys(allTextReplacements).length;
                     
                     results.push({
@@ -237,8 +237,8 @@ class DatasetTagService {
             // If no subPath, return the categories (tags and textReplacements)
             if (subPath.length === 0) {
                 // Get actual counts for favorites
-                const tagFavorites = this.favoritesManager.getFavorites('tags');
-                const textReplacementFavorites = this.favoritesManager.getFavorites('textReplacements');
+                const tagFavorites = this.globalResources.getFavoritesManager().getFavorites('tags');
+                const textReplacementFavorites = this.globalResources.getFavoritesManager().getFavorites('textReplacements');
                 
                 return {
                     results: [
@@ -269,7 +269,7 @@ class DatasetTagService {
 
             // Get favorites and return them as tags
             const favoriteType = subPath[0];
-            const favorites = this.favoritesManager.getFavorites(favoriteType);
+            const favorites = this.globalResources.getFavoritesManager().getFavorites(favoriteType);
             
             return {
                 results: [],
@@ -351,7 +351,7 @@ class DatasetTagService {
             // Handle favorites paths
             if (path.length >= 2 && path[0] === 'favorites') {
                 const favoriteType = path[1];
-                const favorites = this.favoritesManager.getFavorites(favoriteType);
+                const favorites = this.globalResources.getFavoritesManager().getFavorites(favoriteType);
                 return favorites.map(favorite => {
                     if (favoriteType === 'textReplacements') {
                         return `!${favorite.placeholder || favorite.name}`;
@@ -363,9 +363,7 @@ class DatasetTagService {
             // Handle all text replacements path
             if (path.length === 1 && path[0] === 'allTextReplacements') {
                 try {
-                    const { loadPromptConfig } = require('./textReplacements');
-                    const promptConfig = loadPromptConfig();
-                    const allTextReplacements = promptConfig.text_replacements || {};
+                    const allTextReplacements = this.globalResources.getPromptConfig({ path: 'text_replacements' }) || {};
                     return Object.keys(allTextReplacements).map(key => `!${key}`);
                 } catch (error) {
                     console.error('Error loading all text replacements:', error);

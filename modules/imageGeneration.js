@@ -1,18 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { NovelAI, Model, Action, Sampler, Noise, Resolution, calculateCost, EventType } = require('nekoai-js');
 const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
 const { z } = require('zod');
 
 // Import modules
-const { loadPromptConfig, applyTextReplacements } = require('./textReplacements');
-const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
-const { callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
 const globalResources = require('./globalResources');
-const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore } = require('./dynamicGenerationHandlers');
-const logger = require('./logger');
+const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
+
+const { 
+    getImageDimensions, 
+    getDimensionsFromResolution, 
+    processDynamicImage,
+    processDynamicImageLetterbox,
+    resizeMaskWithCanvas
+} = require('./imageTools');
+const { generateMobilePreviews } = require('./previewUtils');
+const { upscaleImageCore } = require('./imageUpscaling');
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -30,9 +35,9 @@ function normalizePeriodKey(periodKey) {
     const legacyMappings = {
         'earlymorning': 'morning',
         'early_morning': 'morning',
-        'earlyevening': 'night',
-        'early_evening': 'night',
-        'evening': 'night',
+        'earlyevening': 'evening', // Keep as evening, not night
+        'early_evening': 'evening',
+        // 'evening' is now a valid period name (used for cloudy afternoon golden hour), don't map to 'night'
         'lateevening': 'night',
         'late_evening': 'night'
     };
@@ -428,34 +433,7 @@ function applyBiasToText(input, bias) {
     }
 }
 
-const {
-    updateMetadata,
-    readMetadata,
-    stripPngTextChunks,
-    insertTextChunk,
-    getBaseName,
-    getModelDisplayName
-} = require('./pngMetadata');
-const { 
-    getImageDimensions, 
-    getDimensionsFromResolution, 
-    processDynamicImage,
-    processDynamicImageLetterbox,
-    resizeMaskWithCanvas
-} = require('./imageTools');
-const { generateMobilePreviews } = require('./previewUtils');
-const imageCounter = require('./imageCounter');
-const { upscaleImageCore } = require('./imageUpscaling');
-
-let context = {};
-function setContext(newContext) { context = { ...newContext }; }
-
 // Dynamic Generation Processing - Uses pre-compiled AI prompts from client
-const cacheDir = path.resolve(__dirname, '../.cache');
-const uploadCacheDir = path.join(cacheDir, 'upload');
-const presetSourceCacheDir = path.join(cacheDir, 'preset_source');
-const imagesDir = path.resolve(__dirname, '../images');
-const previewsDir = path.resolve(__dirname, '../.previews');
 
 // Function to convert character reference to base64 JPG with max edge 1500px
 async function convertCharacterReferenceToBase64(charaReference) {
@@ -469,7 +447,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
 
         switch (type) {
             case 'cache':
-                const cachedImagePath = path.join(uploadCacheDir, identifier);
+                const cachedImagePath = path.join(globalResources.getPath('uploadCache'), identifier);
                 if (!fs.existsSync(cachedImagePath)) {
                     console.warn(`⚠️ Character reference cache image not found: ${identifier}`);
                     return null;
@@ -477,7 +455,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
                 imageBuffer = fs.readFileSync(cachedImagePath);
                 break;
             case 'file':
-                const filePath = path.join(imagesDir, identifier);
+                const filePath = path.join(globalResources.getPath('images'), identifier);
                 if (!fs.existsSync(filePath)) {
                     console.warn(`⚠️ Character reference file not found: ${identifier}`);
                     return null;
@@ -492,7 +470,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
         if (!imageBuffer) return null;
 
         // Strip PNG text chunks to avoid issues
-        imageBuffer = stripPngTextChunks(imageBuffer);
+        imageBuffer = globalResources.getPngMetadata().stripPngTextChunks(imageBuffer);
 
         // Get image metadata to calculate aspect ratio
         const metadata = await sharp(imageBuffer).metadata();
@@ -582,13 +560,16 @@ async function convertCharacterReferenceToBase64(charaReference) {
     }
 }
 
-// Ensure preset source cache directory exists
-try {
-    if (!fs.existsSync(presetSourceCacheDir)) {
-        fs.mkdirSync(presetSourceCacheDir, { recursive: true });
+// Ensure preset source cache directory exists (called when needed, not at module load)
+function ensurePresetSourceCacheDir() {
+    try {
+        const presetSourceCacheDir = globalResources.getPath('presetSourceCache');
+        if (!fs.existsSync(presetSourceCacheDir)) {
+            fs.mkdirSync(presetSourceCacheDir, { recursive: true });
+        }
+    } catch (error) {
+        console.warn(`⚠️ Failed to create preset source cache directory: ${error.message}`);
     }
-} catch (error) {
-    console.warn(`⚠️ Failed to create preset source cache directory: ${error.message}`);
 }
 
 // Function to generate preset source image
@@ -607,7 +588,7 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     }
     let currentPromptConfig;
     try {
-        currentPromptConfig = loadPromptConfig();
+        currentPromptConfig = globalResources.getPromptConfig();
     } catch (error) {
         throw new Error(`Failed to load prompt configuration: ${error.message}`);
     }
@@ -628,13 +609,12 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Create cache filename
     const presetHash = crypto.createHash('md5').update(presetName).digest('hex');
     const cacheFilename = `${presetHash}_${seed}.png`;
+    const presetSourceCacheDir = globalResources.getPath('presetSourceCache');
     const cachePath = path.join(presetSourceCacheDir, cacheFilename);
     
     // Ensure cache directory exists
     try {
-        if (!fs.existsSync(presetSourceCacheDir)) {
-            fs.mkdirSync(presetSourceCacheDir, { recursive: true });
-        }
+        ensurePresetSourceCacheDir();
     } catch (error) {
         console.warn(`⚠️ Failed to create cache directory: ${error.message}`);
         // Continue without caching if directory creation fails
@@ -673,8 +653,8 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
             } else {
                 throw new Error(`Failed to get dimensions for xlarge resolution: ${resolution}`);
             }
-        } else if (Resolution[resolution.toUpperCase()]) {
-            presetOptions.resPreset = Resolution[resolution.toUpperCase()];
+        } else if (globalResources.getNekoAiService('Resolution')[resolution.toUpperCase()]) {
+            presetOptions.resPreset = globalResources.getNekoAiService('Resolution')[resolution.toUpperCase()];
         } else {
             // Parse custom dimensions
             try {
@@ -1238,8 +1218,8 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
 
     // Log what was removed if anything was cleaned
     if (removedPhrases.length > 0) {
-        logger.detailed(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s)`);
-        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+        globalResources.getLogger().detailed(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s)`);
+        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
             removedPhrases.forEach(phrase => {
                 const coreText = stripEmphasisSyntax(phrase);
                 console.log(`   - "${phrase}" (core: "${coreText}")`);
@@ -1253,12 +1233,77 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
 
 const tracing = require('./tracing');
 
+/**
+ * Apply cached text replacements to prompts
+ * @returns {object} Result with success flag and processed prompts
+ */
+const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedNegativePrompt, processedCharacterPrompts) => {
+    if (!compiledPrompt.text_replacements) return { success: true, processedPrompt, processedNegativePrompt, processedCharacterPrompts };
+    
+    const originalPrompt = processedPrompt + '';
+    const originalNegativePrompt = processedNegativePrompt + '';
+    const originalCharacterPrompts = processedCharacterPrompts ? processedCharacterPrompts.map(char => ({ ...char })) : [];
+    
+    try {
+        // Apply replacements to prompt
+        if (compiledPrompt.text_replacements.prompt?.length > 0) {
+            const result = applyDynamicReplacements(processedPrompt, compiledPrompt.text_replacements, 'prompt');
+            if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
+            processedPrompt = result.result;
+        }
+        
+        // Apply replacements to negative prompt
+        if (compiledPrompt.text_replacements.uc?.length > 0) {
+            const result = applyDynamicReplacements(processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
+            if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
+            processedNegativePrompt = result.result;
+        }
+        
+        // Apply replacements to character prompts
+        if (processedCharacterPrompts?.length > 0 && compiledPrompt.text_replacements.character_prompts) {
+            processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
+                const charReplacements = compiledPrompt.text_replacements.character_prompts[index];
+                if (!charReplacements) return char;
+                let updatedChar = { ...char };
+                
+                if (charReplacements.prompt?.length > 0) {
+                    const result = applyDynamicReplacements(char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
+                    if (!result.success) throw new Error(`Failed character ${index} prompt`);
+                    updatedChar.prompt = result.result;
+                }
+                
+                if (charReplacements.uc?.length > 0) {
+                    const result = applyDynamicReplacements(char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
+                    if (!result.success) throw new Error(`Failed character ${index} UC`);
+                    updatedChar.uc = result.result;
+                }
+                
+                return updatedChar;
+            });
+        }
+        
+        // Apply character names
+        if (compiledPrompt.character_names?.length > 0) {
+            processedCharacterPrompts = processedCharacterPrompts || [];
+            compiledPrompt.character_names.forEach((name, index) => {
+                if (name && processedCharacterPrompts[index]) {
+                    processedCharacterPrompts[index].chara_name = name;
+                    processedCharacterPrompts[index].name = name;
+                }
+            });
+        }
+        
+        return { success: true, processedPrompt, processedNegativePrompt, processedCharacterPrompts };
+    } catch (error) {
+        return { success: false, processedPrompt: originalPrompt, processedNegativePrompt: originalNegativePrompt, processedCharacterPrompts: originalCharacterPrompts, error };
+    }
+};
+
 const buildOptions = async (body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
-    // Initialize reference metadata database
-    const referenceMetadataDb = new ReferenceMetadataDatabase();
+    const referenceMetadataDb = globalResources.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
     
-    const currentPromptConfig = loadPromptConfig();
+    const currentPromptConfig = globalResources.getPromptConfig({ clone: true });
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
     const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
     const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
@@ -1282,7 +1327,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
     let stepsValue = queryParams?.steps !== undefined ? parseInt(queryParams?.steps) : body.steps || preset?.steps || 24;
     let guidanceValue = queryParams?.guidance !== undefined ? parseFloat(queryParams?.guidance) : body.guidance || preset?.guidance || 5.5;
     let rescaleValue = queryParams?.rescale !== undefined ? parseFloat(queryParams?.rescale) : body.rescale || preset?.rescale || 0.0;
-    let resolutionValue = queryParams?.resolution !== undefined ? Resolution[queryParams?.resolution?.toUpperCase()] : body.resolution || preset?.resolution;
+    let resolutionValue = queryParams?.resolution !== undefined ? globalResources.getNekoAiService('Resolution')[queryParams?.resolution?.toUpperCase()] : body.resolution || preset?.resolution;
     let seedValue = queryParams?.seed !== undefined ? parseInt(queryParams?.seed) : body.seed || preset?.seed;
     let varietyValue = queryParams?.variety !== undefined ? Boolean(queryParams?.variety) : body.variety || preset?.variety || false;
     
@@ -1298,10 +1343,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         let lockedReplacements = null;
         if (body.text_replacements_seed && Array.isArray(body.text_replacements_seed)) {
             lockedReplacements = body.text_replacements_seed;
-            logger.detailed(`🔒 Using ${lockedReplacements.length} locked text replacements`);
+            globalResources.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements`);
         } else if (preset?.text_replacements_seed && Array.isArray(preset.text_replacements_seed)) {
             lockedReplacements = preset.text_replacements_seed;
-            logger.detailed(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
+            globalResources.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
         }
 
         // Create stageData for request body replacements (stub for stage 0 - base generation)
@@ -1312,8 +1357,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             text_replacements: body.text_replacements || []
         };
 
-        let processedPromptResult = applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
-        let processedNegativePromptResult = applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+        let processedPromptResult = globalResources.textReplacements.applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+        let processedNegativePromptResult = globalResources.textReplacements.applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
 
         // Initialize processed prompts and character prompts
         let processedPrompt = processedPromptResult.text;
@@ -1380,8 +1425,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map((char, charIndex) => {
                 // Apply text replacements to character prompt and UC
-                const processedPromptResult = applyTextReplacements(char.prompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
-                const processedUCResult = applyTextReplacements(char.uc, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+                const processedPromptResult = globalResources.textReplacements.applyTextReplacements(char.prompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+                const processedUCResult = globalResources.textReplacements.applyTextReplacements(char.uc, presetName, body.model, periodKey, lockedReplacements, currentStageData);
 
                 // Collect replacement seeds with character index
                 characterTextReplacementSeeds.push(
@@ -1669,7 +1714,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                 }
                 
-                logger.detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
+                globalResources.getLogger().detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
                 
                 // Track this modification
                 appliedPresetControls.prompt.push({
@@ -1722,7 +1767,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                 }
                 selectedQualityId = selectedQuality.id;
-                logger.detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
+                globalResources.getLogger().detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
                 
                 // Track this modification
                 appliedPresetControls.prompt.push({
@@ -1743,7 +1788,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Add UC preset to the start of the UC and separate the original UC with ", "
                 processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
                 selectedUcId = selectedUc.id;
-                logger.detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
+                globalResources.getLogger().detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
                 
                 // Track this modification
                 appliedPresetControls.uc.push({
@@ -1805,9 +1850,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Log when applying overlay
                 const pipelineDisabledNote = pipelinesDisabled && (isAllStages || hasBaseStage00) ? ' (pipelines disabled, applying always)' : '';
                 if (isAllStages) {
-                    logger.detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (All Stages)${pipelineDisabledNote}`);
+                    globalResources.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (All Stages)${pipelineDisabledNote}`);
                 } else if (overlayStages.length > 0) {
-                    logger.detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (${overlayStages.join(', ')})${pipelineDisabledNote}`);
+                    globalResources.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (${overlayStages.join(', ')})${pipelineDisabledNote}`);
                 }
                 if (!text.trim()) {
                     if (body.dynamic_generation !== undefined) {
@@ -1848,7 +1893,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 
                 // Build the text append string
                 const textAppend = `, ${emphasizedTags}, Text: ${text}`;
-                logger.verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
+                globalResources.getLogger().verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 
                 // Determine which prompt to append to
                 if (targetIndex === 0) {
@@ -1858,7 +1903,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         //processedPrompt = processedPrompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
                         // Append text overlay at the very end
                         processedPrompt += textAppend;
-                        logger.detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
+                        globalResources.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
                     }
                 } else {
                     // Apply to character prompt (targetIndex - 1 gives array index)
@@ -1973,7 +2018,27 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
 
             // Extract initialPromptAware setting early - needed for preview generation logic
-            const initialPromptAware = body?.dynamic_generation?.optimize?.initialPromptAware;
+            // Can be set independently of optimize - check both locations
+            const initialPromptAware = body?.dynamic_generation?.initialPromptAware || false;
+
+            // COMPILE CONTEXT ONCE - will be used for cache validation AND AI processing
+            let dynaRequest = body.dynamic_generation;
+            let contextForAI = null;
+            
+            if (dynaRequest.context_locked && dynaRequest.compiled_prompt?.context) {
+                // Context is locked - reuse from compiled_prompt
+                console.log('🔒 Context locked: Reusing existing context from compiled prompt');
+                contextForAI = dynaRequest.compiled_prompt.context;
+            } else if (dynaRequest.locked && dynaRequest.compiled_prompt?.context) {
+                // Pipeline stage inheritance - reuse context from previous stage
+                console.log('🔒 Pipeline locked mode: Reusing context from previous stage');
+                contextForAI = dynaRequest.compiled_prompt.context;
+            } else {
+                // Generate context for AI processing
+                const clientInfo = wsServer?.clients?.get(ws);
+                const clientIP = clientInfo?.clientIP || null;
+                contextForAI = await compileContext(dynaRequest, clientIP);
+            }
 
             // If we have cache and it's either not expired OR cache_locked, try to apply transforms
             const isCacheLocked = !!body?.dynamic_generation?.cache_locked;
@@ -1981,7 +2046,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             if (hasValidCache) {
                 const compiledPrompt = body.dynamic_generation.compiled_prompt;
                 const now = Date.now();
-                const isNotExpired = (now - compiledPrompt.timestamp) < 15 * 60 * 1000;
+                // Use dynamic expiration if available, otherwise fall back to timestamp-based 15 minute check
+                const isNotExpired = compiledPrompt.expiresAt 
+                    ? now < compiledPrompt.expiresAt 
+                    : (now - compiledPrompt.timestamp) < 15 * 60 * 1000;
                 const canUseCache = isNotExpired || isCacheLocked;
 
                 if (canUseCache) {
@@ -2004,99 +2072,103 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         hasValidCache = false;
                     }
 
-                    // Try to apply text replacements - create backups first
-                    if (hasValidCache && compiledPrompt.text_replacements) {
-                        // Create backups of original prompts
-                        const originalPrompt = processedPrompt + '';
-                        const originalNegativePrompt = processedNegativePrompt + '';
-                        const originalCharacterPrompts = processedCharacterPrompts ? processedCharacterPrompts.map(char => ({ ...char })) : [];
-
-                        try {
-                            // Apply replacements to prompt
-                            if (compiledPrompt.text_replacements.prompt && compiledPrompt.text_replacements.prompt.length > 0) {
-                                logger.verbose(`🔄 Applying ${compiledPrompt.text_replacements.prompt.length} cached prompt replacements`);
-                                const result = applyDynamicReplacements(processedPrompt, compiledPrompt.text_replacements, 'prompt');
-                                if (!result.success) {
-                                    throw new Error(`Failed to apply cached prompt replacements: ${result.failedReplacements.join(', ')}`);
-                                }
-                                processedPrompt = result.result;
-                            }
-
-                            // Apply replacements to negative prompt
-                            if (compiledPrompt.text_replacements.uc && compiledPrompt.text_replacements.uc.length > 0) {
-                                console.log(`🔄 Applying ${compiledPrompt.text_replacements.uc.length} cached UC replacements`);
-                                const result = applyDynamicReplacements(processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
-                                if (!result.success) {
-                                    throw new Error(`Failed to apply cached UC replacements: ${result.failedReplacements.join(', ')}`);
-                                }
-                                processedNegativePrompt = result.result;
-                            }
-
-                            // Apply replacements to character prompts
-                            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts) && processedCharacterPrompts.length > 0 && compiledPrompt.text_replacements.character_prompts) {
-                                processedCharacterPrompts = processedCharacterPrompts.map((char, index) => {
-                                    const charReplacements = compiledPrompt.text_replacements.character_prompts[index];
-                                    if (!charReplacements) {
-                                        return char;
-                                    }
-                                    let updatedChar = { ...char };
-
-                                    if (charReplacements.prompt && charReplacements.prompt.length > 0) {
-                                        console.log(`🔄 Applying ${charReplacements.prompt.length} cached prompt replacements to character ${index}`);
-                                        const result = applyDynamicReplacements(char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
-                                        if (!result.success) {
-                                            throw new Error(`Failed to apply cached character ${index} prompt replacements: ${result.failedReplacements.join(', ')}`);
-                                        }
-                                        updatedChar.prompt = result.result;
-                                    }
-
-                                    if (charReplacements.uc && charReplacements.uc.length > 0) {
-                                        console.log(`🔄 Applying ${charReplacements.uc.length} cached UC replacements to character ${index}`);
-                                        const result = applyDynamicReplacements(char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
-                                        if (!result.success) {
-                                            throw new Error(`Failed to apply cached character ${index} UC replacements: ${result.failedReplacements.join(', ')}`);
-                                        }
-                                        updatedChar.uc = result.result;
-                                    }
-
-                                    return updatedChar;
-                                });
-                            }
-                            
-                            // Apply character names from cached compiled prompt
-                            if (compiledPrompt.character_names && Array.isArray(compiledPrompt.character_names) && compiledPrompt.character_names.length > 0) {
-                                processedCharacterPrompts = processedCharacterPrompts || [];
-                                if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
-                                    compiledPrompt.character_names.forEach((name, index) => {
-                                        if (name && processedCharacterPrompts[index]) {
-                                            // Update both chara_name and name properties for compatibility
-                                            processedCharacterPrompts[index].chara_name = name;
-                                            processedCharacterPrompts[index].name = name;
-                                            console.log(`✨ Applied cached character name "${name}" to character ${index + 1}`);
-                                        }
-                                    });
-                                }
-                            }
-                        } catch (error) {
-                            console.error('❌ Error applying cached text replacements:', error);
+                    // Try to apply text replacements using helper function
+                    if (hasValidCache) {
+                        const replacementResult = applyCachedTextReplacements(
+                            compiledPrompt,
+                            processedPrompt,
+                            processedNegativePrompt,
+                            processedCharacterPrompts
+                        );
+                        
+                        if (replacementResult.success) {
+                            processedPrompt = replacementResult.processedPrompt;
+                            processedNegativePrompt = replacementResult.processedNegativePrompt;
+                            processedCharacterPrompts = replacementResult.processedCharacterPrompts;
+                        } else {
+                            console.error('❌ Error applying cached text replacements:', replacementResult.error);
                             hasValidCache = false;
                         }
-
-                        if (!hasValidCache) {
-                            console.log('🔄 Text transformations failed, restoring originals and regenerating');
-                            // Restore from backups
-                            processedPrompt = originalPrompt;
-                            processedNegativePrompt = originalNegativePrompt;
-                            processedCharacterPrompts = originalCharacterPrompts;
-                            hasValidCache = false;
-                        }
-                    } else if (hasValidCache && body.dynamic_generation.compiled_prompt.prompt_hash !== currentPromptHash) {
-                        console.log('🔄 Text replacement sources modified, invalidating cache');
-                        hasValidCache = false;
                     }
                 } else {
-                    console.log('⏰ Cached prompt expired and not locked, invalidating cache');
-                    hasValidCache = false;
+                    console.log('⏰ Cached prompt expired and not locked, checking if context changed...');
+                    
+                    // Check if context has actually changed by comparing expiration metadata
+                    const cachedMetadata = compiledPrompt?.context?.expirationMetadata;
+                    
+                    if (cachedMetadata && contextForAI && !body?.dynamic_generation?.force_context_refresh) {
+                        // Use precompiled context to compare
+                        try {
+                            const freshMetadata = contextForAI?.expirationMetadata;
+                            
+                            if (freshMetadata) {
+                                // Check if context has meaningfully changed
+                                const timePeriodChanged = cachedMetadata.timePeriod !== freshMetadata.timePeriod;
+                                const weatherChanged = cachedMetadata.weatherCondition !== freshMetadata.weatherCondition;
+                                const phenomenonChanged = cachedMetadata.hasWeatherPhenomenon !== freshMetadata.hasWeatherPhenomenon;
+                                const cloudCoverageDiff = Math.abs((cachedMetadata.cloudCoverage || 0) - (freshMetadata.cloudCoverage || 0));
+                                const tempDiff = Math.abs((cachedMetadata.temperature || 0) - (freshMetadata.temperature || 0));
+                                
+                                const hasSignificantChange = timePeriodChanged || weatherChanged || phenomenonChanged || 
+                                                            cloudCoverageDiff >= 20 || tempDiff >= 10;
+                                
+                                if (!hasSignificantChange) {
+                                    console.log('  ✅ Context unchanged - keeping cache and updating expiration');
+                                    // Update the context and recalculate expiration
+                                    compiledPrompt.context = contextForAI;
+                                    compiledPrompt.expiresAt = calculateDynamicExpiration(contextForAI, 30 * 60 * 1000);;
+                                    compiledPrompt.timestamp = now;
+                                    
+                                    const msUntil = compiledPrompt.expiresAt - now;
+                                    const minutesUntil = Math.round(msUntil / (60 * 1000));
+                                    const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
+                                    console.log(`  ⏰ Updated expiration: ${new Date(compiledPrompt.expiresAt).toLocaleTimeString()} (${hoursUntil}h ${minutesUntil % 60}m)`);
+                                    
+                                    // Apply cached text replacements using helper function
+                                    console.log('♻️ Applying cached text replacements (context unchanged)');
+                                    const replacementResult = applyCachedTextReplacements(
+                                        compiledPrompt,
+                                        processedPrompt,
+                                        processedNegativePrompt,
+                                        processedCharacterPrompts
+                                    );
+                                    
+                                    if (replacementResult.success) {
+                                        processedPrompt = replacementResult.processedPrompt;
+                                        processedNegativePrompt = replacementResult.processedNegativePrompt;
+                                        processedCharacterPrompts = replacementResult.processedCharacterPrompts;
+                                        hasValidCache = true;
+                                    } else {
+                                        console.error('❌ Error applying cached replacements:', replacementResult.error);
+                                        hasValidCache = false;
+                                    }
+                                } else {
+                                    // Log what changed
+                                    if (timePeriodChanged) console.log(`  🕐 Time period changed: "${cachedMetadata.timePeriod}" → "${freshMetadata.timePeriod}"`);
+                                    if (weatherChanged) console.log(`  🌦️  Weather changed: "${cachedMetadata.weatherCondition}" → "${freshMetadata.weatherCondition}"`);
+                                    if (phenomenonChanged) console.log(`  ⛈️  Weather phenomenon status changed`);
+                                    if (cloudCoverageDiff >= 20) console.log(`  ☁️  Major cloud coverage change: ${cachedMetadata.cloudCoverage}% → ${freshMetadata.cloudCoverage}%`);
+                                    if (tempDiff >= 10) console.log(`  🌡️  Major temperature change: ${cachedMetadata.temperature}°C → ${freshMetadata.temperature}°C`);
+                                    console.log('  🔄 Context has changed - invalidating cache');
+                                    hasValidCache = false;
+                                }
+                            } else {
+                                console.log('  ⚠️  Fresh metadata unavailable - invalidating cache');
+                                hasValidCache = false;
+                            }
+                        } catch (error) {
+                            console.error('  ❌ Error checking context changes:', error);
+                            hasValidCache = false;
+                        }
+                    } else {
+                        if (!cachedMetadata) {
+                            console.log('  ℹ️  No cached metadata - invalidating cache');
+                        }
+                        if (body?.dynamic_generation?.force_context_refresh) {
+                            console.log('  🔄 Forced context refresh requested - invalidating cache');
+                        }
+                        hasValidCache = false;
+                    }
                 }
 
                 if (!hasValidCache) {
@@ -2115,7 +2187,30 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
 
             if (hasValidCache) {
-                logger.detailed('✅ Using cached prompt');
+                globalResources.getLogger().detailed('✅ Using cached prompt');
+
+                // Send context phase progress update even when using cache, so overlay shows correctly
+                if (ws && handler && contextForAI) {
+                    const carouselData = formatContextForCarousel(contextForAI);
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'context',
+                        data: {
+                            date: contextForAI.time ? {
+                                year: contextForAI.time.year,
+                                month: contextForAI.time.month, // 0-based
+                                day: contextForAI.time.dayOfMonth
+                            } : null,
+                            time: contextForAI.time ? `${String(contextForAI.time.hour).padStart(2, '0')}:${String(contextForAI.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
+                            season: contextForAI.season?.name,
+                            weather: contextForAI.weather,
+                            holiday: contextForAI.season?.holiday || null,
+                            location: contextForAI.location,
+                            carousel: carouselData
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
 
                 // Send progress update indicating AI processing is complete (cached)
                 if (ws && handler) {
@@ -2140,7 +2235,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 let hasValidPreview = false;
                 if (body.dynamic_generation?.compiled_prompt?.preview_image_hash) {
                     // Check if the preview file actually exists on disk
-                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                    const dynGenPreviewDir = path.join(globalResources.getPath('cache'), 'dynGenPreview');
                     const previewFilePath = path.join(dynGenPreviewDir, `${body.dynamic_generation.compiled_prompt.preview_image_hash}.png`);
                     hasValidPreview = fs.existsSync(previewFilePath);
                     if (!hasValidPreview) {
@@ -2221,7 +2316,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     const previewResult = await handleGeneration(previewOptions, true, null, body.workspace, null, streamCb, ws, handler);
                     
                     if (previewResult && previewResult.buffer) {
-                        logger.detailed('✅ Preview generated');
+                        globalResources.getLogger().detailed('✅ Preview generated');
                         
                         // Trace: attach generated preview (use actual requestId)
                         try {
@@ -2238,7 +2333,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         const previewHash = crypto.createHash('sha256').update(previewResult.buffer).digest('hex');
                         
                         // Save preview to .cache/dynGenPreview/ directory
-                        const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                        const dynGenPreviewDir = path.join(globalResources.getPath('cache'), 'dynGenPreview');
                         if (!fs.existsSync(dynGenPreviewDir)) {
                             fs.mkdirSync(dynGenPreviewDir, { recursive: true });
                         }
@@ -2271,9 +2366,6 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     });
                 }
 
-                // Call the actual AI processing (same as client WebSocket handler)
-                let dynaRequest = body.dynamic_generation;
-
                 // Retry loop for chain rejection - if AI rejects the chain, retry with clean state
                 let dynamicResult = null;
                 let chainRetries = 0;
@@ -2296,6 +2388,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     try {
                         dynamicResult = await processDynamicGenerationCore(
                             dynaRequest,
+                            contextForAI,
                             promptForAI,
                             ucForAI,
                             characterPromptsForAI,
@@ -2334,6 +2427,38 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                             // Continue to next iteration with clean state
                             continue;
+                        }
+
+                        // Check if we have empty or missing text_replacements after validation failure
+                        // This happens when validation fails and AI returns empty response - we should restart instead of falling back
+                        if (dynamicResult.success) {
+                            const hasEmptyTextReplacements = !dynamicResult.text_replacements || 
+                                (!dynamicResult.text_replacements.prompt?.length && 
+                                 !dynamicResult.text_replacements.uc?.length && 
+                                 (!dynamicResult.text_replacements.character_prompts || 
+                                  dynamicResult.text_replacements.character_prompts.every(char => 
+                                      (!char.prompt?.length && !char.uc?.length)
+                                  )));
+                            
+                            if (hasEmptyTextReplacements && chainRetries < maxChainRetries) {
+                                chainRetries++;
+                                console.log(`⚠️ No text replacements provided after validation failure, restarting dynamic generation (retry ${chainRetries}/${maxChainRetries})`);
+
+                                // Clear compiled_prompt state for next attempt
+                                dynaRequest = {
+                                    ...dynaRequest,
+                                    compiled_prompt: dynaRequest.compiled_prompt ? {
+                                        ...dynaRequest.compiled_prompt,
+                                        previousResponseId: null,
+                                        request_hash: null,
+                                        prompt_hash: null,
+                                        directive_hash: null
+                                    } : null
+                                };
+
+                                // Continue to next iteration with clean state
+                                continue;
+                            }
                         }
 
                         // Success or failure (not chain rejection) - break out
@@ -2467,11 +2592,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     
                     // Store failed result with success: false
                     dynamic_generation.compiled_prompt = {
-                        prompt: dynamicResult.prompt,
-                        uc: dynamicResult.uc,
-                        characterPrompts: dynamicResult.characterPrompts,
-                        modifications_made: dynamicResult.modifications_made,
-                        reasoning: dynamicResult.reasoning,
+                        success: false,
                         citations: dynamicResult.citations,
                         context: dynamicResult.context, // Include weather/time/season context
                         text_replacements: reusedTextReplacements, // Store text replacements (reused or new)
@@ -2483,7 +2604,6 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         directive_hash: currentDirectiveHash, // Store hash for cache validation
                         preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
                         timestamp: Date.now(),
-                        success: false,
                         error: dynamicResult?.error?.message || 'Dynamic generation processing failed',
                         errors: dynamicResult.errors || [], // Save AI-registered errors
                         warnings: dynamicResult.warnings || [], // Save AI-registered warnings
@@ -2496,16 +2616,17 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         text_replacements_reused: !dynamicResult.text_replacements && !!reusedTextReplacements, // Flag to indicate reuse
                         totalUsage: dynamicResult.totalUsage || null, // Save total usage data even on error for cost tracking
                         usage: dynamicResult.usage || null, // Save structured usage data with phase1 and phase2 breakdowns (if any)
-                        apiCalls: dynamicResult?.apiCalls || null // Save detailed API calls array even on error
+                        apiCalls: dynamicResult?.apiCalls || null, // Save detailed API calls array even on error
+                        published_analysis: dynamicResult?.published_analysis || null,
+                        replacement_plan: dynamicResult?.replacement_plan || null
                     };
                 } else {
                     // Store the compiled result
+                    const now = Date.now();
+                    const expiresAt = calculateDynamicExpiration(dynamicResult.context, 30 * 60 * 1000); // Default 30 minutes fallback
+                    
                     const compiledPrompt = {
-                        prompt: dynamicResult.prompt,
-                        uc: dynamicResult.uc,
-                        characterPrompts: dynamicResult.characterPrompts,
-                        modifications_made: dynamicResult.modifications_made,
-                        reasoning: dynamicResult.reasoning,
+                        success: true,
                         citations: dynamicResult.citations,
                         context: dynamicResult.context, // Include weather/time/season context
                         text_replacements: dynamicResult.text_replacements, // Store text replacements for caching
@@ -2516,8 +2637,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         request_hash: currentRequestHash, // Store hash for cache validation
                         directive_hash: currentDirectiveHash, // Store hash for cache validation
                         preview_image_hash: body.dynamic_generation?.compiled_prompt?.preview_image_hash,
-                        timestamp: Date.now(),
-                        success: true,
+                        timestamp: now,
+                        expiresAt: expiresAt, // Dynamic expiration based on time/weather changes
                         errors: dynamicResult.errors || [], // Save AI-registered errors
                         warnings: dynamicResult.warnings || [], // Save AI-registered warnings
                         cache_locked: body.dynamic_generation.cache_locked || false,
@@ -2528,7 +2649,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         generation_chain: dynamicResult.generation_chain, // Save generation chain number for incrementing
                         totalUsage: dynamicResult?.totalUsage || null, // Save total usage data for cost tracking
                         usage: dynamicResult?.usage !== undefined ? dynamicResult.usage : null, // Save structured usage data with phase1 and phase2 breakdowns
-                        apiCalls: dynamicResult?.apiCalls || null // Save detailed API calls array for granular tracking
+                        apiCalls: dynamicResult?.apiCalls || null, // Save detailed API calls array for granular tracking
+                        published_analysis: dynamicResult?.published_analysis || null,
+                        replacement_plan: dynamicResult?.replacement_plan || null
                     };
                     
                     if (dynamicResult.text_replacements) {
@@ -2631,9 +2754,11 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                                     (dynamicResult.text_replacements.uc?.length || 0) +
                                                     (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
                                                         (char.prompt?.length || 0) + (char.uc?.length || 0), 0) || 0);
-                        logger.normal(`🔄 Applied ${totalReplacements} text replacements`);
+                        globalResources.getLogger().normal(`🔄 Applied ${totalReplacements} text replacements`);
                     } else {
-                        console.log('⚠️ No text replacements provided, falling back to compiled prompt');
+                        // No text replacements provided - this should have been caught earlier and restarted
+                        // But if we reach here, all retries are exhausted, so fall back to compiled prompt
+                        console.log('⚠️ No text replacements provided after exhausting retries, falling back to compiled prompt');
                         processedPrompt = compiledPrompt.prompt;
                         processedNegativePrompt = compiledPrompt.uc;
                         processedCharacterPrompts = compiledPrompt.characterPrompts;
@@ -2641,26 +2766,23 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                     // Store in the dynamic_generation object for caching
                     dynamic_generation.compiled_prompt = compiledPrompt;
-                    logger.verbose('💾 Stored compiled prompt');
+                    globalResources.getLogger().verbose('💾 Stored compiled prompt');
 
                     // If this is a preset generation, save the compiled prompt directly to the preset
                     if (!!preset &&body.presetName) {
                         try {
-                            const { savePromptConfig, loadPromptConfig } = require('./textReplacements');
-                            const currentPromptConfig = loadPromptConfig();
+                            const currentPromptConfig = globalResources.getPromptConfig({ clone: true });
 
                             if (currentPromptConfig.presets[body.presetName]) {
                                 if (!currentPromptConfig.presets[body.presetName].dynamic_generation) {
                                     currentPromptConfig.presets[body.presetName].dynamic_generation = {};
                                 }
 
-                                currentPromptConfig.presets[body.presetName].dynamic_generation.compiled_prompt = compiledPrompt;
-
-                                const success = savePromptConfig(currentPromptConfig);
+                                const success = globalResources.modifyConfig('promptConfig').assign(['presets', body.presetName, 'dynamic_generation', 'compiled_prompt'], compiledPrompt);
                                 if (success) {
                                     console.log(`💾 Saved compiled prompt directly to preset: ${body.presetName}`);
                                 } else {
-                                    console.warn(`⚠️ Failed to save compiled prompt to preset ${body.presetName}: savePromptConfig returned false`);
+                                    console.warn(`⚠️ Failed to save compiled prompt to preset ${body.presetName}: saveConfig returned false`);
                                 }
                             }
                         } catch (error) {
@@ -2694,13 +2816,13 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             negative_prompt: processedNegativePrompt,
             input_prompt: rawPrompt,
             input_uc: rawNegativePrompt,
-            model: Model[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
+            model: globalResources.getNekoAiService('Model')[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
             skip_cfg_above_sigma: varietyValue ? 58 : undefined,
-            sampler: body.sampler ? Sampler[body.sampler.toUpperCase()] : (preset?.sampler ? Sampler[preset.sampler.toUpperCase()] : Sampler.EULER_ANC),
-            noise_schedule: body.noiseScheduler ? Noise[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? Noise[preset.noiseScheduler.toUpperCase()] : Noise.KARRAS),
+            sampler: body.sampler ? globalResources.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? globalResources.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : globalResources.getNekoAiService('Sampler').EULER_ANC),
+            noise_schedule: body.noiseScheduler ? globalResources.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? globalResources.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : globalResources.getNekoAiService('Noise').KARRAS),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
             ucPreset: 4,
@@ -2738,14 +2860,14 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             } else {
                 // Fallback to large if xlarge dimensions not found
                 const fallbackResolution = resolutionValue.toLowerCase().replace('xlarge_', 'large_');
-                if (Resolution[fallbackResolution.toUpperCase()]) {
-                    baseOptions.resPreset = Resolution[fallbackResolution.toUpperCase()];
+                if (globalResources.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()]) {
+                    baseOptions.resPreset = globalResources.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()];
                 } else {
                     baseOptions.resPreset = "NORMAL_SQUARE";
                 }
             }
-        } else if (resolutionValue && Resolution[resolutionValue.toUpperCase()]) {
-            baseOptions.resPreset = Resolution[resolutionValue.toUpperCase()];
+        } else if (resolutionValue && globalResources.getNekoAiService('Resolution')[resolutionValue.toUpperCase()]) {
+            baseOptions.resPreset = globalResources.getNekoAiService('Resolution')[resolutionValue.toUpperCase()];
         } else {
             baseOptions.resPreset = "NORMAL_SQUARE";
         }
@@ -2837,12 +2959,12 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                     break;
                 case 'cache':
-                    const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
+                    const cachedImagePath = path.join(globalResources.getPath('uploadCache'), imageIdentifier);
                     if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
                     imageBuffer = fs.readFileSync(cachedImagePath);
                     break;
                 case 'file':
-                    const filePath = path.join(imagesDir, imageIdentifier);
+                    const filePath = path.join(globalResources.getPath('images'), imageIdentifier);
                     if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
                     imageBuffer = fs.readFileSync(filePath);
                     break;
@@ -2853,7 +2975,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 default:
                     throw new Error(`Unsupported image type: ${imageType}`);
             }
-            imageBuffer = stripPngTextChunks(imageBuffer);
+            imageBuffer = globalResources.getPngMetadata().stripPngTextChunks(imageBuffer);
             let targetDims = { width: baseOptions.width, height: baseOptions.height };
             if (!targetDims.width || !targetDims.height) {
                 const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
@@ -2875,7 +2997,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 console.log(`⏭️ Skipping image processing for pipeline stage ${body.stage_index} (image already letterboxed)`);
             }
 
-            baseOptions.action = (body.mask || body.mask_compressed) ? Action.INPAINT : Action.IMG2IMG;
+            baseOptions.action = (body.mask || body.mask_compressed) ? globalResources.getNekoAiService('Action').INPAINT : globalResources.getNekoAiService('Action').IMG2IMG;
             baseOptions.color_correct = false;
             if (body.mask_compressed && targetDims.width && targetDims.height) {
                 try {
@@ -2978,40 +3100,25 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 console.log(`⚠️ Vibe transfers disabled due to inpainting mask presence`);
             } else {
                 try {
-                    // Load vibe references from the vibe cache directory
-                    const vibeCacheDir = path.join(cacheDir, 'vibe');
+                    // Load vibe references from database
                     const referenceImageMultiple = [];
                     const referenceStrengthMultiple = [];
+                    const refDb = globalResources.getReferenceMetadataDatabase();
                     
-                    if (fs.existsSync(vibeCacheDir)) {
-                        for (const vibeTransfer of baseOptions.vibe_transfer) {
-                            // Directly access the vibe file using the ID as filename
-                            const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                    for (const vibeTransfer of baseOptions.vibe_transfer) {
+                        try {
+                            // Get encoding from database
+                            const encoding = refDb.getVibeEncoding(vibeTransfer.id, body.model, vibeTransfer.ie);
                             
-                            if (fs.existsSync(vibeFilePath)) {
-                                try {
-                                    const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                    
-                                    // Get the encoding for the specific model and IE (case-insensitive lookup)
-                                    const modelKey = Object.keys(vibeData.encodings || {}).find(key => key.toUpperCase() === body.model.toUpperCase());
-                                    if (vibeData.encodings && 
-                                        modelKey && 
-                                        vibeData.encodings[modelKey] && 
-                                        vibeData.encodings[modelKey][vibeTransfer.ie.toString()]) {
-                                        
-                                        const encoding = vibeData.encodings[modelKey][vibeTransfer.ie.toString()];
-                                        referenceImageMultiple.push(encoding);
-                                        referenceStrengthMultiple.push(vibeTransfer.strength);
-                                        console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${body.model})`);
-                                    } else {
-                                        console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${body.model}`);
-                                    }
-                                } catch (parseError) {
-                                    console.warn(`⚠️ Failed to parse vibe file ${vibeTransfer.id}.json:`, parseError.message);
-                                }
+                            if (encoding) {
+                                referenceImageMultiple.push(encoding);
+                                referenceStrengthMultiple.push(vibeTransfer.strength);
+                                console.log(`🎨 Found encoding for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} and strength ${vibeTransfer.strength} (model: ${body.model})`);
                             } else {
-                                console.warn(`⚠️ Vibe file not found: ${vibeTransfer.id}.json`);
+                                console.warn(`⚠️ No encoding found for vibe ${vibeTransfer.id} with IE ${vibeTransfer.ie} for model ${body.model}`);
                             }
+                        } catch (error) {
+                            console.warn(`⚠️ Failed to get vibe encoding for ${vibeTransfer.id}:`, error.message);
                         }
                     }
 
@@ -3143,14 +3250,14 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     
     opts.n_samples = 1;
     opts.seed = seed;
-    if (opts.action === Action.INPAINT) {
+    if (opts.action === globalResources.getNekoAiService('Action').INPAINT) {
         opts.add_original_image = false;
         opts.extra_noise_seed = seed;
-    } else if (opts.action === Action.IMG2IMG) {
+    } else if (opts.action === globalResources.getNekoAiService('Action').IMG2IMG) {
         opts.color_correct = false;
     }
-    logger.normal(`🚀 Generating (seed: ${seed})`);
-    logger.detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
+    globalResources.getLogger().normal(`🚀 Generating (seed: ${seed})`);
+    globalResources.getLogger().detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
 
     let img;
     
@@ -3218,17 +3325,21 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     let creditUsage;
     
     try {
-        imageCounter.logGeneration();
+        globalResources.getImageCounter().logGeneration();
 
-        if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== Action.IMG2IMG) {
+        if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== globalResources.getNekoAiService('Action').IMG2IMG) {
             // Streaming generation with callback
-            const streamingResponse = await context.client.generateImage(apiOpts, true, true);
+            const client = globalResources.getNovelAiClient();
+            if (!client) {
+                throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
+            }
+            const streamingResponse = await client.generateImage(apiOpts, true, true);
 
             // Check if response is an AsyncGenerator (streaming)
             if (streamingResponse && typeof streamingResponse[Symbol.asyncIterator] === "function") {
-                logger.detailed("🎬 Streaming generation started");
+                globalResources.getLogger().detailed("🎬 Streaming generation started");
                 for await (const event of streamingResponse) {
-                    if (event.event_type === EventType.INTERMEDIATE) {
+                    if (event.event_type === globalResources.getNekoAiService('EventType').INTERMEDIATE) {
                         // Send unified progress update
                         if (ws && handler) {
                             const progressData = {
@@ -3257,7 +3368,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                             timestamp: Date.now()
                         });
                         
-                    } else if (event.event_type === EventType.FINAL) {
+                    } else if (event.event_type === globalResources.getNekoAiService('EventType').FINAL) {
                         img = event.image;
                         break
                     }
@@ -3265,23 +3376,35 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             } else {
                 // Fallback to regular generation if streaming not available
                 console.log("⚠️ Streaming not available, falling back to regular generation");
-                [img] = await context.client.generateImage(apiOpts, false, true, true);
+                const client = globalResources.getNovelAiClient();
+                if (!client) {
+                    throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
+                }
+                [img] = await client.generateImage(apiOpts, false, true, true);
             }
         } else {
             // Regular non-streaming generation
-            [img] = await context.client.generateImage(apiOpts, false, true, true);
+            const client = globalResources.getNovelAiClient();
+            if (!client) {
+                throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
+            }
+            [img] = await client.generateImage(apiOpts, false, true, true);
             console.log('✅ Image generation completed');
         }
         
         // Get new balance and calculate credit usage
-        creditUsage = await context.calculateCreditUsage();
+        creditUsage = await globalResources.calculateCreditUsage();
         
         if (creditUsage.totalUsage > 0) {
             console.log(`💰 Image Generation Cost: ${creditUsage.totalUsage} ${creditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
         }
         
     } catch (error) {
-        throw new Error(`❌ Image generation failed: ${error}`);
+        // Provide more context for the error before re-throwing
+        const enhancedError = new Error(`Image generation failed: ${error.message || error}`);
+        enhancedError.originalError = error;
+        enhancedError.name = error.name || 'ImageGenerationError';
+        throw enhancedError;
     }
     
     const timestamp = Date.now().toString();
@@ -3360,7 +3483,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
 
         // Add image source info if applicable
-        if ((opts.action === Action.IMG2IMG || opts.action === Action.INPAINT) && opts.image) {
+        if ((opts.action === globalResources.getNekoAiService('Action').IMG2IMG || opts.action === globalResources.getNekoAiService('Action').INPAINT) && opts.image) {
             forgeData.generation_type = 'img2img';
             if (opts.image_source) {
                 forgeData.image_source = opts.image_source;
@@ -3464,7 +3587,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         let finalBuffer;
         if (baseMetadata) {
             // Stage mode: preserve base metadata, update only specific forge_data fields
-            finalBuffer = stripPngTextChunks(buffer);
+            finalBuffer = globalResources.getPngMetadata().stripPngTextChunks(buffer);
             
             const parsedBase = JSON.parse(baseMetadata.tEXt.Comment);
             forgeData = parsedBase.forge_data || {};
@@ -3493,30 +3616,30 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             parsedBase.forge_data = { ...forgeData };
             
             // Re-inject complete metadata structure directly
-            finalBuffer = insertTextChunk(finalBuffer, 'Comment', JSON.stringify(parsedBase));
+            finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(parsedBase));
             
             // Preserve Source and Software from base metadata if they exist
             if (baseMetadata.tEXt?.Source) {
-                finalBuffer = insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
+                finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
             }
             if (baseMetadata.tEXt?.Software) {
-                finalBuffer = insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
+                finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
             }
             
             console.log(`📝 Stage metadata: preserved base, updated forge_data`);
         } else {
             // Normal mode: create new metadata
-            finalBuffer = updateMetadata(buffer, forgeData);
+            finalBuffer = globalResources.getPngMetadata().updateMetadata(buffer, forgeData);
         }
         
-        const targetWorkspaceId = workspaceId || context.getActiveWorkspace(req?.session?.id);
+        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
         
         if (shouldSave) {
-            fs.writeFileSync(path.join(imagesDir, name), finalBuffer);
-            logger.normal(`💾 Saved: ${name}`);
+            fs.writeFileSync(path.join(globalResources.getPath('images'), name), finalBuffer);
+            globalResources.getLogger().normal(`💾 Saved: ${name}`);
             
             // Add file to workspace
-            context.addToWorkspaceArray('files', name, targetWorkspaceId);
+            globalResources.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
             
             // Update metadata cache
             const receiptData = {
@@ -3525,10 +3648,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             };
-            await context.addReceiptMetadata(name, imagesDir, receiptData, forgeData);
+            await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), receiptData, forgeData);
             
-            // Broadcast receipt notification
-            context.broadcastReceiptNotification(receiptData);
+            const plumbing = globalResources.getDataPlumbing();
+            plumbing.publish('ws:broadcast:receipt', receiptData);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -3549,11 +3672,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             }
 
             // Generate preview
-            const baseName = getBaseName(name);
+            const baseName = globalResources.getPngMetadata().getBaseName(name);
 
             // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            logger.detailed(`📸 Generated previews for ${baseName}`);
+            await generateMobilePreviews(path.join(globalResources.getPath('images'), name), baseName);
+            globalResources.getLogger().detailed(`📸 Generated previews for ${baseName}`);
 
             // Send completion progress update
             if (ws && handler) {
@@ -3601,7 +3724,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             const scaledBuffer = await upscaleImageCore(finalBuffer, scale, upscaleWidth, upscaleHeight);
             
             // Get new balance and calculate credit usage for upscaling
-            const upscaleCreditUsage = await context.calculateCreditUsage();
+            const upscaleCreditUsage = await globalResources.calculateCreditUsage();
             
             if (upscaleCreditUsage.totalUsage > 0) {
                 console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
@@ -3613,15 +3736,15 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 upscaled_at: Date.now(),
                 generation_type: 'upscaled'
             };
-            const updatedScaledBuffer = updateMetadata(scaledBuffer, upscaledForgeData);
+            const updatedScaledBuffer = globalResources.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
         
             if (shouldSave) {
                 const upscaledName = name.replace('.png', '_upscaled.png');
-                fs.writeFileSync(path.join(imagesDir, upscaledName), updatedScaledBuffer);
+                fs.writeFileSync(path.join(globalResources.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
                 
                 // Add upscaled file to workspace
-                context.addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
+                globalResources.getWorkspaceManager().addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
                 
                 // Update metadata cache for upscaled image
                 const upscaledReceiptData = {
@@ -3631,10 +3754,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                     date: Date.now().valueOf()
                 };
                 // Attach receipt to parent image instead of upscaled image
-                await context.addReceiptMetadata(name, imagesDir, upscaledReceiptData, upscaledForgeData);
+                await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), upscaledReceiptData, upscaledForgeData);
                 
-                // Broadcast receipt notification
-                context.broadcastReceiptNotification(upscaledReceiptData);
+                const plumbing = globalResources.getDataPlumbing();
+                plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
             }
 
             // Send completion progress update after upscaling
@@ -3682,16 +3805,16 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     } else {
         // Save image and return filename only (legacy behavior)
         if (shouldSave) {
-            const filePath = path.join(imagesDir, name);
+            const filePath = path.join(globalResources.getPath('images'), name);
             await img.save(filePath);
             console.log(`💾 Saved: ${name}`);
             
             // Generate preview
-            const baseName = getBaseName(name);
+            const baseName = globalResources.getPngMetadata().getBaseName(name);
             
             // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(imagesDir, name), baseName);
-            logger.detailed(`📸 Generated previews for ${baseName}`);
+            await generateMobilePreviews(path.join(globalResources.getPath('images'), name), baseName);
+            globalResources.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
         
         // Return result with appropriate seed information
@@ -3773,7 +3896,7 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
             tracing.addEvent(body.requestId, { type: 'request_body', body });
         } catch {}
 
-        const model = Model[body.model.toUpperCase()];
+        const model = globalResources.getNekoAiService('Model')[body.model.toUpperCase()];
         if (!model) {
             throw new Error('Invalid model');
         }
@@ -3786,7 +3909,7 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
             console.log(`🎬 Starting staged generation with ${body.pipeline.length} stages`);
             return await handleStagedGeneration(bodyData, sessionId, streamingCallback, ws, handler, wsServer);
         } else {
-            logger.detailed(`🎬 Pipeline stages disabled - running base only`);
+            globalResources.getLogger().detailed(`🎬 Pipeline stages disabled - running base only`);
             // Continue to regular single generation below
         }
 
@@ -3852,9 +3975,28 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
             console.log(`📋 Received ${clientCompiledPrompts.length} compiled prompts from client`);
         }
         
-        // Deep copy dynamic_generation to prevent shared reference issues
-        if (previousStageBody.dynamic_generation) {
-            previousStageBody.dynamic_generation = JSON.parse(JSON.stringify(previousStageBody.dynamic_generation));
+        // Remove dynamic_generation if it has no enabled values (dynamic generation is disabled)
+        if (bodyData.dynamic_generation) {
+            const hasEnabledValues = !!(
+                bodyData.dynamic_generation.tod ||
+                bodyData.dynamic_generation.weather ||
+                bodyData.dynamic_generation.season ||
+                bodyData.dynamic_generation.activity ||
+                bodyData.dynamic_generation.action ||
+                bodyData.dynamic_generation.optimize ||
+                bodyData.dynamic_generation.creative ||
+                bodyData.dynamic_generation.clothing ||
+                bodyData.dynamic_generation.directive
+            );
+            
+            if (!hasEnabledValues) {
+                delete bodyData.dynamic_generation;
+                delete previousStageBody.dynamic_generation;
+                console.log('🚫 Dynamic generation disabled - no values enabled, removing from request');
+            } else {
+                // Deep copy dynamic_generation to prevent shared reference issues
+                previousStageBody.dynamic_generation = JSON.parse(JSON.stringify(previousStageBody.dynamic_generation));
+            }
         }
         
         // Separate variables to track compiled prompts for inheritance
@@ -3922,7 +4064,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         const baseSeed = baseResult.seed;
         
         // Extract base metadata for all stages
-        const baseMetadata = readMetadata(baseResult.buffer);
+        const baseMetadata = globalResources.getPngMetadata().readMetadata(baseResult.buffer);
         if (!baseMetadata?.tEXt?.Comment) {
             throw new Error('Failed to extract base metadata');
         }
@@ -4152,7 +4294,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 }
 
                 // Strip TEXt metadata from current buffer before using as image
-                currentBuffer = stripPngTextChunks(currentBuffer);
+                currentBuffer = globalResources.getPngMetadata().stripPngTextChunks(currentBuffer);
 
                 // Build stage request body by inheriting from previous stage
                 let stageRequestBody = { ...previousStageBody };
@@ -4584,7 +4726,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
 
                 // Build options and generate
                 const stageOpts = await buildOptions(stageRequestBody, null, {}, ws, handler, wsServer, currentStageData);
-                stageOpts.action = stage.type === 'expand-canvas' ? Action.INPAINT : Action.IMG2IMG;
+                stageOpts.action = stage.type === 'expand-canvas' ? globalResources.getNekoAiService('Action').INPAINT : globalResources.getNekoAiService('Action').IMG2IMG;
 
                 // Generate stage image using the unified approach
                 const stageResult = await handleGeneration(stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
@@ -4822,14 +4964,11 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
         throw new Error('No metadata provided for conversion');
     }
 
-    // Import the extractRelevantFields function to properly extract metadata
-    const { extractRelevantFields } = require('./pngMetadata');
-
     // Extract the actual metadata from the nested structure
     const actualMetadata = metadata.metadata || metadata;
 
     // Use the existing extractRelevantFields function to get properly formatted metadata
-    const extractedMetadata = await extractRelevantFields(actualMetadata, metadata.filename);
+    const extractedMetadata = await globalResources.getPngMetadata().extractRelevantFields(actualMetadata, metadata.filename);
 
     if (!extractedMetadata) {
         throw new Error('Failed to extract relevant metadata fields');
@@ -4865,12 +5004,23 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
         requestBody.dataset_config = forgeData.dataset_config;
     }
 
-    // Add quality and UC presets if available (from forge_data)
-    if (forgeData.append_quality !== undefined) {
+    // Add quality and UC presets if available (from forge_data or extractedMetadata)
+    if (extractedMetadata.append_quality !== undefined) {
+        requestBody.append_quality = extractedMetadata.append_quality;
+    } else if (forgeData.append_quality !== undefined) {
         requestBody.append_quality = forgeData.append_quality;
     }
-    if (forgeData.append_uc !== undefined) {
+    if (extractedMetadata.append_uc !== undefined) {
+        requestBody.append_uc = extractedMetadata.append_uc;
+    } else if (forgeData.append_uc !== undefined) {
         requestBody.append_uc = forgeData.append_uc;
+    }
+    // Add quality and UC preset IDs if available
+    if (extractedMetadata.append_quality_id !== undefined) {
+        requestBody.append_quality_id = extractedMetadata.append_quality_id;
+    }
+    if (extractedMetadata.append_uc_id !== undefined) {
+        requestBody.append_uc_id = extractedMetadata.append_uc_id;
     }
 
     // Add vibe transfer data if available (from forge_data)
@@ -4974,6 +5124,13 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
         requestBody.skip_pipeline_stages = extractedMetadata.skip_pipeline_stages;
     }
 
+    // Add auto_clean_uc if available
+    if (extractedMetadata.auto_clean_uc !== undefined) {
+        requestBody.auto_clean_uc = extractedMetadata.auto_clean_uc;
+    } else if (forgeData.auto_clean_uc !== undefined) {
+        requestBody.auto_clean_uc = forgeData.auto_clean_uc;
+    }
+
     // Remove seed to ensure new random seed is generated
     delete requestBody.seed;
     return requestBody;
@@ -4986,6 +5143,20 @@ async function handleRerollGeneration(metadata, sessionId, workspaceId = null, a
         // Convert metadata to request format with allow_paid flag
         const requestBody = await convertMetadataToRequestFormat(metadata, allowPaid);
 
+        // Override workspace if provided
+        if (workspaceId) {
+            requestBody.workspace = workspaceId;
+        }
+
+        // Check if this is a staged generation (pipeline)
+        if (requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && requestBody.skip_pipeline_stages !== true) {
+            console.log(`🎬 Reroll: Starting staged generation with ${requestBody.pipeline.length} stages`);
+            // Call handleStagedGeneration directly for pipeline stages
+            // Pass null for ws, handler, wsServer since this is HTTP reroll (no WebSocket streaming)
+            return await handleStagedGeneration(requestBody, sessionId, null, null, null, null);
+        }
+
+        // Regular single generation
         // Build options for generation
         const opts = await buildOptions(requestBody, null, {}, null, null);
 
@@ -5557,11 +5728,11 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
         
         // Load original image
-        const filePath = path.join(imagesDir, filename);
+        const filePath = path.join(globalResources.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
         }
-        const sourceFilePath = sourceFilename ? path.join(imagesDir, sourceFilename) : null;
+        const sourceFilePath = sourceFilename ? path.join(globalResources.getPath('images'), sourceFilename) : null;
         if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
             throw new Error('Source image not found');
         }
@@ -5576,7 +5747,7 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         let originalUc = '';
         let originalCharacters = [];
         try {
-            const metadata = readMetadata(sourceImageBuffer);
+            const metadata = globalResources.getPngMetadata().readMetadata(sourceImageBuffer);
             if (metadata?.tEXt?.Comment) {
                 const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
                 originalPrompt = parsedMetadata.prompt || '';
@@ -5858,7 +6029,8 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             ];
             
             console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
-            const grokResponse = await callDirectorAIWithStructuredOutput(messages, {
+            const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
+            const grokResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(messages, {
                 model: 'grok-4-fast-reasoning',
                 timeout: 120000,
                 store: false,
@@ -5866,7 +6038,8 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
                 // Expansion uses simple schema - no complex key tracking needed
                 ws: ws,
                 handler: handler,
-                requestId: requestId
+                requestId: requestId,
+                _attemptId: expansionAttemptId
             });
             console.log(`✅ Grok expansion AI call completed`);
 
@@ -6010,15 +6183,15 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
         }
         
-        const expandedBuffer = updateMetadata(result.buffer, expansionMetadata);
+        const expandedBuffer = globalResources.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
         // Save with "_expanded" suffix and fresh timestamp
-        const baseName = getBaseName(sourceFilename);
+        const baseName = globalResources.getPngMetadata().getBaseName(sourceFilename);
         // Remove old timestamp from basename (format: timestamp_name)
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
-        const expandedPath = path.join(imagesDir, expandedFilename);
+        const expandedPath = path.join(globalResources.getPath('images'), expandedFilename);
         
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
@@ -6034,18 +6207,18 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
         }
         
         // Add to workspace
-        const targetWorkspaceId = workspaceId || context.getActiveWorkspace(sessionId);
+        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
         console.log(`📂 Target workspace ID: ${targetWorkspaceId}`);
         
         if (targetWorkspaceId) {
-            context.addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
+            globalResources.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename} -> ${targetWorkspaceId}`);
         } else {
             console.warn(`⚠️ No workspace ID available, file not added to workspace`);
         }
         
         // Generate preview
-        const expandedBaseName = getBaseName(expandedFilename);
+        const expandedBaseName = globalResources.getPngMetadata().getBaseName(expandedFilename);
         await generateMobilePreviews(expandedPath, expandedBaseName);
         
         return {
@@ -6068,13 +6241,13 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
         
         // 1. Load image and extract metadata
-        const filePath = path.join(imagesDir, filename);
+        const filePath = path.join(globalResources.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
         }
         
         const imageBuffer = fs.readFileSync(filePath);
-        const metadata = readMetadata(imageBuffer);
+        const metadata = globalResources.getPngMetadata().readMetadata(imageBuffer);
         
         // 2. Validate expansion metadata exists
         if (!metadata?.tEXt?.Comment) {
@@ -6103,7 +6276,7 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
         
         // Load the SOURCE image for letterboxing (not the expanded image)
-        const sourceFilePath = path.join(imagesDir, expansion_source);
+        const sourceFilePath = path.join(globalResources.getPath('images'), expansion_source);
         if (!fs.existsSync(sourceFilePath)) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
@@ -6345,14 +6518,14 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
             expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
         }
         
-        const expandedBuffer = updateMetadata(result.buffer, expansionMetadata);
+        const expandedBuffer = globalResources.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
         // Save file
-        const baseName = getBaseName(expansion_source);
+        const baseName = globalResources.getPngMetadata().getBaseName(expansion_source);
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
-        const expandedPath = path.join(imagesDir, expandedFilename);
+        const expandedPath = path.join(globalResources.getPath('images'), expandedFilename);
         
         console.log(`💾 Saving: ${expandedFilename}`);
         fs.writeFileSync(expandedPath, expandedBuffer);
@@ -6363,14 +6536,14 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         }
         
         // Add to workspace
-        const targetWorkspaceId = workspaceId || context.getActiveWorkspace(sessionId);
+        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
         if (targetWorkspaceId) {
-            context.addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
+            globalResources.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename}`);
         }
         
         // Generate preview
-        await generateMobilePreviews(expandedPath, getBaseName(expandedFilename));
+        await generateMobilePreviews(expandedPath, globalResources.getPngMetadata().getBaseName(expandedFilename));
         
         return {
             filename: expandedFilename,
@@ -6391,7 +6564,6 @@ module.exports = {
     handleGeneration,
     handleImageRequest,
     selectPresetItem,
-    setContext,
     generatePresetSourceImage,
     convertMetadataToRequestFormat,
     handleRerollGeneration,

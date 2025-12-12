@@ -80,13 +80,6 @@ class PresetManager {
     }
 
     /**
-     * Load preset into form
-     */
-    async loadPreset(presetName) {
-        // TODO: Move implementation from app.js loadPresetIntoForm()
-    }
-
-    /**
      * Save current form as preset
      */
     async savePreset(presetName) {
@@ -118,14 +111,6 @@ class PresetManager {
 // ============================================================================
 // PLACEHOLDER FUNCTIONS (MOVED FROM app.js)
 // ============================================================================
-
-/**
- * Load preset into manual form - MOVED FROM app.js
- * TODO: Move function implementation from app.js
- */
-async function loadPresetIntoForm(presetName) {
-    // TODO: Move implementation from app.js loadPresetIntoForm()
-}
 
 /**
  * Delete preset - MOVED FROM app.js

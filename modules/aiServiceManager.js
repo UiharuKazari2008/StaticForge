@@ -3,14 +3,12 @@
  * Manages all AI services with database persistence and prompt separation
  */
 
-const logger = require('./logger');
-const { createPersonaChatSession: createGrokSession, establishPersona: establishGrokPersona, continueConversation: continueGrokConversation, establishPersonaStreaming: establishGrokPersonaStreaming, continueConversationStreaming: continueGrokConversationStreaming } = require('./aiServices/grokService');
-const { getChatSession, getChatMessages, getChatMessageCount, getPersonaSettings, addChatMessage, getConversationData, cleanupExpiredMessages } = require('./chatDatabase');
-const promptManager = require('./promptManager');
-const memoryManager = require('./memoryManager');
-
 class AIServiceManager {
-    constructor() {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('AIServiceManager requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.activeServices = new Map(); // chatId -> service instance
         this.serviceTimeouts = new Map(); // chatId -> timeout
         this.SERVICE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
@@ -25,7 +23,7 @@ class AIServiceManager {
      */
     async loadExistingSessions() {
         try {
-            logger.bootSubStep('Chat database connection verified');
+            this.globalResources.getLogger().bootSubStep('Chat database connection verified');
         } catch (error) {
             console.error('❌ Error loading existing sessions:', error);
         }
@@ -45,17 +43,17 @@ class AIServiceManager {
         console.log(`🆕 Creating new AI service for ${chatId}`);
         
         // Load session data from database
-        const sessionData = getChatSession(chatId);
+        const sessionData = await this.globalResources.getChatDatabase().getChatSession(chatId);
         if (!sessionData) {
             throw new Error(`Chat session not found: ${chatId}`);
         }
 
         // Get persona settings
-        const personaSettings = getPersonaSettings();
+        const personaSettings = await this.globalResources.getChatDatabase().getPersonaSettings();
 
         // Get system prompt using prompt manager (using characterChat prompt type)
         // Pass filename to enable dynamic context extraction
-        const systemPrompt = await promptManager.getCompleteSystemPrompt(
+        const systemPrompt = await this.globalResources.getPromptManager().getCompleteSystemPrompt(
             'characterChat',
             sessionData,
             personaSettings,
@@ -65,10 +63,10 @@ class AIServiceManager {
         // Create AI service instance based on provider
         let aiService;
         if (sessionData.provider === 'grok') {
-            aiService = createGrokSession(sessionData, personaSettings, systemPrompt);
+            aiService = await this.globalResources.getGrokService().createPersonaChatSession(sessionData, personaSettings, systemPrompt);
             
             // Restore last response ID from database for Responses API
-            const conversationData = getConversationData(chatId);
+            const conversationData = await this.globalResources.getChatDatabase().getConversationData(chatId);
             if (conversationData && conversationData.response_id) {
                 aiService.lastResponseId = conversationData.response_id;
                 console.log(`🔄 Restored previous response ID for ${chatId}: ${conversationData.response_id}`);
@@ -96,9 +94,9 @@ class AIServiceManager {
     /**
      * Load conversation history from database
      */
-    loadConversationHistory(chatId, maxMessages = 20) {
+    async loadConversationHistory(chatId, maxMessages = 20) {
         try {
-            const messages = getChatMessages(chatId, maxMessages, 0);
+            const messages = await this.globalResources.getChatDatabase().getChatMessages(chatId, maxMessages, 0);
             return messages.reverse().map(msg => ({
                 message_type: msg.message_type,
                 content: msg.content,
@@ -114,7 +112,7 @@ class AIServiceManager {
      * Establish persona if needed (separate from service creation)
      */
     async establishPersonaIfNeeded(chatId, personaImage, userPrompt, viewerAvatar, onStreamUpdate = null) {
-        const messageCount = getChatMessageCount(chatId);
+        const messageCount = await this.globalResources.getChatDatabase().getChatMessageCount(chatId);
         if (messageCount > 1) {
             console.log(`🎭 Persona already established for ${chatId} (${messageCount} messages)`);
             return;
@@ -125,9 +123,9 @@ class AIServiceManager {
         
         if (serviceInfo.sessionData.provider === 'grok') {
             if (onStreamUpdate) {
-                await establishGrokPersonaStreaming(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar, onStreamUpdate);
+                await this.globalResources.getGrokService().establishPersonaStreaming(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar, onStreamUpdate);
             } else {
-                await establishGrokPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar);
+                await this.globalResources.getGrokService().establishPersona(serviceInfo.aiService, personaImage, userPrompt, viewerAvatar);
             }
         } else {
             throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);
@@ -147,14 +145,14 @@ class AIServiceManager {
         this.resetTimeout(chatId);
 
         // Add user message to database
-        addChatMessage(chatId, 'user', message);
+        await this.globalResources.getChatDatabase().addChatMessage(chatId, 'user', message);
 
         let response;
         if (serviceInfo.sessionData.provider === 'grok') {
             if (onStreamUpdate) {
-                response = await continueGrokConversationStreaming(serviceInfo.aiService, message, onStreamUpdate);
+                response = await this.globalResources.getGrokService().continueConversationStreaming(serviceInfo.aiService, message, onStreamUpdate);
             } else {
-                response = await continueGrokConversation(serviceInfo.aiService, message);
+                response = await this.globalResources.getGrokService().continueConversation(serviceInfo.aiService, message);
             }
         } else {
             throw new Error(`Unsupported chat provider: ${serviceInfo.sessionData.provider}`);
@@ -162,7 +160,7 @@ class AIServiceManager {
 
         // Clean up expired messages periodically
         if (Math.random() < 0.1) { // 10% chance to clean up on each request
-            cleanupExpiredMessages();
+            await this.globalResources.getChatDatabase().cleanupExpiredMessages();
         }
 
         return response;
@@ -287,9 +285,9 @@ class AIServiceManager {
     /**
      * Restore conversation state from stored data
      */
-    restoreConversationState(chatId) {
+    async restoreConversationState(chatId) {
         try {
-            const conversationData = getConversationData(chatId);
+            const conversationData = await this.globalResources.getChatDatabase().getConversationData(chatId);
             if (!conversationData || !conversationData.conversation_data) {
                 return null;
             }
@@ -311,8 +309,8 @@ class AIServiceManager {
     /**
      * Check if conversation state is still valid (within 30 days)
      */
-    isConversationStateValid(chatId) {
-        const conversationData = getConversationData(chatId);
+    async isConversationStateValid(chatId) {
+        const conversationData = await this.globalResources.getChatDatabase().getConversationData(chatId);
         if (!conversationData) {
             return false;
         }
@@ -322,16 +320,5 @@ class AIServiceManager {
     }
 }
 
-// Create singleton instance
-const aiServiceManager = new AIServiceManager();
-
-// Cleanup on process exit
-process.on('SIGINT', () => {
-    aiServiceManager.cleanupAllServices();
-});
-
-process.on('SIGTERM', () => {
-    aiServiceManager.cleanupAllServices();
-});
-
-module.exports = aiServiceManager;
+// Export class - will be instantiated in globalResources
+module.exports = AIServiceManager;

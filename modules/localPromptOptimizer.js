@@ -14,8 +14,6 @@ class LocalPromptOptimizer {
         this.tokenIndex = null;
         this.synonymCache = new Map(); // Cache for synonym lookups
         this.spellChecker = null;
-        this.animeTagSearch = null;
-        this.furryTagSearch = null;
         this.fastTagSearch = null;
         this.tagCache = new Map(); // Cache for tag lookups
         this.initialized = false;
@@ -56,8 +54,6 @@ class LocalPromptOptimizer {
 
             // Get services from global resources instead of creating new instances
             this.spellChecker = globalResources.getSpellChecker();
-            this.animeTagSearch = await globalResources.getAnimeTagSearch();
-            this.furryTagSearch = await globalResources.getFurryTagSearch();
             this.fastTagSearch = await globalResources.getFastTagSearch();
 
             this.initialized = true;
@@ -266,27 +262,22 @@ class LocalPromptOptimizer {
      * @returns {Object|null} Tag data with groups, or null if not an exact tag
      */
     checkIfExactTag(text, dataset = 'anime') {
-        const tagSearch = dataset === 'furry' ? this.furryTagSearch : this.animeTagSearch;
-        const normalized = text.trim().toLowerCase();
-        
-        // Search for exact match only
-        const results = tagSearch.searchTags(normalized, 5);
-        
-        for (const result of results) {
-            // Must be 100% confidence (exact match)
-            if (result.confidence === 100 && result.tag_name.toLowerCase() === normalized) {
-                return {
-                    tag: result.tag_name,
-                    nCount: result.n_count || 0,
-                    dCount: result.d_count || 0,
-                    groups: tagSearch.tagData[result.tag_name]?.d_group || [],
-                    isGolden: (result.n_count || 0) > 5000,
-                    isProtected: this.isProtectedGroup(tagSearch.tagData[result.tag_name]?.d_group || [])
-                };
-            }
+        if (!this.fastTagSearch) return null;
+
+        const exact = this.fastTagSearch.exactMatch(text, dataset);
+        if (!exact) {
+            return null;
         }
-        
-        return null;
+
+        return {
+            tag: exact.name,
+            nCount: exact.n_count || 0,
+            dCount: exact.d_count || 0,
+            eCount: exact.e_count || 0,
+            groups: exact.d_group || [],
+            isGolden: (exact.n_count || 0) > 5000,
+            isProtected: this.isProtectedGroup(exact.d_group || [])
+        };
     }
 
     /**
@@ -334,40 +325,51 @@ class LocalPromptOptimizer {
             return this.tagCache.get(cacheKey);
         }
 
-        const tagSearch = dataset === 'furry' ? this.furryTagSearch : this.animeTagSearch;
+        if (!this.fastTagSearch) {
+            return {
+                exactMatch: null,
+                relatedTags: [],
+                contextGroups: new Set()
+            };
+        }
+        
         const result = {
             exactMatch: null,
             relatedTags: [],
             contextGroups: new Set()
         };
         
-        // Split into words
         const words = text.trim().split(/\s+/);
         const totalWords = words.length;
-        
-        // SLIDING WINDOW SEARCH to find exact matches at any position
+
         for (let windowSize = totalWords; windowSize >= 1; windowSize--) {
             for (let startPos = 0; startPos <= totalWords - windowSize; startPos++) {
                 const windowWords = words.slice(startPos, startPos + windowSize);
-                const windowPhrase = windowWords.join(' ').toLowerCase();
-                
-                // Check if this window is an exact tag
-                const exactTagData = this.checkIfExactTag(windowPhrase, dataset);
-                
-                if (exactTagData) {
-                    // Found exact tag match
-                    if (!result.exactMatch || exactTagData.nCount > result.exactMatch.nCount) {
-                        result.exactMatch = {
-                            ...exactTagData,
-                            matchedPhrase: windowPhrase,
-                            windowSize: windowSize,
-                            coverage: (windowSize / totalWords) * 100
-                        };
-                    }
-                    
-                    // Add groups to context
-                    exactTagData.groups.forEach(g => result.contextGroups.add(g));
+                const windowPhrase = windowWords.join(' ');
+
+                const tagResult = this.fastTagSearch.exactMatch(windowPhrase, dataset);
+                if (!tagResult) {
+                    continue;
                 }
+
+                const exactTagData = {
+                    tag: tagResult.name,
+                    nCount: tagResult.n_count || 0,
+                    dCount: tagResult.d_count || 0,
+                    eCount: tagResult.e_count || 0,
+                    groups: tagResult.d_group || [],
+                    isGolden: (tagResult.n_count || 0) > 5000,
+                    isProtected: this.isProtectedGroup(tagResult.d_group || []),
+                    matchedPhrase: windowPhrase.toLowerCase(),
+                    windowSize: windowSize,
+                    coverage: (windowSize / totalWords) * 100
+                };
+
+                if (!result.exactMatch || exactTagData.nCount > result.exactMatch.nCount) {
+                    result.exactMatch = exactTagData;
+                }
+
+                exactTagData.groups.forEach(g => result.contextGroups.add(g));
             }
         }
         
@@ -381,32 +383,26 @@ class LocalPromptOptimizer {
      * Provides information about what tags exist and their power levels
      */
     getTagContext(text) {
-        // Check both datasets for exact matches
-        const animeMatch = this.findMatchingTags(text, 'anime');
-        const furryMatch = this.findMatchingTags(text, 'furry');
-        
-        // Determine which match is better (higher n_count wins)
-        let bestMatch = null;
-        if (animeMatch.exactMatch && furryMatch.exactMatch) {
-            bestMatch = animeMatch.exactMatch.nCount > furryMatch.exactMatch.nCount ? animeMatch.exactMatch : furryMatch.exactMatch;
-        } else {
-            bestMatch = animeMatch.exactMatch || furryMatch.exactMatch || null;
-        }
-        
+        if (!this.fastTagSearch) return null;
+
+        const normalized = text.trim();
+        const animeMatch = this.fastTagSearch.exactMatch(normalized, 'anime');
+        const furryMatch = this.fastTagSearch.exactMatch(normalized, 'furry');
+        const bestMatch = animeMatch || furryMatch;
+
         if (!bestMatch) {
             return null;
         }
-        
-        // Return tag data for AI context
+
         return {
-            tag: bestMatch.tag,
-            nCount: bestMatch.nCount,
-            dCount: bestMatch.dCount,
-            isGolden: bestMatch.isGolden,
-            isProtected: bestMatch.isProtected,
-            groups: bestMatch.groups || [],
-            coverage: bestMatch.coverage,
-            matchedPhrase: bestMatch.matchedPhrase
+            tag: bestMatch.name,
+            nCount: bestMatch.n_count || 0,
+            dCount: bestMatch.d_count || 0,
+            isGolden: (bestMatch.n_count || 0) > 5000,
+            isProtected: this.isProtectedGroup(bestMatch.d_group || []),
+            groups: bestMatch.d_group || [],
+            coverage: 100,
+            matchedPhrase: normalized.toLowerCase()
         };
     }
 

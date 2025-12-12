@@ -120,7 +120,7 @@ class PinModal {
             
             const data = await response.json();
             if (response.ok) {
-                this.resolve();
+                await this.resolve();
             } else {
                 this.showPinError();
                 this.clearPin();
@@ -157,8 +157,8 @@ class PinModal {
         });
     }
 
-    resolve() {
-        closeModal(this.modal);
+    async resolve() {
+        await closeModal(this.modal);
         if (this.resolveFn) {
             this.resolveFn();
         }

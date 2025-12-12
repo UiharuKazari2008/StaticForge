@@ -87,7 +87,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
     // If only message is provided (no title), create a simple one-line toast
     if (title && message) {
         // Full toast with title and message
-        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="fa-regular fa-xmark-large"></i></button>';
 
         toast.innerHTML = `
             <div class="toast-icon">${icon}</div>
@@ -109,7 +109,7 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
     } else {
         // Simple one-line toast (message only) - now with icon
         const messageText = title || message;
-        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+        const closeBtn = showProgress ? '' : '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="fa-regular fa-xmark-large"></i></button>';
 
         toast.innerHTML = `
             <div class="toast-icon">${icon}</div>
@@ -131,10 +131,12 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
 
     toastContainer.prepend(toast);
 
-    // Trigger animation
-    setTimeout(() => {
-        toast.classList.add('show');
-    }, 10);
+    // Trigger animation using requestAnimationFrame for better timing
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            toast.classList.add('show');
+        });
+    });
 
     // Auto-remove after timeout (unless it's a progress toast or timeout is false) 
     if (timeout !== false && !showProgress) {
@@ -334,7 +336,6 @@ function getToolActionText(toolName) {
         'searchTagsBatch': 'Searching tags...',
         'getTagDetails': 'Reading wiki...',
         'resolveTagLinks': 'Resolving links...',
-        'suggestBetterTags': 'Finding alternatives...',
         'searchByDescription': 'Searching...',
         'getBodyChunk': 'Reading section...',
         'analyzeTokenCount': 'Analyzing tokens...',
@@ -344,7 +345,10 @@ function getToolActionText(toolName) {
         'saveKnowledgeMemory': 'Saving memory...',
         'retrieveKnowledgeMemory': 'Loading memories...',
         'searchKnowledgeMemories': 'Searching memories...',
-        'completeTooling': 'Complete'
+        'completeTooling': 'Complete',
+        'publishAnalysisResults': 'Publishing analysis...',
+        'planTextReplacements': 'Planning replacements...',
+        'validateSegmentSyntax': 'Validating syntax...'
     };
     return actionTexts[toolName] || 'Processing...';
 }
@@ -358,20 +362,22 @@ function getToolDisplayName(toolName) {
     const displayNames = {
         'searchTagDatabase': 'Tag Database Search',
         'validateTextReplacement': 'Validate Prompt',
-        'searchTagsBatch': 'Search Tag Wiki',
-        'getTagDetails': 'Read Tag Wiki',
+        'searchTagsBatch': 'Search Tags and Wiki',
+        'getTagDetails': 'Inspect Tag Wiki',
         'resolveTagLinks': 'Resolve Tag Links',
-        'suggestBetterTags': 'Suggest Alternatives',
         'searchByDescription': 'Search Tag Description',
         'getBodyChunk': 'Read Wiki Section',
         'analyzeTokenCount': 'Analyze Tokens Usage',
         'webSearch': 'Search Web',
         'fetchUrl': 'Fetch URL',
         'fetchImage': 'Fetch Image',
-        'saveKnowledgeMemory': 'Save Knowledge Memory',
-        'retrieveKnowledgeMemory': 'Retrieve Knowledge Memory',
-        'searchKnowledgeMemories': 'Search Knowledge Memories',
-        'completeTooling': 'Complete Tooling'
+        'saveKnowledgeMemory': 'Save Knowledge',
+        'retrieveKnowledgeMemory': 'Inspect Knowledge',
+        'searchKnowledgeMemories': 'Search Memories',
+        'completeTooling': 'Plan Complete',
+        'publishAnalysisResults': 'Analyse Input',
+        'planTextReplacements': 'Create Plan',
+        'getDatasetGroupContents': 'Inspect Tag Group'
     };
     return displayNames[toolName] || toolName;
 }
@@ -389,33 +395,35 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
             icon: '<i class="fas fa-search"></i>',
             backgroundColor: 'rgb(10 78 139 / 69%)', // Blue
         },
-        'validateTextReplacement': {
-            icon: '<i class="fas fa-badge-check"></i>',
-            backgroundColor: 'rgb(68 101 6 / 84%)', // Green
-        },
         'searchTagsBatch': {
-            icon: '<i class="fas fa-books"></i>',
+            icon: '<i class="fas fa-search"></i>',
             backgroundColor: 'rgb(10 78 139 / 69%)', // Indigo
+        },
+        'getDatasetGroupContents': {
+            icon: '<i class="fas fa-list-tree"></i>',
+            backgroundColor: 'rgb(97 67 20 / 84%)', // Brown
+        },
+
+        'validateTextReplacement': {
+            icon: '<i class="fas fa-monitor-waveform"></i>',
+            backgroundColor: 'rgb(68 101 6 / 84%)', // Green
         },
 
         'getTagDetails': {
-            icon: '<i class="fas fa-info-circle"></i>',
+            icon: '<i class="fas fa-memo-circle-info"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
         },
         'resolveTagLinks': {
-            icon: '<i class="fas fa-link"></i>',
+            icon: '<i class="fas fa-diagram-nested"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Pink
-        },
-        'suggestBetterTags': {
-            icon: '<i class="fas fa-lightbulb"></i>',
-            backgroundColor: 'rgb(48 42 121 / 84%)', // Amber
         },
         'searchByDescription': {
             icon: '<i class="fas fa-file-alt"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Sky blue
         },
+
         'getBodyChunk': {
-            icon: '<i class="fas fa-puzzle-piece"></i>',
+            icon: '<i class="fas fa-book-open"></i>',
             backgroundColor: 'rgb(48 42 121 / 84%)', // Purple
         },
 
@@ -436,8 +444,9 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
             icon: '<i class="fas fa-image"></i>',
             backgroundColor: 'rgb(91 50 7 / 84%)', // Pink
         },
+
         'saveKnowledgeMemory': {
-            icon: '<i class="fas fa-brain"></i>',
+            icon: '<i class="fas fa-book-arrow-up"></i>',
             backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
         },
         'retrieveKnowledgeMemory': {
@@ -448,9 +457,18 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
             icon: '<i class="fas fa-search-location"></i>',
             backgroundColor: 'rgb(88 28 135 / 84%)', // Purple
         },
+
         'completeTooling': {
             icon: '<i class="fas fa-check-double"></i>',
             backgroundColor: 'rgb(0 71 58 / 84%)', // Green
+        },
+        'publishAnalysisResults': {
+            icon: '<i class="fas fa-circles-overlap"></i>',
+            backgroundColor: 'rgb(90 15 15 / 84%)', // Red/Dark red
+        },
+        'planTextReplacements': {
+            icon: '<i class="fas fa-clipboard-list"></i>',
+            backgroundColor: 'rgb(27 69 2 / 84%)', // Purple
         }
     };
 
@@ -764,7 +782,7 @@ function updateGlassToastComplete(toastId, options = {}) {
             // When removing progress, add close button and set default timeout
             const existingCloseBtn = toast.querySelector('.toast-close');
             if (!existingCloseBtn) {
-                const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="nai-thin-cross"></i></button>';
+                const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="fa-regular fa-xmark-large"></i></button>';
                 toast.insertAdjacentHTML('beforeend', closeBtn);
             }
             

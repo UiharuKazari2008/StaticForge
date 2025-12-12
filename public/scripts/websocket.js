@@ -4,27 +4,27 @@ class BannerManager {
         this.websocketToastId = null;
         this.init();
     }
-    
+
     init() {
         // No initialization needed for glass toasts
     }
-    
+
     showWebSocketToast(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
         // If we already have a toast, update it instead of creating a new one
         if (this.websocketToastId && typeof updateGlassToastComplete === 'function') {
             this.updateWebSocketToast(status, message, icon);
             return;
         }
-        
+
         // Create new toast only if we don't have one
         if (typeof showGlassToast === 'function') {
             this.websocketToastId = showGlassToast(
-                status === 'connected' ? 'success' : 
-                status === 'error' ? 'error' : 
-                status === 'warning' ? 'warning' : 'info',
-                status === 'connected' ? 'Connected' : 
-                status === 'error' ? 'Connection Error' : 
-                status === 'warning' ? 'Connection Warning' : 'Connecting',
+                status === 'connected' ? 'success' :
+                    status === 'error' ? 'error' :
+                        status === 'warning' ? 'warning' : 'info',
+                status === 'connected' ? 'Connected' :
+                    status === 'error' ? 'Connection Error' :
+                        status === 'warning' ? 'Connection Warning' : 'Connecting',
                 message,
                 false, // No progress bar
                 autoHide ? hideDelay : false, // Only auto-hide if specified
@@ -32,37 +32,37 @@ class BannerManager {
             );
         }
     }
-    
+
     updateWebSocketToast(status, message, icon) {
         if (!this.websocketToastId || typeof updateGlassToastComplete !== 'function') {
             return;
         }
-        
+
         // Update the existing toast
         updateGlassToastComplete(this.websocketToastId, {
-            type: status === 'connected' ? 'success' : 
-                  status === 'error' ? 'error' : 
-                  status === 'warning' ? 'warning' : 'info',
-            title: status === 'connected' ? 'Connected' : 
-                   status === 'error' ? 'Connection Error' : 
-                   status === 'warning' ? 'Connection Warning' : 'Connecting',
+            type: status === 'connected' ? 'success' :
+                status === 'error' ? 'error' :
+                    status === 'warning' ? 'warning' : 'info',
+            title: status === 'connected' ? 'Connected' :
+                status === 'error' ? 'Connection Error' :
+                    status === 'warning' ? 'Connection Warning' : 'Connecting',
             message: message,
             customIcon: icon
         });
     }
-    
+
     hideWebSocketToast() {
         if (this.websocketToastId && typeof removeGlassToast === 'function') {
             removeGlassToast(this.websocketToastId);
             this.websocketToastId = null;
         }
     }
-    
+
     // Legacy method names for compatibility
     showWebSocketBanner(status, message, icon, autoHide = false, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
         this.showWebSocketToast(status, message, icon, autoHide, hideDelay);
     }
-    
+
     hideWebSocketBanner() {
         this.hideWebSocketToast();
     }
@@ -153,6 +153,8 @@ class BannerManager {
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
             'reroll_image': 'Recast Spell',
+            'expand_image': 'Expand Image',
+            'reroll_expanded_image': 'Recast Spell',
 
             // Preset operations
             'search_presets': 'Find Presets',
@@ -168,12 +170,22 @@ class BannerManager {
             'search_dataset_tags': 'Find Dataset Tags',
             'get_dataset_tags_for_path': 'Get Dataset Tags',
             'search_tags': 'Find Tags',
+            'search_tag_wiki': 'Search Encyclopedia',
+            'get_tag_wiki_page': 'Get Encyclopedia Page',
+            'refresh_tag_wiki_page': 'Update Encyclopedia',
             'search_files': 'Find Images',
             'search_characters': 'Find Characters',
+            'lookup_city': 'Lookup Location',
+            'search_index_prepare_cache': 'Prepare Search Cache',
+            'search_index_clear_cache': 'Clear Search Cache',
+            'search_index_toggle_pause': 'Set Indexing State',
+            'search_index_trigger': 'Request Indexing',
+            'search_index_rebuild_all': 'Rebuild Search Indexes',
 
             // Workspace operations
             'workspace_list': 'Get Workspaces',
             'workspace_get': 'Get Workspace',
+            'desktop_get_settings': 'Get Desktop Settings',
             'workspace_create': 'Create Workspace',
             'workspace_rename': 'Rename Workspace',
             'workspace_delete': 'Delete Workspace',
@@ -199,12 +211,23 @@ class BannerManager {
             'workspace_get_image_groups': 'Get Image Groups',
             'workspace_update_color': 'Update Color',
             'workspace_update_background_color': 'Update Background',
-            'workspace_update_settings': 'Update Settings',
+            'workspace_update_background_image': 'Update Background Image',
+            'workspace_update_background_opacity': 'Update Background Opacity',
+            'workspace_update_settings': 'Upload Settings',
+            'workspace_update_window_positions': 'Upload Settings',
             'workspace_update_primary_font': 'Update Font',
             'workspace_update_textarea_font': 'Update Text Font',
             'workspace_reorder': 'Reorder Workspaces',
             'workspace_bulk_add_scrap': 'Bulk Add Scraps',
             'workspace_bulk_add_pinned': 'Bulk Add Pinned',
+
+            // Desktop shortcuts
+            'desktop_get_shortcuts': 'Get Desktop Shortcuts',
+            'desktop_add_shortcut': 'Add Desktop Shortcut',
+            'desktop_update_shortcut': 'Update Desktop Shortcut',
+            'desktop_remove_shortcut': 'Remove Desktop Shortcut',
+            'desktop_update_positions': 'Update Desktop Positions',
+
             'get_text_replacement_options': 'Resolve Placeholder',
             'resolve_dynamic_context': 'Resolve Context',
 
@@ -219,7 +242,9 @@ class BannerManager {
             'get_workspace_references': 'Get Workspace References',
             'delete_reference': 'Delete Reference',
             'upload_reference': 'Upload Reference',
+            'upload_wallpaper': 'Upload Wallpaper',
             'replace_reference': 'Replace Reference',
+            'update_reference_metadata': 'Update Reference',
             'upload_workspace_image': 'Upload Image',
             'download_url_file': 'Download File',
             'fetch_url_info': 'Fetch URL Info',
@@ -239,6 +264,8 @@ class BannerManager {
             // Cache and system operations
             'get_cache_manifest': 'Get Cache Manifest',
             'refresh_server_cache': 'Refresh Cache',
+            'rebuild_metadata_cache': 'Rebuild Metadata Cache',
+            'clear_search_cache': 'Clear Search Cache',
             'broadcast_resource_update': 'Update Resources',
             'ping': 'Ping Server',
 
@@ -248,22 +275,42 @@ class BannerManager {
             'get_session_rate_limiting_stats': 'Get Session Stats',
             'cancel_pending_requests': 'Cancel Requests',
             'cancel_session_pending_requests': 'Cancel Session Requests',
+            'get_system_info': 'Get System Info',
 
             // Favorites operations
             'favorites_add': 'Add Favorite',
             'favorites_remove': 'Remove Favorite',
             'favorites_get': 'Get Favorites',
 
-            // Text replacement operations
-            'get_text_replacements': 'Get Text Replacements',
-            'save_text_replacements': 'Save Text Replacements',
-            'delete_text_replacement': 'Delete Text Replacement',
-            'create_text_replacement': 'Create Text Replacement',
+            // Genso operations
+            'get_text_replacements': 'Get Genso Expanders',
+            'save_text_replacements': 'Save Genso Expanders',
+            'delete_text_replacement': 'Delete Genso Expander',
+            'create_text_replacement': 'Create Genso Expander',
 
             // Knowledge memory operations
-            'list_knowledge_memories': 'Get Enshutsuka Memories',
-            'get_knowledge_memory': 'Get Enshutsuka Memory',
-            'delete_knowledge_memory': 'Delete Enshutsuka Memory',
+            'list_knowledge_memories': 'Get Memories',
+            'get_knowledge_memory': 'Get Memory',
+            'update_knowledge_memory': 'Update Memory',
+            'delete_knowledge_memory': 'Delete Memory',
+            'delete_knowledge_memories_bulk': 'Delete Memories',
+            'count_knowledge_memories_by_filter': 'Count Memories',
+            'delete_knowledge_memories_by_filter': 'Delete Memories',
+
+            // Preset group operations
+            'save_preset_group': 'Save Preset',
+            'delete_preset_group': 'Delete Preset',
+            'get_preset_groups': 'Get Presets',
+
+            // Notes operations
+            'notes_create': 'Save Notebook Page',
+            'notes_get': 'Load Notebook Page',
+            'notes_get_by_workspace': 'Get Notebook',
+            'notes_get_all': 'Get Notebook Pages',
+            'notes_get_all_metadata': 'Get Notes Info',
+            'notes_update': 'Save Notebook Page',
+            'notes_delete': 'Delete Notebook Page',
+            'notes_save_content': 'Save Notebook Page',
 
             // Gallery operations
             'request_gallery': 'Get Gallery',
@@ -283,15 +330,18 @@ class BannerManager {
             'delete_chat_session': 'Delete Chat Session',
             'restart_chat_session': 'Restart Chat Session',
             'send_chat_message': 'Send Chat Message',
+            'update_chat_context': 'Update Chat Context',
             'get_chat_messages': 'Get Chat Messages',
+            'delete_chat_message': 'Delete Chat Message',
 
             // AI operations
             'cancel_generation': 'Cancel Generation',
+            'dynamic_generation_progress': 'Enshutsuka Progress',
             'dynamic_generation_progress_update': 'Enshutsuka Progress Update',
             'dynamic_generation_completed': 'Enshutsuka Completed',
             'dynamic_generation_failed': 'Enshutsuka Failed',
 
-            
+
 
             // Director operations
             'director_get_sessions': 'Get Director Sessions',
@@ -301,12 +351,21 @@ class BannerManager {
             'director_send_message': 'Send Director Message',
             'director_get_messages': 'Get Director Messages',
             'director_rollback_message': 'Rollback Message',
+            'director_save_feedback': 'Save Feedback',
+            'director_load_rules': 'Load Rules',
+            'director_save_rules': 'Save Rules',
+            'director_load_feedback': 'Load Feedback',
+            'director_delete_feedback': 'Delete Feedback',
 
             // Security operations
             'get_blocked_ips': 'Get Blocked IPs',
             'unblock_ip': 'Unblock IP',
             'export_ip_to_gateway': 'Export IP',
             'get_ip_blocking_reasons': 'Get Block Reasons',
+            'get_api_key_services': 'Get Keychain',
+            'update_api_key_selections': 'Update Keychain',
+            'add_api_key': 'Add to Keychain',
+            'delete_api_key': 'Delete from Keychain',
 
             // Utility operations
             'spellcheck_add_word': 'Add Word'
@@ -314,7 +373,7 @@ class BannerManager {
 
         return typeMap[requestType] || requestType;
     }
-    
+
     updateWebSocketBanner(status, message, icon) {
         this.updateWebSocketToast(status, message, icon);
     }
@@ -381,40 +440,25 @@ class WebSocketClient {
         this.progressToastId = null;
         this.serverNotRespondingToastId = null;
         this.messageHandlers = new Map();
-        
+
         this.initSteps = [];
         this.currentInitStep = 0;
         this.totalInitSteps = 0;
         this.initializationCompleted = false; // Track if initialization has been completed
         this.initializationLock = false; // Prevent concurrent initialization
-        
+        this.stepByStepMode = false; // Step-by-step mode (Shift key on startup)
+        this.stepByStepPaused = false; // Whether we're waiting for user to advance step
+
         // Pending requests tracking
         this.pendingRequestsCount = 0;
         this.completionTimer = null;
 
-        // WebSocket indicator elements
-        this.websocketIndicators = {
-            menubar: {
-                container: null,
-                upArrow: null,
-                downArrow: null,
-                status: null,
-                upTimeout: null,
-                downTimeout: null
-            },
-            overlay: {
-                container: null,
-                upArrow: null,
-                downArrow: null,
-                status: null,
-                upTimeout: null,
-                downTimeout: null
-            }
-        };
-        
+        // WebSocket indicator elements (dynamically populated array)
+        this.websocketIndicators = [];
+
         // Banner manager for status updates
         this.bannerManager = new BannerManager();
-        
+
         // Bind methods
         this.connect = this.connect.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -424,10 +468,11 @@ class WebSocketClient {
         this.logWarning = this.logWarning.bind(this);
         this.logInfo = this.logInfo.bind(this);
         this.initWebSocketIndicators = this.initWebSocketIndicators.bind(this);
+        this.refreshWebSocketIndicators = this.refreshWebSocketIndicators.bind(this);
         this.updateWebSocketStatus = this.updateWebSocketStatus.bind(this);
         this.flashWebSocketArrow = this.flashWebSocketArrow.bind(this);
         this.send = this.send.bind(this);
-        
+
         // Initialize
         this.init();
     }
@@ -493,7 +538,7 @@ class WebSocketClient {
 
         for (let attempt = 1; attempt <= maxPingAttempts; attempt++) {
             try {
-                this.updateProgressNotification(`Ringing Server... (${attempt}/${maxPingAttempts})`, 5 + (attempt * 5));
+                this.updateProgressNotification(`Dialing Server... (${attempt}/${maxPingAttempts})`, 5 + (attempt * 5));
 
                 // Try to fetch a simple endpoint to ping the host
                 const response = await fetch('/', {
@@ -510,7 +555,7 @@ class WebSocketClient {
                             cache: 'no-cache',
                             signal: AbortSignal.timeout(WebSocketClient.TIMEOUT_VERSION_CHECK)
                         });
-                        
+
                         if (statusResponse.ok) {
                             const data = await statusResponse.json();
 
@@ -587,47 +632,257 @@ class WebSocketClient {
 
     // Progress notification methods
     showProgressNotification(message = 'Connecting...', progress = 0) {
-        if (!this.progressToastId) {
-            // Create a new progress toast
-            if (typeof showGlassToast === 'function') {
-                this.progressToastId = showGlassToast(
-                    'info',
-                    'Dreamscape',
-                    message,
-                    true, // showProgress
-                    false, // no timeout - keep until manually hidden
-                    '<i class="fa-duotone fa-star-christmas"></i>'
-                );
+        if (window.isDesktop) {
+            // Desktop mode: use Windows startup modal
+            this.showWindowsStartupModal(message, progress);
+        } else {
+            // Non-desktop: use toast
+            if (!this.progressToastId) {
+                // Create a new progress toast
+                if (typeof showGlassToast === 'function') {
+                    this.progressToastId = showGlassToast(
+                        'info',
+                        'Dreamscape',
+                        message,
+                        true, // showProgress
+                        false, // no timeout - keep until manually hidden
+                        '<i class="fa-duotone fa-star-christmas"></i>'
+                    );
+                }
             }
+            document.body.classList.add('initializing');
+            this.updateProgressNotification(message, progress);
         }
-        document.body.classList.add('initializing');
-        this.updateProgressNotification(message, progress);
     }
 
     hideProgressNotification() {
-        if (this.progressToastId && typeof removeGlassToast === 'function') {
-            removeGlassToast(this.progressToastId);
-            this.progressToastId = null;
+        if (window.isDesktop) {
+            this.hideWindowsStartupModal();
+        } else {
+            if (this.progressToastId && typeof removeGlassToast === 'function') {
+                removeGlassToast(this.progressToastId);
+                this.progressToastId = null;
+            }
         }
         document.body.classList.remove('initializing');
     }
 
     updateProgressNotification(message, progress) {
-        if (!this.progressToastId) return;
+        if (window.isDesktop) {
+            this.updateWindowsStartupModal(message, progress);
+        } else {
+            if (!this.progressToastId) return;
 
-        // Update toast message if updateGlassToastComplete is available
-        if (typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.progressToastId, {
-                type: 'info',
-                title: 'Dreamscape',
-                message: message,
-                customIcon: '<i class="fa-duotone fa-star-christmas"></i>'
+            // Update toast message if updateGlassToastComplete is available
+            if (typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(this.progressToastId, {
+                    type: 'info',
+                    title: 'Dreamscape',
+                    message: message,
+                    customIcon: '<i class="fa-duotone fa-star-christmas"></i>'
+                });
+            }
+
+            // Update progress bar
+            if (typeof updateGlassToastProgress === 'function') {
+                updateGlassToastProgress(this.progressToastId, progress);
+            }
+        }
+    }
+
+    // Windows Startup Modal Methods (Desktop Mode Only)
+    showWindowsStartupModal(message = 'Initializing...', progress = 0) {
+        if (!window.isDesktop) return;
+        
+        const modal = document.getElementById('windowsStartupModal');
+        const statusElement = document.getElementById('windowsStartupStatus');
+        const progressBar = document.getElementById('windowsStartupProgressBar');
+        const advanceBtn = document.getElementById('windowsStartupAdvanceStepBtn');
+        
+        if (!modal || !statusElement || !progressBar) return;
+        
+        // Apply Windows Classic theme initially
+        if (!document.body.classList.contains('windows-classic-theme')) {
+            document.body.classList.add('windows-classic-theme');
+        }
+        
+        openModal(modal);
+        
+        // Explicitly set startup modal as active (openModal doesn't do this for new modals)
+        // Keep it active until gallery window opens
+        if (typeof setActiveWindow === 'function') {
+            setActiveWindow(modal.id);
+        } else {
+            modal.classList.add('active-window');
+        }
+        
+        statusElement.textContent = message;
+        progressBar.style.width = `${progress}%`;
+        
+        // Setup advance step button handler if not already set up
+        if (advanceBtn && !this.advanceStepHandlerSetup) {
+            advanceBtn.addEventListener('click', () => {
+                this.advanceStep();
+            });
+            this.advanceStepHandlerSetup = true;
+        }
+        
+        // Update button visibility
+        this.updateStepByStepButton();
+    }
+
+    updateWindowsStartupModal(message, progress) {
+        if (!window.isDesktop) return;
+        
+        const statusElement = document.getElementById('windowsStartupStatus');
+        const progressBar = document.getElementById('windowsStartupProgressBar');
+        
+        if (statusElement) {
+            statusElement.textContent = message;
+        }
+        if (progressBar) {
+            progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+        }
+        
+        // Update button visibility when progress updates
+        this.updateStepByStepButton();
+    }
+
+    hideWindowsStartupModal() {
+        if (!window.isDesktop) return;
+        
+        const modal = document.getElementById('windowsStartupModal');
+        if (modal) {
+            // Use normal modal closing process
+            if (typeof closeModal === 'function') {
+                closeModal(modal);
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+        
+        // Remove startup background
+        document.body.classList.remove('windows-startup');
+        // Keep windows-classic-theme until workspace theme is loaded (handled in workspace loading step)
+    }
+
+    // Windows Update Modal Methods (Desktop Mode Only)
+    showWindowsUpdateModal(message = 'Preparing to install updates...', progress = 0) {
+        if (!window.isDesktop) return;
+        
+        const modal = document.getElementById('windowsUpdateModal');
+        const statusElement = document.getElementById('windowsUpdateStatus');
+        const progressBar = document.getElementById('windowsUpdateProgressBar');
+        const skipBtn = document.getElementById('windowsUpdateSkipBtn');
+        const restartActions = document.getElementById('windowsUpdateRestartActions');
+        const progressContainer = modal?.querySelector('.windows-update-progress-container');
+        
+        if (!modal || !statusElement || !progressBar) return;
+        
+        // Show progress container, hide restart actions
+        if (progressContainer) progressContainer.classList.remove('hidden');
+        if (restartActions) restartActions.classList.add('hidden');
+        if (skipBtn) skipBtn.style.display = '';
+        
+        // Use normal modal opening process
+        if (typeof openModal === 'function') {
+            openModal(modal);
+        } else {
+            modal.classList.remove('hidden');
+        }
+        
+        statusElement.textContent = message;
+        progressBar.style.width = `${progress}%`;
+        
+        // Setup button handlers if not already set up
+        this.setupUpdateModalHandlers();
+    }
+    
+    setupUpdateModalHandlers() {
+        if (this.updateModalHandlersSetup) return;
+        this.updateModalHandlersSetup = true;
+        
+        const skipBtn = document.getElementById('windowsUpdateSkipBtn');
+        const restartBtn = document.getElementById('windowsUpdateRestartBtn');
+        const laterBtn = document.getElementById('windowsUpdateLaterBtn');
+        
+        if (skipBtn) {
+            skipBtn.addEventListener('click', () => {
+                if (this.onUpdateSkip) {
+                    this.onUpdateSkip();
+                }
             });
         }
+        
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => {
+                if (this.onUpdateRestart) {
+                    this.onUpdateRestart();
+                }
+            });
+        }
+        
+        if (laterBtn) {
+            laterBtn.addEventListener('click', () => {
+                if (this.onUpdateLater) {
+                    this.onUpdateLater();
+                }
+            });
+        }
+    }
+    
+    setUpdateModalCallbacks(onSkip, onRestart, onLater) {
+        this.onUpdateSkip = onSkip;
+        this.onUpdateRestart = onRestart;
+        this.onUpdateLater = onLater;
+    }
 
-        // Update progress bar
-        if (typeof updateGlassToastProgress === 'function') {
-            updateGlassToastProgress(this.progressToastId, progress);
+    updateWindowsUpdateModal(message, progress) {
+        if (!window.isDesktop) return;
+        
+        const statusElement = document.getElementById('windowsUpdateStatus');
+        const progressBar = document.getElementById('windowsUpdateProgressBar');
+        
+        if (statusElement) {
+            statusElement.textContent = message;
+        }
+        if (progressBar) {
+            progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
+        }
+    }
+
+    showWindowsUpdateRestartPrompt(message = 'Updates have been installed. Restart is required.') {
+        if (!window.isDesktop) return;
+        
+        const modal = document.getElementById('windowsUpdateModal');
+        const statusElement = document.getElementById('windowsUpdateStatus');
+        const progressBar = document.getElementById('windowsUpdateProgressBar');
+        const skipBtn = document.getElementById('windowsUpdateSkipBtn');
+        const restartActions = document.getElementById('windowsUpdateRestartActions');
+        const progressContainer = modal?.querySelector('.windows-update-progress-container');
+        
+        if (!modal || !statusElement || !restartActions) return;
+        
+        // Hide progress container, show restart actions
+        if (progressContainer) progressContainer.classList.add('hidden');
+        if (restartActions) restartActions.classList.remove('hidden');
+        if (skipBtn) skipBtn.style.display = 'none';
+        if (progressBar) progressBar.style.width = '100%';
+        
+        statusElement.textContent = message;
+    }
+
+    hideWindowsUpdateModal() {
+        if (!window.isDesktop) return;
+        
+        const modal = document.getElementById('windowsUpdateModal');
+        if (modal) {
+            // Use normal modal closing process
+            if (typeof closeModal === 'function') {
+                closeModal(modal);
+            } else {
+                modal.classList.add('hidden');
+            }
         }
     }
 
@@ -639,7 +894,7 @@ class WebSocketClient {
         } else {
             this.initSteps.push({ priority, message, stepFunction, runOnReconnect });
         }
-        
+
         // Sort by priority
         this.initSteps.sort((a, b) => a.priority - b.priority);
         this.totalInitSteps = this.initSteps.length;
@@ -759,7 +1014,7 @@ class WebSocketClient {
         }
 
         this.initializationLock = true;
-        
+
         // Safety check for empty init steps
         if (!this.initSteps || this.initSteps.length === 0) {
             this.initializationCompleted = true;
@@ -767,10 +1022,10 @@ class WebSocketClient {
             this.hideProgressNotification();
             return;
         }
-        
+
         this.currentInitStep = 0;
         this.totalInitSteps = this.initSteps.length;
-                
+
         try {
             for (const step of this.initSteps) {
                 this.currentInitStep++;
@@ -778,19 +1033,31 @@ class WebSocketClient {
                 const stepProgress = WebSocketClient.PROGRESS_INIT_BASE +
                     ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
                 this.updateProgressNotification(step.message, stepProgress);
-                
+
                 // On reconnection, only run steps flagged as runOnReconnect
                 if (this.initializationCompleted && !step.runOnReconnect) {
                     continue;
                 }
-                                
+
+                // Step-by-step mode: wait for user to advance
+                if (this.stepByStepMode && window.isDesktop) {
+                    this.stepByStepPaused = true;
+                    this.updateStepByStepButton();
+                    // Wait for user to click the advance button
+                    await new Promise((resolve) => {
+                        this.stepByStepResolve = resolve;
+                    });
+                    this.stepByStepPaused = false;
+                    this.updateStepByStepButton();
+                }
+
                 try {
                     await step.stepFunction();   // run the step
                 } catch (error) {
                     console.error(`❌ Error in init step "${step.message}":`, error);
                 }
             }
-            
+
             // Mark initialization as completed
             this.initializationCompleted = true;
             this.initializationLock = false; // Release initialization lock
@@ -809,18 +1076,44 @@ class WebSocketClient {
         }
     }
 
+    // Advance to next step in step-by-step mode
+    advanceStep() {
+        if (this.stepByStepMode && this.stepByStepPaused && this.stepByStepResolve) {
+            this.stepByStepResolve();
+            this.stepByStepResolve = null;
+            this.updateStepByStepButton();
+        }
+    }
+
+    // Update step-by-step button visibility
+    updateStepByStepButton() {
+        if (!window.isDesktop) return;
+        
+        const button = document.getElementById('windowsStartupAdvanceStepBtn');
+        if (button) {
+            if (this.stepByStepMode && this.stepByStepPaused) {
+                button.classList.remove('hidden');
+            } else {
+                button.classList.add('hidden');
+            }
+        }
+    }
+
     // Initialize the websocket client with proper sequence
     async init() {
+        // Check for Shift key to enable step-by-step mode (desktop mode only)
+        if (window.isDesktop && window.shiftKeyOnStartup) {
+            this.stepByStepMode = true;
+            console.log('🔍 Step-by-step mode enabled (Shift key detected on startup)');
+        }
+        
         // Show progress notification immediately
         this.showProgressNotification('Initializing...', 0);
-        
+
         // Initialize pending requests spinner
         this.updatePendingRequestsSpinner();
 
-        // Initialize WebSocket indicators
-        this.initWebSocketIndicators();
-
-        // Start connection when page loads
+        // Initialize WebSocket indicators after DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', this.connect);
         } else {
@@ -864,6 +1157,8 @@ class WebSocketClient {
      * @throws {Error} If connection cannot be established after retries
      */
     async connect() {
+        this.initWebSocketIndicators();
+        
         // Dismiss the server not responding toast when attempting to connect
         if (this.serverNotRespondingToastId && typeof removeGlassToast === 'function') {
             removeGlassToast(this.serverNotRespondingToastId);
@@ -939,23 +1234,23 @@ class WebSocketClient {
                 this.connectionLock = false; // Release lock before returning
                 return;
             }
-            
+
             // Step 3: Now attempt WebSocket connection
             this.updateProgressNotification('Establishing Session...', 25);
-            
+
             // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}`;
-            
+
             this.ws = new WebSocket(wsUrl);
-            
+
             this.ws.onopen = () => {
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on success
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
-                
+
                 // Show connected ticker and auto-hide after 3 seconds
                 this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
                 this.updateWebSocketStatus('connected');
@@ -998,7 +1293,7 @@ class WebSocketClient {
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
                 this.isConnecting = false;
-                
+
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
                     updateManualGenerateBtnState();
@@ -1020,7 +1315,7 @@ class WebSocketClient {
                     });
                     return;
                 }
-                
+
                 if (!this.isManualClose) {
                     // Clear and fail all pending requests when connection is lost
                     this.clearPendingRequests();
@@ -1064,7 +1359,7 @@ class WebSocketClient {
                         this.bannerManager.showWebSocketTicker('error', disconnectMessage, 'fa-exclamation-triangle', false);
                     }
                 }
-                
+
                 // Trigger disconnect event
                 this.triggerEvent('disconnected', event);
             };
@@ -1392,7 +1687,7 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle authentication errors
         if (message.type === 'auth_error') {
             console.error('❌ WebSocket authentication error:', message.message);
@@ -1412,10 +1707,10 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle search responses (ack-less)
-        if (message.type.startsWith('search_status_update') || 
-            message.type.startsWith('search_results_update') || 
+        if (message.type.startsWith('search_status_update') ||
+            message.type.startsWith('search_results_update') ||
             message.type.startsWith('search_results_complete') ||
             message.type.startsWith('search_characters_response') ||
             message.type.startsWith('search_characters_complete')) {
@@ -1425,7 +1720,7 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle all chat-related messages
         if (message.type.startsWith('chat_')) {
             if (window.chatSystem) {
@@ -1454,20 +1749,20 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle all Director-related messages
         if (message.type.startsWith('director_') || message.type === 'dynamic_generation_response' || message.type === 'dynamic_generation_error') {
             // For response messages, also resolve the pending request
             if (message.type.endsWith('_response') && message.requestId) {
                 this.resolveRequest(message.requestId, message, null);
             }
-            
+
             // Trigger custom events for Director messages
             this.triggerEvent(message.type, message);
             return;
         }
 
-        // Handle dynamic generation progress updates
+        // Handle Rentan progress updates
         if (message.type === 'dynamic_generation_progress_update') {
             this.handleDynamicGenerationProgressUpdate(message);
             return;
@@ -1480,10 +1775,16 @@ class WebSocketClient {
         }
 
         // image_generation_intermediate messages are now deprecated - intermediate images come through image_generation_progress
-        
+
         // Handle workspace image additions
         if (message.type === 'workspace_image_added') {
             this.handleWorkspaceImageAdded(message);
+            return;
+        }
+
+        // Handle search indexing status updates
+        if (message.type === 'search_indexing_status') {
+            this.handleSearchIndexingStatus(message);
             return;
         }
 
@@ -1491,11 +1792,11 @@ class WebSocketClient {
         if (message.type === 'image_generation_error') {
             console.error('❌ Image generation error:', message.error);
             console.error('❌ Full error details:', message);
-            
+
             if (message.requestId) {
                 // Build detailed error message
                 let errorMsg = message.error || 'Image generation failed';
-                
+
                 // Include additional details if available
                 if (message.details) {
                     errorMsg += `\nDetails: ${message.details}`;
@@ -1503,20 +1804,20 @@ class WebSocketClient {
                 if (message.stack) {
                     console.error('❌ Error stack:', message.stack);
                 }
-                
+
                 this.resolveRequest(message.requestId, null, new Error(errorMsg));
             }
-            
+
             // Reset global generation state when error occurs
             if (typeof isGenerating !== 'undefined') {
                 isGenerating = false;
             }
-            
+
             // Reset generation button state when error occurs
             if (typeof updateManualGenerateBtnState === 'function') {
                 updateManualGenerateBtnState();
             }
-            
+
             return;
         }
 
@@ -1553,7 +1854,7 @@ class WebSocketClient {
 
             return;
         }
-        
+
         // Handle all error messages that should trigger resolveRequest with error
         if (message.type.endsWith('_error')) {
             if (message.requestId) {
@@ -1568,35 +1869,67 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle cache refresh response
         if (message.type === 'refresh_server_cache_response') {
             if (message.requestId) {
                 this.resolveRequest(message.requestId, message.data, message.error);
             }
-            
+
             // Show success/error message
             if (message.success) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('success', 'Cache Refreshed', `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`, false, 5000, '<i class="fas fa-sync"></i>');
+                const successMessage = `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`;
+                
+                // Desktop mode: use Windows Update Modal
+                if (window.isDesktop && this.showWindowsUpdateModal) {
+                    this.showWindowsUpdateModal('Cache Refreshed', 100);
+                    this.updateWindowsUpdateModal(successMessage, 100);
+                    this.setUpdateModalCallbacks(
+                        () => this.hideWindowsUpdateModal(),
+                        null,
+                        () => this.hideWindowsUpdateModal()
+                    );
+                    // Auto-hide after 3 seconds
+                    setTimeout(() => {
+                        this.hideWindowsUpdateModal();
+                    }, 3000);
+                } else {
+                    // Non-desktop mode: use toast
+                    if (typeof showGlassToast === 'function') {
+                        showGlassToast('success', 'Cache Refreshed', successMessage, false, 5000, '<i class="fas fa-sync"></i>');
+                    }
                 }
             } else {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('error', 'Cache Refresh Failed', message.error || 'Failed to refresh server cache', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                const errorMessage = message.error || 'Failed to refresh server cache';
+                
+                // Desktop mode: use Windows Update Modal
+                if (window.isDesktop && this.showWindowsUpdateModal) {
+                    this.showWindowsUpdateModal('Cache Refresh Failed', 0);
+                    this.updateWindowsUpdateModal(errorMessage, 0);
+                    this.setUpdateModalCallbacks(
+                        () => this.hideWindowsUpdateModal(),
+                        null,
+                        () => this.hideWindowsUpdateModal()
+                    );
+                } else {
+                    // Non-desktop mode: use toast
+                    if (typeof showGlassToast === 'function') {
+                        showGlassToast('error', 'Cache Refresh Failed', errorMessage, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                    }
                 }
                 console.error('❌ Server cache refresh failed:', message.error);
             }
-            
+
             return;
         }
-        
+
         // Handle metadata cache rebuild progress
         if (message.type === 'rebuild_metadata_cache_progress') {
             this.triggerEvent('message', message);
             this.triggerEvent(message.type, message);
             return;
         }
-        
+
         // Handle metadata cache rebuild response
         if (message.type === 'rebuild_metadata_cache_response') {
             this.triggerEvent('message', message);
@@ -1606,47 +1939,108 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle resource update notifications
         if (message.type === 'resource_update_available') {
-            // Show update notification with download/later buttons
-            if (typeof showGlassToast === 'function') {
-                const downloadButton = {
-                    text: 'Download Now',
-                    type: 'primary',
-                    onClick: () => {
+            const updateMessage = message.data.message || 'Resource updates are available for download';
+            
+            // Desktop mode: use Windows Update Modal
+            if (window.isDesktop && this.showWindowsUpdateModal) {
+                this.showWindowsUpdateModal('Updates Available', 0);
+                this.updateWindowsUpdateModal(updateMessage, 0);
+                
+                // Setup callbacks for update modal buttons
+                this.setUpdateModalCallbacks(
+                    // Skip callback (maps to "Later" button behavior)
+                    () => {
+                        console.log('User chose to download updates later');
+                        this.hideWindowsUpdateModal();
+                    },
+                    // Restart callback (not used for resource updates)
+                    null,
+                    // Later callback (maps to "Later" button)
+                    () => {
+                        console.log('User chose to download updates later');
+                        this.hideWindowsUpdateModal();
+                    }
+                );
+                
+                // Override skip button to trigger download
+                const skipBtn = document.getElementById('windowsUpdateSkipBtn');
+                if (skipBtn) {
+                    // Remove existing listeners by cloning
+                    const newSkipBtn = skipBtn.cloneNode(true);
+                    skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
+                    
+                    newSkipBtn.addEventListener('click', () => {
                         console.log('User chose to download updates now');
                         // Trigger the service worker update check
                         if (window.serviceWorkerManager) {
                             window.serviceWorkerManager.checkStaticFileUpdates();
                         }
-                    },
-                    closeOnClick: true
-                };
-                
-                const laterButton = {
-                    text: 'Later',
-                    type: 'default',
-                    onClick: () => {
-                        console.log('User chose to download updates later');
-                    },
-                    closeOnClick: true
-                };
-                
-                showGlassToast(
-                    'warning',
-                    'Updates Available',
-                    message.data.message || 'Resource updates are available for download',
-                    false,
-                    false,
-                    '<i class="fas fa-download"></i>',
-                    [downloadButton, laterButton]
-                );
+                        this.hideWindowsUpdateModal();
+                    });
+                    
+                    // Change button text to "Download Now"
+                    newSkipBtn.textContent = 'Download Now';
+                    newSkipBtn.classList.remove('btn-secondary');
+                    newSkipBtn.classList.add('btn-primary');
+                }
+            } else {
+                // Non-desktop mode: use toast notification
+                if (typeof showGlassToast === 'function') {
+                    const downloadButton = {
+                        text: 'Download Now',
+                        type: 'primary',
+                        onClick: () => {
+                            console.log('User chose to download updates now');
+                            // Trigger the service worker update check
+                            if (window.serviceWorkerManager) {
+                                window.serviceWorkerManager.checkStaticFileUpdates();
+                            }
+                        },
+                        closeOnClick: true
+                    };
+
+                    const laterButton = {
+                        text: 'Later',
+                        type: 'default',
+                        onClick: () => {
+                            console.log('User chose to download updates later');
+                        },
+                        closeOnClick: true
+                    };
+
+                    showGlassToast(
+                        'warning',
+                        'Updates Available',
+                        updateMessage,
+                        false,
+                        false,
+                        '<i class="fas fa-download"></i>',
+                        [downloadButton, laterButton]
+                    );
+                }
             }
-            
+
             return;
         }
-        
+
+        // Handle config refresh errors
+        if (message.type === 'config_refresh_error') {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast(
+                    'error',
+                    'Config Refresh Failed',
+                    message.data.message || `Failed to refresh ${message.data.configType || 'config'}`,
+                    false,
+                    8000, // Auto-hide after 8 seconds
+                    '<i class="fas fa-exclamation-triangle"></i>'
+                );
+            }
+            return;
+        }
+
         // Handle any message with requestId for custom callbacks
         if (message.requestId && this.requestCallbacks && this.requestCallbacks.has(message.requestId)) {
             const callback = this.requestCallbacks.get(message.requestId);
@@ -1658,25 +2052,31 @@ class WebSocketClient {
             }
             return;
         }
-        
+
         // Handle realtime search updates
         if (message.type === 'search_results_update' || message.type === 'search_status_update' || message.type === 'search_results_complete') {
             this.triggerEvent(message.type, message);
             return;
         }
-        
+
+        // Handle search indexing status updates
+        if (message.type === 'search_indexing_status') {
+            this.handleSearchIndexingStatus(message);
+            return;
+        }
+
         // Trigger message event
         this.triggerEvent('message', message);
-        
+
         // Handle specific message types
         switch (message.type) {
             case 'connection':
                 break;
-                
+
             case 'error':
                 this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
                 break;
-                
+
             case 'image_generated':
                 this.handleGeneratedImage(message.data);
                 break;
@@ -1768,15 +2168,32 @@ class WebSocketClient {
 
                     console.warn(`⚠️ Request timeout after keep-alive reset for ${requestId}`);
 
-                    const timeoutError = new Error(`Request timeout after 30 seconds (with keep-alive)`);
+                    const timeoutError = new Error(`Request timeout after 2 minutes (with keep-alive)`);
                     timeoutError.code = 'REQUEST_TIMEOUT';
                     timeoutError.requestId = requestId;
                     request.reject(timeoutError);
                 }
-            }, 30000); // 30 second timeout
+            }, 120000); // 2 minute timeout (matches server-side keep-alive for image generation) TODO: This should be based on if Rentan is running 30 minutes for image gen and 2 min for Rentan
 
             // Update timeout ID
             request.timeoutId = timeoutId;
+        }
+    }
+
+    // Reset timeouts for all pending requests of a specific type
+    resetTimeoutsForRequestType(requestType) {
+        if (!this.pendingRequests) return;
+
+        let resetCount = 0;
+        for (const [requestId, request] of this.pendingRequests) {
+            if (request.type === requestType) {
+                this.resetRequestTimeout(requestId);
+                resetCount++;
+            }
+        }
+
+        if (resetCount > 0) {
+            console.log(`🔄 Reset timeout for ${resetCount} pending ${requestType} request(s)`);
         }
     }
 
@@ -1833,6 +2250,22 @@ class WebSocketClient {
     }
 
     handleWorkspaceUpdate(data) {
+        // Update local workspace object if settings were updated
+        if (data.action === 'settings_updated' && data.settings && typeof workspaces !== 'undefined') {
+            const workspaceId = data.workspaceId;
+            if (workspaces && workspaces[workspaceId]) {
+                // Update local workspace settings
+                Object.assign(workspaces[workspaceId], data.settings);
+            }
+        }
+        
+        // Update global window positions if window positions were updated
+        // Window positions are stored in the same file as shortcuts (workspaceDesktop config) as global object
+        if (data.action === 'window_positions_updated' && data.windowPositions) {
+            // Update global window positions directly
+            Object.assign(globalWindowPositions, data.windowPositions);
+        }
+        
         // Dispatch custom event for workspace updates
         const event = new CustomEvent('workspaceUpdated', {
             detail: data
@@ -1856,7 +2289,7 @@ class WebSocketClient {
         });
         document.dispatchEvent(event);
     }
-    
+
     handleWorkspaceImageAdded(message) {
         // Dispatch custom event for workspace image addition
         const event = new CustomEvent('workspaceImageAdded', {
@@ -1875,7 +2308,7 @@ class WebSocketClient {
         if (!this.streamingStepQueues) {
             this.streamingStepQueues = {};
         }
-        
+
         if (!this.streamingStepQueues[modalType]) {
             this.streamingStepQueues[modalType] = {
                 queue: [],
@@ -1885,10 +2318,10 @@ class WebSocketClient {
         }
 
         const queueData = this.streamingStepQueues[modalType];
-        
+
         // Add step to queue
         queueData.queue.push(data);
-        
+
         // Start processing if not already processing
         this.processStreamingStepQueue(modalType);
     }
@@ -1896,7 +2329,7 @@ class WebSocketClient {
     // Process the streaming step queue with 250ms minimum display time
     async processStreamingStepQueue(modalType) {
         const queueData = this.streamingStepQueues[modalType];
-        
+
         if (!queueData || queueData.isProcessing || queueData.queue.length === 0) {
             return;
         }
@@ -1906,16 +2339,16 @@ class WebSocketClient {
         while (queueData.queue.length > 0) {
             const data = queueData.queue.shift();
             const now = Date.now();
-            
+
             // Calculate time since last step was displayed
             const timeSinceLastStep = now - queueData.lastDisplayTime;
-            
+
             // If not enough time has passed, wait before showing next step
             if (timeSinceLastStep < 250) {
                 const waitTime = 250 - timeSinceLastStep;
                 await new Promise(resolve => setTimeout(resolve, waitTime));
             }
-            
+
             // Display the step
             this.displayStreamingStep(modalType, data);
             queueData.lastDisplayTime = Date.now();
@@ -1967,7 +2400,7 @@ class WebSocketClient {
     // Clear streaming step queues (call when generation completes or is cancelled)
     clearStreamingStepQueues(modalType = null) {
         if (!this.streamingStepQueues) return;
-        
+
         if (modalType) {
             // Clear specific modal queue
             if (this.streamingStepQueues[modalType]) {
@@ -1988,23 +2421,27 @@ class WebSocketClient {
         }
 
         const queueData = this.streamingStepQueues[modalType];
-        
+
         // Wait while there are steps in queue or queue is being processed
         while (queueData.queue.length > 0 || queueData.isProcessing) {
             await new Promise(resolve => setTimeout(resolve, 50));
         }
     }
 
-    // Handle dynamic generation progress updates
+    // Handle Rentan progress updates
     handleDynamicGenerationProgressUpdate(message) {
         const { phase, data } = message;
+
+        // Reset timeout for any pending dynamic context resolution requests
+        // This prevents timeouts during long-running Rentan processes
+        this.resetTimeoutsForRequestType('resolve_dynamic_context');
 
         // Update carousel with context data when available
         if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
             // Update current context during generation
             updateDynamicCarousel(data.carousel, 'current');
         }
-        
+
         // Update compiled prompt context when preview data is updated
         if (data?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
             // Update compiled context and switch to compiled mode
@@ -2016,7 +2453,10 @@ class WebSocketClient {
             updateSpellbookDynamicGenerationProgressOverlay(phase, data);
         }
 
-        if (!manualModal.classList.contains('hidden')) {
+        // Update overlay if dynamic generation is active, even if modal is hidden (modal hides during generation)
+        const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
+        
+        if (isDynamicGenerationActive) {
             updateDynamicGenerationProgressOverlay(phase, data);
         }
     }
@@ -2121,7 +2561,7 @@ class WebSocketClient {
                         if (data.delayMs) {
                             const delaySeconds = Math.ceil(data.delayMs / 1000);
                             statusMessage = `Stage delay: ${delaySeconds}s remaining`;
-                            
+
                             // Start countdown timer for stage delay
                             if (!progressState.delayTimer) {
                                 let remainingSeconds = delaySeconds;
@@ -2167,7 +2607,7 @@ class WebSocketClient {
                             initializeStageIndicators(data.totalStages);
                         }
                     }
-                    
+
                     // Update indicators with current progress
                     if (typeof updateStageIndicators === 'function') {
                         updateStageIndicators(data);
@@ -2246,16 +2686,83 @@ class WebSocketClient {
     handleQueueUpdate(data) {
         // Trigger queue update event
         this.triggerEvent('queue_update', data);
-        
+
         // Update global queue status for the app
         if (window.optionsData) {
             window.optionsData.queue_status = data.value;
         }
-        
+
         // Update generation button state if the function exists
         if (typeof updateManualGenerateBtnState === 'function') {
             updateManualGenerateBtnState();
         }
+    }
+
+    handleSearchIndexingStatus(message) {
+        const indicator = document.getElementById('searchIndexingIndicator');
+        if (!indicator) return;
+
+        const icon = indicator.querySelector('i');
+        if (!icon) return;
+
+        const status = message.status || 'idle';
+        const statusMessage = message.message || 'Search index up to date';
+
+        // Update tooltip
+        indicator.title = statusMessage;
+
+        // Remove all status classes
+        indicator.classList.remove('indexing', 'up_to_date', 'error', 'paused', 'cache_init', 'cache_ready', 'idle');
+
+        // Update icon and add appropriate class based on status
+        switch (status) {
+            case 'starting':
+            case 'indexing':
+            case 'cache_init':
+                indicator.classList.add('indexing');
+                icon.className = 'fas fa-sync fa-spin';
+                break;
+            case 'complete':
+            case 'up_to_date':
+            case 'cache_ready':
+                indicator.classList.add('up_to_date');
+                icon.className = 'fas fa-sync';
+                break;
+            case 'paused':
+                indicator.classList.add('paused');
+                icon.className = 'fas fa-sync';
+                icon.classList.remove('fa-spin');
+                break;
+            case 'resumed':
+            case 'idle':
+                indicator.classList.add('up_to_date');
+                icon.className = 'fas fa-sync';
+                break;
+            case 'error':
+                indicator.classList.add('error');
+                icon.className = 'fas fa-rotate-exclamation';
+                // Remove spin animation on error
+                icon.classList.remove('fa-spin');
+                break;
+            default:
+                icon.className = 'fas fa-sync';
+                break;
+        }
+
+        // Update paused state in indicator data attribute for context menu
+        if (status === 'paused') {
+            indicator.dataset.indexingPaused = 'true';
+        } else if (status === 'resumed' || status === 'idle' || status === 'up_to_date' || status === 'complete') {
+            indicator.dataset.indexingPaused = 'false';
+        }
+
+        // Re-attach context menu if it exists to update dynamic items
+        if (indicator._menuConfigFn && window.contextMenu) {
+            window.contextMenu.attachToElement(indicator, indicator._menuConfigFn());
+        }
+
+        // Trigger event for other parts of the app that might want to listen
+        this.triggerEvent('search_indexing_status', message);
     }
 
 
@@ -2264,7 +2771,7 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
             const result = await this.sendMessage('upscale_image', upscaleParams);
             return result;
@@ -2279,7 +2786,7 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
             const result = await this.sendMessage('expand_image', expansionParams);
             return result;
@@ -2294,7 +2801,7 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
             const result = await this.sendMessage('reroll_expanded_image', params);
             return result;
@@ -2438,8 +2945,8 @@ class WebSocketClient {
         return this.sendMessageWithRequestId('search_presets', this.generateRequestId(), { query });
     }
 
-    async loadPreset(presetName) {
-        return this.sendMessageWithRequestId('load_preset', this.generateRequestId(), { presetName });
+    async loadPreset(presetReq) {
+        return this.sendMessageWithRequestId('load_preset', this.generateRequestId(), presetReq);
     }
 
     async savePreset(presetName, config) {
@@ -2519,10 +3026,10 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('search_files', { 
-                query, 
+            const result = await this.sendMessage('search_files', {
+                query,
                 viewType,
                 action: 'search'
             });
@@ -2532,16 +3039,16 @@ class WebSocketClient {
             throw error;
         }
     }
-    
+
     // Get tag suggestions without performing full search
     async getTagSuggestions(query, viewType = 'images', contextTags = []) {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('search_files', { 
-                query, 
+            const result = await this.sendMessage('search_files', {
+                query,
                 viewType,
                 action: 'suggestions',
                 contextTags: contextTags
@@ -2552,15 +3059,15 @@ class WebSocketClient {
             throw error;
         }
     }
-    
+
     // Initialize search cache for a view type
     async initializeSearchCache(viewType = 'images') {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('search_files', { 
+            const result = await this.sendMessage('search_files', {
                 action: 'start',
                 viewType: viewType
             });
@@ -2570,15 +3077,15 @@ class WebSocketClient {
             throw error;
         }
     }
-    
+
     // Clean up search cache
     async cleanupSearchCache() {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('search_files', { 
+            const result = await this.sendMessage('search_files', {
                 action: 'stop'
             });
             return result;
@@ -2587,15 +3094,15 @@ class WebSocketClient {
             throw error;
         }
     }
-    
+
     // Request fresh gallery data for search filtering
     async requestGalleryData(viewType = 'images') {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('request_gallery', { 
+            const result = await this.sendMessage('request_gallery', {
                 viewType: viewType,
                 includeMetadata: false // We only need the image list for filtering
             });
@@ -2613,6 +3120,10 @@ class WebSocketClient {
 
     async getWorkspace() {
         return this.sendMessage('workspace_get');
+    }
+
+    async getDesktopSettings() {
+        return this.sendMessage('desktop_get_settings');
     }
 
     async createWorkspace(name, color = null) {
@@ -2727,6 +3238,20 @@ class WebSocketClient {
         return this.sendMessage('workspace_update_settings', { id, settings });
     }
 
+    // Save window positions without triggering ticket system (uses ackless message)
+    // Window positions are now global (not per-workspace), so workspaceId is ignored
+    async saveWindowPositions(workspaceId, windowPositions) {
+        if (!this.isConnected()) {
+            return;
+        }
+        
+        // Use sendAcklessMessage to avoid triggering the ticket system
+        // workspaceId is ignored - positions are stored globally
+        this.sendAcklessMessage('workspace_update_window_positions', {
+            windowPositions: windowPositions
+        });
+    }
+
     async reorderWorkspaces(workspaceIds) {
         return this.sendMessage('workspace_reorder', { workspaceIds });
     }
@@ -2755,6 +3280,27 @@ class WebSocketClient {
         return this.sendMessage('update_image_preset_bulk', { filenames, presetName });
     }
 
+    // Desktop shortcuts methods
+    async getDesktopShortcuts(workspaceId) {
+        return this.sendMessage('desktop_get_shortcuts', { workspaceId });
+    }
+
+    async addDesktopShortcut(workspaceId, shortcut) {
+        return this.sendMessage('desktop_add_shortcut', { workspaceId, shortcut });
+    }
+
+    async updateDesktopShortcut(workspaceId, shortcutId, updates) {
+        return this.sendMessage('desktop_update_shortcut', { workspaceId, shortcutId, updates });
+    }
+
+    async removeDesktopShortcut(workspaceId, shortcutId) {
+        return this.sendMessage('desktop_remove_shortcut', { workspaceId, shortcutId });
+    }
+
+    async updateDesktopPositions(workspaceId, positions) {
+        return this.sendMessage('desktop_update_positions', { workspaceId, positions });
+    }
+
     async getReferences() {
         return this.sendMessage('get_references');
     }
@@ -2775,6 +3321,10 @@ class WebSocketClient {
         return this.sendMessage('upload_reference', { imageData, workspaceId, tempFile, comment, filename, description, tags });
     }
 
+    async uploadWallpaper(imageData, workspaceId) {
+        return this.sendMessage('upload_wallpaper', { imageData, workspaceId });
+    }
+
     async replaceReference(hash, imageData, workspaceId, tempFile = null, filename = null) {
         return this.sendMessage('replace_reference', { hash, imageData, workspaceId, tempFile, filename });
     }
@@ -2789,9 +3339,9 @@ class WebSocketClient {
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Download timeout - server took too long to respond')), 10000); // 10 second timeout
             });
-            
+
             const downloadPromise = this.sendMessage('download_url_file', { url });
-            
+
             return await Promise.race([downloadPromise, timeoutPromise]);
         } catch (error) {
             console.error('❌ WebSocket downloadUrlFile error:', error);
@@ -2913,7 +3463,7 @@ class WebSocketClient {
     async refreshServerCache() {
         return this.sendMessage('refresh_server_cache', {}, false); // Background operation
     }
-    
+
     async broadcastResourceUpdate(updateType, message, files = []) {
         return this.sendMessage('broadcast_resource_update', { updateType, message, files });
     }
@@ -3222,7 +3772,7 @@ class WebSocketClient {
             if (!this.pendingRequests) {
                 this.pendingRequests = new Map();
             }
-            
+
             this.pendingRequests.set(requestId, { resolve, reject, type, showBanner });
 
             // Increment pending requests count
@@ -3323,23 +3873,65 @@ class WebSocketClient {
 
     // Initialize WebSocket indicator elements
     initWebSocketIndicators() {
-        // Initialize menubar indicators
-        this.websocketIndicators.menubar.container = document.getElementById('websocketIndicatorMenubar');
-        this.websocketIndicators.menubar.upArrow = document.getElementById('websocketUpMenubar');
-        this.websocketIndicators.menubar.downArrow = document.getElementById('websocketDownMenubar');
-        this.websocketIndicators.menubar.status = document.getElementById('websocketStatusMenubar');
-
-        // Initialize overlay indicators
-        this.websocketIndicators.overlay.container = document.getElementById('websocketIndicatorOverlay');
-        this.websocketIndicators.overlay.upArrow = document.getElementById('websocketUpOverlay');
-        this.websocketIndicators.overlay.downArrow = document.getElementById('websocketDownOverlay');
-        this.websocketIndicators.overlay.status = document.getElementById('websocketStatusOverlay');
+        // Clear existing indicators
+        this.websocketIndicators = [];
+        
+        // Find all websocket indicator containers on the page
+        const containers = document.querySelectorAll('.websocket-indicator');
+        
+        // Populate indicator array with elements from each container
+        containers.forEach(container => {
+            this.websocketIndicators.push({
+                container: container,
+                status: container.querySelector('.websocket-status'),
+                upArrow: container.querySelector('.websocket-arrow-up'),
+                downArrow: container.querySelector('.websocket-arrow-down'),
+                upTimeout: null,
+                downTimeout: null
+            });
+        });
 
         // Set initial status
         this.updateWebSocketStatus('disconnected');
     }
 
-    // Update WebSocket connection status for both indicators
+    // Refresh websocket indicators (useful if new indicators are added to DOM dynamically)
+    refreshWebSocketIndicators() {
+        // Clear any existing timeouts before refreshing
+        this.clearWebSocketIndicatorTimeouts();
+        
+        // Determine current connection status
+        const currentStatus = this.ws && this.ws.readyState === WebSocket.OPEN 
+            ? 'connected' 
+            : this.isConnecting 
+            ? 'connecting' 
+            : 'disconnected';
+        
+        // Clear existing indicators
+        this.websocketIndicators = [];
+        
+        // Find all websocket indicator containers on the page
+        const containers = document.querySelectorAll('.websocket-indicator');
+        
+        // Populate indicator array with elements from each container
+        containers.forEach(container => {
+            this.websocketIndicators.push({
+                container: container,
+                status: container.querySelector('.websocket-status'),
+                upArrow: container.querySelector('.websocket-arrow-up'),
+                downArrow: container.querySelector('.websocket-arrow-down'),
+                upTimeout: null,
+                downTimeout: null
+            });
+        });
+
+        // Restore current status to all indicators
+        this.updateWebSocketStatus(currentStatus);
+        
+        this.logInfo(`WebSocket indicators refreshed. Found ${this.websocketIndicators.length} indicator(s).`);
+    }
+
+    // Update WebSocket connection status for all indicators
     updateWebSocketStatus(status) {
         const statusClasses = {
             'connected': 'connected',
@@ -3349,15 +3941,12 @@ class WebSocketClient {
 
         const statusClass = statusClasses[status] || '';
 
-        // Update menubar status
-        if (this.websocketIndicators.menubar.status) {
-            this.websocketIndicators.menubar.status.className = `websocket-status ${statusClass}`;
-        }
-
-        // Update overlay status
-        if (this.websocketIndicators.overlay.status) {
-            this.websocketIndicators.overlay.status.className = `websocket-status ${statusClass}`;
-        }
+        // Update all indicators
+        this.websocketIndicators.forEach(indicator => {
+            if (indicator.status) {
+                indicator.status.className = `websocket-status ${statusClass}`;
+            }
+        });
     }
 
     // Flash WebSocket arrow for traffic indication with rapid activity support
@@ -3365,95 +3954,57 @@ class WebSocketClient {
         const arrowType = direction === 'up' ? 'upArrow' : 'downArrow';
         const timeoutType = direction === 'up' ? 'upTimeout' : 'downTimeout';
 
-        // Handle menubar arrow
-        if (this.websocketIndicators.menubar[arrowType]) {
-            const menubarArrow = this.websocketIndicators.menubar[arrowType];
-            const menubarTimeout = this.websocketIndicators.menubar[timeoutType];
+        // Handle all indicators
+        this.websocketIndicators.forEach(indicator => {
+            const arrow = indicator[arrowType];
+            if (!arrow) return;
 
             // Clear existing timeout if one is running (rapid activity handling)
-            if (menubarTimeout) {
-                clearTimeout(menubarTimeout);
+            if (indicator[timeoutType]) {
+                clearTimeout(indicator[timeoutType]);
             }
 
             // Force animation restart by removing and re-adding the class
-            menubarArrow.classList.remove('active');
+            arrow.classList.remove('active');
             // Force reflow to ensure animation reset
-            void menubarArrow.offsetHeight;
-            menubarArrow.classList.add('active');
+            void arrow.offsetHeight;
+            arrow.classList.add('active');
 
             // Set new timeout to remove active class after duration
-            this.websocketIndicators.menubar[timeoutType] = setTimeout(() => {
-                menubarArrow.classList.remove('active');
-                this.websocketIndicators.menubar[timeoutType] = null;
+            indicator[timeoutType] = setTimeout(() => {
+                arrow.classList.remove('active');
+                indicator[timeoutType] = null;
             }, duration);
-        }
-
-        // Handle overlay arrow
-        if (this.websocketIndicators.overlay[arrowType]) {
-            const overlayArrow = this.websocketIndicators.overlay[arrowType];
-            const overlayTimeout = this.websocketIndicators.overlay[timeoutType];
-
-            // Clear existing timeout if one is running (rapid activity handling)
-            if (overlayTimeout) {
-                clearTimeout(overlayTimeout);
-            }
-
-            // Force animation restart by removing and re-adding the class
-            overlayArrow.classList.remove('active');
-            // Force reflow to ensure animation reset
-            void overlayArrow.offsetHeight;
-            overlayArrow.classList.add('active');
-
-            // Set new timeout to remove active class after duration
-            this.websocketIndicators.overlay[timeoutType] = setTimeout(() => {
-                overlayArrow.classList.remove('active');
-                this.websocketIndicators.overlay[timeoutType] = null;
-            }, duration);
-        }
+        });
     }
 
     // Clear all WebSocket indicator timeouts (for cleanup)
     clearWebSocketIndicatorTimeouts() {
-        // Clear menubar timeouts
-        if (this.websocketIndicators.menubar.upTimeout) {
-            clearTimeout(this.websocketIndicators.menubar.upTimeout);
-            this.websocketIndicators.menubar.upTimeout = null;
-        }
-        if (this.websocketIndicators.menubar.downTimeout) {
-            clearTimeout(this.websocketIndicators.menubar.downTimeout);
-            this.websocketIndicators.menubar.downTimeout = null;
-        }
+        // Clear all indicator timeouts and active classes
+        this.websocketIndicators.forEach(indicator => {
+            // Clear timeouts
+            ['upTimeout', 'downTimeout'].forEach(timeoutType => {
+                if (indicator[timeoutType]) {
+                    clearTimeout(indicator[timeoutType]);
+                    indicator[timeoutType] = null;
+                }
+            });
 
-        // Clear overlay timeouts
-        if (this.websocketIndicators.overlay.upTimeout) {
-            clearTimeout(this.websocketIndicators.overlay.upTimeout);
-            this.websocketIndicators.overlay.upTimeout = null;
-        }
-        if (this.websocketIndicators.overlay.downTimeout) {
-            clearTimeout(this.websocketIndicators.overlay.downTimeout);
-            this.websocketIndicators.overlay.downTimeout = null;
-        }
-
-        // Remove active classes
-        if (this.websocketIndicators.menubar.upArrow) {
-            this.websocketIndicators.menubar.upArrow.classList.remove('active');
-        }
-        if (this.websocketIndicators.menubar.downArrow) {
-            this.websocketIndicators.menubar.downArrow.classList.remove('active');
-        }
-        if (this.websocketIndicators.overlay.upArrow) {
-            this.websocketIndicators.overlay.upArrow.classList.remove('active');
-        }
-        if (this.websocketIndicators.overlay.downArrow) {
-            this.websocketIndicators.overlay.downArrow.classList.remove('active');
-        }
+            // Remove active classes
+            if (indicator.upArrow) {
+                indicator.upArrow.classList.remove('active');
+            }
+            if (indicator.downArrow) {
+                indicator.downArrow.classList.remove('active');
+            }
+        });
     }
 
     // Handle service worker messages
     handleServiceWorkerMessage(event) {
         if (event.data && event.data.type === 'NETWORK_ACTIVITY') {
             const { activityType, requestData } = event.data;
-            
+
             // Flash the appropriate arrow based on activity type
             if (activityType === 'transmit') {
                 this.flashWebSocketArrow('up', 300); // Shorter duration for service worker activity
@@ -3547,7 +4098,7 @@ class WebSocketClient {
                 // For non-displayed requests or requests with showBanner=false, just update the ticker display
                 this.updateTickerDisplay();
             }
-                        
+
             // Execute callback if provided
             if (request.callback && typeof request.callback === 'function') {
                 try {
@@ -3556,7 +4107,7 @@ class WebSocketClient {
                     console.error(`❌ Error in request callback for ${requestId}:`, callbackError);
                 }
             }
-            
+
             // Also check for registered callbacks
             if (this.requestCallbacks && this.requestCallbacks.has(requestId)) {
                 const callback = this.requestCallbacks.get(requestId);
@@ -3567,7 +4118,7 @@ class WebSocketClient {
                     console.error(`❌ Error in registered callback for ${requestId}:`, callbackError);
                 }
             }
-            
+
             if (error) {
                 request.reject(error);
             } else {
@@ -3620,13 +4171,13 @@ class WebSocketClient {
     isConnected() {
         return this.ws && this.ws.readyState === WebSocket.OPEN;
     }
-    
+
     // Check if the connection is healthy and ready for requests
     isConnectionHealthy() {
-        return this.isConnected() && 
-               this.getConnectionState() === 'connected' && 
-               !this.isConnecting && 
-               this.ws.readyState === WebSocket.OPEN;
+        return this.isConnected() &&
+            this.getConnectionState() === 'connected' &&
+            !this.isConnecting &&
+            this.ws.readyState === WebSocket.OPEN;
     }
 
     getConnectionState() {
@@ -3641,17 +4192,17 @@ class WebSocketClient {
     }
 
     // Preset Group Management Methods
-    
+
     // Save a preset group
     async savePresetGroup(groupName, groupData) {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('save_preset_group', { 
-                groupName, 
-                groupData 
+            const result = await this.sendMessage('save_preset_group', {
+                groupName,
+                groupData
             });
             return result;
         } catch (error) {
@@ -3665,10 +4216,10 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
-            const result = await this.sendMessage('delete_preset_group', { 
-                groupName 
+            const result = await this.sendMessage('delete_preset_group', {
+                groupName
             });
             return result;
         } catch (error) {
@@ -3682,12 +4233,134 @@ class WebSocketClient {
         if (!this.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         try {
             const result = await this.sendMessage('get_preset_groups', {});
             return result;
         } catch (error) {
             console.error('Get preset groups error:', error);
+            throw error;
+        }
+    }
+
+    // Notes Management Methods
+
+    // Create a new note
+    async createNote(noteData) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_create', noteData);
+            return result;
+        } catch (error) {
+            console.error('Create note error:', error);
+            throw error;
+        }
+    }
+
+    // Get a note by ID
+    async getNote(noteId) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_get', { noteId });
+            return result;
+        } catch (error) {
+            console.error('Get note error:', error);
+            throw error;
+        }
+    }
+
+    // Get notes by workspace
+    async getNotesByWorkspace(workspaceId) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_get_by_workspace', { workspaceId });
+            return result;
+        } catch (error) {
+            console.error('Get notes by workspace error:', error);
+            throw error;
+        }
+    }
+
+    // Get all notes
+    async getAllNotes() {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_get_all', {});
+            return result;
+        } catch (error) {
+            console.error('Get all notes error:', error);
+            throw error;
+        }
+    }
+
+    // Get all notes metadata (without content for performance)
+    async getAllNotesMetadata() {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_get_all_metadata', {});
+            return result;
+        } catch (error) {
+            console.error('Get all notes metadata error:', error);
+            throw error;
+        }
+    }
+
+    // Update a note
+    async updateNote(noteId, updates) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_update', { noteId, updates });
+            return result;
+        } catch (error) {
+            console.error('Update note error:', error);
+            throw error;
+        }
+    }
+
+    // Delete a note
+    async deleteNote(noteId) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_delete', { noteId });
+            return result;
+        } catch (error) {
+            console.error('Delete note error:', error);
+            throw error;
+        }
+    }
+
+    // Save note content
+    async saveNoteContent(noteId, content) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            const result = await this.sendMessage('notes_save_content', { noteId, content });
+            return result;
+        } catch (error) {
+            console.error('Save note content error:', error);
             throw error;
         }
     }

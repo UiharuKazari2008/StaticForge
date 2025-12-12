@@ -1,6 +1,6 @@
 /**
- * Text Replacement Manager
- * Manages text replacements in prompt.config.json with a visual interface
+ * Renkin System Manager
+ * Manages Genso (text expanders) in prompt.config.json with a visual interface
  */
 
 let textReplacementData = {};
@@ -14,6 +14,43 @@ let textReplacementPaginationInfo = {
     hasNextPage: false,
     hasPrevPage: false
 };
+
+function extractBiasFromTextForDisplay(text) {
+    if (!text || typeof text !== 'string') return null;
+    if (!/^(-?\d+\.?\d*)::/.test(text)) {
+        return null;
+    }
+
+    const autoTerminatingPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::)[\s\S])+?)(?=\s*-?\d+\.?\d*::|::|$)/;
+    const autoMatch = text.match(autoTerminatingPattern);
+    if (autoMatch) {
+        return parseFloat(autoMatch[1]);
+    }
+
+    const traditionalPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::)[\s\S])+?)::/;
+    const traditionalMatch = text.match(traditionalPattern);
+    if (traditionalMatch) {
+        return parseFloat(traditionalMatch[1]);
+    }
+
+    return null;
+}
+
+function hasEmphasisGroupForDisplay(text) {
+    if (!text || typeof text !== 'string') return false;
+    const completeGroupPattern = /^(-?\d+\.?\d*)::[\s\S]+::$/;
+    if (completeGroupPattern.test(text)) return true;
+    const autoTerminatingPattern = /^(-?\d+\.?\d*)::/;
+    return autoTerminatingPattern.test(text);
+}
+
+function getReplacementBias(replacement) {
+    if (!replacement) return null;
+    if (replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined) {
+        return replacement.segment_emphasis;
+    }
+    return extractBiasFromTextForDisplay(replacement.select_text);
+}
 
 // Initialize create text replacement modal
 function initializeCreateTextReplacementModal() {
@@ -136,10 +173,10 @@ async function showTextReplacementManager() {
 }
 
 // Hide text replacement manager modal
-function hideTextReplacementManager() {
+async function hideTextReplacementManager() {
     const modal = document.getElementById('textReplacementManagerModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
 
     // Reset to first page and clear search
@@ -287,12 +324,14 @@ function renderTextReplacementList() {
 
 // Scroll text replacement list to top
 function scrollTextReplacementListToTop() {
-    const modal = document.getElementById('textReplacementManagerModal');
-    if (modal) {
-        // Scroll the list container to top
-        const listContainer = modal.querySelector('.text-replacement-list-container .text-replacement-list');
-        if (listContainer) {
-            listContainer.scrollTop = 0;
+    const container = document.getElementById('textReplacementListContainer');
+    if (!container) return;
+    
+    // If scrollbar is initialized, scroll the scrollableContent wrapper
+    if (window.customScrollbar && window.customScrollbar.scrollbars.has(container)) {
+        const data = window.customScrollbar.scrollbars.get(container);
+        if (data && data.scrollableContent) {
+            data.scrollableContent.scrollTop = 0;
         }
     }
 }
@@ -880,6 +919,12 @@ function showCreateTextReplacementModal() {
     // Initialize with one array item
     initializeCreateArrayItems();
     
+    // Link to parent modal (text replacement manager)
+    const parentModal = document.getElementById('textReplacementManagerModal');
+    if (parentModal && !parentModal.classList.contains('hidden')) {
+        linkToolWindowToParent(modal, parentModal);
+    }
+    
     // Show modal
     openModal(modal);
     
@@ -888,10 +933,10 @@ function showCreateTextReplacementModal() {
 }
 
 // Hide create text replacement modal
-function hideCreateTextReplacementModal() {
+async function hideCreateTextReplacementModal() {
     const modal = document.getElementById('createTextReplacementModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
     const searchInput = document.getElementById('textReplacementSearch');
     if (searchInput) {
@@ -1185,14 +1230,21 @@ async function showFavoritesManager() {
     await loadFavorites();
     console.log('Favorites loaded, rendering list...');
     renderFavoritesList();
+    
+    // Link to parent modal (text replacement manager)
+    const parentModal = document.getElementById('textReplacementManagerModal');
+    if (parentModal && !parentModal.classList.contains('hidden')) {
+        linkToolWindowToParent(modal, parentModal);
+    }
+    
     openModal(modal);
 }
 
 // Hide favorites manager modal
-function hideFavoritesManager() {
+async function hideFavoritesManager() {
     const modal = document.getElementById('favoritesManagerModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
 
     // Clear search input when modal is closed
@@ -1480,6 +1532,12 @@ function validateDynamicReplacementCanApply(replacement) {
         }
     }
 
+    // Check anchor text
+    const anchorText = (replacement.anchor_text || '').trim();
+    if (anchorText && targetText.indexOf(anchorText) !== -1) {
+        return true;
+    }
+
     // For optional replacements with alternative_text, can always apply (will append)
     if (!replacement.is_critical && replacement.alternative_text) {
         return true;
@@ -1518,7 +1576,7 @@ function getDynamicReplacementTargetText(replacement) {
     return null;
 }
 
-// Apply a dynamic replacement client-side (mimics server logic)
+// Apply a Rentan modification (Tendai) client-side (mimics server logic)
 function applyDynamicReplacementClientSide(replacement) {
     const action = replacement.action?.toLowerCase() || 'replace';
     const targetType = replacement.targetType;
@@ -1564,6 +1622,7 @@ function applyDynamicReplacementClientSide(replacement) {
     const alternativeText = replacement.alternative_text || null;
     const isCritical = replacement.is_critical !== false; // Default to true
     const count = replacement.count;
+    const anchorText = (replacement.anchor_text || '').trim();
 
     let method = 'direct';
     let appliedSuccessfully = false;
@@ -1651,8 +1710,19 @@ function applyDynamicReplacementClientSide(replacement) {
         // Append action
         let textToAppend = replaceText;
         let insertPosition = result.length;
+        let anchorApplied = false;
 
-        if (selectText && selectText.trim()) {
+        if (anchorText) {
+            const anchorIndex = result.indexOf(anchorText);
+            if (anchorIndex !== -1) {
+                insertPosition = anchorIndex + anchorText.length;
+                appliedSuccessfully = true;
+                anchorApplied = true;
+                method = 'anchor';
+            }
+        }
+
+        if (!anchorApplied && selectText && selectText.trim()) {
             // Try to find select_text and append after it
             const index = result.indexOf(selectText);
             if (index !== -1) {
@@ -1721,11 +1791,17 @@ function applyDynamicReplacementClientSide(replacement) {
 }
 
 
-// Create a dynamic replacement item for the lock modal (matches existing layout)
+// Create a Rentan modification (Tsubo) item for the lock modal (matches existing layout)
 function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     const item = document.createElement('div');
     const action = replacement.action?.toLowerCase() || 'replace';
     item.className = `text-replacement-lock-item dynamic-replacement-type dynamic-action-${action}`;
+    
+    // Add UC class if targetType is uc
+    if (replacement.targetType === 'uc' || (replacement.targetType === 'character' && replacement.targetField === 'uc')) {
+        item.classList.add('negative-prompt');
+    }
+    
     item.dataset.globalIndex = globalIndex;
 
     const actionDisplay = action === 'replace' ? 'Replace' : action === 'append' ? 'Append' : 'Delete';
@@ -1790,6 +1866,13 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
             locationColor = '#ff8199';
         }
     }
+
+    // Get action type color
+    // Anchor + mitigation context
+    const mitigations = Array.isArray(replacement.mitigations) ? replacement.mitigations : [];
+    const anchorDetails = replacement.anchor_details || null;
+    const anchorDisplayText = anchorDetails?.preview || replacement.anchor_text || '';
+    const anchorSourceLabel = anchorDetails?.source ? anchorDetails.source.replace(/_/g, ' ') : '';
 
     // Get action type color
     let actionColor = '#9ca3af'; // Default gray
@@ -1863,7 +1946,12 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     let replaceTextPattern = '';
     if (action === 'delete') {
         if (replacement.select_text) {
-            replaceTextPattern = `"${escapeHtml(replacement.select_text)}"`;
+            let selectText = replacement.select_text;
+            // Apply bias if replacement has segment_emphasis property
+            if (replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined && !hasEmphasisGroupForDisplay(selectText)) {
+                selectText = applyBiasToText(selectText, replacement.segment_emphasis);
+            }
+            replaceTextPattern = `"${escapeHtml(selectText)}"`;
             if (replacement.count) {
                 replaceTextPattern += ` <span style="opacity: 0.7; font-size: 0.9em;">(${replacement.count} occurrence(s))</span>`;
             } else {
@@ -1875,9 +1963,16 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                 : '<i>Delete all</i>';
         }
     } else {
-        replaceTextPattern = replacement.replace_text 
-            ? `"${escapeHtml(replacement.replace_text)}"` 
-            : '<i>N/A</i>';
+        if (replacement.replace_text) {
+            let replaceText = replacement.replace_text;
+            const replacementBias = getReplacementBias(replacement);
+            if (replacementBias !== null && !hasEmphasisGroupForDisplay(replaceText)) {
+                replaceText = applyBiasToText(replaceText, replacementBias);
+            }
+            replaceTextPattern = `"${escapeHtml(replaceText)}"`;
+        } else {
+            replaceTextPattern = '<i>N/A</i>';
+        }
     }
 
     // Build status indicator badges
@@ -1893,6 +1988,10 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
             statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Used alternative: ${escapeHtml(replacement.alternative_text_used)}"><i class="fas fa-rotate"></i> Alternative</span>`;
         }
     }
+    const wasConverted = mitigations.some(m => m.type === 'converted_to_append');
+    if (wasConverted) {
+        statusIndicators += `<span class="text-replacement-badge text-replacement-badge-info" title="Converted from replace to append due to overlapping anchor"><i class="fas fa-share"></i> Converted</span>`;
+    }
 
     // Validate if can be applied client-side
     const canApply = validateDynamicReplacementCanApply(replacement);
@@ -1900,19 +1999,39 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     // Create unique ID for feedback
     const repId = `dynamic_lock_${globalIndex}_${Math.random().toString(36).substr(2, 9)}`;
 
+    const anchorSection = anchorDisplayText ? `
+        <div class="text-replacement-full-value selectable">
+            <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">
+                Anchor${anchorSourceLabel ? ` <span class="text-replacement-badge text-replacement-badge-info" style="margin-left: 4px;">${escapeHtml(anchorSourceLabel)}</span>` : ''}
+            </div>
+            "${escapeHtml(anchorDisplayText)}"
+        </div>
+    ` : '';
+
+    const mitigationSection = mitigations.length ? `
+        <div class="text-replacement-full-value selectable">
+            <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">Mitigations</div>
+            <ul style="margin: 0; padding-left: 1.25em; font-size: 0.85em; color: var(--text-muted); list-style-type: disc;">
+                ${mitigations.map(mit => `<li><strong>${escapeHtml(mit.type)}</strong>${mit.description ? ` – ${escapeHtml(mit.description)}` : ''}</li>`).join('')}
+            </ul>
+        </div>
+    ` : '';
+
     item.innerHTML = `
         <div class="text-replacement-lock-content">
             <div class="text-replacement-lock-info">
-                ${(action === 'append' ? !!replacement.select_text : action !== 'delete' || !replacement.select_text) ? `<div class="text-replacement-full-value">
+                ${(action === 'append' ? !!replacement.select_text : action !== 'delete' || !replacement.select_text) ? `<div class="text-replacement-full-value selectable">
                     <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">Find:</div>
                     ${selectTextPattern}
 </div>` : ''}
-                ${action !== 'delete' || replacement.replace_text || replacement.select_text ? `<div class="text-replacement-full-value">
+                ${action !== 'delete' || replacement.replace_text || replacement.select_text ? `<div class="text-replacement-full-value selectable">
                     <div style="opacity: 0.7; font-size: 0.9em; margin-bottom: 4px;">${action === 'delete' ? 'Delete:' : (action === 'append' ? 'Insert:' : 'Replace with:')}</div>
                     ${replaceTextPattern}
                 </div>` : ''}
-                ${replacement.reason ? `<div style="color: var(--text-secondary); font-size: 0.75em; padding: var(--spacing-xs) 0; line-height: 1.3;">
-                    <i class="fas fa-info-circle"></i> ${escapeHtml(replacement.reason)}
+                ${anchorSection}
+                ${mitigationSection}
+                ${replacement.reason ? `<div style="color: var(--text-muted); font-size: 0.7em;" class="selectable">
+                    <i class="fas fa-quote-left"></i> ${escapeHtml(replacement.reason)}
                 </div>` : ''}
                 ${replacement.references && replacement.references.length > 0 ? `<div class="text-replacement-references" style="font-size: 0.7em;">
                     <div style="font-weight: 600; margin-bottom: var(--spacing-xs); opacity: 0.8;">
@@ -1937,6 +2056,12 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                 <div class="text-replacement-lock-badges">
                     <span class="text-replacement-badge text-replacement-badge-combined">
                         <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                        ${replacement.targetType === 'character' && replacement.targetSource !== undefined ? `
+                            <span class="text-replacement-badge-character">
+                                <i class="fas fa-person"></i>
+                                <span style="font-size: 0.75em;">${replacement.targetSource + 1}</span>
+                            </span>
+                        ` : ''}
                         <span class="badge-icon-type" style="color: ${actionColor};"><i class="fas ${actionIcon}"></i></span>
                         ${statusIcon ? `<span class="badge-icon-status" style="color: ${statusColor};" title="${statusTitle}">${statusIcon}</span>` : ''}
                     </span>
@@ -1946,12 +2071,6 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                     ${replacement.replacement_category ? `<span class="text-replacement-badge text-replacement-badge-category ${getCategoryClass(replacement.replacement_category)}">${getCategoryIconLocal(replacement.replacement_category)} ${escapeHtml(replacement.replacement_category)}</span>` : ''}
                 </div>
                 <div class="text-replacement-lock-actions">
-                    <button type="button" class="btn-danger btn-small feedback-btn btn-small" data-rep-id="${repId}" data-select-text="${escapeHtml(replacement?.select_text || '')}" data-replace-text="${escapeHtml(replacement.replace_text || '')}" data-action="${action}" data-reason="${escapeHtml(replacement.reason || '')}" title="Report Issue">
-                        <i class="fas fa-flag"></i>
-                    </button>
-                    ${canApply ? `<button type="button" class="text-replacement-replace-btn btn-secondary btn-small" data-global-index="${globalIndex}" title="Apply to Prompt">
-                        <i class="fas fa-pen-field"></i>
-                    </button>` : ''}
                     <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" data-global-index="${globalIndex}" title="Lock for AI Maintenance">
                         <i class="fas fa-lock"></i>
                     </button>
@@ -1960,15 +2079,6 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
         </div>
     `;
 
-    // Add event listeners
-    const applyBtn = item.querySelector('.text-replacement-replace-btn');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            applyDynamicReplacementFromLockModal(globalIndex);
-        });
-    }
-
     const lockBtn = item.querySelector('.text-replacement-lock-btn');
     if (lockBtn) {
         lockBtn.addEventListener('click', (e) => {
@@ -1976,17 +2086,73 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
             toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
         });
     }
-
-    const feedbackBtn = item.querySelector('.feedback-btn');
-    if (feedbackBtn) {
-        feedbackBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const selectText = feedbackBtn.dataset.selectText;
-            const replaceText = feedbackBtn.dataset.replaceText;
-            const action = feedbackBtn.dataset.action.toLowerCase();
-            const reason = feedbackBtn.dataset.reason;
-            if (typeof showDirectorFeedbackModal === 'function') {
-                showDirectorFeedbackModal(selectText, replaceText, action, reason);
+    // Add context menu to the item
+    if (window.contextMenu) {
+        window.contextMenu.attachToElement(item, {
+            sections: [{
+                type: 'list',
+                items: [
+                    {
+                        text: 'Lock',
+                        icon: 'fas fa-lock',
+                        action: 'lock',
+                        keepMenuOpen: true,
+                        loadfn: (item, target) => {
+                            item.checked = replacement.locked === true;
+                        }
+                    },
+                    { separator: true },
+                    {
+                        text: 'Copy',
+                        icon: 'nai-clipboard',
+                        action: 'copy-value'
+                    },
+                    {
+                        text: 'Apply',
+                        icon: 'fas fa-pen-field',
+                        action: 'apply-prompt',
+                        disabled: !canApply
+                    },
+                    { separator: true },
+                    {
+                        text: 'Report Issue',
+                        icon: 'fas fa-flag',
+                        action: 'report-issue',
+                        className: 'text-danger',
+                    },
+                    {
+                        text: 'Delete',
+                        icon: 'fas fa-trash',
+                        action: 'delete-replacement',
+                        className: 'text-danger',
+                    },
+                ]
+            }],
+            onAction: (actionName, target) => {
+                if (actionName === 'apply-prompt') {
+                    applyDynamicReplacementFromLockModal(globalIndex);
+                } else if (actionName === 'copy-value') {
+                    // Copy replacement value or replace_text
+                    let textToCopy = replacement.value || replacement.replace_text || '';
+                    if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                            showGlassToast('success', null, 'Copied to clipboard', false, 2000, '<i class="nai-clipboard"></i>');
+                        }).catch(err => {
+                            console.error('Failed to copy:', err);
+                            showGlassToast('error', null, 'Failed to copy to clipboard', false, 2000, '<i class="fas fa-exclamation-triangle"></i>');
+                        });
+                    }
+                } else if (actionName === 'report-issue') {
+                    const selectText = feedbackBtn.dataset.selectText;
+                    const replaceText = feedbackBtn.dataset.replaceText;
+                    const action = feedbackBtn.dataset.action.toLowerCase();
+                    const reason = feedbackBtn.dataset.reason;
+                    showDirectorFeedbackModal(selectText, replaceText, action, reason);
+                } else if (actionName === 'lock') {
+                    toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
+                } else if (actionName === 'delete-replacement') {
+                    deleteDynamicReplacementFromLockModal(globalIndex);
+                }
             }
         });
     }
@@ -1994,19 +2160,13 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     return item;
 }
 
-// Apply dynamic replacement from lock modal
-function applyDynamicReplacementFromLockModal(globalIndex) {
+// Helper function to find replacement by global index
+function findDynamicReplacementByIndex(globalIndex) {
     if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
-        showGlassToast('error', null, 'No Enshutsuka data available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-        return;
+        return null;
     }
 
-    // Find the replacement in the data structure
     const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
-    let replacement = null;
-    let replacementArrayRef = null;
-    let replacementArrayIndex = -1;
-    let replacementMetadata = null;
     let currentIndex = 0;
 
     const arrays = [
@@ -2025,29 +2185,42 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
         if (!arr) continue;
         for (let i = 0; i < arr.length; i++) {
             if (currentIndex === globalIndex) {
-                replacement = arr[i];
-                replacementArrayRef = arr;
-                replacementArrayIndex = i;
-                replacementMetadata = { type, targetSource, targetField };
-                break;
+                return {
+                    replacement: arr[i],
+                    arrayRef: arr,
+                    arrayIndex: i,
+                    metadata: { type, targetSource, targetField }
+                };
             }
             currentIndex++;
         }
-        if (replacement) break;
     }
 
-    if (!replacement) {
+    return null;
+}
+
+// Apply Rentan modification (Tendai) from lock modal
+function applyDynamicReplacementFromLockModal(globalIndex) {
+    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        showGlassToast('error', null, 'No Tendai Modifications available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const found = findDynamicReplacementByIndex(globalIndex);
+    if (!found) {
         console.error('Could not find replacement at index', globalIndex);
         showGlassToast('error', null, 'Could not find replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
 
+    const { replacement, arrayRef, arrayIndex, metadata } = found;
+
     // Add targetType metadata to the replacement object
     const replacementWithMetadata = {
         ...replacement,
-        targetType: replacementMetadata.type,
-        targetSource: replacementMetadata.targetSource,
-        targetField: replacementMetadata.targetField
+        targetType: metadata.type,
+        targetSource: metadata.targetSource,
+        targetField: metadata.targetField
     };
 
     // Apply the replacement using client-side logic
@@ -2059,9 +2232,7 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
         replacement.application_method = result.method;
 
         // Remove from the array
-        if (replacementArrayRef && replacementArrayIndex !== -1) {
-            replacementArrayRef.splice(replacementArrayIndex, 1);
-        }
+        arrayRef.splice(arrayIndex, 1);
 
         // Re-render the lock modal list
         if (typeof renderTextReplacementLockList === 'function') {
@@ -2079,13 +2250,55 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
     }
 }
 
-// Toggle dynamic replacement lock in the lock modal
+// Delete Rentan modification (Tendai) from lock modal
+async function deleteDynamicReplacementFromLockModal(globalIndex) {
+    const found = findDynamicReplacementByIndex(globalIndex);
+    if (!found) {
+        console.error('Could not find replacement at index', globalIndex);
+        showGlassToast('error', null, 'Could not find replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const { replacement, arrayRef, arrayIndex } = found;
+
+    // Show confirmation dialog
+    const selectText = replacement.select_text || replacement.replace_text || 'this replacement';
+    const confirmed = await showConfirmationDialog(
+        `Are you sure you want to delete this replacement?\n\n${selectText ? `"${selectText}"` : 'Replacement'}`,
+        [
+            { text: 'Cancel', value: false, className: 'btn-secondary' },
+            { text: 'Delete', value: true, className: 'btn-danger' }
+        ]
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    // Remove from the array
+    arrayRef.splice(arrayIndex, 1);
+
+    // Re-render the lock modal list
+    if (typeof renderTextReplacementLockList === 'function') {
+        renderTextReplacementLockList();
+    }
+
+    // Update the main lock button state
+    if (typeof updateMainLockButtonState === 'function') {
+        updateMainLockButtonState();
+    }
+
+    showGlassToast('success', null, 'Replacement deleted from compiled prompts', false, 3000, '<i class="fas fa-trash"></i>');
+}
+
+// Toggle Rentan modification (Tsubo) lock in the lock modal
 function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         return;
     }
 
     // Find the replacement in the data structure
+    // Rentan: Tendai Modifications
     const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
     let replacement = null;
     let currentIndex = 0;
@@ -2136,6 +2349,7 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     // Update the saved locked replacements array
     if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         const lockedReplacements = [];
+        // Rentan: Tendai Modifications
         const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
         
         // Collect all locked dynamic replacements

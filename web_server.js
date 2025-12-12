@@ -3,8 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const sharp = require('sharp');
-const { NovelAI, Model } = require('nekoai-js');
-const config = require('./config.json');
 const cookieParser = require('cookie-parser');
 const session = require('express-session');
 const crypto = require('crypto');
@@ -23,34 +21,14 @@ let processingScheduled = false; // Flag to prevent concurrent processing
 let lastScheduledCompletion = 0; // Timestamp of last scheduled request completion
 
 // Import modules
-const logger = require('./modules/logger');
+const globalResources = require('./modules/globalResources');
+globalResources.prepare();
 const { authMiddleware, devAuthMiddleware } = require('./modules/auth');
-const { loadPromptConfig, resolvePresetOrGroup } = require('./modules/textReplacements');
 const { tagSuggestionsCache } = require('./modules/cache');
-const { queueMiddleware, getStatus: getQueueStatus } = require('./modules/queue');
-const { WebSocketServer, setGlobalWsServer, getGlobalWsServer } = require('./modules/websocket');
-const { WebSocketMessageHandlers } = require('./modules/websocketHandlers');
-const { getBaseName, stripPngTextChunks, readMetadata, insertTextChunk } = require('./modules/pngMetadata');
 const { processDynamicImage } = require('./modules/imageTools');
 const tracing = require('./modules/tracing');
-const { initializeWorkspaces, getWorkspaces, getActiveWorkspace, addToWorkspaceArray } = require('./modules/workspace');
-const { addReceiptMetadata, addUnattributedReceipt, broadcastReceiptNotification, getImageMetadata } = require('./modules/metadataDatabase');
-const { initializeChatDatabase } = require('./modules/chatDatabase');
-const { initializeDirectorDatabase } = require('./modules/directorDatabase');
-const { initializeKnowledgeMemoryDatabase } = require('./modules/knowledgeMemoryDatabase');
-const imageCounter = require('./modules/imageCounter');
-const { generateMobilePreviews } = require('./modules/previewUtils');
-const ParallelPreviewGenerator = require('./modules/parallelPreviewGenerator');
-const { setContext: setImageGenContext, handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
-const { setContext: setUpscaleContext } = require('./modules/imageUpscaling');
+const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
-
-// Initialize NovelAI client
-const client = new NovelAI({ 
-    token: config.apiKey,
-    timeout: 100000,
-    verbose: !!config.debugNovelAI
- });
 
 // Server readiness tracking
 const serverReadiness = {
@@ -96,318 +74,13 @@ function serverReadinessMiddleware(req, res, next) {
     next();
 }
 
+function getQueueMiddleware(req, res, next) {
+    return globalResources.getQueue().queueMiddleware(req, res, next);
+}
 
-// Account data management
-let accountData = { ok: false };
-let accountBalance = { fixedTrainingStepsLeft: 0, purchasedTrainingSteps: 0, totalCredits: 0 };
-let lastBalanceCheck = 0;
-let lastAccountDataCheck = 0;
 const BALANCE_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 const ACCOUNT_DATA_REFRESH_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
-
-// Cache data management
-let globalCacheData = [];
 const CACHE_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 minutes
-let lastCacheCheck = 0;
-
-// Security and IP Blocking System
-const blockedIPs = new Map(); // IP -> { blockedAt, reason, attempts }
-const suspiciousIPs = new Map(); // IP -> { attempts, lastSeen, patterns }
-const invalidURLAttempts = new Map(); // IP -> { count, lastAttempt }
-
-// Rolling Key System for Service Worker Authentication
-const rollingKeys = {
-  current: null,
-  previous: null, // Keep previous key for transition period
-  lastRotation: 0,
-  rotationInterval: 5 * 60 * 1000, // 5 minutes
-  keyLength: 32,
-  validationAttempts: new Map(), // Track validation attempts per IP
-  maxAttempts: 30, // Max validation attempts per IP per 2 minutes (more liberal)
-  attemptWindow: 2 * 60 * 1000 // 2 minute window (increased from 1 minute)
-};
-
-// Generate a new rolling key with enhanced security
-function generateRollingKey() {
-  // Use crypto.randomBytes for secure random generation
-  const randomBytes = crypto.randomBytes(rollingKeys.keyLength);
-  // Convert to hex and ensure exact length
-  const key = randomBytes.toString('hex');
-  if (key.length !== rollingKeys.keyLength * 2) {
-    throw new Error('Generated key has incorrect length');
-  }
-  return key;
-}
-
-// Validate rolling key input format and sanitize
-function validateAndSanitizeKey(key) {
-  if (!key || typeof key !== 'string') {
-    return { valid: false, sanitized: null };
-  }
-
-  // Remove any whitespace
-  const sanitized = key.trim();
-
-  // Validate length (hex representation of 32 bytes = 64 characters)
-  if (sanitized.length !== rollingKeys.keyLength * 2) {
-    return { valid: false, sanitized: null };
-  }
-
-  // Validate character set (only hexadecimal characters)
-  if (!/^[a-f0-9]+$/i.test(sanitized)) {
-    return { valid: false, sanitized: null };
-  }
-
-  return { valid: true, sanitized: sanitized.toLowerCase() };
-}
-
-// Secure constant-time string comparison to prevent timing attacks
-function secureStringCompare(a, b) {
-  if (!a || !b || typeof a !== 'string' || typeof b !== 'string') {
-    return false;
-  }
-
-  // Use crypto.timingSafeEqual for constant-time comparison
-  try {
-    const aBytes = Buffer.from(a, 'utf8');
-    const bBytes = Buffer.from(b, 'utf8');
-
-    // Only compare if lengths are equal (constant time)
-    if (aBytes.length !== bBytes.length) {
-      return false;
-    }
-
-    return crypto.timingSafeEqual(aBytes, bBytes);
-  } catch (error) {
-    // Fallback to regular comparison if timingSafeEqual fails
-    console.warn('⚠️ timingSafeEqual failed, using regular comparison:', error.message);
-    return a === b;
-  }
-}
-
-// Check rate limiting for key validation attempts
-function checkRateLimit(ip) {
-  const now = Date.now();
-  const attempts = rollingKeys.validationAttempts.get(ip) || { count: 0, resetTime: now + rollingKeys.attemptWindow };
-
-  // Reset counter if window has passed
-  if (now > attempts.resetTime) {
-    attempts.count = 0;
-    attempts.resetTime = now + rollingKeys.attemptWindow;
-  }
-
-  // Check if limit exceeded
-  if (attempts.count >= rollingKeys.maxAttempts) {
-    return { allowed: false, resetTime: attempts.resetTime };
-  }
-
-  // Increment counter
-  attempts.count++;
-  rollingKeys.validationAttempts.set(ip, attempts);
-
-  return { allowed: true };
-}
-
-// Rotate the rolling key
-function rotateRollingKey() {
-  const now = Date.now();
-  if (now - rollingKeys.lastRotation >= rollingKeys.rotationInterval) {
-    rollingKeys.previous = rollingKeys.current;
-    rollingKeys.current = generateRollingKey();
-    rollingKeys.lastRotation = now;
-
-    // Clean up old validation attempts
-    const cutoffTime = now - rollingKeys.attemptWindow;
-    for (const [ip, attempts] of rollingKeys.validationAttempts.entries()) {
-      if (attempts.resetTime < cutoffTime) {
-        rollingKeys.validationAttempts.delete(ip);
-      }
-    }
-
-    return true;
-  }
-  return false;
-}
-
-// Get current valid rolling key
-function getCurrentRollingKey() {
-  rotateRollingKey(); // Rotate if needed
-  return rollingKeys.current;
-}
-
-// Validate a rolling key with comprehensive security checks
-function validateRollingKey(key, ip = 'unknown') {
-  // Validate and sanitize input first
-  const validation = validateAndSanitizeKey(key);
-  if (!validation.valid) {
-    // Only increment rate limit counter for invalid attempts
-    checkRateLimit(ip);
-    logSecurityEvent('INVALID_KEY_FORMAT', ip, {
-      event: 'rolling_key_validation',
-      keyLength: key ? key.length : 0,
-      expectedLength: rollingKeys.keyLength * 2
-    });
-    return false;
-  }
-
-  const sanitizedKey = validation.sanitized;
-
-  // Ensure we have current keys
-  rotateRollingKey();
-
-  // Use secure comparison to prevent timing attacks
-  const isCurrentValid = secureStringCompare(sanitizedKey, rollingKeys.current);
-  const isPreviousValid = rollingKeys.previous && secureStringCompare(sanitizedKey, rollingKeys.previous);
-
-  if (isCurrentValid || isPreviousValid) {
-    logSecurityEvent('VALID_KEY_AUTHENTICATION', ip, {
-      event: 'rolling_key_validation',
-      keyType: isCurrentValid ? 'current' : 'previous',
-      keyAge: Date.now() - rollingKeys.lastRotation
-    });
-    return true;
-  }
-
-  // Only increment rate limit counter for invalid key attempts
-  const rateLimit = checkRateLimit(ip);
-  if (!rateLimit.allowed) {
-    logSecurityEvent('RATE_LIMIT_EXCEEDED', ip, {
-      event: 'rolling_key_validation',
-      attemptsRemaining: rollingKeys.maxAttempts - (rollingKeys.validationAttempts.get(ip)?.count || 0),
-      resetTime: rateLimit.resetTime
-    });
-    return false;
-  }
-
-  logSecurityEvent('INVALID_KEY_REJECTED', ip, {
-    event: 'rolling_key_validation',
-    keyLength: sanitizedKey.length,
-    currentKeyAge: Date.now() - rollingKeys.lastRotation
-  });
-  return false;
-}
-
-// Security audit logging for rolling key system
-function logSecurityEvent(eventType, ip, details = {}) {
-  const timestamp = new Date().toISOString();
-  const logEntry = {
-    timestamp,
-    eventType,
-    ip,
-    ...details
-  };
-
-  // Log security events using logger
-  logger.security(`[${eventType}] IP ${ip}`, details);
-
-  // In production, you might want to:
-  // - Write to security log file
-  // - Send to SIEM system
-  // - Store in security database
-  // - Send alerts for suspicious activity
-}
-
-// Get rolling key system statistics
-function getRollingKeyStats() {
-  const now = Date.now();
-  const activeIPs = rollingKeys.validationAttempts.size;
-
-  // Calculate statistics
-  let totalAttempts = 0;
-  let rateLimitedIPs = 0;
-
-  for (const [ip, attempts] of rollingKeys.validationAttempts.entries()) {
-    totalAttempts += attempts.count;
-    if (attempts.count >= rollingKeys.maxAttempts) {
-      rateLimitedIPs++;
-    }
-  }
-
-  return {
-    currentKeyAge: now - rollingKeys.lastRotation,
-    nextRotation: rollingKeys.lastRotation + rollingKeys.rotationInterval - now,
-    activeIPs,
-    rateLimitedIPs,
-    totalAttempts,
-    keyLength: rollingKeys.current ? rollingKeys.current.length : 0,
-    hasPreviousKey: !!rollingKeys.previous
-  };
-}
-
-// Initialize rolling key system
-function initializeRollingKeySystem() {
-  try {
-    rollingKeys.current = generateRollingKey();
-    rollingKeys.lastRotation = Date.now();
-
-    // Validate that the key was generated correctly
-    if (!rollingKeys.current || rollingKeys.current.length !== rollingKeys.keyLength * 2) {
-      throw new Error('Failed to generate valid rolling key during initialization');
-    }
-
-    // Log successful initialization
-    logSecurityEvent('ROLLING_KEY_INIT', 'system', {
-      keyLength: rollingKeys.current.length,
-      rotationInterval: rollingKeys.rotationInterval
-    });
-
-    // Set up periodic rotation
-    setInterval(rotateRollingKey, rollingKeys.rotationInterval / 4); // Check every 1.25 minutes
-
-    // Set up periodic cleanup of validation attempts
-    setInterval(() => {
-      const now = Date.now();
-      const cutoffTime = now - rollingKeys.attemptWindow;
-      let cleanedCount = 0;
-
-      // Clean up old validation attempts
-      for (const [ip, attempts] of rollingKeys.validationAttempts.entries()) {
-        if (attempts.resetTime < cutoffTime) {
-          rollingKeys.validationAttempts.delete(ip);
-          cleanedCount++;
-        }
-      }
-
-      // Log current statistics
-      const stats = getRollingKeyStats();
-      if (stats.activeIPs > 0 || cleanedCount > 0) {
-        //onsole.log(`🔑 Rolling key stats: ${stats.activeIPs} active IPs, ${stats.rateLimitedIPs} rate limited, cleaned ${cleanedCount} old entries`);
-
-        if (stats.rateLimitedIPs > 0) {
-          logSecurityEvent('RATE_LIMIT_STATS', 'system', stats);
-        }
-      }
-    }, rollingKeys.attemptWindow / 2); // Clean up every 30 seconds
-
-    // Set up security monitoring
-    setInterval(() => {
-      const stats = getRollingKeyStats();
-
-      // Alert if too many IPs are being rate limited
-      if (stats.rateLimitedIPs > 10) {
-        logSecurityEvent('HIGH_RATE_LIMIT_ACTIVITY', 'system', {
-          message: 'High number of rate limited IPs detected',
-          ...stats
-        });
-      }
-
-      // Alert if key is getting old (should have rotated)
-      if (stats.currentKeyAge > rollingKeys.rotationInterval * 1.5) {
-        logSecurityEvent('KEY_ROTATION_DELAY', 'system', {
-          message: 'Key rotation appears to be delayed',
-          ...stats
-        });
-      }
-    }, 60000); // Check every minute
-
-  } catch (error) {
-    logger.error('Failed to initialize rolling key system:', error);
-    logSecurityEvent('ROLLING_KEY_INIT_FAILED', 'system', {
-      error: error.message
-    });
-    throw error;
-  }
-}
 
 // Common scraping patterns and suspicious URLs
 const SCRAPING_PATTERNS = [
@@ -489,38 +162,61 @@ function getRealIP(req) {
            'unknown';
 }
 
-// Check if IP is blocked
-function isIPBlocked(ip) {
-    const blocked = blockedIPs.get(ip);
-    if (!blocked) return false;
+// Check if IP address is in a private range
+function isPrivateIP(ip) {
+    if (!ip || ip === 'unknown') return false;
     
-    // Check if block has expired
-    if (Date.now() - blocked.blockedAt > SECURITY_CONFIG.BLOCK_DURATION_MS) {
-        blockedIPs.delete(ip);
-        return false;
+    // IPv4 private ranges
+    // 10.0.0.0/8
+    if (ip.startsWith('10.')) return true;
+    
+    // 172.16.0.0/12 (172.16.0.0 to 172.31.255.255)
+    if (ip.startsWith('172.')) {
+        const parts = ip.split('.');
+        if (parts.length >= 2) {
+            const secondOctet = parseInt(parts[1], 10);
+            if (secondOctet >= 16 && secondOctet <= 31) {
+                return true;
+            }
+        }
     }
     
-    return true;
+    // 192.168.0.0/16
+    if (ip.startsWith('192.168.')) return true;
+    
+    // 127.0.0.0/8 (loopback)
+    if (ip.startsWith('127.')) return true;
+    
+    // IPv6 private ranges
+    // ::1 (loopback)
+    if (ip === '::1') return true;
+    
+    // fc00::/7 (unique local address)
+    if (ip.startsWith('fc00:') || ip.startsWith('fd00:')) return true;
+    
+    // fe80::/10 (link-local)
+    if (ip.startsWith('fe80:') || ip.startsWith('fe90:') || 
+        ip.startsWith('fea0:') || ip.startsWith('feb0:')) return true;
+    
+    // IPv4-mapped IPv6 addresses (::ffff:10.0.0.1 format)
+    if (ip.startsWith('::ffff:')) {
+        const ipv4Part = ip.substring(7);
+        return isPrivateIP(ipv4Part);
+    }
+    
+    return false;
 }
 
 // Block an IP address
 function blockIP(ip, reason, attempts = 0) {
-    blockedIPs.set(ip, {
-        blockedAt: Date.now(),
-        reason: reason,
-        attempts: attempts
-    });
-    
-    console.log(`🚫 BLOCKED IP: ${ip} - Reason: ${reason} (Attempts: ${attempts})`);
-    
-    // Cleanup if we have too many blocked IPs
-    if (blockedIPs.size > SECURITY_CONFIG.MAX_BLOCKED_IPS) {
-        const oldestEntries = Array.from(blockedIPs.entries())
-            .sort((a, b) => a[1].blockedAt - b[1].blockedAt)
-            .slice(0, Math.floor(SECURITY_CONFIG.MAX_BLOCKED_IPS * 0.1));
-        
-        oldestEntries.forEach(([ip]) => blockedIPs.delete(ip));
+    // Skip blocking for private IP addresses
+    if (isPrivateIP(ip)) {
+        console.log(`🔓 Skipping block for private IP: ${ip} - Reason: ${reason}`);
+        return;
     }
+    
+    globalResources.blockIP(ip, reason, attempts);
+    console.log(`🚫 BLOCKED IP: ${ip} - Reason: ${reason} (Attempts: ${attempts})`);
 }
 
 // Check if URL matches scraping patterns
@@ -530,7 +226,13 @@ function isScrapingPattern(url) {
 
 // Track suspicious activity
 function trackSuspiciousActivity(ip, url, userAgent) {
+    // Skip tracking for private IP addresses
+    if (isPrivateIP(ip)) {
+        return false;
+    }
+    
     const now = Date.now();
+    const suspiciousIPs = globalResources.getSuspiciousIPs();
     const suspicious = suspiciousIPs.get(ip) || { attempts: 0, lastSeen: now, patterns: [] };
     
     suspicious.attempts++;
@@ -559,7 +261,13 @@ function trackSuspiciousActivity(ip, url, userAgent) {
 
 // Track invalid URL attempts
 function trackInvalidURL(ip) {
+    // Skip tracking for private IP addresses
+    if (isPrivateIP(ip)) {
+        return false;
+    }
+    
     const now = Date.now();
+    const invalidURLAttempts = globalResources.getInvalidURLAttempts();
     const attempts = invalidURLAttempts.get(ip) || { count: 0, lastAttempt: now };
     
     attempts.count++;
@@ -576,43 +284,12 @@ function trackInvalidURL(ip) {
     return false;
 }
 
-// Cleanup old entries
+// Cleanup old entries (now uses globalResources)
 function cleanupSecurityData() {
-    const now = Date.now();
-    const cleanupAge = SECURITY_CONFIG.BLOCK_DURATION_MS;
-    
-    // Cleanup blocked IPs
-    for (const [ip, data] of blockedIPs.entries()) {
-        if (now - data.blockedAt > cleanupAge) {
-            blockedIPs.delete(ip);
-        }
-    }
-    
-    // Cleanup suspicious IPs
-    for (const [ip, data] of suspiciousIPs.entries()) {
-        if (now - data.lastSeen > cleanupAge) {
-            suspiciousIPs.delete(ip);
-        }
-    }
-    
-    // Cleanup invalid URL attempts
-    for (const [ip, data] of invalidURLAttempts.entries()) {
-        if (now - data.lastAttempt > cleanupAge) {
-            invalidURLAttempts.delete(ip);
-        }
-    }
-    
-    // Limit suspicious IPs size
-    if (suspiciousIPs.size > SECURITY_CONFIG.MAX_SUSPICIOUS_IPS) {
-        const entries = Array.from(suspiciousIPs.entries())
-            .sort((a, b) => a[1].lastSeen - b[1].lastSeen)
-            .slice(0, Math.floor(SECURITY_CONFIG.MAX_SUSPICIOUS_IPS * 0.1));
-        
-        entries.forEach(([ip]) => suspiciousIPs.delete(ip));
-    }
+    globalResources.cleanupSecurityData(SECURITY_CONFIG.BLOCK_DURATION_MS, SECURITY_CONFIG);
 }
 
-// Check if a resource requires rolling key authentication
+// Check if a resource requires authentication
 function isProtectedResource(url) {
     if (!url) return false;
 
@@ -642,37 +319,28 @@ function securityMiddleware(req, res, next) {
     const ip = getRealIP(req);
     const url = req.path;
     const userAgent = req.headers['user-agent'] || 'unknown';
-
-    const rollingKey = req.headers['x-sw-key'];
-    const isServiceWorkerRequest = rollingKey && validateRollingKey(rollingKey);
-
-    if (isServiceWorkerRequest) {
-        return next();
-    }
     
-    // Check if IP is blocked
-    if (isIPBlocked(ip)) {
-        console.log(`🚫 Blocked request from ${ip} to ${url}`);
-        return res.status(403).json({
-            success: false,
-            error: 'Access denied',
-            code: 'IP_BLOCKED'
-        });
+    // Skip IP blocking checks for private IP addresses
+    if (!isPrivateIP(ip)) {
+        // Check if IP is blocked
+        if (globalResources.isIPBlocked(ip, SECURITY_CONFIG.BLOCK_DURATION_MS)) {
+            console.log(`🚫 Blocked request from ${ip} to ${url}`);
+            return res.status(403).json({
+                success: false,
+                error: 'Access denied',
+                code: 'IP_BLOCKED'
+            });
+        }
     }
 
-    // Allow service worker key endpoint to bypass scraping detection
-    if (url === '/sw.js' && req.method === 'OPTIONS') {
-        return next();
-    }
-
-    // Enforce rolling key authentication for protected resources
+    // Enforce authentication for protected resources
     const requiresAuth = isProtectedResource(url);
     if (requiresAuth) {
-        const rollingKey = req.headers['x-sw-key'];
+        // Check if user is authenticated via session
+        const isAuthenticated = req.session && req.session.authenticated;
 
-        // Validate rolling key with security checks
-        if (!rollingKey) {
-            console.warn(`🚫 Missing rolling key for protected resource: ${ip} -> ${url}`);
+        if (!isAuthenticated) {
+            console.warn(`🚫 Unauthenticated access attempt to protected resource: ${ip} -> ${url}`);
             return res.status(403).json({
                 success: false,
                 error: 'Authentication required',
@@ -680,34 +348,11 @@ function securityMiddleware(req, res, next) {
             });
         }
 
-        const isAuthenticated = validateRollingKey(rollingKey, ip);
-
-        if (!isAuthenticated) {
-            // Check if it was rate limited
-            const rateLimit = checkRateLimit(ip);
-            if (!rateLimit.allowed) {
-                console.warn(`🚫 Rate limit exceeded for protected resource: ${ip} -> ${url}`);
-                return res.status(429).json({
-                    success: false,
-                    error: 'Too many requests',
-                    code: 'RATE_LIMIT_EXCEEDED',
-                    retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-                });
-            }
-
-            console.warn(`🚫 Invalid rolling key for protected resource: ${ip} -> ${url}`);
-            return res.status(403).json({
-                success: false,
-                error: 'Invalid authentication',
-                code: 'AUTH_INVALID'
-            });
-        }
-
         console.log(`✅ Authenticated access to protected resource: ${ip} -> ${url}`);
     }
 
-    // Check for scraping patterns
-    if (isScrapingPattern(url)) {
+    // Check for scraping patterns (skip for private IPs)
+    if (!isPrivateIP(ip) && isScrapingPattern(url)) {
         console.log(`🕷️ Scraping pattern detected: ${ip} -> ${url}`);
 
         if (trackSuspiciousActivity(ip, url, userAgent)) {
@@ -729,22 +374,10 @@ function invalidURLHandler(req, res, next) {
         return next();
     }
 
-    // Skip invalid URL tracking for legitimate service worker requests
-    const rollingKey = req.headers['x-sw-key'];
-    const isServiceWorkerRequest = rollingKey && validateRollingKey(rollingKey);
-
-    if (isServiceWorkerRequest) {
-        return next();
-    }
-
-    // Allow service worker key endpoint
-    if (req.path === '/sw.js' && req.method === 'OPTIONS') {
-        return next();
-    }
-
     const ip = getRealIP(req);
 
-    if (trackInvalidURL(ip)) {
+    // Skip invalid URL tracking for private IPs
+    if (!isPrivateIP(ip) && trackInvalidURL(ip)) {
         console.log(`🚫 Blocked IP ${ip} for excessive invalid URL attempts`);
         return res.status(403).json({
             success: false,
@@ -759,51 +392,30 @@ function invalidURLHandler(req, res, next) {
 // Initialize account data on startup
 async function initializeAccountData(force = false) {
     try {
-        const now = Date.now();
-        if (now - lastAccountDataCheck >= ACCOUNT_DATA_REFRESH_INTERVAL || force) {
-            const userData = await getUserData();
-            if (userData.ok) {
-                accountData = userData;
-                
-                // Extract balance information from user data
-                const fixedTrainingStepsLeft = userData?.subscription?.trainingStepsLeft?.fixedTrainingStepsLeft || 0;
-                const purchasedTrainingSteps = userData?.subscription?.trainingStepsLeft?.purchasedTrainingSteps || 0;
-                const totalCredits = fixedTrainingStepsLeft + purchasedTrainingSteps;
-                
-                accountBalance = {
-                    fixedTrainingStepsLeft,
-                    purchasedTrainingSteps,
-                    totalCredits
-                };
-                
-                logger.bootSubStep(`Account loaded: ${totalCredits} total credits`);
-            }
-
-            lastAccountDataCheck = Date.now();
-            
-            if (!accountBalance.totalCredits) {
-                logger.error('Failed to load account data');
-            }
+        await globalResources.initializeAccountData(force);
+        const accountBalance = globalResources.getAccountBalance();
+        if (accountBalance.totalCredits) {
+            globalResources.logger.bootSubStep(`Account loaded: ${accountBalance.totalCredits} total credits`);
+        } else {
+            globalResources.logger.error('Failed to load account data');
         }
     } catch (error) {
-        logger.error('Error initializing account data:', error.message);
+        globalResources.logger.error('Error initializing account data:', error.message);
     }
 }
 
 // Initialize cache data on startup
 async function initializeCacheData(force = false) {
     try {
-        const now = Date.now();
-        if (now - lastCacheCheck >= CACHE_REFRESH_INTERVAL || force) {            
-            const publicDir = path.join(__dirname, 'public');
-            const cacheData = await generateCacheData(publicDir);
-            
-            globalCacheData = cacheData;
-            lastCacheCheck = Date.now();
-            logger.bootSubStep(`Cached ${cacheData.length} assets`);
-        }
+        const publicDir = path.join(__dirname, 'public');
+        await globalResources.initializeCacheData(
+            async () => await generateCacheData(publicDir),
+            force
+        );
+        const cacheData = globalResources.getGlobalCacheData();
+        globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
     } catch (error) {
-        logger.error('Error initializing cache data:', error.message);
+        globalResources.logger.error('Error initializing cache data:', error.message);
     }
 }
 
@@ -887,87 +499,13 @@ async function scanDirectory(dir) {
 // Refresh account data periodically
 async function refreshBalance(force = false) {
     try {
-        const now = Date.now();
-        if (now - lastBalanceCheck >= (BALANCE_REFRESH_INTERVAL / 2) || force) {
-            // Check if there are active WebSocket clients connected
-            const wsServer = getGlobalWsServer();
-            if (wsServer && wsServer.getConnectionCount() === 0) {
-                return;
-            }
-            
-            const newBalanceData = await getBalance();
-            
-            if (newBalanceData && newBalanceData.ok) {
-                // Check for deposits (balance increase)
-                const oldTotalBalance = accountBalance.totalCredits;
-                const newTotalBalance = newBalanceData.totalCredits;
-                
-                if (newTotalBalance > oldTotalBalance) {
-                    const depositAmount = newTotalBalance - oldTotalBalance;
-                    console.log(`💰 Deposit detected: +${depositAmount} credits`);
-                    
-                    // Determine which type of credits were deposited
-                    const oldFixed = accountBalance.fixedTrainingStepsLeft;
-                    const newFixed = newBalanceData.fixedTrainingStepsLeft;
-                    const oldPurchased = accountBalance.purchasedTrainingSteps;
-                    const newPurchased = newBalanceData.purchasedTrainingSteps;
-                    
-                    if (newPurchased > oldPurchased) {
-                        // Add deposit receipt
-                        addUnattributedReceipt({
-                            type: 'deposit',
-                            cost: newPurchased - oldPurchased,
-                            creditType: 'paid',
-                            date: now.valueOf()
-                        });
-                    }
-                    if (newFixed > oldFixed) {
-                        // Add deposit receipt
-                        addUnattributedReceipt({
-                            type: 'deposit',
-                            cost: newFixed - oldFixed,
-                            creditType: 'fixed',
-                            date: now.valueOf()
-                        });
-                    }
-                }
-                
-                // Update account balance with fresh balance data
-                accountBalance = {
-                    fixedTrainingStepsLeft: newBalanceData.fixedTrainingStepsLeft,
-                    purchasedTrainingSteps: newBalanceData.purchasedTrainingSteps,
-                    totalCredits: newBalanceData.totalCredits
-                };
-                
-                // Update account data subscription info with fresh balance data
-                if (accountData.ok) {
-                    accountData.subscription = newBalanceData.subscription;
-                }
-                
-                lastBalanceCheck = now;
-            }
-        }
+        await globalResources.refreshBalance(force);
     } catch (error) {
         console.error('❌ Error refreshing account data:', error.message);
     }
 }
 
-// Calculate credit usage and determine which type was used
-async function calculateCreditUsage(_oldBalance) {
-    const oldBalance = _oldBalance || { ...accountBalance };
-    await refreshBalance(true);
-    
-    const totalUsage = Math.max(0, oldBalance.totalCredits - accountBalance.totalCredits);
-    const freeUsage = Math.max(0, oldBalance.fixedTrainingStepsLeft - accountBalance.fixedTrainingStepsLeft);
-    const paidUsage = Math.max(0, oldBalance.purchasedTrainingSteps - accountBalance.purchasedTrainingSteps);
-    const usageType = totalUsage > 0 ? (paidUsage > 0 ? 'paid' : 'fixed') : 'free';
-    
-    return { totalUsage, freeUsage, paidUsage, usageType };
-}
-
-// Create Express app
-const app = express();
-const server = require('http').createServer(app);
+const { app, server } = globalResources.initializeExpressApp();
 
 // Security and performance middleware
 app.use(helmet({
@@ -984,12 +522,6 @@ const limiter = rateLimit({
     skip: (req) => {
         // Skip rate limiting for authenticated users
         if (req.session && req.session.authenticated) {
-            return true;
-        }
-        
-        // Skip rate limiting for service worker requests with valid rolling key
-        const rollingKey = req.headers['x-sw-key'];
-        if (rollingKey && validateRollingKey(rollingKey, getRealIP(req))) {
             return true;
         }
         
@@ -1057,41 +589,11 @@ app.use(express.json({limit: '100mb'}));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 app.use(cookieParser());
 
-// Create session store (prefer SQLite, fallback to memory)
-let SQLiteStore = null;
-try {
-    SQLiteStore = require('connect-sqlite3')(session);
-} catch (e) {
-    console.warn('⚠️ connect-sqlite3 is not installed. Falling back to MemoryStore. Run "npm i connect-sqlite3" to enable SQLite-backed sessions.');
-}
-
-let sessionStore;
-if (SQLiteStore) {
-    try {
-        const sessionsDir = path.resolve(__dirname, '.cache', 'sessions');
-        if (!fs.existsSync(sessionsDir)) {
-            fs.mkdirSync(sessionsDir, { recursive: true });
-        }
-        sessionStore = new SQLiteStore({
-            dir: sessionsDir,
-            db: 'sessions.sqlite',
-            table: 'sessions',
-            concurrentDB: true
-        });
-    } catch (err) {
-        console.error('❌ Failed to initialize SQLite session store, falling back to MemoryStore:', err.message);
-        sessionStore = new session.MemoryStore();
-    }
-} else {
-    sessionStore = new session.MemoryStore();
-}
-
-// Make session store globally accessible for workspace persistence
-global.sessionStore = sessionStore;
+const sessionStore = globalResources.initializeSessionStore();
 
 // Create session middleware
 const sessionMiddleware = session({
-    secret: config.sessionSecret || 'staticforge-very-secret-key',
+    secret: globalResources.getConfig().sessionSecret || 'staticforge-very-secret-key',
     resave: false,
     saveUninitialized: false,
     store: sessionStore, // Use the shared session store
@@ -1113,94 +615,22 @@ const cacheDir = path.resolve(__dirname, '.cache');
 const uploadCacheDir = path.join(cacheDir, 'upload');
 const previewCacheDir = path.join(cacheDir, 'preview');
 const vibeCacheDir = path.join(cacheDir, 'vibe');
+const wallpapersDir = path.join(cacheDir, 'wallpapers');
 const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
 const previewsDir = path.resolve(__dirname, '.previews');
 
 // Ensure cache directories exist
-[uploadCacheDir, previewCacheDir, vibeCacheDir, tempDownloadDir, imagesDir, previewsDir].forEach(dir => {
+[uploadCacheDir, previewCacheDir, vibeCacheDir, wallpapersDir, tempDownloadDir, imagesDir, previewsDir].forEach(dir => {
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
 });
 
-// Initialize workspace system
-initializeWorkspaces();
-
-// Generate login page sprite sheet (single sheet with normal + blurred images)
-async function generateLoginSpriteSheet() {
-    try {
-        const spritePath = path.join(cacheDir, 'login_array.jpg');
-        const metadataPath = path.join(cacheDir, 'login_sprite_metadata.json');
-        
-        // Check if sprite sheet exists and is less than 1 hour old
-        if (fs.existsSync(spritePath)) {
-            const stats = fs.statSync(spritePath);
-            const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
-            if (ageInHours < 1) {
-                return;
-            }
-        }
-        
-        const pinnedImages = await getPinnedImages();
-        const randomImages = await getRandomWorkspaceImages();
-        
-        console.log(`📊 Image selection: ${pinnedImages.length} pinned + ${randomImages.length} random available`);
-        
-        // Ensure we have at least some images to work with
-        if (pinnedImages.length === 0 && randomImages.length === 0) {
-            console.log('⚠️ No images found for sprite sheet, skipping generation');
-            return;
-        }
-        
-        // If no pinned images, use more random images to fill the quota
-        let selectedImages;
-        if (pinnedImages.length === 0) {
-            selectedImages = randomImages.slice(0, 20);
-        } else if (pinnedImages.length < 20) {
-            const remainingSlots = 20 - pinnedImages.length;
-            selectedImages = [...pinnedImages, ...randomImages.slice(0, remainingSlots)];
-        } else {
-            selectedImages = pinnedImages.slice(0, 20);
-        }
-        
-        if (selectedImages.length === 0) {
-            console.log('⚠️ No valid images found for sprite sheet');
-            return;
-        }
-        
-        // Create 2x20 sprite sheet: 2 columns (normal + blurred), 20 rows (images)
-        const width = 1024;
-        const height = 1024;
-        
-        // Generate single combined sprite sheet with both normal and blurred images
-        console.log('🖼️ Step 3: Generating combined sprite sheet...');
-        await generateCombinedSpriteSheet(selectedImages, spritePath, width, height);
-        
-        // Save metadata for frontend use
-        console.log('💾 Step 4: Saving metadata...');
-        const metadata = {
-            imageCount: selectedImages.length,
-            spriteWidth: width,
-            spriteHeight: (height * selectedImages.length),
-            generatedAt: Date.now(),
-            images: selectedImages.map(img => img.filename)
-        };
-        
-        fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-        
-        console.log('✅ Login sprite sheet generated successfully');
-        
-    } catch (error) {
-        console.error('❌ Error generating login sprite sheet:', error);
-        // Don't throw the error, just log it so the server can continue
-    }
-}
-
 // Get pinned/favorited images from workspaces
 async function getPinnedImages() {
     try {
-        const workspaces = getWorkspaces();
+        const workspaces = globalResources.getWorkspaceManager().getWorkspaces();
 
         if (!workspaces || typeof workspaces !== 'object') {
             console.warn('⚠️ Workspaces is not a valid object:', typeof workspaces);
@@ -1282,83 +712,6 @@ async function getRandomWorkspaceImages() {
     }
 }
 
-// Generate combined sprite sheet with both normal and blurred images
-async function generateCombinedSpriteSheet(images, outputPath, width, height) {
-    try {
-        if (!images || images.length === 0) {
-            throw new Error('No images provided for sprite sheet generation');
-        }
-        
-        console.log(`🖼️ Generating combined sprite sheet with ${images.length} images...`);
-        
-        // Create a canvas-like structure using sharp
-        const spriteCanvas = sharp({
-            create: {
-                width: width,
-                height: height * images.length,
-                channels: 3,
-                background: { r: 0, g: 0, b: 0 }
-            }
-        });
-        
-        const composites = [];
-        let processedCount = 0;
-        
-        for (let i = 0; i < images.length; i++) {
-            const image = images[i];
-            const y = i * height; // Y position for each row
-            
-            try {
-                if (!image.path || !fs.existsSync(image.path)) {
-                    console.warn(`⚠️ Skipping invalid image: ${image.filename || 'unknown'}`);
-                    continue;
-                }
-                
-                // Process normal image (left column) - crop to point of interest
-                const normalImage = sharp(image.path)
-                    .resize(width, height, { 
-                        fit: 'cover',
-                        position: 'attention' // This focuses on the most interesting part of the image
-                    });
-                
-                const normalBuffer = await normalImage.toBuffer();
-                
-                composites.push({
-                    input: normalBuffer,
-                    left: 0, // Left column for normal images
-                    top: y
-                });
-                
-                processedCount++;
-                
-            } catch (error) {
-                console.error(`❌ Error processing image ${image.filename}:`, error.message);
-                // Continue with other images instead of failing completely
-            }
-        }
-        
-        if (composites.length === 0) {
-            throw new Error('No images could be processed for sprite sheet');
-        }
-        
-        // Composite all images onto the sprite sheet
-        await spriteCanvas
-            .composite(composites)
-            .jpeg({ 
-                quality: 85,
-                progressive: true,
-                mozjpeg: true
-            })
-            .toFile(outputPath);
-            
-        console.log(`💾 Saved combined sprite sheet to ${outputPath}`);
-            
-    } catch (error) {
-        console.error(`❌ Error generating combined sprite sheet:`, error);
-        throw error;
-    }
-}
-
 // On startup: generate missing previews and clean up orphans
 async function syncCachePreviews() {
     // Ensure upload cache and preview cache directories exist
@@ -1372,7 +725,7 @@ async function syncCachePreviews() {
     // Get all files in upload cache
     const cacheFiles = fs.readdirSync(uploadCacheDir);
 
-    logger.bootSubStep(`Found ${cacheFiles.length} cache files`);
+    globalResources.logger.bootSubStep(`Found ${cacheFiles.length} cache files`);
 
     // Find cache files that don't have previews
     let missingPreviews = 0;
@@ -1393,15 +746,15 @@ async function syncCachePreviews() {
 
                 generatedPreviews++;
             } catch (error) {
-                logger.error(`Failed to generate cache preview for ${cacheFile}:`, error);
+                globalResources.logger.error(`Failed to generate cache preview for ${cacheFile}:`, error);
             }
         }
     }
 
     if (missingPreviews === 0) {
-        logger.bootSubStep('All cache previews are up to date');
+        globalResources.logger.bootSubStep('All cache previews are up to date');
     } else {
-        logger.bootSubStep(`Generated ${generatedPreviews}/${missingPreviews} cache previews`);
+        globalResources.logger.bootSubStep(`Generated ${generatedPreviews}/${missingPreviews} cache previews`);
     }
 
     // Remove orphan cache previews (previews without corresponding cache files)
@@ -1430,137 +783,22 @@ async function syncCachePreviews() {
     console.log('✅ Cache preview synchronization complete');*/
 }
 
-async function syncPreviews() {
-    const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
-    const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.webp'));
-    const baseMap = {};
-    
-    logger.bootSubStep(`Found ${files.length} images and ${previews.length} existing previews`);
-    
-    // Build baseMap - each unique base name gets its own entry
-    for (const file of files) {
-        const base = getBaseName(file);
-        if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
-        if (file.includes('_upscaled')) baseMap[base].upscaled = file;
-        else baseMap[base].original = file;
-    }
-    
-    // Count how many previews need to be generated
-    let missingPreviews = 0;
-    const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
-    
-    for (const base in baseMap) {
-        const imgFile = baseMap[base].original ||  baseMap[base].upscaled;
-        if (imgFile) {
-            for (const type of previewTypes) {
-                const previewPath = path.join(previewsDir, `${base}${type}`);
-                if (!fs.existsSync(previewPath)) {
-                    missingPreviews++;
-                    break; // Only count once per base image
-                }
-            }
-        }
-    }
-    
-    if (missingPreviews > 0) {
-        logger.bootSubStep(`Generating ${missingPreviews} missing preview sets`);
-        
-        // Prepare images that need preview generation
-        const imagesToProcess = [];
-        for (const base in baseMap) {
-            const imgFile = baseMap[base].original || baseMap[base].upscaled;
-            if (imgFile) {
-                const imgPath = path.join(imagesDir, imgFile);
-                let needsGeneration = false;
-
-                // Check if any preview type is missing
-                for (const type of previewTypes) {
-                    const previewPath = path.join(previewsDir, `${base}${type}`);
-                    if (!fs.existsSync(previewPath)) {
-                        needsGeneration = true;
-                        break;
-                    }
-                }
-
-                if (needsGeneration) {
-                    imagesToProcess.push({
-                        imagePath: imgPath,
-                        basename: base,
-                        imageFile: imgFile
-                    });
-                }
-            }
-        }
-        
-        // Use parallel preview generator
-        const generator = new ParallelPreviewGenerator({
-            batchSize: Math.min(require('os').cpus().length, 6), // Max 6 workers
-            skipExisting: false,
-            forceRegenerate: false,
-            onProgress: (processed, total, progress) => {
-                // Silent during boot
-            },
-            onComplete: (results) => {
-                logger.bootSubStep(`Generated ${results.processed} preview sets`);
-                if (results.errors > 0) {
-                    logger.bootSubStep(`${results.errors} images failed to process`);
-                }
-            },
-            onError: (basename, error) => {
-                logger.error(`Failed to generate previews for ${basename}:`, error);
-            }
-        });
-        
-        // Generate previews for the images that need them
-        await generator.generatePreviewsForImages(
-            imagesToProcess.map(item => item.imageFile),
-            imagesDir,
-            previewsDir
-        );
-    } else {
-        logger.bootSubStep('All previews are up to date');
-    }
-    
-    // Remove orphan previews
-    let orphanCount = 0;
-    for (const preview of previews) {
-        // Handle regular previews (.webp), @2x previews (@2x.webp), and blur previews (@blur.webp), and low quality previews (@lq.webp)
-        let base;
-        if (preview.endsWith('@lq.webp')) {
-            // For low quality previews, extract the base name by removing '@lq.webp'
-            base = preview.replace(/@lq\.webp$/, '');
-        } else if (preview.endsWith('@blur.webp')) {
-            // For blurred previews, extract the base name by removing '@blur.webp'
-            base = preview.replace(/@blur\.webp$/, '');
-        } else if (preview.endsWith('@2x.webp')) {
-            // For retina previews, extract the base name by removing '@2x.webp'
-            base = preview.replace(/@2x\.webp$/, '');
-        } else if (preview.endsWith('.webp')) {
-            // For regular previews, extract the base name by removing '.webp'
-            base = preview.replace(/\.webp$/, '');
-        } else {
-            // Skip non-webp files
-            continue;
-        }
-        
-        // Check if the base image still exists
-        if (!baseMap[base]) {
-            const previewPath = path.join(previewsDir, preview);
-            fs.unlinkSync(previewPath);
-            orphanCount++;
-        }
-    }
-    
-    if (orphanCount > 0) {
-        logger.bootSubStep(`Removed ${orphanCount} orphan previews`);
-    }
-    
-    // Also ensure all .cache/upload files have previews in .cache/preview
-    await syncCachePreviews();
-}
-
 async function getBalance() {
     try {
+        const apiKeyManager = globalResources.getApiKeyManager();
+        const novelAiApiKey = apiKeyManager.getActiveApiKey('novelai');
+        if (!novelAiApiKey) {
+            console.warn('⚠️ Skipping NovelAI balance fetch - no API key configured.');
+            return {
+                ok: false,
+                fixedTrainingStepsLeft: 0,
+                purchasedTrainingSteps: 0,
+                totalCredits: 0,
+                subscription: null,
+                reason: 'missing_api_key'
+            };
+        }
+
         const options = {
             hostname: 'api.novelai.net',
             port: 443,
@@ -1569,7 +807,7 @@ async function getBalance() {
             headers: {
                 "accept": "*/*",
                 "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "authorization": `Bearer ${config.apiKey}`,
+                "authorization": `Bearer ${novelAiApiKey}`,
                 "content-type": "application/json",
                 "priority": "u=1, i",
                 "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
@@ -1646,6 +884,16 @@ async function getBalance() {
 
 async function getUserData() {
     try {
+        const apiKeyManager = globalResources.getApiKeyManager();
+        const novelAiApiKey = apiKeyManager.getActiveApiKey('novelai');
+        if (!novelAiApiKey) {
+            console.warn('⚠️ Skipping NovelAI user data fetch - no API key configured.');
+            return {
+                ok: false,
+                reason: 'missing_api_key'
+            };
+        }
+
         const options = {
             hostname: 'api.novelai.net',
             port: 443,
@@ -1654,7 +902,7 @@ async function getUserData() {
             headers: {
                 "accept": "*/*",
                 "accept-language": "en-US,en;q=0.9,en-GB;q=0.8",
-                "authorization": `Bearer ${config.apiKey}`,
+                "authorization": `Bearer ${novelAiApiKey}`,
                 "content-type": "application/json",
                 "priority": "u=1, i",
                 "sec-ch-ua": "\"Not)A;Brand\";v=\"8\", \"Chromium\";v=\"138\", \"Microsoft Edge\";v=\"138\"",
@@ -1721,7 +969,6 @@ async function getUserData() {
 // Validate preset query parameters for pending requests
 function validatePresetQueryParameters(queryParams) {
     const errors = [];
-    const { Resolution } = require('nekoai-js');
 
     // Validate steps
     if (queryParams.steps !== undefined) {
@@ -1750,7 +997,7 @@ function validatePresetQueryParameters(queryParams) {
     // Validate resolution
     if (queryParams.resolution !== undefined) {
         const upperResolution = queryParams.resolution.toUpperCase();
-        if (!Resolution[upperResolution]) {
+        if (!globalResources.getNekoAiService('Resolution')[upperResolution]) {
             errors.push(`resolution "${queryParams.resolution}" must be a valid named resolution preset`);
         }
     }
@@ -1986,7 +1233,7 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
     if (req.query.stripContext === 'true' && path.extname(filename).toLowerCase() === '.png') {
         try {
             const imageBuffer = fs.readFileSync(filePath);
-            const metadata = readMetadata(imageBuffer);
+            const metadata = globalResources.getPngMetadata().readMetadata(imageBuffer);
             
             if (metadata.tEXt && metadata.tEXt.Comment) {
                 try {
@@ -1997,8 +1244,8 @@ app.use('/images/:filename', authMiddleware, async (req, res) => {
                         delete parsedMetadata.dynamic_generation.compiled_prompt.context;
                     }
                     
-                    const cleanedBuffer = stripPngTextChunks(imageBuffer);
-                    const finalBuffer = insertTextChunk(cleanedBuffer, 'Comment', JSON.stringify(parsedMetadata));
+                    const cleanedBuffer = globalResources.getPngMetadata().stripPngTextChunks(imageBuffer);
+                    const finalBuffer = globalResources.getPngMetadata().insertTextChunk(cleanedBuffer, 'Comment', JSON.stringify(parsedMetadata));
 
                     console.log(`[/images stripContext] Processed ${filename}, stripped context, size: ${finalBuffer.length} bytes`);
                     
@@ -2110,7 +1357,7 @@ app.options('/', (req, res) => {
 
         // Build route file info from cache
         const routeEntries = routeFiles.map(route => {
-            const file = globalCacheData.find(f => f.path === route.name) || {};
+            const file = globalResources.getGlobalCacheData().find(f => f.path === route.name) || {};
             return {
                 url: route.url,
                 name: route.name,
@@ -2127,7 +1374,7 @@ app.options('/', (req, res) => {
         const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
 
         // Filter static files
-        const staticFiles = globalCacheData
+        const staticFiles = globalResources.getGlobalCacheData()
             .filter(file =>
                 !routeNames.includes(file.path) &&
                 !splashOrScreenshotPattern.test(file.path) &&
@@ -2180,44 +1427,47 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             
             const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
             
+            const config = globalResources.getConfig();
             if (pin === config.loginPin) {
                 // Clear any failed login attempts on successful login
-                if (invalidURLAttempts.has(realIP)) {
-                    invalidURLAttempts.delete(realIP);
-                }
+                globalResources.unblockIP(realIP);
                 
                 req.session.authenticated = true;
                 req.session.userType = 'admin';
                 res.json({ success: true, message: 'Login successful', userType: 'admin' });
             } else if (pin === config.readOnlyPin) {
                 // Clear any failed login attempts on successful login
-                if (invalidURLAttempts.has(realIP)) {
-                    invalidURLAttempts.delete(realIP);
-                }
+                globalResources.unblockIP(realIP);
                 
                 req.session.authenticated = true;
                 req.session.userType = 'readonly';
                 res.json({ success: true, message: 'Login successful', userType: 'readonly' });
             } else {
-                // Track failed login attempt
-                const now = Date.now();
-                const attempts = invalidURLAttempts.get(realIP) || { count: 0, lastAttempt: now, type: 'login' };
-                attempts.count++;
-                attempts.lastAttempt = now;
-                attempts.type = 'login';
-                invalidURLAttempts.set(realIP, attempts);
-                
-                console.log(`🔐 Failed login attempt from ${realIP} (attempt ${attempts.count})`);
-                
-                // Block IP after 3 failed login attempts
-                if (attempts.count >= 3) {
-                    blockIP(realIP, `Failed login attempts (${attempts.count})`, attempts.count);
-                    console.log(`🚫 Blocked IP ${realIP} for 3 failed login attempts`);
-                    return res.status(403).json({ 
-                        success: false, 
-                        error: 'Too many failed login attempts. IP blocked.',
-                        code: 'IP_BLOCKED'
-                    });
+                // Skip tracking failed login attempts for private IP addresses
+                if (!isPrivateIP(realIP)) {
+                    // Track failed login attempt
+                    const now = Date.now();
+                    const invalidURLAttempts = globalResources.getInvalidURLAttempts();
+                    const attempts = invalidURLAttempts.get(realIP) || { count: 0, lastAttempt: now, type: 'login' };
+                    attempts.count++;
+                    attempts.lastAttempt = now;
+                    attempts.type = 'login';
+                    invalidURLAttempts.set(realIP, attempts);
+                    
+                    console.log(`🔐 Failed login attempt from ${realIP} (attempt ${attempts.count})`);
+                    
+                    // Block IP after 3 failed login attempts
+                    if (attempts.count >= 3) {
+                        blockIP(realIP, `Failed login attempts (${attempts.count})`, attempts.count);
+                        console.log(`🚫 Blocked IP ${realIP} for 3 failed login attempts`);
+                        return res.status(403).json({ 
+                            success: false, 
+                            error: 'Too many failed login attempts. IP blocked.',
+                            code: 'IP_BLOCKED'
+                        });
+                    }
+                } else {
+                    console.log(`🔐 Failed login attempt from private IP: ${realIP} (not tracked)`);
                 }
                 
                 res.status(401).json({ success: false, error: 'Invalid PIN code' });
@@ -2232,7 +1482,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             break;
         
         case 'ping':
-            generateLoginSpriteSheet();
+            globalResources.generateLoginSpriteSheet();
             
             // Process telemetry data if provided
             if (data && typeof data === 'object') {
@@ -2274,70 +1524,6 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             res.status(400).json({ success: false, error: 'Invalid action' });
     }
 });
-app.options('/sw.js', (req, res) => {
-    try {
-        const ip = getRealIP(req);
-        const userAgent = req.headers['user-agent'] || 'unknown';
-
-        // Rate limit key requests to prevent abuse
-        const rateLimit = checkRateLimit(ip);
-        if (!rateLimit.allowed) {
-            console.warn(`🚫 Rate limit exceeded for key request from IP ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
-            return res.status(429).json({
-                error: 'Too many requests',
-                code: 'RATE_LIMIT_EXCEEDED',
-                retryAfter: Math.ceil((rateLimit.resetTime - Date.now()) / 1000)
-            });
-        }
-
-        console.log(`✅ Key request allowed for ${ip} (attempts: ${rollingKeys.validationAttempts.get(ip)?.count || 0}/${rollingKeys.maxAttempts})`);
-
-        const key = getCurrentRollingKey();
-        const expiresAt = rollingKeys.lastRotation + rollingKeys.rotationInterval;
-
-        // Enhanced security headers
-        res.set({
-            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'X-Key-Expires': expiresAt.toString(),
-            'X-Key-Rotation-Interval': rollingKeys.rotationInterval.toString(),
-            'X-Content-Type-Options': 'nosniff',
-            'X-Frame-Options': 'DENY',
-            'X-XSS-Protection': '1; mode=block',
-            'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-            'Content-Security-Policy': "default-src 'none'",
-            'Access-Control-Allow-Origin': req.headers.origin || '*',
-            'Access-Control-Allow-Methods': 'OPTIONS',
-            'Access-Control-Allow-Headers': 'X-Requested-With,Cache-Control,Pragma',
-            'Access-Control-Max-Age': '86400' // 24 hours
-        });
-
-        // Validate key before sending
-        if (!key || key.length !== rollingKeys.keyLength * 2) {
-            console.error('❌ Invalid key generated for response');
-            return res.status(500).json({ error: 'Internal server error' });
-        }
-
-        const responseData = {
-            key: key,
-            expiresAt: expiresAt,
-            rotationInterval: rollingKeys.rotationInterval,
-            serverTime: Date.now()
-        };
-
-        console.log(`🔑 Served rolling key to IP ${ip}, expires at ${new Date(expiresAt)}`);
-
-        res.json(responseData);
-
-    } catch (error) {
-        console.error('❌ Error serving rolling key:', error);
-        res.status(500).json({
-            error: 'Internal server error',
-            code: 'INTERNAL_ERROR'
-        });
-    }
-});
 
 
 app.options('/app', authMiddleware, (req, res) => {
@@ -2350,6 +1536,7 @@ app.options('/app', authMiddleware, (req, res) => {
         serverVersion: serverVersion,
         versionMessage: message
     };
+    const config = globalResources.getConfig();
     if (config.enable_dev) {
         response.devPort = config.devPort || 65202;
         response.devHost = config.devHost || 'localhost';
@@ -2396,541 +1583,22 @@ app.get('/launch', (req, res) => {
 });
 
 /*// Reload cache data endpoint (for development/deployment)
-app.get('/admin/reload-cache', authMiddleware, async (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to reload cache data' 
-            });
-        }
-        
-        // Force reload of cache data
-        await initializeCacheData(true);
-        
-        // Get updated cache data
-        const publicDir = path.join(__dirname, 'public');
-        const updatedCacheData = await generateCacheData(publicDir);
-        
-        // Update global cache data
-        globalCacheData = updatedCacheData;
-        
-        res.json({
-            success: true,
-            message: `Cache data reloaded successfully`,
-            assetsCount: updatedCacheData.length,
-            timestamp: Date.now().valueOf(),
-            cacheData: updatedCacheData
-        });
-        
-    } catch (error) {
-        console.error('❌ Error reloading cache data:', error);
-        res.status(500).json({ 
-            error: 'Failed to reload cache data',
-            details: error.message 
-        });
-    }
-});
+!!!!HALT!!!!! DO NOT UNCOMMENT THIS CODE !!!!!
+YOU SHOUD NOT BE USING REST API ENDPOINTS FOR PRETTY MUCH ANYTHING
+USE THE WEBSOCKETS FOR ALL INTERACTIONS WITH THE SERVER
 
-// Security status endpoint
-app.get('/admin/security-status', authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to view security status' 
-            });
-        }
 
-        const now = Date.now();
-        const blockedIPsArray = Array.from(blockedIPs.entries()).map(([ip, data]) => ({
-            ip,
-            blockedAt: data.blockedAt,
-            reason: data.reason,
-            attempts: data.attempts,
-            ageMinutes: Math.round((now - data.blockedAt) / (1000 * 60))
-        }));
+*/
 
-        const suspiciousIPsArray = Array.from(suspiciousIPs.entries()).map(([ip, data]) => ({
-            ip,
-            attempts: data.attempts,
-            lastSeen: data.lastSeen,
-            ageMinutes: Math.round((now - data.lastSeen) / (1000 * 60)),
-            recentPatterns: data.patterns.slice(-5) // Last 5 patterns
-        }));
-
-        const invalidURLAttemptsArray = Array.from(invalidURLAttempts.entries()).map(([ip, data]) => ({
-            ip,
-            count: data.count,
-            lastAttempt: data.lastAttempt,
-            ageMinutes: Math.round((now - data.lastAttempt) / (1000 * 60))
-        }));
-
-        res.json({
-            success: true,
-            security: {
-                blockedIPs: {
-                    count: blockedIPs.size,
-                    ips: blockedIPsArray.sort((a, b) => b.blockedAt - a.blockedAt)
-                },
-                suspiciousIPs: {
-                    count: suspiciousIPs.size,
-                    ips: suspiciousIPsArray.sort((a, b) => b.lastSeen - a.lastSeen)
-                },
-                invalidURLAttempts: {
-                    count: invalidURLAttempts.size,
-                    ips: invalidURLAttemptsArray.sort((a, b) => b.lastAttempt - a.lastAttempt)
-                },
-                config: SECURITY_CONFIG,
-                stats: {
-                    totalBlocked: blockedIPsArray.length,
-                    totalSuspicious: suspiciousIPsArray.length,
-                    totalInvalidAttempts: invalidURLAttemptsArray.length
-                }
-            },
-            timestamp: now
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching security status:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to fetch security status',
-            details: error.message 
-        });
-    }
-});
-
-// Unblock IP endpoint
-app.post('/admin/unblock-ip', serverReadinessMiddleware, authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to unblock IPs' 
-            });
-        }
-
-        const { ip } = req.body;
-        if (!ip) {
-            return res.status(400).json({ 
-                success: false, error: 'IP address is required' 
-            });
-        }
-
-        const wasBlocked = blockedIPs.has(ip);
-        const wasSuspicious = suspiciousIPs.has(ip);
-        const hadInvalidAttempts = invalidURLAttempts.has(ip);
-
-        // Remove from all tracking maps
-        blockedIPs.delete(ip);
-        suspiciousIPs.delete(ip);
-        invalidURLAttempts.delete(ip);
-
-        console.log(`🔓 Admin unblocked IP: ${ip} (was blocked: ${wasBlocked}, was suspicious: ${wasSuspicious}, had invalid attempts: ${hadInvalidAttempts})`);
-
-        res.json({
-            success: true,
-            message: `IP ${ip} has been unblocked`,
-            wasBlocked,
-            wasSuspicious,
-            hadInvalidAttempts,
-            timestamp: Date.now()
-        });
-
-    } catch (error) {
-        console.error('❌ Error unblocking IP:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to unblock IP',
-            details: error.message 
-        });
-    }
-});
-
-// Restart server endpoint (for development/deployment)
-app.post('/admin/restart-server', serverReadinessMiddleware, authMiddleware, async (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to restart server' 
-            });
-        }
-        
-        // Send response immediately before restarting
-        res.json({
-            success: true,
-            message: 'Server restart initiated',
-            timestamp: Date.now().valueOf()
-        });
-        
-        // Small delay to ensure response is sent
-        setTimeout(() => {
-            console.log('🔄 Restarting server via PM2...');
-            // Use PM2 to restart the server (ID 12 as mentioned in user rules)
-            const { exec } = require('child_process');
-            exec('timeout 5 pm2 restart 12', (error, stdout, stderr) => {
-                if (error) {
-                    console.error('❌ Error restarting server:', error);
-                }
-            });
-        }, 100);
-        
-    } catch (error) {
-        console.error('❌ Error initiating server restart:', error);
-        // Response already sent, just log the error
-    }
-});
-
-// Checkpoint Management API Endpoints
-const { 
-    getWorkspaceCheckpointInfo,
-    restoreWorkspaceFromCheckpoint,
-    restoreWorkspaceFromLatestCheckpoint,
-    clearWorkspaceCheckpoints
-} = require('./modules/workspace');
-
-const { 
-    getPromptConfigCheckpointInfo,
-    restorePromptConfigFromCheckpoint,
-    restorePromptConfigFromLatestCheckpoint,
-    clearPromptConfigCheckpoints
-} = require('./modules/textReplacements');
-
-const { 
-    getMetadataCheckpointInfo,
-    createMetadataCheckpoint,
-    restoreMetadataFromCheckpoint,
-    restoreMetadataFromLatestCheckpoint,
-    clearMetadataCheckpoints,
-    verifyMetadataDatabaseIntegrity
-} = require('./modules/metadataDatabase');
-
-const { 
-    getChatCheckpointInfo,
-    createChatCheckpoint,
-    restoreChatFromCheckpoint,
-    restoreChatFromLatestCheckpoint,
-    clearChatCheckpoints,
-    verifyChatDatabaseIntegrity
-} = require('./modules/chatDatabase');
-
-// Get checkpoint status for all systems
-app.get('/admin/checkpoint-status', authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to view checkpoint status' 
-            });
-        }
-
-        const status = {
-            workspaces: getWorkspaceCheckpointInfo(),
-            promptConfig: getPromptConfigCheckpointInfo(),
-            metadata: getMetadataCheckpointInfo(),
-            chat: getChatCheckpointInfo(),
-            timestamp: Date.now()
-        };
-
-        res.json({
-            success: true,
-            status: status
-        });
-    } catch (error) {
-        console.error('❌ Error getting checkpoint status:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to get checkpoint status',
-            details: error.message 
-        });
-    }
-});
-
-// Create checkpoint for specific system
-app.post('/admin/create-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to create checkpoints' 
-            });
-        }
-
-        const { system } = req.body;
-        if (!system) {
-            return res.status(400).json({ 
-                success: false, error: 'System type is required' 
-            });
-        }
-
-        let success = false;
-        let message = '';
-
-        switch (system) {
-            case 'metadata':
-                success = createMetadataCheckpoint();
-                message = success ? 'Metadata checkpoint created successfully' : 'Failed to create metadata checkpoint';
-                break;
-            case 'chat':
-                success = createChatCheckpoint();
-                message = success ? 'Chat checkpoint created successfully' : 'Failed to create chat checkpoint';
-                break;
-            default:
-                return res.status(400).json({ 
-                    success: false, error: 'Invalid system type. Supported: metadata, chat' 
-                });
-        }
-
-        res.json({
-            success: success,
-            message: message,
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('❌ Error creating checkpoint:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to create checkpoint',
-            details: error.message 
-        });
-    }
-});
-
-// Restore from specific checkpoint
-app.post('/admin/restore-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to restore checkpoints' 
-            });
-        }
-
-        const { system, checkpointFilename } = req.body;
-        if (!system || !checkpointFilename) {
-            return res.status(400).json({ 
-                success: false, error: 'System type and checkpoint filename are required' 
-            });
-        }
-
-        let success = false;
-        let message = '';
-
-        switch (system) {
-            case 'workspaces':
-                success = restoreWorkspaceFromCheckpoint(checkpointFilename);
-                message = success ? 'Workspaces restored successfully' : 'Failed to restore workspaces';
-                break;
-            case 'promptConfig':
-                success = restorePromptConfigFromCheckpoint(checkpointFilename);
-                message = success ? 'Prompt config restored successfully' : 'Failed to restore prompt config';
-                break;
-            case 'metadata':
-                success = restoreMetadataFromCheckpoint(checkpointFilename);
-                message = success ? 'Metadata database restored successfully' : 'Failed to restore metadata database';
-                break;
-            case 'chat':
-                success = restoreChatFromCheckpoint(checkpointFilename);
-                message = success ? 'Chat database restored successfully' : 'Failed to restore chat database';
-                break;
-            default:
-                return res.status(400).json({ 
-                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
-                });
-        }
-
-        res.json({
-            success: success,
-            message: message,
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('❌ Error restoring checkpoint:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to restore checkpoint',
-            details: error.message 
-        });
-    }
-});
-
-// Restore from latest checkpoint
-app.post('/admin/restore-latest-checkpoint', serverReadinessMiddleware, authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to restore latest checkpoints' 
-            });
-        }
-
-        const { system } = req.body;
-        if (!system) {
-            return res.status(400).json({ 
-                success: false, error: 'System type is required' 
-            });
-        }
-
-        let success = false;
-        let message = '';
-
-        switch (system) {
-            case 'workspaces':
-                success = restoreWorkspaceFromLatestCheckpoint();
-                message = success ? 'Workspaces restored from latest checkpoint' : 'Failed to restore workspaces from latest checkpoint';
-                break;
-            case 'promptConfig':
-                success = restorePromptConfigFromLatestCheckpoint();
-                message = success ? 'Prompt config restored from latest checkpoint' : 'Failed to restore prompt config from latest checkpoint';
-                break;
-            case 'metadata':
-                success = restoreMetadataFromLatestCheckpoint();
-                message = success ? 'Metadata database restored from latest checkpoint' : 'Failed to restore metadata database from latest checkpoint';
-                break;
-            case 'chat':
-                success = restoreChatFromLatestCheckpoint();
-                message = success ? 'Chat database restored from latest checkpoint' : 'Failed to restore chat database from latest checkpoint';
-                break;
-            default:
-                return res.status(400).json({ 
-                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
-                });
-        }
-
-        res.json({
-            success: success,
-            message: message,
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('❌ Error restoring latest checkpoint:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to restore latest checkpoint',
-            details: error.message 
-        });
-    }
-});
-
-// Clear checkpoints for specific system
-app.post('/admin/clear-checkpoints', serverReadinessMiddleware, authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to clear checkpoints' 
-            });
-        }
-
-        const { system } = req.body;
-        if (!system) {
-            return res.status(400).json({ 
-                success: false, error: 'System type is required' 
-            });
-        }
-
-        let success = false;
-        let message = '';
-
-        switch (system) {
-            case 'workspaces':
-                success = clearWorkspaceCheckpoints();
-                message = success ? 'Workspace checkpoints cleared successfully' : 'Failed to clear workspace checkpoints';
-                break;
-            case 'promptConfig':
-                success = clearPromptConfigCheckpoints();
-                message = success ? 'Prompt config checkpoints cleared successfully' : 'Failed to clear prompt config checkpoints';
-                break;
-            case 'metadata':
-                success = clearMetadataCheckpoints();
-                message = success ? 'Metadata checkpoints cleared successfully' : 'Failed to clear metadata checkpoints';
-                break;
-            case 'chat':
-                success = clearChatCheckpoints();
-                message = success ? 'Chat checkpoints cleared successfully' : 'Failed to clear chat checkpoints';
-                break;
-            default:
-                return res.status(400).json({ 
-                    success: false, error: 'Invalid system type. Supported: workspaces, promptConfig, metadata, chat' 
-                });
-        }
-
-        res.json({
-            success: success,
-            message: message,
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('❌ Error clearing checkpoints:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to clear checkpoints',
-            details: error.message 
-        });
-    }
-});
-
-// Verify database integrity
-app.get('/admin/verify-database-integrity', authMiddleware, (req, res) => {
-    try {
-        // Check if user is admin (not readonly)
-        if (req.session.userType !== 'admin') {
-            return res.status(403).json({ 
-                success: false, error: 'Admin access required to verify database integrity' 
-            });
-        }
-
-        const { system } = req.query;
-        if (!system) {
-            return res.status(400).json({ 
-                success: false, error: 'System type is required' 
-            });
-        }
-
-        let integrity = false;
-        let message = '';
-
-        switch (system) {
-            case 'metadata':
-                integrity = verifyMetadataDatabaseIntegrity();
-                message = integrity ? 'Metadata database integrity verified' : 'Metadata database integrity check failed';
-                break;
-            case 'chat':
-                integrity = verifyChatDatabaseIntegrity();
-                message = integrity ? 'Chat database integrity verified' : 'Chat database integrity check failed';
-                break;
-            default:
-                return res.status(400).json({ 
-                    success: false, error: 'Invalid system type. Supported: metadata, chat' 
-                });
-        }
-
-        res.json({
-            success: integrity,
-            message: message,
-            timestamp: Date.now()
-        });
-    } catch (error) {
-        console.error('❌ Error verifying database integrity:', error);
-        res.status(500).json({ 
-            success: false,
-            error: 'Failed to verify database integrity',
-            details: error.message 
-        });
-    }
-});*/
-
-app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req, res) => {
+app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        const currentPromptConfig = loadPromptConfig();
+        const currentPromptConfig = globalResources.getPromptConfig();
         // Resolve preset or preset group by UUID (transparently handles chapters)
-        const resolution = resolvePresetOrGroup(req.params.uuid);
+        const resolution = globalResources.textReplacements.resolvePresetOrGroup(req.params.uuid);
         if (!resolution) {
             return res.status(404).json({ success: false, error: 'Preset or preset group not found' });
         }
@@ -3056,15 +1724,15 @@ app.get('/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req,
 });
 
 // Scheduled preset generation endpoint
-app.get('/pending/preset/:uuid', serverReadinessMiddleware, queueMiddleware, async (req, res) => {
+app.get('/pending/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('Expires', '0');
 
-        const currentPromptConfig = loadPromptConfig();
+        const currentPromptConfig = globalResources.getPromptConfig();
         // Resolve preset or preset group by UUID (transparently handles chapters)
-        const resolution = resolvePresetOrGroup(req.params.uuid);
+        const resolution = globalResources.textReplacements.resolvePresetOrGroup(req.params.uuid);
         if (!resolution) {
             return res.status(401).json({ success: 'not_possible', error: 'Invalid preset or preset group UUID' });
         }
@@ -3370,7 +2038,7 @@ app.get('/pending/retrieval/:requestid', serverReadinessMiddleware, async (req, 
     }
 });
 
-app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, queueMiddleware, async (req, res) => {
+app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
         res.setHeader('Pragma', 'no-cache');
@@ -3384,7 +2052,7 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, queueMid
         const workspace = req.query.workspace || req.body.workspace || 'default';
         
         // Get image metadata
-        const metadata = await getImageMetadata(filename, imagesDir);
+        const metadata = await globalResources.getMetadataDatabase().getImageMetadata(filename, imagesDir);
         if (!metadata) {
             return res.status(404).json({ success: false, error: `No metadata found for image: ${filename}` });
         }
@@ -3392,9 +2060,9 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, queueMid
         // Call the reroll generation function
         const result = await handleRerollGeneration(
             metadata, 
-            req.userType, 
             req.session.id, 
-            workspace
+            workspace,
+            true
         );
         
         // Check if optimization is requested
@@ -3547,34 +2215,6 @@ app.get('/pending', authMiddleware, (req, res) => {
     }
 });
 
-// Initialize cache at startup
-async function initializeCache() {
-    updateServerStage('syncing_previews');
-    await syncPreviews();
-
-    updateServerStage('account_init');
-    // Initialize account data
-    await initializeAccountData();
-    
-    updateServerStage('cache_init');
-    // Initialize cache data
-    await initializeCacheData(true);
-    
-    updateServerStage('database_init');
-    // Initialize chat database
-    initializeChatDatabase();
-    
-    // Initialize Director database
-    initializeDirectorDatabase();
-    
-    // Set up periodic refreshes
-    setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL); // Check every 4 hours
-    setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL); // Check every 15 minutes
-    setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL); // Check every 5 minutes
-    setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS); // Cleanup every hour
-    setInterval(() => cleanupRetrievedRequests(), 5 * 60 * 1000); // Cleanup scheduled requests every 5 minutes
-}
-
 // Cache save scheduling function
 function scheduleCacheSave() {
     if (tagSuggestionsCache.isDirty) {
@@ -3658,7 +2298,7 @@ async function processScheduledRequest(requestId) {
         request.startedAt = Date.now();
 
         // Load preset and build options
-        const currentPromptConfig = loadPromptConfig();
+        const currentPromptConfig = globalResources.getPromptConfig();
         const foundPreset = Object.entries(currentPromptConfig.presets).find(([key, preset]) => preset.uuid === request.presetUuid);
         if (!foundPreset) {
             throw new Error('Preset not found');
@@ -3742,7 +2382,7 @@ function cancelScheduledTimeout(requestId) {
 
 // Cleanup all scheduled timeouts (for server shutdown)
 function cleanupAllScheduledTimeouts() {
-    logger.info('Cleaning up all scheduled timeouts');
+    globalResources.logger.info('Cleaning up all scheduled timeouts');
     for (const [requestId, request] of pendingRequests.entries()) {
         cancelScheduledTimeout(requestId);
     }
@@ -3790,67 +2430,29 @@ function cleanupRetrievedRequests() {
     }
 }
 
-// Initialize WebSocket message handlers
-const wsMessageHandlers = new WebSocketMessageHandlers({
-    Model: Model,
-    config: config,
-    scheduleCacheSave,
-    calculateCreditUsage,
-    tagSuggestionsCache,
-    accountData: () => accountData,
-    accountBalance: () => accountBalance,
-    getGlobalCacheData: () => globalCacheData,
-    reloadCacheData: () => initializeCacheData(true)
+// Set callbacks in globalResources for account management
+globalResources.setRefreshBalanceCallback(refreshBalance);
+globalResources.setGetBalanceCallback(getBalance);
+
+// Register cache refresh callback using plumbing system
+globalResources.getDataPlumbing().setCallback('refreshCache', () => initializeCacheData(true), {
+    temporary: false,
+    category: 'cache',
+    tags: ['cache', 'refresh'],
+    description: 'Callback to force refresh server cache data'
 });
+globalResources.setGetUserDataCallback(getUserData);
 
-// Set context with all required functions
-setImageGenContext({
-    client,
-    calculateCreditUsage: calculateCreditUsage,
-    addToWorkspaceArray: addToWorkspaceArray,
-    addReceiptMetadata: addReceiptMetadata,
-    broadcastReceiptNotification: broadcastReceiptNotification,
-    getActiveWorkspace: getActiveWorkspace
-});
-
-setUpscaleContext({
-    config,
-    addToWorkspaceArray: addToWorkspaceArray,
-    getActiveWorkspace: getActiveWorkspace
-});
-
-// Export global cache data for websocket handlers
-module.exports.globalCacheData = globalCacheData;
-global.blockedIPs = blockedIPs;
-global.suspiciousIPs = suspiciousIPs;
-global.invalidURLAttempts = invalidURLAttempts;
-
-
-// Clear temp downloads on server boot
-function clearTempDownloads() {
-    try {
-        if (fs.existsSync(tempDownloadDir)) {
-            const files = fs.readdirSync(tempDownloadDir);
-            let deletedCount = 0;
-            
-            for (const file of files) {
-                try {
-                    const filePath = path.join(tempDownloadDir, file);
-                    fs.unlinkSync(filePath);
-                    deletedCount++;
-                } catch (error) {
-                    logger.warn(`Failed to delete temp file ${file}:`, error.message);
-                }
-            }
-            
-            if (deletedCount > 0) {
-                logger.bootSubStep(`Cleared ${deletedCount} temp downloads`);
-            }
+// Initialize account data in globalResources (balance is stored at accountData.subscription.trainingStepsLeft)
+globalResources.setAccountData({ 
+    ok: false,
+    subscription: {
+        trainingStepsLeft: {
+            fixedTrainingStepsLeft: 0,
+            purchasedTrainingSteps: 0
         }
-    } catch (error) {
-        logger.warn('Failed to clear temp downloads:', error.message);
     }
-}
+});
 
 /*
 // Development Bridge Server - will be initialized in the startup function
@@ -3860,7 +2462,7 @@ let devBridgeServer = null;
 let unixSocketCommunication = null;
 
 // Development Bridge API endpoints
-if (config.enable_dev) {
+if (globalResources.getConfig().enable_dev) {
     // Get development logs
     app.get('/admin/dev/logs', devAuthMiddleware, async (req, res) => {
         try {
@@ -4328,26 +2930,29 @@ async function handleSendCommand(data) {
 // Start server with early readiness tracking
 (async () => {
     // Initialize boot tree logging
-    logger.startBoot();
+    globalResources.logger.startBoot();
+    
+    await globalResources.logger.bootStep('Global Resources Initialization', async () => {
+        updateServerStage('loading_global_resources');
+        await globalResources.initialize();
+    });
     
     // Rotate generation log on startup
-    logger.rotateGenerationLog();
+    globalResources.logger.rotateGenerationLog();
     
     // Start server early to accept connections and provide status updates
     updateServerStage('initializing');
     
-    server.listen(config.port, () => {
-        // Server is listening but still initializing
-    });
+    await globalResources.startWebServer();
     
     // Preview Synchronization
-    await logger.bootStep('Preview Synchronization', async () => {
+    await globalResources.logger.bootStep('Preview Synchronization', async () => {
         updateServerStage('syncing_previews');
-        await syncPreviews();
+        await globalResources.syncPreviews();
     });
     
     // Account & Cache Initialization
-    await logger.bootStep('Account & Cache', async () => {
+    await globalResources.logger.bootStep('Account & Cache', async () => {
         updateServerStage('account_init');
         await initializeAccountData();
         
@@ -4355,49 +2960,34 @@ async function handleSendCommand(data) {
         await initializeCacheData(true);
     });
     
-    // Database Setup
-    await logger.bootStep('Database Setup', async () => {
-        updateServerStage('database_init');
-        initializeChatDatabase();
-        initializeDirectorDatabase();
-        initializeKnowledgeMemoryDatabase();
-    });
-    
     // Service Initialization
-    await logger.bootStep('Service Initialization', async () => {
-        // Global Resources (Tag databases, tokenizer, spell checker, search services)
-        updateServerStage('loading_global_resources');
-        const globalResources = require('./modules/globalResources');
-        await globalResources.initialize();
+    await globalResources.logger.bootStep('Service Initialization', async () => {
+        updateServerStage('service_init');
         
         // Clear temp downloads
-        clearTempDownloads();
+        globalResources.clearTempDownloads();
         
         // Generate login sprite sheet
         try {
             updateServerStage('sprite_sheet_init');
-            await generateLoginSpriteSheet();
-            logger.bootSubStep('Login sprite sheet generated');
+            await globalResources.generateLoginSpriteSheet();
+            globalResources.logger.bootSubStep('Login sprite sheet generated');
         } catch (error) {
-            logger.warn('Sprite sheet generation failed, will generate on first access');
+            globalResources.logger.warn('Sprite sheet generation failed, will generate on first access');
         }
     });
     
     // WebSocket Server
-    await logger.bootStep('WebSocket Server', async () => {
+    await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
-        const wsServer = new WebSocketServer(server, sessionStore, async (ws, message, clientInfo, wsServer) => {
-            await wsMessageHandlers.handleMessage(ws, message, clientInfo, wsServer);
-        });
-        
-        setGlobalWsServer(wsServer);
+        const { wsServer } = globalResources.initializeWebSocketServer();
         
         // Start ping interval with server data callback
         wsServer.startPingInterval(() => {
             return {
-                balance: accountBalance,
-                queue_status: getQueueStatus(),
-                image_count: imageCounter.getCount(),
+                balance: globalResources.getAccountBalance(),
+                queue_status: globalResources.getQueue().getStatus(),
+                image_count: globalResources.getImageCounter().getCount(),
                 server_time: Date.now().valueOf()
             };
         });
@@ -4405,14 +2995,12 @@ async function handleSendCommand(data) {
         // Start queue status broadcasting
         wsServer.startQueueStatusInterval();
         
-        logger.bootSubStep('WebSocket server initialized');
+        globalResources.logger.bootSubStep('WebSocket server initialized');
     });
     
     // Finalize Setup
-    await logger.bootStep('Finalizing', async () => {
-        // Initialize rolling key system for service worker authentication
-        initializeRollingKeySystem();
-        logger.bootSubStep('Security system initialized');
+    await globalResources.logger.bootStep('Finalizing', async () => {
+        globalResources.logger.bootSubStep('Security system initialized');
 
         // Serve static files from public directory (after routes to avoid conflicts)
         app.use(express.static('public', {
@@ -4436,54 +3024,69 @@ async function handleSendCommand(data) {
             });
         });
         
-        // Set up periodic refreshes
-        setInterval(() => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL);
-        setInterval(() => refreshBalance(), BALANCE_REFRESH_INTERVAL);
-        setInterval(() => initializeCacheData(), CACHE_REFRESH_INTERVAL);
-        setInterval(() => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
-        setInterval(() => cleanupRetrievedRequests(), 5 * 60 * 1000);
+        // Set up periodic refreshes using globalResources timer system
+        globalResources.registerTimer('accountDataRefresh', 'interval', () => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL);
+        globalResources.registerTimer('balanceRefresh', 'interval', () => refreshBalance(), BALANCE_REFRESH_INTERVAL);
+        globalResources.registerTimer('cacheRefresh', 'interval', () => initializeCacheData(), CACHE_REFRESH_INTERVAL);
+        globalResources.registerTimer('securityCleanup', 'interval', () => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
+        globalResources.registerTimer('retrievedRequestsCleanup', 'interval', () => cleanupRetrievedRequests(), 5 * 60 * 1000);
         
-        logger.bootSubStep(`Server listening on port ${config.port}`);
+        globalResources.logger.bootSubStep(`Server listening on port ${globalResources.getConfig().port}`);
     });
 
     // Server is now fully ready
     updateServerStage('ready', true);
-    logger.endBoot();
+    globalResources.logger.endBoot();
 })();
 
 // Graceful shutdown handling
-function gracefulShutdown() {
-    logger.info('Graceful shutdown initiated');
+async function gracefulShutdown() {
+    globalResources.logger.info('Graceful shutdown initiated');
     
-    // Get WebSocket server from global reference
-    const wsServer = getGlobalWsServer();
-    if (wsServer) {
-        wsServer.stopPingInterval();
-        wsServer.stopQueueStatusInterval();
+    // Shutdown polymorphic modules
+    if (globalResources.shutdown) {
+        await globalResources.shutdown();
+    }
+    
+    // Get WebSocket server from globalResources
+    try {
+        const wsServer = globalResources.getWebSocketServer();
+        if (wsServer) {
+            wsServer.stopPingInterval();
+            wsServer.stopQueueStatusInterval();
+        }
+    } catch (error) {
+        // WebSocket server not initialized, skip cleanup
     }
     
     // Close dev bridge server if it exists
     if (devBridgeServer) {
-        logger.info('Closing dev bridge server');
+        globalResources.logger.info('Closing dev bridge server');
         devBridgeServer.close();
     }
     
     // Close Unix socket communication if it exists
     if (unixSocketCommunication) {
-        logger.info('Closing Unix socket communication');
+        globalResources.logger.info('Closing Unix socket communication');
         unixSocketCommunication.close();
     }
     
     // Save tag cache immediately if dirty
     if (tagSuggestionsCache.isDirty) {
-        logger.info('Saving tag cache before shutdown');
+        globalResources.logger.info('Saving tag cache before shutdown');
         tagSuggestionsCache.saveCache();
+    }
+
+    // Flush all pending config saves
+    const flushedCount = globalResources.flushAllPendingConfigSaves();
+    if (flushedCount > 0) {
+        globalResources.logger.info(`Flushed ${flushedCount} pending config save(s) before shutdown`);
     }
 
     // Clean up all scheduled timeouts
     cleanupAllScheduledTimeouts();
 
-    logger.shutdown();
+    globalResources.logger.shutdown();
     process.exit(0);
 }
 
@@ -4491,9 +3094,9 @@ function gracefulShutdown() {
 process.on('SIGTERM', gracefulShutdown);
 process.on('SIGINT', gracefulShutdown);
 process.on('uncaughtException', (error) => {
-    logger.error('Uncaught exception:', error);
+    globalResources.logger.error('Uncaught exception:', error);
     process.exit(1);
 });
 process.on('unhandledRejection', (error) => {
-    logger.error('Unhandled rejection:', error);
+    globalResources.logger.error('Unhandled rejection:', error);
 });

@@ -74,7 +74,7 @@ class PromptTextareaToolbar {
 
         // Listen for modal close button clicks
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.modal-close, .close-modal, [data-dismiss="modal"]')) {
+            if (e.target.closest('.close-btn, .close-modal, [data-dismiss="modal"]')) {
                 // Modal close button clicked - reset search
                 this.resetAllSearchStates();
             }

@@ -4,6 +4,24 @@
 const { z } = require('zod');
 
 /**
+ * Creates a case-insensitive enum schema with preprocessor
+ * Converts string values to lowercase before validation
+ * @param {string[]} values - Array of enum values
+ * @returns {z.ZodEnum} Zod enum schema with case-insensitive preprocessing
+ */
+function createCaseInsensitiveEnum(values) {
+    return z.preprocess(
+        (val) => {
+            if (typeof val === 'string') {
+                return val.toLowerCase();
+            }
+            return val;
+        },
+        z.enum(values)
+    );
+}
+
+/**
  * Normalize segment_index to handle malformed values
  * Fixes cases where AI generates malformed values like "- " (minus with space)
  * Converts string numbers (like "0.1") to floats
@@ -170,25 +188,19 @@ function hasPlaceholderCharacterNames(characterPrompts = []) {
  * Create the Zod schema for dynamic generation responses
  * @param {number} expectedCharacterPrompts - Number of character prompts expected
  * @param {Array} characterPrompts - Array of character prompt objects (optional, for placeholder detection)
+ * @param {number} dialogsCount - Number of dialogs expected (0 or undefined means dialogs are disabled)
  * @returns {ZodObject} Zod schema for validation
  */
 
-function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, characterPrompts = null) {
+function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, characterPrompts = null, dialogsCount = null) {
     const hasPlaceholders = characterPrompts ? hasPlaceholderCharacterNames(characterPrompts) : false;
-    return z.object({
-    dialogs: z.array(z.object({
-        type: z.enum(["speech", "thought"])
-            .describe("Dialog type: 'speech' for spoken words, 'thought' for internal monologue"),
-        text: z.string().min(1).max(200)
-            .describe("Dialog text content, context-aware and in character's voice/tone matching the scene"),
-        top: z.number().min(5).max(95)
-            .describe("Vertical position from top as percentage (5-95%) - distribute to avoid overlap"),
-        left: z.number().min(5).max(95)
-            .describe("Horizontal position from left as percentage (5-95%) - distribute to avoid overlap"),
-        alignment: z.enum(["left", "right"])
-            .describe("Text alignment for the dialog bubble based on position")
-    })).min(3).max(10).nullable().optional()
-        .describe("3-10 context-aware character dialogs (speech/thoughts) matching scene tone, character voice, and narrative context. Distribute positions to avoid clustering."),
+    // Match the same logic used throughout the codebase for determining if dialogs are enabled
+    // If dialogsCount is explicitly 0, dialogs are disabled. If null/undefined, default behavior may vary.
+    // For schema validation: only enable dialogs if dialogsCount is explicitly set and > 0
+    const dialogsEnabled = dialogsCount != null && dialogsCount > 0;
+    
+    // Base schema without dialogs
+    const baseSchema = z.object({
     text_replacements: z.object({
         prompt: z.array(z.object({
             reason: z.string()
@@ -225,13 +237,21 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
             ).describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (modify text after ', Text:' boundary), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
             segment_emphasis: z.number().min(-5).max(8).nullable().optional()
                 .describe("Emphasis Multiplier to apply to the replacement text. If set, The new text will be wrapped with a emphasis group safely (e.g., 2.4::text::). If the selected text segment was a group (e.g., already wrapped in emphasis groups) and this value is not defined, the previous emphasis value will be applied automatically."),
+            append_after: z.union([z.string(), z.number().int().min(0)]).nullable().optional()
+                .describe("ADVANCED: For APPEND only - Insert text after a specific word or word position within the segment. Use string (e.g., 'happy') to append after that word, or number (e.g., 2) to append after the Nth word (0-indexed). Only use when you need granular insertion within a segment. Default behavior appends after the entire segment."),
+            append_delimiter: createCaseInsensitiveEnum(['space', 'comma', 'none']).nullable().optional()
+                .describe("ADVANCED: For APPEND only - Delimiter to use before inserted text when append_after is set. 'space' adds a space, 'comma' adds a comma, 'none' adds nothing (for append_standalone='direct'). Only used with append_after."),
+            append_standalone: createCaseInsensitiveEnum(['standalone', 'simple', 'direct']).nullable().optional()
+                .describe("ADVANCED: For APPEND only - How to handle spacing/punctuation: 'standalone' (tag in a list - auto-handles commas), 'simple' (word insertion - auto-adds space if needed), 'direct' (literal insertion - you control all spacing). Only used with append_after. Default: 'simple'"),
+            replace_part: z.string().nullable().optional()
+                .describe("ADVANCED: For REPLACE only - Replace a specific part within the segment instead of the entire segment. Useful for spelling corrections or partial word replacements. Provide the exact text within the segment to replace. Only use when you need granular replacement without affecting the rest of the segment."),
             index: z.number().int().nullable().optional()
                 .describe("Current increment value for incrementing logic (used by server for state management)"),
             increment_data: z.string().max(64).nullable().optional()
                 .describe("Additional state data for incrementation (max 64 chars, used by server for state management)"),
             references: z.array(z.object({
-                type: z.enum(['web_search', 'tag_search', 'tag_description', 'tokenizer'])
-                    .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis)"),
+                type: createCaseInsensitiveEnum(['web_search', 'tag_search', 'tag_description', 'tokenizer', 'memory_retrieval'])
+                    .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis), memory_retrieval (memory retrieval)"),
                 query: z.string().nullable().optional()
                     .describe("Search query or description (for web_search, tag_search, tag_description)"),
                 url: z.string().nullable().optional()
@@ -239,7 +259,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                 tags: z.array(z.string()).nullable().optional()
                     .describe("Tag names found/used (for tag_search, tag_description)"),
                 description: z.string().nullable().optional()
-                    .describe("Brief description of what was found or analyzed (for tag_description, tokenizer)")
+                    .describe("Brief description of what was found or analyzed (for tag_description, tokenizer, memory_retrieval)")
             })).nullable().optional()
                 .describe("Optional array of research sources used for this replacement (for client-side display only)")
         })).describe("Find-and-replace operations for the main prompt"),
@@ -278,13 +298,21 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
             ).describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (modify text after ', Text:' boundary), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
             segment_emphasis: z.number().min(-5).max(8).nullable().optional()
                 .describe("Emphasis Multiplier to apply to the replacement text. If set, The new text will be wrapped with a emphasis group safely (e.g., 2.4::text::). If the selected text segment was a group (e.g., already wrapped in emphasis groups) and this value is not defined, the previous emphasis value will be applied automatically."),
+            append_after: z.union([z.string(), z.number().int().min(0)]).nullable().optional()
+                .describe("ADVANCED: For APPEND only - Insert text after a specific word or word position within the segment. Use string (e.g., 'happy') to append after that word, or number (e.g., 2) to append after the Nth word (0-indexed). Only use when you need granular insertion within a segment. Default behavior appends after the entire segment."),
+            append_delimiter: createCaseInsensitiveEnum(['space', 'comma', 'none']).nullable().optional()
+                .describe("ADVANCED: For APPEND only - Delimiter to use before inserted text when append_after is set. 'space' adds a space, 'comma' adds a comma, 'none' adds nothing (for append_standalone='direct'). Only used with append_after."),
+            append_standalone: createCaseInsensitiveEnum(['standalone', 'simple', 'direct']).nullable().optional()
+                .describe("ADVANCED: For APPEND only - How to handle spacing/punctuation: 'standalone' (tag in a list - auto-handles commas), 'simple' (word insertion - auto-adds space if needed), 'direct' (literal insertion - you control all spacing). Only used with append_after. Default: 'simple'"),
+            replace_part: z.string().nullable().optional()
+                .describe("ADVANCED: For REPLACE only - Replace a specific part within the segment instead of the entire segment. Useful for spelling corrections or partial word replacements. Provide the exact text within the segment to replace. Only use when you need granular replacement without affecting the rest of the segment."),
             index: z.number().int().nullable().optional()
                 .describe("Current increment value for incrementing logic (used by server for state management)"),
             increment_data: z.string().max(64).nullable().optional()
                 .describe("Additional state data for incrementation (max 64 chars, used by server for state management)"),
             references: z.array(z.object({
-                type: z.enum(['web_search', 'tag_search', 'tag_description', 'tokenizer'])
-                    .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis)"),
+                type: createCaseInsensitiveEnum(['web_search', 'tag_search', 'tag_description', 'tokenizer', 'memory_retrieval'])
+                    .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis), memory_retrieval (memory retrieval)"),
                 query: z.string().nullable().optional()
                     .describe("Search query or description (for web_search, tag_search, tag_description)"),
                 url: z.string().nullable().optional()
@@ -292,7 +320,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                 tags: z.array(z.string()).nullable().optional()
                     .describe("Tag names found/used (for tag_search, tag_description)"),
                 description: z.string().nullable().optional()
-                    .describe("Brief description of what was found or analyzed (for tag_description, tokenizer)")
+                    .describe("Brief description of what was found or analyzed (for tag_description, tokenizer, memory_retrieval)")
             })).nullable().optional()
                 .describe("Optional array of research sources used for this replacement (for client-side display only)")
         })).describe("Find-and-replace operations for the negative prompt"),
@@ -332,13 +360,21 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                 ).describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (text after ', Text:'), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
                 segment_emphasis: z.number().min(-5).max(8).nullable().optional()
                     .describe("Emphasis Multiplier to apply to the replacement text. If set, The new text will be wrapped with a emphasis group safely (e.g., 2.4::text::). If the selected text segment was a group (e.g., already wrapped in emphasis groups) and this value is not defined, the previous emphasis value will be applied automatically."),
+                append_after: z.union([z.string(), z.number().int().min(0)]).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - Insert text after a specific word or word position within the segment. Use string (e.g., 'happy') to append after that word, or number (e.g., 2) to append after the Nth word (0-indexed). Only use when you need granular insertion within a segment. Default behavior appends after the entire segment."),
+                append_delimiter: createCaseInsensitiveEnum(['space', 'comma', 'none']).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - Delimiter to use before inserted text when append_after is set. 'space' adds a space, 'comma' adds a comma, 'none' adds nothing (for append_standalone='direct'). Only used with append_after."),
+                append_standalone: createCaseInsensitiveEnum(['standalone', 'simple', 'direct']).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - How to handle spacing/punctuation: 'standalone' (tag in a list - auto-handles commas), 'simple' (word insertion - auto-adds space if needed), 'direct' (literal insertion - you control all spacing). Only used with append_after. Default: 'simple'"),
+                replace_part: z.string().nullable().optional()
+                    .describe("ADVANCED: For REPLACE only - Replace a specific part within the segment instead of the entire segment. Useful for spelling corrections or partial word replacements. Provide the exact text within the segment to replace. Only use when you need granular replacement without affecting the rest of the segment."),
                 index: z.number().int().nullable().optional()
                     .describe("Current increment value for incrementing logic (used by server for state management)"),
                 increment_data: z.string().max(64).nullable().optional()
                     .describe("Additional state data for incrementation (max 64 chars, used by server for state management)"),
                 references: z.array(z.object({
-                    type: z.enum(['web_search', 'tag_search', 'tag_description', 'tokenizer'])
-                        .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis)"),
+                    type: createCaseInsensitiveEnum(['web_search', 'tag_search', 'tag_description', 'tokenizer', 'memory_retrieval'])
+                        .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis), memory_retrieval (memory retrieval)"),
                     query: z.string().nullable().optional()
                         .describe("Search query or description (for web_search, tag_search, tag_description)"),
                     url: z.string().nullable().optional()
@@ -346,7 +382,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                     tags: z.array(z.string()).nullable().optional()
                         .describe("Tag names found/used (for tag_search, tag_description)"),
                     description: z.string().nullable().optional()
-                        .describe("Brief description of what was found or analyzed (for tag_description, tokenizer)")
+                        .describe("Brief description of what was found or analyzed (for tag_description, tokenizer, memory_retrieval)")
                 })).nullable().optional()
                     .describe("Optional array of research sources used for this replacement (for client-side display only)")
             })).describe("Find-and-replace operations for this character prompt"),
@@ -385,13 +421,21 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                 ).describe("Category enum: 'Weather' (weather conditions), 'Time of Day' (time/lighting), 'Seasonal' (season elements), 'Holiday' (festive), 'Lighting' (light quality/sources), 'Atmosphere' (mood/ambiance), 'Enhancement' (quality improvements), 'Action Verbs' (character actions/poses), 'Text Overlay' (text after ', Text:'), 'Spelling' (typo fixes), 'Conflict Resolution' (remove conflicts), 'Directive' (user request not fitting other categories). NOTE: Only 'Spelling' and 'Text Overlay' can modify text after ', Text:' boundary"),
                 segment_emphasis: z.number().min(-5).max(8).nullable().optional()
                     .describe("Emphasis Multiplier to apply to the replacement text. If set, The new text will be wrapped with a emphasis group safely (e.g., 2.4::text::). If the selected text segment was a group (e.g., alrady wrapped in emphasis groups) and this value is not defined, the previous emphasis value will be applied automatically."),
+                append_after: z.union([z.string(), z.number().int().min(0)]).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - Insert text after a specific word or word position within the segment. Use string (e.g., 'happy') to append after that word, or number (e.g., 2) to append after the Nth word (0-indexed). Only use when you need granular insertion within a segment. Default behavior appends after the entire segment."),
+                append_delimiter: createCaseInsensitiveEnum(['space', 'comma', 'none']).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - Delimiter to use before inserted text when append_after is set. 'space' adds a space, 'comma' adds a comma, 'none' adds nothing (for append_standalone='direct'). Only used with append_after."),
+                append_standalone: createCaseInsensitiveEnum(['standalone', 'simple', 'direct']).nullable().optional()
+                    .describe("ADVANCED: For APPEND only - How to handle spacing/punctuation: 'standalone' (tag in a list - auto-handles commas), 'simple' (word insertion - auto-adds space if needed), 'direct' (literal insertion - you control all spacing). Only used with append_after. Default: 'simple'"),
+                replace_part: z.string().nullable().optional()
+                    .describe("ADVANCED: For REPLACE only - Replace a specific part within the segment instead of the entire segment. Useful for spelling corrections or partial word replacements. Provide the exact text within the segment to replace. Only use when you need granular replacement without affecting the rest of the segment."),
                 index: z.number().int().nullable().optional()
                     .describe("Current increment value for incrementing logic (used by server for state management)"),
                 increment_data: z.string().max(64).nullable().optional()
                     .describe("Additional state data for incrementation (max 64 chars, used by server for state management)"),
                 references: z.array(z.object({
-                    type: z.enum(['web_search', 'tag_search', 'tag_description', 'tokenizer'])
-                        .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis)"),
+                    type: createCaseInsensitiveEnum(['web_search', 'tag_search', 'tag_description', 'tokenizer', 'memory_retrieval'])
+                        .describe("Reference type: web_search (web lookup), tag_search (tag database search), tag_description (tag description search), tokenizer (token analysis), memory_retrieval (memory retrieval)"),
                     query: z.string().nullable().optional()
                         .describe("Search query or description (for web_search, tag_search, tag_description)"),
                     url: z.string().nullable().optional()
@@ -399,7 +443,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                     tags: z.array(z.string()).nullable().optional()
                         .describe("Tag names found/used (for tag_search, tag_description)"),
                     description: z.string().nullable().optional()
-                        .describe("Brief description of what was found or analyzed (for tag_description, tokenizer)")
+                        .describe("Brief description of what was found or analyzed (for tag_description, tokenizer, memory_retrieval)")
                 })).nullable().optional()
                     .describe("Optional array of research sources used for this replacement (for client-side display only)")
             })).describe("Find-and-replace operations for this character negative prompt")
@@ -414,12 +458,12 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
             .describe("Unique memory name (snake_case, e.g., 'water_droplet_physics_rendering'). Must be globally applicable, not context-specific. Will be automatically saved to global knowledge database."),
         description: z.string()
             .describe("Clear, self-contained description of what this memory contains and when to use it. Future AI won't have your current context."),
-        category: z.enum(["technique", "style", "anatomy", "effect", "composition", "lighting", "color_theory", "perspective", "material", "clothing", "character_design", "environment", "character_specific", "scenario_specific", "token_optimization", "tag_preference", "tag_wiki"])
+        category: createCaseInsensitiveEnum(["technique", "style", "anatomy", "effect", "composition", "lighting", "color_theory", "perspective", "material", "clothing", "character_design", "environment", "character_specific", "scenario_specific", "token_optimization", "tag_preference", "tag_wiki"])
             .describe("Memory category for organization and discovery"),
         entities: z.array(z.object({
             id: z.string()
                 .describe("Unique entity ID within this memory (e.g., 'volumetric_fog_technique')"),
-            type: z.enum(["concept", "technique", "tag_combination", "visual_element", "principle", "character_trait", "dialog_pattern", "token_preference", "tag_preference", "scenario_approach"])
+            type: createCaseInsensitiveEnum(["concept", "technique", "tag_combination", "visual_element", "principle", "character_trait", "dialog_pattern", "token_preference", "tag_preference", "scenario_approach"])
                 .describe("Entity type"),
             name: z.string()
                 .describe("Human-readable entity name"),
@@ -432,7 +476,7 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
                 .describe("Source entity ID"),
             to: z.string()
                 .describe("Target entity ID"),
-            type: z.enum(["enhances", "conflicts_with", "requires", "similar_to", "part_of", "enables"])
+            type: createCaseInsensitiveEnum(["enhances", "conflicts_with", "requires", "similar_to", "part_of", "enables"])
                 .describe("Relationship type"),
             weight: z.number().min(0).max(1).nullable().optional()
                 .describe("Relationship strength (0-1, default 1.0)")
@@ -458,7 +502,33 @@ function createDynamicGenerationResponseSchema(expectedCharacterPrompts = 0, cha
             .describe("REQUIRED: Array of character names corresponding to character prompts. MUST replace generic names like 'Character #1', 'Character 1', etc. with contextually appropriate names. Consider cultural context, setting, and character traits. Use proper capitalization (e.g., ['Sakura', 'Emma', 'Alex']). Order must match character_prompts array order. Array must have at least one element when placeholder names are detected.")
         : z.array(z.string()).nullable().optional()
             .describe("Array of character names corresponding to character prompts. Replace generic names like 'Character #1', 'Character 1', etc. with contextually appropriate names. Consider cultural context, setting, and character traits. Use proper capitalization (e.g., ['Sakura', 'Emma', 'Alex']). Order must match character_prompts array order.")
-});
+    });
+    
+    const dialogItemSchema = z.object({
+        type: createCaseInsensitiveEnum(["speech", "thought"])
+            .describe("Type: 'speech' (spoken) or 'thought' (internal)"),
+        text: z.string().min(1).max(200)
+            .describe("Text (1-200 chars) in character's voice/tone"),
+        top: z.number().min(5).max(95)
+            .describe("Top position % (5-95)"),
+        left: z.number().min(5).max(95)
+            .describe("Left position % (5-95)"),
+        alignment: createCaseInsensitiveEnum(["left", "right"])
+            .describe("Alignment: 'left' or 'right'")
+    }).strict();
+    
+    // Only validate dialogs when dialogs are explicitly enabled (dialogsCount > 0)
+    // When dialogs are disabled, return empty schema so dialogs field is not validated/required
+    const dialogsSchema = dialogsEnabled 
+        ? z.object({ 
+            dialogs: z.array(dialogItemSchema)
+                .min(0)  // Allow empty array when terminateOnPass=true
+                .max(dialogsCount)  // Max is the configured dialogsCount
+                .describe(`${dialogsCount} dialogs (speech/thoughts). Required when terminateOnPass=true (can be []). Each dialog needs all required fields.`)
+        }) 
+        : z.object({});  // Empty schema - dialogs field is completely optional and not validated when disabled
+    
+    return baseSchema.and(dialogsSchema);
 }
 
 module.exports = {

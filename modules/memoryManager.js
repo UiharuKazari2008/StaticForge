@@ -3,11 +3,12 @@
  * Handles character memories and conversation summaries with database persistence
  */
 
-const logger = require('./logger');
-const { addChatMessage, getChatMessages } = require('./chatDatabase');
-
 class MemoryManager {
-    constructor() {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('MemoryManager requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.characterMemories = new Map(); // chatId -> memories array (in-memory cache)
         this.conversationSummaries = new Map(); // chatId -> conversation summary (in-memory cache)
         this.loadExistingMemories();
@@ -18,16 +19,16 @@ class MemoryManager {
      */
     async loadExistingMemories() {
         try {
-            logger.bootSubStep('Memory manager ready');
+            this.globalResources.getLogger().bootSubStep('Memory manager ready');
         } catch (error) {
-            logger.error('Error loading existing memories:', error);
+            this.globalResources.getLogger().error('Error loading existing memories:', error);
         }
     }
 
     /**
      * Get character memories for a specific chat session
      */
-    getCharacterMemories(chatId) {
+    async getCharacterMemories(chatId) {
         // Return cached memories if available
         if (this.characterMemories.has(chatId)) {
             return this.characterMemories.get(chatId);
@@ -35,7 +36,7 @@ class MemoryManager {
 
         // Load from database if not in cache
         try {
-            const messages = getChatMessages(chatId, 100, 0);
+            const messages = await this.globalResources.getChatDatabase().getChatMessages(chatId, 100, 0);
             const memories = [];
             
             // Extract memories from assistant messages
@@ -68,7 +69,7 @@ class MemoryManager {
     /**
      * Add a memory to a character's memory bank
      */
-    addCharacterMemory(chatId, memory) {
+    async addCharacterMemory(chatId, memory) {
         if (!this.characterMemories.has(chatId)) {
             this.characterMemories.set(chatId, []);
         }
@@ -98,7 +99,7 @@ class MemoryManager {
 
         // Persist to database by adding a special memory message
         try {
-            addChatMessage(chatId, 'memory', memoryObj.content, JSON.stringify(memoryObj), null, null, null);
+            await this.globalResources.getChatDatabase().addChatMessage(chatId, 'memory', memoryObj.content, JSON.stringify(memoryObj), null, null, null);
         } catch (error) {
             console.error('Error persisting memory to database:', error);
         }
@@ -107,7 +108,7 @@ class MemoryManager {
     /**
      * Get conversation summary for context
      */
-    getConversationSummary(chatId) {
+    async getConversationSummary(chatId) {
         // Return cached summary if available
         if (this.conversationSummaries.has(chatId)) {
             return this.conversationSummaries.get(chatId);
@@ -115,7 +116,7 @@ class MemoryManager {
 
         // Generate summary from recent messages
         try {
-            const messages = getChatMessages(chatId, 20, 0);
+            const messages = await this.globalResources.getChatDatabase().getChatMessages(chatId, 20, 0);
             const summary = this.generateConversationSummary(messages);
             this.conversationSummaries.set(chatId, summary);
             return summary;
@@ -216,7 +217,4 @@ class MemoryManager {
     }
 }
 
-// Create singleton instance
-const memoryManager = new MemoryManager();
-
-module.exports = memoryManager;
+module.exports = MemoryManager;

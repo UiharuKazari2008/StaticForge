@@ -4,7 +4,11 @@ const path = require('path');
 const logger = require('./logger');
 
 class SpellChecker {
-    constructor() {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('SpellChecker requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.customWords = new Set();
         this.loadCustomWords();
     }

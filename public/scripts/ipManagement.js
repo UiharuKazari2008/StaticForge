@@ -63,12 +63,12 @@ class IPManagementSystem {
             return;
         }
         
-        document.getElementById('ipManagementModal').classList.remove('hidden');
+        openModal(document.getElementById('ipManagementModal'));
         this.loadIPs();
     }
     
     closeIPManagementModal() {
-        document.getElementById('ipManagementModal').classList.add('hidden');
+        closeModal(document.getElementById('ipManagementModal'));
         this.searchTerm = '';
         document.getElementById('ipSearchInput').value = '';
     }
@@ -329,11 +329,11 @@ class IPManagementSystem {
             </div>
         `;
         
-        document.getElementById('ipDetailsModal').classList.remove('hidden');
+        openModal(document.getElementById('ipDetailsModal'));
     }
     
     closeIPDetailsModal() {
-        document.getElementById('ipDetailsModal').classList.add('hidden');
+        closeModal(document.getElementById('ipDetailsModal'));
         this.selectedIP = null;
     }
     

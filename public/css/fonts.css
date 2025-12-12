@@ -524,3 +524,25 @@
     font-weight: 800;
     font-style: normal;
 }
+
+/* Tahoma Font - Windows XP/Vista Start Button Font */
+/* Note: Tahoma is a Microsoft proprietary font. It comes with Windows.
+   If you want to include it in your project, you must obtain it legally.
+   This declaration will use the system font if available, or a local file if added. */
+@font-face {
+    font-family: 'Tahoma';
+    src: url('/dist/fonts/TAHOMA.TTF') format('truetype'),
+         local('Tahoma'),
+         local('Tahoma Regular'),
+         local('Tahoma-Regular');
+    font-weight: 400;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Tahoma';
+    src: url('/dist/fonts/TAHOMABD.TTF') format('truetype'),
+         local('Tahoma Bold'),
+         local('Tahoma-Bold');
+    font-weight: 700;
+    font-style: normal;
+}

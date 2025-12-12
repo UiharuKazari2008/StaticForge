@@ -25,9 +25,9 @@ class Director {
         this._dateFormatter = null;
         this._htmlEncoder = null;
 
-        // Performance optimization: Debouncing timeouts
-        this._renderSessionsTimeout = null;
-        this._renderMessagesTimeout = null;
+        // Performance optimization: Debouncing with requestAnimationFrame
+        this._renderSessionsFrameId = null;
+        this._renderMessagesFrameId = null;
 
         // localStorage keys
         this.LAST_SESSION_KEY = 'staticforge_director_last_session';
@@ -262,12 +262,12 @@ class Director {
 
     // Delete session (context menu version)
     async deleteSessionFromContextMenu(session) {
-        if (typeof window.showConfirmationDialog !== 'function') {
+        if (typeof showConfirmationDialog !== 'function') {
             return;
         }
 
         try {
-            const result = await window.showConfirmationDialog(
+            const result = await showConfirmationDialog(
                 `Are you sure you want to delete the session "${session.name}"?`,
                 [
                     { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
@@ -1375,11 +1375,11 @@ class Director {
     async deleteSession() {
         if (!this.currentSession) return;        
         // Check if showConfirmationDialog is available
-        if (typeof window.showConfirmationDialog !== 'function') {
+        if (typeof showConfirmationDialog !== 'function') {
             return;
         }
 
-        const result = await window.showConfirmationDialog(
+        const result = await showConfirmationDialog(
             `Are you sure you want to delete the session "${this.currentSession.name}"?`,
             [
                 { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
@@ -2485,12 +2485,7 @@ class Director {
                 // Note: Don't manually add session here - loadDirectorSessions() will get all sessions including the new one
 
                 // Open manual modal if not already open
-                const manualModal = document.getElementById('manualModal');
-                if (manualModal && manualModal.classList.contains('hidden')) {
-                    if (window.showManualModal) {
-                        window.showManualModal();
-                    }
-                }
+                await openManualModalWithContent();
 
                 // Enable director button if disabled
                 if (window.directorInstance.directorBtn && window.directorInstance.directorBtn.disabled) {
@@ -2726,7 +2721,7 @@ class Director {
 
         // Show modal
         const measurementsModal = document.getElementById('measurementsModal');
-        measurementsModal.classList.remove('hidden');
+        openModal(measurementsModal);
     }
 
     // Create character tabs for multiple character measurements
@@ -5421,7 +5416,7 @@ class Director {
     
     hideMeasurements() {
         const measurementsModal = document.getElementById('measurementsModal');
-        measurementsModal.classList.add('hidden');
+        closeModal(measurementsModal);
     }
     
     // Setup measurements modal event listeners

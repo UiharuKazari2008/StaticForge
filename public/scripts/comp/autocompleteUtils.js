@@ -519,6 +519,7 @@ function handleSearchResultsUpdate(message) {
     // Store results by service
     const results = message.results || [];
     searchResultsByService.set(message.service, results);
+    serviceResults.set(message.service, results); // Also store in serviceResults for rebuildAndDisplayResults
     
     // Update service status based on results
     if (results.length === 0) {
@@ -660,7 +661,7 @@ async function rebuildAndDisplayResults() {
     const allTextReplacements = getAllTextReplacementResults();
     const enhancedTextReplacements = await enhanceTextReplacementResults(allTextReplacements, lastSearchQuery);
 
-    // Get dynamic generation placeholder results
+    // Get Rentan placeholder results
     const dynamicGenerationPlaceholders = getDynamicGenerationPlaceholderResults(lastSearchQuery);
 
     // Get the best text replacement match for the current query
@@ -706,7 +707,7 @@ async function rebuildAndDisplayResults() {
         topResults.push(...topTextReplacements.map(result => ({...result, _isTopTier: true})));
         bottomResults.push(...bottomTextReplacements.map(result => ({...result, _isTopTier: false})));
 
-    // Add dynamic generation placeholders to top results
+    // Add Rentan placeholders to top results
     if (dynamicGenerationPlaceholders.length > 0) {
         topResults.push(...dynamicGenerationPlaceholders.map(result => ({...result, _isTopTier: true})));
     }
@@ -1078,7 +1079,7 @@ function getServiceDisplayName(serviceName) {
         case 'cached_tags':
             return 'Tags';
         case 'textReplacements':
-            return 'Text Replacements';
+            return 'Genso Expanders';
         case 'spellcheck':
             return 'Spell Check';
         case 'cached':
@@ -1703,7 +1704,7 @@ function handleCharacterAutocompleteKeydown(e) {
                                 const characterData = JSON.parse(firstItem.dataset.characterData);
                                 selectCharacterItem(characterData);
                             } else if (type === 'tag') {
-                                selectTag(firstItem.dataset.tagName);
+                                selectTag(firstItem.dataset.tagName, firstItem.dataset.category);
                             } else if (type === 'textReplacement') {
                                 selectTextReplacement(firstItem.dataset.placeholder);
                             } else if (type === 'dynamicPlaceholder') {
@@ -1744,7 +1745,7 @@ function handleCharacterAutocompleteKeydown(e) {
                             const characterData = JSON.parse(selectedItem.dataset.characterData);
                             selectCharacterItem(characterData);
                         } else if (type === 'tag') {
-                        selectTag(selectedItem.dataset.tagName);
+                        selectTag(selectedItem.dataset.tagName, selectedItem.dataset.category);
                         } else if (type === 'textReplacement') {
                             selectTextReplacement(selectedItem.dataset.placeholder);
                         } else if (type === 'dynamicPlaceholder') {
@@ -2146,6 +2147,7 @@ function createAutocompleteItem(result) {
         item.dataset.type = 'tag';
         item.dataset.tagName = result.name;
         item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
+        item.dataset.category = result.category || '';
 
         // Calculate opacity for dots based on counts with logarithmic scaling
         const nCountOpacity = result.count ? Math.min(1, Math.log10(result.count + 1) / Math.log10(10001)) : 0;
@@ -2215,13 +2217,14 @@ function createAutocompleteItem(result) {
 
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            selectTag(result.name);
+            selectTag(result.name, result.category);
         });
     } else if (result.tag || (result.name && result.model && result.count !== undefined)) {
         // Handle tag results that don't have type set
         item.dataset.type = 'tag';
         item.dataset.tagName = result.tag || result.name;
         item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
+        item.dataset.category = result.category || '';
 
         const tagName = result.tag || result.name;
         const count = result.count || 0;
@@ -2295,7 +2298,7 @@ function createAutocompleteItem(result) {
 
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            selectTag(tagName);
+            selectTag(tagName, result.category);
         });
     } else {
         // Handle character results or other unknown types
@@ -3390,7 +3393,7 @@ function insertTextReplacement(actualText) {
     }
 }
 
-function selectTag(tagName) {
+function selectTag(tagName, category) {
     if (!currentCharacterAutocompleteTarget) return;
 
     const target = currentCharacterAutocompleteTarget;
@@ -3422,16 +3425,28 @@ function selectTag(tagName) {
     const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
     newPrompt = textBefore;
 
+    // Apply artist prefix logic if category is artist
+    let tagToInsert = tagName;
+    if (category && category.toLowerCase() === 'artist') {
+        if (tagName.includes(' ')) {
+            // If tag has a space, prepend "art by "
+            tagToInsert = 'art by ' + tagName;
+        } else {
+            // Otherwise, prepend "artist:"
+            tagToInsert = 'artist:' + tagName;
+        }
+    }
+
     // Add the tag name
     if (newPrompt) {
         // Check if we should add a comma before the text
         if (shouldAddCommaBefore(currentValue, cursorPosition)) {
-            newPrompt += ', ' + tagName;
+            newPrompt += ', ' + tagToInsert;
         } else {
-            newPrompt += tagName;
+            newPrompt += tagToInsert;
         }
     } else {
-        newPrompt = tagName;
+        newPrompt = tagToInsert;
     }
 
     // Check if we're at the end of an emphasis block or brace block
@@ -5403,7 +5418,7 @@ async function showTextReplacementDialog(selectedText) {
         dialog.innerHTML = `
             <div class="confirmation-dialog-content">
                 <div class="confirmation-message">
-                    <strong>Add Text Replacement</strong>
+                    <strong>Add Genso Expander</strong>
                     <div class="selected-text-preview">Selected: "${selectedText}"</div>
                 </div>
                 <div class="text-replacement-form">

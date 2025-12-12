@@ -7,9 +7,11 @@ const fs = require('fs');
 const path = require('path');
 
 class FastTagSearch {
-    constructor(animeTagSearch, furryTagSearch) {
-        this.animeTagSearch = animeTagSearch;
-        this.furryTagSearch = furryTagSearch;
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('FastTagSearch requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.cache = new Map(); // Cache exact matches
         this.tagGroups = null; // Curated tag groups
         this.loadTagGroups();
@@ -24,10 +26,10 @@ class FastTagSearch {
             if (fs.existsSync(tagGroupsPath)) {
                 this.tagGroups = JSON.parse(fs.readFileSync(tagGroupsPath, 'utf8'));
                 this.buildTagToPathIndex();
-                console.log('✅ Loaded curated tag groups with index');
+                console.log('✓ Loaded curated tag groups with index');
             }
         } catch (error) {
-            console.error('Failed to load tag groups:', error);
+            console.error('    ⚠️ Failed to load tag groups:', error);
         }
     }
 
@@ -146,7 +148,7 @@ class FastTagSearch {
             return this.cache.get(cacheKey);
         }
 
-        const tagSearch = dataset === 'furry' ? this.furryTagSearch : this.animeTagSearch;
+        const tagSearch = dataset === 'furry' ? this.globalResources.getFurryTagSearch() : this.globalResources.getAnimeTagSearch();
         const normalized = query.trim().toLowerCase();
         
         // PRIORITY 1: Check curated tag groups (more organized)
@@ -392,7 +394,7 @@ class FastTagSearch {
      * @returns {Array} Tags containing this word, sorted by n_count
      */
     findTagsContaining(word, dataset = 'anime') {
-        const tagSearch = dataset === 'furry' ? this.furryTagSearch : this.animeTagSearch;
+        const tagSearch = dataset === 'furry' ? this.globalResources.getFurryTagSearch() : this.globalResources.getAnimeTagSearch();
         const normalized = word.toLowerCase().trim();
         const matches = [];
         
@@ -431,7 +433,7 @@ class FastTagSearch {
      * @returns {Array} Top fuzzy matches
      */
     fuzzyMatches(query, dataset = 'anime') {
-        const tagSearch = dataset === 'furry' ? this.furryTagSearch : this.animeTagSearch;
+        const tagSearch = dataset === 'furry' ? this.globalResources.getFurryTagSearch() : this.globalResources.getAnimeTagSearch();
         
         // Call the full search (which does fuzzy) but limit results
         const results = tagSearch.searchTags(query, 5);

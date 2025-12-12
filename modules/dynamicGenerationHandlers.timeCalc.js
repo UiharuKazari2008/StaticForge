@@ -1,5 +1,6 @@
 
 const getSunriseSunsetLib = require('sunrise-sunset-js');
+const logger = require('./logger');
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -14,12 +15,13 @@ function normalizePeriodKey(periodKey) {
     const normalized = periodKey.toLowerCase().trim();
     
     // Legacy to new mappings
+    // Note: 'evening' is now a valid period name (used for cloudy afternoon golden hour), don't map to 'night'
     const legacyMappings = {
         'earlymorning': 'morning',
         'early_morning': 'morning',
-        'earlyevening': 'night',
-        'early_evening': 'night',
-        'evening': 'night',
+        'earlyevening': 'evening', // Keep as evening, not night
+        'early_evening': 'evening',
+        // 'evening' is now a valid period name, don't map to 'night'
         'lateevening': 'night',
         'late_evening': 'night'
     };
@@ -30,8 +32,18 @@ function normalizePeriodKey(periodKey) {
 /**
  * Get accurate sunrise and sunset times using established astronomical library
  * Uses sunrise-sunset-js package for reliable calculations
- * @param {Object} location - Location object with lat/lon
- * @param {Date} date - Date for which to calculate sunrise/sunset
+ * 
+ * IMPORTANT: The DATE parameter affects timing because it determines the season:
+ * - Summer dates (June): Earlier sunrise, later sunset (longer days ~14-16 hours)
+ * - Winter dates (December): Later sunrise, earlier sunset (shorter days ~8-10 hours)
+ * - Spring/Autumn dates: Intermediate day lengths
+ * 
+ * The astronomical calculations account for Earth's axial tilt (23.5°) which causes
+ * seasonal variations in day length. The date is used to calculate the sun's declination,
+ * which directly affects sunrise/sunset times.
+ * 
+ * @param {Object} location - Location object with lat/lon and timezone
+ * @param {Date} date - Date for which to calculate sunrise/sunset (month/day affects timing via season)
  * @returns {Promise<Object>} Sunrise and sunset times
  */
 async function getSunriseSunset(location, date = new Date()) {
@@ -55,6 +67,10 @@ async function getSunriseSunset(location, date = new Date()) {
     // Use established sunrise-sunset-js package for accurate calculations
 
     try {
+        // Initialize polar condition flags
+        let isPolarDay = false;
+        let isPolarNight = false;
+        
         // Create date at noon UTC for the given date to ensure consistent timezone handling
         const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0));
         const sunrise = getSunriseSunsetLib.getSunrise(lat, lon, utcDate);
@@ -69,8 +85,8 @@ async function getSunriseSunset(location, date = new Date()) {
 
             // Polar day occurs when sun is always above horizon (latitude + solar declination > 0)
             // Polar night occurs when sun is always below horizon (latitude + solar declination < 0)
-            const isPolarDay = (lat + solarDeclination) > 0;
-            const isPolarNight = (lat + solarDeclination) < 0;
+            isPolarDay = (lat + solarDeclination) > 0;
+            isPolarNight = (lat + solarDeclination) < 0;
 
             return {
                 sunrise: isPolarDay ? 0 : null,  // Midnight for polar day
@@ -83,12 +99,29 @@ async function getSunriseSunset(location, date = new Date()) {
         }
 
         // Convert UTC times to local timezone for hour calculation
-        const sunriseLocal = new Date(sunrise.toLocaleString('en-US', { timeZone: location.timezone || 'UTC' }));
-        const sunsetLocal = new Date(sunset.toLocaleString('en-US', { timeZone: location.timezone || 'UTC' }));
-
-        const sunriseHour = sunriseLocal.getHours() + sunriseLocal.getMinutes() / 60 + sunriseLocal.getSeconds() / 3600;
-        const sunsetHour = sunsetLocal.getHours() + sunsetLocal.getMinutes() / 60 + sunsetLocal.getSeconds() / 3600;
-
+        // Uses IANA timezone (e.g., 'America/New_York') which automatically handles DST
+        // More robust method using Intl.DateTimeFormat for accurate timezone conversion
+        const timezone = location.timezone || 'UTC';
+        
+        // Convert UTC sunrise/sunset to local timezone (handles DST automatically)
+        const formatOptions = { timeZone: timezone, hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
+        const sunriseFormatter = new Intl.DateTimeFormat('en-US', formatOptions);
+        const sunsetFormatter = new Intl.DateTimeFormat('en-US', formatOptions);
+        
+        // Get local time components
+        const sunriseParts = sunriseFormatter.formatToParts(sunrise);
+        const sunsetParts = sunsetFormatter.formatToParts(sunset);
+        
+        const getHourFromParts = (parts) => {
+            const hour = parseInt(parts.find(p => p.type === 'hour').value);
+            const minute = parseInt(parts.find(p => p.type === 'minute').value);
+            const second = parseInt(parts.find(p => p.type === 'second').value);
+            return hour + minute / 60 + second / 3600;
+        };
+        
+        const sunriseHour = getHourFromParts(sunriseParts);
+        const sunsetHour = getHourFromParts(sunsetParts);
+        
         return {
             sunrise: sunrise.getTime(),
             sunset: sunset.getTime(),
@@ -134,16 +167,511 @@ async function getSunriseSunset(location, date = new Date()) {
         const sunset = new Date(date);
         sunset.setHours(Math.floor(sunsetHour), (sunsetHour % 1) * 60, 0, 0);
 
+        // Calculate solar noon and other properties for fallback
+        const solarNoon = (sunriseHour + sunsetHour) / 2;
+        const daylightHours = sunsetHour - sunriseHour;
+        // Calculate current hour in local timezone (fallback doesn't have timezone conversion, so use date directly)
+        // Note: This assumes date is already in the correct timezone context
+        const currentHour = date.getHours() + date.getMinutes() / 60;
+        const isDaylight = currentHour >= sunriseHour && currentHour < sunsetHour;
+        
+        // Calculate dawn/dusk ranges first (30 minutes before sunrise, 30 minutes after sunset)
+        const dawnTwilightWindow = 0.5; // 30 minutes
+        const duskTwilightWindow = 0.5; // 30 minutes
+        const dawnStartHour = sunriseHour - dawnTwilightWindow;
+        const duskEndHour = sunsetHour + duskTwilightWindow;
+        
+        let sunProgressRaw = 0;
+        let sunPhase = 'unknown';
+        if (isDaylight) {
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+            sunPhase = currentHour < solarNoon ? 'rising' : 'setting';
+        } else if (currentHour >= dawnStartHour && currentHour < sunriseHour) {
+            // During dawn twilight period - still 'pre-dawn' but with some light
+            sunPhase = 'pre-dawn';
+            // Calculate progress as negative (before sunrise)
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else if (currentHour > sunsetHour && currentHour <= duskEndHour) {
+            // During dusk twilight period - still 'setting' phase with decreasing light
+            sunPhase = 'setting';
+            // Calculate progress past sunset (will be > 1.0 during twilight)
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else if (currentHour < dawnStartHour) {
+            // Before dawn twilight - true night/pre-dawn
+            sunPhase = 'pre-dawn';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else {
+            // After dusk twilight - true night/post-dusk
+            sunPhase = 'post-dusk';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        }
+        
+        // Calculate perceivable light using 30-minute windows
+        let perceivableLight = 0;
+        let lightLevelRaw = 0;
+        
+        if (currentHour >= dawnStartHour && currentHour < sunriseHour) {
+            // Dawn twilight - increasing light over 30 minutes
+            perceivableLight = (currentHour - dawnStartHour) / dawnTwilightWindow;
+            lightLevelRaw = perceivableLight * 0.3;
+        } else if (currentHour >= sunriseHour && currentHour < sunsetHour) {
+            // Daylight
+            perceivableLight = 1.0;
+            const noonDistance = Math.abs(currentHour - solarNoon) / (daylightHours / 2);
+            lightLevelRaw = 1.0 - (noonDistance * 0.2);
+        } else if (currentHour >= sunsetHour && currentHour <= duskEndHour) {
+            // Dusk twilight - decreasing light over 30 minutes
+            perceivableLight = 1.0 - ((currentHour - sunsetHour) / duskTwilightWindow);
+            lightLevelRaw = perceivableLight * 0.3;
+        }
+        
         return {
             sunrise: sunrise.getTime(),
             sunset: sunset.getTime(),
             sunriseHour,
             sunsetHour,
+            solarNoon,
+            daylightHours,
+            sunPhase,
+            sunProgressRaw,
+            perceivableLight,
+            lightLevelRaw,
             isPolarDay: false,
             isPolarNight: false,
             fallback: true
         };
     }
+}
+
+/**
+ * Format decimal hour to readable time string
+ * @param {number} hour - Decimal hour (e.g., 6.5 = 6:30 AM)
+ * @returns {string} Formatted time (e.g., "6:30 AM")
+ */
+function formatHour(hour) {
+    if (hour === null || hour === undefined) return 'N/A';
+    const h = Math.floor(hour);
+    const m = Math.round((hour - h) * 60);
+    const period = h >= 12 ? 'PM' : 'AM';
+    const displayHour = h > 12 ? h - 12 : (h === 0 ? 12 : h);
+    return `${displayHour}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Format sun position percentage
+ * @param {string} sunPhase - Sun phase
+ * @param {number} sunProgressRaw - Sun progress (0-1)
+ * @param {number} perceivableLight - Perceivable light (0-1)
+ * @returns {string} Sun position description
+ */
+function formatSunPosition(sunPhase, sunProgressRaw, perceivableLight) {
+    if (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn') {
+        return '0% (below horizon)';
+    } else if (sunPhase === 'rising') {
+        const percent = Math.round(sunProgressRaw * 100);
+        return `${percent}% (rising)`;
+    } else if (sunPhase === 'setting') {
+        const percent = Math.round(sunProgressRaw * 100);
+        return `${percent}% (setting)`;
+    } else if (sunPhase === 'polar_day') {
+        return '100% (polar day)';
+    } else if (sunPhase === 'polar_night') {
+        return '0% (polar night)';
+    } else {
+        return `${Math.round(perceivableLight * 100)}%`;
+    }
+}
+
+/**
+ * Log period ranges in a detailed table format
+ * @param {Object} data - Period calculation data
+ */
+function logPeriodRangesTable(data) {
+    const {
+        currentHour,
+        sunriseHour,
+        sunsetHour,
+        solarNoon,
+        dawnStartHour,
+        duskEndHour,
+        periodDescription,
+        sunPhase,
+        perceivableLight,
+        sunProgressRaw,
+        isDaylight,
+        sunriseIntensity,
+        sunsetIntensity,
+        dawnIntensity,
+        duskIntensity,
+        goldenMorningIntensity,
+        goldenAfternoonIntensity,
+        middayIntensity,
+        midnightIntensity,
+        cloudCoverage = 0
+    } = data;
+    
+    // Helper function to check if currentHour falls within a time range (same as period selection)
+    const isInRange = (startHour, endHour, checkHour) => {
+        if (startHour === null || endHour === null || checkHour === null) {
+            return false;
+        }
+
+        // Handle ranges that extend into the next day by >24h marker (e.g., Night ending at 30.5h)
+        if (endHour >= 24 && startHour < endHour) {
+            const normalizedCheck = checkHour < startHour ? checkHour + 24 : checkHour;
+            return normalizedCheck >= startHour && normalizedCheck < endHour;
+        }
+
+        // Handle day wrap using traditional start > end definition (e.g., 22h → 4h)
+        if (endHour < startHour) {
+            return checkHour >= startHour || checkHour < endHour;
+        }
+
+        return checkHour >= startHour && checkHour < endHour;
+    };
+
+    logger.detailed('\n' + '='.repeat(80));
+    logger.detailed('TIME PERIOD ANALYSIS');
+    logger.detailed('='.repeat(80));
+    logger.detailed(`Current Time: ${formatHour(currentHour)} (${currentHour.toFixed(3)}h)`);
+    logger.detailed(`Sun Position: ${formatSunPosition(sunPhase, sunProgressRaw, perceivableLight)}`);
+    logger.detailed(`Selected Period: ${periodDescription.toUpperCase()}`);
+    logger.detailed('');
+
+    // Calculate all period ranges
+    const periods = [];
+
+    // Dawn
+    if (dawnStartHour !== null && sunriseHour !== null) {
+        periods.push({
+            name: 'Dawn',
+            start: formatHour(dawnStartHour),
+            end: formatHour(sunriseHour),
+            startHour: dawnStartHour,
+            endHour: sunriseHour,
+            intensity: dawnIntensity,
+            active: isInRange(dawnStartHour, sunriseHour, currentHour),
+            sunPos: '0-30% (twilight)'
+        });
+    }
+
+    // Sunrise
+    if (sunriseHour !== null) {
+        const sunriseStart = sunriseHour - 0.25;
+        const sunriseEnd = sunriseHour + 0.25;
+        periods.push({
+            name: 'Sunrise',
+            start: formatHour(sunriseStart),
+            end: formatHour(sunriseEnd),
+            startHour: sunriseStart,
+            endHour: sunriseEnd,
+            intensity: sunriseIntensity,
+            active: isInRange(sunriseStart, sunriseEnd, currentHour),
+            sunPos: '0% (on horizon)'
+        });
+    }
+
+    // Golden Hour Morning
+    if (sunriseHour !== null) {
+        const goldenStart = sunriseHour + 0.25;
+        const goldenEnd = sunriseHour + 1.5;
+        // Use "Morning" when cloudy, "Golden Hour (AM)" when clear
+        const periodName = cloudCoverage >= 60 ? 'Morning' : 'Golden Hour (AM)';
+        periods.push({
+            name: periodName,
+            start: formatHour(goldenStart),
+            end: formatHour(goldenEnd),
+            startHour: goldenStart,
+            endHour: goldenEnd,
+            intensity: goldenMorningIntensity,
+            active: isInRange(goldenStart, goldenEnd, currentHour),
+            sunPos: '30-60% (low angle)'
+        });
+    }
+
+    // Midday
+    if (solarNoon !== null) {
+        const middayStart = solarNoon - 2.0;
+        const middayEnd = solarNoon + 2.0;
+        periods.push({
+            name: 'Midday',
+            start: formatHour(middayStart),
+            end: formatHour(middayEnd),
+            startHour: middayStart,
+            endHour: middayEnd,
+            intensity: middayIntensity,
+            active: isInRange(middayStart, middayEnd, currentHour),
+            sunPos: '90-100% (overhead)'
+        });
+    }
+
+    // Golden Hour Afternoon
+    if (sunsetHour !== null) {
+        const goldenStart = sunsetHour - 1.5;
+        const goldenEnd = sunsetHour - 0.25;
+        // Use "Evening" when cloudy, "Golden Hour (PM)" when clear
+        const periodName = cloudCoverage >= 60 ? 'Evening' : 'Golden Hour (PM)';
+        periods.push({
+            name: periodName,
+            start: formatHour(goldenStart),
+            end: formatHour(goldenEnd),
+            startHour: goldenStart,
+            endHour: goldenEnd,
+            intensity: goldenAfternoonIntensity,
+            active: isInRange(goldenStart, goldenEnd, currentHour),
+            sunPos: '30-60% (low angle)'
+        });
+    }
+    
+    // Add "Daytime" periods to fill gaps between Golden Hour and Midday
+    if (sunriseHour !== null && solarNoon !== null && sunsetHour !== null) {
+        const goldenMorningEnd = sunriseHour + 1.5;
+        const middayStart = solarNoon - 2.0;
+        const middayEnd = solarNoon + 2.0;
+        const goldenAfternoonStart = sunsetHour - 1.5;
+        
+        // Gap between Golden Hour AM and Midday
+        if (goldenMorningEnd < middayStart) {
+            periods.push({
+                name: 'Daytime (AM)',
+                start: formatHour(goldenMorningEnd),
+                end: formatHour(middayStart),
+                startHour: goldenMorningEnd,
+                endHour: middayStart,
+                intensity: 0,
+                active: isDaylight && currentHour >= goldenMorningEnd && currentHour < middayStart,
+                sunPos: '60-90% (rising)'
+            });
+        }
+        
+        // Gap between Midday and Golden Hour PM
+        if (middayEnd < goldenAfternoonStart) {
+            periods.push({
+                name: 'Daytime (PM)',
+                start: formatHour(middayEnd),
+                end: formatHour(goldenAfternoonStart),
+                startHour: middayEnd,
+                endHour: goldenAfternoonStart,
+                intensity: 0,
+                active: isDaylight && currentHour >= middayEnd && currentHour < goldenAfternoonStart,
+                sunPos: '60-90% (setting)'
+            });
+        }
+    }
+
+    // Sunset
+    if (sunsetHour !== null) {
+        const sunsetStart = sunsetHour - 0.25;
+        const sunsetEnd = sunsetHour + 0.25;
+        periods.push({
+            name: 'Sunset',
+            start: formatHour(sunsetStart),
+            end: formatHour(sunsetEnd),
+            startHour: sunsetStart,
+            endHour: sunsetEnd,
+            intensity: sunsetIntensity,
+            active: isInRange(sunsetStart, sunsetEnd, currentHour),
+            sunPos: '0% (on horizon)'
+        });
+    }
+
+    // Dusk
+    if (sunsetHour !== null && duskEndHour !== null) {
+        periods.push({
+            name: 'Dusk',
+            start: formatHour(sunsetHour),
+            end: formatHour(duskEndHour),
+            startHour: sunsetHour,
+            endHour: duskEndHour,
+            intensity: duskIntensity,
+            active: isInRange(sunsetHour, duskEndHour, currentHour),
+            sunPos: '0-30% (twilight)'
+        });
+    }
+
+    // Midnight (subset of night, higher priority)
+    if (duskEndHour !== null) {
+        const midnightStart = 22;
+        const midnightEnd = 4;
+        const midnightCondition = (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn') && midnightIntensity > 0.7;
+        periods.push({
+            name: 'Midnight',
+            start: '10:00 PM',
+            end: '4:00 AM',
+            startHour: midnightStart,
+            endHour: midnightEnd,
+            intensity: midnightIntensity,
+            active: midnightCondition && isInRange(midnightStart, midnightEnd, currentHour),
+            sunPos: '0% (below horizon)'
+        });
+    }
+    
+    // Night
+    if (duskEndHour !== null && dawnStartHour !== null) {
+        const nightEndHour = dawnStartHour < duskEndHour ? dawnStartHour + 24 : dawnStartHour;
+        const nightCondition = (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn');
+        periods.push({
+            name: 'Night',
+            start: formatHour(duskEndHour),
+            end: formatHour(dawnStartHour),
+            startHour: duskEndHour,
+            endHour: nightEndHour,
+            intensity: 0,
+            active: nightCondition && isInRange(duskEndHour, nightEndHour, currentHour),
+            sunPos: '0% (below horizon)'
+        });
+    }
+
+    // Sort periods by start time for better visualization
+    periods.sort((a, b) => {
+        // Handle day wrap (night/midnight might span midnight)
+        let aStart = a.startHour;
+        let bStart = b.startHour;
+        
+        // If period spans midnight, normalize
+        if (aStart > 20 && a.endHour < a.startHour) {
+            // Night period - keep as is for sorting
+        }
+        if (bStart > 20 && b.endHour < b.startHour) {
+            // Night period - keep as is for sorting
+        }
+        
+        return aStart - bStart;
+    });
+
+    // Display table
+    logger.detailed('Period Ranges:');
+    logger.detailed('-'.repeat(80));
+    logger.detailed(
+        'Period'.padEnd(22) +
+        'Start'.padEnd(12) +
+        'End'.padEnd(12) +
+        'Intensity'.padEnd(12) +
+        'Sun Position'.padEnd(20) +
+        'Active'
+    );
+    logger.detailed('(⭐ = Selected, ✓ = Active & Selected, ~ = In Range, space = Not Active)');
+    logger.detailed('-'.repeat(80));
+
+    // Normalize periodDescription for comparison (same as period selection logic)
+    const normalizedSelectedPeriod = periodDescription.toLowerCase().replace(/\s+/g, '');
+    
+    periods.forEach(period => {
+        // Normalize period name for comparison
+        const normalizedPeriodName = period.name.toLowerCase().replace(/\s+/g, '').replace(/\(am\)|\(pm\)/g, '');
+        
+        // Check if this period matches the selected period
+        // Handle special cases: "morning" matches "Golden Hour (AM)", "evening" matches "Golden Hour (PM)"
+        // Also handle reverse: "golden hour" matches "Morning" or "Evening" when they're the same time period
+        let isSelected = false;
+        if (normalizedSelectedPeriod === normalizedPeriodName) {
+            isSelected = true;
+        } else if (normalizedSelectedPeriod === 'morning' && normalizedPeriodName.includes('goldenhour') && period.startHour < 12) {
+            isSelected = true;
+        } else if (normalizedSelectedPeriod === 'evening' && normalizedPeriodName.includes('goldenhour') && period.startHour >= 12) {
+            isSelected = true;
+        } else if (normalizedSelectedPeriod === 'goldenhour' && normalizedPeriodName.includes('goldenhour')) {
+            isSelected = true;
+        } else if (normalizedSelectedPeriod === 'goldenhour' && normalizedPeriodName === 'morning' && period.startHour < 12) {
+            // Selected is "golden hour" but table shows "Morning" (cloudy) - same time period
+            isSelected = true;
+        } else if (normalizedSelectedPeriod === 'goldenhour' && normalizedPeriodName === 'evening' && period.startHour >= 12) {
+            // Selected is "golden hour" but table shows "Evening" (cloudy) - same time period
+            isSelected = true;
+        }
+        
+        // Active if time range matches AND it's the selected period
+        const activeMark = (period.active && isSelected) ? '✓' : (period.active ? '~' : ' ');
+        const intensityStr = period.intensity !== undefined 
+            ? period.intensity.toFixed(3) 
+            : 'N/A';
+        
+        // Add indicator if this is the selected period
+        const selectedIndicator = isSelected ? ' ⭐' : '';
+        
+        logger.detailed(
+            (period.name + selectedIndicator).padEnd(22) +
+            period.start.padEnd(12) +
+            period.end.padEnd(12) +
+            intensityStr.padEnd(12) +
+            period.sunPos.padEnd(20) +
+            activeMark
+        );
+    });
+
+    logger.detailed('-'.repeat(80));
+    
+    // Show gaps if any
+    const gaps = [];
+    for (let i = 0; i < periods.length - 1; i++) {
+        const current = periods[i];
+        const next = periods[i + 1];
+        
+        // Handle day wrap
+        let currentEnd = current.endHour;
+        let nextStart = next.startHour;
+        
+        // If current period wraps (night), skip gap check
+        if (currentEnd < current.startHour) {
+            continue;
+        }
+        
+        // If next period is before current (wrapped), skip
+        if (nextStart < currentEnd && nextStart < 12) {
+            continue;
+        }
+        
+        // Check for gap
+        if (nextStart > currentEnd + 0.01) { // Small tolerance for floating point
+            gaps.push({
+                from: formatHour(currentEnd),
+                to: formatHour(nextStart),
+                duration: (nextStart - currentEnd).toFixed(2) + 'h'
+            });
+        }
+    }
+    
+    if (gaps.length > 0) {
+        logger.detailed('');
+        logger.detailed('⚠️  Gaps detected:');
+        gaps.forEach(gap => {
+            logger.detailed(`   ${gap.from} → ${gap.to} (${gap.duration})`);
+        });
+    }
+    
+    logger.detailed('');
+}
+
+/**
+ * Get relative wind direction description
+ * Wind direction is where the wind is coming FROM (meteorological convention)
+ * Returns relative position: facing (front), behind (back), left side, or right side
+ * @param {number} windDirection - Wind direction in degrees (0-360, where 0° = North, 90° = East, 180° = South, 270° = West)
+ * @returns {string|null} Relative direction ('facing', 'behind', 'left side', 'right side') or null
+ */
+function getRelativeWindDirection(windDirection) {
+    if (windDirection === null || windDirection === undefined || isNaN(windDirection)) {
+        return null;
+    }
+    // Normalize to 0-360
+    const normalized = ((windDirection % 360) + 360) % 360;
+    
+    // Assuming subject/camera faces north (0°)
+    // Wind from front (north): 315-45° = facing
+    // Wind from back (south): 135-225° = behind
+    // Wind from left (west): 225-315° = left side
+    // Wind from right (east): 45-135° = right side
+    
+    if ((normalized >= 315 || normalized < 45)) {
+        return 'facing';
+    } else if (normalized >= 45 && normalized < 135) {
+        return 'right side';
+    } else if (normalized >= 135 && normalized < 225) {
+        return 'behind';
+    } else if (normalized >= 225 && normalized < 315) {
+        return 'left side';
+    }
+    return null;
 }
 
 /**
@@ -162,19 +690,23 @@ function getTransitionType(currentHour, sunriseHour, sunsetHour) {
     const sunriseTransition = Math.abs(currentHour - sunriseHour);
     const sunsetTransition = Math.abs(currentHour - sunsetHour);
 
-    // Check for broad transition windows first (lower priority)
-    const inDawnWindow = currentHour >= sunriseHour - 1 && currentHour <= sunriseHour + 1;
-    const inTwilightWindow = currentHour >= sunsetHour - 1 && currentHour <= sunsetHour + 1;
+    // Use 30-minute windows to match dawn/dusk calculations
+    const dawnTwilightWindow = 0.5; // 30 minutes
+    const duskTwilightWindow = 0.5; // 30 minutes
+    const dawnStartHour = sunriseHour - dawnTwilightWindow;
+    const duskEndHour = sunsetHour + duskTwilightWindow;
 
-    // Then check for narrow transition windows (higher priority)
-    if (sunriseTransition <= 0.25) { // 15 minutes
+    // Check for narrow transition windows first (higher priority)
+    if (sunriseTransition <= 0.25) { // 15 minutes around sunrise
         return 'sunrise_transition';
-    } else if (sunsetTransition <= 0.25) { // 15 minutes
+    } else if (sunsetTransition <= 0.25) { // 15 minutes around sunset
         return 'sunset_transition';
-    } else if (inTwilightWindow) {
-        return 'twilight_transition';
-    } else if (inDawnWindow) {
-        return 'dawn_dusk_transition';
+    } 
+    // Check for dawn/dusk twilight windows (30 minutes)
+    else if (currentHour >= dawnStartHour && currentHour < sunriseHour) {
+        return 'dawn_transition';
+    } else if (currentHour > sunsetHour && currentHour <= duskEndHour) {
+        return 'dusk_transition';
     } else {
         return 'steady_state';
     }
@@ -400,7 +932,7 @@ function analyzeCloudLayers(cloudCoverLow, cloudCoverMid, cloudCoverHigh, totalC
 
         // Specific cloud pattern analysis
         if (cloudCoverLow > 70 && cloudCoverMid > 70) {
-            analysis.weatherPattern = 'overcast';
+            analysis.weatherPattern = 'cloudy';
             analysis.description += 'thick cloud cover throughout atmosphere, ';
         } else if (cloudCoverHigh > 60 && cloudCoverLow < 30) {
             analysis.weatherPattern = 'fair_improving';
@@ -490,7 +1022,7 @@ function buildEnvironmentalContext(soilAnalysis, atmosphericMoistureAnalysis, cl
 
     // Add cloud layer information for daylight periods, avoiding conflicts with existing cloud mentions
     if (isDaylight && cloudLayerAnalysis.description) {
-        const hasExistingClouds = existingLower.includes('cloud') || existingLower.includes('overcast') ||
+        const hasExistingClouds = existingLower.includes('cloud') || existingLower.includes('cloudy sky') ||
                                  existingLower.includes('sky') || existingLower.includes('atmosphere');
         if (!hasExistingClouds) {
             contextParts.push(cloudLayerAnalysis.description);
@@ -563,1438 +1095,919 @@ function getPerceivedTimeFactors(season, daylightHours, weather = null) {
  * Determines the most accurate time period and transitional state for the current moment,
  * factoring in precise solar events, season, and weather conditions.
  *
- * @param {Object} time - The current time object (from getCurrentTime()), including hour, minute, and timestamp.
+ * @param {Object} timeInput - The current time object from getCurrentTime() with year, month, dayOfMonth, hour, minute, timestamp
  * @param {string} season - The current season (e.g., 'spring', 'summer', 'autumn', 'winter').
  * @param {Object} location - Geographic location object used for sunrise/sunset calculations (latitude, longitude).
  * @param {Object} weather - (Optional) Weather data object for adjusting lighting and atmospheric descriptions (e.g., cloudCoverage, uvIndex, temperature).
+ * @param {Object} enhancedWeatherData - (Optional) Enhanced weather data
+ * @param {boolean} clothingEffects - Whether to include clothing effects in atmosphere
  * @returns {Object} An object containing:
  *   - period: Human-readable description of the time period (e.g., "Early Morning", "Golden Hour").
  *   - periodKey: Machine-friendly key for the period (e.g., "earlymorning", "goldenhour").
- *   - lighting: Description of lighting conditions, accounting for sun position and weather.
- *   - atmosphere: Description of atmospheric qualities, including weather and seasonal context.
+ *   - lighting: Array of {text, bias} objects describing lighting conditions, accounting for sun position and weather.
+ *   - atmosphere: Array of {text, bias} objects describing atmospheric qualities, including weather and seasonal context.
+ *   - uc: Array of {text, bias} objects for undesired elements (negative prompt).
  *   - season: The current season.
  *   - timeOfDay: General time of day ("morning", "afternoon", "evening/night", etc.).
  *   - transitionType: Specific transition state (e.g., "sunrise_transition", "sunset_transition", "steady_state").
+ *   - Additional solar data: sunriseHour, sunsetHour, solarNoon, daylightHours, sunPhase, sunProgressRaw, perceivableLight, lightLevelRaw, etc.
  */
-async function determineTimePeriod(time, season, location, weather = null) {
-    const currentHour = time.hour + time.minute / 60; // Decimal hour
-
-    try {
-        let sunTimes;
-
-        // Use weather data sunrise/sunset if available (more accurate than astronomical calculation)
-        if (weather && weather.sunrise && weather.sunset && location.timezone) {
-            // Convert UTC sunrise/sunset to local time using timezone
-            const sunriseUTC = new Date(weather.sunrise);
-            const sunsetUTC = new Date(weather.sunset);
-
-            // Convert to local time using timezone
-            const sunriseLocal = new Date(sunriseUTC.toLocaleString('en-US', { timeZone: location.timezone }));
-            const sunsetLocal = new Date(sunsetUTC.toLocaleString('en-US', { timeZone: location.timezone }));
-
-            const sunriseHour = sunriseLocal.getHours() + sunriseLocal.getMinutes() / 60 + sunriseLocal.getSeconds() / 3600;
-            const sunsetHour = sunsetLocal.getHours() + sunsetLocal.getMinutes() / 60 + sunsetLocal.getSeconds() / 3600;
-
-            sunTimes = {
-                sunrise: sunriseLocal.getTime(),
-                sunset: sunsetLocal.getTime(),
-                sunriseHour,
-                sunsetHour,
-                isPolarDay: false,
-                isPolarNight: false,
-                source: 'weather_api'
-            };
-        } else {
-            // Fall back to astronomical calculation
-            // Create date at noon UTC for the given date to ensure consistent timezone handling
-            const utcDate = new Date(Date.UTC(time.year, time.month, time.dayOfMonth, 12, 0, 0));
-            sunTimes = await getSunriseSunset(location, utcDate);
-        }
-
-        // Check for polar conditions or calculation errors
-        if (sunTimes.isPolarDay) {
-            return {
-                period: 'polar day, midnight sun, continuous daylight',
-                periodKey: 'polar_day',
-                lighting: 'continuous daylight, no darkness, sun always visible',
-                atmosphere: 'arctic or antarctic conditions with constant illumination',
-                season: season,
-                timeOfDay: 'daylight',
-                transitionType: 'polar_conditions',
-                polarCondition: 'polar_day',
-                // Sun position data for polar day
-                sunriseHour: 0,
-                sunsetHour: 24,
-                solarNoon: 12,
-                daylightHours: 24,
-                sunPhase: 'polar_day',
-                sunProgressRaw: 1,
-                perceivableLight: 100,
-                lightLevelRaw: 10,
-                isBeforeSunrise: false,
-                isAfterSunset: false,
-                isDaytime: true,
-                isRisingPhase: false,
-                isSettingPhase: false
-            };
-        } else if (sunTimes.isPolarNight) {
-            return {
-                period: 'polar night, extended darkness',
-                periodKey: 'polar_night',
-                lighting: 'no sky lighting, extended nighttime darkness, complete absence of sunlight, only stars and aurora provide natural light',
-                atmosphere: 'arctic or antarctic conditions with extended darkness, no ambient sky illumination',
-                season: season,
-                timeOfDay: 'night',
-                transitionType: 'polar_conditions',
-                polarCondition: 'polar_night',
-                // Sun position data for polar night
-                sunriseHour: null,
-                sunsetHour: null,
-                solarNoon: null,
-                daylightHours: 0,
-                sunPhase: 'polar_night',
-                sunProgressRaw: 0,
-                perceivableLight: 0,
-                lightLevelRaw: 0,
-                isBeforeSunrise: false,
-                isAfterSunset: true,
-                isDaytime: false,
-                isRisingPhase: false,
-                isSettingPhase: false
-            };
-        }
-
-        // Convert sunrise/sunset to decimal hours in local time
-        const sunriseHour = sunTimes.sunriseHour;
-        const sunsetHour = sunTimes.sunsetHour;
-
-        // Safety check for null values
-        if (sunriseHour === null || sunsetHour === null) {
-            return {
-                period: 'unknown time period',
-                periodKey: 'unknown',
-                lighting: 'unable to determine lighting conditions',
-                atmosphere: 'weather data unavailable for time calculation',
-                season: season,
-                timeOfDay: 'unknown',
-                transitionType: 'unknown',
-                error: 'Sunrise/sunset calculation failed',
-                // Default sun position data for error case
-                sunriseHour: null,
-                sunsetHour: null,
-                solarNoon: null,
-                daylightHours: 0,
-                sunPhase: 'unknown',
-                sunProgressRaw: 0,
-                perceivableLight: 0,
-                lightLevelRaw: 0,
-                isBeforeSunrise: false,
-                isAfterSunset: false,
-                isDaytime: false,
-                isRisingPhase: false,
-                isSettingPhase: false
-            };
-        }
-
-        // Calculate perceived time adjustments based on season and daylight
-        const daylightHours = sunsetHour - sunriseHour;
-        const perceivedTimeFactors = getPerceivedTimeFactors(season, daylightHours, weather);
-
-        // Extract comprehensive weather factors early for use in calculations
-        const cloudCoverage = weather?.cloudCoverage || 0;
-        const uvIndex = weather?.uvIndex || 0;
-        const temperature = weather?.temperature || 20; // Default to moderate temperature
-        const humidity = weather?.humidity || 50; // Default to moderate humidity
-        const precipitationRate = weather?.precipitationRate || 0;
-        const precipitationType = weather?.precipitationType || 'rain'; // Default to rain if not specified
-        const environmentType = weather?.environmentType || location?.environmentType || 'mixed'; // urban, natural, or mixed
-        // Use average wind speed if available, otherwise use the single windSpeed value
-        const windSpeed = (weather?.windSpeed?.avg !== undefined) ? weather.windSpeed.avg : (weather?.windSpeed || 0);
-        const dewPoint = weather?.dewPoint || 15; // Default moderate dew point
-        const isDaylight = currentHour >= sunriseHour && currentHour <= sunsetHour;
-
-        // Extract advanced environmental data
-        const soilTemperature = weather?.soilTemperature;
-        const soilMoisture = weather?.soilMoisture;
-        const evapotranspiration = weather?.evapotranspiration;
-        const et0 = weather?.et0;
-        const vapourPressureDeficit = weather?.vapourPressureDeficit;
-        const cloudCoverLow = weather?.cloudCoverLow;
-        const cloudCoverMid = weather?.cloudCoverMid;
-        const cloudCoverHigh = weather?.cloudCoverHigh;
-
-        // Calculate solar noon (when sun is at its highest point) as midpoint between sunrise and sunset
-        const solarNoon = (sunriseHour + sunsetHour) / 2;
-
-        // Define granular time periods with transitions and perceived time adjustments
-        const dawnStart = sunriseHour - 1;         // 1 hour before sunrise
-        const sunriseStart = sunriseHour - 0.25;   // 15 min before sunrise
-        const sunriseEnd = sunriseHour + 0.25;     // 15 min after sunrise
-        const earlyMorningEnd = sunriseHour + 1 * perceivedTimeFactors.morningStretch;   // 1 hour after sunrise (adjusted)
-        const morningEnd = sunriseHour + 2.5 * perceivedTimeFactors.morningStretch;      // 2.5 hours after sunrise (~9-10 AM)
-        const daytimeStart = solarNoon - 1.5 * perceivedTimeFactors.daytimeStretch;      // Start 1.5 hours before solar noon (adjusted)
-
-        const goldenHourStart = sunsetHour - 0.75; // 45 min before sunset
-
-        // Define afternoon period as 2 hours before golden hour (adjusted for perceived time)
-        const afternoonStart = goldenHourStart - 2 * perceivedTimeFactors.eveningStretch; // 2 hours before golden hour
-
-        // Define daytime period around solar noon (when sun is highest in sky)
-        const daytimeEnd = afternoonStart;         // End when afternoon starts
-        const sunsetStart = sunsetHour - 0.25;     // 15 min before sunset
-        const sunsetEnd = sunsetHour + 0.25;       // 15 min after sunset
-        const duskEnd = sunsetHour + 0.75 * perceivedTimeFactors.eveningStretch;         // 45 min after sunset (adjusted)
-        const earlyEveningEnd = sunsetHour + 1.5 * perceivedTimeFactors.eveningStretch;  // 1.5 hours after sunset (adjusted)
-        const eveningEnd = sunsetHour + 3 * perceivedTimeFactors.eveningStretch;         // 3 hours after sunset (adjusted)
-
-        // ========================================
-        // Calculate sun position metrics for LCD display
-        // ========================================
-        let sunPhase, sunProgressRaw, perceivableLight, lightLevelRaw;
-
-        if (currentHour < sunriseHour) {
-            // PRE-DAWN: Before sunrise
-            sunPhase = 'pre-dawn';
-            sunProgressRaw = 0;
-            perceivableLight = 0;
-            lightLevelRaw = 0;
-        } else if (currentHour > sunsetHour) {
-            // POST-DUSK: After sunset
-            sunPhase = 'post-dusk';
-            sunProgressRaw = 0;
-            perceivableLight = 0;
-            lightLevelRaw = 0;
-        } else if (currentHour <= solarNoon) {
-            // RISING PHASE: Sunrise to solar noon
-            sunPhase = 'rising';
-            const linearProgress = (currentHour - sunriseHour) / (solarNoon - sunriseHour);
-            
-            // Realistic celestial motion: fast change near horizon, slow near zenith
-            // Using sine curve to match actual perceived angular motion due to Earth's curvature
-            // sin(x * π/2) creates smooth acceleration from horizon (0) to zenith (1)
-            // This makes the sun appear to "hang" longer at high altitudes and move faster near horizon
-            sunProgressRaw = Math.sin(linearProgress * Math.PI / 2);
-            perceivableLight = Math.round(sunProgressRaw * 100);
-            
-            // Base light level from sun position (4-10 during day)
-            lightLevelRaw = 4 + (sunProgressRaw * 6);
-        } else {
-            // SETTING PHASE: Solar noon to sunset
-            sunPhase = 'setting';
-            const linearProgress = (currentHour - solarNoon) / (sunsetHour - solarNoon);
-            
-            // Realistic celestial motion: slow near zenith, fast near horizon
-            // Using cosine curve (which is sine shifted by π/2) for symmetrical descent
-            // cos(x * π/2) starts at 1 (zenith) and decreases to 0 (horizon)
-            // Inverted to show progress: 1 - cos gives us 0 at zenith, 1 at horizon
-            const realisticProgress = 1 - Math.cos(linearProgress * Math.PI / 2);
-            sunProgressRaw = realisticProgress;
-            // Perceivable light shows how much daylight remains (inverted from progress)
-            perceivableLight = Math.round((1 - realisticProgress) * 100);
-            
-            // Base light level decreases from peak
-            lightLevelRaw = 4 + ((1 - realisticProgress) * 6);
-        }
-
-        // Adjust light level for weather if present
-        if (weather) {
-            const cloudFactor = (100 - cloudCoverage) / 100;
-            const solarFactor = Math.max(uvIndex, 1) / 10; // Use max(1) to avoid 0 division
-            lightLevelRaw = lightLevelRaw * cloudFactor * solarFactor;
-        }
-
-        // Adjust for season (winter darker, summer brighter)
-        const seasonFactors = { 
-            winter: 0.8, 
-            spring: 0.95, 
-            summer: 1.1, 
-            autumn: 0.9 
-        };
-        lightLevelRaw = lightLevelRaw * (seasonFactors[season] || 1.0);
-
-        // Clamp light level to 0-10 range
-        lightLevelRaw = Math.max(0, Math.min(10, lightLevelRaw));
-
-        // Log sun position calculations
-        console.log(`☀️ Sun Position: ${sunPhase}, Progress: ${(sunProgressRaw * 100).toFixed(1)}%, Perceivable Light: ${perceivableLight}%, Light Level: ${lightLevelRaw.toFixed(1)}/10`);
-
-        // Determine detailed time period with lighting characteristics
-        let periodKey, periodDescription, lightingDescription, atmosphericNotes;
-
-        // Debug: Log time calculations with perceived time adjustments
-        console.log(`🌅 Its Currently ${currentHour.toFixed(2)}:${time.minute.toFixed(2)} // ${time.dayOfWeek} // ${time.month} ${time.dayOfMonth}, ${time.year}`);
-        console.log(`🌅 Sunrise: ${sunriseHour.toFixed(2)}, Sunset: ${sunsetHour.toFixed(2)} (${daylightHours.toFixed(1)}h daylight)`);
-        console.log(`🌅 Perceived Time Factors (${season}): morning=${perceivedTimeFactors.morningStretch.toFixed(2)}, daytime=${perceivedTimeFactors.daytimeStretch.toFixed(2)}, evening=${perceivedTimeFactors.eveningStretch.toFixed(2)}`);
-        console.log(`🌅 Morning End: ${(sunriseHour + 2.5 * perceivedTimeFactors.morningStretch).toFixed(2)}, Daytime Start: ${daytimeStart.toFixed(2)}`);
-        console.log(`🌅 Solar Noon: ${solarNoon.toFixed(2)}`);
-        console.log(`🌅 Daytime Period: ${daytimeStart.toFixed(2)} - ${daytimeEnd.toFixed(2)}`);
-        console.log(`🌅 Afternoon Period: ${afternoonStart.toFixed(2)} - ${goldenHourStart.toFixed(2)}`);
-
-        // Perform advanced environmental analysis
-        const soilAnalysis = analyzeSoilConditions(soilTemperature, soilMoisture, temperature);
-        const atmosphericMoistureAnalysis = analyzeAtmosphericMoisture(evapotranspiration, et0, vapourPressureDeficit, temperature, humidity);
-        const cloudLayerAnalysis = analyzeCloudLayers(cloudCoverLow, cloudCoverMid, cloudCoverHigh, cloudCoverage);
-        const surfacePressureAnalysis = analyzeSurfacePressure(weather?.surfacePressure || weather?.pressure, weather?.pressure, weather?.location?.altitude || 0);
-
-        // Calculate derived weather factors
-        const temperatureDewPointDiff = temperature - dewPoint; // For moisture assessment
-        const isHumid = humidity >= 70;
-        const isDry = humidity <= 30;
-        const hasPrecipitation = precipitationRate > 0;
-        const isWindy = windSpeed >= 20; // m/s threshold for noticeable wind (20 m/s minimum)
-        const isCold = temperature <= 5;
-        const isHot = temperature >= 25;
-
-        if (currentHour >= dawnStart && currentHour < sunriseStart) {
-            periodKey = 'dawn';
-            periodDescription = 'dawn, pre-sunrise, soft pre-dawn light';
-            // Smooth blend from deep night to pre-sunrise illumination using legacy {} syntax
-            const blendFactor = (currentHour - dawnStart) / (sunriseStart - dawnStart); // 0 to 1 over dawn period
-            const nightWeight = Math.max(0.8 - blendFactor * 0.6, 0.1); // Night sky fades from 0.8 to 0.1
-            const preSunWeight = Math.min(0.2 + blendFactor * 0.6, 0.9); // Pre-sun illumination builds from 0.2 to 0.9
-
-            // Use legacy {} and [] syntax: {} adds emphasis, [] subtracts emphasis
-            const nightBrackets = Math.round((1 - nightWeight) * 3); // Night sky fading (use [] to subtract)
-            const preSunBraces = Math.round(preSunWeight * 3); // Pre-sun building (use {} to add)
-            const nightText = nightBrackets > 0 ? '['.repeat(nightBrackets) + 'night sky fading' + ']'.repeat(nightBrackets) : '';
-            const preSunText = preSunBraces > 0 ? '{'.repeat(preSunBraces) + 'pre-sunrise illumination' + '}'.repeat(preSunBraces) : '';
-
-            // Build dawn lighting and atmosphere with comprehensive weather effects
-            let lightingParts = [nightText, preSunText].filter(Boolean);
-
-            // Build atmosphere base based on temperature
-            let atmosphereBase;
-            if (isCold) {
-                atmosphereBase = 'cold, crisp and sharp, peaceful';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost forming on surfaces';
-                }
-                // Add soil frost information for dawn
-                if (soilAnalysis.frostRisk) {
-                    atmosphereBase += ', ground frost';
-                }
-            } else if (isHot) {
-                atmosphereBase = 'warm, humid pre-dawn air, peaceful';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', heavy dew forming';
-                }
-            } else {
-                atmosphereBase = 'cool, peaceful';
-            }
-            atmosphereBase += ', anticipation of sunrise';
-
-            // Integrate atmospheric moisture for fog/mist formation
-            if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                atmosphereBase += ', exceptionally dry air';
-            } else if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                atmosphereBase += ', evaporative mist rising from surfaces';
-            }
-
-            // Humidity affects lighting quality with environmental context
-            if (isHumid && temperatureDewPointDiff < 5) {
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'humid') {
-                    atmosphereBase += ', thick fog hanging low with atmospheric moisture content';
-                } else {
-                    atmosphereBase += ', mist hanging low';
-                }
-            } else if (isDry) {
-                atmosphereBase += ', exceptionally clear and dry air';
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    atmosphereBase += ' with significant atmospheric dryness';
-                }
-            }
-
-            // Precipitation affects atmosphere
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += `, light ${precipitationType} fall`;
-                } else {
-                    if (precipitationType === 'rain') {
-                        atmosphereBase += ', fine drizzle in the air';
-                    } else {
-                        atmosphereBase += ', fine mist in the air';
-                    }
-                }
-            }
-
-            // Wind affects atmosphere
-            if (isWindy) {
-                atmosphereBase += ', noticeable wind stirring the pre-dawn air';
-                lightingParts.push('with subtle wind movement');
-            } else {
-                atmosphereBase += ', still air with minimal movement';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes the lighting character
-                lightingParts = ['muted pre-dawn illumination under heavy overcast conditions'];
-                atmosphereBase += ', heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of emerging light';
-            }
-
-            lightingDescription = lightingParts.join(', ');
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= sunriseStart && currentHour < sunriseEnd) {
-            periodKey = 'sunrise';
-            periodDescription = 'sunrise, sun rising, golden morning light';
-            // Smooth sunrise transition: pre-sunrise -> sun illuminating -> peak golden using legacy {} syntax
-            const blendFactor = (currentHour - sunriseStart) / (sunriseEnd - sunriseStart); // 0 to 1 over sunrise period
-            const preSunWeight = Math.max(0.7 - blendFactor * 0.6, 0.1); // Pre-sun fades from 0.7 to 0.1
-            const sunIlluminatingWeight = 0.3 + blendFactor * 0.5; // Sun illumination builds from 0.3 to 0.8
-            const peakGoldenWeight = Math.max(0.1, blendFactor * 0.4 - 0.1); // Peak golden builds from 0.1 to 0.3
-
-            // Use legacy {} and [] syntax: {} adds emphasis, [] subtracts emphasis
-            const preSunBrackets = Math.round((1 - preSunWeight) * 3); // Pre-sun fading (use [] to subtract)
-            const sunIlluminatingBraces = Math.round(sunIlluminatingWeight * 3); // Sun illuminating building (use {} to add)
-            const peakGoldenBraces = Math.round(peakGoldenWeight * 3); // Peak golden building (use {} to add)
-            const preSunText = preSunBrackets > 0 ? '['.repeat(preSunBrackets) + 'pre-sunrise illumination' + ']'.repeat(preSunBrackets) : '';
-            const sunIlluminatingText = sunIlluminatingBraces > 0 ? '{'.repeat(sunIlluminatingBraces) + 'sun beginning to illuminate' + '}'.repeat(sunIlluminatingBraces) : '';
-            const peakGoldenText = peakGoldenBraces > 0 ? '{'.repeat(peakGoldenBraces) + 'peak golden light' + '}'.repeat(peakGoldenBraces) : '';
-
-            // Build sunrise lighting and atmosphere with comprehensive weather effects
-            let lightingParts = [preSunText, sunIlluminatingText, peakGoldenText].filter(Boolean);
-
-            // Build atmosphere base based on temperature
-            let atmosphereBase;
-            if (isCold) {
-                atmosphereBase = 'crisp cold morning air';
-                if (temperatureDewPointDiff < 5) {
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ', frost sparkling on surfaces';
-                    } else {
-                        atmosphereBase += ', ice crystals sparkling on surfaces';
-                    }
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with ground frost catching golden light';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = 'warm humid morning air';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', heavy morning dew glistening';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with evaporating dew creating misty effects';
-                }
-            } else {
-                atmosphereBase = 'fresh morning air';
-            }
-            atmosphereBase += ', dew on surfaces, birds awakening, new day energy';
-
-            // Humidity affects light quality and atmosphere with environmental context
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ', morning fog lifting slowly';
-                lightingParts.push('with diffused golden rays piercing mist');
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'humid') {
-                    atmosphereBase += ' with saturated atmospheric moisture';
-                }
-            } else if (isDry) {
-                atmosphereBase += ', exceptionally clear and dry morning air';
-                lightingParts.push('golden illumination');
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    atmosphereBase += ' under extremely dry atmospheric conditions';
-                }
-            }
-
-            // Precipitation affects atmosphere
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += `, ${precipitationType} with golden lighting`;
-                    lightingParts.push(`${precipitationType} with golden light rays`);
-                } else {
-                    atmosphereBase += ', fine mist enhancing golden glow';
-                }
-            }
-
-            // Wind affects atmosphere and light
-            if (isWindy) {
-                atmosphereBase += ', wind carrying fresh morning energy';
-                lightingParts.push('wind moving through golden light');
-            } else {
-                atmosphereBase += ', calm morning stillness';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes sunrise character
-                lightingParts = ['diffused early morning light under heavy overcast conditions'];
-                atmosphereBase += ', heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of golden sunlight';
-            }
-
-            // Add UV effects for sunrise
-            if (uvIndex > 0) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100);
-                if (effectiveUV >= 6) {
-                    lightingParts.push('strong UV presence');
-                } else if (effectiveUV >= 3) {
-                    lightingParts.push('moderate UV levels');
-                }
-            }
-
-            lightingDescription = lightingParts.join(', ');
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= sunriseEnd && currentHour < morningEnd) {
-            periodKey = 'morning';
-            periodDescription = 'morning, bright daylight';
-            // Build morning lighting and atmosphere with weather effects
-            // Build lighting and atmosphere bases based on temperature and season
-            let lightingBase, atmosphereBase;
-            if (isCold) {
-                lightingBase = 'sharp bright morning sunlight, defined shadows, clear illumination';
-                atmosphereBase = 'cool, active morning atmosphere';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost sublimating in sunlight';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with lingering ground frost';
-                    }
-                }
-                // Add seasonal context for cold temperatures
-                if (season === 'winter') {
-                    atmosphereBase += ', crisp winter morning theme';
-                } else if (season === 'autumn') {
-                    atmosphereBase += ', autumn cool theme';
-                }
-            } else if (isHot) {
-                lightingBase = 'bright morning sunlight, defined shadows, clear illumination';
-                atmosphereBase = 'warm, active morning atmosphere theme';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', humidity rising with morning warmth';
-                    if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                        atmosphereBase += ' creating warming evaporative effects';
-                    }
-                }
-                // Add seasonal context for hot temperatures
-                if (season === 'summer') {
-                    atmosphereBase += ', summer morning heat';
-                } else if (season === 'spring') {
-                    atmosphereBase += ', spring warmth';
-                }
-            } else {
-                // Moderate temperatures - describe based on seasonal context
-                lightingBase = 'bright morning sunlight, defined shadows, clear illumination';
-                if (season === 'winter') {
-                    atmosphereBase = 'chilly morning atmosphere, cool winter air';
-                } else if (season === 'spring') {
-                    atmosphereBase = 'fresh morning atmosphere, mild spring conditions';
-                } else if (season === 'summer') {
-                    atmosphereBase = 'golden, active morning atmosphere';
-                } else if (season === 'autumn') {
-                    atmosphereBase = 'cool morning atmosphere, crisp autumn air';
-                } else {
-                    atmosphereBase = 'moderate morning atmosphere';
-                }
-            }
-
-            // Humidity affects atmosphere and light quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air softening morning light';
-                lightingBase += ' , softly diffused lighting through haze';
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally dry crisp air';
-                lightingBase += ' , intense lighting';
-            }
-
-            // Precipitation affects atmosphere and lighting
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} dampening morning energy`;
-                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting sunlight`;
-                } else {
-                    atmosphereBase += ' , fine mist softening atmosphere';
-                }
-            }
-
-            // Wind affects atmosphere (not lighting directly)
-            if (isWindy) {
-                atmosphereBase += ' , wind energizing morning atmosphere';
-            } else {
-                atmosphereBase += ' , calm morning serenity';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                lightingBase = 'muted morning sunlight, defined shadows, diffused illumination under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'bright morning sunlight diffused through moderate cloud cover, defined shadows, clear illumination';
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'bright morning sunlight filtered by light cloud cover, defined shadows, clear illumination';
-                atmosphereBase += ' with light cloud cover';
-            }
-
-            // UV effects are atmospheric, not lighting-related
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                lightingBase = 'muted morning sunlight, defined shadows, diffused illumination under heavy overcast conditions';
-                atmosphereBase = 'warm, morning atmosphere, heavy cloud cover reducing visibility';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'bright morning sunlight diffused through moderate cloud cover, defined shadows, clear illumination';
-                atmosphereBase = 'warm, morning atmosphere with moderate cloud cover';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'bright morning sunlight filtered by light cloud cover, defined shadows, clear illumination';
-                atmosphereBase = 'warm, morning atmosphere with light cloud filtering of sunlight';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            // UV effects are atmospheric, not lighting-related
-        } else if (currentHour >= morningEnd && currentHour < daytimeStart) {
-            periodKey = 'latemorning';
-            periodDescription = 'late morning, approaching noon, intense daylight';
-            console.log(`🌅 SELECTED: latemorning (${currentHour.toFixed(2)} is between ${morningEnd.toFixed(2)} and ${daytimeStart.toFixed(2)})`);
-            // Build late morning lighting and atmosphere with weather effects
-            // Build lighting and atmosphere bases based on temperature
-            let lightingBase, atmosphereBase;
-            if (isCold) {
-                lightingBase = 'sharp overhead light';
-                atmosphereBase = 'cool crisp air, peak morning activity, bright and clear';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost lingering in shaded areas';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' persistent ground frost in shadows';
-                    }
-                }
-            } else if (isHot) {
-                lightingBase = 'intense overhead light';
-                atmosphereBase = 'hot building air, peak morning activity, bright and clear';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', humidity creating sultry atmosphere';
-                    if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                        atmosphereBase += ' intense evaporative heat';
-                    }
-                }
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    atmosphereBase += ' under very dry atmospheric conditions';
-                }
-            } else {
-                lightingBase = 'harsh overhead light';
-                atmosphereBase = 'warm air, peak morning activity, bright and clear';
-            }
-
-            // Humidity affects atmosphere and light quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air softening harsh light';
-                lightingBase += ' , softly diffused lighting';
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally dry air amplifying brightness';
-                lightingBase += ' , intense lighting';
-            }
-
-            // Precipitation affects atmosphere and lighting
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} in cool morning heat`;
-                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting light`;
-                } else {
-                    atmosphereBase += ' , fine mist cooling atmosphere';
-                }
-            }
-
-            // Wind affects atmosphere (not lighting directly)
-            if (isWindy) {
-                atmosphereBase += ' , wind disrupting morning calm';
-            } else {
-                atmosphereBase += ' , still morning intensity';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                lightingBase = 'diffused overhead light, dark shadows, reduced contrast under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'harsh overhead light diffused through moderate cloud cover, dark shadows';
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'harsh overhead light filtered by light cloud cover, dark shadows';
-                atmosphereBase += ' with light cloud cover';
-            }
-
-            // UV effects are atmospheric, not lighting-related
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                lightingBase = 'diffused overhead light, dark shadows, reduced contrast under heavy overcast conditions';
-                atmosphereBase = 'warm air, morning activity, heavy cloud cover reducing visibility';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'harsh overhead light diffused through moderate cloud cover, dark shadows';
-                atmosphereBase = 'warm air, morning activity, bright conditions with moderate cloud cover';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'harsh overhead light filtered by light cloud cover, dark shadows';
-                atmosphereBase = 'warm air, morning activity, bright and clear with light cloud filtering of sunlight';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            // UV effects are atmospheric, not lighting-related
-        } else if (currentHour >= daytimeStart && currentHour <= daytimeEnd) {
-            periodKey = 'daytime';
-            periodDescription = 'daytime, high sun, gentle overhead light';
-            console.log(`🌅 SELECTED: daytime (${currentHour.toFixed(2)} is between ${daytimeStart.toFixed(2)} and ${daytimeEnd.toFixed(2)})`);
-            // Build daytime lighting and atmosphere with weather effects
-            // Similar to afternoon but with more intense overhead lighting
-            let lightingBase, atmosphereBase;
-            if (isCold) {
-                lightingBase = 'gentle overhead light';
-                atmosphereBase = 'cool, maximum daylight exposure';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', crisp cool air at peak intensity';
-                }
-                if (soilAnalysis.groundHeatRetention) {
-                    atmosphereBase += ' with cool ground retaining some warmth';
-                }
-            } else if (isHot) {
-                lightingBase = 'overhead lighting, soft shadows';
-                atmosphereBase = 'hot, maximum heat shimmer and sun heat exposure';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', oppressive humid heat at its peak';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ', intense heat shimmer';
-                }
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    atmosphereBase += ' dry air and extreme heat distortion';
-                }
-            } else {
-                lightingBase = 'gentle overhead light';
-                atmosphereBase = 'warm, maximum daylight intensity';
-            }
-
-            // Humidity affects atmosphere and light quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air creating intense haze effects';
-                lightingBase += ' , softly diffused lighting';
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally dry air amplifying maximum brightness';
-                lightingBase += ' , intense lighting';
-            }
-
-            // Precipitation affects atmosphere and lighting
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} cool intense daylight`;
-                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting overhead light rays`;
-                } else {
-                    atmosphereBase += ' , fine mist cooling hot surfaces under peak sun';
-                }
-            }
-
-            // Wind affects atmosphere (not lighting directly)
-            if (isWindy) {
-                atmosphereBase += ' , wind disrupting intense daylight calm';
-            } else {
-                atmosphereBase += ' , still intense daylight maximum';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                lightingBase = 'diffused intense overhead light, reduced contrast under heavy overcast at solar peak';
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'intense overhead light diffused through moderate cloud cover';
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'intense overhead light filtered by light cloud cover';
-                atmosphereBase += ' with light cloud filtering of maximum sunlight';
-            }
-
-            // UV effects are atmospheric, not lighting-related
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= afternoonStart && currentHour < goldenHourStart) {
-            periodKey = 'afternoon';
-            periodDescription = 'afternoon, full daylight, warm sunlight';
-            console.log(`🌅 SELECTED: afternoon (${currentHour.toFixed(2)} is between ${afternoonStart.toFixed(2)} and ${goldenHourStart.toFixed(2)})`);
-            // Build afternoon lighting and atmosphere with weather effects
-            // Build lighting and atmosphere bases based on temperature and season
-            let lightingBase, atmosphereBase = 'afternoon atmosphere';
-            if (isCold) {
-                lightingBase = 'cool daytime light, moderate shadows';
-                atmosphereBase = 'cool, active atmosphere, no heat shimmer';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', crisp cool';
-                }
-                if (soilAnalysis.groundHeatRetention) {
-                    atmosphereBase += ' with cool temperatures';
-                }
-                // Add seasonal context for cold temperatures
-                if (season === 'winter') {
-                    atmosphereBase += ', winter cool theme';
-                } else if (season === 'autumn') {
-                    atmosphereBase += ', crisp autumn theme';
-                }
-            } else if (isHot) {
-                lightingBase = 'warm daytime light, soft shadows';
-                atmosphereBase = 'golden, active atmosphere, strong heat shimmer developing';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', oppressive humid heat';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with intense evaporative cooling effects and pronounced heat waves';
-                }
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    atmosphereBase += ' under extremely dry air conditions with severe heat distortion';
-                }
-                // Add seasonal context for hot temperatures
-                if (season === 'summer') {
-                    atmosphereBase += ', summer heat';
-                } else if (season === 'spring') {
-                    atmosphereBase += ', warmth';
-                }
-            } else {
-                // Moderate temperatures - describe based on seasonal context
-                lightingBase = 'moderate daytime light, balanced shadows';
-                if (season === 'winter') {
-                    atmosphereBase = 'chilly, active atmosphere, cool winter theme';
-                } else if (season === 'spring') {
-                    atmosphereBase = 'fresh, active atmosphere, spring theme';
-                } else if (season === 'summer') {
-                    atmosphereBase = 'warm, active atmosphere, slight heat shimmer possible';
-                } else if (season === 'autumn') {
-                    atmosphereBase = 'cool, active atmosphere, crisp autumn theme';
-                } else {
-                    atmosphereBase = 'moderate';
-                }
-            }
-
-            // Humidity affects atmosphere and light quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air amplifying heat effects';
-                lightingBase += ' , softly diffused lighting through haze';
-            } else if (isDry) {
-                atmosphereBase += ' , dry air intensifying heat';
-                lightingBase += ' , intense lighting';
-            }
-
-            // Precipitation affects atmosphere and lighting
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} providing cooling relief`;
-                    lightingBase += ` , light refraction, ${precipitationType} droplets reflecting light`;
-                } else {
-                    atmosphereBase += ' , fine mist cooling hot surfaces';
-                }
-            }
-
-            // Wind affects atmosphere (not lighting directly)
-            if (isWindy) {
-                atmosphereBase += ' , wind providing some heat relief';
-            } else {
-                atmosphereBase += ' , still hot afternoon air';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                lightingBase = 'muted daytime light, moderate shadows under heavy overcast conditions';
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'warm daytime light diffused through moderate cloud cover, moderate shadows';
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'warm daytime light filtered by light cloud cover, moderate shadows';
-                atmosphereBase += ' with light cloud cover';
-            }
-
-            // UV effects are atmospheric, not lighting-related
-
-            // Apply cloud coverage effects while preserving temperature-based atmosphere and lighting
-            if (cloudCoverage >= 80) {
-                if (season === 'winter') {
-                    lightingBase = 'muted cool light, soft shadows under heavy winter overcast';
-                } else if (season === 'summer') {
-                    lightingBase = 'muted warm light, soft shadows under heavy summer overcast';
-                } else {
-                    lightingBase = 'muted daytime light, soft shadows under heavy overcast conditions';
-                }
-                atmosphereBase += 'heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                if (season === 'winter') {
-                    lightingBase = 'cool daytime light diffused through moderate cloud cover, soft shadows';
-                } else if (season === 'summer') {
-                    lightingBase = 'warm daytime light diffused through moderate cloud cover, soft shadows';
-                } else {
-                    lightingBase = 'moderate daytime light diffused through moderate cloud cover, soft shadows';
-                }
-                atmosphereBase += 'moderate cloud diffusion affecting light quality';
-            } else if (cloudCoverage >= 20) {
-                if (season === 'winter') {
-                    lightingBase = 'cool daytime light filtered by light cloud cover, moderate shadows';
-                } else if (season === 'summer') {
-                    lightingBase = 'warm daytime light filtered by light cloud cover, moderate shadows';
-                } else {
-                    lightingBase = 'moderate daytime light filtered by light cloud cover, moderate shadows';
-                }
-                atmosphereBase += 'light cloud filtering of sunlight';
-            }
-
-            // UV effects are atmospheric, not lighting-related
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= goldenHourStart && currentHour < sunsetStart) {
-            periodKey = 'goldenhour';
-            periodDescription = 'golden hour, pre-sunset, warm magical light';
-            // Smooth golden hour transition: warm daylight -> sunset colors building using legacy {} syntax
-            const blendFactor = (currentHour - goldenHourStart) / (sunsetStart - goldenHourStart); // 0 to 1 over golden hour
-            const warmDaylightWeight = Math.max(0.8 - blendFactor * 0.7, 0.1); // Daylight fades from 0.8 to 0.1
-            const sunsetColorsWeight = Math.min(0.2 + blendFactor * 0.7, 0.9); // Sunset colors build from 0.2 to 0.9
-
-            // Use legacy {} and [] syntax: {} adds emphasis, [] subtracts emphasis
-            const warmDaylightBrackets = Math.round((1 - warmDaylightWeight) * 3); // Warm daylight fading (use [] to subtract)
-            const sunsetColorsBraces = Math.round(sunsetColorsWeight * 3); // Sunset colors building (use {} to add)
-            const warmDaylightText = warmDaylightBrackets > 0 ? '['.repeat(warmDaylightBrackets) + 'warm golden light' + ']'.repeat(warmDaylightBrackets) : '';
-            const sunsetColorsText = sunsetColorsBraces > 0 ? '{'.repeat(sunsetColorsBraces) + 'sunset colors building' + '}'.repeat(sunsetColorsBraces) : '';
-
-            // Build golden hour lighting and atmosphere with weather effects
-            let lightingParts = [warmDaylightText, sunsetColorsText].filter(Boolean);
-
-            // Build atmosphere base based on temperature
-            let atmosphereBase;
-            if (isCold) {
-                atmosphereBase = 'cool golden glow, peaceful transition, anticipation of evening';
-                // Modify lighting parts for cold conditions
-                lightingParts = lightingParts.map(part => part.replace('warm golden light', 'cool golden light'));
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', crisp cool air with golden frost highlights';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' and visible ground frost in golden light';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = 'intense golden glow, peaceful transition, anticipation of evening';
-                lightingParts.push('with heat amplifying golden intensity');
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', humid air enriching golden colors';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with lingering evaporative warmth';
-                }
-                if (atmosphericMoistureAnalysis.atmosphericDryness === 'very_dry') {
-                    lightingParts.push('intense golden haze');
-                    atmosphereBase += ' under exceptionally dry air conditions';
-                }
-            } else {
-                atmosphereBase = 'warm glow, peaceful transition, anticipation of evening';
-            }
-
-            // Humidity affects golden hour quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air softening golden edges';
-                lightingParts.push('diffused golden rays through mist');
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear golden illumination';
-            }
-
-            // Precipitation affects golden atmosphere
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} catching golden light`;
-                    lightingParts.push(`with ${precipitationType} sparkling in golden rays`);
-                } else {
-                    atmosphereBase += ' , fine mist enhancing golden glow';
-                }
-            }
-
-            // Wind affects golden light movement
-            if (isWindy) {
-                atmosphereBase += ' , wind moving through golden atmosphere';
-                lightingParts.push('with wind dancing golden light');
-            } else {
-                atmosphereBase += ' , still golden hour serenity';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes golden hour character
-                lightingParts = ['muted golden hour illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of golden light';
-            }
-
-            // Add UV effects for golden hour (lower intensity)
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100) * 0.7; // Reduced for golden hour
-                if (effectiveUV >= 6) {
-                    lightingParts.push('with moderate UV presence');
-                } else if (effectiveUV >= 3) {
-                    lightingParts.push('with low UV levels');
-                }
-            }
-
-            lightingDescription = lightingParts.join(' , ' );
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes golden hour character
-                lightingParts = ['muted golden hour illumination under heavy overcast conditions'];
-                atmosphereBase = 'warm glow, peaceful transition, anticipation of evening, heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of golden light';
-            }
-
-            // Add UV effects for golden hour (lower intensity)
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100) * 0.7; // Reduced for golden hour
-                if (effectiveUV >= 6) {
-                    lightingParts.push('with moderate UV presence');
-                } else if (effectiveUV >= 3) {
-                    lightingParts.push('with low UV levels');
-                }
-            }
-
-            lightingDescription = lightingParts.join(', ');
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= sunsetStart && currentHour < sunsetEnd) {
-            periodKey = 'sunset';
-            periodDescription = 'sunset, sun setting, dramatic twilight colors';
-            // Smooth sunset transition: sunset colors -> twilight deepening -> night sky emerging using legacy {} syntax
-            const blendFactor = (currentHour - sunsetStart) / (sunsetEnd - sunsetStart); // 0 to 1 over sunset period
-            const sunsetColorsWeight = Math.max(0.8 - blendFactor * 0.6, 0.2); // Sunset colors fade from 0.8 to 0.2
-            const twilightWeight = 0.3 + blendFactor * 0.4; // Twilight builds from 0.3 to 0.7
-            const nightEmergingWeight = Math.max(0.1, blendFactor * 0.4 - 0.1); // Night sky builds from 0.1 to 0.3
-
-            // Use legacy {} and [] syntax: {} adds emphasis, [] subtracts emphasis
-            const sunsetColorsBrackets = Math.round((1 - sunsetColorsWeight) * 3); // Sunset colors fading (use [] to subtract)
-            const twilightBraces = Math.round(twilightWeight * 3); // Twilight deepening building (use {} to add)
-            const nightEmergingBraces = Math.round(nightEmergingWeight * 3); // Night sky emerging building (use {} to add)
-            const sunsetColorsText = sunsetColorsBrackets > 0 ? '['.repeat(sunsetColorsBrackets) + 'dramatic sunset colors' + ']'.repeat(sunsetColorsBrackets) : '';
-            const twilightText = twilightBraces > 0 ? '{'.repeat(twilightBraces) + 'twilight deepening' + '}'.repeat(twilightBraces) : '';
-            const nightEmergingText = nightEmergingBraces > 0 ? '{'.repeat(nightEmergingBraces) + 'night sky emerging' + '}'.repeat(nightEmergingBraces) : '';
-
-            // Build sunset lighting and atmosphere with weather effects
-            let lightingParts = [sunsetColorsText, twilightText, nightEmergingText].filter(Boolean);
-
-            // Build atmosphere base based on temperature
-            let atmosphereBase;
-            if (isCold) {
-                atmosphereBase = 'rapidly cooling temperatures, peaceful transition, end of day atmosphere';
-                lightingParts = lightingParts.map(part => part.replace('dramatic sunset colors', 'sharp dramatic sunset colors'));
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost beginning to form in cooling air';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with ground frost developing rapidly';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = 'slowly cooling temperatures, peaceful transition, end of day atmosphere';
-                lightingParts.push('with lingering heat in sunset colors');
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', humid air holding day\'s heat';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with residual evaporative warmth in the air';
-                }
-            } else {
-                atmosphereBase = 'cooling temperatures, peaceful transition, end of day atmosphere';
-            }
-
-            // Humidity affects sunset quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid air enriching sunset colors';
-                lightingParts.push('diffused through humid evening air');
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear sunset visibility';
-                lightingParts.push('sunset');
-            }
-
-            // Precipitation affects sunset atmosphere
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} framing sunset`;
-                    lightingParts.push(`with ${precipitationType} catching final light`);
-                } else {
-                    atmosphereBase += ' , fine mist enhancing sunset glow';
-                }
-            }
-
-            // Wind affects sunset movement
-            if (isWindy) {
-                atmosphereBase += ' , wind carrying evening chill';
-                lightingParts.push('with wind affecting twilight colors');
-            } else {
-                atmosphereBase += ' , still evening transition';
-            }
-
-            // Cloud coverage effects
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes sunset character
-                lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of sunset light';
-            }
-
-            // Sunset has minimal UV effects (very end of day)
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100) * 0.3; // Very reduced for sunset
-                if (effectiveUV >= 3) {
-                    lightingParts.push('with minimal UV presence');
-                }
-            }
-
-            lightingDescription = lightingParts.join(' , ' );
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes sunset character
-                lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase = 'cooling temperatures, peaceful transition, end of day atmosphere, heavy cloud cover, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with moderate cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with light cloud filtering of sunset light';
-            }
-
-            // Sunset has minimal UV effects (very end of day)
-            if (uvIndex > 0 && isDaylight) {
-                const effectiveUV = uvIndex * (1 - cloudCoverage / 100) * 0.3; // Very reduced for sunset
-                if (effectiveUV >= 3) {
-                    lightingParts.push('with minimal UV presence');
-                }
-            }
-
-            lightingDescription = lightingParts.join(', ');
-            atmosphericNotes = atmosphereBase;
-        } else if (currentHour >= sunsetEnd && currentHour < duskEnd) {
-            periodKey = 'dusk';
-            periodDescription = 'dusk, post-sunset, fading light to twilight';
-            // Smooth dusk transition: twilight -> night sky dominating using legacy {} syntax
-            const blendFactor = (currentHour - sunsetEnd) / (duskEnd - sunsetEnd); // 0 to 1 over dusk period
-            const twilightWeight = Math.max(0.7 - blendFactor * 0.6, 0.1); // Twilight fades from 0.7 to 0.1
-            const nightSkyWeight = Math.min(0.3 + blendFactor * 0.6, 0.9); // Night sky builds from 0.3 to 0.9
-
-            // Use legacy {} and [] syntax: {} adds emphasis, [] subtracts emphasis
-            const twilightBrackets = Math.round((1 - twilightWeight) * 3); // Twilight fading (use [] to subtract)
-            const nightSkyBraces = Math.round(nightSkyWeight * 3); // Night sky dominating (use {} to add)
-            const twilightText = twilightBrackets > 0 ? '['.repeat(twilightBrackets) + 'twilight fading' + ']'.repeat(twilightBrackets) : '';
-            const nightSkyText = nightSkyBraces > 0 ? '{'.repeat(nightSkyBraces) + 'night sky' + '}'.repeat(nightSkyBraces) : '';
-
-            // Build dusk lighting and atmosphere with weather effects
-            let lightingParts = [twilightText, nightSkyText].filter(Boolean);
-
-            // Build atmosphere base based on temperature
-            let atmosphereBase;
-            if (isCold) {
-                atmosphereBase = 'cold evening air, transition to night, fading day warmth';
-                lightingParts = lightingParts.map(part => part.replace('twilight', 'sharp twilight'));
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', frost forming in shadows';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with ground frost appearing in cooling areas';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = 'warm evening air, transition to night, lingering day heat';
-                lightingParts.push('with heat rising from surfaces');
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ', humid evening air heavy with moisture';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with evening evaporative cooling';
-                }
-            } else {
-                atmosphereBase = 'cool evening air, transition to night, residual warmth';
-            }
-
-            // Humidity affects twilight quality
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist developing';
-                lightingParts.push('diffused through evening humidity');
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear evening air';
-                lightingParts.push('twilight illumination');
-            }
-
-            // Precipitation affects evening atmosphere
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , light evening ${precipitationType}`;
-                    lightingParts.push(` ${precipitationType} in twilight`);
-                } else {
-                    atmosphereBase += ' , fine evening mist';
-                }
-            }
-
-            // Wind affects evening transition
-            if (isWindy) {
-                atmosphereBase += ' , wind, evening';
-                lightingParts.push('with wind affecting twilight shadows');
-            } else {
-                atmosphereBase += ' , calm evening descent';
-            }
-
-            // Cloud coverage effects for twilight period
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes dusk character
-                lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase += ' , heavy cloud cover completely blocking celestial visibility, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with partially obscured stars through cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with stars visible through thin cloud cover';
-            } else {
-                // Clear skies - add star visibility
-                atmosphereBase += ' , emerging stars becoming visible';
-            }
-
-            lightingDescription = lightingParts.join(' , ' );
-            atmosphericNotes = atmosphereBase;
-
-            if (cloudCoverage >= 80) {
-                // Heavy overcast completely changes dusk character
-                lightingParts = ['muted twilight illumination under heavy overcast conditions'];
-                atmosphereBase = 'cool evening air, transition to night, residual warmth, heavy cloud cover completely blocking celestial visibility, dimmed lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingParts.push('diffused through moderate cloud cover');
-                atmosphereBase += ' with partially obscured stars through cloud cover, reduced lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingParts.push('filtered by light cloud cover');
-                atmosphereBase += ' with stars visible through thin cloud cover';
-            } else {
-                // Clear skies - add star visibility
-                atmosphereBase += ', emerging stars becoming visible';
-            }
-
-            lightingDescription = lightingParts.join(', ');
-            atmosphericNotes = atmosphereBase;
-
-            // No UV effects for dusk (night time)
-        } else if (currentHour >= duskEnd && currentHour < 24) {
-            periodKey = 'night';
-            periodDescription = 'night, dark, deep shadows, no sky lighting';
-            // Build night lighting and atmosphere with weather effects
-            let lightingBase = 'no sky lighting, artificial lighting dominant in nighttime darkness, deep shadows';
-            let atmosphereBase = `full night sky, no ambient sky light, nighttime darkness, deep shadows, ${environmentType === 'urban' ? 'urban night' : environmentType === 'natural' ? 'natural night' : 'mixed urban and natural night'}`;
-
-            // Temperature influences night atmosphere and nighttime darkness
-            if (isCold) {
-                atmosphereBase = atmosphereBase.replace('full night sky, nighttime darkness, deep shadows', 'full night sky, nighttime darkness, deep shadows, cold night air');
-                lightingBase += ' , crisp cold air creating deep nighttime shadows';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , frost patterns on surfaces and windows in nighttime darkness';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' with ground frost visible under artificial lights in deep nighttime shadows';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = atmosphereBase.replace('full night sky, no ambient sky light, nighttime darkness, deep shadows', 'full night sky, no ambient sky light, nighttime darkness, deep shadows, warm night air');
-                lightingBase += ' , lingering heat in nighttime darkness';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , humid night air heavy and still in nighttime darkness';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' with night time evaporative cooling in nighttime darkness';
-                }
-            }
-
-            // Humidity affects atmosphere and night light quality in nighttime darkness
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist in nighttime darkness';
-                lightingBase += ' , softly diffused lighting in deep nighttime shadows';
-            } else if (isDry) {
-                atmosphereBase += ' , clear night in nighttime darkness';
-                lightingBase += ' , artificial illumination creating deep nighttime shadows';
-            }
-
-            // Precipitation affects night in nighttime darkness
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} falling in nighttime darkness`;
-                    lightingBase += ` , ${precipitationType} reflecting artificial lights in deep nighttime shadows`;
-                } else {
-                    atmosphereBase += ' , fine mist dampening night air in nighttime darkness';
-                }
-            }
-
-            // Wind affects night atmosphere in nighttime darkness
-            if (isWindy) {
-                atmosphereBase += ' , wind, nighttime darkness';
-            } else {
-                atmosphereBase += ' , still night atmosphere in nighttime darkness';
-            }
-
-            // Cloud coverage effects in nighttime darkness
-            if (cloudCoverage >= 80) {
-                lightingBase = 'no sky lighting, artificial lighting dominant under heavy overcast conditions in nighttime darkness, deep shadows';
-                atmosphereBase += ' , heavy cloud cover blocking any celestial light, dark night atmosphere';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'no sky lighting, artificial lighting dominant diffused through moderate cloud cover in nighttime darkness, deep shadows';
-                atmosphereBase += ' with moderate cloud cover blocking celestial light, dark night atmosphere';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'no sky lighting, artificial lighting dominant filtered by light cloud cover in nighttime darkness, deep shadows';
-                atmosphereBase += ' with light cloud cover partially blocking celestial light, dark night atmosphere';
-            } else if (cloudCoverage < 20) {
-                // Clear night - only moon/stars provide natural light
-                lightingBase = 'no sky lighting, clear night sky, moonlight and starlight visible, artificial lighting dominant, deep shadows';
-                atmosphereBase += ' , clear night sky revealing stars and moon, dark night atmosphere';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-        } else {
-            // Late night/early morning before dawn
-            periodKey = 'midnight';
-            periodDescription = 'nighttime, dark night atmosphere, deep shadows, no sky lighting';
-            // Build midnight lighting and atmosphere with weather effects
-            let lightingBase = 'no sky lighting, minimal artificial lighting in nighttime darkness, deep shadows, no natural illumination from sky';
-            let atmosphereBase = 'full night sky, no ambient sky light, dark night atmosphere, deep shadows, stillness';
-
-            // Temperature influences midnight stillness in nighttime darkness
-            if (isCold) {
-                atmosphereBase = atmosphereBase.replace('full night sky, no ambient sky light, dark night atmosphere, deep shadows', 'full night sky, no ambient sky light, dark night atmosphere, deep shadows, cold deep night');
-                lightingBase = lightingBase.replace('no sky lighting, minimal artificial lighting in nighttime darkness, deep shadows, no natural illumination from sky', 'no sky lighting, sharp minimal artificial lighting in nighttime darkness, deep shadows, no natural illumination from sky');
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , frost creating crystalline silence in nighttime darkness';
-                    if (soilAnalysis.frostRisk) {
-                        atmosphereBase += ' frost crystals creating perfect acoustic stillness in deep shadows';
-                    }
-                }
-            } else if (isHot) {
-                atmosphereBase = atmosphereBase.replace('full night sky, no ambient sky light, dark night atmosphere, deep shadows', 'full night sky, no ambient sky light, dark night atmosphere, deep shadows, warm deep night');
-                lightingBase += ' , nighttime heat in nighttime darkness';
-                if (temperatureDewPointDiff < 5) {
-                    atmosphereBase += ' , humid air creating heavy stillness in nighttime darkness';
-                }
-                if (atmosphericMoistureAnalysis.evaporationRate === 'high') {
-                    atmosphereBase += ' nighttime evaporative cooling creating absolute stillness in nighttime darkness';
-                }
-            }
-
-            // Humidity affects atmosphere and midnight light quality in nighttime darkness
-            if (isHumid && temperatureDewPointDiff < 5) {
-                atmosphereBase += ' , humid mist amplifying silence in nighttime darkness';
-                lightingBase += ' , softly diffused lighting in deep shadows';
-            } else if (isDry) {
-                atmosphereBase += ' , exceptionally clear night air with perfect acoustics in nighttime darkness';
-                lightingBase += ' , nighttime stillness in deep shadows';
-            }
-
-            // Precipitation affects midnight minimal activity in nighttime darkness
-            if (hasPrecipitation) {
-                if (precipitationRate > 5) {
-                    atmosphereBase += ` , ${precipitationType} adding subtle stillness in nighttime darkness`;
-                    lightingBase += ` , ${precipitationType} falling in nighttime darkness`;
-                } else {
-                    atmosphereBase += ' , fine mist enhancing nighttime calm in nighttime darkness';
-                }
-            }
-
-            // Wind affects midnight atmosphere in nighttime darkness
-            if (isWindy) {
-                atmosphereBase += ' , wind creating subtle nighttime movement through nighttime darkness';
-            } else {
-                atmosphereBase += ' , absolute nighttime stillness in nighttime darkness';
-            }
-
-            // Cloud coverage effects on lighting in nighttime darkness (visible cloud descriptions removed for night)
-            if (cloudCoverage >= 80) {
-                lightingBase = 'no sky lighting, minimal artificial lighting in nighttime darkness, cloudy night sky blocking any celestial light';
-                atmosphereBase += ' , dark night atmosphere with dimmed artificial lighting';
-            } else if (cloudCoverage >= 50) {
-                lightingBase = 'no sky lighting, minimal artificial lighting diffused through moderate cloud cover in nighttime darkness, cloudy night sky';
-                atmosphereBase += ' , dark night atmosphere with reduced artificial lighting';
-            } else if (cloudCoverage >= 20) {
-                lightingBase = 'no sky lighting, minimal artificial lighting filtered by light cloud cover in nighttime darkness, minimal celestial light';
-                atmosphereBase += ' , dark night atmosphere';
-            } else if (cloudCoverage < 20) {
-                // Clear night - only moon/stars provide natural light
-                lightingBase = 'no sky lighting, clear night sky, faint moonlight and starlight visible, minimal artificial lighting, deep shadows';
-                atmosphereBase += ' , clear night sky revealing stars and moon, dark night atmosphere';
-            }
-
-            lightingDescription = lightingBase;
-            atmosphericNotes = atmosphereBase;
-
-            // No UV effects for midnight (night time)
-        }
-
-        // Add environmental context to atmospheric notes
-        const environmentalContext = buildEnvironmentalContext(soilAnalysis, atmosphericMoistureAnalysis, cloudLayerAnalysis, surfacePressureAnalysis, isDaylight, atmosphericNotes);
-        if (environmentalContext && atmosphericNotes) {
-            atmosphericNotes += ', ' + environmentalContext;
-        }
-
-        console.log(`🌅 FINAL SELECTION: ${periodKey} - "${periodDescription}"\n`);
-        console.log(`🌅 ATMOSPHERIC NOTES: ${atmosphericNotes}`);
-        console.log(`🌅 LIGHTING NOTES: ${lightingDescription}`);
-        console.log(`🌅 SOIL ANALYSIS: ${soilAnalysis.description}`);
-        console.log(`🌅 ATMOSPHERIC MOISTURE ANALYSIS: ${atmosphericMoistureAnalysis.description}`);
-        console.log(`🌅 CLOUD LAYER ANALYSIS: ${cloudLayerAnalysis.description}`);
-        console.log(`🌅 SURFACE PRESSURE ANALYSIS: ${surfacePressureAnalysis.description}`);
-        console.log(`🌅 IS DAYLIGHT: ${isDaylight}`);
-        console.log(`🌅 SEASON: ${season}`);
-        console.log(`🌅 ========================================`);
-
-        // Normalize periodKey to handle any legacy values
-        const normalizedPeriodKey = normalizePeriodKey(periodKey);
-
-        return {
-            period: periodDescription,
-            periodKey: normalizedPeriodKey,
-            lighting: lightingDescription,
-            atmosphere: atmosphericNotes,
-            season: season,
-            timeOfDay: currentHour < 12 ? 'morning' : currentHour < 18 ? 'afternoon' : 'evening/night',
-            transitionType: getTransitionType(currentHour, sunriseHour, sunsetHour),
-            // Sun position data for LCD display
-            sunriseHour: sunriseHour,
-            sunsetHour: sunsetHour,
-            solarNoon: solarNoon,
-            daylightHours: daylightHours,
-            sunPhase: sunPhase,
-            sunProgressRaw: sunProgressRaw,
-            perceivableLight: perceivableLight,
-            lightLevelRaw: lightLevelRaw,
-            isBeforeSunrise: currentHour < sunriseHour,
-            isAfterSunset: currentHour > sunsetHour,
-            isDaytime: isDaylight,
-            isRisingPhase: currentHour > sunriseHour && currentHour <= solarNoon,
-            isSettingPhase: currentHour > solarNoon && currentHour <= sunsetHour
-        };
-
-    } catch (error) {
-        console.error('Failed to calculate sun times, using fallback:', error);
+async function determineTimePeriod(timeInput, season = null, location = null, weather = null, enhancedWeatherData = {}, clothingEffects = true, guidanceEnabled = true) {
+    // Handle backward compatibility: if first param is location object (has lat/lon), rearrange
+    if (timeInput && typeof timeInput === 'object' && 
+        !timeInput.timestamp && !timeInput.year && timeInput.lat !== undefined) {
+        // First param is actually location, shift parameters
+        location = timeInput;
+        weather = season;
+        season = null;
+        throw new Error('determineTimePeriod now requires a time object from getCurrentTime as the first parameter');
     }
-}
+    
+    // Validate time input
+    if (!timeInput || typeof timeInput !== 'object') {
+        throw new Error('timeInput must be a time object from getCurrentTime');
+    }
+    
+    // Validate required time object properties
+    if (timeInput.hour === undefined || timeInput.minute === undefined) {
+        throw new Error('timeInput must have hour and minute properties');
+    }
+    
+    if (!location) {
+        throw new Error('Location is required for determineTimePeriod');
+    }
+    
+    if (!weather) {
+        weather = {};
+    }
+    
+    // Convert time object to Date for getSunriseSunset (which requires Date object)
+    // NOTE: The DATE (month/day) affects timing because it determines the season:
+    // - Summer dates: Earlier sunrise, later sunset (longer days)
+    // - Winter dates: Later sunrise, earlier sunset (shorter days)
+    // The astronomical calculations use the date to account for Earth's tilt throughout the year
+    let date;
+    if (timeInput.timestamp) {
+        date = new Date(timeInput.timestamp);
+    } else {
+        // Use current year if not provided
+        const year = timeInput.year !== undefined ? timeInput.year : new Date().getFullYear();
+        const month = timeInput.month !== undefined ? timeInput.month : new Date().getMonth();
+        date = new Date(year, month, timeInput.dayOfMonth || 1, 
+                       timeInput.hour || 0, timeInput.minute || 0, timeInput.second || 0);
+    }
+    
+    // Calculate sunrise/sunset times based on date (which includes season information)
+    // The date determines the season, and season affects timing through astronomical calculations
+    const sunriseData = await getSunriseSunset(location, date);
+    if (sunriseData.error) throw new Error(sunriseData.error);
 
+    const {
+        sunriseHour,
+        sunsetHour,
+        isPolarDay,
+        isPolarNight
+    } = sunriseData;
+
+    // Use time object properties directly - these are already in the correct timezone
+    const currentHour = timeInput.hour + timeInput.minute / 60;
+
+    // Calculate solar noon and daylight hours
+    const solarNoon = (sunriseHour !== null && sunsetHour !== null) ? (sunriseHour + sunsetHour) / 2 : null;
+    const daylightHours = (sunriseHour !== null && sunsetHour !== null) ? (sunsetHour - sunriseHour) : 0;
+
+    // Handle polar conditions where sunriseHour/sunsetHour may be null
+    const isDaylight = (sunriseHour !== null && sunsetHour !== null) 
+        ? (currentHour >= sunriseHour && currentHour < sunsetHour)
+        : (isPolarDay ? true : false);
+
+    // Calculate dawn/dusk ranges (30 minutes before sunrise, 30 minutes after sunset)
+    const dawnTwilightWindow = 0.5; // 30 minutes
+    const duskTwilightWindow = 0.5; // 30 minutes
+    const dawnStartHour = (sunriseHour !== null) ? sunriseHour - dawnTwilightWindow : null;
+    const duskEndHour = (sunsetHour !== null) ? sunsetHour + duskTwilightWindow : null;
+
+    // Calculate sun progress and phase
+    let sunProgressRaw = 0;
+    let sunPhase = 'unknown';
+    
+    if (isPolarDay) {
+        sunPhase = 'polar_day';
+        sunProgressRaw = 0.5; // Midday
+    } else if (isPolarNight) {
+        sunPhase = 'polar_night';
+        sunProgressRaw = 0;
+    } else if (sunriseHour !== null && sunsetHour !== null) {
+        if (isDaylight) {
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+            sunPhase = currentHour < solarNoon ? 'rising' : 'setting';
+        } else if (dawnStartHour !== null && currentHour >= dawnStartHour && currentHour < sunriseHour) {
+            // During dawn twilight period
+            sunPhase = 'pre-dawn';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else if (duskEndHour !== null && currentHour > sunsetHour && currentHour <= duskEndHour) {
+            // During dusk twilight period
+            sunPhase = 'setting';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else if (dawnStartHour !== null && currentHour < dawnStartHour) {
+            // Before dawn twilight - true night/pre-dawn
+            sunPhase = 'pre-dawn';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        } else {
+            // After dusk twilight - true night/post-dusk
+            sunPhase = 'post-dusk';
+            sunProgressRaw = (currentHour - sunriseHour) / daylightHours;
+        }
+    }
+
+    // Calculate perceivable light (0-100 for display, includes civil twilight)
+    // Note: Display expects perceivableLight as 0-100 percentage, not 0-1
+    let perceivableLight = 0;
+    let lightLevelRaw = 0; // Calculate as 0-1, will be scaled to 0-10 after cloud adjustment
+    
+    if (isPolarDay) {
+        perceivableLight = 100;
+        lightLevelRaw = 1.0; // Full light (0-1 scale, will be scaled later)
+    } else if (isPolarNight) {
+        perceivableLight = 0;
+        lightLevelRaw = 0;
+    } else if (dawnStartHour !== null && sunriseHour !== null && currentHour >= dawnStartHour && currentHour < sunriseHour) {
+        // Dawn twilight - increasing light over 30 minutes
+        const lightRatio = (currentHour - dawnStartHour) / dawnTwilightWindow;
+        perceivableLight = Math.round(lightRatio * 100); // 0-100
+        lightLevelRaw = lightRatio * 0.3; // 0-0.3 on 0-1 scale
+    } else if (sunriseHour !== null && sunsetHour !== null && currentHour >= sunriseHour && currentHour < sunsetHour) {
+        // Daylight - use sunProgressRaw for percentage (0-100)
+        perceivableLight = Math.round(sunProgressRaw * 100);
+        // Light level peaks at solar noon
+        const noonDistance = Math.abs(currentHour - solarNoon) / (daylightHours / 2);
+        lightLevelRaw = 1.0 - (noonDistance * 0.2); // 0.8-1.0 during day (0-1 scale)
+    } else if (sunsetHour !== null && duskEndHour !== null && currentHour >= sunsetHour && currentHour <= duskEndHour) {
+        // Dusk twilight - decreasing light over 30 minutes
+        const lightRatio = 1.0 - ((currentHour - sunsetHour) / duskTwilightWindow);
+        perceivableLight = Math.round(lightRatio * 100); // 0-100
+        lightLevelRaw = lightRatio * 0.3; // 0-0.3 on 0-1 scale
+    } else {
+        // Night
+        perceivableLight = 0;
+        lightLevelRaw = 0;
+    }
+
+    const feelsLike = weather.feelsLike ?? weather.temperature ?? 15;
+    const cloudCoverage = weather.cloudCoverage ?? 0;
+    const windSpeed = weather.windSpeed ?? 0;
+    const windGust = weather.windGust ?? windSpeed;
+    const windRelativeDir = getRelativeWindDirection(weather.windDirection);
+    const precipRate = weather.precipitationRate ?? 0;
+    const precipType = weather.precipitationType?.type || 'none';
+    const hasPrecipitation = precipRate > 0.1;
+    
+    // Adjust light level based on cloud coverage and weather conditions
+    // Clouds reduce light: 0% clouds = no reduction, 100% clouds = 70-85% reduction
+    // Heavy cloudy sky (90%+) can reduce light by up to 85%
+    // Note: lightLevelRaw is in 0-1 scale for cloud adjustment, will be scaled to 0-10 for display
+    let adjustedLightLevelRaw = lightLevelRaw;
+    if (cloudCoverage > 0 && lightLevelRaw > 0) {
+        // Cloud factor: 0% clouds = 1.0, 100% clouds = 0.15-0.30 (70-85% reduction)
+        // Use a curve that's more aggressive at higher cloud coverage
+        const cloudFactor = 1.0 - (cloudCoverage / 100) * 0.80; // Up to 80% reduction
+        adjustedLightLevelRaw = lightLevelRaw * cloudFactor;
+        
+        // Additional reduction for heavy precipitation
+        if (hasPrecipitation && precipType !== 'none') {
+            adjustedLightLevelRaw *= 0.85; // Additional 15% reduction during precipitation
+        }
+        
+        // Ensure minimum light level during daylight (even heavy clouds allow some light)
+        if (isDaylight && adjustedLightLevelRaw < 0.1) {
+            adjustedLightLevelRaw = 0.1; // Minimum 10% light during daylight (0-1 scale)
+        }
+    }
+    
+    // Scale to 0-10 for display (display function expects 0-10, not 0-1)
+    adjustedLightLevelRaw = Math.round(adjustedLightLevelRaw * 10);
+
+    // ===================================================================
+    // SEASON INFLUENCE (fully dynamic, Danbooru-valid tags only)
+    // ===================================================================
+    const seasonLower = (season || '').toLowerCase();
+    const isAutumn = seasonLower === "autumn" || seasonLower === "fall";
+    const isWinter = seasonLower === "winter";
+    const isSpring = seasonLower === "spring";
+    const isSummer = seasonLower === "summer";
+
+    // Seasonal base bias (higher during daylight when colors are visible)
+    const seasonDayBias = isDaylight ? 1.0 : 0.6;
+
+    const seasonalElements = [];
+
+    // Only populate seasonal elements if guidance is enabled
+    if (guidanceEnabled) {
+        if (isAutumn) {
+            seasonalElements.push({text: "autumn, orange leaves, red leaves, yellow leaves, falling leaves", bias: 1.0 + seasonDayBias * 0.9});
+            // Adjust color palette based on cloud cover - no warm/orange tint when cloudy
+            if (cloudCoverage < 30) {
+                seasonalElements.push({text: "warm color palette, orange tinted light", bias: 1.0 + seasonDayBias * 0.7});
+            } else if (cloudCoverage < 60) {
+                seasonalElements.push({text: "warm color palette, muted colors", bias: 1.0 + seasonDayBias * 0.5});
+            } else if (cloudCoverage < 80) {
+                seasonalElements.push({text: "muted colors, cool color palette", bias: 1.0 + seasonDayBias * 0.3});
+            } else {
+                // Heavy clouds: no warm colors, just muted/cool
+                seasonalElements.push({text: "muted colors, cool color palette, gray tones", bias: 1.0 + seasonDayBias * 0.2});
+            }
+        } else if (isWinter) {
+            seasonalElements.push({text: "winter, bare trees", bias: 1.0 + seasonDayBias * 1.0});
+            seasonalElements.push({text: "cold lighting, blue tinted light, cool color palette", bias: 1.0 + seasonDayBias * 0.8});
+        } else if (isSpring) {
+            seasonalElements.push({text: "spring, cherry blossoms, pink petals, falling petals, green leaves", bias: 1.0 + seasonDayBias * 0.9});
+            // Adjust lighting based on cloud cover - more granular adjustments
+            if (cloudCoverage < 30) {
+                seasonalElements.push({text: "soft lighting, pastel colors", bias: 1.0 + seasonDayBias * 0.6});
+            } else if (cloudCoverage < 60) {
+                seasonalElements.push({text: "soft lighting, muted pastel colors", bias: 1.0 + seasonDayBias * 0.4});
+            } else if (cloudCoverage < 80) {
+                seasonalElements.push({text: "soft lighting, muted colors, cool tones", bias: 1.0 + seasonDayBias * 0.3});
+            } else {
+                // Heavy clouds: very muted, cool tones
+                seasonalElements.push({text: "muted colors, cool tones, gray tones", bias: 1.0 + seasonDayBias * 0.2});
+            }
+        } else if (isSummer) {
+            seasonalElements.push({text: "summer, lush greenery", bias: 1.0 + seasonDayBias * 0.9});
+            // Adjust colors based on cloud cover - no warm sunlight when cloudy
+            if (cloudCoverage < 30) {
+                seasonalElements.push({text: "vibrant colors, warm sunlight", bias: 1.0 + seasonDayBias * 0.7});
+            } else if (cloudCoverage < 60) {
+                seasonalElements.push({text: "vibrant colors, filtered sunlight", bias: 1.0 + seasonDayBias * 0.5});
+            } else if (cloudCoverage < 80) {
+                seasonalElements.push({text: "muted vibrant colors, diffused light", bias: 1.0 + seasonDayBias * 0.3});
+            } else {
+                // Heavy clouds: no warm sunlight, muted colors
+                seasonalElements.push({text: "muted colors, cool diffused light", bias: 1.0 + seasonDayBias * 0.2});
+            }
+        }
+    }
+
+    // ===================================================================
+    // Dynamic intensity calculators (0.0 → 1.0 = full strength)
+    // ===================================================================
+    // Handle polar conditions where values may be null
+    const hoursFromSunrise = (sunriseHour !== null) ? Math.max(0, currentHour - sunriseHour) : 0;
+    const hoursToSunset    = (sunsetHour !== null) ? Math.max(0, sunsetHour - currentHour) : 0;
+    const hoursFromNoon    = (solarNoon !== null) ? Math.abs(currentHour - solarNoon) : 0;
+
+    // Sunrise peak intensity (peaks at exact sunrise, falls off fast)
+    const sunriseIntensity = (sunriseHour !== null) 
+        ? Math.max(0, 1.0 - Math.abs(currentHour - sunriseHour) / 0.25 * 4) 
+        : 0;
+
+    // Sunset peak intensity
+    const sunsetIntensity = (sunsetHour !== null)
+        ? Math.max(0, 1.0 - Math.abs(currentHour - sunsetHour) / 0.25 * 4)
+        : 0;
+
+    // Golden hour morning intensity (strongest first 90 min after sunrise)
+    // Only applies during daylight hours, after sunrise transition period
+    const goldenMorningIntensity = (sunriseHour !== null && currentHour >= sunriseHour && isDaylight)
+        ? Math.max(0, 1.0 - hoursFromSunrise / 1.5)
+        : 0;
+
+    // Golden hour afternoon intensity (strongest last 90 min before sunset)
+    // Only applies during daylight hours, before sunset transition period
+    const goldenAfternoonIntensity = (sunsetHour !== null && currentHour < sunsetHour && isDaylight)
+        ? Math.max(0, 1.0 - hoursToSunset / 1.5)
+        : 0;
+
+    // Midday intensity (peaks at solar noon, full strength ±2 hours)
+    const middayIntensity = (solarNoon !== null)
+        ? Math.max(0, 1.0 - hoursFromNoon / 2.0)
+        : (isPolarDay ? 1.0 : 0);
+
+    // Civil twilight intensity (dawn/dusk)    
+    // Dawn intensity: calculate based on actual dawn start time
+    const dawnIntensity = (dawnStartHour !== null && sunriseHour !== null && 
+                          currentHour >= dawnStartHour && currentHour < sunriseHour)
+        ? Math.min(1.0, (sunriseHour - currentHour) / dawnTwilightWindow)
+        : 0;
+    
+    // Dusk intensity: calculate based on actual dusk end time
+    const duskIntensity = (duskEndHour !== null && sunsetHour !== null && 
+                          currentHour > sunsetHour && currentHour <= duskEndHour)
+        ? Math.min(1.0, (currentHour - sunsetHour) / duskTwilightWindow)
+        : 0;
+
+    // Night depth (strongest at midnight, weaker near twilight)
+    // Calculate distance to nearest twilight period (dawn or dusk)
+    const hoursFromMidnight = Math.min(Math.abs(currentHour - 0), Math.abs(currentHour - 24));
+    let midnightIntensity = 0;
+    
+    if (sunriseHour !== null && sunsetHour !== null) {
+        // Calculate distance to nearest twilight boundary
+        // Dawn starts at dawnStartHour, dusk ends at duskEndHour
+        let distanceToTwilight;
+        
+        if (currentHour >= sunriseHour && currentHour <= sunsetHour) {
+            // During daylight - not night
+            distanceToTwilight = Infinity;
+        } else if (currentHour >= dawnStartHour && currentHour < sunriseHour) {
+            // In dawn twilight period - not deep night
+            distanceToTwilight = 0;
+        } else if (currentHour > sunsetHour && currentHour <= duskEndHour) {
+            // In dusk twilight period - not deep night
+            distanceToTwilight = 0;
+        } else if (currentHour < dawnStartHour) {
+            // Before dawn - distance to dawn start
+            // If we're very early (like 1 AM) and dawn is later (like 6 AM), 
+            // we might be closer to the previous day's dusk end
+            const distanceToDawn = dawnStartHour - currentHour;
+            const distanceFromDusk = (24 - duskEndHour) + currentHour;
+            distanceToTwilight = Math.min(distanceToDawn, distanceFromDusk);
+        } else {
+            // After dusk - distance from dusk end
+            distanceToTwilight = currentHour - duskEndHour;
+        }
+        
+        // Midnight intensity: strongest at midnight, weaker near twilight
+        // Full intensity if > 4 hours from twilight, or if it's very late/early (22-4)
+        if (currentHour < 4 || currentHour >= 22) {
+            midnightIntensity = 1.0;
+        } else if (distanceToTwilight > 4.0) {
+            midnightIntensity = 1.0;
+        } else {
+            midnightIntensity = Math.max(0, 1.0 - distanceToTwilight / 4.0);
+        }
+    } else if (isPolarNight) {
+        midnightIntensity = 1.0;
+    }
+
+    // Clear sky strength (inversely proportional to cloud cover)
+    const clearSkyStrength = 1.0 - (cloudCoverage / 100);
+
+    // Cloudy sky strength
+    const overcastStrength = cloudCoverage / 100;
+
+    // ===================================================================
+    // LIGHTING + SEASONAL COLOR INFLUENCE
+    // ===================================================================
+    const lightingElements = [];
+    const undesiredElements = [];
+
+    // Sunrise – only appears when intensity > 0
+    if (sunriseIntensity > 0) {
+        let bias = 1.0 + sunriseIntensity * 1.0;
+        if (isAutumn) bias += 0.4; // extra warm in autumn sunrise
+        if (isWinter) bias -= 0.2; // cooler in winter
+        
+        // Adjust for cloud cover - no golden/warm lighting when cloudy
+        if (cloudCoverage < 30) {
+            // Clear sky - full sunrise effects
+            lightingElements.push({text: "sunrise, sun on horizon, golden hour, rim lighting, backlighting, god rays, lens flare", bias});
+            lightingElements.push({text: "long shadows", bias: bias - 0.1});
+        } else if (cloudCoverage < 60) {
+            // Partly cloudy - reduced golden hour effects
+            lightingElements.push({text: "sunrise, sun on horizon, soft lighting, rim lighting, backlighting", bias: bias - 0.3});
+            lightingElements.push({text: "long shadows, diffuse shadows", bias: bias - 0.3});
+        } else if (cloudCoverage < 80) {
+            // Mostly cloudy - no golden hour, muted lighting
+            lightingElements.push({text: "sunrise, sun on horizon, muted lighting, soft glow, diffuse lighting", bias: bias - 0.5});
+            lightingElements.push({text: "soft shadows, cool lighting", bias: bias - 0.4});
+        } else {
+            // Heavy clouds - no golden/warm terms, flat muted lighting
+            lightingElements.push({text: "sunrise, muted lighting, flat lighting, diffuse lighting", bias: bias - 0.7});
+            lightingElements.push({text: "soft shadows, cool lighting", bias: bias - 0.5});
+        }
+        undesiredElements.push({text: "overhead sunlight, short shadows", bias: bias + 0.3});
+    }
+
+    // Sunset
+    if (sunsetIntensity > 0) {
+        let bias = 1.0 + sunsetIntensity * 1.0;
+        if (isAutumn) bias += 0.5; // autumn sunsets are legendary
+        if (isWinter) bias -= 0.15;
+        
+        // Adjust for cloud cover - no golden/warm lighting when cloudy
+        if (cloudCoverage < 30) {
+            // Clear sky - full sunset effects
+            lightingElements.push({text: "sunset, sun on horizon, golden hour, rim lighting, backlighting, god rays, lens flare", bias});
+            lightingElements.push({text: "long shadows, warm lighting", bias: bias - 0.1});
+        } else if (cloudCoverage < 60) {
+            // Partly cloudy - reduced golden hour effects
+            lightingElements.push({text: "sunset, sun on horizon, soft lighting, rim lighting, backlighting", bias: bias - 0.3});
+            lightingElements.push({text: "long shadows, diffuse shadows", bias: bias - 0.3});
+        } else if (cloudCoverage < 80) {
+            // Mostly cloudy - no golden hour, muted lighting
+            lightingElements.push({text: "sunset, sun on horizon, muted lighting, soft glow, diffuse lighting", bias: bias - 0.5});
+            lightingElements.push({text: "soft shadows, cool lighting", bias: bias - 0.4});
+        } else {
+            // Heavy clouds - no golden/warm terms, flat muted lighting
+            lightingElements.push({text: "sunset, muted lighting, flat lighting, diffuse lighting", bias: bias - 0.7});
+            lightingElements.push({text: "soft shadows, cool lighting", bias: bias - 0.5});
+        }
+        undesiredElements.push({text: "overhead sunlight, blue hour", bias: bias + 0.3});
+    }
+
+    // Golden hour morning
+    if (goldenMorningIntensity > 0 && sunriseIntensity === 0) {
+        let bias = 1.0 + goldenMorningIntensity * 0.8;
+        if (isAutumn || isSummer) bias += 0.3;
+        
+        // Adjust for cloud cover - no golden/warm lighting when cloudy
+        if (cloudCoverage < 30) {
+            // Clear: full golden hour with warm lighting
+            lightingElements.push({text: "golden hour, warm sunlight, long shadows", bias});
+        } else if (cloudCoverage < 60) {
+            // Partly cloudy: reduced golden hour, softer lighting
+            lightingElements.push({text: "golden hour, soft lighting, diffuse shadows", bias: bias - 0.4});
+        } else if (cloudCoverage < 80) {
+            // Mostly cloudy: no golden/warm terms, just soft diffused light
+            lightingElements.push({text: "soft lighting, diffuse shadows, filtered light", bias: bias - 0.6});
+        } else {
+            // Heavy clouds: no golden hour lighting at all, flat/cool lighting
+            lightingElements.push({text: "flat lighting, diffuse shadows, cool lighting", bias: bias - 0.8});
+        }
+    }
+
+    // Golden hour afternoon - only during daylight, before sunset
+    if (goldenAfternoonIntensity > 0 && sunsetIntensity === 0 && isDaylight) {
+        let bias = 1.0 + goldenAfternoonIntensity * 0.8;
+        if (isAutumn) bias += 0.4;
+        
+        // Adjust for cloud cover - no golden/warm lighting when cloudy
+        if (cloudCoverage < 30) {
+            // Clear: full golden hour with warm lighting
+            lightingElements.push({text: "golden hour, warm sunlight, long shadows", bias});
+        } else if (cloudCoverage < 60) {
+            // Partly cloudy: reduced golden hour, softer lighting
+            lightingElements.push({text: "golden hour, soft lighting, diffuse shadows", bias: bias - 0.4});
+        } else if (cloudCoverage < 80) {
+            // Mostly cloudy: no golden/warm terms, just soft diffused light
+            lightingElements.push({text: "soft lighting, diffuse shadows, filtered light", bias: bias - 0.6});
+        } else {
+            // Heavy clouds: no golden hour lighting at all, flat/cool lighting
+            lightingElements.push({text: "flat lighting, diffuse shadows, cool lighting", bias: bias - 0.8});
+        }
+    }
+
+    // Midday
+    if (middayIntensity > 0) {
+        let bias = 1.0 + middayIntensity * 0.9;
+        if (isWinter) bias -= 0.2; // winter midday is colder/bluer
+        
+        // Adjust for cloud cover
+        if (cloudCoverage < 30) {
+            lightingElements.push({text: "overhead sunlight, midday, short shadows, bright daylight", bias});
+        } else if (cloudCoverage < 70) {
+            lightingElements.push({text: "midday, soft sunlight, diffuse shadows, filtered light", bias: bias - 0.2});
+        } else {
+            lightingElements.push({text: "midday, cloudy, flat lighting, no shadows, gray sky", bias: bias - 0.4});
+        }
+    }
+
+    // Dawn - only apply during meaningful twilight period (first 30 minutes before sunrise)
+    // Require minimum intensity to match period determination threshold
+    if (dawnIntensity > 0.1) {
+        let bias = 1.0 + dawnIntensity * 0.9;
+        if (isSpring) bias += 0.3; // spring dawn extra soft
+        
+        // Adjust for cloud cover - more granular like golden hour
+        if (cloudCoverage < 30) {
+            lightingElements.push({text: "dawn, blue hour, twilight, soft pastel sky", bias});
+        } else if (cloudCoverage < 60) {
+            lightingElements.push({text: "dawn, blue hour, muted twilight, soft sky", bias: bias - 0.3});
+        } else if (cloudCoverage < 80) {
+            lightingElements.push({text: "dawn, low light, gray sky, muted colors", bias: bias - 0.5});
+        } else {
+            // Heavy clouds: very muted, no pastel/blue hour
+            lightingElements.push({text: "dawn, very low light, dark gray sky, muted colors", bias: bias - 0.7});
+        }
+    }
+
+    // Dusk - only apply during meaningful twilight period (first 30 minutes after sunset)
+    // Require minimum intensity to avoid applying dusk when sun is completely down
+    if (duskIntensity > 0.1) {
+        // Base bias is lower for dusk to prevent over-brightness
+        let bias = 0.8 + duskIntensity * 0.5; // Reduced from 1.0 + 0.9
+        
+        // Adjust for cloud cover - cloudy sky dusk should be much darker
+        if (cloudCoverage < 30) {
+            // Clear sky dusk - can have some twilight/blue hour
+            lightingElements.push({text: "dusk, low light, blue hour, twilight, dim lighting, artificial lighting", bias});
+            undesiredElements.push({text: "bright daylight, bright sky, sunlight, sky, bright lighting", bias: bias + 0.5});
+        } else if (cloudCoverage < 50) {
+            // Partly cloudy dusk - reduced light
+            lightingElements.push({text: "dusk, very low light, dim twilight, artificial lighting", bias: bias - 0.2});
+            undesiredElements.push({text: "bright daylight, bright sky, sunlight, sky, bright lighting, blue hour", bias: bias + 0.6});
+        } else if (cloudCoverage < 80) {
+            // Cloudy sky dusk - very dark
+            lightingElements.push({text: "dusk, very low light, dark sky, dim artificial lighting", bias: bias - 0.4});
+            undesiredElements.push({text: "bright daylight, bright sky, sunlight, sky, bright lighting, blue hour, twilight, clear sky", bias: bias + 0.8});
+        } else {
+            // Heavy cloudy sky dusk - extremely dark
+            lightingElements.push({text: "dusk, extremely low light, dark cloudy sky, minimal artificial lighting", bias: bias - 0.6});
+            undesiredElements.push({text: "bright daylight, bright sky, sunlight, bright lighting, blue hour, twilight, clear sky, any natural light", bias: bias + 1.0});
+        }
+    }
+
+    // Base sky with seasonal tint (fallback when no specific period lighting is strong)
+    if (lightingElements.length === 0 || lightingElements.every(el => el.bias < 1.5)) {
+        if (isDaylight) {
+            // Adjust base sky based on cloud cover - don't suggest clear/bright when cloudy
+            if (cloudCoverage < 30) {
+                let clearBias = 1.0 + clearSkyStrength;
+                if (isAutumn) clearBias += 0.3;
+                if (isWinter) clearBias -= 0.15;
+                lightingElements.push({text: "bright sunlight, hard shadows", bias: clearBias});
+            } else if (cloudCoverage < 60) {
+                let filteredBias = 1.0 + (1.0 - cloudCoverage / 100) * 0.5;
+                if (isAutumn) filteredBias += 0.2;
+                lightingElements.push({text: "filtered sunlight, soft shadows", bias: filteredBias});
+            } else if (cloudCoverage < 80) {
+                let cloudyBias = 1.0 + (cloudCoverage / 100) * 0.3;
+                lightingElements.push({text: "diffused light, soft shadows", bias: cloudyBias});
+            } else {
+                // Heavy clouds: flat, cool lighting
+                let overcastBias = 1.0 + (cloudCoverage / 100) * 0.5;
+                lightingElements.push({text: "flat lighting, cool tones", bias: overcastBias});
+            }
+
+            const overcastBias = 1.0 + overcastStrength;
+            undesiredElements.push({text: "cloudy sky, cloudy, diffuse lighting", bias: overcastBias});
+        } else if (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn') {
+            // Night sky - only when sun is truly at 0% (post-dusk or pre-dawn)
+            // Don't apply night sky during dusk twilight period
+            const clearBias = 1.0 + clearSkyStrength + midnightIntensity * 0.6;
+            lightingElements.push({text: "clear night sky, starry sky, stars, milky way, moon, moonlit", bias: clearBias});
+            undesiredElements.push({text: "pitch black, cloudy sky night", bias: 1.0 + overcastStrength});
+        }
+    }
+
+    // ===================================================================
+    // ATMOSPHERIC + SEASONAL ELEMENTS
+    // ===================================================================
+    const atmosphericElements = [...seasonalElements]; // season first
+
+    // Temperature
+    const coldIntensity = Math.max(0, (15 - Math.max(feelsLike, -20)) / 35); // 1.0 at ≤-20°C, 0 at ≥15°C
+    const hotIntensity   = Math.max(0, (feelsLike - 25) / 20);           // 1.0 at ≥45°C, 0 at ≤25°C
+
+    if (coldIntensity > 0) {
+        atmosphericElements.push({text: "visible breath", bias: 1.0 + coldIntensity * 1.0});
+        if (coldIntensity > 0.4) {
+            atmosphericElements.push({text: "frost", bias: 1.0 + coldIntensity * 0.9});
+        }
+    }
+    if (hotIntensity > 0) {
+        atmosphericElements.push({text: "heat haze", bias: 1.0 + hotIntensity});
+        atmosphericElements.push({text: "sweat, glistening skin", bias: 1.0 + hotIntensity * 0.8});
+    }
+
+    // Wind
+    const windIntensity = Math.min(windSpeed / 40, 1.0);
+    if (windIntensity > 0.05) {
+        const bias = 1.0 + windIntensity;
+        atmosphericElements.push({text: "wind blowing", bias});
+        if (clothingEffects) {
+            atmosphericElements.push({text: "hair blowing, clothing flapping", bias});
+        }
+    }
+
+    // Precipitation
+    if (hasPrecipitation) {
+        const precipIntensity = Math.min(precipRate / 30, 1.0);
+        const bias = 1.0 + precipIntensity;
+        const typeTag = precipType.includes("snow") ? "snowing, falling snowflakes" : "raining, falling rain";
+        atmosphericElements.push({text: typeTag, bias: bias + 0.2});
+        atmosphericElements.push({text: "wet surfaces, puddles", bias});
+        if (precipType.includes("snow")) {
+            atmosphericElements.push({text: "snow covered ground", bias: bias + 0.3});
+        }
+    }
+
+    // Final period string
+    // Use time range matching - same logic as the period ranges table
+    // Calculate all period ranges and check which one contains the current time
+    let periodDescription = "daytime";
+    
+    // Helper function to check if currentHour falls within a time range
+    const isInRange = (startHour, endHour, checkHour) => {
+        if (startHour === null || endHour === null || checkHour === null) {
+            return false;
+        }
+
+        // Handle ranges expressed past 24h (e.g., duskEnd → dawnStart+24)
+        if (endHour >= 24 && startHour < endHour) {
+            const normalizedCheck = checkHour < startHour ? checkHour + 24 : checkHour;
+            return normalizedCheck >= startHour && normalizedCheck < endHour;
+        }
+
+        // Handle traditional wrap-around (start > end)
+        if (endHour < startHour) {
+            return checkHour >= startHour || checkHour < endHour;
+        }
+
+        return checkHour >= startHour && checkHour < endHour;
+    };
+    
+    // Build array of periods with their time ranges (same as table logic)
+    const periodRanges = [];
+    
+    // Dawn
+    if (dawnStartHour !== null && sunriseHour !== null) {
+        periodRanges.push({
+            name: "dawn",
+            startHour: dawnStartHour,
+            endHour: sunriseHour,
+            priority: 9 // Higher priority than daytime
+        });
+    }
+    
+    // Sunrise
+    if (sunriseHour !== null) {
+        const sunriseStart = sunriseHour - 0.25;
+        const sunriseEnd = sunriseHour + 0.25;
+        periodRanges.push({
+            name: "sunrise",
+            startHour: sunriseStart,
+            endHour: sunriseEnd,
+            priority: 10 // Highest priority
+        });
+    }
+    
+    // Golden Hour Morning
+    if (sunriseHour !== null) {
+        const goldenStart = sunriseHour + 0.25;
+        const goldenEnd = sunriseHour + 1.5;
+        // Use "morning" when cloudy, "golden hour" when clear (matches table display logic)
+        const periodName = cloudCoverage >= 60 ? "morning" : "golden hour";
+        periodRanges.push({
+            name: periodName,
+            startHour: goldenStart,
+            endHour: goldenEnd,
+            priority: 8,
+            condition: () => isDaylight
+        });
+    }
+    
+    // Daytime (AM) - gap between Golden Hour AM and Midday
+    if (sunriseHour !== null && solarNoon !== null) {
+        const goldenMorningEnd = sunriseHour + 1.5;
+        const middayStart = solarNoon - 2.0;
+        if (goldenMorningEnd < middayStart) {
+            periodRanges.push({
+                name: "daytime",
+                startHour: goldenMorningEnd,
+                endHour: middayStart,
+                priority: 7,
+                condition: () => isDaylight
+            });
+        }
+    }
+    
+    // Midday
+    if (solarNoon !== null) {
+        const middayStart = solarNoon - 2.0;
+        const middayEnd = solarNoon + 2.0;
+        periodRanges.push({
+            name: "midday",
+            startHour: middayStart,
+            endHour: middayEnd,
+            priority: 7,
+            condition: () => isDaylight
+        });
+    }
+    
+    // Daytime (PM) - gap between Midday and Golden Hour PM
+    if (solarNoon !== null && sunsetHour !== null) {
+        const middayEnd = solarNoon + 2.0;
+        const goldenAfternoonStart = sunsetHour - 1.5;
+        if (middayEnd < goldenAfternoonStart) {
+            periodRanges.push({
+                name: "daytime",
+                startHour: middayEnd,
+                endHour: goldenAfternoonStart,
+                priority: 7,
+                condition: () => isDaylight
+            });
+        }
+    }
+    
+    // Golden Hour Afternoon
+    if (sunsetHour !== null) {
+        const goldenStart = sunsetHour - 1.5;
+        const goldenEnd = sunsetHour - 0.25;
+        // Use "evening" when cloudy, "golden hour" when clear
+        const periodName = cloudCoverage >= 60 ? "evening" : "golden hour";
+        periodRanges.push({
+            name: periodName,
+            startHour: goldenStart,
+            endHour: goldenEnd,
+            priority: 8,
+            condition: () => isDaylight
+        });
+    }
+    
+    // Sunset
+    if (sunsetHour !== null) {
+        const sunsetStart = sunsetHour - 0.25;
+        const sunsetEnd = sunsetHour + 0.25;
+        periodRanges.push({
+            name: "sunset",
+            startHour: sunsetStart,
+            endHour: sunsetEnd,
+            priority: 10 // Highest priority
+        });
+    }
+    
+    // Dusk
+    if (sunsetHour !== null && duskEndHour !== null) {
+        periodRanges.push({
+            name: "dusk",
+            startHour: sunsetHour,
+            endHour: duskEndHour,
+            priority: 9
+        });
+    }
+    
+    // Midnight (subset of night, higher priority)
+    if (duskEndHour !== null) {
+        periodRanges.push({
+            name: "midnight",
+            startHour: 22,
+            endHour: 4,
+            priority: 6,
+            condition: () => (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn') && midnightIntensity > 0.7
+        });
+    }
+    
+    // Night
+    if (duskEndHour !== null && dawnStartHour !== null) {
+        periodRanges.push({
+            name: "night",
+            startHour: duskEndHour,
+            endHour: dawnStartHour < duskEndHour ? dawnStartHour + 24 : dawnStartHour,
+            priority: 5,
+            condition: () => (sunPhase === 'post-dusk' || sunPhase === 'pre-dawn')
+        });
+    }
+    
+    // Find which period contains the current time
+    // Sort by priority first (higher priority wins if multiple periods overlap)
+    const matchingPeriods = periodRanges
+        .filter(period => {
+            // Check condition if present
+            if (period.condition && !period.condition()) {
+                return false;
+            }
+            // Check if current time is in range
+            return isInRange(period.startHour, period.endHour, currentHour);
+        })
+        .sort((a, b) => b.priority - a.priority); // Higher priority first
+    
+    if (matchingPeriods.length > 0) {
+        periodDescription = matchingPeriods[0].name;
+    }
+    
+    // Generate periodKey from periodDescription
+    const periodKey = periodDescription.toLowerCase().replace(/\s+/g, '');
+
+    // Calculate next time period transition for cache expiration
+    let nextPeriodTransition = null;
+    let nextPeriodTransitionHour = null;
+    let nextPeriodName = null;
+    
+    if (timeInput && timeInput.timestamp) {
+        const currentTimestamp = timeInput.timestamp;
+        const currentDate = new Date(currentTimestamp);
+        const transitions = [];
+        
+        // Collect all unique transition points from period ranges
+        periodRanges.forEach(period => {
+            // Add period boundaries as transition points
+            if (period.startHour !== null && period.startHour !== undefined) {
+                transitions.push({
+                    hour: period.startHour,
+                    periodName: period.name,
+                    type: 'start'
+                });
+            }
+            if (period.endHour !== null && period.endHour !== undefined) {
+                transitions.push({
+                    hour: period.endHour,
+                    periodName: period.name,
+                    type: 'end'
+                });
+            }
+        });
+        
+        // Remove duplicates and calculate future timestamps
+        const uniqueTransitions = [];
+        const seenHours = new Set();
+        
+        transitions.forEach(transition => {
+            const key = `${transition.hour}-${transition.type}`;
+            if (!seenHours.has(key)) {
+                seenHours.add(key);
+                uniqueTransitions.push(transition);
+            }
+        });
+        
+        // Calculate timestamps for each transition (today and tomorrow)
+        const futureTransitionTimestamps = uniqueTransitions
+            .flatMap(transition => {
+                const results = [];
+                
+                // Create timestamp for today's occurrence
+                const todayDate = new Date(currentDate);
+                todayDate.setHours(Math.floor(transition.hour), (transition.hour % 1) * 60, 0, 0);
+                const todayTimestamp = todayDate.getTime();
+                
+                // If it's in the future today, add it
+                if (todayTimestamp > currentTimestamp) {
+                    results.push({
+                        timestamp: todayTimestamp,
+                        hour: transition.hour,
+                        periodName: transition.periodName,
+                        type: transition.type
+                    });
+                }
+                
+                // Always add tomorrow's occurrence as backup
+                const tomorrowDate = new Date(todayDate);
+                tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+                results.push({
+                    timestamp: tomorrowDate.getTime(),
+                    hour: transition.hour,
+                    periodName: transition.periodName,
+                    type: transition.type
+                });
+                
+                return results;
+            })
+            .filter(t => t.timestamp > currentTimestamp)
+            .sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Get the next transition
+        if (futureTransitionTimestamps.length > 0) {
+            const nextTransition = futureTransitionTimestamps[0];
+            nextPeriodTransition = nextTransition.timestamp;
+            nextPeriodTransitionHour = nextTransition.hour;
+            nextPeriodName = nextTransition.periodName;
+        }
+    }
+
+    // Detailed logging: Show all period ranges in a table
+    if (logger && typeof logger.detailed === 'function') {
+        logPeriodRangesTable({
+            currentHour,
+            sunriseHour,
+            sunsetHour,
+            solarNoon,
+            dawnStartHour,
+            duskEndHour,
+            periodDescription,
+            sunPhase,
+            perceivableLight,
+            sunProgressRaw,
+            isDaylight,
+            sunriseIntensity,
+            sunsetIntensity,
+            dawnIntensity,
+            duskIntensity,
+            goldenMorningIntensity,
+            goldenAfternoonIntensity,
+            middayIntensity,
+            midnightIntensity,
+            cloudCoverage
+        });
+    }
+
+    return {
+        period: periodDescription,
+        periodKey: normalizePeriodKey(periodKey),
+        lighting: lightingElements,
+        atmosphere: atmosphericElements,
+        uc: undesiredElements,
+        season: season || null,
+        timeOfDay: currentHour < 12 ? 'morning' : currentHour < 18 ? 'afternoon' : 'evening/night',
+        transitionType: getTransitionType(currentHour, sunriseHour, sunsetHour),
+        sunriseHour,
+        sunsetHour,
+        solarNoon,
+        daylightHours,
+        sunPhase,
+        sunProgressRaw,
+        perceivableLight,
+        lightLevelRaw: adjustedLightLevelRaw,
+        isBeforeSunrise: (sunriseHour !== null) ? (currentHour < sunriseHour) : false,
+        isAfterSunset: (sunsetHour !== null) ? (currentHour > sunsetHour) : false,
+        isDaytime: isDaylight,
+        isRisingPhase: (sunriseHour !== null && solarNoon !== null) ? (currentHour > sunriseHour && currentHour <= solarNoon) : false,
+        isSettingPhase: (solarNoon !== null && sunsetHour !== null) ? (currentHour > solarNoon && currentHour <= sunsetHour) : false,
+        nextPeriodTransition: nextPeriodTransition, // Timestamp of next period transition
+        nextPeriodTransitionHour: nextPeriodTransitionHour, // Hour of next transition (for display)
+        nextPeriodName: nextPeriodName // Name of period that starts at next transition
+    };
+}
 module.exports = {
     determineTimePeriod,
     getSunriseSunset

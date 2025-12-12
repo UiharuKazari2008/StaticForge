@@ -7,6 +7,7 @@ class FileSearch {
         this.clearSearchBtn = document.getElementById('clearSearchBtn');
         
         this.currentQuery = '';
+        window.currentSearchTerm = null;
         this.searchResults = [];
         this.tagSuggestions = [];
         this.isSearching = false;
@@ -260,22 +261,37 @@ class FileSearch {
     
     async initializeSearchIfNeeded() {
         if (this.cacheInitialized && this.cacheViewType === this.getCurrentViewType()) {
+            // Already initialized - ensure input is enabled
+            if (this.searchInput) {
+                this.searchInput.disabled = false;
+            }
             return;
         }
         
         try {
-            // Show initialization banner
+            // Show autofill overlay and initialization banner so user can see status
+            this.showAutofill();
             this.showInitializationBanner();
             
             await this.initializeSearchWithGalleryData(this.getCurrentViewType());
             
-            // Hide banner and show top results
+            // Hide banner and show top results (wait for this to complete)
             this.hideInitializationBanner();
-            this.showTopResults();
+            await this.showTopResults();
+            
+            // Enable search input after initialization AND top results are fully loaded
+            if (this.searchInput) {
+                this.searchInput.disabled = false;
+            }
         } catch (error) {
             console.error('Failed to initialize search:', error);
             this.hideInitializationBanner();
             this.showSearchError('Failed to initialize search system');
+            // Still enable input even if initialization fails
+            if (this.searchInput) {
+                this.searchInput.disabled = false;
+            }
+            throw error; // Re-throw so caller knows initialization failed
         }
     }
     
@@ -385,6 +401,7 @@ class FileSearch {
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
                 }
+                // Ensure autofill is visible (it should already be from initialization)
                 this.showAutofill();
             } else {
                 this.showNoResultsBanner();
@@ -394,6 +411,8 @@ class FileSearch {
             this.hidePleaseWaitBanner();
             console.error('Failed to get top results:', error);
             this.showNoResultsBanner();
+            // Re-throw so caller knows if there was an error
+            throw error;
         }
     }
     
@@ -409,6 +428,8 @@ class FileSearch {
     
     handleSearchInput(query) {
         this.currentQuery = query.trim();
+        // Expose current search term globally for title bar
+        window.currentSearchTerm = this.currentQuery.length > 0 ? this.currentQuery : null;
         
         // Clear previous timeouts
         if (this.suggestionsTimeout) {
@@ -430,6 +451,9 @@ class FileSearch {
                 this.updateTagSuggestions(this.currentQuery);
             }, this.debounceDelay);
         }
+        
+        // Update title bar
+        updateGalleryTitleBar();
     }
     
     async updateTagSuggestions(query) {
@@ -815,6 +839,11 @@ class FileSearch {
         this.isSearching = true;
         
         try {
+            // Clear the gallery before sending the search request
+            if (typeof clearGallery === 'function') {
+                clearGallery();
+            }
+            
             // Use the full query for gallery search results
             const fullQuery = this.searchInput.value.trim();
             const result = await window.wsClient.searchFiles(fullQuery, this.getCurrentViewType());
@@ -825,6 +854,9 @@ class FileSearch {
                 
                 // Always filter gallery to handle both results and no-results cases
                 this.filterGallery();
+                
+                // Update title bar after search
+                updateGalleryTitleBar();
                 
                 if (this.searchResults.length === 0) {
                     // Also show no-results in overlay for consistency
@@ -928,6 +960,9 @@ class FileSearch {
             this.searchInput.value = '';
         }
         this.currentQuery = '';
+        window.currentSearchTerm = null;
+        // Update title bar
+        updateGalleryTitleBar();
         this.searchResults = [];
         this.tagSuggestions = [];
         this.isSearching = false;

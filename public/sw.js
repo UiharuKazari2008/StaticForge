@@ -29,233 +29,6 @@ function addCacheBustingHeaders(response) {
   });
 }
 
-// Rolling key management for service worker authentication
-let currentRollingKey = null;
-let keyExpiresAt = 0;
-let keyFetchPromise = null;
-let lastRateLimitTime = 0;
-let rateLimitRetryCount = 0;
-const MAX_RATE_LIMIT_RETRIES = 5;
-const RATE_LIMIT_BACKOFF_BASE = 2000; // 2 seconds base backoff
-const KEY_REFRESH_BUFFER = 60000; // Refresh 1 minute before expiry (server rotates every 5 minutes)
-const RATE_LIMIT_RESET_TIME = 300000; // Reset rate limit counters after 5 minutes of no errors
-
-// Reset rate limit tracking after successful fetches
-function resetRateLimitTracking() {
-  rateLimitRetryCount = 0;
-  lastRateLimitTime = 0;
-}
-
-// Periodic cleanup to prevent permanent backoff state
-function cleanupRateLimitTracking() {
-  const now = Date.now();
-  if (lastRateLimitTime > 0 && now - lastRateLimitTime > RATE_LIMIT_RESET_TIME) {
-    resetRateLimitTracking();
-  }
-}
-
-// Fetch current rolling key from server with exponential backoff
-async function fetchRollingKey() {
-  // Periodic cleanup to prevent permanent backoff state
-  cleanupRateLimitTracking();
-
-  if (keyFetchPromise) {
-    return keyFetchPromise;
-  }
-
-  const now = Date.now();
-  const timeUntilExpiry = keyExpiresAt - now;
-  const shouldRefresh = !currentRollingKey || keyExpiresAt === 0 || now >= keyExpiresAt - KEY_REFRESH_BUFFER;
-
-  // Check if we have a valid cached key
-  if (currentRollingKey && keyExpiresAt > 0 && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
-    return currentRollingKey;
-  }
-
-  // Check if we're in rate limit backoff period
-  const backoffTime = RATE_LIMIT_BACKOFF_BASE * Math.pow(2, rateLimitRetryCount);
-  if (lastRateLimitTime > 0 && now - lastRateLimitTime < backoffTime) {
-    console.log(`🔑 Service Worker: In rate limit backoff period, using cached key (${Math.ceil((backoffTime - (now - lastRateLimitTime)) / 1000)}s remaining)`);
-    if (currentRollingKey) {
-      return currentRollingKey;
-    }
-  }
-
-  keyFetchPromise = (async () => {
-    try {
-      const response = await fetch('/sw.js', {
-        method: 'OPTIONS',
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'X-Requested-With': 'ServiceWorker'
-        }
-      });
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          // Rate limit hit - implement exponential backoff
-          lastRateLimitTime = Date.now();
-          rateLimitRetryCount = Math.min(rateLimitRetryCount + 1, MAX_RATE_LIMIT_RETRIES);
-
-
-          // Return cached key if available
-          if (currentRollingKey) {
-            return currentRollingKey;
-          }
-
-          throw new Error(`Rate limit exceeded, retry in ${Math.ceil(backoffTime / 1000)}s`);
-
-        } else if (response.status === 500) {
-          // Server error - don't retry immediately, use cached key if available
-          console.error('🔑 Service Worker: Server error (500) when fetching rolling key');
-
-          if (currentRollingKey) {
-            return currentRollingKey;
-          }
-
-          throw new Error('Server error while fetching rolling key');
-
-        } else if (response.status === 503) {
-          // Service unavailable - similar to server error
-          console.error('🔑 Service Worker: Service unavailable (503) when fetching rolling key');
-
-          if (currentRollingKey) {
-            return currentRollingKey;
-          }
-
-          throw new Error('Service unavailable while fetching rolling key');
-
-        } else if (response.status >= 400 && response.status < 500) {
-          // Client errors (4xx) - likely configuration or permission issues
-          console.error(`🔑 Service Worker: Client error (${response.status}) when fetching rolling key`);
-
-          if (currentRollingKey) {
-            return currentRollingKey;
-          }
-
-          throw new Error(`Client error (${response.status}) while fetching rolling key`);
-
-        } else {
-          // Other errors (5xx, network issues, etc.)
-          console.error(`🔑 Service Worker: Unexpected error (${response.status}) when fetching rolling key`);
-
-          if (currentRollingKey) {
-            return currentRollingKey;
-          }
-
-          throw new Error(`Failed to fetch rolling key: ${response.status}`);
-        }
-      }
-
-      const data = await response.json();
-      currentRollingKey = data.key;
-      keyExpiresAt = data.expiresAt;
-
-      // Reset rate limit tracking on successful fetch
-      resetRateLimitTracking();
-      return currentRollingKey;
-
-    } catch (error) {
-      // Handle network errors (fetch failures)
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        console.error('🔑 Service Worker: Network error when fetching rolling key:', error);
-
-        // For network errors, increment retry count but with shorter backoff
-        rateLimitRetryCount = Math.min(rateLimitRetryCount + 1, MAX_RATE_LIMIT_RETRIES);
-        lastRateLimitTime = Date.now();
-
-        if (currentRollingKey) {
-          return currentRollingKey;
-        }
-
-        throw new Error('Network error while fetching rolling key');
-      }
-
-      // Return cached key if available, even if expired
-      if (currentRollingKey) {
-        return currentRollingKey;
-      }
-
-      throw error;
-    }
-  })();
-
-  try {
-    const result = await keyFetchPromise;
-    return result;
-  } finally {
-    keyFetchPromise = null;
-  }
-}
-
-// Helper function to create service worker identification headers with rolling key
-async function createServiceWorkerHeaders() {
-  try {
-    // Check if we have a valid cached key before calling fetchRollingKey
-    const now = Date.now();
-    if (currentRollingKey && keyExpiresAt > 0 && now < keyExpiresAt - KEY_REFRESH_BUFFER) {
-      // Use cached key without calling fetchRollingKey
-      return {
-        'x-sw-key': currentRollingKey,
-        'X-Service-Worker-Version': '2.0', // Updated version for rolling key support
-        'X-Requested-With': 'ServiceWorker'
-      };
-    }
-
-    // Key needs refresh or doesn't exist - call fetchRollingKey
-    const rollingKey = await fetchRollingKey();
-    return {
-      'x-sw-key': rollingKey,
-      'X-Service-Worker-Version': '2.0', // Updated version for rolling key support
-      'X-Requested-With': 'ServiceWorker'
-    };
-  } catch (error) {
-    return {
-      'X-Service-Worker-Version': '2.0',
-      'X-Requested-With': 'ServiceWorker'
-    };
-  }
-}
-
-// Workbox plugin to add authentication headers to requests
-const authPlugin = {
-  requestWillFetch: async ({ request }) => {
-    // Only add auth headers to local server requests that need them
-    const url = new URL(request.url);
-    if (url.origin !== self.location.origin) {
-      return request;
-    }
-
-    // Skip OPTIONS requests to /sw.js (rolling key endpoint)
-    if (url.pathname === '/sw.js' && request.method === 'OPTIONS') {
-      return request;
-    }
-
-    // Add authentication headers for protected resources
-    if (url.pathname.startsWith('/images/') ||
-        url.pathname.startsWith('/previews/') ||
-        url.pathname.startsWith('/cache/')) {
-      try {
-        const swHeaders = await createServiceWorkerHeaders();
-        const headers = new Headers(request.headers);
-
-        // Add rolling key headers
-        Object.entries(swHeaders).forEach(([key, value]) => {
-          headers.set(key, value);
-        });
-
-        return new Request(request, { headers });
-      } catch (error) {
-        console.warn('Failed to add auth headers:', error);
-        return request;
-      }
-    }
-
-    return request;
-  }
-};
 
 // Helper function to check if response should be cached based on server headers
 function shouldCacheResponse(response) {
@@ -283,8 +56,10 @@ const staticStrategy = new strategies.CacheFirst({
 // Dynamic cache strategy - cache first with network fallback and immediate expiry
 const dynamicStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
+  matchOptions: {
+    ignoreSearch: true
+  },
   plugins: [
-    authPlugin, // Add authentication for protected resources
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
@@ -292,14 +67,22 @@ const dynamicStrategy = new strategies.CacheFirst({
       maxEntries: 500,
       maxAgeSeconds: 24 * 60 * 60, // 24 hours
     }),
+    {
+      cacheKeyWillBeUsed: async ({ request }) => {
+        // Strip query parameters from cache key
+        return request.url.split('?')[0];
+      },
+    },
   ],
 });
 
 // Image strategy - cache first with network fallback and immediate expiry
 const imageStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
+  matchOptions: {
+    ignoreSearch: true
+  },
   plugins: [
-    authPlugin, // Add authentication for protected resources
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
     }),
@@ -307,16 +90,13 @@ const imageStrategy = new strategies.CacheFirst({
       maxEntries: 200,
       maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
     }),
+    {
+      cacheKeyWillBeUsed: async ({ request }) => {
+        // Strip query parameters from cache key
+        return request.url.split('?')[0];
+      },
+    },
   ],
-  // Custom cache key to ensure different image variants are cached separately
-  matchOptions: {
-    ignoreSearch: false, // Include query parameters in cache key
-  },
-  // Custom cache key function to ensure unique keys for different image variants
-  cacheKeyWillBeUsed: async ({ request }) => {
-    // Use the full URL as the cache key to ensure different variants are cached separately
-    return request.url;
-  },
 });
 
 // Internal strategy - only return cached data, never fetch from network
@@ -502,11 +282,9 @@ workbox.routing.registerRoute(
         } else {
           // If not cached, fetch from server endpoint and cache
           try {
-            const swHeaders = await createServiceWorkerHeaders();
             const fetchResponse = await fetch(endpoint, {
               cache: 'no-store',
               headers: {
-                ...swHeaders,
                 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma': 'no-cache',
                 'Expires': '0'
@@ -539,7 +317,9 @@ workbox.routing.registerRoute(
           }
         }
       }
-      // Handle previews with image strategy (different variants need separate caching)
+      // Handle previews with image strategy
+      // Note: Image variants (like @blur.webp) are in the path, not query params,
+      // so they're naturally cached separately. Query params are stripped for cache-busting.
       else if (url.pathname.startsWith('/previews/')) {
         response = await createImageStrategy(imageStrategy).handle(event);
       }
@@ -683,6 +463,8 @@ self.addEventListener('message', (event) => {
         cacheInternalData(event.data.url, event.data.data);
     } else if (event.data && event.data.type === 'GET_CACHE_STATUS') {
         getCacheStatus(event.data.requestId);
+    } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
+        deleteAndPrecache(event.data.url, event.data.requestId);
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     }
@@ -699,11 +481,9 @@ async function cacheStaticFiles(files) {
         for (const file of files) {
             try {
                 // Fetch with cache-busting headers to prevent browser caching
-                const swHeaders = await createServiceWorkerHeaders();
                 const response = await fetch(file.url, {
                   cache: 'no-store',
                   headers: {
-                    ...swHeaders,
                     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                     'Pragma': 'no-cache',
                     'Expires': '0'
@@ -818,11 +598,9 @@ async function cacheInternalData(url, data) {
     // If data contains imageUrl, fetch that URL and store the content at the specified path
     if (data.imageUrl) {
       try {
-        const swHeaders = await createServiceWorkerHeaders();
         const fetchedResponse = await fetch(data.imageUrl, {
           cache: 'no-store',
           headers: {
-            ...swHeaders,
             'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
             'Pragma': 'no-cache',
             'Expires': '0'
@@ -917,6 +695,76 @@ async function getCacheStatus(requestId) {
   }
 }
 
+// Delete from cache and precache a file
+async function deleteAndPrecache(url, requestId) {
+  try {
+    const cache = await caches.open(DYNAMIC_CACHE);
+    const urlWithoutQuery = url.split('?')[0];
+    const keys = await cache.keys();
+    
+    // Delete all cache entries that match this URL (with or without query params)
+    for (const key of keys) {
+      const keyUrl = key.url.split('?')[0];
+      if (keyUrl === urlWithoutQuery) {
+        await cache.delete(key);
+      }
+    }
+    
+    // Fetch the file to precache it (with timestamp to force fresh fetch)
+    const fetchUrl = `${url}?t=${Date.now()}`;
+    const response = await fetch(fetchUrl, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
+    
+    if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
+      // Add cache-busting headers
+      const headers = new Headers(response.headers);
+      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+      headers.set('Pragma', 'no-cache');
+      headers.set('Expires', '0');
+      headers.set('Surrogate-Control', 'no-store');
+      
+      const responseWithHeaders = new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headers
+      });
+      
+      // Cache the file without query parameters (strategies will strip queries)
+      await cache.put(urlWithoutQuery, responseWithHeaders);
+    }
+    
+    // Notify client of completion
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'DELETE_AND_PRECACHE_COMPLETE',
+          requestId: requestId,
+          url: url
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error deleting and precaching:', error);
+    // Notify client of error
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'DELETE_AND_PRECACHE_ERROR',
+          requestId: requestId,
+          url: url,
+          error: error.message
+        });
+      });
+    });
+  }
+}
+
 // Install event - cache critical files
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -931,11 +779,9 @@ self.addEventListener('install', (event) => {
       
       for (const { endpoint, route } of criticalRoutes) {
         try {
-          const swHeaders = await createServiceWorkerHeaders();
           const response = await fetch(endpoint, {
             cache: 'no-store',
             headers: {
-              ...swHeaders,
               'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
               'Pragma': 'no-cache',
               'Expires': '0'
@@ -1094,90 +940,7 @@ function logToDevBridge(level, message, data = null) {
   }
 }
 
-// Enhanced fetch event handler with automatic rolling key injection
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = new URL(request.url);
-
-  // Never handle /preset or /pending routes - let them pass through to the server
-  if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
-    return; // Do not intercept these requests at all
-  }
-
-  // Handle chrome extension requests (block them)
-  if (url.protocol === 'chrome-extension:') {
-    event.respondWith(
-      new Response('', {
-        status: 403,
-        headers: { 'Content-Type': 'text/plain' }
-      })
-    );
-    return;
-  }
-
-  // Check if this is a local server request that needs rolling key authentication
-  // Skip authentication for OPTIONS requests to /sw.js (used to fetch the rolling key)
-  // Skip protected resources that are handled by Workbox strategies with authPlugin
-  if (isLocalServerRequest(url) &&
-      !(url.pathname === '/sw.js' && request.method === 'OPTIONS') &&
-      !url.pathname.startsWith('/images/') &&
-      !url.pathname.startsWith('/previews/') &&
-      !url.pathname.startsWith('/cache/')) {
-    event.respondWith((async () => {
-      try {
-        // Get rolling key headers
-        const swHeaders = await createServiceWorkerHeaders();
-
-        // Clone the request and add rolling key headers
-        const headers = new Headers(request.headers);
-
-        // Add rolling key headers
-        Object.entries(swHeaders).forEach(([key, value]) => {
-          headers.set(key, value);
-        });
-
-        // Create new request with rolling key headers
-        const authenticatedRequest = new Request(request, {
-          headers: headers
-        });
-
-        // Emit transmit event for authenticated requests
-        notifyClientsOfNetworkActivity('transmit', {
-          url: request.url,
-          method: request.method,
-          timestamp: Date.now(),
-          authenticated: true
-        });
-
-        // Handle the authenticated request
-        return fetch(authenticatedRequest);
-
-      } catch (error) {
-        // Emit transmit event for failed authentication
-        notifyClientsOfNetworkActivity('transmit', {
-          url: request.url,
-          method: request.method,
-          timestamp: Date.now(),
-          authenticated: false,
-          authError: error.message
-        });
-
-        // Fall back to original request without authentication
-        return fetch(request);
-      }
-    })());
-    return;
-  }
-
-  // For non-local requests, just emit transmit event
-  notifyClientsOfNetworkActivity('transmit', {
-    url: request.url,
-    method: request.method,
-    timestamp: Date.now()
-  });
-});
-
-// Check if URL is a local server request (should include rolling key)
+// Check if URL is a local server request
 function isLocalServerRequest(url) {
   if (!url) return false;
 

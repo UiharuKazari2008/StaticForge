@@ -104,20 +104,58 @@ async function initializePhotoSwipe() {
 
         // Add thumbEl filter for zoom animation from thumbnails
         lightbox.addFilter('thumbEl', (thumbEl, data, index) => {
-            if (!manualModal.classList.contains('hidden')) {
+            // Only use manual preview image if:
+            // 1. Manual modal is open (not hidden)
+            // 2. AND either:
+            //    - Manual modal is NOT windowed (maximized/fullscreen), OR
+            //    - Manual modal IS windowed AND it's the top window in the z-stack
+            const isManualModalOpen = !manualModal.classList.contains('hidden');
+            const isWindowed = manualModal.classList.contains('windowed');
+            const isTopWindow = isModalActive(manualModal);
+            const shouldUseManualPreview = isManualModalOpen && (!isWindowed || (isWindowed && isTopWindow));
+            
+            if (shouldUseManualPreview) {
                 const manualPreviewImg = document.getElementById('manualPreviewImage');
                 if (manualPreviewImg && !manualPreviewImg.classList.contains('hidden')) {
                     console.log('manualPreviewImage found:', manualPreviewImg);
                     return manualPreviewImg;
                 }
             }
-            const targetItem = document.querySelector(`[data-file-index="${index}"]`);
+            // index is the position in the PhotoSwipe data source
+            // The data source uses originalAllImages when filtered, allImages when not
+            // In both cases, index corresponds to the file index in the full allImages array
+            // So we can use index directly as file-index to find gallery items
+            let targetItem = document.querySelector(`[data-file-index="${index}"]`);
+            
+            // If not found by file-index, try finding by filename (fallback for edge cases)
+            if (!targetItem && data?.data) {
+                console.log('File Index not found, data:', data.data);
+                const filename = data.data.filename || data.data.upscaled || data.data.original;
+                if (filename) {
+                    console.log('Filename found:', filename);
+                    // Try exact filename match first
+                    targetItem = document.querySelector(`[data-filename="${filename}"]`);
+                    // If still not found, try partial match (in case of URL encoding issues)
+                    if (!targetItem) {
+                        console.log('Filename not found, trying partial match');
+                        const allItems = document.querySelectorAll('[data-filename]');
+                        for (const item of allItems) {
+                            const itemFilename = item.dataset.filename;
+                            if (itemFilename && (itemFilename.includes(filename) || filename.includes(itemFilename))) {
+                                console.log('Partial match found:', itemFilename);
+                                targetItem = item;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
             if (targetItem) {
                 const img = targetItem.querySelector('img.gallery-item-zoom-origin');
                 if (img) {
                     return img;
-                }
-                else {
+                } else {
                     const img = targetItem.querySelector('img');
                     if (img) {
                         return img;
@@ -129,13 +167,46 @@ async function initializePhotoSwipe() {
 
         // Add placeholderSrc filter for placeholder images
         lightbox.addFilter('placeholderSrc', (placeholderSrc, slide) => {
-            if (!manualModal.classList.contains('hidden')) {
+            // Only use manual preview image if:
+            // 1. Manual modal is open (not hidden)
+            // 2. AND either:
+            //    - Manual modal is NOT windowed (maximized/fullscreen), OR
+            //    - Manual modal IS windowed AND it's the top window in the z-stack
+            const isManualModalOpen = !manualModal.classList.contains('hidden');
+            const isWindowed = manualModal.classList.contains('windowed');
+            const isTopWindow = isModalActive(manualModal);
+            const shouldUseManualPreview = isManualModalOpen && (!isWindowed || (isWindowed && isTopWindow));
+            
+            if (shouldUseManualPreview) {
                 const manualPreviewImg = document.getElementById('manualPreviewImage');
                 if (manualPreviewImg && !manualPreviewImg.classList.contains('hidden')) {
                     return manualPreviewImg.src;
                 }
             }
-            const targetItem = document.querySelector(`[data-file-index="${slide.index}"]`);
+            // slide.index is the position in the PhotoSwipe data source
+            // Use the same logic as thumbEl to find the correct item
+            let targetItem = document.querySelector(`[data-file-index="${slide.index}"]`);
+            
+            // If not found by file-index, try finding by filename (fallback for edge cases)
+            if (!targetItem && slide.data) {
+                const filename = slide.data.filename || slide.data.upscaled || slide.data.original;
+                if (filename) {
+                    // Try exact filename match first
+                    targetItem = document.querySelector(`[data-filename="${filename}"]`);
+                    // If still not found, try partial match (in case of URL encoding issues)
+                    if (!targetItem) {
+                        const allItems = document.querySelectorAll('[data-filename]');
+                        for (const item of allItems) {
+                            const itemFilename = item.dataset.filename;
+                            if (itemFilename && (itemFilename.includes(filename) || filename.includes(itemFilename))) {
+                                targetItem = item;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
             if (targetItem) {
                 const img = targetItem.querySelector('img.gallery-item-zoom-origin');
                 if (img) {
@@ -287,7 +358,12 @@ async function initializePhotoSwipe() {
                                 if (currentItem && currentItem.data?.data) {
                                     // Close PhotoSwipe first, then open expansion modal
                                     pswp.close();
-                                    rerollImageWithEdit(currentItem.data?.data, e);
+                                    const imageData = currentItem.data.data;
+                                    openManualModalWithContent({
+                                        type: 'image',
+                                        image: imageData,
+                                        metadata: imageData.metadata || null
+                                    }, e);
                                 }
                             }
                         },
@@ -319,7 +395,7 @@ async function initializePhotoSwipe() {
                                 if (currentItem && currentItem.data?.data) {
                                     // Get the filename to expand - prefer upscaled version, fallback to original
                                     const filename = currentItem.data.data.upscaled || currentItem.data.data.original;
-                                    if (filename && typeof openImageExpansionModal === 'function') {
+                                    if (filename) {
                                         // Close PhotoSwipe first, then open expansion modal
                                         pswp.close();
                                         openImageExpansionModal(filename);

@@ -1,10 +1,6 @@
 // Dynamic Generation Handler Functions
 // Handles intelligent prompt modification based on real-world context (time, weather, etc.)
 
-// Load secure configuration
-let secureConfig = require('../secure.config.json');
-const config = require('../config.json');
-
 const https = require('https');
 const { z } = require('zod');
 const fs = require('fs');
@@ -14,10 +10,11 @@ const crypto = require('crypto');
 const tzLookup = require('tz-lookup');
 const geo2city = require('geo2city');
 
-const cacheDir = path.resolve(__dirname, '../.cache');
 const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHandlers.timeCalc');
-const { callDirectorAIWithStructuredOutput, getAllToolDefinitions } = require('./aiServices/grokService');
-const { getTagGroupsInfo } = require('./tag-lookup');
+const globalResources = require('./globalResources');
+const localPromptOptimizer = require('./localPromptOptimizer');
+const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
+const ClothingDatabase = require('./clothingDatabase');
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -35,20 +32,66 @@ function normalizePeriodKey(periodKey) {
     const legacyMappings = {
         'earlymorning': 'morning',
         'early_morning': 'morning',
-        'earlyevening': 'night',
-        'early_evening': 'night',
-        'evening': 'night',
+        'earlyevening': 'evening', // Keep as evening, not night
+        'early_evening': 'evening',
+        // 'evening' is now a valid period name (used for cloudy afternoon golden hour), don't map to 'night'
         'lateevening': 'night',
         'late_evening': 'night'
     };
     
     return legacyMappings[normalized] || normalized;
 }
-const globalResources = require('./globalResources');
-const localPromptOptimizer = require('./localPromptOptimizer');
-const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
-const ClothingDatabase = require('./clothingDatabase');
-const logger = require('./logger');
+
+/**
+ * Helper function to extract sessionId from ws connection
+ * Uses WebSocketServer to get client info
+ */
+function getSessionIdFromWs(ws) {
+    if (!ws) return null;
+    try {
+        const wsServer = globalResources.getWebSocketServer();
+        if (wsServer && wsServer.clients) {
+            const clientInfo = wsServer.clients.get(ws);
+            return clientInfo ? clientInfo.sessionId : null;
+        }
+    } catch (error) {
+        // WebSocket server not available
+    }
+    return null;
+}
+
+/**
+ * Helper function to send progress updates via plumbing system
+ * Replaces handler.sendToClient(ws, ...) pattern
+ * Also stores requestId -> sessionId mapping for routing
+ */
+function sendProgressUpdate(requestId, updateData, ws = null, sessionId = null) {
+    try {
+        const plumbing = globalResources.getDataPlumbing();
+        
+        // Extract sessionId from ws if not provided
+        if (!sessionId && ws) {
+            sessionId = getSessionIdFromWs(ws);
+        }
+        
+        // Store requestId -> sessionId mapping if we have both (for routing)
+        if (sessionId && requestId) {
+            plumbing.set(`request:${requestId}`, { sessionId }, {
+                temporary: true,
+                ttl: 60 * 60 * 1000, // 1 hour TTL
+                category: 'websocket',
+                tags: ['request', 'routing']
+            });
+        }
+        
+        plumbing.publish('ws:progress:update', {
+            requestId,
+            ...updateData
+        });
+    } catch (error) {
+        // Plumbing or globalResources not initialized, skip update
+    }
+}
 
 /**
  * Apply bias to text with inner numeric emphasis
@@ -163,10 +206,10 @@ function generateRequestHash(dynamicConfig, datasetConfig = null) {
             optimize: typeof dynamicConfig.optimize === 'object' && dynamicConfig.optimize !== null ? {
                 enabled: !!dynamicConfig.optimize.enabled,
                 tokenCount: !!dynamicConfig.optimize.tokenCount,
-                pipelineAware: !!dynamicConfig.optimize.pipelineAware,
-                initialPromptAware: !!dynamicConfig.optimize.initialPromptAware,
                 twoStage: !!dynamicConfig.optimize.twoStage
             } : !!dynamicConfig.optimize,
+            pipelineAware: !!dynamicConfig.pipelineAware,
+            initialPromptAware: !!dynamicConfig.initialPromptAware,
             creative: !!dynamicConfig.creative,
             clothing: !!dynamicConfig.clothing,
             observeHoliday: !!dynamicConfig.observeHoliday,
@@ -187,49 +230,17 @@ function generateDirectiveHash(directive) {
 }
 
 /**
- * Generate a hash for system message structure
- * Based only on configuration that affects system message structure, not actual data values
- * @param {Object} dynamicConfig - The dynamic generation configuration
- * @param {Object} datasetConfig - The dataset configuration (optional)
- * @param {Object} context - Compiled context object
- * @param {Object} config - System message configuration
- * @returns {string} MD5 hash of the system message structure parameters
+ * Generate a hash for the generated system message text
+ * Hashes the actual system message content instead of the inputs
+ * @param {string} systemMessageText - The generated system message text
+ * @returns {string} MD5 hash of the system message text
  */
-function generateSystemMessageHash(dynamicConfig, datasetConfig = null, context = {}, config = {}) {
+function generateSystemMessageHashFromText(systemMessageText) {
+    if (!systemMessageText || typeof systemMessageText !== 'string') {
+        throw new Error('System message text must be a non-empty string');
+    }
     return crypto.createHash('md5')
-        .update(JSON.stringify({
-            // Optimization configuration (structure, not values)
-            optimize: {
-                enabled: !!dynamicConfig.optimize?.enabled,
-                tokenCount: !!dynamicConfig.optimize?.tokenCount,
-                pipelineAware: !!dynamicConfig.optimize?.pipelineAware,
-                initialPromptAware: !!dynamicConfig.optimize?.initialPromptAware,
-                twoStage: !!dynamicConfig.optimize?.twoStage
-            },
-            // Mode flags (affect system message structure)
-            creative: !!dynamicConfig.creative,
-            fast_mode: !!dynamicConfig?.fast_mode,
-            backgroundFocus: !!config.backgroundFocus,
-            pipelineAware: !!config.pipelineAware,
-            // NSFW level (number affects sections)
-            nsfw_level: datasetConfig?.nsfw || 0,
-            // Tool configuration (affects tool descriptions)
-            toolPasses: config.toolPasses || 8,
-            dialogsCount: config.dialogsCount || 6,
-            // Context existence flags (affect which sections are included)
-            // Note: Only BOOLEAN existence, NOT actual values
-            hasWeather: !!context.weather,
-            hasTime: !!context.time,
-            hasSeason: !!context.season,
-            hasHoliday: !!context.season?.holiday,
-            hasClothing: !!context.clothing,
-            hasAction: !!context.action,
-            hasDirective: !!(dynamicConfig.directive && typeof dynamicConfig.directive === 'string' && dynamicConfig.directive.trim().length > 0),
-            // Lock subject flag (affects sections)
-            lockSubject: !!context.lockSubject,
-            // Memory configuration (only if memories affect system message structure)
-            hasMemories: !!config.availableMemories && config.availableMemories.length > 0
-        }))
+        .update(systemMessageText)
         .digest('hex');
 }
 
@@ -299,106 +310,6 @@ function saveCachedSystemMessageResponseId(systemMessageHash, responseId) {
 }
 
 // Weather provider - Open-Meteo API (free, no API key required)
-// Weather data cache with size limits and LRU eviction
-class LRUCache {
-    constructor(maxSize = 1000) {
-        this.maxSize = maxSize;
-        this.cache = new Map();
-        this.accessOrder = new Map(); // For LRU tracking
-        this.accessCounter = 0;
-    }
-
-    get(key) {
-        if (this.cache.has(key)) {
-            // Update access time for LRU
-            this.accessOrder.set(key, ++this.accessCounter);
-            return this.cache.get(key);
-        }
-        return undefined;
-    }
-
-    set(key, value) {
-        // Update access time
-        this.accessOrder.set(key, ++this.accessCounter);
-
-        // If key exists, just update value
-        if (this.cache.has(key)) {
-            this.cache.set(key, value);
-            return;
-        }
-
-        // If at capacity after adding this item, remove least recently used item
-        if (this.cache.size >= this.maxSize) {
-            let oldestKey = null;
-            let oldestAccess = Infinity;
-
-            // Find the key with the smallest (oldest) access time
-            for (const [k, accessTime] of this.accessOrder) {
-                if (accessTime < oldestAccess) {
-                    oldestAccess = accessTime;
-                    oldestKey = k;
-                }
-            }
-
-            if (oldestKey !== null) {
-                this.cache.delete(oldestKey);
-                this.accessOrder.delete(oldestKey);
-                console.log(`🗑️ Cache eviction: removed ${oldestKey} due to LRU (access time: ${oldestAccess})`);
-            }
-        }
-
-        this.cache.set(key, value);
-    }
-
-    clear() {
-        this.cache.clear();
-        this.accessOrder.clear();
-        this.accessCounter = 0;
-    }
-
-    size() {
-        return this.cache.size;
-    }
-
-    // Periodic cleanup of expired entries
-    cleanupExpired(maxAge) {
-        const now = Date.now();
-        const keysToDelete = [];
-
-        for (const [key, value] of this.cache) {
-            if (value.timestamp && (now - value.timestamp) > maxAge) {
-                keysToDelete.push(key);
-            }
-        }
-
-        keysToDelete.forEach(key => {
-            this.cache.delete(key);
-            this.accessOrder.delete(key);
-        });
-
-        if (keysToDelete.length > 0) {
-            console.log(`🧹 Cache cleanup: removed ${keysToDelete.length} expired entries`);
-        }
-    }
-}
-
-const weatherCache = new LRUCache(config?.lruCache?.weatherSize || 500); // Max 500 weather cache entries
-const locationCache = new LRUCache(config?.lruCache?.locationSize || 50); // Max 50 location cache entries
-const WEATHER_CACHE_DURATION = config?.lruCache?.weatherDuration || 3 * 60 * 1000; // 3 minutes in milliseconds
-const LOCATION_CACHE_DURATION = config?.lruCache?.locationDuration || 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-const WEATHER_FAILURE_CACHE_DURATION = config?.lruCache?.weatherFailureDuration || 15 * 60 * 1000; // 15 minutes for failed requests
-
-// Periodic cache cleanup to prevent memory leaks from expired entries
-setInterval(() => {
-    try {
-        weatherCache.cleanupExpired(WEATHER_FAILURE_CACHE_DURATION);
-        locationCache.cleanupExpired(LOCATION_CACHE_DURATION);
-        console.log(`🧹 Periodic cache cleanup: weather=${weatherCache.size()}, location=${locationCache.size()}`);
-    } catch (error) {
-        console.warn('⚠️ Cache cleanup error:', error.message);
-    }
-}, 30 * 60 * 1000); // Run every 30 minutes
-
 // Enhanced weather cache for Open-Meteo data
 const ENHANCED_WEATHER_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes for enhanced data
 
@@ -459,10 +370,10 @@ function getTimezoneByCoordinates(latitude, longitude) {
  */
 function mapOpenMeteoCondition(code) {
     const conditions = {
-        0: 'clear sky',
-        1: 'mainly clear',
+        0: 'none',
+        1: 'few clouds',
         2: 'partly cloudy',
-        3: 'overcast',
+        3: 'cloudy',
         45: 'fog',
         48: 'depositing rime fog',
         51: 'light drizzle',
@@ -496,9 +407,10 @@ function mapOpenMeteoCondition(code) {
  * Prioritizes cloud coverage for cloud-based conditions but preserves weather phenomena
  * @param {string} condition - Weather condition from weather code
  * @param {number|null} cloudCover - Cloud coverage percentage (0-100)
+ * @param {boolean} isDay - Whether it's daytime (default: true)
  * @returns {string} Accurate condition based on cloud coverage and weather code
  */
-function reconcileConditionWithCloudCover(condition, cloudCover) {
+function reconcileConditionWithCloudCover(condition, cloudCover, isDay = true) {
     // Conditions that are inherently weather phenomena (rain, snow, fog) should NOT be overridden by cloud coverage
     const weatherPhenomenaConditions = [
         'fog', 'depositing rime fog', 'light drizzle', 'moderate drizzle', 'dense drizzle',
@@ -517,12 +429,30 @@ function reconcileConditionWithCloudCover(condition, cloudCover) {
 
     // For cloud-based conditions, use cloud coverage when available
     if (cloudCover !== null && cloudCover !== undefined) {
-        if (cloudCover >= 90) return 'overcast';
-        if (cloudCover >= 80) return 'mostly cloudy sky';
-        if (cloudCover >= 60) return 'partly cloudy sky';
-        if (cloudCover >= 30) return 'mostly clear sky';
+        // At night: translate to moon/stars visibility instead of cloud terms
+        // Clear = moon/stars visible, Cloudy = moon/stars NOT visible
+        if (!isDay) {
+            switch (condition) {
+                case 'none':
+                    return 'clear starry night sky with moon';
+                case 'few clouds':
+                    return 'mostly clear night sky with moon';
+                case 'partly cloudy':
+                    return 'partly clear night sky';
+                case 'cloudy':
+                    return 'obscured night sky with faint moon glow';
+                default:
+                    return 'clear starry night sky with moon';
+            }
+        }
+        
+        // Daytime: use detailed cloud condition names
+        if (cloudCover >= 90) return 'cloudy';
+        if (cloudCover >= 80) return 'mostly cloudy';
+        if (cloudCover >= 60) return 'partly cloudy';
+        if (cloudCover >= 30) return 'mostly clear';
         if (cloudCover >= 10) return 'few clouds';
-        return 'clear sky';
+        return 'clear';
     }
 
     // Fall back to original condition when cloud coverage is unavailable
@@ -547,8 +477,8 @@ function mapOpenMeteoIcon(code, isDay = true) {
         1: `02${dayNight}`, // mainly clear
         2: `03${dayNight}`, // partly cloudy
 
-        // Overcast/cloudy
-        3: `04${dayNight}`, // overcast
+        // Cloudy sky/cloudy
+        3: `04${dayNight}`, // cloudy sky
 
         // Fog
         45: `50${dayNight}`, // fog
@@ -1441,7 +1371,7 @@ function transformOpenMeteoData(rawData, options) {
     };
 
     // Log timezone information for debugging
-    logger.verbose(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone}, coords: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
+    globalResources.getLogger().verbose(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone}, coords: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
 
     // Process current weather if available
     if (rawData.current) {
@@ -1469,8 +1399,14 @@ function transformOpenMeteoData(rawData, options) {
             console.log(`🌤️ Using hourly cloud cover (${cloudCover}%) as fallback for missing current cloud cover`);
         }
 
+        // Determine if it's day or night based on current time
+        // Use a simple heuristic: day is roughly 6 AM to 8 PM (6-20 hours)
+        const currentDate = customDate ? new Date(customDate) : new Date();
+        const currentHour = currentDate.getHours();
+        const isDay = currentHour >= 6 && currentHour < 20;
+
         const baseCondition = mapOpenMeteoCondition(rawData.current.weather_code);
-        const reconciledCondition = reconcileConditionWithCloudCover(baseCondition, cloudCover);
+        const reconciledCondition = reconcileConditionWithCloudCover(baseCondition, cloudCover, isDay);
 
         // Calculate enhanced weather metrics
         const currentHumidity = rawData.current.relative_humidity_2m;
@@ -1489,7 +1425,8 @@ function transformOpenMeteoData(rawData, options) {
             humidity: currentHumidity,
             dewPoint: Math.round(rawData.current.dewpoint_2m * 10) / 10,
             feelsLike: Math.round(rawData.current.apparent_temperature * 10) / 10,
-            condition: reconciledCondition,
+            condition: baseCondition, // For client display (original condition name, e.g., "overcast", "cloudy")
+            generationCondition: reconciledCondition, // For AI generation (translated, e.g., "cloudy sky" or night descriptions)
             precipitation: rawData.current.precipitation || 0,
             precipitationRate: rawData.current.precipitation || 0,
             rain: currentRain,
@@ -1506,6 +1443,7 @@ function transformOpenMeteoData(rawData, options) {
             uvIndex: estimatedUVIndex,
             solarRadiation: estimatedUVIndex ? Math.round(estimatedUVIndex * 100) : 0,
             rawConditionId: rawData.current.weather_code,
+            isDay,
             dataSource: result.dataSource,
             weatherQuality: {
                 comfortLevel: comfortLevel,
@@ -1548,8 +1486,13 @@ function transformOpenMeteoData(rawData, options) {
                 rawData.hourly.weather_code[i]
             );
 
+            // Determine if it's day or night for this hourly data point
+            const hourlyDate = new Date(timestamp);
+            const hourlyHour = hourlyDate.getHours();
+            const hourlyIsDay = hourlyHour >= 6 && hourlyHour < 20;
+
             const hourlyBaseCondition = mapOpenMeteoCondition(rawData.hourly.weather_code[i]);
-            const hourlyReconciledCondition = reconcileConditionWithCloudCover(hourlyBaseCondition, rawData.hourly.cloud_cover[i]);
+            const hourlyReconciledCondition = reconcileConditionWithCloudCover(hourlyBaseCondition, rawData.hourly.cloud_cover[i], hourlyIsDay);
 
             hourlyData.push({
                 timestamp,
@@ -1557,7 +1500,8 @@ function transformOpenMeteoData(rawData, options) {
                 humidity: rawData.hourly.relative_humidity_2m[i],
                 dewPoint: Math.round(rawData.hourly.dewpoint_2m[i] * 10) / 10,
                 feelsLike: Math.round(rawData.hourly.apparent_temperature[i] * 10) / 10,
-                condition: hourlyReconciledCondition,
+                condition: hourlyBaseCondition,
+                generationCondition: hourlyReconciledCondition,
                 precipitation: rawData.hourly.precipitation[i] || 0,
                 precipitationRate: rawData.hourly.precipitation[i] || 0,
                 rain: hourlyRain,
@@ -2120,7 +2064,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         pastHours = 2
     } = options;
 
-    logger.detailed('🌤️ Retrieving weather analysis...');
+    globalResources.getLogger().detailed('🌤️ Retrieving weather analysis...');
 
     const results = {
         timestamp: Date.now(),
@@ -2139,7 +2083,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
     try {
         // 1. Get current weather with temporal context
         if (!customDate && customTimeOffset === null) {
-            logger.verbose(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
+            globalResources.getLogger().verbose(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
             results.temporal = await getEnhancedWeatherData(location, {
                 pastHours: pastHours,
                 forecastHours: forecastHours,
@@ -2180,10 +2124,10 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         }
 
         // 4. Generate comprehensive analysis
-        logger.verbose('🔍 Generating comprehensive weather analysis...');
+        globalResources.getLogger().verbose('🔍 Generating comprehensive weather analysis...');
         results.analysis = generateComprehensiveAnalysis(results);
 
-        logger.verbose('✅ Weather analysis complete');
+        globalResources.getLogger().verbose('✅ Weather analysis complete');
         return results;
 
     } catch (error) {
@@ -2490,7 +2434,9 @@ function generateEnvironmentalDetailRecommendations(analysis, weatherData) {
         }
 
         if (current.cloudCover > 70) {
-            recommendations.push('Overcast conditions: diffused lighting, muted colors, potential for rain, lower visibility');
+            recommendations.push('Cloudy sky conditions: diffused lighting, muted colors, cool tones, no warm/golden lighting, potential for rain, lower visibility');
+        } else if (current.cloudCover > 50) {
+            recommendations.push('Partly cloudy conditions: filtered lighting, reduced warm tones, muted colors');
         }
 
         if (current.precipitation > 0 && current.precipitationType) {
@@ -2928,7 +2874,7 @@ function getVividWeatherDescription(condition, windDirection = null) {
     const conditionMap = {
         'thunderstorm': `dark ominous clouds, heavy rain falling in sheets, lightning flashes illuminating the sky, hurricane-force${windDesc} bending trees nearly horizontal, wet pavement with rushing water, dramatic stormy atmosphere with deafening thunder`,
         'severe thunderstorm': `torrential rain pouring down violently, frequent lightning bolts cracking across dark clouds, destructive${windDesc} whipping through the air like weapons, flooded streets with raging water, intense stormy drama and chaos with apocalyptic fury`,
-        'light rain': `gentle rain falling softly, light mist hanging in the air, slightly wet surfaces glistening, soft pattering sound, overcast but not dark atmosphere`,
+        'light rain': `gentle rain falling softly, light mist hanging in the air, slightly wet surfaces glistening, soft pattering sound, cloudy sky but not dark atmosphere`,
         'moderate rain': `steady rain falling continuously, water pooling on surfaces, damp atmosphere, moderate cloud cover, consistent precipitation pattern`,
         'heavy rain': `heavy rain falling in sheets, water streaming down surfaces, strong downpour, saturated ground, intense precipitation`,
         'drizzle': `fine mist-like rain falling lightly, barely perceptible precipitation, slightly damp surfaces, very light cloud cover`,
@@ -2942,11 +2888,11 @@ function getVividWeatherDescription(condition, windDirection = null) {
         'few clouds': `mostly clear sky with scattered clouds, bright sunlight with some shade, pleasant atmosphere, good visibility`,
         'scattered clouds': `partially cloudy sky, mix of sun and cloud shade, variable lighting, moderate visibility`,
         'broken clouds': `mostly cloudy sky with breaks, diffused sunlight, soft shadows, moderate atmospheric cover`,
-        'overcast': `completely overcast sky, diffused lighting, soft shadows, no direct sunlight, uniform cloud cover`,
+        'cloudy sky': `cloudy, diffused lighting, soft shadows, no direct sunlight, uniform cloud cover`,
         'windy': `howling${windDesc} raging violently, trees bent nearly horizontal, debris missiles flying lethally, faces battered by wind pressure, hair ripped like whips, clothes torn at seams, apocalyptic fury with deafening roar`,
         'calm': `gentle light breeze, minimal air movement, still atmosphere, peaceful conditions, stable air`,
         'sunny': `bright sunlight streaming down, clear sky, warm golden lighting, harsh defined shadows, clear visibility`,
-        'cloudy': `overcast sky with clouds, diffused lighting, soft shadows, cooler atmosphere, no direct sunlight`,
+        'cloudy': `cloudy, diffused lighting, soft shadows, cooler atmosphere, no direct sunlight`,
         'showers': `intermittent rain showers falling sporadically, brief periods of heavy rain alternating with lighter drizzle, puddles forming and disappearing on surfaces, variable cloud cover with breaks of sunlight`,
         'sleet': `icy sleet pellets falling steadily, small ice particles bouncing off surfaces, slick icy coating forming on roads and sidewalks, cold wet atmosphere with freezing mist`,
         'hail': `large hailstones crashing down violently, ice balls accumulating on ground, dents in car roofs and broken windows, thunderous impacts echoing, baseball to golf ball sized hail`,
@@ -2965,7 +2911,7 @@ function getVividWeatherDescription(condition, windDirection = null) {
         'fair': `pleasant fair weather with mild temperatures, comfortable atmosphere, light breezes, clear skies with occasional clouds`,
         'scattered_clouds': `scattered clouds across the sky, patches of sunlight and shade, moderate visibility, comfortable atmosphere`,
         'broken_clouds': `broken cloud cover creating a patchwork of light and shadow, variable visibility, moderate atmospheric conditions`,
-        'overcast': `completely overcast sky, diffused lighting, soft shadows, no direct sunlight, uniform cloud cover`,
+        'cloudy sky': `cloudy sky, diffused lighting, soft shadows, no direct sunlight, uniform cloud cover`,
         'mostly_cloudy': `mostly cloudy sky with breaks of sunlight, diffused lighting patterns, moderate visibility, comfortable atmosphere`,
         'dense_fog': `extremely thick fog obscuring everything, near zero visibility, damp penetrating mist, mysterious and disorienting atmosphere, soft diffused lighting`,
         'dust': `dusty haze filling the air, reduced visibility from suspended particles, dry atmosphere, hazy sunlight, arid conditions`,
@@ -3120,7 +3066,7 @@ function generateAccurateWeatherConditions(condition, baseWeather = {}) {
             dewPoint: { min: 0, max: 15, typical: 7 } // Moderate dew point
         },
 
-        // Overcast/cloudy conditions
+        // Cloudy sky/cloudy conditions
         'cloudy': {
             temperature: { min: 5, max: 20, typical: 12 }, // Cool temperatures
             humidity: { min: 60, max: 85, typical: 72 }, // Moderate to high humidity
@@ -3254,12 +3200,12 @@ function generateAccurateWeatherConditions(condition, baseWeather = {}) {
             dewPoint: { min: 5, max: 16, typical: 10 } // Moderate dew point
         },
 
-        'overcast': {
+        'cloudy sky': {
             temperature: { min: 0, max: 20, typical: 10 }, // Cool temperatures
             humidity: { min: 70, max: 100, typical: 85 }, // High humidity
             windSpeed: { min: 2, max: 12, typical: 5 }, // Light winds
             windDirection: { min: 0, max: 360, typical: 180 }, // Variable
-            cloudCoverage: { min: 80, max: 100, typical: 95 }, // Overcast skies
+            cloudCoverage: { min: 80, max: 100, typical: 95 }, // Cloudy skies
             precipitationRate: { min: 0, max: 5, typical: 1 }, // Light precipitation possible
             visibility: { min: 5, max: 20, typical: 12 }, // Reduced visibility
             pressure: { min: 995, max: 1010, typical: 1002 }, // Low pressure
@@ -3895,14 +3841,34 @@ function deconflictOverlappingReplacement(selectText, workingContent, replacemen
 function extractBiasFromText(text) {
     if (!text || typeof text !== 'string') return null;
     
-    const parsed = localPromptOptimizer.parseEmphasis(text);
-    // Only return weight if it's numeric emphasis (not just braces/brackets)
-    // Check if text starts with numeric pattern
-    if (/^(-?\d+\.?\d*)::/.test(text)) {
-        return parsed.weight;
+    // Check if text starts with numeric emphasis pattern
+    if (!/^(-?\d+\.?\d*)::/.test(text)) {
+        return null;
     }
     
-    return null;
+    // Use the same robust pattern as the emphasis highlighting system
+    // This pattern uses negative lookahead to prevent matching across group boundaries
+    // Pattern matches: number::content where content doesn't contain another number:: pattern
+    // Terminates at: whitespace+number::, ::, or end of string
+    const autoTerminatingPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::).)+?)(?=\s*-?\d+\.?\d*::|::|$)/;
+    const autoTerminatingMatch = text.match(autoTerminatingPattern);
+    
+    if (autoTerminatingMatch) {
+        // First group found (auto-terminating or consecutive groups)
+        return parseFloat(autoTerminatingMatch[1]);
+    }
+    
+    // Check for traditional complete group: number::content::
+    const traditionalPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::).)+?)::/;
+    const traditionalMatch = text.match(traditionalPattern);
+    
+    if (traditionalMatch) {
+        return parseFloat(traditionalMatch[1]);
+    }
+    
+    // Fallback: try parsing with localPromptOptimizer for edge cases
+    const parsed = localPromptOptimizer.parseEmphasis(text);
+    return parsed.weight;
 }
 
 /**
@@ -3924,6 +3890,23 @@ function hasEmphasisGroup(text) {
     return false;
 }
 
+/**
+ * Apply Rentan modifications (Should have been compiled from Tanei → Tendai) to content.
+ * 
+ * ⚠️ IMPORTANT: This function expects well-deconflicted Tendai.
+ * All overlap detection, type conversion, and segment index adjustments should be handled
+ * by hydrateTextReplacements() (Tanei → Tendai) BEFORE calling this function.
+ * 
+ * This function focuses on the actual text replacement logic and flexible matching for
+ * emphasis group variations (auto-termination handling).
+ * 
+ * @param {string} originalContent - The original content to modify
+ * @param {Object} replacements - Well-deconflicted Tendai object (should have been hydrated from Tenei)
+ * @param {string} targetType - Type of target ('prompt', 'uc', 'character')
+ * @param {number} characterIndex - Character index if targetType is 'character'
+ * @param {string} characterField - Character field ('prompt' or 'uc') if targetType is 'character'
+ * @returns {Object} { success: boolean, result: string, failedReplacements: string[] }
+ */
 function applyDynamicReplacements(originalContent, replacements, targetType = 'prompt', characterIndex = null, characterField = null) {
     let result = originalContent || '';
     
@@ -3951,13 +3934,27 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
         action: replacement.action || 'replace' // Default to replace for backward compatibility
     }));
 
+    // Separate replaces and appends to process in phases
+    const replaces = [];
+    const appends = [];
+    
+    allReplacements.forEach((replacement, index) => {
+        const action = (replacement.action || 'replace').toLowerCase();
+        if (action === 'append') {
+            appends.push({ replacement, originalIndex: index });
+        } else {
+            replaces.push({ replacement, originalIndex: index });
+        }
+    });
+
     // Apply all replacements in order, allowing chaining but preventing exact duplicate applications
     const appliedReplacements = new Set();
     const failedReplacements = [];
     const replacementHistory = new Map(); // Track what was replaced with what
     const replacementMetadata = []; // Track which fallbacks were used
 
-    for (const replacement of allReplacements) {
+    // Phase 1: Apply all replaces first
+    for (const { replacement } of replaces) {
         let { select_text, replace_text, action: rawAction = 'replace', count, is_critical = true, fallback_select_text, alternative_text, replacement_category, segment_emphasis } = replacement;
         // Normalize action to lowercase for consistency
         const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : rawAction;
@@ -4246,174 +4243,538 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                 }
             }
         } else if (action === 'replace') {
-            logger.verbose(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
+            globalResources.getLogger().verbose(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
 
             let index = -1;
             let textToReplace = trimmedSelectText;
             let usedFallback = false;
             let replacementApplied = false;
+            
+            // Handle granular replace if replace_part was specified (Tanei hydration to Tendai should have set this up)
+            const replacePartTarget = replacement.replace_part_target;
+            const replacePartAnchor = replacement.replace_part_anchor;
+            if (replacePartTarget && replacePartAnchor && select_text) {
+                // Find the anchor in working content
+                const anchorIndex = workingContent.indexOf(replacePartAnchor);
+                if (anchorIndex !== -1) {
+                    // Find the target part after the anchor
+                    const searchStart = anchorIndex + replacePartAnchor.length;
+                    const searchText = workingContent.substring(searchStart, searchStart + 100); // Search next 100 chars
+                    const targetIndex = searchText.indexOf(replacePartTarget);
+                    
+                    if (targetIndex !== -1) {
+                        const actualTargetStart = searchStart + targetIndex;
+                        const actualTargetEnd = actualTargetStart + replacePartTarget.length;
+                        
+                        // Replace just the target part
+                        workingContent = workingContent.substring(0, actualTargetStart) +
+                                replace_text +
+                                workingContent.substring(actualTargetEnd);
+                        
+                        // Reconstruct result with boundary protection
+                        result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+                        
+                        // Track this replacement
+                        replacementHistory.set(replacePartTarget, replace_text);
+                        appliedReplacements.add(replacementKey);
+                        replacementApplied = true;
+                        
+                        console.log(`🎯 Granular replace: replaced "${replacePartTarget}" with "${replace_text}" using anchor`);
+                    }
+                }
+            }
+            
+            if (!replacementApplied) {
+                // Normal full segment replacement
+                // 🎯 TAG SECTION HANDLING: If select_text is a keyword, look for tag section pattern
+                const tagKeywords = ['TIME', 'WEATHER', 'SEASON', 'CLOTHING', 'ACTION', 'ENV'];
 
-            // 🎯 TAG SECTION HANDLING: If select_text is a keyword, look for tag section pattern
-            const tagKeywords = ['TIME', 'WEATHER', 'SEASON', 'CLOTHING', 'ACTION', 'ENV'];
+                if (tagKeywords.includes(trimmedSelectText)) {
+                    // Look for tag section pattern: KEYWORD%content%
+                    const tagRegex = new RegExp(`\\b${trimmedSelectText}%([^%]+)%`, 'g');
+                    const tagMatch = tagRegex.exec(workingContent);
 
-            if (tagKeywords.includes(trimmedSelectText)) {
-                // Look for tag section pattern: KEYWORD%content%
-                const tagRegex = new RegExp(`\\b${trimmedSelectText}%([^%]+)%`, 'g');
-                const tagMatch = tagRegex.exec(workingContent);
-
-                if (tagMatch) {
-                    // Found tag section, replace the entire block
-                    index = tagMatch.index;
-                    textToReplace = tagMatch[0]; // The full "KEYWORD%content%" block
-                    console.log(`🏷️ Found tag section "${textToReplace}" for keyword "${trimmedSelectText}", replacing entire block`);
+                    if (tagMatch) {
+                        // Found tag section, replace the entire block
+                        index = tagMatch.index;
+                        textToReplace = tagMatch[0]; // The full "KEYWORD%content%" block
+                        console.log(`🏷️ Found tag section "${textToReplace}" for keyword "${trimmedSelectText}", replacing entire block`);
+                    } else {
+                        // No tag section found, fall back to replacing just the keyword
+                        console.log(`🏷️ No tag section found for "${trimmedSelectText}", replacing standalone keyword`);
+                        index = workingContent.indexOf(trimmedSelectText);
+                    }
                 } else {
-                    // No tag section found, fall back to replacing just the keyword
-                    console.log(`🏷️ No tag section found for "${trimmedSelectText}", replacing standalone keyword`);
+                    // Normal replacement logic
                     index = workingContent.indexOf(trimmedSelectText);
                 }
-            } else {
-                // Normal replacement logic
-                index = workingContent.indexOf(trimmedSelectText);
-            }
-            
-            // If not found, check if this text was previously replaced
-            if (index === -1 && replacementHistory.has(trimmedSelectText)) {
-                const newText = replacementHistory.get(trimmedSelectText);
-                console.log(`⚠️ Text "${trimmedSelectText}" was already replaced with "${newText}". Trying to find new text...`);
-                index = workingContent.indexOf(newText);
-                textToReplace = newText;
                 
-                if (index !== -1) {
-                    console.log(`✅ Found the replaced version, applying replacement to it instead`);
-                    workingContent = workingContent.substring(0, index) +
-                            (replace_text || '') +
-                            workingContent.substring(index + newText.length);
+                // If not found, check if this text was previously replaced
+                if (index === -1 && replacementHistory.has(trimmedSelectText)) {
+                    const newText = replacementHistory.get(trimmedSelectText);
+                    console.log(`⚠️ Text "${trimmedSelectText}" was already replaced with "${newText}". Trying to find new text...`);
+                    index = workingContent.indexOf(newText);
+                    textToReplace = newText;
                     
-                    // Update replacement history: the original maps to the final result
-                    replacementHistory.set(trimmedSelectText, replace_text || '');
-                    appliedReplacements.add(replacementKey);
-                    replacementApplied = true;
-                    // Reconstruct result with boundary protection
-                    result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
-                }
-            } else if (index !== -1) {
-                // Normal replacement
-                workingContent = workingContent.substring(0, index) +
-                        (replace_text || '') +  // Handle empty replace_text gracefully
-                        workingContent.substring(index + trimmedSelectText.length);
+                    if (index !== -1) {
+                        console.log(`✅ Found the replaced version, applying replacement to it instead`);
+                        const textAfter = workingContent.substring(index + newText.length);
+                        
+                        // 🎯 AUTO-TERMINATION CHECK: If replace_text ends with :: and textAfter starts with number::,
+                        // remove the terminator to allow auto-termination (consecutive groups)
+                        let finalReplaceText = replace_text || '';
+                        if (finalReplaceText.endsWith('::')) {
+                            const afterTrimmed = textAfter.trim();
+                            const nextGroupMatch = afterTrimmed.match(/^(-?\d+\.?\d*)::/);
+                            if (nextGroupMatch) {
+                                finalReplaceText = finalReplaceText.slice(0, -2);
+                                console.log(`🎯 Auto-terminating emphasis group (next group detected: ${nextGroupMatch[1]}::)`);
+                            }
+                        }
+                        
+                        workingContent = workingContent.substring(0, index) +
+                                finalReplaceText +
+                                workingContent.substring(index + newText.length);
+                        
+                        // Update replacement history: the original maps to the final result
+                        replacementHistory.set(trimmedSelectText, finalReplaceText);
+                        appliedReplacements.add(replacementKey);
+                        replacementApplied = true;
+                        // Reconstruct result with boundary protection
+                        result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+                    }
+                } else if (index !== -1) {
+                    // Normal replacement
+                    const textAfter = workingContent.substring(index + trimmedSelectText.length);
+                    
+                    // 🎯 AUTO-TERMINATION CHECK: If replace_text ends with :: and textAfter starts with number::,
+                    // remove the terminator to allow auto-termination (consecutive groups)
+                    let finalReplaceText = replace_text || '';
+                    if (finalReplaceText.endsWith('::')) {
+                        const afterTrimmed = textAfter.trim();
+                        const nextGroupMatch = afterTrimmed.match(/^(-?\d+\.?\d*)::/);
+                        if (nextGroupMatch) {
+                            // Next group detected - remove terminator to allow auto-termination
+                            finalReplaceText = finalReplaceText.slice(0, -2); // Remove ::
+                            console.log(`🎯 Auto-terminating emphasis group (next group detected: ${nextGroupMatch[1]}::)`);
+                        }
+                    }
+                    
+                    workingContent = workingContent.substring(0, index) +
+                            finalReplaceText +
+                            workingContent.substring(index + trimmedSelectText.length);
 
-                // Track this replacement
-                replacementHistory.set(trimmedSelectText, replace_text || '');
-                appliedReplacements.add(replacementKey);
-                replacementApplied = true;
-                // Reconstruct result with boundary protection
-                result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
-            }
-            
-            // If primary failed, try fallback
-            if (!replacementApplied && fallback_select_text) {
-                const trimmedFallback = fallback_select_text.trim();
-                console.log(`⚠️ Primary text not found, trying fallback: "${trimmedFallback}"`);
-                index = workingContent.indexOf(trimmedFallback);
-                
-                if (index !== -1) {
-                    console.log(`✅ Found fallback text, applying replacement`);
-                    workingContent = workingContent.substring(0, index) +
-                            (replace_text || '') +
-                            workingContent.substring(index + trimmedFallback.length);
-                    
-                    replacementHistory.set(trimmedFallback, replace_text || '');
-                    appliedReplacements.add(replacementKey);
-                    replacementApplied = true;
-                    usedFallback = true;
-                    // Reconstruct result with boundary protection
-                    result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
-                    
-                    // Record metadata
-                    metadata.used_fallback = true;
-                    metadata.actual_text_used = trimmedFallback;
-                    metadata.application_method = 'fallback';
-                    replacement.used_fallback = true;
-                    replacement.actual_select_text = trimmedFallback;
-                    replacement.application_method = 'fallback';
-                }
-            }
-            
-            // If both primary and fallback failed, try deconfliction
-            if (!replacementApplied) {
-                console.log(`⚠️ Primary and fallback not found, attempting deconfliction...`);
-                const deconflict = deconflictOverlappingReplacement(
-                    trimmedSelectText,
-                    workingContent,
-                    replacementHistory,
-                    originalContent
-                );
-                
-                if (deconflict.found) {
-                    console.log(`✅ Deconfliction successful, applying replacement to "${deconflict.textToReplace}"`);
-                    workingContent = workingContent.substring(0, deconflict.index) +
-                            (replace_text || '') +
-                            workingContent.substring(deconflict.index + deconflict.textToReplace.length);
-                    
-                    // Track this replacement - map the ORIGINAL select_text to the final replacement
-                    replacementHistory.set(trimmedSelectText, replace_text || '');
+                    // Track this replacement
+                    replacementHistory.set(trimmedSelectText, finalReplaceText);
                     appliedReplacements.add(replacementKey);
                     replacementApplied = true;
                     // Reconstruct result with boundary protection
                     result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
-                    
-                    // Record metadata
-                    metadata.used_fallback = false; // Not a fallback, it's deconfliction
-                    metadata.actual_text_used = deconflict.textToReplace;
-                    metadata.application_method = 'deconfliction';
-                    replacement.used_deconfliction = true;
-                    replacement.deconflicted_text = deconflict.textToReplace;
-                    replacement.application_method = 'deconfliction';
                 }
-            }
-            
-            // If all attempts failed, check if optional with alternative
-            if (!replacementApplied) {
-                if (!is_critical && alternative_text) {
-                    // Optional replacement failed, append alternative text instead
-                    console.log(`⚠️ Optional replacement failed, appending alternative text: "${alternative_text}"`);
-                    const trimmedWorkingContent = workingContent.trimEnd();
-                    const needsComma = trimmedWorkingContent && !trimmedWorkingContent.endsWith(',') && !trimmedWorkingContent.endsWith('::');
-                    workingContent = trimmedWorkingContent + (needsComma ? ', ' : ' ') + alternative_text;
-                    // Reconstruct result with boundary protection
-                    result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
-                    appliedReplacements.add(replacementKey);
-                    logger.verbose(`✅ Appended alternative text instead of replacing`);
-                    // Record metadata
-                    metadata.used_alternative = true;
-                    metadata.actual_text_used = alternative_text;
-                    metadata.application_method = 'alternative';
-                    replacement.used_alternative = true;
-                    replacement.alternative_text_used = alternative_text;
-                    replacement.application_method = 'alternative';
-                } else if (is_critical) {
-                    // Critical replacement failed
-                    console.error(`❌ CRITICAL: Could not find exact text "${select_text}" in current result`);
-                    failedReplacements.push(select_text);
+                
+                // If primary failed, try fallback
+                if (!replacementApplied && fallback_select_text) {
+                    const trimmedFallback = fallback_select_text.trim();
+                    console.log(`⚠️ Primary text not found, trying fallback: "${trimmedFallback}"`);
+                    index = workingContent.indexOf(trimmedFallback);
+                    
+                    if (index !== -1) {
+                        console.log(`✅ Found fallback text, applying replacement`);
+                        const textAfter = workingContent.substring(index + trimmedFallback.length);
+                        
+                        // 🎯 AUTO-TERMINATION CHECK: If replace_text ends with :: and textAfter starts with number::,
+                        // remove the terminator to allow auto-termination (consecutive groups)
+                        let finalReplaceText = replace_text || '';
+                        if (finalReplaceText.endsWith('::')) {
+                            const afterTrimmed = textAfter.trim();
+                            const nextGroupMatch = afterTrimmed.match(/^(-?\d+\.?\d*)::/);
+                            if (nextGroupMatch) {
+                                finalReplaceText = finalReplaceText.slice(0, -2);
+                                console.log(`🎯 Auto-terminating emphasis group (next group detected: ${nextGroupMatch[1]}::)`);
+                            }
+                        }
+                        
+                        workingContent = workingContent.substring(0, index) +
+                                finalReplaceText +
+                                workingContent.substring(index + trimmedFallback.length);
+                        
+                        replacementHistory.set(trimmedFallback, finalReplaceText);
+                        appliedReplacements.add(replacementKey);
+                        replacementApplied = true;
+                        usedFallback = true;
+                        // Reconstruct result with boundary protection
+                        result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+                        
+                        // Record metadata
+                        metadata.used_fallback = true;
+                        metadata.actual_text_used = trimmedFallback;
+                        metadata.application_method = 'fallback';
+                        replacement.used_fallback = true;
+                        replacement.actual_select_text = trimmedFallback;
+                        replacement.application_method = 'fallback';
+                    }
+                }
+                
+                // If both primary and fallback failed, try deconfliction
+                if (!replacementApplied) {
+                    console.log(`⚠️ Primary and fallback not found, attempting deconfliction...`);
+                    const deconflict = deconflictOverlappingReplacement(
+                        trimmedSelectText,
+                        workingContent,
+                        replacementHistory,
+                        originalContent
+                    );
+                    
+                    if (deconflict.found) {
+                        console.log(`✅ Deconfliction successful, applying replacement to "${deconflict.textToReplace}"`);
+                        const textAfter = workingContent.substring(deconflict.index + deconflict.textToReplace.length);
+                        
+                        // 🎯 AUTO-TERMINATION CHECK: If replace_text ends with :: and textAfter starts with number::,
+                        // remove the terminator to allow auto-termination (consecutive groups)
+                        let finalReplaceText = replace_text || '';
+                        if (finalReplaceText.endsWith('::')) {
+                            const afterTrimmed = textAfter.trim();
+                            const nextGroupMatch = afterTrimmed.match(/^(-?\d+\.?\d*)::/);
+                            if (nextGroupMatch) {
+                                finalReplaceText = finalReplaceText.slice(0, -2);
+                                console.log(`🎯 Auto-terminating emphasis group (next group detected: ${nextGroupMatch[1]}::)`);
+                            }
+                        }
+                        
+                        workingContent = workingContent.substring(0, deconflict.index) +
+                                finalReplaceText +
+                                workingContent.substring(deconflict.index + deconflict.textToReplace.length);
+                        
+                        // Track this replacement - map the ORIGINAL select_text to the final replacement
+                        replacementHistory.set(trimmedSelectText, finalReplaceText);
+                        appliedReplacements.add(replacementKey);
+                        replacementApplied = true;
+                        // Reconstruct result with boundary protection
+                        result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+                        
+                        // Record metadata
+                        metadata.used_fallback = false; // Not a fallback, it's deconfliction
+                        metadata.actual_text_used = deconflict.textToReplace;
+                        metadata.application_method = 'deconfliction';
+                        replacement.used_deconfliction = true;
+                        replacement.deconflicted_text = deconflict.textToReplace;
+                        replacement.application_method = 'deconfliction';
+                    }
+                }
+                
+                // If all attempts failed, check if optional with alternative
+                if (!replacementApplied) {
+                    if (!is_critical && alternative_text) {
+                        // Optional replacement failed, append alternative text instead
+                        console.log(`⚠️ Optional replacement failed, appending alternative text: "${alternative_text}"`);
+                        const trimmedWorkingContent = workingContent.trimEnd();
+                        const needsComma = trimmedWorkingContent && !trimmedWorkingContent.endsWith(',') && !trimmedWorkingContent.endsWith('::');
+                        workingContent = trimmedWorkingContent + (needsComma ? ', ' : ' ') + alternative_text;
+                        // Reconstruct result with boundary protection
+                        result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+                        appliedReplacements.add(replacementKey);
+                        globalResources.getLogger().verbose(`✅ Appended alternative text instead of replacing`);
+                        // Record metadata
+                        metadata.used_alternative = true;
+                        metadata.actual_text_used = alternative_text;
+                        metadata.application_method = 'alternative';
+                        replacement.used_alternative = true;
+                        replacement.alternative_text_used = alternative_text;
+                        replacement.application_method = 'alternative';
+                    } else if (is_critical) {
+                        // Critical replacement failed
+                        console.error(`❌ CRITICAL: Could not find exact text "${select_text}" in current result`);
+                        failedReplacements.push(select_text);
+                    } else {
+                        // Optional replacement failed with no alternative
+                        console.warn(`⚠️ OPTIONAL: Could not find text "${select_text}" to replace, skipping`);
+                    }
+                } else if (usedFallback) {
+                    console.log(`✅ Replacement successful using fallback text`);
                 } else {
-                    // Optional replacement failed with no alternative
-                    console.warn(`⚠️ OPTIONAL: Could not find text "${select_text}" to replace, skipping`);
+                    // Direct replacement successful
+                    replacement.application_method = 'direct';
                 }
-            } else if (usedFallback) {
-                console.log(`✅ Replacement successful using fallback text`);
-            } else {
-                // Direct replacement successful
-                replacement.application_method = 'direct';
             }
-        } else if (action === 'append') {
-            logger.verbose(`📎 Attempting append: insert "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"${select_text ? ` after "${trimmedSelectText.substring(0, 30)}${trimmedSelectText.length > 30 ? '...' : ''}"` : ' at end'}`);
+        }
+        // Add metadata to tracking array for Phase 1
+        replacementMetadata.push(metadata);
+    }
+
+    // Phase 2: Merge appends that select the same value (after replaces have been applied)
+    // Group appends by what they're actually targeting (considering replacementHistory)
+    const appendGroups = new Map(); // Map<actualTargetText, Array<{replacement, originalIndex}>>
+    
+    for (const { replacement, originalIndex } of appends) {
+        const select_text = replacement.select_text;
+        if (!select_text) {
+            // Append-to-end - keep as-is, don't merge
+            continue;
+        }
+        
+        const trimmedSelect = select_text.trim();
+        // Determine what text this append is actually targeting
+        // If the select_text was replaced, use the replacement; otherwise use original
+        const actualTargetText = replacementHistory.has(trimmedSelect) 
+            ? replacementHistory.get(trimmedSelect) 
+            : trimmedSelect;
+        
+        if (!appendGroups.has(actualTargetText)) {
+            appendGroups.set(actualTargetText, []);
+        }
+        appendGroups.get(actualTargetText).push({ replacement, originalIndex });
+    }
+    
+    // Merge appends that target the same final text
+    const mergedAppends = [];
+    const appendIndicesToSkip = new Set();
+    
+    for (const [targetText, appendList] of appendGroups.entries()) {
+        if (appendList.length > 1) {
+            // Multiple appends targeting the same value - merge them
+            const mergedReplaceTexts = appendList
+                .map(item => item.replacement.replace_text || '')
+                .filter(t => t.trim());
+            
+            if (mergedReplaceTexts.length > 0) {
+                const mergedReplaceText = mergedReplaceTexts.join(', ');
+                
+                // Use the first append as the base and merge replace_text
+                const firstAppend = appendList[0];
+                firstAppend.replacement.replace_text = mergedReplaceText;
+                mergedAppends.push(firstAppend);
+                
+                // Mark other appends for skipping
+                for (let i = 1; i < appendList.length; i++) {
+                    appendIndicesToSkip.add(appendList[i].originalIndex);
+                }
+                
+                console.log(`🔗 Merged ${appendList.length} appends targeting "${targetText}" into single append`);
+            } else {
+                // No valid replace_text, keep all as-is
+                mergedAppends.push(...appendList);
+            }
+        } else {
+            // Single append - keep as-is
+            mergedAppends.push(appendList[0]);
+        }
+    }
+    
+    // Add appends that don't have select_text (append-to-end) - these are not merged
+    for (const { replacement, originalIndex } of appends) {
+        if (!replacement.select_text && !appendIndicesToSkip.has(originalIndex)) {
+            mergedAppends.push({ replacement, originalIndex });
+        }
+    }
+    
+    // Sort merged appends by original index to maintain order
+    mergedAppends.sort((a, b) => a.originalIndex - b.originalIndex);
+
+    // Phase 3: Apply merged appends
+    for (const { replacement } of mergedAppends) {
+        let { select_text, replace_text, action: rawAction = 'replace', count, is_critical = true, fallback_select_text, alternative_text, replacement_category, segment_emphasis } = replacement;
+        // Normalize action to lowercase for consistency
+        const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : rawAction;
+        
+        // 🎨 NEWLINE TRANSLATION: Convert <br> to \n
+        // AI uses <br> for readability anywhere newlines are needed, server translates to actual newlines
+        if (replace_text) {
+            replace_text = replace_text.replace(/<br\s*\/?>/gi, '\n');
+        }
+        
+        // 🎯 BIAS HANDLING: Apply segment_emphasis or extract from selected text
+        if (replace_text && (action === 'replace' || action === 'append')) {
+            let biasToApply = null;
+            
+            // Priority 1: Use segment_emphasis parameter if set
+            if (segment_emphasis !== null && segment_emphasis !== undefined) {
+                biasToApply = segment_emphasis;
+            } else if (select_text) {
+                // Priority 2: Extract bias from selected text if it has emphasis groups
+                const selectedBias = extractBiasFromText(select_text);
+                if (selectedBias !== null) {
+                    biasToApply = selectedBias;
+                }
+            }
+            
+            // Apply bias if we have one and replacement text doesn't already have an emphasis group
+            if (biasToApply !== null && !hasEmphasisGroup(replace_text)) {
+                replace_text = applyBiasToText(replace_text, biasToApply);
+                console.log(`🎯 Applied bias ${biasToApply} to replacement text: "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"`);
+            }
+        }
+        
+        // Initialize metadata for this replacement
+        const metadata = {
+            original_select_text: select_text,
+            used_fallback: false,
+            used_alternative: false,
+            actual_text_used: null,
+            application_method: 'direct' // Track how it was applied: 'direct', 'fallback', or 'alternative'
+        };
+        const trimmedSelectText = select_text ? select_text.trim() : '';
+        const replacementKey = `${action}|||${select_text || ''}|||${replace_text || ''}|||${count || 'all'}`;
+
+        // Skip if we've already applied this exact replacement
+        if (appliedReplacements.has(replacementKey)) {
+            continue;
+        }
+
+        // ⚠️ VALIDATION: Check for incorrect append-to-end syntax
+        if (action === 'append' && select_text) {
+            const incorrectAppendPatterns = ['::append to end::', '::append::', '::end::'];
+            if (incorrectAppendPatterns.includes(trimmedSelectText)) {
+                console.warn(`⚠️  INCORRECT APPEND SYNTAX: Found "${trimmedSelectText}" for append action.`);
+                console.warn(`    For append-to-end, OMIT the select_text field entirely.`);
+                console.warn(`    Auto-correcting: treating as append-to-end`);
+                // Auto-fix by clearing select_text to make it append-to-end
+                replacement.select_text = undefined;
+                // Re-set trimmedSelectText to empty for the rest of the processing
+                const trimmedSelectText_fixed = '';
+            }
+        }
+
+        // ⚠️ VALIDATION: Check for append with empty replace_text
+        if (action === 'append' && (!replace_text || replace_text.trim() === '')) {
+            console.warn(`⚠️  INVALID APPEND: Append action requires replace_text to be specified. Skipping.`);
+            continue;
+        }
+
+        // 🚨 CRITICAL PROTECTION: NEVER allow replacements that would affect "artist:" tags
+        // Check if select_text contains "artist:" (case-insensitive)
+        if (trimmedSelectText && trimmedSelectText.toLowerCase().includes('artist:')) {
+            console.warn(`🚫 BLOCKED REPLACEMENT: Attempted to ${action} text containing "artist:" - "${trimmedSelectText}". This is FORBIDDEN.`);
+            continue; // Skip this replacement entirely
+        }
+
+        // 🛡️ PROTECTED BLOCK PROTECTION: NEVER allow replacements that would affect protected blocks
+        // Check if select_text contains or overlaps with !% ... % blocks
+        if (trimmedSelectText) {
+            // Extract all protected blocks from the current result
+            const protectedBlocks = [];
+            const protectedRegex = /!%([^%]+)%/g;
+            let protectedMatch;
+            while ((protectedMatch = protectedRegex.exec(result)) !== null) {
+                protectedBlocks.push({
+                    fullMatch: protectedMatch[0],
+                    content: protectedMatch[1].trim(),
+                    start: protectedMatch.index,
+                    end: protectedMatch.index + protectedMatch[0].length
+                });
+            }
+
+            // Check if select_text overlaps with any protected block
+            for (const block of protectedBlocks) {
+                const selectStart = result.indexOf(trimmedSelectText);
+                if (selectStart !== -1) {
+                    const selectEnd = selectStart + trimmedSelectText.length;
+                    // Check for overlap with protected block
+                    if ((selectStart < block.end && selectEnd > block.start) ||
+                        block.fullMatch.includes(trimmedSelectText) ||
+                        trimmedSelectText.includes(block.fullMatch)) {
+                        console.warn(`🛡️ BLOCKED REPLACEMENT: Attempted to ${action} text that overlaps with protected block "${block.fullMatch}" - "${trimmedSelectText}". Protected blocks cannot be modified.`);
+                        continue; // Skip this replacement entirely
+                    }
+                }
+            }
+        }
+
+        // 📍 INSERTION POINT PROTECTION: Be careful with ALL CAPS insertion markers and tag sections
+        // Only allow replacements that preserve or enhance insertion points
+        const insertionKeywords = ['TIME', 'WEATHER', 'SEASON', 'CLOTHING', 'ACTION', 'ENV'];
+        if (trimmedSelectText && insertionKeywords.some(keyword => trimmedSelectText.includes(keyword))) {
+            console.warn(`📍 CAUTION: Attempting to modify text containing insertion point "${trimmedSelectText}". Ensure this preserves the insertion marker.`);
+        }
+
+        // 🎯 TEXT BOUNDARY PROTECTION: Respect ", Text:" separator for overlay text
+        // Only "Spelling" and "Text Overlay" categories can modify text after ", Text:"
+        // All other replacements must stay BEFORE the ", Text:" boundary
+        const canModifyAfterTextBoundary = replacement_category === 'Spelling' || replacement_category === 'Text Overlay';
+        const textBoundaryIndex = result.indexOf(', Text:');
+        
+        // If there's a ", Text:" boundary and this replacement can't modify after it,
+        // we need to restrict the search/replacement to only the text before the boundary
+        let workingContent = result;
+        let contentAfterBoundary = '';
+        let hasBoundary = false;
+        
+        if (textBoundaryIndex !== -1 && !canModifyAfterTextBoundary) {
+            // Split content at the boundary
+            workingContent = result.substring(0, textBoundaryIndex);
+            contentAfterBoundary = result.substring(textBoundaryIndex);
+            hasBoundary = true;
+        }
+
+        // Additional check: if this is a delete or replace action, check if the text being removed contains artist tags
+        if ((action === 'delete' || action === 'replace') && trimmedSelectText) {
+            // Find where this text appears in the working content
+            const index = workingContent.indexOf(trimmedSelectText);
+            if (index !== -1) {
+                // Check if there's an "artist:" tag within the text being removed
+                const textToRemove = workingContent.substring(index, index + trimmedSelectText.length);
+                if (textToRemove.toLowerCase().includes('artist:')) {
+                    console.warn(`🚫 BLOCKED REPLACEMENT: Attempted to ${action} text segment containing "artist:" tag - "${textToRemove}". This is FORBIDDEN.`);
+                    continue; // Skip this replacement entirely
+                }
+            }
+        }
+
+        // Handle legacy EOF support for backward compatibility
+        if (select_text === 'EOF' && !replacement.action) {
+            // Legacy EOF behavior - append to end (or before ", Text:" boundary)
+            console.log(`📎 Applying legacy EOF append: adding "${replace_text}" to end`);
+            if (!replace_text || replace_text.trim() === '') continue; // Skip empty appends
+
+            // Legacy EOF always respects ", Text:" boundary (appends before it)
+            const trimmedWorkingContent = workingContent.trimEnd();
+            const needsComma = trimmedWorkingContent && (!trimmedWorkingContent.endsWith(',') || trimmedWorkingContent.endsWith('::'));
+            workingContent = trimmedWorkingContent + (needsComma ? ', ' : ' ') + replace_text;
+            
+            // Reconstruct result with boundary protection
+            result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
+            
+            appliedReplacements.add(replacementKey);
+            continue;
+        }
+
+        // Phase 3 only processes appends (delete and replace were handled in Phase 1)
+        if (action !== 'append') {
+            console.warn(`⚠️ Non-append action "${action}" found in Phase 3, skipping`);
+            continue;
+        }
+        
+        if (action === 'append') {
+            globalResources.getLogger().verbose(`📎 Attempting append: insert "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"${select_text ? ` after "${trimmedSelectText.substring(0, 30)}${trimmedSelectText.length > 30 ? '...' : ''}"` : ' at end'}`);
 
             let insertPosition;
             let usedFallback = false;
             let positionFound = false;
             let textToAppend = replace_text;
             
-            if (select_text && select_text.trim()) {
+            // Check if this append has an anchor (from prefix overlap conversion or granular append)
+            const anchorText = replacement.anchor_text;
+            if (anchorText) {
+                // This append was either:
+                // 1. Converted from a replace with prefix overlap (anchor_text = overlapping prefix)
+                // 2. Created with granular append (anchor_text = anchor position)
+                // Find the anchor in the content and append after it
+                const anchorIndex = workingContent.indexOf(anchorText);
+                if (anchorIndex !== -1) {
+                    insertPosition = anchorIndex + anchorText.length;
+                    positionFound = true;
+                    console.log(`🎯 Anchored append: inserting after anchor "${anchorText.substring(0, 30)}..."`);
+                    
+                    // If not critical and this was from prefix overlap conversion, 
+                    // the anchor was just for positioning - don't auto-append
+                    // The replace_text should already be set correctly by Tanei hydration
+                    if (!is_critical && replacement.mitigations?.some(m => m.type === 'converted_to_append')) {
+                        console.log(`   ℹ️  Non-critical anchored append - anchor preserved for positioning only`);
+                    }
+                }
+            }
+            
+            // Normal append logic (if anchored append didn't already set position)
+            if (!positionFound && select_text && select_text.trim()) {
                 // If select_text is provided, try to find it and insert after it
                 let index = workingContent.indexOf(trimmedSelectText);
                 
@@ -4511,7 +4872,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                     if (insertPosition > 2 && workingContent.substring(insertPosition - 2, insertPosition) === ', ') {
                         insertPosition -= 2; // Remove the comma and space before marker
                     }
-                    logger.verbose(`📍 Found append marker, inserting before presets`);
+                    globalResources.getLogger().verbose(`📍 Found append marker, inserting before presets`);
                 } else {
                     // No marker found, append to end (fallback)
                     insertPosition = workingContent.length;
@@ -4529,7 +4890,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
             result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
 
             appliedReplacements.add(replacementKey);
-            logger.verbose(`✅ Appended "${textToAppend.substring(0, 50)}${textToAppend.length > 50 ? '...' : ''}"${select_text ? (positionFound ? (usedFallback ? ' after fallback' : ` after "${trimmedSelectText.substring(0, 30)}..."`) : ' at end (fallback)') : ' at end'}`);
+            globalResources.getLogger().verbose(`✅ Appended "${textToAppend.substring(0, 50)}${textToAppend.length > 50 ? '...' : ''}"${select_text ? (positionFound ? (usedFallback ? ' after fallback' : ` after "${trimmedSelectText.substring(0, 30)}..."`) : ' at end (fallback)') : ' at end'}`);
             
             // Set application_method if not already set
             if (!replacement.application_method) {
@@ -4875,7 +5236,7 @@ function initializeHolidayData() {
     });
 
     if (invalidHolidays > 0) {
-        logger.warn(`Holiday data validation: ${validHolidays} valid, ${invalidHolidays} invalid`);
+        globalResources.getLogger().warn(`Holiday data validation: ${validHolidays} valid, ${invalidHolidays} invalid`);
     }
     return invalidHolidays === 0;
 }
@@ -4902,7 +5263,7 @@ async function makeHttpsRequest(url, options = {}, maxRetries = 3, baseDelay = 1
             const result = await new Promise((resolve, reject) => {
                 const requestOptions = {
                     headers: {
-                        'User-Agent': config?.userAgent || 'StaticForge/1.1a (https://staticforge.app)',
+                        'User-Agent': globalResources.getConfig()?.userAgent || 'StaticForge/1.1a (https://staticforge.app)',
                         ...options.headers
                     },
                     timeout: 5000 // 10 second timeout
@@ -4972,6 +5333,9 @@ async function makeHttpsRequest(url, options = {}, maxRetries = 3, baseDelay = 1
  * @returns {Promise<Object>} Location data
  */
 async function getCachedLocation(fetchFunction) {
+    const locationCache = globalResources.getLocationCache();
+    const lruCache = globalResources.getConfig({ path: 'lruCache' }) || {};
+    const LOCATION_CACHE_DURATION = lruCache.locationDuration || 24 * 60 * 60 * 1000; // 24 hours
     const cacheKey = 'user_location';
     const cached = locationCache.get(cacheKey);
 
@@ -4997,6 +5361,11 @@ async function getCachedLocation(fetchFunction) {
  * @returns {Promise<Object>} Weather data
  */
 async function getCachedWeatherData(cacheKey, fetchFunction) {
+    const weatherCache = globalResources.getWeatherCache();
+    const lruCache = globalResources.getConfig({ path: 'lruCache' }) || {};
+    const WEATHER_CACHE_DURATION = lruCache.weatherDuration || 3 * 60 * 1000; // 3 minutes
+    const WEATHER_FAILURE_CACHE_DURATION = lruCache.weatherFailureDuration || 15 * 60 * 1000; // 15 minutes
+    
     const cached = weatherCache.get(cacheKey);
 
     if (cached) {
@@ -5039,10 +5408,10 @@ async function getCachedWeatherData(cacheKey, fetchFunction) {
 async function getCurrentLocation() {
     // Check for configured latitude/longitude first
     try {
-        const secureConfig = require('../secure.config.json');
-        if (secureConfig.location && secureConfig.location.latitude !== null && secureConfig.location.longitude !== null) {
-            const lat = parseFloat(secureConfig.location.latitude);
-            const lon = parseFloat(secureConfig.location.longitude);
+        const location = globalResources.getSecureConfig({ path: 'location' });
+        if (location && location.latitude !== null && location.longitude !== null) {
+            const lat = parseFloat(location.latitude);
+            const lon = parseFloat(location.longitude);
             const accurateTimezone = getTimezoneByCoordinates(lat, lon);
             console.log('📍 Using configured coordinates from secure.config.json');
             return {
@@ -5306,7 +5675,7 @@ function generateProgressiveHolidayElements(holiday) {
  * @param {Object} holiday - Holiday data from config (optional, already detected)
  * @returns {Object} Seasonal modification guidelines
  */
-function generateSeasonalGuidelines(time, season, seasonalEnabled, weather = null, holiday = null) {
+function generateSeasonalGuidelines(time, season, seasonalEnabled, weather = null, holiday = null, guidanceEnabled = true) {
     // Check for time-based conflicts that would make seasonal elements inappropriate
     const isNightTime = time && (time.hour >= 22 || time.hour <= 4); // Late night/early morning
     const isMidnight = time && time.hour >= 0 && time.hour <= 3; // True midnight hours
@@ -5334,140 +5703,124 @@ function generateSeasonalGuidelines(time, season, seasonalEnabled, weather = nul
         };
     }
 
+    // If guidance is disabled, return season name and holiday but no guidelines/modifications
+    if (!guidanceEnabled) {
+        return {
+            name: season,
+            guidelines: [],
+            holiday,
+            modifications: []
+        };
+    }
+
     const modifications = [];
 
     // Weather-aware seasonal environmental modifications
     if (season === 'winter') {
-        const winterMods = ['Consider indoor vs outdoor preferences - winter encourages indoor scenes with warm lighting'];
+        const winterMods = ['Winter may favor indoor scenes with warm lighting - consider if this fits the scene context'];
 
         // Weather-compliant winter modifications
         if (weather) {
             if (weather.temperature > 10) {
-                winterMods.push('Despite winter season, warm weather may reduce traditional winter elements - focus on seasonal colors and indoor coziness');
+                winterMods.push('Despite winter season, warm weather may reduce traditional winter elements - consider seasonal colors and indoor coziness if applicable');
             } else if (weather.temperature <= 0) {
-                winterMods.push('Add winter atmospheric elements: frost on windows, snow accumulation, cold weather attire');
+                winterMods.push('Consider winter atmospheric elements: frost on windows, snow accumulation, cold weather attire (if scene-appropriate)');
             }
 
             if (weather.condition.toLowerCase().includes('snow')) {
-                winterMods.push('Snow conditions align perfectly with winter season - emphasize snow-covered landscapes and winter activities');
+                winterMods.push('Snow conditions align with winter season - consider snow-covered landscapes and winter activities if visible/relevant');
             } else if (weather.condition.toLowerCase().includes('rain')) {
-                winterMods.push('Winter rain creates slushy, muddy conditions - focus on indoor winter warmth and holiday lighting');
+                winterMods.push('Winter rain creates slushy, muddy conditions - consider indoor winter warmth and holiday lighting if scene supports it');
             }
         } else {
-            winterMods.push('Add winter atmospheric elements: frost on windows, snow accumulation, cold weather attire');
+            winterMods.push('Consider winter atmospheric elements: frost on windows, snow accumulation, cold weather attire (if scene-appropriate)');
         }
 
-        winterMods.push('Use cool blue-white lighting, warm indoor contrasts, winter mood');
+        winterMods.push('Consider cool blue-white lighting, warm indoor contrasts, winter mood (if it enhances the scene)');
         modifications.push(...winterMods);
 
     } else if (season === 'spring') {
-        const springMods = ['Spring encourages outdoor scenes with fresh air and blooming elements'];
+        const springMods = ['Spring may favor outdoor scenes with fresh air and blooming elements - consider if this fits the scene context'];
 
         // Weather-compliant spring modifications
         if (weather) {
             if (weather.temperature < 10) {
-                springMods.push('Cool spring weather may delay blooming - focus on early buds, fresh green shoots, and transitional elements');
+                springMods.push('Cool spring weather may delay blooming - consider early buds, fresh green shoots, and transitional elements if visible');
             } else if (weather.temperature > 20) {
-                springMods.push('Warm spring weather accelerates blooming - emphasize vibrant flowers and lush greenery');
+                springMods.push('Warm spring weather accelerates blooming - consider vibrant flowers and lush greenery if scene-appropriate');
             }
 
             if (weather.windSpeed > 5) {
-                springMods.push('Windy spring conditions may scatter petals and leaves - show dynamic, breezy floral movement');
+                springMods.push('Windy spring conditions may scatter petals and leaves - consider dynamic, breezy floral movement if relevant');
             }
         }
 
-        springMods.push('Add renewal themes: fresh flowers, green leaves, lighter clothing');
-        springMods.push('Use bright, warm lighting, fresh atmosphere, growth symbolism');
+        springMods.push('Consider renewal themes: fresh flowers, green leaves, lighter clothing (if they enhance the scene)');
+        springMods.push('Consider bright, warm lighting, fresh atmosphere, growth symbolism (if it fits the context)');
         modifications.push(...springMods);
 
     } else if (season === 'summer') {
-        const summerMods = ['Summer favors outdoor activities and bright, warm environments'];
+        const summerMods = ['Summer may favor outdoor activities and bright, warm environments - consider if this fits the scene context'];
 
         // Weather-compliant summer modifications
         if (weather) {
             if (weather.temperature > 30) {
-                summerMods.push('Intense summer heat aligns with season - emphasize heat shimmer, bright sunlight, and cooling activities');
+                summerMods.push('Intense summer heat aligns with season - consider heat shimmer, bright sunlight, and cooling activities if scene-appropriate');
             } else if (weather.temperature < 20) {
-                summerMods.push('Cool summer weather may feel atypical - focus on seasonal colors and summer attire despite milder temperatures');
+                summerMods.push('Cool summer weather may feel atypical - consider seasonal colors and summer attire if it makes sense for the scene');
             }
 
             if (weather.humidity > 70 && weather.temperature > 25) {
-                summerMods.push('Humid summer conditions enhance tropical, lush summer atmosphere');
+                summerMods.push('Humid summer conditions may enhance tropical, lush summer atmosphere (if relevant to scene)');
             }
 
             if (weather.uvIndex >= 8) {
-                summerMods.push('High UV summer conditions - emphasize sun protection, bright shadows, and intense lighting');
+                summerMods.push('High UV summer conditions - consider sun protection, bright shadows, and intense lighting if visible/applicable');
             }
         }
 
-        summerMods.push('Add summer elements: bright sunlight, heat effects, casual summer attire');
-        summerMods.push('Use intense lighting, warm atmosphere, vibrant energy');
+        summerMods.push('Consider summer elements: bright sunlight, heat effects, casual summer attire (if they enhance the scene)');
+        summerMods.push('Consider intense lighting, warm atmosphere, vibrant energy (if it fits the context)');
         modifications.push(...summerMods);
 
     } else if (season === 'autumn') {
-        const autumnMods = ['Autumn creates cozy, transitional environments with warm colors'];
+        const autumnMods = ['Autumn may create cozy, transitional environments with warm colors - consider if this fits the scene context'];
 
         // Skip specific autumn elements if they conflict with night time (no autumn leaves at midnight)
         if (!seasonalTimeConflict) {
             // Weather-compliant autumn modifications
             if (weather) {
                 if (weather.windSpeed > 8) {
-                    autumnMods.push('Windy autumn conditions accelerate leaf fall - show swirling leaves, bare branches, and dynamic seasonal change');
+                    autumnMods.push('Windy autumn conditions may accelerate leaf fall - consider swirling leaves, bare branches, and dynamic seasonal change if visible');
                 }
 
                 if (weather.temperature < 5) {
-                    autumnMods.push('Cool autumn weather enhances crisp fall atmosphere - emphasize layered clothing and harvest coziness');
+                    autumnMods.push('Cool autumn weather may enhance crisp fall atmosphere - consider layered clothing and harvest coziness if scene-appropriate');
                 }
 
                 if ((weather.cloudCoverage || 0) >= 60) {
-                    autumnMods.push(`Heavy cloud cover${weather.condition.toLowerCase().includes('fog') ? ' and fog' : ''} creates moody fall atmosphere - enhance with mist-shrouded trees and earthy tones`);
+                    autumnMods.push(`Heavy cloud cover${weather.condition.toLowerCase().includes('fog') ? ' and fog' : ''} may create moody fall atmosphere - consider mist-shrouded trees and earthy tones if relevant`);
                 }
             }
 
-            autumnMods.push('Add fall elements: colored leaves, harvest themes, layered clothing');
+            autumnMods.push('Consider fall elements: colored leaves, harvest themes, layered clothing (if they enhance the scene)');
         } else {
             // Time-conflicting autumn - use generic seasonal elements only
-            autumnMods.push('Use warm earth tones and cozy transitional atmosphere (avoid specific autumn elements that conflict with night time)');
+            autumnMods.push('Consider warm earth tones and cozy transitional atmosphere (avoid specific autumn elements that conflict with night time)');
         }
 
-        autumnMods.push('Use golden hour lighting in the morning and evening, warm earth tones, nostalgic atmosphere');
+        autumnMods.push('Consider golden hour lighting in the morning and evening, warm earth tones, nostalgic atmosphere (if it fits the context)');
         modifications.push(...autumnMods);
-    }
-
-    // Holiday modifications with progressive intensity
-    if (holiday && holiday.isHolidayPeriod && holiday.progressiveElements) {
-        const prog = holiday.progressiveElements;
-        const holidayMods = [
-            `🎉 HOLIDAY DETECTED: ${holiday.primaryHoliday.name} (${prog.daysUntil} days, ${prog.level} intensity)`,
-            prog.guidance,
-            `Selected decorations (${prog.decorations.length}): ${prog.decorations.join(', ')}`,
-            `Atmospheric elements (${prog.atmosphere.length}): ${prog.atmosphere.join(', ')}`,
-            `Color palette (${prog.colors.length}): ${prog.colors.join(', ')}`,
-            prog.activities.length > 0 ? `Activity suggestions: ${prog.activities.join(', ')}` : null,
-            'Integrate holiday elements progressively based on current intensity level'
-        ].filter(Boolean); // Remove null entries
-
-        modifications.push(...holidayMods);
-    } else if (holiday && holiday.isHolidayPeriod) {
-        // Fallback for holidays without progressive elements
-        modifications.push(
-            `🎉 HOLIDAY DETECTED: ${holiday.primaryHoliday.name}`,
-            'Add appropriate holiday decorations and atmosphere to the environment',
-            `Decorations to consider: ${holiday.holidayDecorations.slice(0, 5).join(', ')}`,
-            `Atmosphere: ${holiday.primaryHoliday.atmosphere}`,
-            `Color palette: ${holiday.primaryHoliday.colors}`,
-            'Integrate holiday elements naturally into indoor and outdoor spaces'
-        );
     }
 
     return {
         name: season,
         guidelines: [
-            'Actively modify environment to match seasonal characteristics',
-            'Adjust indoor/outdoor balance based on seasonal preferences',
-            'Add seasonal decorations, lighting, and atmospheric elements',
-            'Modify character attire and activities to suit the season',
-            'Create cohesive seasonal scenes that enhance the original prompt'
+            'Consider modifying environment to match seasonal characteristics where appropriate',
+            'Evaluate indoor/outdoor balance based on seasonal preferences and scene context',
+            'Consider seasonal decorations, lighting, and atmospheric elements that enhance the scene',
+            'Consider character attire and activities that suit the season when relevant',
+            'Create cohesive seasonal scenes that enhance the original prompt when it makes sense'
         ],
         holiday,
         modifications: modifications
@@ -5860,12 +6213,12 @@ function generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo) 
         }
         // Clear/Sunny Scenes
         else if (isClear && !hasPrecipitation) {
-            ucGuidelines.push('• **Clear/Sunny Scene**: UC cloudy, overcast, rain, showers, drizzle, precipitation, storms, dark clouds, gloomy, wet conditions, puddles');
+            ucGuidelines.push('• **Clear/Sunny Scene**: UC cloudy, cloudy sky, rain, showers, drizzle, precipitation, storms, dark clouds, gloomy, wet conditions, puddles');
             ucGuidelines.push('  **MANDATORY PRECIPITATION UC**: Include comprehensive precipitation terms: rain, showers, drizzle, downpour, storms, thunder, lightning, wet, damp, puddles, hail, sleet');
         }
-        // Cloudy/Overcast Scenes (no precipitation)
+        // Cloudy/Cloudy Sky Scenes (no precipitation)
         else if (isCloudy && !hasPrecipitation) {
-            ucGuidelines.push('• **Cloudy/Overcast Scene (Dry)**: UC bright sunlight, clear sky, sunny, intense shadows, harsh light');
+            ucGuidelines.push('• **Cloudy/Cloudy Sky Scene (Dry)**: UC bright sunlight, clear sky, sunny, intense shadows, harsh light');
             ucGuidelines.push('  **Also UC Precipitation**: rain, showers, drizzle, precipitation, storms, wet conditions, puddles (clouds present but no rain)');
         }
         // Foggy/Misty Scenes
@@ -5900,7 +6253,7 @@ function generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo) 
         // UV Index considerations (for clear sunny days)
         if (weather.uvIndex !== undefined && isClear) {
             if (weather.uvIndex >= 8) {
-                ucGuidelines.push('• **High UV Index**: UC shade, overcast, cloudy, dim lighting, indoor lighting (intense sun exposure)');
+                ucGuidelines.push('• **High UV Index**: UC shade, cloudy sky, cloudy, dim lighting, indoor lighting (intense sun exposure)');
             }
         }
 
@@ -5983,7 +6336,7 @@ function generateContextualUCGuidelines(weather, currentSeason, timePeriodInfo) 
     ucGuidelines.push('• **Contextual Intelligence**: Focus UC on preventing conflicting elements that the AI might otherwise add');
     ucGuidelines.push('• **Balanced Approach**: Add UC strategically without over-constraining the AI');
     ucGuidelines.push('• **APPEND USAGE**: Use `action: "append"` in UC replacements to add conflicting elements to the negative prompt');
-    ucGuidelines.push('• **CONSOLIDATE UC**: Always combine all UC additions into a SINGLE text replacement using `action: "append"`');
+    ucGuidelines.push('• **CONSOLIDATE UC**: Always combine all UC additions into a SINGLE Tanei item using `action: "append"`');
     ucGuidelines.push('');
 
     return ucGuidelines;
@@ -6219,19 +6572,28 @@ function createSunPositionBar(timeData) {
     }
     
     // Rising phase - fill left side
+    // sunProgressRaw goes from 0 (sunrise) to 0.5 (noon)
+    // Map to left side: sunProgressRaw / 0.5 maps 0-0.5 to 0-1
     if (timeData.sunPhase === 'rising') {
-        const filled = Math.round(timeData.sunProgressRaw * barLength);
+        const leftSideProgress = timeData.sunProgressRaw / 0.5; // 0-0.5 -> 0-1
+        const filled = Math.max(0, Math.min(barLength, Math.round(leftSideProgress * barLength)));
         const leftBar = filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
         const rightBar = emptyChar.repeat(barLength);
         return leftBar + separator + rightBar;
     }
     
-    // Setting phase - empty right side from left to right
+    // Setting phase - fill right side from right (sunset side) to left
+    // sunProgressRaw goes from 0.5 (noon) to 1.0 (sunset)
+    // At sunset (1.0), right side should be fully filled (8 bars)
+    // At noon (0.5), right side should be empty (0 bars)
+    // We show how much is filled from the right edge (remaining until sunset)
     if (timeData.sunPhase === 'setting') {
-        const emptyFromLeft = Math.round(timeData.sunProgressRaw * barLength);
-        const remainingFilled = barLength - emptyFromLeft;
+        const remainingProgress = 1.0 - timeData.sunProgressRaw; // 1.0 -> 0.0 (sunset -> noon)
+        const rightSideRemaining = Math.max(0, Math.min(1, remainingProgress / 0.5)); // Clamp to 0-1 for right side
+        const filledFromRight = Math.max(0, Math.min(barLength, Math.round(rightSideRemaining * barLength))); // Clamp to valid range
+        const emptyFromRight = Math.max(0, barLength - filledFromRight); // Ensure non-negative
         const leftBar = emptyChar.repeat(barLength);
-        const rightBar = emptyChar.repeat(emptyFromLeft) + filledChar.repeat(remainingFilled);
+        const rightBar = emptyChar.repeat(emptyFromRight) + filledChar.repeat(filledFromRight);
         return leftBar + separator + rightBar;
     }
     
@@ -6248,7 +6610,7 @@ function createLightLevelBar(timeData) {
     const emptyChar = '░';
     const filledChar = '█';
     
-    const filled = Math.round(timeData.lightLevelRaw || 0);
+    const filled = Math.max(0, Math.min(barLength, Math.round(timeData.lightLevelRaw || 0)));
     return filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
 }
 
@@ -6280,7 +6642,7 @@ function createPrecipitationBar(mmPerHour) {
         filled = 12 + Math.round(Math.min((mmPerHour - 15) / 15, 1) * 3);
     }
     
-    filled = Math.min(barLength, filled);
+    filled = Math.max(0, Math.min(barLength, filled));
     return filledChar.repeat(filled) + emptyChar.repeat(barLength - filled);
 }
 
@@ -6431,7 +6793,7 @@ function createSeasonalProgressionBar(time, currentSeason) {
     const barLength = 10;
     const position = Math.round((progress / 100) * barLength);
     
-    const bar = '░'.repeat(position) + '█' + '░'.repeat(Math.max(0, barLength - position - 1));
+    const bar = '░'.repeat(Math.max(0, position)) + '█' + '░'.repeat(Math.max(0, barLength - position - 1));
     
     // Always show current season on left, next season on right
     // Progress bar indicates how far through the current season we are
@@ -6608,16 +6970,17 @@ function compileWeatherHistoryReport(enhancedWeatherData, weather, time, locatio
  */
 
 /**
- * Score memory relevance based on prompt and context
- * @param {Object} memory - Memory object with name, description, category, etc.
+ * Score memory relevance and extract relevant description snippet
+ * @param {Object} memory - Memory object
  * @param {string} prompt - Current prompt text
  * @param {string} uc - Negative prompt text
  * @param {string} directive - User directive
- * @param {Object} context - Context object with weather, time, season, etc.
- * @returns {number} Relevance score (higher = more relevant)
+ * @param {Object} context - Context object
+ * @returns {Object} Object with score and highlightedDescription (max 75 chars)
  */
 function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', context = {}) {
     let score = 0;
+    const maxSnippetLength = 75;
     
     // Combine all text sources for keyword extraction
     const allText = [
@@ -6639,6 +7002,7 @@ function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', cont
     const memoryName = (memory.name || '').toLowerCase();
     const memoryDesc = (memory.description || '').toLowerCase();
     const memoryCategory = (memory.category || '').toLowerCase();
+    const fullDescription = memory.description || '';
     
     // Score based on keyword matches in memory name (high weight)
     words.forEach(word => {
@@ -6678,7 +7042,56 @@ function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', cont
     // Confidence as additional tiebreaker
     score += (memory.confidence || 0.1) * 5;
     
-    return score;
+    // Extract relevant description snippet
+    let highlightedDescription = '';
+    if (fullDescription) {
+        if (words.length === 0) {
+            // No keywords, return first 75 chars
+            highlightedDescription = fullDescription.substring(0, maxSnippetLength);
+        } else {
+            // Find the position with the most keyword matches
+            let bestScore = 0;
+            let bestStart = 0;
+            
+            for (let i = 0; i < fullDescription.length; i++) {
+                let snippetScore = 0;
+                const snippet = memoryDesc.substring(i, Math.min(i + maxSnippetLength, fullDescription.length));
+                
+                // Count keyword matches in this snippet
+                words.forEach(word => {
+                    if (snippet.includes(word)) {
+                        snippetScore += 1;
+                    }
+                });
+                
+                // Prefer snippets that start near the beginning
+                if (i < 50) snippetScore += 0.5;
+                
+                if (snippetScore > bestScore) {
+                    bestScore = snippetScore;
+                    bestStart = i;
+                }
+            }
+            
+            // Extract the relevant snippet
+            let snippet = fullDescription.substring(bestStart, Math.min(bestStart + maxSnippetLength, fullDescription.length));
+            
+            // Trim to word boundary if possible
+            if (bestStart + maxSnippetLength < fullDescription.length && snippet.length === maxSnippetLength) {
+                const lastSpace = snippet.lastIndexOf(' ');
+                if (lastSpace > maxSnippetLength * 0.7) {
+                    snippet = snippet.substring(0, lastSpace);
+                }
+            }
+            
+            highlightedDescription = snippet;
+        }
+    }
+    
+    return {
+        score,
+        highlightedDescription
+    };
 }
 
 /**
@@ -6688,18 +7101,22 @@ function scoreMemoryRelevance(memory, prompt = '', uc = '', directive = '', cont
  * @param {string} uc - Negative prompt text
  * @param {string} directive - User directive
  * @param {Object} context - Context object
- * @returns {Array} Top 5 most relevant memories
+ * @returns {Array} Top 5 most relevant memories with relevanceScore and highlightedDescription fields
  */
 function selectRelevantMemories(availableMemories, prompt = '', uc = '', directive = '', context = {}) {
     if (!availableMemories || availableMemories.length === 0) {
         return [];
     }
     
-    // Score all memories
-    const scoredMemories = availableMemories.map(mem => ({
-        ...mem,
-        relevanceScore: scoreMemoryRelevance(mem, prompt, uc, directive, context)
-    }));
+    // Score all memories and extract relevant snippets
+    const scoredMemories = availableMemories.map(mem => {
+        const result = scoreMemoryRelevance(mem, prompt, uc, directive, context);
+        return {
+            ...mem,
+            relevanceScore: result.score,
+            highlightedDescription: result.highlightedDescription
+        };
+    });
     
     // Sort by relevance score (descending), then by usage count, then by confidence
     scoredMemories.sort((a, b) => {
@@ -6716,7 +7133,7 @@ function selectRelevantMemories(availableMemories, prompt = '', uc = '', directi
     return scoredMemories.slice(0, 5);
 }
 
-function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+async function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
     const { buildSystemMessage } = require('./systemMessageBuilder');
     
     const { time, weather, timePeriod, clothing, creative, optimize, weatherHistoryReport } = context;
@@ -6725,15 +7142,26 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
     if (weather && typeof weather !== 'object') {
         throw new Error('Weather data is invalid - must be an object');
     }
-    if (weather && (!weather.temperature || !weather.condition || !weather.windSpeed || !weather.humidity)) {
+    // Only treat properties as missing when they are null/undefined, not when they are 0 or other falsy-but-valid values
+    if (
+        weather &&
+        (
+            weather.temperature === undefined || weather.temperature === null ||
+            weather.condition === undefined || weather.condition === null ||
+            weather.windSpeed === undefined || weather.windSpeed === null ||
+            weather.humidity === undefined || weather.humidity === null
+        )
+    ) {
         throw new Error(`Invalid weather data: missing essential properties (temperature: ${weather.temperature}, condition: ${weather.condition}, windSpeed: ${weather.windSpeed}, humidity: ${weather.humidity})`);
     }
 
     // Extract time period information
+    // Handle new structure: lighting, atmosphere, uc are arrays of {text, bias} objects
     const timePeriodInfo = typeof timePeriod === 'object' ? timePeriod : {
         period: timePeriod,
-        lighting: 'standard lighting',
-        atmosphere: 'standard atmosphere',
+        lighting: [],
+        atmosphere: [],
+        uc: [],
         transitionType: 'steady_state'
     };
 
@@ -6742,7 +7170,8 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
     const fastModeEnabled = dynamicConfig?.fast_mode === true;
     const toolPasses = fastModeEnabled ? 4 : (dynamicConfig.tool_passes || 8);
     const forceStrategy = dynamicConfig.force_strategy || null;
-    const dialogsCount = dynamicConfig.dialogs_count || 6;
+    // If dialogs_count is not set, treat as disabled (0). Only use default 6 if explicitly set to a number > 0
+    const dialogsCount = dynamicConfig.dialogs_count;
     
     // Load available memories for system message
     let availableMemories = [];
@@ -6751,7 +7180,7 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
         const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
         availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
         if (availableMemories.length > 0) {
-            logger.detailed(`📚 Including ${availableMemories.length} global memories in system message`);
+            globalResources.getLogger().detailed(`📚 Including ${availableMemories.length} global memories in system message`);
             
             // Select top 5 most relevant memories based on prompt and context
             topRelevantMemories = selectRelevantMemories(
@@ -6768,7 +7197,7 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
             );
             
             if (topRelevantMemories.length > 0) {
-                logger.detailed(`📊 Selected ${topRelevantMemories.length} most relevant memories based on prompt/context`);
+                globalResources.getLogger().detailed(`📊 Selected ${topRelevantMemories.length} most relevant memories based on prompt/context`);
             }
         }
     } catch (error) {
@@ -6776,7 +7205,7 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
         // Continue without memories - not critical
     }
     
-    const systemMessageText = buildSystemMessage(context, {
+    const systemMessageText = await buildSystemMessage(context, {
         backgroundFocus,
         stageContext,
         directive,
@@ -6843,21 +7272,68 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
             '# ⏰ CURRENT TIME DATA',
             '```',
             `CLOCK TIME: ${time.hour}:${time.minute.toString().padStart(2, '0')} ${time.am_pm}`,
-            `DATE: ${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}`,
+            `DATE: ${time.dayOfWeekName}, ${time.monthName} ${time.year}`,
             ...(seasonalProgressBar ? [`SEASON: ${seasonalProgressBar} ${getSeasonIcon(context.season.name)}`] : []),
             ...(holidayCountdownBar ? [`HOLIDAY: ${holidayCountdownBar}`] : []),
             `TIME PERIOD: ${timePeriodInfo.period}`,
             `SUN POSITION: ${sunPositionBar} ${timePeriodInfo.perceivableLight}%${transitionNote}`,
             `OUTDOOR LIGHT: ${lightLevelBar}`,
             '```',
-            '',
-            // '## 📋 ENVIRONMENTAL CONTEXT',
-            // '```',
-            // `LIGHTING: ${timePeriodInfo.lighting || 'standard lighting'}`,
-            // `ATMOSPHERE: ${timePeriodInfo.atmosphere || 'standard atmosphere'}`,
-            // '```',
-            //''
+            ''
         );
+        
+        // Add lighting and atmosphere tables with bias values (as guidance)
+        if (timePeriodInfo.lighting && Array.isArray(timePeriodInfo.lighting) && timePeriodInfo.lighting.length > 0) {
+            userContentSections.push(
+                '## 💡 LIGHTING ELEMENTS',
+                'Use these as suggestions for lighting elements, but not as strict requirements. DO NOT DIRECTLY APPLY THESE VALUES TO THE PROMPT, USE THEM AS GUIDANCE ONLY. The outdoor light level bar is a good indicator of the overall brightness of the outdoor scene.',
+                '',
+                '| Suggested | Guidance Bias |',
+                '|-----------|---------------|',
+                ...timePeriodInfo.lighting.map(el => {
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `| ${text} | ${bias.toFixed(2)} |`;
+                }),
+                ''
+            );
+        }
+        
+        if (timePeriodInfo.atmosphere && Array.isArray(timePeriodInfo.atmosphere) && timePeriodInfo.atmosphere.length > 0) {
+            userContentSections.push(
+                '## 🌬️ ATMOSPHERIC ELEMENTS',
+                'Use these as suggestions for atmospheric elements, but not as strict requirements. DO NOT DIRECTLY APPLY THESE VALUES TO THE PROMPT, USE THEM AS GUIDANCE ONLY.',
+                'These elements should be added to the prompt as guidance, but not the exact elements to use.',
+                '',
+                '| Suggested | Guidance Bias |',
+                '|-----------|---------------|',
+                ...timePeriodInfo.atmosphere.map(el => {
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `| ${text} | ${bias.toFixed(2)} |`;
+                }),
+                ''
+            );
+        }
+        
+        if (timePeriodInfo.uc && Array.isArray(timePeriodInfo.uc) && timePeriodInfo.uc.length > 0) {
+            userContentSections.push(
+                '## 🚫 UNDESIRED ELEMENTS (UC)',
+                'Use these as suggestions for undesired elements, but not as strict requirements. DO NOT DIRECTLY APPLY THESE VALUES TO THE PROMPT, USE THEM AS GUIDANCE ONLY.',
+                'These elements should be added to the negative prompt (UC) as guidance, but not the exact elements to use.',
+                '',
+                '**These elements should be added to the negative prompt (UC). Bias values indicate relative strength of undesirability.**',
+                '',
+                '| Suggested | Guidance Bias |',
+                '|-----------|---------------|',
+                ...timePeriodInfo.uc.map(el => {
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `| ${text} | ${bias.toFixed(2)} |`;
+                }),
+                ''
+            );
+        }
     }
 
     // Add weather data (same as original lines 8689-8761)
@@ -6875,7 +7351,8 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
 
         const weatherData = {
             temperature: `${weather.feelsLike}°C`,
-            condition: weather.condition,
+            condition: weather.generationCondition,
+            rawCondition: weather.condition,
             cloudCoverage: createBarGraph(weather.cloudCoverage || 0),
             windSpeed: `${Math.round(weather.windSpeed * 3.6)} km/h`,
             windDirection: getWindDirection(weather.windDirection),
@@ -6901,7 +7378,7 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
             `CLOUD COVERAGE: ${weatherData.cloudCoverage}`,
             `WIND: ${weatherData.windSpeed} from ${weatherData.windDirection} side`,
             `VISIBILITY: ${weatherData.visibility}`,
-            `SOLAR RADIATION: ${weatherData.solarRadiation}`,
+            ...(weather.isDay ? [`SOLAR RADIATION: ${weatherData.solarRadiation}`] : []),
             ...(weatherData.humidity ? [`HUMIDITY: ${weatherData.humidity}`] : []),
             ...(weatherData.precipitation ? [`PRECIPITATION: ${weatherData.precipitation}`] : []),
             ...(weatherData.snowDepth ? [`SNOW DEPTH: ${weatherData.snowDepth}`] : []),
@@ -6967,21 +7444,117 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
     }
     
     // Add seasonal adaptation printout (condensed to 15 items)
-    if (context.season) {
+    // Only show if guidance is enabled (guidelines or modifications exist)
+    if (context.season && creative) {
         // Limit guidelines to top 3 most relevant
         const topGuidelines = context.season.guidelines;
         // Limit modifications to top 3 most relevant
         const topModifications = context.season.modifications;
         
-        userContentSections.push(
-            '',
-            `# ${getSeasonIcon(context.season.name)} ${capitalize(context.season.name)} IDEAS:`,
-            ...topGuidelines.map(g => `-> ${g}`),
-            ...(topModifications.length > 0 ? [
-                '**Weather**:', ...topModifications.map(m => `-> ${m}`)
-            ] : []),
-            ''
-        );
+        // Skip section if guidance is disabled (both arrays are empty)
+        if ((topGuidelines && topGuidelines.length > 0) || (topModifications && topModifications.length > 0)) {
+            userContentSections.push(
+                '',
+                `# ${getSeasonIcon(context.season.name)} ${capitalize(context.season.name)} IDEAS:`,
+                'Use these as suggestions for season elements, but not as strict requirements. Use this as a guide to help you add seasonal atomsphire, but not the exact elements to use.',
+                '',
+                '|      | Elements |',
+                '|------|----------|'
+            );
+            
+            if (topGuidelines && topGuidelines.length > 0) {
+                userContentSections.push(`| Guidelines | ${topGuidelines.join(', ')} |`);
+            }
+            
+            if (topModifications && topModifications.length > 0) {
+                userContentSections.push(`| Weather | ${topModifications.join(', ')} |`);
+            }
+            
+            userContentSections.push('');
+        }
+    }
+
+    // Add holiday elements table if holiday is present
+    if (context.season && context.season.holiday && context.season.holiday.isHolidayPeriod) {
+        const holiday = context.season.holiday;
+        
+        // Get decorations, atmosphere, colors, and activities
+        let decorations = [];
+        let atmosphere = [];
+        let colors = [];
+        let activities = [];
+        let holidayName = '';
+        
+        if (holiday.progressiveElements) {
+            // Progressive elements are already arrays
+            decorations = holiday.progressiveElements.decorations || [];
+            atmosphere = holiday.progressiveElements.atmosphere || [];
+            colors = holiday.progressiveElements.colors || [];
+            activities = holiday.progressiveElements.activities || [];
+            holidayName = `${holiday.primaryHoliday.name} (${holiday.progressiveElements.daysUntil} days, ${holiday.progressiveElements.level} intensity)`;
+        } else if (holiday.primaryHoliday) {
+            // Primary holiday has comma-separated strings or use flat arrays if available
+            decorations = holiday.holidayDecorations || (holiday.primaryHoliday.decorations ? holiday.primaryHoliday.decorations.split(', ') : []);
+            atmosphere = holiday.holidayAtmosphere || (holiday.primaryHoliday.atmosphere ? holiday.primaryHoliday.atmosphere.split(', ') : []);
+            colors = holiday.holidayColors || (holiday.primaryHoliday.colors ? holiday.primaryHoliday.colors.split(', ') : []);
+            activities = holiday.primaryHoliday.activities ? holiday.primaryHoliday.activities.split(', ') : [];
+            holidayName = holiday.primaryHoliday.name;
+        }
+        
+        if (decorations.length > 0 || atmosphere.length > 0 || colors.length > 0 || activities.length > 0 || holidayRecommendations.length > 0) {
+            userContentSections.push(
+                `## 🎉 HOLIDAY ELEMENTS`,
+                `**${holiday.progressiveElements.daysUntil > 1 ? 'Upcoming' : 'Current'} Holiday:** ${holidayName}`,
+                '',
+                'Use these as suggestions for holiday elements, but not as strict requirements. Use this as a guide to help you create a holiday scene, but not the exact elements to use.',
+                '**Check this list for available holiday elements to consider when integrating holiday themes into the scene.**',
+                ''
+            );
+            
+            // Helper function to format items in blocks of 5 per line
+            const formatItems = (items) => {
+                const formatted = [];
+                for (let i = 0; i < items.length; i += 5) {
+                    const chunk = items.slice(i, i + 5).map(item => item.trim());
+                    formatted.push(chunk.join(', '));
+                }
+                return formatted;
+            };
+            
+            if (decorations.length > 0) {
+                userContentSections.push('### Decorations');
+                formatItems(decorations).forEach(line => {
+                    userContentSections.push(line);
+                });
+                userContentSections.push('');
+            }
+            
+            if (atmosphere.length > 0) {
+                userContentSections.push('### Atmosphere');
+                formatItems(atmosphere).forEach(line => {
+                    userContentSections.push(line);
+                });
+                userContentSections.push('');
+            }
+            
+            if (colors.length > 0) {
+                userContentSections.push('### Colors');
+                formatItems(colors).forEach(line => {
+                    userContentSections.push(line);
+                });
+                userContentSections.push('');
+            }
+            
+            if (activities.length > 0) {
+                userContentSections.push('### Activities');
+                activities.forEach(item => {
+                    userContentSections.push(`* ${item.trim()}`);
+                });
+                userContentSections.push('');
+            }
+            
+            userContentSections.push('');
+        }
     }
 
     // Add clothing adaptation
@@ -7047,7 +7620,7 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
             '**⚠️ CRITICAL SECONDARY PROMPT** - This directive overrides standard processing rules.',
             '',
             '```',
-            directive.trim().split('\n'),
+            ...(directive.trim().split('\n')),
             '```',
             '',
             '## MANDATORY REQUIREMENTS',
@@ -7080,7 +7653,8 @@ function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus
             text: systemMessageText
         }],
         userContentSections: userContentSections.length > 0 ? userContentSections : null,
-        directiveContentSections: directiveContentSections.length > 0 ? directiveContentSections : null
+        directiveContentSections: directiveContentSections.length > 0 ? directiveContentSections : null,
+        topRelevantMemories: topRelevantMemories || []
     };
 }
 
@@ -7092,7 +7666,7 @@ async function getClientIPLocation(clientIP) {
         // Use IP-API service for server-side IP geolocation
         const response = await fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,regionName,city,lat,lon,timezone`, {
             headers: {
-                'User-Agent': config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': globalResources.getConfig({ path: 'userAgent' }) || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
 
@@ -7128,6 +7702,100 @@ async function getClientIPLocation(clientIP) {
     }
 }
 
+/**
+ * Check if a weather condition is a weather phenomenon (rain, snow, fog, etc.)
+ * @param {string} condition - Weather condition to check
+ * @returns {boolean} True if condition is a weather phenomenon
+ */
+function isWeatherPhenomenon(condition) {
+    const weatherPhenomena = [
+        'thunderstorm', 'severe thunderstorm', 'rain', 'light rain', 'moderate rain', 'heavy rain',
+        'drizzle', 'snow', 'light snow', 'moderate snow', 'heavy snow', 'blizzard',
+        'sleet', 'hail', 'freezing rain', 'fog', 'dense fog', 'mist',
+        'dust storm', 'sandstorm', 'tornado', 'hurricane', 'squall', 'ice storm'
+    ];
+    return weatherPhenomena.includes(condition);
+}
+
+/**
+ * Determine if a weather condition change is major enough to affect image generation
+ * Minor changes (1 cloud level, slight rain increase) should NOT trigger cache invalidation
+ * @param {string} currentCondition - Current weather condition
+ * @param {string} nextCondition - Next weather condition
+ * @param {number} currentCloudCoverage - Current cloud coverage percentage
+ * @param {number} nextCloudCoverage - Next cloud coverage percentage
+ * @param {number} currentPrecipRate - Current precipitation rate
+ * @param {number} nextPrecipRate - Next precipitation rate
+ * @returns {boolean} True if this is a major change that affects image generation
+ */
+function isMajorWeatherChange(currentCondition, nextCondition, currentCloudCoverage, nextCloudCoverage, currentPrecipRate, nextPrecipRate) {
+    // Define weather phenomena that are always major changes
+    const weatherPhenomena = [
+        'thunderstorm', 'severe thunderstorm', 'rain', 'light rain', 'moderate rain', 'heavy rain',
+        'drizzle', 'snow', 'light snow', 'moderate snow', 'heavy snow', 'blizzard',
+        'sleet', 'hail', 'freezing rain', 'fog', 'dense fog', 'mist',
+        'dust storm', 'sandstorm', 'tornado', 'hurricane', 'squall', 'ice storm'
+    ];
+    
+    // Check if either condition is a weather phenomenon
+    const currentIsPhenomenon = weatherPhenomena.includes(currentCondition);
+    const nextIsPhenomenon = weatherPhenomena.includes(nextCondition);
+    
+    // Any change involving weather phenomena is major
+    if (currentIsPhenomenon !== nextIsPhenomenon) {
+        return true; // Phenomenon appearing or disappearing
+    }
+    
+    // If both are phenomena but different types (e.g., rain → snow)
+    if (currentIsPhenomenon && nextIsPhenomenon && currentCondition !== nextCondition) {
+        return true; // Different weather phenomena
+    }
+    
+    // For cloud-based conditions, define cloud coverage levels
+    // clear (<10%), few clouds (10-29%), mostly clear (30-59%), 
+    // partly cloudy (60-79%), mostly cloudy (80-89%), cloudy (90%+)
+    const getCloudLevel = (coverage) => {
+        if (coverage === null || coverage === undefined) return -1;
+        if (coverage >= 90) return 5; // cloudy
+        if (coverage >= 80) return 4; // mostly cloudy
+        if (coverage >= 60) return 3; // partly cloudy
+        if (coverage >= 30) return 2; // mostly clear
+        if (coverage >= 10) return 1; // few clouds
+        return 0; // clear
+    };
+    
+    const currentLevel = getCloudLevel(currentCloudCoverage);
+    const nextLevel = getCloudLevel(nextCloudCoverage);
+    
+    // Only trigger if cloud coverage changes by 2+ levels
+    // (e.g., clear → partly cloudy, or few clouds → mostly cloudy)
+    const cloudLevelDiff = Math.abs(nextLevel - currentLevel);
+    if (cloudLevelDiff >= 2) {
+        return true; // Major cloud coverage change
+    }
+    
+    // Check for major precipitation changes (not just 1 level increase)
+    // Ignore minor precipitation rate changes
+    if (currentPrecipRate !== null && nextPrecipRate !== null) {
+        const precipDiff = Math.abs(nextPrecipRate - currentPrecipRate);
+        // Only consider major if precipitation increases/decreases by 5+ mm/h
+        if (precipDiff >= 5) {
+            return true; // Major precipitation change
+        }
+    }
+    
+    // All other condition changes are considered minor (1 cloud level shift)
+    return false;
+}
+
+/**
+ * Preprocess context data based on scene type from analysis
+ * Filters out conflicting or irrelevant data based on indoor/outdoor/mixed detection
+ * @param {Object} context - Original context object
+ * @param {Object} analysisResults - Published analysis results with scene_type
+ * @returns {Object} Filtered context object
+ */
+
 async function compileContext(dynamicConfig, clientIP = null) {
     // Extract parameters from dynamic config
     const {
@@ -7141,7 +7809,8 @@ async function compileContext(dynamicConfig, clientIP = null) {
         action,
         location,
         compiled_prompt,
-        disable_holiday
+        disable_holiday,
+        guidance
     } = dynamicConfig;
     
     // Only fetch location if we need weather or time data
@@ -7237,11 +7906,11 @@ async function compileContext(dynamicConfig, clientIP = null) {
 
                             // If current time is before sunrise, "tomorrow" means later today
                             if (currentHour < sunriseHour) {
-                                logger.verbose(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
+                                globalResources.getLogger().verbose(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
                                 tomorrow = new Date(now);
                             } else {
                                 // After sunrise, "tomorrow" means next calendar day
-                                logger.verbose(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
+                                globalResources.getLogger().verbose(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
                                 tomorrow = new Date(now);
                                 tomorrow.setDate(tomorrow.getDate() + 1);
                             }
@@ -7380,7 +8049,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
                 if (requestedTimeToday < today) {
                     targetDateTime = new Date(requestedTimeToday);
                     targetDateTime.setDate(targetDateTime.getDate() + 1); // Move to next calendar day
-                    logger.verbose(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
+                    globalResources.getLogger().verbose(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
                 }
 
                 // Use getCurrentTime to create the proper time object for the custom astronomical time
@@ -8019,11 +8688,11 @@ async function compileContext(dynamicConfig, clientIP = null) {
             baseTime = getCurrentTime(timezone, null, null, new Date(baseTime.year, baseTime.month, baseTime.dayOfMonth));
         }
 
-        logger.detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
+        globalResources.getLogger().detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
     }
 
     // Determine time period (only if time is available)
-    const timePeriod = baseTime ? await determineTimePeriod(baseTime, seasonalConfig.season, currentLocation, weatherData) : null;
+    const timePeriod = baseTime ? await determineTimePeriod(baseTime, seasonalConfig.season, currentLocation, weatherData || {}, enhancedWeatherData || {}, clothing, guidance !== false) : null;
 
     // Generate seasonal guidelines if seasonal is enabled (must be after weather is fetched)
     let seasonalGuidelines = null;
@@ -8033,7 +8702,8 @@ async function compileContext(dynamicConfig, clientIP = null) {
             seasonalConfig.season,
             seasonalConfig.enabled,
             weatherData || null,
-            seasonalConfig.holiday
+            seasonalConfig.holiday,
+            guidance !== false // Default to true if not specified
         );
     }
 
@@ -8070,7 +8740,70 @@ async function compileContext(dynamicConfig, clientIP = null) {
         );
 
         if (hasRequiredFields) {
-            context.weather = weatherData;
+            // Calculate next weather condition change if enhanced weather data is available
+            let nextConditionChange = null;
+            let nextConditionName = null;
+            
+            if (enhancedWeatherData) {
+                const currentTimestamp = baseTime?.timestamp || Date.now();
+                const currentCondition = weatherData.condition;
+                const currentCloudCoverage = weatherData.cloudCoverage;
+                const currentPrecipRate = weatherData.precipitationRate || 0;
+                
+                // Check nextPeriod for condition changes
+                let nextPeriod = null;
+                if (enhancedWeatherData?.nextPeriod && Array.isArray(enhancedWeatherData.nextPeriod)) {
+                    nextPeriod = enhancedWeatherData.nextPeriod;
+                } else if (enhancedWeatherData?.temporal?.nextPeriod && Array.isArray(enhancedWeatherData.temporal.nextPeriod)) {
+                    nextPeriod = enhancedWeatherData.temporal.nextPeriod;
+                }
+                
+                if (nextPeriod && nextPeriod.length > 0) {
+                    // Find the first hour where condition changes SIGNIFICANTLY
+                    let minorChangesSkipped = 0;
+                    for (const hourData of nextPeriod) {
+                        if (hourData.timestamp && hourData.timestamp > currentTimestamp) {
+                            const hourCondition = hourData.condition || hourData.generationCondition;
+                            const hourCloudCoverage = hourData.cloudCoverage;
+                            const hourPrecipRate = hourData.precipitationRate || 0;
+                            
+                            // Check if this is a MAJOR weather change (not just minor cloud cover shifts)
+                            if (hourCondition && hourCondition !== currentCondition) {
+                                const isMajorChange = isMajorWeatherChange(
+                                    currentCondition, 
+                                    hourCondition,
+                                    currentCloudCoverage,
+                                    hourCloudCoverage,
+                                    currentPrecipRate,
+                                    hourPrecipRate
+                                );
+                                
+                                if (isMajorChange) {
+                                    nextConditionChange = hourData.timestamp;
+                                    nextConditionName = hourCondition;
+                                    if (minorChangesSkipped > 0) {
+                                        console.log(`   ℹ️  Skipped ${minorChangesSkipped} minor weather change(s) before finding major change`);
+                                    }
+                                    break;
+                                } else {
+                                    minorChangesSkipped++;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (minorChangesSkipped > 0 && !nextConditionChange) {
+                        console.log(`   ℹ️  Ignored ${minorChangesSkipped} minor weather change(s) (not significant for image generation)`);
+                    }
+                }
+            }
+            
+            // Add next condition change to weather data
+            context.weather = {
+                ...weatherData,
+                nextConditionChange: nextConditionChange, // Timestamp of next condition change
+                nextConditionName: nextConditionName // Name of next condition
+            };
             console.log('✅ Weather data validation passed');
         } else {
             console.warn('⚠️ Weather data missing required fields, excluding from context');
@@ -8108,7 +8841,257 @@ async function compileContext(dynamicConfig, clientIP = null) {
         }
     }
 
+    // Log expiration-related values from context
+    if (context.timePeriod || context.weather) {
+        console.log('⏰ Cache expiration context values:');
+        
+        if (context.timePeriod && context.timePeriod.nextPeriodTransition) {
+            const timeTransition = context.timePeriod.nextPeriodTransition;
+            const now = context.time?.timestamp || Date.now();
+            const msUntilTransition = timeTransition - now;
+            const minutesUntil = Math.round(msUntilTransition / (60 * 1000));
+            const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
+            const transitionDate = new Date(timeTransition);
+            console.log(`  📅 Next time period transition: ${context.timePeriod.nextPeriodName || 'unknown'} at ${transitionDate.toLocaleTimeString()} (${hoursUntil} hours, ${minutesUntil % 60} minutes)`);
+        } else {
+            console.log('  📅 Next time period transition: not available');
+        }
+        
+        if (context.weather && context.weather.nextConditionChange) {
+            const weatherChange = context.weather.nextConditionChange;
+            const now = context.time?.timestamp || Date.now();
+            const msUntilChange = weatherChange - now;
+            const minutesUntil = Math.round(msUntilChange / (60 * 1000));
+            const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
+            const changeDate = new Date(weatherChange);
+            console.log(`  🌦️  Next major weather change: "${context.weather.nextConditionName || 'unknown'}" at ${changeDate.toLocaleTimeString()} (${hoursUntil} hours, ${minutesUntil % 60} minutes)`);
+        } else {
+            console.log('  🌦️  Next major weather change: none detected in forecast period');
+        }
+    }
+
+    // Add expiration metadata to context for smart reuse
+    context.expirationMetadata = {
+        timePeriod: context.timePeriod?.period || null,
+        weatherCondition: context.weather?.condition || null,
+        cloudCoverage: context.weather?.cloudCoverage || null,
+        temperature: context.weather?.temperature || null,
+        hasWeatherPhenomenon: context.weather ? isWeatherPhenomenon(context.weather.condition) : false,
+        timestamp: Date.now()
+    };
+
     return context;
+}
+
+/**
+ * Calculate the next time period transition time (in milliseconds from now)
+ * Uses pre-calculated nextPeriodTransition from timePeriod if available, otherwise falls back to manual calculation
+ * @param {Object} timePeriod - Time period object from determineTimePeriod
+ * @param {Object} baseTime - Current time object with timestamp
+ * @returns {number|null} Milliseconds until next transition, or null if unable to calculate
+ */
+function calculateNextTimePeriodTransition(timePeriod, baseTime) {
+    // Use pre-calculated nextPeriodTransition if available (preferred method)
+    if (timePeriod && timePeriod.nextPeriodTransition) {
+        return timePeriod.nextPeriodTransition;
+    }
+
+    // Fallback to manual calculation if nextPeriodTransition not available (backward compatibility)
+    if (!timePeriod || !baseTime || !baseTime.timestamp) {
+        return null;
+    }
+
+    const now = baseTime.timestamp;
+    const currentHour = baseTime.hour + (baseTime.minute / 60);
+    const transitions = [];
+
+    // Get sunrise, sunset, and solar noon for transitions
+    const sunriseHour = timePeriod.sunriseHour;
+    const sunsetHour = timePeriod.sunsetHour;
+    const solarNoon = timePeriod.solarNoon;
+
+    if (sunriseHour !== null) {
+        // Calculate next sunrise
+        let nextSunrise = sunriseHour;
+        if (currentHour >= sunriseHour) {
+            nextSunrise += 24;
+        }
+        const sunriseMs = (nextSunrise - currentHour) * 60 * 60 * 1000;
+        transitions.push(now + sunriseMs);
+    }
+
+    if (sunsetHour !== null) {
+        // Calculate next sunset
+        let nextSunset = sunsetHour;
+        if (currentHour >= sunsetHour) {
+            nextSunset += 24;
+        }
+        const sunsetMs = (nextSunset - currentHour) * 60 * 60 * 1000;
+        transitions.push(now + sunsetMs);
+    }
+
+    // Find the nearest transition in the future
+    const futureTransitions = transitions.filter(t => t > now);
+    if (futureTransitions.length === 0) {
+        // Default to 1 hour if no transitions found
+        return now + (60 * 60 * 1000);
+    }
+
+    const nextTransition = Math.min(...futureTransitions);
+    return nextTransition;
+}
+
+/**
+ * Calculate the next MAJOR weather condition change time (in milliseconds from now)
+ * Only considers significant changes that affect image generation (not minor cloud cover shifts)
+ * Uses pre-calculated nextConditionChange from weatherData if available, otherwise falls back to manual calculation
+ * @param {Object} weatherData - Current weather data (may contain pre-calculated nextConditionChange)
+ * @param {Object} enhancedWeatherData - Enhanced weather data with forecast
+ * @param {number} currentTimestamp - Current timestamp in milliseconds
+ * @returns {number|null} Milliseconds until next major condition change, or null if unable to calculate
+ */
+function calculateNextWeatherConditionChange(weatherData, enhancedWeatherData, currentTimestamp) {
+    // Use pre-calculated nextConditionChange if available (preferred method)
+    if (weatherData && weatherData.nextConditionChange) {
+        return weatherData.nextConditionChange;
+    }
+
+    // Fallback to manual calculation if nextConditionChange not available (backward compatibility)
+    if (!weatherData || !weatherData.condition) {
+        return null;
+    }
+
+    const currentCondition = weatherData.condition;
+    
+    // Check nextPeriod for condition changes
+    let nextPeriod = null;
+    if (enhancedWeatherData?.nextPeriod && Array.isArray(enhancedWeatherData.nextPeriod)) {
+        nextPeriod = enhancedWeatherData.nextPeriod;
+    } else if (enhancedWeatherData?.temporal?.nextPeriod && Array.isArray(enhancedWeatherData.temporal.nextPeriod)) {
+        nextPeriod = enhancedWeatherData.temporal.nextPeriod;
+    }
+
+    if (!nextPeriod || nextPeriod.length === 0) {
+        // Default to 3 hours if no forecast data
+        return currentTimestamp + (3 * 60 * 60 * 1000);
+    }
+
+    // Find the first hour where condition changes
+    for (const hourData of nextPeriod) {
+        if (hourData.timestamp && hourData.timestamp > currentTimestamp) {
+            const hourCondition = hourData.condition || hourData.generationCondition;
+            
+            // Check if condition has changed
+            if (hourCondition && hourCondition !== currentCondition) {
+                return hourData.timestamp;
+            }
+        }
+    }
+
+    // No condition change found in forecast, default to 3 hours
+    return currentTimestamp + (3 * 60 * 60 * 1000);
+}
+
+/**
+ * Calculate dynamic expiration time based on time period and weather changes
+ * @param {Object} context - Context object from compileContext
+ * @param {number} defaultExpirationMs - Default expiration in milliseconds if unable to calculate (default: 15 minutes)
+ * @returns {number} Expiration timestamp in milliseconds
+ */
+function calculateDynamicExpiration(context, defaultExpirationMs = 15 * 60 * 1000) {
+    const now = Date.now();
+    const expirationTimes = [];
+    let timeTransition = null;
+    let weatherChange = null;
+
+    // Calculate expiration based on time period transition
+    if (context.timePeriod && context.time) {
+        timeTransition = calculateNextTimePeriodTransition(context.timePeriod, context.time);
+    }
+
+    // Calculate expiration based on weather condition change (only major changes)
+    if (context.weather && context.enhancedWeatherData) {
+        weatherChange = calculateNextWeatherConditionChange(context.weather, context.enhancedWeatherData, now);
+    }
+
+    // Determine which expiration times to use
+    // If both valid: use the earliest (with 30 min minimum)
+    // If only time transition: use it (with 30 min minimum)
+    // If weather change detected but no time transition: use weather change
+    if (timeTransition && timeTransition > now) {
+        expirationTimes.push(timeTransition);
+    }
+    
+    // Only add weather change if it's a valid major change
+    if (weatherChange && weatherChange > now) {
+        expirationTimes.push(weatherChange);
+    } else if (timeTransition && timeTransition > now) {
+        // No major weather change detected, fall back to time of day only
+        // (already added above)
+    }
+
+    // Log available expiration values
+    console.log('🔍 Calculating cache expiration:');
+    
+    if (timeTransition) {
+        const msUntil = timeTransition - now;
+        const minutesUntil = Math.round(msUntil / (60 * 1000));
+        const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
+        const transitionDate = new Date(timeTransition);
+        const periodName = context.timePeriod?.nextPeriodName || 'unknown period';
+        console.log(`  📅 Time period transition: ${periodName} at ${transitionDate.toLocaleTimeString()} (${hoursUntil}h ${minutesUntil % 60}m)`);
+    } else {
+        console.log('  📅 Time period transition: not available');
+    }
+    
+    if (weatherChange) {
+        const msUntil = weatherChange - now;
+        const minutesUntil = Math.round(msUntil / (60 * 1000));
+        const hoursUntil = Math.round(minutesUntil / 60 * 10) / 10;
+        const changeDate = new Date(weatherChange);
+        const conditionName = context.weather?.nextConditionName || 'unknown condition';
+        console.log(`  🌦️  Major weather change: "${conditionName}" at ${changeDate.toLocaleTimeString()} (${hoursUntil}h ${minutesUntil % 60}m)`);
+    } else {
+        console.log('  🌦️  Major weather change: none detected');
+    }
+
+    // Use the minimum expiration time (whichever comes first)
+    if (expirationTimes.length > 0) {
+        const minExpiration = Math.min(...expirationTimes);
+        // Ensure expiration is at least 30 minutes and at most 24 hours
+        const minAllowed = now + (30 * 60 * 1000);
+        const maxAllowed = now + (24 * 60 * 60 * 1000);
+        const finalExpiration = Math.max(minAllowed, Math.min(maxAllowed, minExpiration));
+        
+        const msUntilFinal = finalExpiration - now;
+        const minutesUntilFinal = Math.round(msUntilFinal / (60 * 1000));
+        const hoursUntilFinal = Math.round(minutesUntilFinal / 60 * 10) / 10;
+        const finalDate = new Date(finalExpiration);
+        
+        // Determine which value is being used
+        let usedSource = 'default';
+        if (expirationTimes.length === 2) {
+            usedSource = timeTransition < weatherChange ? 'time period transition' : 'major weather change';
+        } else if (timeTransition && !weatherChange) {
+            usedSource = 'time period transition (no major weather change detected)';
+        } else if (timeTransition) {
+            usedSource = 'time period transition';
+        } else if (weatherChange) {
+            usedSource = 'major weather change';
+        }
+        
+        console.log(`  ✅ Using: ${usedSource} → expires at ${finalDate.toLocaleTimeString()} (${hoursUntilFinal}h ${minutesUntilFinal % 60}m, min: 30min)`);
+        
+        return finalExpiration;
+    }
+
+    // Fall back to default if no dynamic expiration could be calculated
+    const defaultExpiration = now + defaultExpirationMs;
+    const defaultDate = new Date(defaultExpiration);
+    const defaultMinutes = Math.round(defaultExpirationMs / (60 * 1000));
+    console.log(`  ⚠️  No dynamic expiration available, using default: ${defaultMinutes} minutes (expires at ${defaultDate.toLocaleTimeString()})`);
+    
+    return defaultExpiration;
 }
 
 // ============================================================================
@@ -8388,7 +9371,7 @@ function compileTaskList(taskDefinition, context) {
         '• **Pipeline Stage Awareness** - See "PIPELINE STAGE AWARENESS" section in system message',
         '• **State Management Modes** - See "STATE MANAGEMENT MODES" section in system message (Chain Update, Adaptation, Background Focus)',
         '• **Analysis Process** - See "ANALYSIS & MODIFICATION PROCESS" section in system message for detailed steps',
-        '• **Text Replacement Rules** - See "TEXT REPLACEMENT SYSTEM - COMPLETE REFERENCE" section',
+        '• **Tanei Rules** - See "RENTAN TANEI SYSTEM - COMPLETE REFERENCE" section',
         '• **Tool Usage** - See "AVAILABLE TOOLS - COMPLETE REFERENCE" section',
         '',
         '---',
@@ -8454,907 +9437,7 @@ function compileTaskList(taskDefinition, context) {
     }
 
     return output;
-}
-
-/**
- * Generates dynamic task list based on context
- * @param {Object} context - Context containing all conditional flags
- * @returns {Array} Compiled task list as markdown strings
- */
-function generateDynamicTaskList(context) {
-    const {
-        weather,
-        time,
-        directive,
-        creative,
-        optimize,
-        stageContext,
-        lastGeneratedImage,
-        useIncrementalUpdate,
-        adapttionMode,
-        directorRules,
-        backgroundFocus,
-        changeInfo,
-        lockedReplacements
-    } = context;
-
-    // Check tool configuration
-    const useCollectionSearch = secureConfig.grok?.tagWikiCollectionId;
-    const useWebSearch = secureConfig.grok?.useWebSearch === true;
-    
-    // Determine tool names based on configuration
-    const tagResearchTool = useCollectionSearch ? 'file_search' : 'searchTagsBatch';
-    const webResearchTools = useWebSearch ? 'web_search/x_search' : 'webSearch/fetchUrl/fetchImage';
-
-    // Task definition structure
-    const taskDefinition = [
-        {
-            id: 'check_knowledge_memory',
-            title: 'CHECK KNOWLEDGE MEMORIES FIRST',
-            icon: '🧠',
-            condition: () => true,
-            description: 'Review available global knowledge memories to avoid redundant research',
-            steps: [
-                'Review "Available Global Memories" list in user message',
-                'Search for relevant memories using searchKnowledgeMemories if needed (returns full details automatically)',
-                'OR retrieve specific memories using retrieveKnowledgeMemory(["name1", "name2"]) if you know exact names',
-                'Use retrieved entities, relations, and observations in your modifications',
-                'REFINE memories: If you discover better information, update with same name + higher confidence',
-                'Save NEW discoveries in insight_memory response field (auto-saved when validation passes)'
-            ]
-        },
-        {
-            id: 'stage_context',
-            title: 'UNDERSTAND YOUR STAGE',
-            icon: '🎬',
-            condition: () => stageContext && (stageContext.isInitial || stageContext.isBackgroundFocus || stageContext.isEnhance),
-            variants: [
-                {
-                    condition: () => stageContext && stageContext.isInitial,
-                    description: '**PIPELINE STAGE: INITIAL GENERATION (PRIMARY FOCUS)** - You are working on the INITIAL stage of a multi-stage pipeline. This prompt is specifically about the PRIMARY FOCUS/SUBJECT.',
-                    steps: [
-                        {
-                            id: 'initial_analysis',
-                            title: 'Analysis Requirements',
-                            condition: () => true,
-                            substeps: [
-                                'Analyze input prompt: view angle, perspective, framing, composition',
-                                'Determine subject positioning and available space',
-                                'Consider how subject fits within frame'
-                            ]
-                        },
-                        {
-                            id: 'initial_approach',
-                            title: 'Modification Approach',
-                            condition: () => true,
-                            substeps: [
-                                'Make text replacements knowing later stages will fill in background details',
-                                'Keep focus on subject - background will be expanded in subsequent stages',
-                                'Ensure subject well-defined and positioned appropriately for future expansion',
-                                'Don\'t over-detail the background - save that for background expansion stage',
-                                {
-                                    text: 'Preview Image Reference: Use as visual reference for character appearance/attire, environment context, actions/pose, scene composition',
-                                    condition: () => stageContext && stageContext.hasPreview
-                                },
-                                {
-                                    text: 'ANALYZE TIME & WEATHER FROM PREVIEW: Amplify detected conditions (nighttime → darkness/shadows, daytime → time-of-day atmosphere, weather → match preview effects)',
-                                    condition: () => stageContext && stageContext.hasPreview
-                                },
-                                {
-                                    text: 'PRESERVE: Character appearance, clothing style, core pose, environment type',
-                                    condition: () => stageContext && stageContext.hasPreview
-                                },
-                                {
-                                    text: 'ADAPT: Weather effects on clothing, lighting, seasonal/time-of-day elements',
-                                    condition: () => stageContext && stageContext.hasPreview
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    condition: () => stageContext && stageContext.isBackgroundFocus,
-                    description: '**PIPELINE STAGE: BACKGROUND EXPANSION** - You are working on BACKGROUND EXPANSION with image from previous generation with padding applied.',
-                    steps: [
-                        {
-                            id: 'background_analysis',
-                            title: 'Analysis Requirements',
-                            condition: () => true,
-                            substeps: [
-                                'Identify foreground area and new canvas space',
-                                'Determine expandable background elements',
-                                'Note environmental storytelling opportunities'
-                            ]
-                        },
-                        {
-                            id: 'background_rules',
-                            title: 'Content Rules',
-                            condition: () => true,
-                            substeps: [
-                                'REMOVE: Character expressions/emotions, character-specific actions, facial details, interaction descriptions, body-part details, character-centric descriptors, focus indicators',
-                                'KEEP: Location/setting, architectural elements, landscape features, weather/atmospheric effects, lighting/time-of-day, environmental objects, depth indicators',
-                                'ADD: Scene depth/distance elements, environmental storytelling, atmospheric effects (fog/clouds), background architecture/landscapes, perspective cues'
-                            ]
-                        },
-                        {
-                            id: 'background_approach',
-                            title: 'Modification Approach',
-                            condition: () => true,
-                            substeps: [
-                                'Remove character-specific phrases',
-                                'Add rich environmental descriptions',
-                                'Maintain consistency with existing composition',
-                                'Focus on atmosphere and depth'
-                            ]
-                        }
-                    ]
-                },
-                {
-                    condition: () => stageContext && stageContext.isEnhance,
-                    description: '**PIPELINE STAGE: ENHANCEMENT** - You are working on ENHANCEMENT stage with the full composed image.',
-                    steps: [
-                        {
-                            id: 'enhance_requirements',
-                            title: 'Analysis Requirements',
-                            condition: () => true,
-                            substeps: [
-                                'Analyze entire image for missing/incorrect details',
-                                'Address inconsistencies/quality issues',
-                                'Refine details across composition',
-                                'Polish final result'
-                            ]
-                        },
-                        {
-                            id: 'enhance_approach',
-                            title: 'Modification Approach',
-                            condition: () => true,
-                            substeps: [
-                                'Make refinements improving composition',
-                                'Fix issues/artifacts',
-                                'Enhance needed details',
-                                'Ensure cohesive integration'
-                            ]
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'background_focus_mode',
-            title: 'BACKGROUND FOCUS MODE',
-            icon: '🌄',
-            condition: () => backgroundFocus && !stageContext,
-            description: '🌄 **BACKGROUND FOCUS MODE**: For this request, emphasize background, environment, and atmospheric elements while maintaining character presence. Think like a landscape photographer - the environment is the star, characters are part of the scene.',
-            steps: []
-        },
-        {
-            id: 'chain_update_mode',
-            title: 'CHAIN UPDATE MODE',
-            icon: '🔄',
-            condition: () => useIncrementalUpdate,
-            description: '🔄 **CHAIN UPDATE MODE**: You are continuing from previous message. The current `text_replacements` are in the previous message in this conversation history.',
-            steps: [
-                {
-                    id: 'what_changed',
-                    title: 'Review What Changed',
-                    condition: () => true,
-                    substeps: [
-                        {
-                            text: 'Prompts have changed - review the new prompts',
-                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.promptChanged
-                        },
-                        {
-                            text: 'Context has changed (weather/time/season) - adapt replacements',
-                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.contextChanged
-                        },
-                        {
-                            text: 'Directive has changed - incorporate new requirements',
-                            condition: (ctx) => ctx.changeInfo && ctx.changeInfo.directiveChanged
-                        }
-                    ]
-                },
-                {
-                    id: 'choose_strategy',
-                    title: 'Choose Strategy',
-                    condition: () => true,
-                    substeps: [
-                        'Option {counter:number:options}: Update Existing (most efficient if no prompt changes)',
-                        '  - Review previous text_replacements from conversation history',
-                        '  - Update only what needs to change',
-                        '  - Keep tag research and replacements that still apply',
-                        '  - Use validateTextReplacement (terminateOnPass: true when ready)',
-                        {
-                            text: 'Option {counter:number:options}: Regenerate with Tools (if prompts changed)',
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: `  - USE TOOLS: Research new tags with ${tagResearchTool}`,
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: '  - Reuse previous research where applicable',
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: '  - Create new text_replacements for current prompt state',
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: '  - Validate and use completeTooling',
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: 'Option {counter:number:options}: Regenerate with Memories (if prompts changed)',
-                            condition: (ctx) => ctx.fast_mode === true
-                        },
-                        {
-                            text: '  - USE MEMORIES: Retrieve relevant knowledge memories',
-                            condition: (ctx) => ctx.fast_mode === true
-                        },
-                        {
-                            text: '  - Use memory knowledge to create new text_replacements',
-                            condition: (ctx) => ctx.fast_mode === true
-                        },
-                        {
-                            text: '  - Validate and use completeTooling',
-                            condition: (ctx) => ctx.fast_mode === true
-                        },
-                        'Option {counter:number:options}: Reject Chain (ONLY if major concept change)',
-                        '  - Call rejectChain() if changes fundamentally alter concept',
-                        '  - Examples: >60% removed, subject changed, incompatible structure'
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'locked_replacements',
-            title: 'LOCKED REPLACEMENTS',
-            icon: '🔒',
-            condition: (ctx) => ctx.lockedReplacements && ctx.lockedReplacements.length > 0,
-            description: (ctx) => [
-                `🔒 **LOCKED REPLACEMENTS**: User locked ${ctx.lockedReplacements.length} replacement(s) that must be maintained across generations with intelligent adaptation.`,
-                '',
-                '**Locked Replacements List:**',
-                ...ctx.lockedReplacements.map((lr, idx) => {
-                    const targetLabel = lr.targetType === 'prompt' ? 'Prompt' : 
-                                      lr.targetType === 'uc' ? 'Negative' :
-                                      `Character ${lr.targetSource + 1} ${lr.targetField}`;
-                    return `${idx + 1}. [${targetLabel}] "${lr.reason_display}": \`${lr?.select_text || '(append to end)'}\` → \`${lr.replace_text}\``;
-                })
-            ].join('\n'),
-            steps: [
-                {
-                    id: 'maintain_concept',
-                    title: 'Maintain Replacement Concepts',
-                    condition: () => true,
-                    substeps: [
-                        'Keep the INTENT and PURPOSE of each locked replacement',
-                        'If locked replacement adds weather, continue weather enhancements',
-                        'If locked replacement enhances lighting, continue lighting enhancements',
-                        'If locked replacement modifies atmosphere, maintain atmospheric modifications'
-                    ]
-                },
-                {
-                    id: 'adapt_to_context',
-                    title: 'Adapt to Current Context',
-                    condition: () => true,
-                    substeps: [
-                        'Update segment_index to match what\'s in current prompt',
-                        'Update replace_text to fit new weather/time/season/context',
-                        'Weather changed → Adapt weather-related replacements',
-                        'Time changed → Adapt time-related replacements',
-                        'Season changed → Adapt seasonal references',
-                        'Ensure replacement still makes logical sense'
-                    ]
-                },
-                {
-                    id: 'return_locked',
-                    title: 'Return as Locked',
-                    condition: () => true,
-                    substeps: [
-                        'Mark ALL maintained replacements with "locked": true',
-                        'Include clear reason explaining any adaptations made',
-                        'If omitting a locked replacement, explain why in reasoning'
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'adaptation_mode',
-            title: 'ADAPTATION MODE',
-            icon: '🔄',
-            condition: () => adapttionMode,
-            description: 'You are adapting a previously compiled prompt that failed to apply. Use the provided compiled prompt data as a reference and adapt it to work with the current context while preserving the original intent and quality. Intelligently modify the prompts to create a cohesive, immersive scene that harmonizes weather, time, season, and character attire.',
-            steps: []
-        },
-        {
-            id: 'analyze_inputs',
-            title: 'ANALYZE INPUTS',
-            icon: '🔍',
-            condition: () => true,
-            steps: [
-                {
-                    id: 'analyze_prompts',
-                    title: 'Analyze Initial Prompts and Provided Images',
-                    condition: () => true,
-                    substeps: [
-                        'Read base prompt, UC, character prompts',
-                        {
-                            text: 'Analyze provided image for visual elements, conflicts, quality issues',
-                            condition: () => lastGeneratedImage
-                        }
-                    ]
-                },
-                {
-                    id: 'check_placeholders',
-                    title: 'Check for Text Generation Placeholders',
-                    condition: () => true,
-                    substeps: [
-                        'Scan prompt for [SPEECH_TEXT_INSERT], [THOUGHT_TEXT_INSERT], [CAPTION_TEXT_INSERT]',
-                        'If found: Plan contextual replacement (max ~15 words/sentence, use <br> for breaks)',
-                        'Reference: See "AI TEXT GENERATION PLACEHOLDERS" section in system message',
-                        'NO quotes, NO colorful emojis - use text emoticons only'
-                    ]
-                },
-                {
-                    id: 'analyze_context',
-                    title: 'Analyze Current Context Data',
-                    condition: () => weather || time,
-                    substeps: [
-                        {
-                            text: 'Parse TIME DATA (clock time, period, sun position, light level)',
-                            condition: () => time
-                        },
-                        {
-                            text: 'Parse WEATHER DATA LCD (current conditions)',
-                            condition: () => weather
-                        },
-                        {
-                            text: 'Review WEATHER HISTORY REPORT: yesterday\'s summary, temporal timeline (past 4h + future 2h), trend analysis',
-                            condition: () => weather
-                        },
-                        {
-                            text: 'Note seasonal/holiday information',
-                            condition: () => !!context.season
-                        },
-                        'Apply Two-Test System to all data: (1) Photographable? (2) Sets mood/palette?'
-                    ]
-                },
-                {
-                    id: 'analyze_directive',
-                    title: 'Analyze and Compile User Directive',
-                    condition: () => directive,
-                    substeps: [
-                        'Parse directive for instructions and narrative',
-                        'Handle typos/informal language (understand intent)',
-                        'Execute conditional logic (IF/THEN/ELIF/ELSE)',
-                        'Process incrementing/counter logic and variables',
-                        'Handle RANDOM() functions, loops, state management',
-                        '🎯 **CRITICAL**: Apply ALL requests from the directive in your text_replacements',
-                        'Every action, attribute, or change mentioned MUST be implemented',
-                        'If directive says "make character eat" → eating action MUST appear in replacements',
-                        'If directive says "add sunset" → sunset elements MUST be added',
-                        'Reference: See "ADVANCED DIRECTIVE FEATURES" section for full syntax guide',
-                        'See "📜 THE DIRECTIVE" section below for the full directive content'
-                    ]
-                },
-                {
-                    id: 'scene_understanding',
-                    title: 'Scene Understanding',
-                    condition: () => true,
-                    variants: [
-                        {
-                            condition: () => stageContext && stageContext.isBackgroundFocus,
-                            substeps: [
-                                'Environment Type: Analyze foreground vs new canvas areas',
-                                'Identify expandable background elements',
-                                'Determine environmental storytelling opportunities'
-                            ]
-                        },
-                        {
-                            condition: () => stageContext && stageContext.isEnhance,
-                            substeps: [
-                                'Analyze entire composition for missing/incorrect details',
-                                'Identify inconsistencies and quality issues',
-                                'Note refinement opportunities across full composition'
-                            ]
-                        },
-                        {
-                            condition: () => true, // default
-                            substeps: [
-                                'Environment Type: INDOOR/OUTDOOR/MIXED (CRITICAL)',
-                                'Core Intent: Primary artistic goal',
-                                'Character Focus: Main subjects, roles, relationships',
-                                'Style Elements: Artistic styles/techniques',
-                                'Setting Details: Environmental descriptions'
-                            ]
-                        }
-                    ]
-                },
-                {
-                    id: 'identify_conflicts',
-                    title: 'Identify Conflicts',
-                    condition: () => true,
-                    substeps: [
-                        {
-                            text: 'Check for time/weather/lighting conflicts with provided data',
-                            condition: () => weather || time
-                        },
-                        'Check for seasonal conflicts and atmospheric mismatches',
-                        'Note any contradictory elements in prompt'
-                    ]
-                },
-                {
-                    id: 'check_priority',
-                    title: 'Check Priority Hierarchy',
-                    condition: () => true,
-                    substeps: [
-                        {
-                            text: 'Level {counter:number:level}: Director Rules',
-                            condition: () => directorRules && directorRules.length > 0
-                        },
-                        {
-                            text: 'Level {counter:number:level}: Director Rules (absolute constraints)',
-                            condition: () => !directorRules || directorRules.length === 0
-                        },
-                        {
-                            text: 'Level {counter:number:level}: User Directive (🎯 ACTIVE - MANDATORY - ALL requests MUST be implemented - overrides context)',
-                            condition: () => directive
-                        },
-                        {
-                            text: 'Level {counter:number:level}: User Directive (if provided)',
-                            condition: () => !directive
-                        },
-                        {
-                            text: 'Level {counter:number:level}: Weather/Time Context (ACTIVE)',
-                            condition: () => weather || time
-                        },
-                        {
-                            text: 'Level {counter:number:level}: Weather/Time Context (if provided)',
-                            condition: () => !weather && !time
-                        },
-                        'Level {counter:number:level}: Seasonal Guidelines',
-                        'Level {counter:number:level}: General Enhancement'
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'research',
-            title: 'RESEARCH & UNDERSTAND',
-            icon: '🔬',
-            condition: () => true,
-            steps: [
-                {
-                    id: 'check_memory',
-                    title: 'Check Global Knowledge Memories (avoid redundant research)',
-                    condition: () => true
-                },
-                {
-                    id: 'tag_research',
-                    title: `Tag Research (MANDATORY - use ${tagResearchTool})`,
-                    condition: (ctx) => !ctx.fast_mode,
-                    substeps: [
-                        ...(useCollectionSearch ? [
-                            'Use file_search to search comprehensive tag wiki collection',
-                            'Review wiki entries for descriptions and context',
-                            'Research tags for weather/time integration',
-                            'Research tags for directive requirements',
-                            'If your completed research using file_search, web_search, or x_search, you do not need to use searchTagDatabase',
-                        ] : [
-                            'Verify quality ≥95%, strength ≥8.0',
-                            'Research tags for weather/time integration',
-                            'Research tags for directive requirements',
-                            'Use resolveTagLinks for alternatives/relationships'
-                        ]),
-                        {
-                            text: 'Research tags for weather/time integration',
-                            condition: () => weather || time
-                        },
-                        {
-                            text: 'Research tags for directive requirements',
-                            condition: () => directive
-                        },
-                        {
-                            text: 'Use resolveTagLinks for alternatives/relationships',
-                            condition: () => !useCollectionSearch
-                        }
-                    ]
-                },
-                {
-                    id: 'memory_research',
-                    title: 'Memory Research (FAST MODE - use memories only)',
-                    condition: (ctx) => ctx.fast_mode === true,
-                    substeps: [
-                        'Search for relevant memories using searchKnowledgeMemories (returns full details automatically)',
-                        'OR retrieve specific memories using retrieveKnowledgeMemory if you know exact names',
-                        'Use memory entities, relations, and observations for tag information',
-                        'Apply memory knowledge to create text_replacements',
-                        'If memories don\'t have needed info, use your general knowledge'
-                    ]
-                },
-                {
-                    id: 'info_gathering',
-                    title: `Information Gathering (${webResearchTools} when needed)`,
-                    condition: (ctx) => !ctx.fast_mode
-                },
-                {
-                    id: 'understand_tags',
-                    title: 'Understand Tag Meaning from tool results',
-                    condition: (ctx) => !ctx.fast_mode
-                },
-                {
-                    id: 'understand_memory',
-                    title: 'Understand Tag Meaning from memories and knowledge',
-                    condition: (ctx) => ctx.fast_mode === true
-                },
-                {
-                    id: 'choose_strategy',
-                    title: 'Choose Application Strategy (A/B/C based on context)',
-                    condition: () => true,
-                    substeps: [
-                        {
-                            text: 'PRIORITIZE Strategy A (pure tags) for token efficiency',
-                            condition: () => optimize && optimize.tokenCount
-                        },
-                        {
-                            text: 'Balance quality vs efficiency based on token usage',
-                            condition: () => !optimize || !optimize.tokenCount
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'plan',
-            title: 'PLAN REPLACEMENTS',
-            icon: '📝',
-            condition: () => true,
-            steps: [
-                {
-                    id: 'transform_content',
-                    title: 'Content Transformation Planning',
-                    condition: () => true,
-                    substeps: [
-                        'Transform context data to visual descriptions',
-                        'NEVER copy verbatim from input/context',
-                        'Convert measurements to visual equivalents',
-                        'Remove conceptual language, keep only visuals',
-                        'Use Two-Test System: (1) Can I photograph this? (2) Does it set mood/palette?',
-                        'If fails both tests: REJECT the element and transform to visible equivalent'
-                    ]
-                },
-                {
-                    id: 'rich_description_expansion',
-                    title: 'Rich Description Expansion (maximize descriptive richness)',
-                    condition: () => creative,
-                    substeps: [
-                        'Within token limits, maximize descriptive richness',
-                        'Expand vague or minimal descriptions into vivid, detailed language',
-                        'Add sensory details (textures, lighting nuances, atmospheric qualities)',
-                        'Fill in missing details that enhance scene coherence and immersion',
-                        'Use available token budget to its fullest - don\'t be sparse when tokens allow',
-                        'Transform generic descriptions into specific, evocative imagery',
-                        'Examples: "rainy day" → "heavy rain drumming on surfaces, water streaming down windows, puddles reflecting gray overcast sky"',
-                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 1'
-                    ]
-                },
-                {
-                    id: 'tag_enhancement',
-                    title: 'Tag Enhancement (enrich tags with descriptive qualifiers)',
-                    condition: () => creative,
-                    substeps: [
-                        'Add descriptive adjectives to base tags when appropriate',
-                        'Specify qualities: "rain" → "heavy rain", "smile" → "bright genuine smile"',
-                        'Include atmosphere tags: "dramatic lighting", "cinematic composition", "depth of field"',
-                        'Layer complementary tags that build on each other',
-                        {
-                            text: `Research tags first with ${tagResearchTool} to verify quality and strength`,
-                            condition: (ctx) => !ctx.fast_mode
-                        },
-                        {
-                            text: 'Use memory knowledge to verify tag quality and strength',
-                            condition: (ctx) => ctx.fast_mode === true
-                        },
-                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 2'
-                    ]
-                },
-                {
-                    id: 'create_replacements',
-                    title: 'Create Complete text_replacements Array',
-                    condition: () => true,
-                    substeps: [
-                        'Reference: See "TEXT REPLACEMENT SYSTEM REFERENCE" section for complete rules',
-                        'Plan ALL replacements before responding',
-                        {
-                            text: '🎯 PRIORITY #1: Implement ALL directive requests in replacements',
-                            condition: () => directive
-                        },
-                        {
-                            text: 'Update existing replacements for changed context',
-                            condition: () => useIncrementalUpdate
-                        },
-                        {
-                            text: 'Adapt previous replacements to new context',
-                            condition: () => adapttionMode
-                        },
-                        {
-                            text: 'Every action, change, or element from directive MUST have corresponding replacements',
-                            condition: () => directive
-                        },
-                        {
-                            text: 'Each replacement targets ORIGINAL text only',
-                            condition: () => !useIncrementalUpdate && !adapttionMode
-                        },
-                        'Include: prompt, uc, character_prompts arrays',
-                        'UC Strategy: UC the OPPOSITE - See "CONFLICT PREVENTION VIA UC" section',
-                        'Apply Three-Step Process for attribute changes (REPLACE + UC + negative emphasis)',
-                        'Replace AI text placeholders with contextual dialog (see placeholder check results)'
-                    ]
-                },
-                {
-                    id: 'apply_hierarchy',
-                    title: 'Apply Modification Hierarchy',
-                    condition: () => true,
-                    variants: [
-                        {
-                            condition: () => stageContext && stageContext.isBackgroundFocus,
-                            substeps: [
-                                'REMOVE: Character expressions, actions, facial details, focus indicators',
-                                'KEEP: Location, architecture, weather, lighting, environmental objects',
-                                'ADD: Scene depth, environmental storytelling, atmospheric effects'
-                            ]
-                        },
-                        {
-                            condition: () => stageContext && stageContext.isEnhance,
-                            substeps: [
-                                'Analyze entire image for refinement opportunities',
-                                'Fix inconsistencies and quality issues',
-                                'Polish and refine existing elements',
-                                'Enhance details across full composition'
-                            ]
-                        },
-                        {
-                            condition: () => true, // default
-                            substeps: [
-                                'Priority {counter:number:priority}: Conflict resolution - Pass {counter:number:conflict_resolution}',
-                                {
-                                    text: 'Priority {counter:number:priority}: Time & weather integration (REQUIRED)',
-                                    condition: () => time && weather
-                                },
-                                {
-                                    text: 'Priority {counter:number:priority}: Time integration (REQUIRED)',
-                                    condition: () => time && !weather
-                                },
-                                {
-                                    text: 'Priority {counter:number:priority}: Weather integration (REQUIRED)',
-                                    condition: () => !time && weather
-                                },
-                                {
-                                    text: 'Priority {counter:number:priority}: Atmospheric enhancement',
-                                    condition: () => !time && !weather
-                                },
-                                'Priority {counter:number:priority}: Conflict resolution - Pass {counter:number:conflict_resolution}',
-                                'Priority {counter:number:priority}: Character integration - See "Character-Centric Weather Integration Workflow" section in system message',
-                                'Priority {counter:number:priority}: Atmospheric refinement',
-                                {
-                                    text: 'Priority {counter:number:priority}: Creative flourishes',
-                                    condition: () => creative
-                                },
-                                {
-                                    text: 'NSFW Mode: See "NSFW Character Enhancement Guidelines" section if content is sexual/fetish-oriented',
-                                    condition: () => creative
-                                },
-                                'Priority {counter:number:priority}: Final conflict resolution - Pass {counter:number:conflict_resolution}',
-                            ]
-                        }
-                    ]
-                },
-                {
-                    id: 'verify_independence',
-                    title: 'Verify Replacement Independence',
-                    condition: () => true,
-                    substeps: [
-                        'No overlapping segment_index values',
-                        'No replacement chains (modifying own additions)',
-                        'No duplicate segment_index in array',
-                        'Each segment_index is UNIQUE in prompt',
-                        'All replacements work in any order',
-                        'Check Pre-Submission Validation Checklist'
-                    ]
-                },
-                {
-                    id: 'generate_dialogs',
-                    title: 'Generate Dialogs (3-10 required)',
-                    condition: () => !stageContext || !stageContext.isBackgroundFocus,
-                    substeps: [
-                        'Analyze: Physical → Emotional → Situational',
-                        'Create 3-10 speech and thought dialogs',
-                        'Position spatially (top: 5-95%, left: 5-95%, alignment)',
-                        'Reference: See "CHARACTER DIALOG GENERATION" section for deep immersive examples',
-                        'Make contextually appropriate, vary intensity, distribute across canvas'
-                    ]
-                },
-                {
-                    id: 'character_naming',
-                    title: 'Character Naming (replace generic identifiers)',
-                    condition: () => creative,
-                    substeps: [
-                        'Scan character prompts for generic patterns: "Character #1", "Character #2", "Character 1", "Character 2", etc.',
-                        'Replace with contextually appropriate names matching scene/setting',
-                        'Consider cultural context, time period, and character traits',
-                        'Provide as array in character_names field (order must match character_prompts array)',
-                        'System will automatically apply names to character prompt objects',
-                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 3'
-                    ]
-                },
-                {
-                    id: 'generated_image_name',
-                    title: 'Generated Image Name (create descriptive name)',
-                    condition: () => true, // Always enabled, but creative mode makes it more poetic
-                    substeps: [
-                        '**THIS IS MANDATORY - DO NOT SKIP THIS STEP**',
-                        'Create descriptive name capturing essence of scene (3-100 characters)',
-                        'Use natural readable format with proper capitalization',
-                        'Include: main subject, setting, mood, and significant elements',
-                        'Make it memorable, poetic, and evocative',
-                        'Consider time/weather if prominent scene elements',
-                        {
-                            text: 'Creative mode: Be more poetic and descriptive',
-                            condition: () => creative
-                        },
-                        {
-                            text: 'Standard mode: Be clear and informative',
-                            condition: () => !creative
-                        },
-                        'Provide in generated_image_name field in your response',
-                        '**Validation will fail if this field is missing**',
-                        'Reference: See "CREATIVE MODE SPECIFIC TASKS" section - Task 4 for examples'
-                    ]
-                },
-                {
-                    id: 'create_memories',
-                    title: 'Create Insight Memories (if valuable research done)',
-                    condition: () => true,
-                    substeps: [
-                        'Document reusable research findings',
-                        'Add select phrases for future triggering',
-                        'Include description of how to use the research',
-                        'Focus on prompt-related concepts (not context data)'
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'validate',
-            title: 'VALIDATE',
-            icon: '✅',
-            condition: () => true,
-            steps: [
-                {
-                    id: 'call_validate',
-                    title: 'Call validateTextReplacement',
-                    condition: () => true,
-                    substeps: [
-                        'Provide textReplacements, dialogs, insight_memory (optional: new knowledge to save globally)',
-                        'Choose mode: Testing (terminateOnPass: false) OR Auto-Complete (terminateOnPass: true)',
-                        {
-                            text: 'Include verifyTokenCount: true for token optimization validation',
-                            condition: () => optimize && optimize.tokenCount
-                        },
-                        'Include reason explaining what you did',
-                        {
-                            text: 'TWO-STAGE MODE: Call analyzeTokenCount first to verify efficiency. If optimal AND validation passes: use terminateOnPass: true to complete',
-                            condition: (ctx) => ctx.optimize && ctx.optimize.tokenCount && ctx.optimize.twoStage && !ctx.fast_mode
-                        },
-                        {
-                            text: 'SINGLE-STAGE MODE: Include verifyTokenCount: true in validateTextReplacement call',
-                            condition: () => optimize && optimize.tokenCount && !optimize.twoStage
-                        },
-                        {
-                            text: 'Reference: See "TOKEN OPTIMIZATION MODE ACTIVE" section in system message',
-                            condition: () => optimize && optimize.tokenCount
-                        },
-                    ]
-                },
-                {
-                    id: 'fix_failures',
-                    title: 'Fix Validation Failures (if any)',
-                    condition: () => true,
-                    substeps: [
-                        'Review `failureDetails.detailedMessage` for specific issues',
-                        'Check `failureDetails.failuresByType` to see failure categories',
-                        'For each failure in `failureDetails.failures`: examine index, select_text, and issues',
-                        'Apply the recommended fix for each failure type (see VALIDATION FAILURE HANDLING section)',
-                        'Recreate replacements array from scratch (do not try to "patch" existing)',
-                        'Call validateTextReplacement again with corrected replacements',
-                        'Repeat until validation passes - failures cannot be ignored'
-                    ]
-                },
-                {
-                    id: 'choose_completion',
-                    title: 'Choose Completion Method',
-                    condition: () => true,
-                    substeps: [
-                        'If terminateOnPass: true AND validation passed → Done!',
-                        'Otherwise → Proceed to next step'
-                    ]
-                }
-            ]
-        },
-        {
-            id: 'output',
-            title: 'OUTPUT',
-            icon: '📤',
-            condition: () => true,
-            steps: [
-                {
-                    id: 'auto_complete',
-                    title: 'Auto-Complete via terminateOnPass (Quick Method)',
-                    condition: () => true,
-                    substeps: [
-                        'If validation passed with terminateOnPass: true',
-                        'System automatically completes using your data',
-                        'No structured output needed'
-                    ]
-                },
-                {
-                    id: 'generated_image_name_output',
-                    title: 'Generate Image Name (generated_image_name)',
-                    condition: () => true,
-                    substeps: [
-                        'Create descriptive name capturing essence of scene (3-100 characters)',
-                        'Use natural readable format with proper capitalization',
-                        'Include: main subject, setting, mood, and significant elements',
-                        'Make it memorable, poetic, and evocative',
-                        'Consider time/weather if prominent scene elements',
-                        {
-                            text: 'Creative mode: Be more poetic and descriptive',
-                            condition: () => context.creative
-                        },
-                        {
-                            text: 'Standard mode: Be clear and informative',
-                            condition: () => !context.creative
-                        },
-                        'Provide in generated_image_name field in your response',
-                        '**Validation will fail if this field is missing**'
-                    ]
-                },
-                {
-                    id: 'manual_complete',
-                    title: 'Manual Complete via completeTooling + JSON (Full Method)',
-                    condition: () => true,
-                    substeps: [
-                        'Call completeTooling({ reason: "explanation" })',
-                        'Provide structured JSON response with required fields',
-                        'Include: text_replacements, dialogs',
-                        'Include generated_image_name (descriptive name)',
-                        'Include: character_names (if placeholder names detected)',
-                        'Optional: insight_memory (new knowledge to save globally - name, category, entities, relations, observations)',
-                        'Include: modified_prompt, modified_negative, modified_character_prompts',
-                        'Include: reasoning (HTML summary)'
-                    ]
-                },
-                {
-                    id: 'report_issues',
-                    title: 'Report Errors/Warnings (if applicable)',
-                    condition: () => true,
-                    substeps: [
-                        'Include "errors" array in response JSON for serious directive execution failures',
-                        'Include "warnings" array in response JSON for non-critical issues or potential problems',
-                        'These are saved to compiled_prompt and sent to client for user feedback',
-                        'Reference: See "ERROR & WARNING REPORTING" section for guidelines and examples',
-                        'Examples: directive parsing failures, missing variables, counter limits, RANDOM seed unavailable'
-                    ]
-                }
-            ]
-        }
-    ];
-
-    // Compile and flatten the task list with counter system
-    return compileTaskList(taskDefinition, context);
-}
-
+} 
 
 /**
  * Auto-save insight_memory entries to global knowledge database
@@ -9429,7 +9512,7 @@ function autoSaveInsightMemories(insightMemories, phase = '') {
             }
         }
         
-        logger.detailed(`🧠 ${phaseLabel}Memory save: ${savedCount} saved, ${skippedCount} skipped`);
+        globalResources.getLogger().detailed(`🧠 ${phaseLabel}Memory save: ${savedCount} saved, ${skippedCount} skipped`);
     } catch (error) {
         console.error(`❌ Error processing ${phase ? phase + ' ' : ''}insight memories:`, error);
         // Continue even if saving fails - don't block generation
@@ -9598,39 +9681,22 @@ async function initializeSystemMessageConversation(params) {
         handler = null,
         requestId = 'init',
         backgroundFocus = false,
-        stageContext = null
+        stageContext = null,
+        attemptId = null
     } = params;
 
-    // Generate system message hash (what affects system message structure)
-    const systemMessageHash = generateSystemMessageHash(
-        dynamicConfig,
-        datasetConfig,
-        context,
-        {
-            backgroundFocus,
-            pipelineAware: dynamicConfig.optimize?.pipelineAware || false,
-            toolPasses: dynamicConfig?.fast_mode ? 4 : (dynamicConfig.tool_passes || 8),
-            dialogsCount: dynamicConfig.dialogs_count || 6,
-            availableMemories: [] // Will be loaded below
-        }
-    );
-
-    // Check cache first
-    const cachedResponseId = getCachedSystemMessageResponseId(systemMessageHash);
-
-    if (cachedResponseId) {
-        console.log(`✅ Using cached system message response ID: ${cachedResponseId}`);
-        return cachedResponseId;
+    if (!attemptId) {
+        throw new Error('initializeSystemMessageConversation requires an attemptId from the caller');
     }
 
     // No valid cache - need to initialize new conversation
-    console.log('🆕 Initializing new system message conversation...');
+    console.log('🆕 Generating system message...');
 
-    // Generate system message
-    const systemMessageResult = generateDynamicGenerationSystemMessage_Modular(
+    // Generate system message first    
+    const systemMessageResult = await generateDynamicGenerationSystemMessage_Modular(
         context,
         backgroundFocus,
-        dynamicConfig.optimize?.pipelineAware || false,
+        dynamicConfig?.pipelineAware,
         stageContext,
         dynamicConfig.directive,
         dynamicConfig,
@@ -9641,6 +9707,29 @@ async function initializeSystemMessageConversation(params) {
     );
 
     const systemMessage = systemMessageResult.systemMessage;
+    
+    // Extract system message text and hash it
+    const systemMessageText = systemMessage && systemMessage[0] && systemMessage[0].text 
+        ? systemMessage[0].text 
+        : '';
+    
+    if (!systemMessageText) {
+        throw new Error('Failed to generate system message text');
+    }
+
+    // Generate hash from the generated system message text
+    const systemMessageHash = generateSystemMessageHashFromText(systemMessageText);
+
+    // Check cache using the generated system message hash
+    const cachedResponseId = getCachedSystemMessageResponseId(systemMessageHash);
+
+    if (cachedResponseId) {
+        console.log(`✅ Using cached system message response ID: ${cachedResponseId}`);
+        return cachedResponseId;
+    }
+
+    // No valid cache - need to initialize new conversation
+    console.log('🆕 Initializing new system message conversation...');
 
     // // Generate task list for initial message
     // const taskListContext = {
@@ -9691,7 +9780,6 @@ async function initializeSystemMessageConversation(params) {
 
     // Create start tool with quiz
     const startTool = createStartToolDefinition();
-    const { callDirectorAIWithStructuredOutput } = require('./aiServices/grokService');
 
     const maxRetries = 3;
     let attempt = 0;
@@ -9716,26 +9804,10 @@ async function initializeSystemMessageConversation(params) {
             '',
             '- **See the "CORE TASK OVERVIEW" section in the system message for your high-level workflow.**',
             '',
-            // Available Memories in ready check message
-            ...(availableMemories && availableMemories.length > 0 ? [
-                '## 📚 Available Knowledge Memories',
-                '',
-                `**Total available: ${availableMemories.length} memories**`,
-                '',
-                '**Memory names** (use `retrieveKnowledgeMemory` or `searchKnowledgeMemories` to access):',
-                '',
-                ...availableMemories.slice(0, 100).map(mem => `- ${mem.name || 'unnamed'}`),
-                ...(availableMemories.length > 100 ? [`- ... and ${availableMemories.length - 100} more`] : []),
-                '',
-                '**Usage**: See "KNOWLEDGE MEMORIES" section in system message for guidelines.',
-                '',
-            ] : []),
-            '',
             '## Instructions',
             '',
             '1. **Review the system message** - Read all sections carefully',
             '2. **Review the task list** - Understand your workflow',
-            '3. **Review available memories** - Check what knowledge is available',
             '4. **Call the `start` tool** - Answer the quiz questions correctly to verify understanding',
             '',
             '**⚠️ IMPORTANT**: You must answer ALL quiz questions correctly. If any answer is wrong, you will need to review and try again.',
@@ -9751,6 +9823,20 @@ async function initializeSystemMessageConversation(params) {
 
         console.log(`🤖 Sending initialization request with quiz (attempt ${attempt}/${maxRetries})...`);
 
+        // Use caller-provided attemptId (append retry suffix for subsequent attempts)
+        const initAttemptId = attempt === 1 ? attemptId : `${attemptId}-retry${attempt}`;
+
+        // Store minimal build options so tools/mailboxes can hydrate context if needed
+        const initBuildOptions = {
+            _requestId: `${requestId}_init_${attempt}`,
+            _attemptId: initAttemptId
+        };
+        globalResources.getDataPlumbing().set(`${initAttemptId}:buildOptions`, initBuildOptions, {
+            temporary: true,
+            category: 'build_options',
+            tags: ['workflow', 'init']
+        });
+
         // Always send fresh request with full system message (no previous_response_id on retries)
         const aiOptions = {
             model: 'grok-4-fast-reasoning',
@@ -9762,13 +9848,13 @@ async function initializeSystemMessageConversation(params) {
             requestId: `${requestId}_init_attempt${attempt}`,
             tools: [startTool], // Only the start tool with quiz
             toolLoops: 2,
-            enableOptimize: false
-            // NOTE: No previous_response_id - each attempt is a fresh request
+            enableOptimize: false,
+            _attemptId: initAttemptId
         };
 
         let initResponse;
         try {
-            initResponse = await callDirectorAIWithStructuredOutput(
+            initResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
                 [
                     ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
                     { role: 'user', content: [initialUserMessage] }
@@ -9835,16 +9921,18 @@ async function initializeSystemMessageConversation(params) {
 // Generalized dynamic generation processing function - extracts core AI logic from WebSocket handler
 const tracing = require('./tracing');
 
-async function processDynamicGenerationCore(dynamicConfig, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
+async function processDynamicGenerationCore(dynamicConfig, context = null, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
     // Declare apiCalls at function scope so it's accessible in catch block
     let apiCalls = [];
+    // Declare allPhase1AttemptIds at function scope so it's accessible in catch block for cleanup
+    const allPhase1AttemptIds = [];
     
     try {
         // Summarized console output
-        logger.normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
+        globalResources.getLogger().normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
         
         // Detailed file logging
-        logger.logGeneration('DYNAMIC_GENERATION_START', {
+        globalResources.getLogger().logGeneration('DYNAMIC_GENERATION_START', {
             requestId,
             backgroundFocus,
             hasDirective: !!dynamicConfig.directive,
@@ -9867,32 +9955,15 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         let skipSystemMessage = false;
         let useIncrementalUpdate = false;
         let changeInfo = null;
+        let initialAttemptId = `attempt-${requestId}-0-${Date.now()}`;
 
         // Generate random seed for directive random operations
         const randomSeed = Math.floor(Math.random() * 100);
         const generationChainNumber = (dynamicConfig.compiled_prompt?.generation_chain || 0) + 1;
 
-        // Extract client IP for context resolution (needed before initialization)
-        const clientInfo = wsServer?.clients?.get(ws);
-        const clientIP = clientInfo?.clientIP || null;
-
-        // Compile context once at the beginning - will be reused for initialization and later processing
-        // Handle context locking logic upfront to avoid duplicate compilation
-        let context;
-        if (!!dynamicConfig.context_locked && dynamicConfig.compiled_prompt?.context) {
-            console.log('🔒 Context locked: Reusing existing context from compiled prompt');
-            context = dynamicConfig.compiled_prompt.context;
-        } else if (!!dynamicConfig.locked && dynamicConfig.compiled_prompt?.context) {
-            // Pipeline stage inheritance - reuse context from previous stage
-            console.log('🔒 Pipeline locked mode: Reusing context from previous stage');
-            context = dynamicConfig.compiled_prompt.context;
-        } else {
-            // Normal context compilation
-            if (!!dynamicConfig.context_locked && !dynamicConfig.compiled_prompt?.context) {
-                console.log('⚠️ Context locked but no valid context found - compiling new context');
-            }
-            console.log(`🔍 Compiling new context - locked: ${!!dynamicConfig.locked}, context_locked: ${!!dynamicConfig.context_locked}, has compiled_prompt: ${!!dynamicConfig.compiled_prompt}, has context: ${!!dynamicConfig.compiled_prompt?.context}`);
-            context = await compileContext(dynamicConfig, clientIP);
+        // Context must be provided by caller (imageGeneration.js)
+        if (!context) {
+            throw new Error('precompiledContext is required - context compilation should be handled by caller');
         }
 
         // Initialize system message conversation if we don't have a cached response ID from compiled_prompt
@@ -9916,7 +9987,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     handler,
                     requestId,
                     backgroundFocus,
-                    stageContext
+                    stageContext,
+                    attemptId: initialAttemptId
                 });
 
                 if (systemMessageResponseId) {
@@ -9931,7 +10003,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         }
 
         // Check if chain_updates is enabled (default to false if not provided by client)
-        const chainUpdatesEnabled = dynamicConfig.chain_updates === true || dynamicConfig.chain_updates === undefined;
+        const chainUpdatesEnabled = dynamicConfig.chain_updates === true;
         if (chainUpdatesEnabled && dynamicConfig.compiled_prompt?.previousResponseId) {
             // Preserve initial response ID from cached config
             cachedInitialResponseId = dynamicConfig.compiled_prompt.initialResponseId || null;
@@ -10040,15 +10112,13 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // Extract optimize options (handle both boolean and object formats)
         let optimizeEnabled = false;
         let tokenCountEnabled = true; // Default to true
-        let pipelineAware = false; // Default to false
-        let initialPromptAware = false; // Default to false
+        const pipelineAware = dynamicConfig.pipelineAware !== undefined ? !!dynamicConfig.pipelineAware : false;
+        const initialPromptAware = dynamicConfig.initialPromptAware !== undefined ? !!dynamicConfig.initialPromptAware : false;
         let twoStageEnabled = false; // Default to false
         
         if (typeof optimize === 'object' && optimize !== null) {
             optimizeEnabled = optimize.enabled || false;
             tokenCountEnabled = optimize.tokenCount !== undefined ? optimize.tokenCount : true;
-            pipelineAware = optimize.pipelineAware || false;
-            initialPromptAware = optimize.initialPromptAware || false;
             twoStageEnabled = optimize.twoStage || false;
         } else {
             optimizeEnabled = !!optimize;
@@ -10168,21 +10238,19 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // Send carousel update with resolved context data after compileContext
         if (ws && handler) {
             const carouselData = formatContextForCarousel(context);
-
-            handler.sendToClient(ws, {
+            sendProgressUpdate(requestId, {
                 type: 'dynamic_context_resolved',
-                data: carouselData,
-                timestamp: new Date().toISOString()
-            });
+                data: carouselData
+            }, ws);
         }
 
         // Detailed logging of gathered data
         // Summarized console output
         const seasonDisplay = context.season?.name || 'N/A';
-        logger.normal('📊 Context compiled:', context.location ? `${context.location.city}, ${seasonDisplay}, ${normalizePeriodKey(context.timePeriod?.periodKey || 'N/A')}` : 'Location unavailable');
+        globalResources.getLogger().normal('📊 Context compiled:', context.location ? `${context.location.city}, ${seasonDisplay}, ${normalizePeriodKey(context.timePeriod?.periodKey || 'N/A')}` : 'Location unavailable');
         
         // Detailed file logging
-        logger.logGeneration('GATHERED_CONTEXT_DATA', {
+        globalResources.getLogger().logGeneration('GATHERED_CONTEXT_DATA', {
             time: context.time,
             timePeriod: context.timePeriod,
             weather: context.weather,
@@ -10196,7 +10264,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         }, requestId);
         
         // Verbose console output
-        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
             console.log('  📅 Time Data     :', context.time || 'No time data');
             console.log('  ⏰ Time Period   :', context.timePeriod || 'No time period data');
             console.log('  🌤️ Weather Data  :', context.weather || 'No weather data');
@@ -10219,7 +10287,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // ALWAYS call this to get userContentSections (even if we skip system message)
         let messageResult;
         try {
-            messageResult = generateDynamicGenerationSystemMessage_Modular(
+            messageResult = await generateDynamicGenerationSystemMessage_Modular(
                 context,
                 backgroundFocus,
                 pipelineAware,
@@ -10241,12 +10309,14 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             
             userContentSections = messageResult.userContentSections;
             directiveContentSections = messageResult.directiveContentSections;
+            topRelevantMemories = messageResult.topRelevantMemories || [];
         } catch (error) {
-            console.error('❌ Weather data validation failed:', error.message);
+            console.error('❌ System message generation failed:', error.message);
+            console.error('Stack trace:', error.stack);
             // Return error structure instead of crashing
             return {
                 success: false,
-                error: `Weather data validation failed: ${error.message}`,
+                error: `System message generation failed: ${error.message}`,
                 processed: false
             };
         }
@@ -10288,7 +10358,6 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         ].filter(Boolean).join(',') || 'standard';
 
         // Get topRelevantMemories for user message (already loaded during system message generation)
-        let topRelevantMemories = [];
         try {
             const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
             const availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
@@ -10310,6 +10379,9 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             console.error('Error loading top relevant memories for user message:', error);
         }
 
+        // Determine initial workflow step (will be updated in retry loop based on tool results)
+        let initialWorkflowStep = 'analysis'; // Always start with analysis
+        
         const userMessage = {
             type: "input_text",
             text: [
@@ -10325,7 +10397,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     if (dynamicConfig.creative) {
                         return [
                             '**Creativity Mode**: ON – you may add tasteful enhancements only after all required directive, weather, time, season, and holiday changes are correctly applied.',
-                            '**Rule**: Even in creative mode, obey text replacement safety rules: use only `segment_index` values from the segment lists shown after each prompt, and never guess or invent indices.',
+                            '**Rule**: Even in creative mode, obey text replacements safety rules: use only `segment_index` values from the segment lists shown after each prompt, and never guess or invent indices.',
                             ''
                         ];
                     } else {
@@ -10359,8 +10431,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     ];
                 })(),
                 '',
-                // 3. Locked Replacements Data - moved from system message
-                ...(dynamicConfig.locked_replacements && dynamicConfig.locked_replacements.length > 0 ? [
+                // 3. Locked Replacements Data - only for planning and execution phases
+                ...(initialWorkflowStep !== 'analysis' && dynamicConfig.locked_replacements && dynamicConfig.locked_replacements.length > 0 ? [
                     '## 🔒 Locked Replacements',
                     '',
                     '**The following replacements are locked and must be maintained across generations:**',
@@ -10389,62 +10461,23 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     '**Rules**: See "LOCKED REPLACEMENTS SYSTEM" section in system message for how to maintain these.',
                     '',
                 ] : []),
-                '',
-                // 4. User Content Sections (time, weather, etc.)
-                ...(userContentSections ? userContentSections : []),
-                '',
-                ...(directiveContentSections ? directiveContentSections : []),
-                '',
                 tokenCountSection,
-                '',
-                ...(adapttionMode ? [
-                    '## Previous Prompts (for reference):',
-                    '',
-                    '**Previous Base Prompt:**',
-                    '```',
-                    compiled_prompt.prompt ? (typeof compiled_prompt.prompt === 'string' ? compiled_prompt.prompt : String(compiled_prompt.prompt)) : 'No previous base prompt',
-                    '```',
-                    '',
-                    '**Previous Negative Prompt:**',
-                    '```',
-                    compiled_prompt.uc ? (typeof compiled_prompt.uc === 'string' ? compiled_prompt.uc : String(compiled_prompt.uc)) : 'No previous negative prompt',
-                    '```',
-                    '',
-                    ...(compiled_prompt.character_prompts && Array.isArray(compiled_prompt.character_prompts) && compiled_prompt.character_prompts.length > 0 ? [
-                        '**Previous Character Prompts:**',
-                        ...compiled_prompt.character_prompts.map((char, idx) => {
-                            const charLines = [
-                                `Character ${idx + 1}:`,
-                                '```',
-                                typeof char === 'string' ? char : String(char),
-                                '```',
-                                ''
-                            ];
-                            return charLines.join('\n');
-                        }).join('').split('\n'),
-                    ] : []),
-                ] : []),
                 '',
                 // 8. Current Prompts
                 '## 📝 PROMPTS',
                 '',
-                '**⚠️ CRITICAL**: Use segment_index to target segments (0-based indices). For inner items in emphasis groups, use floats (e.g., 0.1 for segment 0, inner item 1).',
-                '',
                 '### Base Prompt',
-                '```',
-                prompt || 'No base prompt provided',
-                '```',
                 ...(prompt ? (() => {
                     const { parsePromptSegments } = require('./promptSegments');
                     const segments = parsePromptSegments(prompt);
                     if (segments.length === 0) return [];
                     return [
                         '',
-                        '**Base Prompt Segments (for segment_index):**',
+                        '**Base Prompt Segments:**',
                         ...segments.map((seg, idx) => {
                             const weightStr = seg.weight ? ` [${seg.weight}x]` : '';
                             const lines = [`${idx}:${weightStr} ${seg.text}`];
-                            if (seg.innerItems && seg.innerItems.length > 0) {
+                            if (seg.innerItems && seg.innerItems.length > 1) {
                                 seg.innerItems.forEach((inner, innerIdx) => {
                                     lines.push(`  ${idx}.${innerIdx}: ${inner}`);
                                 });
@@ -10456,7 +10489,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 })() : []),
                 ...(appliedPresetControls?.prompt?.length > 0 ? [
                     '',
-                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**',
+                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**', // TODO: Convert indications in the actual text tegments 
                     ...appliedPresetControls.prompt.map(c => {
                         if (c.action === 'dataset_prepend') return `- Dataset prepend: \`${c.text}\``;
                         if (c.action === 'dataset_preset_append') return `- Dataset preset: \`${c.text}\``;
@@ -10467,23 +10500,19 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     }).filter(Boolean),
                     '',
                 ] : []),
-                promptAnalysisTree?.basePrompt ? promptAnalysisTree.basePrompt : '',
                 '',
                 '### Negative Prompt',
-                '```',
-                uc || 'No negative prompt provided',
-                '```',
                 ...(uc ? (() => {
                     const { parsePromptSegments } = require('./promptSegments');
                     const segments = parsePromptSegments(uc);
                     if (segments.length === 0) return [];
                     return [
                         '',
-                        '**Negative Prompt Segments (for segment_index):**',
+                        '**Negative Prompt Segments:**',
                         ...segments.map((seg, idx) => {
                             const weightStr = seg.weight ? ` [${seg.weight}x]` : '';
                             const lines = [`${idx}:${weightStr} ${seg.text}`];
-                            if (seg.innerItems && seg.innerItems.length > 0) {
+                            if (seg.innerItems && seg.innerItems.length > 1) {
                                 seg.innerItems.forEach((inner, innerIdx) => {
                                     lines.push(`  ${idx}.${innerIdx}: ${inner}`);
                                 });
@@ -10495,7 +10524,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 })() : []),
                 ...(appliedPresetControls?.uc?.length > 0 ? [
                     '',
-                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**',
+                    '**🔒 PRESET CONTROLLED (Do NOT select unless you must override):**', // TODO: Convert indications in the actual text tegments 
                     ...appliedPresetControls.uc.map(c => {
                         if (c.action === 'uc_preset') return `- UC preset: \`${c.text}\``;
                         if (c.action === 'vibe_text_injection') return `- Vibe transfer: \`${c.text}\``;
@@ -10504,7 +10533,6 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     }).filter(Boolean),
                     '',
                 ] : []),
-                promptAnalysisTree?.baseUC ? promptAnalysisTree.baseUC : '',
                 '',
                 // Character prompts
                 ...(characterPrompts && characterPrompts.length > 0 ? [
@@ -10516,15 +10544,12 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         const charUcSegs = char.uc ? parsePromptSegments(char.uc) : [];
                         
                         const lines = [
-                            `**Character ${i + 1}${char.name ? ` (${char.name})` : ''}**`,
-                            'Prompt:',
-                            '```',
-                            char.prompt || 'No prompt',
-                            '```'
+                            `#### Character ${i + 1}${char.name ? ` (${char.name})` : ''}`,
+                            ''
                         ];
                         
+                        lines.push('**Prompt:**');
                         if (charPromptSegs.length > 0) {
-                            lines.push('', `**Character ${i + 1} Prompt Segments (for segment_index):**`);
                             charPromptSegs.forEach((seg, idx) => {
                                 const weightStr = seg.weight ? ` [${seg.weight}x]` : '';
                                 lines.push(`${idx}:${weightStr} ${seg.text}`);
@@ -10535,14 +10560,14 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                 }
                             });
                         }
+                        else {
+                            lines.push('No Prompt');
+                        }
                         
-                        lines.push('', 'UC:');
-                        lines.push('```');
-                        lines.push(char.uc || 'No UC');
-                        lines.push('```');
+                        lines.push('');
+                        lines.push('**UC:**');
                         
                         if (charUcSegs.length > 0) {
-                            lines.push('', `**Character ${i + 1} UC Segments (for segment_index):**`);
                             charUcSegs.forEach((seg, idx) => {
                                 const weightStr = seg.weight ? ` [${seg.weight}x]` : '';
                                 lines.push(`${idx}:${weightStr} ${seg.text}`);
@@ -10552,13 +10577,15 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                                     });
                                 }
                             });
+                        } else {
+                            lines.push('No UC');
                         }
                         
                         lines.push('');
                         return lines.join('\n');
                     }),
                 ] : [])
-            ].filter(Boolean).join('\n')
+            ].join('\n')
         };
 
         // Build messages array
@@ -10689,7 +10716,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 // Check if we have the new hash-based format or old base64 format
                 if (compiled_prompt.preview_image_hash) {
                     // Load preview from file system using hash
-                    const dynGenPreviewDir = path.join(cacheDir, 'dynGenPreview');
+                    const dynGenPreviewDir = path.join(globalResources.getPath("cache"), 'dynGenPreview');
                     const previewFilePath = path.join(dynGenPreviewDir, `${compiled_prompt.preview_image_hash}.png`);
                     
                     if (fs.existsSync(previewFilePath)) {
@@ -10740,60 +10767,6 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             }
         }
         
-        // Add vocabulary file to user content if optimization is enabled
-        // Skip if using cached response ID (vocabulary already sent in initial request)
-        // if (optimizeEnabled && !skipSystemMessage) {
-        //     try {
-        //         // Check if collection is available (preferred method)
-        //         const hasCollection = secureConfig.grok?.tokenizerCollectionId;
-                
-        //         if (hasCollection) {
-        //             // Collection will be accessed via enableOptimize flag
-        //             logger.detailed(`📚 Tokenizer collection available for optimization`);
-        //         } else {
-        //             // Fallback: Load and filter vocabulary locally
-        //             const vocabPath = path.join(__dirname, '../securePrompts/t5-vocabulary.json');
-        //             if (fs.existsSync(vocabPath)) {
-        //                 const vocabData = JSON.parse(fs.readFileSync(vocabPath, 'utf8'));
-                        
-        //                 // Filter to only high-strength tokens (≥7.0) to reduce token usage
-        //                 const highStrengthTokens = vocabData.vocabulary
-        //                     .filter(token => !token.isSpecial && token.strength >= 7.0)
-        //                     .sort((a, b) => b.strength - a.strength)
-        //                     .slice(0, 1000); // Top 5000 strongest tokens
-                        
-        //                 const filteredVocab = {
-        //                     metadata: vocabData.metadata,
-        //                     note: `Filtered to top 5000 strongest tokens (strength ≥ 7.0) from ${vocabData.vocabulary.length} total`,
-        //                     highStrengthTokens: highStrengthTokens.map(t => ({
-        //                         text: t.text,
-        //                         strength: t.strength,
-        //                         id: t.id
-        //                     }))
-        //                 };
-                        
-        //                 const vocabContent = JSON.stringify(filteredVocab, null, 2);
-                        
-        //                 // Add vocabulary as text content - Responses API format
-        //                 userContent.push({
-        //                     type: 'input_text',
-        //                     text: `\`\`\`json\n${vocabContent}\n\`\`\``
-        //                 });
-                        
-        //                 console.log(`📚 Added filtered vocabulary to user message (top ${highStrengthTokens.length} strongest tokens)`);
-        //             } else {
-        //                 console.warn(`⚠️ Vocabulary file not found at ${vocabPath}, skipping vocabulary addition`);
-        //             }
-        //         }
-        //     } catch (error) {
-        //         console.error('❌ Error adding vocabulary to user message:', error.message);
-        //         // Continue without vocabulary - optimization will still work if collection is available
-        //     }
-        // } else if (optimizeEnabled && skipSystemMessage) {
-        //     console.log(`📚 Skipping vocabulary (already sent in previous request via previous_response_id)`);
-        // }
-        
-        // Format messages for Responses API
         let messages = [];
         
         if (systemMessage && !skipSystemMessage) {
@@ -10821,7 +10794,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             // Format context data properly for carousel display
             const carouselData = formatContextForCarousel(context);
             
-            handler.sendToClient(ws, {
+            sendProgressUpdate(requestId, {
                 type: 'dynamic_generation_progress_update',
                 phase: 'context',
                 data: {
@@ -10836,18 +10809,16 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     holiday: context.season?.holiday || null,
                     location: context.location,
                     carousel: carouselData
-                },
-                timestamp: new Date().toISOString()
-            });
+                }
+            }, ws);
 
             // Then send thinking phase
             setTimeout(() => {
                 if (ws && handler) {
-                    handler.sendToClient(ws, {
+                    sendProgressUpdate(requestId, {
                         type: 'dynamic_generation_progress_update',
-                        phase: 'thinking',
-                        timestamp: new Date().toISOString()
-                    });
+                        phase: 'thinking'
+                    }, ws);
                 }
             }, 100);
         }
@@ -10857,19 +10828,20 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         let modifiedData = null;
         let lastError = null;
         let previousResponseId = null; // Track response ID for stateful conversation
-        let phase1TotalUsage = null; // Track cumulative usage across all Phase 1 attempts
         let initialResponseId = cachedInitialResponseId; // Track initial response ID (for the first full request)
         let isInitialRequest = (cachedResponseId === null); // Determine if this is an initial full request
         let chainRejected = false; // Track if chain was rejected
         let finalCharacterPrompts = characterPrompts; // Declare outside loop to be accessible at return statement
+        let publishedAnalysis = null; // Store analysis from publishAnalysisResults tool
+        let replacementPlan = null; // Store plan from planTextReplacements tool
+        let lastAttemptId = null; // Track last attemptId for retrieving apiCalls from mailstack
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             if (attempt === 0) {
-                logger.normal(`🤖 Calling AI for dynamic generation`);
+                globalResources.getLogger().normal(`🤖 Calling AI for dynamic generation`);
             } else {
-                logger.normal(`🤖 Retry attempt ${attempt + 1}/${maxAttempts}`);
+                globalResources.getLogger().normal(`🤖 Retry attempt ${attempt + 1}/${maxAttempts}`);
             }
-            logger.logGeneration('AI_CALL_ATTEMPT', { attempt: attempt + 1, maxAttempts }, requestId);
 
             // Send retry progress update if this is a retry attempt
             if (attempt > 0 && ws && handler) {
@@ -10879,17 +10851,62 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     data: {
                         attempt: attempt + 1,
                         maxAttempts: maxAttempts,
-                        reason: 'Text replacements failed validation - retrying with corrections'
+                        reason: 'Tanei failed validation (Tanei → Tendai Hydration failed) - Retrying with corrections'
                     },
                     timestamp: new Date().toISOString()
                 });
             }
 
             // Call AI service with structured output
-            const dynamicSchema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts);
+            const dialogsCount = dynamicConfig.dialogs_count;
+            const dynamicSchema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts, dialogsCount);
             
             // Build tools dynamically with characterPrompts context for dynamic required fields
-            const toolsForThisRequest = getAllToolDefinitions();
+            // Determine workflow step based on what we've extracted from previous attempts
+            // Default to 'analysis' - only allow 'execution' if we have ALL required data
+            let workflowStep = 'analysis'; // Default - require analysis first
+            if (publishedAnalysis && replacementPlan) {
+                // Only allow execution if we have BOTH publishedAnalysis AND replacementPlan
+                workflowStep = 'execution';
+            } else if (publishedAnalysis) {
+                // Have analysis but no plan yet - stay in planning
+                workflowStep = 'planning';
+            } else {
+                // No analysis yet - must do analysis first
+                workflowStep = 'analysis';
+            }
+            const toolsForThisRequest = globalResources.getGrokService().getAllToolDefinitions(dynamicConfig, workflowStep);
+            
+            // Generate attempt UUID for Kaze system
+            const attemptId = attempt === 0
+                ? initialAttemptId
+                : `attempt-${requestId}-${attempt}-${Date.now()}`;
+            if (attempt === 0) {
+                initialAttemptId = null;
+            }
+            lastAttemptId = attemptId; // Track for retrieving apiCalls later
+            allPhase1AttemptIds.push(attemptId); // Track for cleanup
+            
+            // Store single buildOptions object using .set() (for tool handlers to fetch)
+            const buildOptionsData = {
+                contextData: context,
+                directive: dynamicConfig.directive || null,
+                locked_replacements: dynamicConfig.locked_replacements || [],
+                userContentSections: userContentSections,
+                directiveContentSections: directiveContentSections,
+                topRelevantMemories: topRelevantMemories || [],
+                basePrompt: prompt,
+                negativePrompt: uc,
+                characterPrompts: characterPrompts || [],
+                dynamicConfig: dynamicConfig,
+                _requestId: requestId,
+                _attemptId: attemptId
+            };
+            globalResources.getDataPlumbing().set(`${attemptId}:buildOptions`, buildOptionsData, {
+                temporary: true,
+                category: 'build_options',
+                tags: ['workflow']
+            });
             
             // Prepare AI options with temperature from dynamic config
             const aiOptions = {
@@ -10905,13 +10922,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 requestId: requestId,
                 enableOptimize: optimizeEnabled,  // Enable token optimization if optimize flag is set
                 temperature: dynamicConfig.ai_temperature !== undefined ? dynamicConfig.ai_temperature : (dynamicConfig.creative ? 0.95 : 0.1),
-                buildOptions: { 
-                    ...dynamicConfig,
-                    basePrompt: prompt,
-                    negativePrompt: uc,
-                    characterPrompts: characterPrompts,
-                    _requestId: requestId // Pass requestId for logging
-                },
+                _attemptId: attemptId, // Pass attemptId for tool handlers to fetch from Kaze mailboxes
                 tools: fastModeEnabled ? filterToolsForFastMode(toolsForThisRequest) : toolsForThisRequest,
                 toolLoops: fastModeEnabled ? 4 : (dynamicConfig.tool_passes || 8),
             };
@@ -10924,15 +10935,15 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             if (cachedResponseId && attempt === 0) {
                 aiOptions.previous_response_id = cachedResponseId;
                 previousResponseId = cachedResponseId; // Initialize for potential retries
-                logger.verbose(`🔗 Using cached previous_response_id: ${cachedResponseId}`);
+                globalResources.getLogger().verbose(`🔗 Using cached previous_response_id: ${cachedResponseId}`);
             } else if (attempt > 0 && previousResponseId) {
                 aiOptions.previous_response_id = previousResponseId;
-                logger.verbose(`🔗 Using previous_response_id for retry: ${previousResponseId}`);
+                globalResources.getLogger().verbose(`🔗 Using previous_response_id for retry: ${previousResponseId}`);
                 // On retry with previous_response_id, ONLY send the new retry message, not entire history
                 messagesToSend = messages.slice(-1); // Only send the last message (retry request)
             }
             
-            const aiResponse = await callDirectorAIWithStructuredOutput(
+            const aiResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
                 messagesToSend,
                 aiOptions,
                 // Add streaming callback for reasoning updates
@@ -10955,127 +10966,102 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     }
                 }
             );
+            
+            // Retrieve data from Kaze mailboxes (sent back from callDirectorAIWithStructuredOutput)
+            const retrievedPublishedAnalysis = globalResources.getDataPlumbing().getMailbox(`${attemptId}:publishedAnalysis`, true);
+            const retrievedReplacementPlan = globalResources.getDataPlumbing().getMailbox(`${attemptId}:replacementPlan`, true);
+            const retrievedApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${attemptId}:apiCalls`, false) || [];
+            const retrievedResponseId = globalResources.getDataPlumbing().getMailbox(`${attemptId}:responseId`, true);
+
+            const selectLatestResponseId = (value) => {
+                if (!value) return null;
+                if (Array.isArray(value)) {
+                    for (let idx = value.length - 1; idx >= 0; idx--) {
+                        const candidate = value[idx];
+                        if (typeof candidate === 'string' && candidate.trim()) {
+                            return candidate.trim();
+                        }
+                    }
+                    return null;
+                }
+                return typeof value === 'string' && value.trim() ? value.trim() : null;
+            };
+            const retrievedChainRejected = globalResources.getDataPlumbing().getMailbox(`${attemptId}:chainRejected`, true);
+            
+            if (retrievedPublishedAnalysis) {
+                publishedAnalysis = retrievedPublishedAnalysis;
+            }
+            
+            if (retrievedReplacementPlan) {
+                replacementPlan = retrievedReplacementPlan;
+            }
+            
+            // Update workflow step for next attempt based on extracted data
+            // This ensures tools are filtered correctly on retry attempts
+            if (!publishedAnalysis) {
+                workflowStep = 'analysis';
+            } else if (!replacementPlan) {
+                workflowStep = 'planning';
+            } else {
+                workflowStep = 'execution';
+            }
 
             // Capture response ID for stateful conversation on retries
-            if (aiResponse.responseId) {
-                previousResponseId = aiResponse.responseId;
-                logger.verbose(`✅ Captured response ID: ${previousResponseId}`);
+            const responseIdToUse = selectLatestResponseId(retrievedResponseId) || selectLatestResponseId(aiResponse.responseId);
+            if (responseIdToUse) {
+                previousResponseId = responseIdToUse;
+                globalResources.getLogger().verbose(`✅ Captured response ID: ${previousResponseId}`);
                 
                 // If this is an initial full request and we don't have an initial response ID yet, capture it
                 if (isInitialRequest && !initialResponseId && attempt === 0) {
-                    initialResponseId = aiResponse.responseId;
-                    logger.verbose(`🆕 Initial response ID: ${initialResponseId}`);
+                    initialResponseId = responseIdToUse;
+                    globalResources.getLogger().verbose(`🆕 Initial response ID: ${initialResponseId}`);
                 }
             }
 
             // Check if rejectChain was called - if so, flag for restart after loop
-            if (aiResponse.chainRejected === true) {
+            if (retrievedChainRejected === true || aiResponse.chainRejected === true) {
                 console.log(`🚫 AI rejected chain update - will restart with fresh state`);
                 chainRejected = true;
                 break;
             }
 
-            // Log and accumulate usage data from this AI call attempt (ALL calls, including failed ones)
-            // Note: Even failed calls cost money, so we track them all
-            // Handle simplified format (total, input, output, cache, reasoning) or old format (for backward compatibility)
-            if (aiResponse?.usage && requestId) {
-                const usageData = aiResponse.usage;
-                
-                // Check if already in simplified format (from grokService)
-                let totalTokens, promptTokens, completionTokens, cachedTokens, reasoningTokens;
-                if (usageData.total !== undefined) {
-                    // Simplified format
-                    totalTokens = usageData.total || 0;
-                    promptTokens = usageData.input || 0;
-                    completionTokens = usageData.output || 0;
-                    cachedTokens = usageData.cache || 0;
-                    reasoningTokens = usageData.reasoning || 0;
-                } else {
-                    // Old format - handle both naming conventions: input_tokens/output_tokens (actual API) or prompt_tokens/completion_tokens (docs)
-                    const promptDetails = usageData.prompt_tokens_details || usageData.input_tokens_details || null;
-                    const completionDetails = usageData.completion_tokens_details || usageData.output_tokens_details || null;
-                    
-                    totalTokens = usageData.total_tokens || 0;
-                    promptTokens = usageData.prompt_tokens || usageData.input_tokens || 0;
-                    completionTokens = usageData.completion_tokens || usageData.output_tokens || 0;
-                    cachedTokens = promptDetails?.cached_tokens || 0;
-                    reasoningTokens = completionDetails?.reasoning_tokens || 0;
-                }
-                
-                // Accumulate usage across all attempts (including failed ones)
-                if (!phase1TotalUsage) {
-                    phase1TotalUsage = {
-                        total: 0,
-                        input: 0,
-                        output: 0,
-                        cache: 0,
-                        reasoning: 0,
-                        attempts: []
-                    };
-                }
-                phase1TotalUsage.total += totalTokens;
-                phase1TotalUsage.input += promptTokens;
-                phase1TotalUsage.output += completionTokens;
-                phase1TotalUsage.cache += cachedTokens;
-                phase1TotalUsage.reasoning += reasoningTokens;
-                phase1TotalUsage.attempts.push({
-                    attempt: attempt + 1,
-                    usage: usageData
+            // Add API calls from mailbox to local array (for intermediate logging and success tracking)
+            // Note: Final allApiCalls will be built from mailboxes at the end, but we keep this for loop-level operations
+            if (retrievedApiCalls && Array.isArray(retrievedApiCalls) && retrievedApiCalls.length > 0) {
+                // Add each individual call with phase and attempt info
+                retrievedApiCalls.forEach(call => {
+                    apiCalls.push({
+                        phase: call.phase || 'phase1',
+                        attempt: attempt + 1,
+                        iteration: call.iteration,
+                        callType: call.callType || 'request',
+                        timestamp: call.timestamp || Date.now(),
+                        duration: call.duration || null,
+                        usage: call.usage,
+                        pricing_tier_128k: call.pricing_tier_128k,
+                        responseId: call.responseId || aiResponse.responseId || null,
+                        toolCalls: call.toolCalls || 0,
+                        tools: call.tools || [],
+                        hasResponseId: call.hasResponseId || false,
+                        success: null // Will be set after validation
+                    });
                 });
                 
-                // Add individual API calls from AI response (each iteration/tool call is tracked separately)
-                // If aiResponse has apiCalls array, use those individual calls, otherwise create a single aggregated entry
-                if (aiResponse.apiCalls && Array.isArray(aiResponse.apiCalls) && aiResponse.apiCalls.length > 0) {
-                    // Add each individual call with phase and attempt info
-                    aiResponse.apiCalls.forEach(call => {
-                        apiCalls.push({
-                            phase: 'phase1',
-                            attempt: attempt + 1,
-                            iteration: call.iteration,
-                            callType: call.callType || 'request', // 'request' or 'tool_call'
-                            timestamp: call.timestamp || Date.now(),
-                            duration: call.duration || null, // Duration in milliseconds
-                            usage: call.usage,
-                            pricing_tier_128k: call.pricing_tier_128k,
-                            responseId: call.responseId || aiResponse.responseId || null,
-                            toolCalls: call.toolCalls || 0,
-                            tools: call.tools || [], // Array of tool information (name, reason, parameters)
-                            hasResponseId: call.hasResponseId || false,
-                            success: null // Will be set after validation
-                        });
-                    });
-                } else {
-                    // Fallback: Create single aggregated entry if apiCalls not available
-                    const callEntry = {
-                        phase: 'phase1',
-                        callType: 'ai_call',
+                // Log usage for this attempt (calculated from apiCalls)
+                const lastCall = retrievedApiCalls[retrievedApiCalls.length - 1];
+                if (lastCall && lastCall.usage && requestId) {
+                    const usageData = lastCall.usage;
+                    globalResources.getLogger().logGeneration('AI_CALL_ATTEMPT_USAGE', {
                         attempt: attempt + 1,
-                        timestamp: Date.now(),
-                        usage: {
-                            total: totalTokens,
-                            input: promptTokens,
-                            output: completionTokens,
-                            cache: cachedTokens,
-                            reasoning: reasoningTokens
-                        },
-                        pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
-                        responseId: aiResponse.responseId || null,
-                        success: null // Will be set after validation
-                    };
-                    apiCalls.push(callEntry);
+                        total: usageData.total || 0,
+                        input: usageData.input || 0,
+                        output: usageData.output || 0,
+                        cache: usageData.cache || 0,
+                        reasoning: usageData.reasoning || 0,
+                        pricing_tier_128k: (usageData.total || 0) > 128000 ? 'OVER' : ((usageData.total || 0) > 100000 ? 'NEAR' : 'OK')
+                    }, requestId);
                 }
-                
-                logger.logGeneration('AI_CALL_ATTEMPT_USAGE', {
-                    attempt: attempt + 1,
-                    total: totalTokens,
-                    input: promptTokens,
-                    output: completionTokens,
-                    cache: cachedTokens,
-                    reasoning: reasoningTokens,
-                    cumulative_total: phase1TotalUsage.total,
-                    pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
-                    cumulative_pricing_tier_128k: phase1TotalUsage.total > 128000 ? 'OVER' : (phase1TotalUsage.total > 100000 ? 'NEAR' : 'OK')
-                }, requestId);
             }
             
             // Trace: record full AI response payload
@@ -11089,6 +11075,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                 }
             } catch {}
 
+            
             // The response is already validated and parsed by the structured output function
             let candidateData = aiResponse.content || aiResponse; // Handle both response formats
 
@@ -11104,9 +11091,9 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
 
             // 🚨 CRITICAL: Hydrate segment_index to select_text IMMEDIATELY after receiving AI response
             // This must happen BEFORE any validation or application
-            const { parsePromptSegments, extractSeparatorFormat } = require('./promptSegments');
+            const { parsePromptSegments, resolveSelectTextFromSegments } = require('./promptSegments');
             
-            const hydrateFromSegments = (replacements, segments, originalText) => {
+            const hydrateFromSegments = (replacements, segments, originalText, contextLabel) => {
                 if (!Array.isArray(replacements) || !Array.isArray(segments)) return;
                 replacements.forEach(rep => {
                     if (!rep) return;
@@ -11119,62 +11106,11 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         return;
                     }
                     
-                    const indexToText = (singleIdx) => {
-                        if (singleIdx === -1) return null;
-                        if (typeof singleIdx === 'number') {
-                            // Check if it's a float (has decimal part) for inner items
-                            if (singleIdx % 1 !== 0) {
-                                // Float like 0.1 - extract outer and inner indices
-                                const outer = Math.floor(singleIdx);
-                                const inner = Math.round((singleIdx - outer) * 10); // Extract decimal digit
-                                if (outer >= 0 && outer < segments.length) {
-                                    const innerItems = segments[outer].innerItems || [];
-                                    if (inner >= 0 && inner < innerItems.length) {
-                                        return innerItems[inner];
-                                    }
-                                }
-                            } else {
-                                // Integer - regular segment index
-                                if (singleIdx >= 0 && singleIdx < segments.length) {
-                                    return segments[singleIdx].text;
-                                }
-                            }
-                        }
-                        return null;
-                    };
+                    if (Array.isArray(idx) && idx.length === 0) return;
                     
-                    if (Array.isArray(idx)) {
-                        const segmentTexts = idx.map(indexToText).filter(text => text !== null);
-                        if (segmentTexts.length > 0) {
-                            // ALWAYS set select_text as a string - join with separators matching original format
-                            // For each pair of segments, determine the separator between them
-                            const joinedParts = [];
-                            for (let i = 0; i < segmentTexts.length; i++) {
-                                if (i > 0) {
-                                    // Find the separator between this segment and the previous one in original text
-                                    const prevSegIdx = idx[i - 1];
-                                    const currSegIdx = idx[i];
-                                    if (typeof prevSegIdx === 'number' && typeof currSegIdx === 'number' &&
-                                        prevSegIdx >= 0 && prevSegIdx < segments.length &&
-                                        currSegIdx >= 0 && currSegIdx < segments.length &&
-                                        segments[prevSegIdx] && segments[prevSegIdx].text &&
-                                        segments[currSegIdx] && segments[currSegIdx].text) {
-                                        const sep = extractSeparatorFormat(originalText || '', segments[prevSegIdx].text, segments[currSegIdx].text);
-                                        joinedParts.push(sep);
-                                    } else {
-                                        joinedParts.push(', '); // Fallback
-                                    }
-                                }
-                                joinedParts.push(segmentTexts[i]);
-                            }
-                            rep.select_text = joinedParts.join('');
-                        }
-                    } else {
-                        const segmentText = indexToText(idx);
-                        if (segmentText) {
-                            // ALWAYS set select_text as a string
-                            rep.select_text = segmentText;
-                        }
+                    const selection = resolveSelectTextFromSegments(idx, segments, originalText, contextLabel);
+                    if (selection?.text) {
+                        rep.select_text = selection.text;
                     }
                 });
             };
@@ -11185,14 +11121,14 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             const baseSegments = parsePromptSegments(basePrompt);
             const ucSegments = parsePromptSegments(negativePrompt);
 
-            // Hydrate ALL replacements immediately with error handling
+            // Hydrate ALL Tsubo's (Tanei → Tendai) immediately with error handling
             try {
                 if (candidateData.text_replacements?.prompt) {
-                    hydrateFromSegments(candidateData.text_replacements.prompt, baseSegments, basePrompt);
+                    hydrateFromSegments(candidateData.text_replacements.prompt, baseSegments, basePrompt, 'prompt[phase1]');
                 }
 
                 if (candidateData.text_replacements?.uc) {
-                    hydrateFromSegments(candidateData.text_replacements.uc, ucSegments, negativePrompt);
+                    hydrateFromSegments(candidateData.text_replacements.uc, ucSegments, negativePrompt, 'uc[phase1]');
                 }
 
                 if (candidateData.text_replacements?.character_prompts && characterPrompts.length > 0) {
@@ -11204,10 +11140,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                             const charUcSegments = parsePromptSegments(charUc);
 
                             if (charReplacements.prompt) {
-                                hydrateFromSegments(charReplacements.prompt, charPromptSegments, charPrompt);
+                                hydrateFromSegments(charReplacements.prompt, charPromptSegments, charPrompt, `character_prompts[${index}].prompt[phase1]`);
                             }
                             if (charReplacements.uc) {
-                                hydrateFromSegments(charReplacements.uc, charUcSegments, charUc);
+                                hydrateFromSegments(charReplacements.uc, charUcSegments, charUc, `character_prompts[${index}].uc[phase1]`);
                             }
                         }
                     });
@@ -11282,8 +11218,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             
             // If all replacements are valid, check token limits
             if (allReplacementsValid) {
-                logger.normal('✅ Replacements validated');
-                logger.logGeneration('VALIDATION_SUCCESS', { replacementCount: candidateData.text_replacements ? 
+                globalResources.getLogger().normal('✅ Replacements validated');
+                globalResources.getLogger().logGeneration('VALIDATION_SUCCESS', { replacementCount: candidateData.text_replacements ? 
                     (candidateData.text_replacements.prompt?.length || 0) + (candidateData.text_replacements.uc?.length || 0) : 0 
                 }, requestId);
                 
@@ -11339,10 +11275,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         const finalTotalUCTokens = finalUCTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.uc, 0);
                         
                         // Summarized console output
-                        logger.normal(`📊 Tokens: ${finalTotalPromptTokens}/512 prompt (${Math.round((finalTotalPromptTokens / 512) * 100)}%) | ${finalTotalUCTokens}/512 UC (${Math.round((finalTotalUCTokens / 512) * 100)}%)`);
+                        globalResources.getLogger().normal(`📊 Tokens: ${finalTotalPromptTokens}/512 prompt (${Math.round((finalTotalPromptTokens / 512) * 100)}%) | ${finalTotalUCTokens}/512 UC (${Math.round((finalTotalUCTokens / 512) * 100)}%)`);
                         
                         // Detailed file logging
-                        logger.logGeneration('FINAL_TOKEN_COUNTS', {
+                        globalResources.getLogger().logGeneration('FINAL_TOKEN_COUNTS', {
                             basePrompt: finalPromptTokens,
                             negativePrompt: finalUCTokens,
                             characterPrompts: finalCharacterTokenCounts,
@@ -11355,7 +11291,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                         }, requestId);
                         
                         // Verbose console output
-                        if (logger.shouldLog(logger.VERBOSITY_LEVELS.VERBOSE)) {
+                        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
                             console.log(`   Base Prompt: ${finalPromptTokens} tokens`);
                             console.log(`   Negative Prompt: ${finalUCTokens} tokens`);
                             if (finalCharacterPrompts.length > 0) {
@@ -11688,8 +11624,8 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             };
         }
 
-        logger.normal('✅ Dynamic generation Phase 1 completed');
-        logger.logGeneration('PHASE_1_COMPLETE', modifiedData, requestId);
+        globalResources.getLogger().normal('✅ Dynamic generation Phase 1 completed');
+        globalResources.getLogger().logGeneration('PHASE_1_COMPLETE', modifiedData, requestId);
 
 
         // Prepare Phase 1 results
@@ -11711,12 +11647,15 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             prompt_hash: currentPromptHash, // Include prompt hash for cache validation
             directive_hash: currentDirectiveHash, // Include directive hash for separate tracking
             timestamp: Date.now(), // Add timestamp for cache expiration checks
+            expiresAt: calculateDynamicExpiration(context, 15 * 60 * 1000), // Dynamic expiration based on time/weather changes
             generation_chain: generationChainNumber, // Current generation in chain
             errors: modifiedData.errors || [], // AI-registered errors
             warnings: modifiedData.warnings || [], // AI-registered warnings
             isOptimized: false,
             applied_preset_controls: appliedPresetControls, // Pass through preset controls for client use
-            apiCalls: apiCalls // Include Phase 1 API calls for usage tracking
+            apiCalls: apiCalls, // Include Phase 1 API calls for usage tracking
+            published_analysis: publishedAnalysis, // Save analysis from publishAnalysisResults tool
+            replacement_plan: replacementPlan // Save plan from planTextReplacements tool
         };
 
         // Check if Phase 2 (optimization) should run - only in 2-stage mode
@@ -11741,16 +11680,6 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     datasetConfig
                 );
                 
-                // Merge Phase 2 apiCalls with Phase 1 apiCalls and update finalResults
-                if (finalResults.apiCalls && Array.isArray(finalResults.apiCalls)) {
-                    apiCalls = apiCalls.concat(finalResults.apiCalls);
-                    // Update finalResults to include all API calls (both phase1 and phase2)
-                    finalResults.apiCalls = apiCalls;
-                } else {
-                    // If phase2 didn't return apiCalls, ensure finalResults has phase1 calls
-                    finalResults.apiCalls = apiCalls;
-                }
-
                 console.log('✅ Phase 2 optimization completed successfully');
             } catch (phase2Error) {
                 console.error('❌ Phase 2 optimization failed, using Phase 1 results:', phase2Error.message);
@@ -11782,18 +11711,36 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             } else {
                 console.log('⚡ Optimization disabled, skipping Phase 2');
             }
-            // Ensure finalResults has apiCalls when Phase 2 doesn't run
-            if (!finalResults.apiCalls) {
-                finalResults.apiCalls = apiCalls;
-            }
         }
 
-        // Accumulate usage data from all phases
-        // Use finalResults.apiCalls which should contain both phase1 and phase2 calls
-        const allApiCalls = finalResults.apiCalls && Array.isArray(finalResults.apiCalls) ? finalResults.apiCalls : [];
+        // Build allCalls from mailboxes (phase1 and phase2)
+        // Get all apiCalls from phase1 mailbox (includes all attempts - they cost money)
+        // Letters are sorted by index when retrieved
+        let allApiCalls = [];
+        if (lastAttemptId) {
+            // Open phase1 mailbox and get all letters (sorted by index)
+            const phase1ApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${lastAttemptId}:apiCalls`, false) || [];
+            allApiCalls = [...phase1ApiCalls];
+        }
         
+        // For phase2, merge all phase2 mailboxes
+        // Each phase2 attempt has its own mailbox, merge them all
+        if (finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
+            finalResults.phase2AttemptIds.forEach(phase2AttemptId => {
+                // Open phase2 mailbox and get all letters (sorted by index)
+                const phase2ApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${phase2AttemptId}:apiCalls`, false) || [];
+                allApiCalls = [...allApiCalls, ...phase2ApiCalls];
+            });
+        }
+        if (finalResults.published_analysis) {
+            publishedAnalysis = finalResults.published_analysis;
+        }
+        if (finalResults.replacement_plan) {
+            replacementPlan = finalResults.replacement_plan;
+        }
+
         // Debug: Log apiCalls state
-        logger.detailed(`💾 Accumulating usage data: allApiCalls.length=${allApiCalls.length}, phase1=${allApiCalls.filter(c => c.phase === 'phase1').length}, phase2=${allApiCalls.filter(c => c.phase === 'phase2').length}`);
+        globalResources.getLogger().detailed(`💾 Accumulating usage data: allApiCalls.length=${allApiCalls.length}, phase1=${allApiCalls.filter(c => c.phase === 'phase1').length}, phase2=${allApiCalls.filter(c => c.phase === 'phase2').length}`);
         
         let totalUsageData = null;
         
@@ -11815,7 +11762,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
                     totalUsageData.cache += call.usage.cache || 0;
                     totalUsageData.reasoning += call.usage.reasoning || 0;
                 } else {
-                    logger.detailed(`⚠️ Phase 1 call missing usage data: ${JSON.stringify(call)}`);
+                    globalResources.getLogger().detailed(`⚠️ Phase 1 call missing usage data: ${JSON.stringify(call)}`);
                 }
             });
         }
@@ -11835,9 +11782,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         finalResults.totalUsage = totalUsageData || null;
         
         // Debug: Log what we calculated
-        logger.detailed(`💾 Calculated totalUsage: ${totalUsageData ? JSON.stringify(totalUsageData) : 'null'}`);
+        globalResources.getLogger().detailed(`💾 Calculated totalUsage: ${totalUsageData ? JSON.stringify(totalUsageData) : 'null'}`);
         
         // Structure usage data with phase1 and phase2 objects
+        // Retrieve usage data from mailboxes instead of calculating from allApiCalls
         const structuredUsage = {
             phase1: {
                 total: null,
@@ -11849,42 +11797,36 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             }
         };
         
-        // Group apiCalls by phase and calculate phase totals
-        // Use finalResults.apiCalls which should contain both phase1 and phase2 calls
+        // Retrieve Phase 1 usage from mailbox
+        if (lastAttemptId) {
+            const phase1UsageData = globalResources.getDataPlumbing().getMailbox(`${lastAttemptId}:usageData`, false);
+            if (phase1UsageData) {
+                // Usage data from mailbox should already be in the correct format
+                structuredUsage.phase1.total = phase1UsageData;
+            }
+        }
+        
+        // Retrieve Phase 2 usage from mailboxes (each attempt has its own mailbox)
+        if (finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
+            // Get the last phase2 usage (most recent attempt)
+            const lastPhase2AttemptId = finalResults.phase2AttemptIds[finalResults.phase2AttemptIds.length - 1];
+            const phase2UsageData = globalResources.getDataPlumbing().getMailbox(`${lastPhase2AttemptId}:usageData`, false);
+            if (phase2UsageData) {
+                structuredUsage.phase2.total = phase2UsageData;
+            }
+        }
+        
+        // Group apiCalls by phase for the calls arrays (still needed for detailed tracking)
         const phase1Calls = allApiCalls.filter(call => call.phase === 'phase1');
         const phase2Calls = allApiCalls.filter(call => call.phase === 'phase2');
+        structuredUsage.phase1.calls = phase1Calls;
+        structuredUsage.phase2.calls = phase2Calls;
         
-        // Calculate Phase 1 total based on the last call's usage for that phase
-        if (phase1Calls.length > 0) {
-            const lastPhase1WithUsage = [...phase1Calls].reverse().find(call => call && call.usage);
-            structuredUsage.phase1.total = lastPhase1WithUsage ? {
-                total: lastPhase1WithUsage.usage.total || 0,
-                input: lastPhase1WithUsage.usage.input || 0,
-                output: lastPhase1WithUsage.usage.output || 0,
-                cache: lastPhase1WithUsage.usage.cache || 0,
-                reasoning: lastPhase1WithUsage.usage.reasoning || 0
-            } : null;
-            structuredUsage.phase1.calls = phase1Calls;
-        }
-        
-        // Calculate Phase 2 total based on the last call's usage for that phase
-        if (phase2Calls.length > 0) {
-            const lastPhase2WithUsage = [...phase2Calls].reverse().find(call => call && call.usage);
-            structuredUsage.phase2.total = lastPhase2WithUsage ? {
-                total: lastPhase2WithUsage.usage.total || 0,
-                input: lastPhase2WithUsage.usage.input || 0,
-                output: lastPhase2WithUsage.usage.output || 0,
-                cache: lastPhase2WithUsage.usage.cache || 0,
-                reasoning: lastPhase2WithUsage.usage.reasoning || 0
-            } : null;
-            structuredUsage.phase2.calls = phase2Calls;
-        }
-        
-        // Only include phases that have data
-        if (structuredUsage.phase1.total === null && structuredUsage.phase1.calls.length === 0) {
+        // Only include phases that have data (either usage from mailbox or apiCalls)
+        if (!structuredUsage.phase1.total && structuredUsage.phase1.calls.length === 0) {
             delete structuredUsage.phase1;
         }
-        if (structuredUsage.phase2.total === null && structuredUsage.phase2.calls.length === 0) {
+        if (!structuredUsage.phase2.total && structuredUsage.phase2.calls.length === 0) {
             delete structuredUsage.phase2;
         }
         
@@ -11892,7 +11834,7 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // If both phases are empty, set usage to null
         if (Object.keys(structuredUsage).length === 0 || (!structuredUsage.phase1 && !structuredUsage.phase2)) {
             finalResults.usage = null;
-            logger.detailed(`⚠️ No structured usage data - both phases empty or no data`);
+            globalResources.getLogger().detailed(`⚠️ No structured usage data - both phases empty or no data`);
         } else {
             finalResults.usage = structuredUsage;
         }
@@ -11901,10 +11843,10 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
         // Log total usage to detailed generation log
         if (totalUsageData && requestId) {
             const totalTokens = totalUsageData.total || 0;
-            logger.logGeneration('DYNAMIC_GENERATION_TOTAL_USAGE', {
-                phase1Usage: phase1Results.phase1Usage || null,
-                phase1TotalUsage: phase1Results.phase1TotalUsage || null, // Cumulative usage from all Phase 1 attempts
-                phase2Usage: finalResults.phase2Usage || null,
+            globalResources.getLogger().logGeneration('DYNAMIC_GENERATION_TOTAL_USAGE', {
+                phase1Usage: structuredUsage.phase1?.total || null,
+                phase1TotalUsage: structuredUsage.phase1?.total || null, // Retrieved from mailbox
+                phase2Usage: structuredUsage.phase2?.total || null,
                 totalUsage: totalUsageData,
                 total: totalTokens,
                 input: totalUsageData.input || 0,
@@ -11930,12 +11872,79 @@ async function processDynamicGenerationCore(dynamicConfig, prompt, uc, character
             });
         }
 
+        // Cleanup all mailboxes and letters after retrieving all data
+        // Collect all attemptIds that were used (phase1 and phase2, including failed attempts)
+        const allAttemptIds = [...allPhase1AttemptIds]; // Include all phase1 attempts (even failed ones)
+        if (finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
+            allAttemptIds.push(...finalResults.phase2AttemptIds);
+        }
+        
+        // Cleanup all mailboxes and data for each attempt
+        for (const attemptId of allAttemptIds) {
+            // Remove apiCalls mailbox
+            if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
+                globalResources.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
+            }
+            
+            // Remove usageData mailbox
+            if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
+                globalResources.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
+            }
+            
+            // Remove other tool result mailboxes (should be empty if removeAfterRead: true, but clean up anyway)
+            const mailboxTypes = ['publishedAnalysis', 'replacementPlan', 'responseId', 'chainRejected'];
+            for (const mailboxType of mailboxTypes) {
+                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
+                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
+                }
+            }
+            
+            // Remove buildOptions data
+            if (globalResources.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
+                globalResources.getDataPlumbing().remove(`${attemptId}:buildOptions`);
+            }
+        }
+        
+        globalResources.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${allAttemptIds.length} attempt(s)`);
+
         // Return processed results (same structure as WebSocket response)
         // Note: text replacement application is now handled in buildOptions
         return finalResults;
 
     } catch (error) {
         console.error('❌ Dynamic generation core error:', error);
+        
+        // Cleanup mailboxes and data in error case (clean up what we've tracked so far)
+        try {
+            const errorAttemptIds = [...allPhase1AttemptIds];
+            // Note: finalResults might not be defined if error occurred early, which is fine
+            if (typeof finalResults !== 'undefined' && finalResults && finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
+                errorAttemptIds.push(...finalResults.phase2AttemptIds);
+            }
+            
+            for (const attemptId of errorAttemptIds) {
+                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
+                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
+                }
+                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
+                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
+                }
+                const mailboxTypes = ['publishedAnalysis', 'replacementPlan', 'responseId', 'chainRejected'];
+                for (const mailboxType of mailboxTypes) {
+                    if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
+                        globalResources.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
+                    }
+                }
+                if (globalResources.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
+                    globalResources.getDataPlumbing().remove(`${attemptId}:buildOptions`);
+                }
+            }
+            if (errorAttemptIds.length > 0) {
+                globalResources.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${errorAttemptIds.length} attempt(s) (error case)`);
+            }
+        } catch (cleanupError) {
+            console.warn('⚠️ Error during cleanup in error handler:', cleanupError);
+        }
         
         // Check if this is a JSON parsing error that should trigger chain restart
         const isParsingError = error.message && error.message.includes('JSON parsing failed for structured response');
@@ -12018,8 +12027,9 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
     let previousResponseId = phase1Results.previousResponseId;
     const generationChainNumber = (dynamicConfig.compiled_prompt?.generation_chain || 0) + 1;
     
-    // Track Phase 2 API calls separately
-    let phase2ApiCalls = [];
+    // Track Phase 2 attemptIds for retrieving apiCalls from mailstack
+    const phase2AttemptIds = [];
+    let apiCallIndex = 0; // Track index for mailstack ordering (resets per attempt)
     
     // Track previous attempt's data for retry messages
     let previousPhase2Data = null;
@@ -12182,36 +12192,64 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                 ]).join('\n')
             };
 
+            // Generate attemptId for Phase 2
+            const phase2AttemptId = `phase2-${requestId}-${attempt}-${Date.now()}`;
+            phase2AttemptIds.push(phase2AttemptId);
+            
+            // Create mailbox for phase 2 apiCalls (will accumulate all calls)
+            const phase2ApiCallsMailboxId = `${phase2AttemptId}:apiCalls`;
+            globalResources.getDataPlumbing().createMailbox(phase2ApiCallsMailboxId, {
+                removeAfterRead: false, // Keep all attempts - they cost money
+                category: 'tool_results',
+                tags: ['api_calls', 'phase2']
+            });
+            
+            // Store buildOptions using Kaze .set() (for tool handlers to fetch)
+            const buildOptionsData = {
+                contextData: context,
+                directive: dynamicConfig.directive || null,
+                locked_replacements: dynamicConfig.locked_replacements || [],
+                basePrompt: prompt,
+                negativePrompt: uc,
+                characterPrompts: characterPrompts || [],
+                dynamicConfig: dynamicConfig,
+                _requestId: requestId,
+                _attemptId: phase2AttemptId,
+                phase: 'phase2'
+            };
+            globalResources.getDataPlumbing().set(`${phase2AttemptId}:buildOptions`, buildOptionsData, {
+                temporary: true,
+                category: 'build_options',
+                tags: ['workflow', 'phase2']
+            });
+            
+            const toolsList = globalResources.getGrokService().getAllToolDefinitions(dynamicConfig);
+            const dialogsCount = dynamicConfig.dialogs_count;
+            const schema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts, dialogsCount);
             // Prepare AI options for Phase 2
             const aiOptions = {
                 model: 'grok-4-fast-reasoning',
                 timeout: 30000,
                 liveSearch: true,
                 store: true,
-                responseSchema: createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts),
+                responseSchema: schema,
                 extractKeys: ['*.reason', '*.reason_display'],
-                totalKeys: getZodSchemaKeyCount(createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts)),
+                totalKeys: getZodSchemaKeyCount(schema),
                 ws: ws,
                 handler: handler,
                 requestId: `${requestId}_phase2_attempt${attempt + 1}`,
                 enableOptimize: true,
                 previous_response_id: previousResponseId, // Continue conversation
                 temperature: dynamicConfig.ai_temperature !== undefined ? dynamicConfig.ai_temperature : (dynamicConfig.creative ? 0.95 : 0.1),
-                tools: (dynamicConfig?.fast_mode === true) ? filterToolsForFastMode(getAllToolDefinitions()) : getAllToolDefinitions(),
-                toolLoops: (dynamicConfig?.fast_mode === true) ? 4 : (dynamicConfig.tool_passes || 12),
-                buildOptions: { 
-                    ...dynamicConfig,
-                    // Inject original prompts for tool access (validateTextReplacement)
-                    basePrompt: prompt,
-                    negativePrompt: uc,
-                    characterPrompts: characterPrompts
-                }
+                _attemptId: phase2AttemptId, // Pass attemptId for tool handlers to fetch from Kaze mailboxes
+                tools: (dynamicConfig?.fast_mode === true) ? filterToolsForFastMode(toolsList) : toolsList,
+                toolLoops: (dynamicConfig?.fast_mode === true) ? 4 : (dynamicConfig.tool_passes || 12)
             };
 
             // Call AI for Phase 2
             console.log(`🤖 Calling AI for Phase 2 optimization (attempt ${attempt + 1}, continuation of ${previousResponseId})...`);
 
-            const aiResponse = await callDirectorAIWithStructuredOutput(
+            const aiResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
                 [{ role: 'user', content: [phase2Message] }], // Only send the Phase 2 message
                 aiOptions,
                 // Streaming callback
@@ -12236,85 +12274,6 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             const phase2ResponseId = aiResponse.responseId;
             console.log(`✅ Phase 2 attempt ${attempt + 1} completed with response ID: ${phase2ResponseId}`);
             
-            // Log Phase 2 usage data and add to apiCalls array (ALL calls, including failed ones)
-            // Note: Even failed calls cost money, so we track them all
-            // Handle simplified format (total, input, output, cache, reasoning) or old format (for backward compatibility)
-            if (aiResponse?.usage && requestId) {
-                const usageData = aiResponse.usage;
-                
-                // Check if already in simplified format (from grokService)
-                let totalTokens, promptTokens, completionTokens, cachedTokens, reasoningTokens;
-                if (usageData.total !== undefined) {
-                    // Simplified format
-                    totalTokens = usageData.total || 0;
-                    promptTokens = usageData.input || 0;
-                    completionTokens = usageData.output || 0;
-                    cachedTokens = usageData.cache || 0;
-                    reasoningTokens = usageData.reasoning || 0;
-                } else {
-                    // Old format - handle both naming conventions: input_tokens/output_tokens (actual API) or prompt_tokens/completion_tokens (docs)
-                    const promptDetails = usageData.prompt_tokens_details || usageData.input_tokens_details || null;
-                    const completionDetails = usageData.completion_tokens_details || usageData.output_tokens_details || null;
-                    
-                    totalTokens = usageData.total_tokens || 0;
-                    promptTokens = usageData.prompt_tokens || usageData.input_tokens || 0;
-                    completionTokens = usageData.completion_tokens || usageData.output_tokens || 0;
-                    cachedTokens = promptDetails?.cached_tokens || 0;
-                    reasoningTokens = completionDetails?.reasoning_tokens || 0;
-                }
-                
-                // Add individual API calls from AI response (each iteration/tool call is tracked separately)
-                // If aiResponse has apiCalls array, use those individual calls, otherwise create a single aggregated entry
-                if (aiResponse.apiCalls && Array.isArray(aiResponse.apiCalls) && aiResponse.apiCalls.length > 0) {
-                    // Add each individual call with phase and attempt info
-                    aiResponse.apiCalls.forEach(call => {
-                        phase2ApiCalls.push({
-                            phase: 'phase2',
-                            attempt: attempt + 1,
-                            iteration: call.iteration,
-                            callType: call.callType || 'request', // 'request' or 'tool_call'
-                            timestamp: call.timestamp || Date.now(),
-                            duration: call.duration || null, // Duration in milliseconds
-                            usage: call.usage,
-                            pricing_tier_128k: call.pricing_tier_128k,
-                            responseId: call.responseId || aiResponse.responseId || null,
-                            toolCalls: call.toolCalls || 0,
-                            tools: call.tools || [], // Array of tool information (name, reason, parameters)
-                            hasResponseId: call.hasResponseId || false,
-                            success: null // Will be set after validation
-                        });
-                    });
-                } else {
-                    // Fallback: Create single aggregated entry if apiCalls not available
-                    const callEntry = {
-                        phase: 'phase2',
-                        callType: 'ai_call',
-                        attempt: attempt + 1,
-                        timestamp: Date.now(),
-                        usage: {
-                            total: totalTokens,
-                            input: promptTokens,
-                            output: completionTokens,
-                            cache: cachedTokens,
-                            reasoning: reasoningTokens
-                        },
-                        pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK'),
-                        responseId: aiResponse.responseId || null,
-                        success: null // Will be set after validation
-                    };
-                    phase2ApiCalls.push(callEntry);
-                }
-                
-                logger.logGeneration('PHASE_2_ATTEMPT_USAGE', {
-                    attempt: attempt + 1,
-                    total: totalTokens,
-                    input: promptTokens,
-                    output: completionTokens,
-                    cache: cachedTokens,
-                    reasoning: reasoningTokens,
-                    pricing_tier_128k: totalTokens > 128000 ? 'OVER' : (totalTokens > 100000 ? 'NEAR' : 'OK')
-                }, requestId);
-            }
 
             // Extract phase2Data from AI response
             const phase2Data = aiResponse.content || aiResponse; // Handle both response formats
@@ -12332,7 +12291,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                     phase2Reason: phase2Data.reason || 'No updates needed',
                     isOptimized: true, // Still considered optimized since Phase 2 confirmed Phase 1 is good
                     phase2Usage: aiResponse?.usage || null, // Include Phase 2 usage data
-                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array
+                    phase2AttemptIds: phase2AttemptIds // Store attemptIds for retrieving apiCalls from mailstack
                 };
             }
 
@@ -12378,14 +12337,6 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             const allValid = validationResults.prompt.success &&
                            validationResults.uc.success &&
                            validationResults.characterPrompts.every(c => c.prompt.success && c.uc.success);
-
-            // Update success status of the last Phase 2 API call based on validation
-            if (phase2ApiCalls.length > 0) {
-                const lastCall = phase2ApiCalls[phase2ApiCalls.length - 1];
-                if (lastCall.phase === 'phase2' && lastCall.attempt === attempt + 1) {
-                    lastCall.success = allValid;
-                }
-            }
 
             // Save data for next iteration's retry message (if validation failed)
             if (!allValid) {
@@ -12479,7 +12430,10 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                     warnings: phase2Data.warnings || phase1Results.warnings || [], // Use Phase 2 warnings if available, otherwise keep Phase 1
                     isOptimized: true,
                     phase2Usage: aiResponse?.usage || null, // Include Phase 2 usage data
-                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array
+                    phase2AttemptIds: phase2AttemptIds,
+                    published_analysis: phase1Results.published_analysis || null, // Preserve analysis from Phase 1
+                    totalUsage: phase1Results.totalUsage || null, // Preserve total usage from Phase 1 (will be recalculated in core)
+                    usage: phase1Results.usage || null // Preserve structured usage from Phase 1 (will be recalculated in core)
                 };
             } else {
                 // Validation failed - retry if we have attempts left
@@ -12507,7 +12461,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                         phase2Error: 'Validation failed after retries',
                         phase2ValidationResults: validationResults,
                         isOptimized: false,
-                        apiCalls: phase2ApiCalls // Include Phase 2 API calls array (even on failure)
+                        phase2AttemptIds: phase2AttemptIds
                     };
                 }
             }
@@ -12526,7 +12480,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                     ...phase1Results,
                     phase2Error: attemptError.message,
                     isOptimized: false,
-                    apiCalls: phase2ApiCalls // Include Phase 2 API calls array (even on failure)
+                    phase2AttemptIds: phase2AttemptIds
                 };
             }
         }
@@ -12627,5 +12581,6 @@ module.exports = {
     resolveDynamicContext,
     compileContext,
     formatContextForCarousel,
-    createCounterManager
+    createCounterManager,
+    calculateDynamicExpiration
 };

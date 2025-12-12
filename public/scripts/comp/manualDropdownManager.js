@@ -503,7 +503,7 @@ function updateSamplerDisplay() {
             `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,
             s.badge ? `<span class="custom-dropdown-badge small-viewport ${s.badge_class || ''}">${s.badge}</span>` : '',
             s.full_badge ? `<span class="custom-dropdown-badge full-viewport ${s.badge_class || ''}">${s.full_badge}</span>` : '',
-            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge noise-scheduler-badge">${noiseShort}</span>` : ''
+            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge full-viewport noise-scheduler-badge">${noiseShort}</span><span class="custom-dropdown-badge small-viewport noise-scheduler-badge">${noiseShort.slice(0, 1)}</span>` : ''
         ].filter(Boolean).join(' ');
     } else {
         manualSamplerSelected.innerHTML = 'Select sampler...';

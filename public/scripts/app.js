@@ -5,7 +5,7 @@
 
 // PRESET MANAGEMENT SYSTEM - Move to presetManagement.js or integrate with existing presetManager.js
 // This system handles preset loading, saving, validation, and management
-// Includes functions: loadPresetIntoForm, updatePresetLoadSaveState, validatePresetWithTimeout,
+// Includes functions: updatePresetLoadSaveState, validatePresetWithTimeout,
 // isValidPresetName, updateManualPresetToggleBtn, processResolutionValue, sanitizeCustomDimensions,
 // Preset dropdown functionality moved to spellbook modal
 // Note: Some preset functions may already exist in presetManager.js - check for duplicates
@@ -18,6 +18,14 @@ let previewRatio = 1;
 
 // T5 Tokenizer global instance
 let t5Tokenizer = null;
+
+const apiKeyModalState = {
+    services: [],
+    originalSelections: {},
+    pendingSelections: {},
+    dom: new Map(),
+    isLoading: false
+};
 // Function to calculate and set previewRatio based on container dimensions
 
 /**
@@ -330,37 +338,6 @@ if (typeof u1 !== 'undefined') {
 // sizeManualPreviewContainer, correctDimensions, calculatePriceUnified, etc.
 
 // Data structures moved to utilities.js
-// TODO: Remove this comment once all references are updated
-
-
-// Load preset into manual form
-/**
- * Loads a preset configuration and applies it to the manual generation form
- *
- * Shows a progress toast while generating the image, then updates all form
- * fields with the preset values. Handles cleanup of progress indicators.
- *
- * @param {string} presetName - The name of the preset to load
- * @returns {Promise<Object>} The generation result containing filename and seed
- * @throws {Error} If preset loading or generation fails
- */
-async function loadPresetIntoForm(presetName) {
-    try {
-        // Use WebSocket for preset loading
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        const presetData = await window.wsClient.loadPreset(presetName);
-        await loadIntoManualForm(presetData);
-        
-        // Update prompt status icons after loading preset
-        updatePromptStatusIcons();
-    } catch (error) {
-        console.error('Load preset error:', error);
-        showError(`Failed to load preset "${presetName}": ${error.message}`);
-    }
-}
 
 // Function to generate image from a preset
 async function generateFromPreset(presetName) {
@@ -661,9 +638,10 @@ function updateManualPresetPlaceholder() {
         manualPresetPlaceholder.classList.remove('show');
         manualPresetPlaceholderText.textContent = '';
     }
+    updateManualModalTitlebar(presetName);
 }
 
-// Dynamic Generation Functions
+// Rentan Functions
 function updateDynamicGenerationToggleBtn() {
     const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
     const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn']
@@ -685,7 +663,7 @@ function updateDynamicGenerationToggleBtn() {
     dynamicGenerationToggleBtn.setAttribute('data-state', state);
 }
 
-// Dynamic Generation Carousel
+// Rentan Carousel
 let carouselData = [];
 let carouselCurrentIndex = 0;
 let carouselInterval = null;
@@ -776,9 +754,9 @@ function formatCarouselItems(data) {
         const legacyMappings = {
             'earlymorning': 'morning',
             'early_morning': 'morning',
-            'earlyevening': 'night',
-            'early_evening': 'night',
-            'evening': 'night',
+            'earlyevening': 'evening', // Keep as evening, not night
+            'early_evening': 'evening',
+            // 'evening' is now a valid period name (used for cloudy afternoon golden hour), don't map to 'night'
             'lateevening': 'night',
             'late_evening': 'night'
         };
@@ -806,7 +784,8 @@ function formatCarouselItems(data) {
             return 'predawn';
         } else {
             // Try to extract the main word (morning, afternoon, evening, night, etc.)
-            const mainWords = ['dawn', 'sunrise', 'morning', 'noon', 'daytime', 'afternoon', 'sunset', 'dusk', 'twilight', 'night', 'midnight'];
+            // Note: 'evening' is now a valid period name (used for cloudy afternoon golden hour)
+            const mainWords = ['dawn', 'sunrise', 'morning', 'noon', 'daytime', 'afternoon', 'evening', 'sunset', 'dusk', 'twilight', 'night', 'midnight'];
             for (const word of mainWords) {
                 if (period.includes(word)) {
                     return word;
@@ -915,6 +894,7 @@ function formatCarouselItems(data) {
                     'late_afternoon': 'Late Afternoon',
                     'goldenhour': 'Golden Hour',
                     'golden_hour': 'Golden Hour',
+                    'evening': 'Evening',
                     'sunset': 'Sunset',
                     'dusk': 'Dusk',
                     'twilight': 'Twilight',
@@ -1008,41 +988,56 @@ function formatCarouselItems(data) {
         const tempData = formatTemperature(data.weather.feelsLike);
         const weatherText = `${tempData.number}<span class="weather-unit">${tempData.unit}</span> <span class="weather-condition">${data.weather.condition}</span>`;
 
-        // Use the same weather icon mapping as the overlay
-        let weatherIcon = 'wi wi-day-sunny'; // default
+        // Determine if it's night based on timePeriod data
+        const isNight = data.timePeriod?.isDaytime === false;
+        const timePrefix = isNight ? 'night-alt' : 'day';
+
+        let weatherIcon = isNight ? 'wi wi-night-clear' : 'wi wi-day-sunny'; // default
 
         if (data.weather.condition) {
-            const iconMap = {
-                'clear sky': 'wi wi-day-sunny',
-                'mainly clear': 'wi wi-day-sunny-overcast',
-                'partly cloudy': 'wi wi-day-cloudy',
+            const conditionLower = data.weather.condition.toLowerCase();
+            
+            // Icons that don't change between day/night
+            const timeNeutralIcons = {
                 'overcast': 'wi wi-cloudy',
                 'fog': 'wi wi-fog',
                 'depositing rime fog': 'wi wi-fog',
-                'light drizzle': 'wi wi-day-showers',
-                'moderate drizzle': 'wi wi-day-showers',
-                'dense drizzle': 'wi wi-day-showers',
-                'light freezing drizzle': 'wi wi-day-snow',
-                'dense freezing drizzle': 'wi wi-day-snow',
-                'slight rain': 'wi wi-day-rain',
-                'moderate rain': 'wi wi-day-rain',
-                'heavy rain': 'wi wi-day-rain',
-                'light freezing rain': 'wi wi-day-snow',
-                'heavy freezing rain': 'wi wi-day-snow',
-                'slight snow fall': 'wi wi-day-snow',
                 'moderate snow fall': 'wi wi-snow',
                 'heavy snow fall': 'wi wi-snow',
                 'snow grains': 'wi wi-snow',
-                'slight rain showers': 'wi wi-day-showers',
-                'moderate rain showers': 'wi wi-day-rain',
-                'violent rain showers': 'wi wi-day-storm-showers',
-                'slight snow showers': 'wi wi-day-snow',
-                'heavy snow showers': 'wi wi-snow',
-                'thunderstorm': 'wi wi-day-thunderstorm',
-                'thunderstorm with slight hail': 'wi wi-day-thunderstorm',
-                'thunderstorm with heavy hail': 'wi wi-day-thunderstorm'
+                'heavy snow showers': 'wi wi-snow'
             };
-            weatherIcon = iconMap[data.weather.condition.toLowerCase()] || 'wi wi-day-sunny';
+
+            if (timeNeutralIcons[conditionLower]) {
+                weatherIcon = timeNeutralIcons[conditionLower];
+            } else {
+                // Time-dependent icons
+                const iconMap = {
+                    'clear sky': isNight ? 'wi wi-night-clear' : 'wi wi-day-sunny',
+                    'mainly clear': isNight ? 'wi wi-night-alt-partly-cloudy' : 'wi wi-day-sunny-overcast',
+                    'partly cloudy': `wi wi-${timePrefix}-cloudy`,
+                    'light drizzle': `wi wi-${timePrefix}-showers`,
+                    'moderate drizzle': `wi wi-${timePrefix}-showers`,
+                    'dense drizzle': `wi wi-${timePrefix}-showers`,
+                    'light freezing drizzle': `wi wi-${timePrefix}-snow`,
+                    'dense freezing drizzle': `wi wi-${timePrefix}-snow`,
+                    'slight rain': `wi wi-${timePrefix}-rain`,
+                    'moderate rain': `wi wi-${timePrefix}-rain`,
+                    'heavy rain': `wi wi-${timePrefix}-rain`,
+                    'light freezing rain': `wi wi-${timePrefix}-snow`,
+                    'heavy freezing rain': `wi wi-${timePrefix}-snow`,
+                    'slight snow fall': `wi wi-${timePrefix}-snow`,
+                    'slight rain showers': `wi wi-${timePrefix}-showers`,
+                    'moderate rain showers': `wi wi-${timePrefix}-rain`,
+                    'violent rain showers': `wi wi-${timePrefix}-storm-showers`,
+                    'slight snow showers': `wi wi-${timePrefix}-snow`,
+                    'thunderstorm': `wi wi-${timePrefix}-thunderstorm`,
+                    'thunderstorm with slight hail': `wi wi-${timePrefix}-thunderstorm`,
+                    'thunderstorm with heavy hail': `wi wi-${timePrefix}-thunderstorm`
+                };
+
+                weatherIcon = iconMap[conditionLower] || (isNight ? 'wi wi-night-clear' : 'wi wi-day-sunny');
+            }
         }
 
         items.push({
@@ -1195,6 +1190,9 @@ function advanceCarousel() {
     
     // Update active item - CSS handles the animation
     showCarouselItem(carouselCurrentIndex);
+    
+    // Update indicators including cache expiration status
+    updateCarouselIndicators();
 }
 
 function startCarousel() {
@@ -1271,11 +1269,28 @@ function updateCarouselIndicators() {
         }
 
 		// Show/hide cache icon when compiled prompt exists and use-cache is enabled
+		// Show triangle exclamation if cache is expired
 		if (cacheIcon && dynamicCarousel) {
 			const useCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
 			if (useCache) {
-				cacheIcon.classList.remove('hidden');
+				// Check if compiled prompt has expired
+				const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+				const now = Date.now();
+				const isExpired = compiledPrompt?.expiresAt ? now >= compiledPrompt.expiresAt : false;
+				
+				if (isExpired) {
+					// Show triangle exclamation for expired cache
+					cacheIcon.className = 'carousel-fast-icon fa-solid fa-triangle-exclamation';
+					cacheIcon.title = 'Cache Expired - Will Regenerate on Next Use';
+					cacheIcon.classList.remove('hidden');
+				} else {
+					// Show check circle for valid cache
+					cacheIcon.className = 'carousel-fast-icon fa-regular fa-circle-check';
+					cacheIcon.title = 'Using Cache';
+					cacheIcon.classList.remove('hidden');
+				}
 			} else {
+                cacheIcon.className = 'carousel-fast-icon fa-solid fa-triangle-exclamation';
 				cacheIcon.classList.add('hidden');
 			}
 		}
@@ -1891,6 +1906,589 @@ function setIPLocation() {
     }
 }
 
+// API KEY MANAGER MODAL
+function resetApiKeyModalState() {
+    apiKeyModalState.services = [];
+    apiKeyModalState.originalSelections = {};
+    apiKeyModalState.pendingSelections = {};
+    apiKeyModalState.dom = new Map();
+}
+
+function openApiKeyModal() {
+    const modal = document.getElementById('apiKeyModal');
+    if (!modal) return;
+
+    apiKeyModalState.isLoading = true;
+    updateApiKeyModalStatus('Loading services...');
+    updateApiKeySaveButtonState();
+    openModal(modal);
+    loadApiKeyModalData(true);
+}
+
+async function loadApiKeyModalData(showToastOnError = true) {
+    apiKeyModalState.isLoading = true;
+    updateApiKeySaveButtonState();
+
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected. Please reconnect and try again.');
+        }
+
+        const data = await window.wsClient.sendMessage('get_api_key_services', {});
+        resetApiKeyModalState();
+        apiKeyModalState.services = Array.isArray(data?.services) ? data.services : [];
+
+        apiKeyModalState.services.forEach(service => {
+            const hasKeys = Array.isArray(service.keys) && service.keys.length > 0;
+            const fallbackIndex = hasKeys && Number.isInteger(service.selectedIndex) ? service.selectedIndex : 0;
+            if (!hasKeys) {
+                service.missingKeys = true;
+            }
+            apiKeyModalState.originalSelections[service.id] = hasKeys ? fallbackIndex : null;
+            apiKeyModalState.pendingSelections[service.id] = hasKeys ? fallbackIndex : null;
+        });
+
+        renderApiKeyServices();
+
+        if (apiKeyModalState.services.length === 0) {
+            updateApiKeyModalStatus('No Services Available.');
+        } else {
+            updateApiKeyModalStatus('Service Keys are stored in `secure.config.json`, Select the active key for each service.');
+        }
+    } catch (error) {
+        console.error('Service Key modal load error:', error);
+        const message = error.message || 'Failed to load services.';
+        updateApiKeyModalStatus(message);
+        if (showToastOnError) {
+            showGlassToast('error', null, message, false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+        }
+    } finally {
+        apiKeyModalState.isLoading = false;
+        updateApiKeySaveButtonState();
+    }
+}
+
+function renderApiKeyServices() {
+    const container = document.getElementById('apiKeyServicesContainer');
+    if (!container) return;
+
+    container.innerHTML = '';
+    apiKeyModalState.dom = new Map();
+
+    if (!apiKeyModalState.services.length) {
+        const empty = document.createElement('p');
+        empty.className = 'text-muted';
+        empty.textContent = 'No services available.';
+        container.appendChild(empty);
+        return;
+    }
+
+    apiKeyModalState.services.forEach(service => {
+        const card = document.createElement('div');
+        card.className = 'manual-modal-form-section';
+
+        const title = document.createElement('label');
+        const iconClass = escapeHtmlAttribute(service.icon || 'fas fa-key-skeleton-left-right');
+        title.innerHTML = `<i class="${iconClass}"></i> ${escapeHtml(service.label || service.id)}`;
+        card.appendChild(title);
+
+        if (service.description) {
+            const description = document.createElement('p');
+            description.className = 'text-muted';
+            description.textContent = service.description;
+            card.appendChild(description);
+        }
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'custom-dropdown dark';
+
+        const dropdownButton = document.createElement('button');
+        dropdownButton.type = 'button';
+        dropdownButton.className = 'btn-secondary';
+        dropdownButton.id = `apiKeyDropdownBtn-${service.id}`;
+
+        const selectedLabel = document.createElement('span');
+        selectedLabel.id = `apiKeyDropdownSelected-${service.id}`;
+        selectedLabel.textContent = getServiceDisplayName(service);
+        dropdownButton.appendChild(selectedLabel);
+
+        const chevron = document.createElement('i');
+        chevron.className = 'fas fa-chevron-down';
+        dropdownButton.appendChild(chevron);
+
+        const dropdownMenu = document.createElement('div');
+        dropdownMenu.id = `apiKeyDropdownMenu-${service.id}`;
+        dropdownMenu.className = 'custom-dropdown-menu hidden';
+
+        dropdown.appendChild(dropdownButton);
+        dropdown.appendChild(dropdownMenu);
+        card.appendChild(dropdown);
+
+        const fingerprint = document.createElement('div');
+        fingerprint.className = 'text-muted';
+        fingerprint.id = `apiKeyFingerprint-${service.id}`;
+        fingerprint.textContent = getServiceFingerprintText(service);
+        card.appendChild(fingerprint);
+
+        if (service.requiresRestart) {
+            const restartNote = document.createElement('div');
+            restartNote.className = 'text-muted';
+            restartNote.innerHTML = '<i class="fas fa-arrows-rotate"></i> Service restarts after saving changes.';
+            card.appendChild(restartNote);
+        }
+
+        if (service.missingKeys) {
+            const warning = document.createElement('div');
+            warning.className = 'text-muted';
+            warning.textContent = 'No Service keys configured for this service.';
+            card.appendChild(warning);
+            dropdownButton.disabled = true;
+        } else {
+            setupDropdown(
+                dropdown,
+                dropdownButton,
+                dropdownMenu,
+                () => renderApiKeyDropdownOptions(service.id),
+                () => apiKeyModalState.pendingSelections[service.id],
+                { preventFocusTransfer: true }
+            );
+        }
+
+        apiKeyModalState.dom.set(service.id, {
+            selectedLabel,
+            fingerprint,
+            dropdownButton,
+            dropdownMenu
+        });
+
+        container.appendChild(card);
+    });
+}
+
+function getServiceDisplayName(service) {
+    if (service.missingKeys) {
+        return 'No Service Keys configured';
+    }
+
+    const selection = apiKeyModalState.pendingSelections[service.id];
+    if (selection === null || selection === undefined) {
+        return 'Select a key';
+    }
+
+    const key = service.keys?.find(k => k.index === selection);
+    if (key && key.name) {
+        return key.name;
+    }
+
+    return `Key ${selection + 1}`;
+}
+
+function getServiceFingerprintText(service) {
+    if (service.missingKeys) {
+        return 'Active key: —';
+    }
+
+    const selection = apiKeyModalState.pendingSelections[service.id];
+    if (selection === null || selection === undefined) {
+        return 'Active key: —';
+    }
+
+    const key = service.keys?.find(k => k.index === selection);
+    if (key && key.fingerprint) {
+        return `Active key: ${key.fingerprint}`;
+    }
+
+    return 'Active key: —';
+}
+
+function renderApiKeyDropdownOptions(serviceId) {
+    const service = apiKeyModalState.services.find(s => s.id === serviceId);
+    const refs = apiKeyModalState.dom.get(serviceId);
+    if (!service || !refs || !refs.dropdownMenu) return;
+
+    const menu = refs.dropdownMenu;
+    menu.innerHTML = '';
+
+    if (!Array.isArray(service.keys) || service.keys.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'custom-dropdown-option';
+        empty.textContent = 'No keys configured';
+        menu.appendChild(empty);
+        
+        // Add "Add new Key" option even when no keys exist
+        const addOption = document.createElement('div');
+        addOption.className = 'custom-dropdown-option';
+        addOption.innerHTML = '<i class="fas fa-plus"></i> Add new Key';
+        addOption.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeDropdown(menu, refs.dropdownButton);
+            showGlassToast('info', null, 'Add new keys manually in secure.config.json', false, undefined, '<i class="fas fa-key"></i>');
+        });
+        menu.appendChild(addOption);
+        return;
+    }
+
+    const current = apiKeyModalState.pendingSelections[serviceId];
+    service.keys.forEach(key => {
+        const option = document.createElement('div');
+        option.className = 'custom-dropdown-option' + (current === key.index ? ' selected' : '');
+        option.dataset.value = key.index;
+
+        const nameLine = document.createElement('div');
+        nameLine.textContent = key.name || `Key ${key.index + 1}`;
+        option.appendChild(nameLine);
+
+        if (key.fingerprint) {
+            const fpLine = document.createElement('div');
+            fpLine.className = 'text-muted';
+            fpLine.textContent = key.fingerprint;
+            option.appendChild(fpLine);
+        }
+
+        const handler = (e) => {
+            e.preventDefault();
+            selectApiKeyOption(serviceId, key.index);
+            closeDropdown(menu, refs.dropdownButton);
+        };
+
+        option.addEventListener('click', handler);
+        option.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                handler(e);
+            }
+        });
+
+        menu.appendChild(option);
+    });
+
+    // Add separator and "Add new Key" option
+    const separator = document.createElement('div');
+    separator.className = 'custom-dropdown-separator';
+    menu.appendChild(separator);
+
+    const addOption = document.createElement('div');
+    addOption.className = 'custom-dropdown-option';
+    addOption.innerHTML = '<i class="fas fa-plus"></i> Add new Key';
+    addOption.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeDropdown(menu, refs.dropdownButton);
+        openAddApiKeyModal(serviceId);
+    });
+    menu.appendChild(addOption);
+}
+
+function selectApiKeyOption(serviceId, index) {
+    const service = apiKeyModalState.services.find(s => s.id === serviceId);
+    if (!service || service.missingKeys) return;
+
+    const normalizedIndex = Number(index);
+    if (!Number.isInteger(normalizedIndex)) return;
+
+    apiKeyModalState.pendingSelections[serviceId] = normalizedIndex;
+    service.selectedIndex = normalizedIndex;
+
+    const key = service.keys?.find(k => k.index === normalizedIndex);
+    if (key) {
+        service.selectedName = key.name;
+        service.selectedFingerprint = key.fingerprint;
+    }
+
+    const refs = apiKeyModalState.dom.get(serviceId);
+    if (refs?.selectedLabel) {
+        refs.selectedLabel.textContent = key?.name || `Key ${normalizedIndex + 1}`;
+    }
+    if (refs?.fingerprint) {
+        refs.fingerprint.textContent = key?.fingerprint ? `Active key: ${key.fingerprint}` : 'Active key: —';
+    }
+
+    updateApiKeySaveButtonState();
+}
+
+function getApiKeyModalChanges() {
+    return Object.entries(apiKeyModalState.pendingSelections)
+        .filter(([serviceId, index]) => {
+            const original = apiKeyModalState.originalSelections[serviceId];
+            return index !== null && index !== undefined && original !== index;
+        })
+        .map(([serviceId, index]) => ({ serviceId, index }));
+}
+
+function updateApiKeySaveButtonState() {
+    const refreshBtn = document.getElementById('refreshApiKeyModalBtn');
+    if (refreshBtn) {
+        refreshBtn.disabled = apiKeyModalState.isLoading;
+    }
+}
+
+function updateApiKeyModalStatus(message) {
+    const status = document.getElementById('apiKeyModalStatus');
+    if (!status) return;
+
+    if (message) {
+        status.textContent = message;
+        status.classList.remove('hidden');
+    } else {
+        status.textContent = '';
+        status.classList.add('hidden');
+    }
+}
+
+async function handleApiKeyModalClose() {
+    const changes = getApiKeyModalChanges();
+    if (changes.length === 0) {
+        const modal = document.getElementById('apiKeyModal');
+        if (modal) {
+            closeModal(modal);
+        }
+        return;
+    }
+
+    // Build confirmation dialog message
+    const changeList = changes.map(change => {
+        const service = apiKeyModalState.services.find(s => s.id === change.serviceId);
+        const serviceLabel = service?.label || change.serviceId;
+        const key = service?.keys?.find(k => k.index === change.index);
+        const keyName = key?.name || `Key ${change.index + 1}`;
+        const fingerprint = key?.fingerprint || '••••';
+        const requiresRestart = service?.requiresRestart === true;
+        
+        return {
+            serviceLabel,
+            keyName,
+            fingerprint,
+            requiresRestart
+        };
+    });
+
+    const servicesNeedingRestart = changeList.filter(c => c.requiresRestart);
+    const needsRestart = servicesNeedingRestart.length > 0;
+
+    let message = 'Do you want to apply changes to the Keychain:<br><br>';
+    changeList.forEach(change => {
+        const restartMarker = change.requiresRestart ? ' <span style="color: #ff8c00;">(requires reload)</span>' : '';
+        message += `  • ${escapeHtml(change.serviceLabel)} → ${escapeHtml(change.keyName)} (${escapeHtml(change.fingerprint)})${restartMarker}<br>`;
+    });
+
+    if (needsRestart) {
+        const serviceNames = servicesNeedingRestart.map(c => escapeHtml(c.serviceLabel)).join(', ');
+        message += `<br><br><span style="color: #ff8c00;">* ${serviceNames} will reload its client and any active tasks will be halted!</span>`;
+    }
+
+    // Show confirmation dialog
+    const result = await showConfirmationDialog(message, [
+        {
+            text: needsRestart ? 'Apply & Reload' : 'Apply',
+            value: 'apply',
+            className: 'btn-primary',
+            icon: needsRestart ? 'fas fa-arrows-rotate' : 'fas fa-save'
+        },
+        {
+            text: 'Revert',
+            value: 'revert',
+            className: 'btn-secondary',
+            icon: 'fas fa-undo'
+        }
+    ]);
+
+    if (result === 'apply') {
+        await saveApiKeySelections();
+        const modal = document.getElementById('apiKeyModal');
+        if (modal) {
+            closeModal(modal);
+        }
+    } else if (result === 'revert') {
+        // Revert pending selections to original
+        Object.keys(apiKeyModalState.originalSelections).forEach(serviceId => {
+            apiKeyModalState.pendingSelections[serviceId] = apiKeyModalState.originalSelections[serviceId];
+        });
+        renderApiKeyServices();
+        updateApiKeySaveButtonState();
+    }
+    // If result is null (cancelled), do nothing
+}
+
+async function saveApiKeySelections() {
+    const changes = getApiKeyModalChanges();
+    if (changes.length === 0) {
+        showGlassToast('info', null, 'No Keychain changes to save.', false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+        return;
+    }
+
+    apiKeyModalState.isLoading = true;
+    updateApiKeyModalStatus('Saving Keychain...');
+    updateApiKeySaveButtonState();
+
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected. Please reconnect and try again.');
+        }
+
+        const updatesPayload = changes.map(change => ({
+            service: change.serviceId,
+            index: change.index
+        }));
+
+        const data = await window.wsClient.sendMessage('update_api_key_selections', {
+            updates: updatesPayload
+        });
+
+        if (Array.isArray(data?.restartedServices)) {
+            data.restartedServices.forEach(serviceId => {
+                const service = apiKeyModalState.services.find(s => s.id === serviceId);
+                const label = service?.label || serviceId;
+                showGlassToast('success', null, `${label} Service was restarted (Updated Keychain)`, false, undefined, '<i class="fas fa-arrows-rotate"></i>');
+            });
+        }
+
+        showGlassToast('success', null, 'keychain was updated.', false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+        await loadApiKeyModalData(false);
+        updateApiKeyModalStatus('Keychain was saved.');
+    } catch (error) {
+        console.error('Keychain save error:', error);
+        const message = error.message || 'Failed to save service keychain.';
+        updateApiKeyModalStatus(message);
+        showGlassToast('error', null, message, false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+    } finally {
+        apiKeyModalState.isLoading = false;
+        updateApiKeySaveButtonState();
+    }
+}
+
+// ADD NEW API KEY MODAL FUNCTIONS
+let addApiKeyModalState = {
+    serviceId: null,
+    isLoading: false
+};
+
+function openAddApiKeyModal(serviceId) {
+    const modal = document.getElementById('addApiKeyModal');
+    if (!modal) return;
+
+    addApiKeyModalState.serviceId = serviceId;
+    addApiKeyModalState.isLoading = false;
+
+    const nameInput = document.getElementById('addApiKeyNameInput');
+    const valueInput = document.getElementById('addApiKeyValueInput');
+    const statusEl = document.getElementById('addApiKeyModalStatus');
+
+    if (nameInput) nameInput.value = '';
+    if (valueInput) valueInput.value = '';
+    if (statusEl) {
+        statusEl.textContent = '';
+        statusEl.classList.add('hidden');
+    }
+
+    const service = apiKeyModalState.services.find(s => s.id === serviceId);
+    if (service) {
+        const modalTitle = modal.querySelector('.modal-window-title-main span');
+        if (modalTitle) {
+            modalTitle.textContent = `Add New Key - ${service.label}`;
+        }
+    }
+
+    updateAddApiKeyButtonState();
+    openModal(modal);
+
+    // Focus on name input
+    if (nameInput) {
+        setTimeout(() => nameInput.focus(), 100);
+    }
+}
+
+function closeAddApiKeyModal() {
+    const modal = document.getElementById('addApiKeyModal');
+    if (modal) {
+        closeModal(modal);
+    }
+    addApiKeyModalState.serviceId = null;
+    addApiKeyModalState.isLoading = false;
+}
+
+function updateAddApiKeyModalStatus(message, isError = false) {
+    const status = document.getElementById('addApiKeyModalStatus');
+    if (!status) return;
+
+    if (message) {
+        status.textContent = message;
+        status.className = isError ? 'text-danger' : 'text-muted';
+        status.classList.remove('hidden');
+    } else {
+        status.textContent = '';
+        status.classList.add('hidden');
+    }
+}
+
+function updateAddApiKeyButtonState() {
+    const saveBtn = document.getElementById('saveNewApiKeyBtn');
+    if (saveBtn) {
+        const nameInput = document.getElementById('addApiKeyNameInput');
+        const valueInput = document.getElementById('addApiKeyValueInput');
+        const hasName = nameInput && nameInput.value.trim().length > 0;
+        const hasValue = valueInput && valueInput.value.trim().length > 0;
+        saveBtn.disabled = addApiKeyModalState.isLoading || !hasName || !hasValue;
+    }
+}
+
+async function saveNewApiKey() {
+    const nameInput = document.getElementById('addApiKeyNameInput');
+    const valueInput = document.getElementById('addApiKeyValueInput');
+
+    if (!nameInput || !valueInput) return;
+
+    const name = nameInput.value.trim();
+    const apiKey = valueInput.value.trim();
+
+    if (!name) {
+        updateAddApiKeyModalStatus('Service Key Name is required.', true);
+        nameInput.focus();
+        return;
+    }
+
+    if (!apiKey) {
+        updateAddApiKeyModalStatus('Service Key is required.', true);
+        valueInput.focus();
+        return;
+    }
+
+    if (!addApiKeyModalState.serviceId) {
+        updateAddApiKeyModalStatus('Service ID is missing.', true);
+        return;
+    }
+
+    addApiKeyModalState.isLoading = true;
+    updateAddApiKeyModalStatus('Adding new Key to keychain...');
+    updateAddApiKeyButtonState();
+
+    try {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            throw new Error('WebSocket not connected. Please reconnect and try again.');
+        }
+
+        const data = await window.wsClient.sendMessage('add_api_key', {
+            service: addApiKeyModalState.serviceId,
+            name: name,
+            apiKey: apiKey
+        });
+
+        if (data?.success) {
+            showGlassToast('success', null, 'New Service Key added successfully', false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+            closeAddApiKeyModal();
+            // Reload the API key modal data to show the new key
+            await loadApiKeyModalData(false);
+        } else {
+            throw new Error(data?.error || 'Failed to add new key');
+        }
+    } catch (error) {
+        console.error('Add API key error:', error);
+        const message = error.message || 'Failed to add new key.';
+        updateAddApiKeyModalStatus(message, true);
+        showGlassToast('error', null, message, false, undefined, '<i class="fas fa-key-skeleton-left-right"></i>');
+    } finally {
+        addApiKeyModalState.isLoading = false;
+        updateAddApiKeyButtonState();
+    }
+}
+
 // TEXT REPLACEMENT LOCK MODAL FUNCTIONS
 let currentTextReplacementSeeds = [];
 
@@ -1993,6 +2591,32 @@ function getReplacementTypeColor(type) {
     }
 }
 
+function hasEmphasisGroup(text) {
+    if (!text || typeof text !== 'string') return false;
+    const completeGroupPattern = /^(-?\d+\.?\d*)::[\s\S]+::$/;
+    if (completeGroupPattern.test(text)) return true;
+    const autoTerminatingPattern = /^(-?\d+\.?\d*)::/;
+    return autoTerminatingPattern.test(text);
+}
+
+function extractBiasFromTextForDisplay(text) {
+    if (!text || typeof text !== 'string') return null;
+    if (!/^(-?\d+\.?\d*)::/.test(text)) {
+        return null;
+    }
+    const autoTerminatingPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::)[\s\S])+?)(?=\s*-?\d+\.?\d*::|::|$)/;
+    const autoMatch = text.match(autoTerminatingPattern);
+    if (autoMatch) {
+        return parseFloat(autoMatch[1]);
+    }
+    const traditionalPattern = /^(-?\d+\.?\d*)::((?:(?!-?\d+\.?\d*::)[\s\S])+?)::/;
+    const traditionalMatch = text.match(traditionalPattern);
+    if (traditionalMatch) {
+        return parseFloat(traditionalMatch[1]);
+    }
+    return null;
+}
+
 // Get icon for dynamic replacement category (based on schema-defined categories)
 function getCategoryIcon(category) {
     const categoryLower = (category || '').toLowerCase();
@@ -2032,19 +2656,21 @@ function getCategoryIcon(category) {
 
 // Toggle compiled prompts section visibility
 function toggleCompiledPromptsSection() {
-    const toggleBtn = document.getElementById('toggleCompiledPromptsBtn');
-    const content = document.getElementById('compiledPromptsContent');
+    const toggleBtn = document.getElementById('toggleCompiledPromptsSectionBtn');
+    const expandableSection = document.getElementById('compiledPromptExpandableSection');
     
-    if (!toggleBtn || !content) return;
+    if (!toggleBtn || !expandableSection) return;
     
-    const isHidden = content.classList.contains('hidden');
+    const isHidden = expandableSection.classList.contains('hidden');
     
     if (isHidden) {
-        content.classList.remove('hidden');
-        toggleBtn.innerHTML = '<i class="fas fa-chevron-up"></i><span>Hide Compiled Prompts</span>';
+        expandableSection.classList.remove('hidden');
+        toggleBtn.innerHTML = '<i class="fas fa-subtitles"></i>';
+        toggleBtn.classList.add('active');
     } else {
-        content.classList.add('hidden');
-        toggleBtn.innerHTML = '<i class="fas fa-chevron-down"></i><span>Show Compiled Prompts</span>';
+        expandableSection.classList.add('hidden');
+        toggleBtn.innerHTML = '<i class="fa-regular fa-subtitles"></i>';
+        toggleBtn.classList.remove('active');
     }
 }
 
@@ -2124,7 +2750,7 @@ function populateCompiledPromptsSection() {
                 if (char.prompt && char.prompt.trim()) {
                     const charInputLabel = document.createElement('label');
                     charInputLabel.className = 'compiled-prompt-label';
-                    charInputLabel.innerHTML = `<i class="fas fa-user"></i> ${charName} - Prompt`;
+                    charInputLabel.innerHTML = `<i class="ri-code-block"></i> Prompt - ${charName}`;
                     
                     const charInputWrapper = document.createElement('div');
                     charInputWrapper.className = 'compiled-prompt-display-wrapper';
@@ -2150,7 +2776,7 @@ function populateCompiledPromptsSection() {
                 if (char.uc && char.uc.trim()) {
                     const charUcLabel = document.createElement('label');
                     charUcLabel.className = 'compiled-prompt-label';
-                    charUcLabel.innerHTML = `<i class="fas fa-user"></i> ${charName} - UC`;
+                    charUcLabel.innerHTML = `<i class="ri-eraser-fill"></i> Negative - ${charName}`;
                     
                     const charUcWrapper = document.createElement('div');
                     charUcWrapper.className = 'compiled-prompt-display-wrapper';
@@ -2178,8 +2804,8 @@ function populateCompiledPromptsSection() {
     }
 }
 
-// Open the text replacement lock modal
-function openTextReplacementLockModal() {
+// Open the Genso lock modal
+function renderTextReplacementModal() {
     const modal = document.getElementById('textReplacementLockModal');
     const listContainer = document.getElementById('textReplacementLockList');
 
@@ -2190,26 +2816,24 @@ function openTextReplacementLockModal() {
     // Clear previous content
     listContainer.innerHTML = '';
 
-    // Get current text replacement seeds from the last generation or preview
+    // Get current Genso seeds from the last generation or preview
     // This would be populated from window.lastGenerationTextReplacements
     currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
 
     // Populate compiled prompts section
     populateCompiledPromptsSection();
 
-    // Render the text replacement list
+    // Render the Genso list
     renderTextReplacementLockList();
-
-    openModal(modal);
 
     // Scroll the list container to the top
     const scrollableContainer = document.getElementById('textReplacementLockListContainer');
     if (scrollableContainer) {
-        scrollableContainer.scrollTop = 0;
+        scrollableContainer.querySelector('.scrollable-content').scrollTop = 0;
     }
 }
 
-// Refresh the text replacement lock modal if it's currently open
+// Refresh the Genso lock modal if it's currently open
 function refreshTextReplacementLockModalIfOpen() {
     const modal = document.getElementById('textReplacementLockModal');
     
@@ -2218,29 +2842,10 @@ function refreshTextReplacementLockModalIfOpen() {
         return;
     }
 
-    // Modal is open, refresh its contents
-    const listContainer = document.getElementById('textReplacementLockList');
-    if (!listContainer) {
-        return;
-    }
-
-    // Update the current seeds from the latest generation
-    currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
-
-    // Re-populate compiled prompts section
-    populateCompiledPromptsSection();
-
-    // Re-render the text replacement list
-    renderTextReplacementLockList();
-
-    // Scroll the list container to the top
-    const scrollableContainer = document.getElementById('textReplacementLockListContainer');
-    if (scrollableContainer) {
-        scrollableContainer.scrollTop = 0;
-    }
+    renderTextReplacementModal();
 }
 
-// Select all text replacements
+// Select all Genso
 function selectAllTextReplacements() {
     const buttons = document.querySelectorAll('.text-replacement-lock-btn');
     buttons.forEach(button => {
@@ -2316,14 +2921,15 @@ function updateMainLockButtonState() {
 
     const lockedCount = window.lockedTextReplacements ? window.lockedTextReplacements.length : 0;
     
-    // Count ALL text replacement seeds (not just lockable)
+    // Count ALL Genso seeds (not just lockable)
     const allSeedsCount = window.lastGenerationTextReplacements ? window.lastGenerationTextReplacements.length : 0;
     const lockableSeedsCount = window.lastGenerationTextReplacements ?
         window.lastGenerationTextReplacements.filter(r => r.can_lock !== undefined ? r.can_lock !== false : true).length : 0;
 
-    // Check for dynamic generation text replacements
+    // Check for Rentan modifications (Tendai)
     let dynamicReplacementsCount = 0;
     if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        // Rentan: Tendai Modifications
         const dtr = window.dynamicGenerationData.compiled_prompt.text_replacements;
         if (dtr.prompt) dynamicReplacementsCount += dtr.prompt.length;
         if (dtr.uc) dynamicReplacementsCount += dtr.uc.length;
@@ -2341,7 +2947,7 @@ function updateMainLockButtonState() {
         // No replacements available, hide button
         textReplacementLockBtn.classList.add('hidden');
         textReplacementLockBtn.setAttribute('data-state', 'off');
-        textReplacementLockBtn.title = 'No text replacements available';
+        textReplacementLockBtn.title = 'No Genso Expanders Available';
     } else {
         // Replacements available, show button
         textReplacementLockBtn.classList.remove('hidden');
@@ -2350,20 +2956,20 @@ function updateMainLockButtonState() {
             // None locked, button is off
             textReplacementLockBtn.setAttribute('data-state', 'off');
             const tooltipParts = [];
-            if (allSeedsCount > 0) tooltipParts.push(`${allSeedsCount} text replacement${allSeedsCount !== 1 ? 's' : ''}`);
-            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} dynamic replacement${dynamicReplacementsCount !== 1 ? 's' : ''}`);
-            textReplacementLockBtn.title = tooltipParts.length > 0 ? tooltipParts.join(' + ') + ' available' : 'Click to view text replacements';
+            if (allSeedsCount > 0) tooltipParts.push(`${allSeedsCount} Expander${allSeedsCount !== 1 ? 's' : ''}`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} Tsubo${dynamicReplacementsCount !== 1 ? 's' : ''}`);
+            textReplacementLockBtn.title = tooltipParts.length > 0 ? tooltipParts.join(' + ') + ' available' : 'Open Genso and Rentan';
         } else if (lockedCount === lockableSeedsCount && lockableSeedsCount > 0 && dynamicReplacementsCount === 0) {
             // All lockable seeds are locked, button is on (only if no dynamic replacements)
             textReplacementLockBtn.setAttribute('data-state', 'on');
-            textReplacementLockBtn.title = 'All lockable text replacements locked';
+            textReplacementLockBtn.title = 'All Lockable Expanders or Tsubo\'s locked';
         } else {
             // Some locked or dynamic replacements present, button is partial
             textReplacementLockBtn.setAttribute('data-state', 'partial');
             const tooltipParts = [];
             if (lockedCount > 0) tooltipParts.push(`${lockedCount} locked`);
             if (lockableSeedsCount - lockedCount > 0) tooltipParts.push(`${lockableSeedsCount - lockedCount} unlocked`);
-            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} dynamic`);
+            if (dynamicReplacementsCount > 0) tooltipParts.push(`${dynamicReplacementsCount} Tsubo`);
             textReplacementLockBtn.title = tooltipParts.join(', ');
         }
     }
@@ -2653,16 +3259,17 @@ function renderTextReplacementLockList() {
 
     listContainer.innerHTML = '';
 
-    // Check if we have any replacements (text seeds or dynamic)
+    // Check if we have any replacements (Genso seeds or Rentan modifications)
     let hasDynamicReplacements = false;
     if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        // Rentan: Tendai Modifications
         const tr = window.dynamicGenerationData.compiled_prompt.text_replacements;
         hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) || 
             (tr.character_prompts?.some(char => char?.prompt?.length > 0 || char?.uc?.length > 0));
     }
 
     if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
-        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No text replacements available. Generate an image first to see replacement options.</div>';
+        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No Genso Expanders Available. Generate an image first to see options.</div>';
         updateLockStatusText();
         return;
     }
@@ -2676,6 +3283,26 @@ function renderTextReplacementLockList() {
         const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
 
         itemDiv.classList.toggle('selected', isLocked);
+
+        // Check if source is UC/negative and add class
+        const source = seed.source || '';
+        if (source === 'negative_prompt' || (source.startsWith('character_') && source.endsWith('_uc'))) {
+            itemDiv.classList.add('negative-prompt');
+        }
+
+        // Extract character index if it's a character prompt
+        // Source format: character_${charIndex}_prompt or character_${charIndex}_uc
+        let characterIndex = null;
+        if (source.startsWith('character_')) {
+            const parts = source.split('_');
+            if (parts.length >= 2) {
+                const indexPart = parts[1];
+                const parsedIndex = parseInt(indexPart, 10);
+                if (!isNaN(parsedIndex)) {
+                    characterIndex = parsedIndex;
+                }
+            }
+        }
 
         const indexDisplay = seed.index !== null && seed.index !== undefined ? `<span class="text-replacement-index">${seed.index}</span>` : '';
         let originalPattern = seed.pattern;
@@ -2693,6 +3320,14 @@ function renderTextReplacementLockList() {
         const typeIcon = getReplacementTypeIcon(seed.type);
         const typeColor = getReplacementTypeColor(seed.type);
         
+        // Build character badge if it's a character prompt
+        const characterBadge = characterIndex !== null ? `
+            <span class="text-replacement-badge text-replacement-badge-character">
+                <i class="fas fa-person"></i>
+                <span style="font-size: 0.75em;">${characterIndex + 1}</span>
+            </span>
+        ` : '';
+        
         itemDiv.innerHTML = `
             <div class="text-replacement-lock-content">
                 <div class="text-replacement-lock-info">
@@ -2702,6 +3337,7 @@ function renderTextReplacementLockList() {
                     <div class="text-replacement-lock-badges">
                         <span class="text-replacement-badge text-replacement-badge-combined">
                             <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                            ${characterBadge}
                             <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                         </span>
                     </div>
@@ -2711,15 +3347,6 @@ function renderTextReplacementLockList() {
                         <span class="text-replacement-selected">!${seed.key}${indexDisplay}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
                     </div>
                     <div class="text-replacement-lock-actions">
-                        <button type="button" class="text-replacement-manual-select-btn btn-secondary btn-small" title="Manual Selection" id="tr-manual-${index}">
-                            <i class="fas fa-list"></i>
-                        </button>
-                        <button type="button" class="text-replacement-random-btn btn-secondary btn-small" title="Random Selection" id="tr-random-${index}">
-                            <i class="fas fa-dice"></i>
-                        </button>
-                        <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
-                            <i class="fas fa-pen-field"></i>
-                        </button>
                         <button type="button" class="text-replacement-lock-btn btn-secondary btn-small toggle-btn" data-state="${isLocked ? 'on' : 'off'}" id="tr-lock-${index}">
                             <i class="fas fa-lock"></i>
                         </button>
@@ -2748,35 +3375,42 @@ function renderTextReplacementLockList() {
                 window.lockedTextReplacements = lockedSeeds;
                 updateMainLockButtonState();
             });
-
-            // Manual selection button
-            const manualButton = itemDiv.querySelector('.text-replacement-manual-select-btn');
-            manualButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                openTextReplacementManualSelectionModal(seed, index);
-            });
-
-            // Random selection button
-            const randomButton = itemDiv.querySelector('.text-replacement-random-btn');
-            randomButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                selectRandomTextReplacement(seed, index);
-            });
-
-            // Replace in prompt button
-            const replaceButton = itemDiv.querySelector('.text-replacement-replace-btn');
-            replaceButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                replacePlaceholderInPrompt(seed, index);
-            });
         } else {
             // For non-lockable replacements, show info only
+            // Check if source is UC/negative and add class
+            const source = seed.source || '';
+            if (source === 'negative_prompt' || (source.startsWith('character_') && source.endsWith('_uc'))) {
+                itemDiv.classList.add('negative-prompt');
+            }
+
+            // Extract character index if it's a character prompt
+            // Source format: character_${charIndex}_prompt or character_${charIndex}_uc
+            let characterIndex = null;
+            if (source.startsWith('character_')) {
+                const parts = source.split('_');
+                if (parts.length >= 2) {
+                    const indexPart = parts[1];
+                    const parsedIndex = parseInt(indexPart, 10);
+                    if (!isNaN(parsedIndex)) {
+                        characterIndex = parsedIndex;
+                    }
+                }
+            }
+
             const originalPattern = seed.pattern || `!${seed.key}`;
             const isStatic = seed.type === 'regular';
             const locationIcon = getLocationIcon(seed.source);
             const locationColor = getLocationColor(seed.source);
             const typeIcon = getReplacementTypeIcon(seed.type);
             const typeColor = getReplacementTypeColor(seed.type);
+            
+            // Build character badge if it's a character prompt
+            const characterBadge = characterIndex !== null ? `
+                <span class="text-replacement-badge text-replacement-badge-character">
+                    <i class="fas fa-person"></i>
+                    <span style="font-size: 0.75em; margin-left: 2px;">${characterIndex + 1}</span>
+                </span>
+            ` : '';
             
             itemDiv.innerHTML = `
                 <div class="text-replacement-lock-content">
@@ -2787,6 +3421,7 @@ function renderTextReplacementLockList() {
                         <div class="text-replacement-lock-badges">
                             <span class="text-replacement-badge text-replacement-badge-combined">
                                 <span class="badge-icon-location" style="color: ${locationColor};">${locationIcon}</span>
+                                ${characterBadge}
                                 <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                             </span>
                         </div>
@@ -2795,20 +3430,90 @@ function renderTextReplacementLockList() {
                             <i class="fas fa-arrow-right text-replacement-arrow"></i>
                             <span class="text-replacement-selected">!${seed.key}</span>` : `<span class="text-replacement-original">!${seed.key}</span>`}
                         </div>
-                        <div class="text-replacement-lock-actions">
-                            <button type="button" class="text-replacement-replace-btn btn-secondary btn-small" title="Replace in Prompt" id="tr-replace-${index}">
-                                <i class="fas fa-pen-field"></i>
-                            </button>
-                        </div>
                     </div>
                 </div>
             `;
+        }
 
-            // Replace in prompt button for non-lockable replacements
-            const replaceButton = itemDiv.querySelector('.text-replacement-replace-btn');
-            replaceButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                replacePlaceholderInPrompt(seed, index);
+        // Add context menu to the item
+        if (window.contextMenu) {
+            window.contextMenu.attachToElement(itemDiv, {
+                sections: [{
+                    type: 'list',
+                    items: [
+                        {
+                            text: 'Copy',
+                            icon: 'nai-clipboard',
+                            action: 'copy-value'
+                        },
+                        {
+                            text: 'Apply',
+                            icon: 'fas fa-pen-field',
+                            action: 'apply-prompt'
+                        },
+                        { separator: true },
+                        {
+                            text: 'Select',
+                            icon: 'fas fa-list',
+                            action: 'manual-selection',
+                            hidden: !canLock
+                        },
+                        {
+                            text: 'Randomize',
+                            icon: 'fas fa-dice',
+                            action: 'random-selection',
+                            hidden: !canLock
+                        },
+                        {
+                            text: 'Lock',
+                            icon: 'fas fa-lock',
+                            action: 'lock',
+                            keepMenuOpen: true,
+                            hidden: !canLock,
+                            loadfn: (item, target) => {
+                                const idx = parseInt(target.dataset.index);
+                                item.checked = currentTextReplacementSeeds[idx]?.locked === true;
+                            }
+                        },
+                    ]
+                }],
+                onAction: (actionName, target) => {
+                    if (actionName === 'apply-prompt') {
+                        replacePlaceholderInPrompt(seed, index);
+                    } else if (actionName === 'manual-selection') {
+                        openTextReplacementManualSelectionModal(seed, index);
+                    } else if (actionName === 'random-selection') {
+                        selectRandomTextReplacement(seed, index);
+                    } else if (actionName === 'copy-value') {
+                        // Copy replacement value
+                        const textToCopy = seed.value || '';
+                        if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(textToCopy).then(() => {
+                                showGlassToast('success', null, 'Copied to clipboard', false, 2000, '<i class="nai-clipboard"></i>');
+                            }).catch(err => {
+                                console.error('Failed to copy:', err);
+                                showGlassToast('error', null, 'Failed to copy to clipboard', false, 2000, '<i class="fas fa-exclamation-triangle"></i>');
+                            });
+                        }
+                    } else if (actionName === 'lock') {
+                        const idx = parseInt(target.dataset.index);
+                        const isCurrentlyLocked = currentTextReplacementSeeds[idx]?.locked === true;
+                        const newState = !isCurrentlyLocked;
+
+                        target.classList.toggle('selected', newState);
+                        const lockButton = target.querySelector('.text-replacement-lock-btn');
+                        if (lockButton) {
+                            lockButton.setAttribute('data-state', newState ? 'on' : 'off');
+                        }
+
+                        currentTextReplacementSeeds[idx].locked = newState;
+                        updateLockStatusText();
+
+                        const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
+                        window.lockedTextReplacements = lockedSeeds;
+                        updateMainLockButtonState();
+                    }
+                }
             });
         }
 
@@ -2854,10 +3559,71 @@ function renderTextReplacementLockList() {
         sectionHeader.innerHTML = `
             <div class="section-title">
                 <i class="ri-pencil-ai-2-fill"></i>
-                <span>Dynamic Replacements</span>
+                <span>Tendai Replacements</span>
             </div>
         `;
         listContainer.appendChild(sectionHeader);
+
+        // Add expiration status banner if compiled prompt exists
+        const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+        if (compiledPrompt && compiledPrompt.expiresAt) {
+            const now = Date.now();
+            const isExpired = now >= compiledPrompt.expiresAt;
+            const msUntilExpiry = compiledPrompt.expiresAt - now;
+            const minutesUntilExpiry = Math.round(msUntilExpiry / (60 * 1000));
+            const hoursUntilExpiry = Math.round(minutesUntilExpiry / 60 * 10) / 10;
+            const expiryDate = new Date(compiledPrompt.expiresAt);
+            
+            const expirationBanner = document.createElement('div');
+            if (isExpired) {
+                // Calculate days since expiration
+                const daysSinceExpiry = Math.floor(Math.abs(msUntilExpiry) / (1000 * 60 * 60 * 24));
+                const currentYear = new Date().getFullYear();
+                const expiryYear = expiryDate.getFullYear();
+                
+                let expiredTimeText;
+                if (daysSinceExpiry < 7) {
+                    // Less than 7 days ago: "Expired X Days ago (HH:mm)"
+                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    if (daysSinceExpiry === 0) {
+                        expiredTimeText = `Expired Today (${timeStr})`;
+                    } else {
+                        const dayText = daysSinceExpiry === 1 ? '1 Day' : `${daysSinceExpiry} Days`;
+                        expiredTimeText = `Expired ${dayText} ago (${timeStr})`;
+                    }
+                } else {
+                    // 7 or more days ago: "Expired on MMM dd, YYYY (HH:mm)" with year only if different
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const month = monthNames[expiryDate.getMonth()];
+                    const day = expiryDate.getDate();
+                    const year = expiryYear !== currentYear ? `, ${expiryYear}` : '';
+                    const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    expiredTimeText = `Expired on ${month} ${day}${year} (${timeStr})`;
+                }
+                
+                expirationBanner.className = 'text-replacement-expiration-banner expired';
+                expirationBanner.innerHTML = `
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <div class="expiration-info">
+                        <div class="expiration-status">Cache Expired</div>
+                        <div class="expiration-time">${expiredTimeText}</div>
+                    </div>
+                `;
+            } else {
+                const timeText = hoursUntilExpiry >= 1 
+                    ? `${hoursUntilExpiry}h ${minutesUntilExpiry % 60}m`
+                    : `${minutesUntilExpiry}m`;
+                expirationBanner.className = 'text-replacement-expiration-banner valid';
+                expirationBanner.innerHTML = `
+                    <i class="fas fa-circle-check"></i>
+                    <div class="expiration-info">
+                        <div class="expiration-status">Cache Valid</div>
+                        <div class="expiration-time">Expires at ${expiryDate.toLocaleTimeString()} (${timeText})</div>
+                    </div>
+                `;
+            }
+            listContainer.appendChild(expirationBanner);
+        }
 
         // Add context cards from compiled prompt
         const compiled = window.dynamicGenerationData?.compiled_prompt;
@@ -2876,39 +3642,53 @@ function renderTextReplacementLockList() {
             // Helper functions (reuse from showCompiledPromptModal scope)
             const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9/5) + 32);
             const mpsToMph = (mps) => Math.round(mps * 2.237);
-            const getWeatherIcon = (condition) => {
-                if (!condition) return '<i class="wi wi-day-sunny"></i>';
-                const iconMap = {
-                    'clear sky': '<i class="wi wi-day-sunny"></i>',
-                    'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
-                    'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
-                    'overcast': '<i class="wi wi-cloudy"></i>',
-                    'fog': '<i class="wi wi-fog"></i>',
-                    'depositing rime fog': '<i class="wi wi-fog"></i>',
-                    'light drizzle': '<i class="wi wi-day-showers"></i>',
-                    'moderate drizzle': '<i class="wi wi-day-showers"></i>',
-                    'dense drizzle': '<i class="wi wi-day-showers"></i>',
-                    'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
-                    'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
-                    'slight rain': '<i class="wi wi-day-rain"></i>',
-                    'moderate rain': '<i class="wi wi-day-rain"></i>',
-                    'heavy rain': '<i class="wi wi-day-rain"></i>',
-                    'light freezing rain': '<i class="wi wi-day-snow"></i>',
-                    'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
-                    'slight snow fall': '<i class="wi wi-day-snow"></i>',
-                    'moderate snow fall': '<i class="wi wi-snow"></i>',
-                    'heavy snow fall': '<i class="wi wi-snow"></i>',
-                    'snow grains': '<i class="wi wi-snow"></i>',
-                    'slight rain showers': '<i class="wi wi-day-showers"></i>',
-                    'moderate rain showers': '<i class="wi wi-day-rain"></i>',
-                    'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
-                    'slight snow showers': '<i class="wi wi-day-snow"></i>',
-                    'heavy snow showers': '<i class="wi wi-snow"></i>',
-                    'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
-                    'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
-                    'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+            const getWeatherIcon = (condition, isNight = false) => {
+                if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
+                
+                const timePrefix = isNight ? 'night-alt' : 'day';
+                
+                // Icons that don't change between day/night
+                const timeNeutralIcons = {
+                    'overcast': 'cloudy',
+                    'fog': 'fog',
+                    'depositing rime fog': 'fog',
+                    'moderate snow fall': 'snow',
+                    'heavy snow fall': 'snow',
+                    'snow grains': 'snow',
+                    'heavy snow showers': 'snow'
                 };
-                return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+
+                if (timeNeutralIcons[condition]) {
+                    return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
+                }
+
+                // Time-dependent icons
+                const iconMap = {
+                    'clear sky': isNight ? 'night-clear' : 'day-sunny',
+                    'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
+                    'partly cloudy': `${timePrefix}-cloudy`,
+                    'light drizzle': `${timePrefix}-showers`,
+                    'moderate drizzle': `${timePrefix}-showers`,
+                    'dense drizzle': `${timePrefix}-showers`,
+                    'light freezing drizzle': `${timePrefix}-snow`,
+                    'dense freezing drizzle': `${timePrefix}-snow`,
+                    'slight rain': `${timePrefix}-rain`,
+                    'moderate rain': `${timePrefix}-rain`,
+                    'heavy rain': `${timePrefix}-rain`,
+                    'light freezing rain': `${timePrefix}-snow`,
+                    'heavy freezing rain': `${timePrefix}-snow`,
+                    'slight snow fall': `${timePrefix}-snow`,
+                    'slight rain showers': `${timePrefix}-showers`,
+                    'moderate rain showers': `${timePrefix}-rain`,
+                    'violent rain showers': `${timePrefix}-storm-showers`,
+                    'slight snow showers': `${timePrefix}-snow`,
+                    'thunderstorm': `${timePrefix}-thunderstorm`,
+                    'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
+                    'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
+                };
+                
+                const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
+                return `<i class="wi wi-${iconClass}"></i>`;
             };
             const getWindDirection = (degrees) => {
                 if (degrees === null || degrees === undefined) return 'N/A';
@@ -2920,7 +3700,9 @@ function renderTextReplacementLockList() {
             // Build weather content
             let weatherContent = '';
             if (weather.condition || weather.temperature !== undefined) {
-                const weatherIcon = getWeatherIcon(weather.condition);
+                // Determine if it's night based on timePeriod
+                const isNight = context.timePeriod?.isDaytime === false;
+                const weatherIcon = getWeatherIcon(weather.condition, isNight);
                 const tempC = weather.temperature;
                 const tempF = tempC !== undefined ? celsiusToFahrenheit(tempC) : null;
                 const tempDisplay = useMetric ?
@@ -3001,7 +3783,7 @@ function renderTextReplacementLockList() {
                         ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
                         <div class="weather-card-header">
                             <div class="weather-quick-indicators">
-                                ${weather.uvIndex !== undefined ? `
+                                ${weather.uvIndex !== undefined && weather.uvIndex > 0 ? `
                                 <div class="weather-quick-indicator">
                                     <div class="weather-quick-indicator-label">
                                         <i class="fa-solid fa-sun"></i>
@@ -3046,6 +3828,13 @@ function renderTextReplacementLockList() {
             // Build period card
             let periodCardHtml = '';
             const timePeriodInfo = context.timePeriod || {};
+            
+            // Calculate season progress and template (needed for both period and holiday cards)
+            const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
+            const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
+            const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
+            const hasHoliday = context.season?.holiday?.primaryHoliday;
+            
             if (context.season && timePeriodInfo.period) {
                 let periodBgClass = 'period-default';
                 const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
@@ -3087,6 +3876,7 @@ function renderTextReplacementLockList() {
                         'afternoon': 'Afternoon',
                         'lateafternoon': 'Late Afternoon', 'late_afternoon': 'Late Afternoon',
                         'goldenhour': 'Golden Hour', 'golden_hour': 'Golden Hour',
+                        'evening': 'Evening',
                         'sunset': 'Sunset', 'dusk': 'Dusk', 'twilight': 'Twilight',
                         'night': 'Night', 'midnight': 'Midnight',
                         'latenight': 'Late Night', 'late_night': 'Late Night'
@@ -3105,21 +3895,19 @@ function renderTextReplacementLockList() {
                     `${location.city}, ${location.country}` :
                     location.city || location.country || '';
                 
-                const perceivableLight = timePeriodInfo.perceivableLight !== undefined ? timePeriodInfo.perceivableLight : 0;
+                const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
                 const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
                 const sunPhase = timePeriodInfo.sunPhase || 'rising';
                 let sunPositionPercent;
                 if (sunPhase === 'rising') {
-                    sunPositionPercent = (perceivableLight / 100) * 50;
-                } else if (sunPhase === 'setting') {
-                    sunPositionPercent = 50 + ((100 - perceivableLight) / 100) * 50;
+                    // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
+                    sunPositionPercent = (sunProgressRaw / 0.5) * 50;
+            } else if (sunPhase === 'setting') {
+                // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
+                sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
                 } else {
                     sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
                 }
-                
-                const seasonProgress = calculateSeasonProgress(time, context.season);
-                const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
-                const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
                 
                 periodCardHtml = `
                     <div class="period-info-card ${periodBgClass}">
@@ -3144,6 +3932,7 @@ function renderTextReplacementLockList() {
                                             </div>
                                         </div>
                                         ` : ''}
+                                        ${lightLevelRaw !== undefined && lightLevelRaw > 0 ? `
                                         <div class="period-title-indicator">
                                             <div class="period-title-indicator-label">
                                                 <span>Sun</span>
@@ -3160,6 +3949,7 @@ function renderTextReplacementLockList() {
                                                 <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
                                             </div>
                                         </div>
+                                        ` : ''}
                                     </div>
                                     ` : ''}
                                 </div>
@@ -3172,9 +3962,138 @@ function renderTextReplacementLockList() {
                                 ` : ''}
                             </div>
                             <div class="period-details hidden">
-                                ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
-                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
-                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                                ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
+                                    const text = typeof el === 'object' ? el.text : el;
+                                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                                    return `${text} (${bias.toFixed(2)})`;
+                                }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                                ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
+                                    const text = typeof el === 'object' ? el.text : el;
+                                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                                    return `${text} (${bias.toFixed(2)})`;
+                                }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Build holiday card
+            let holidayCardHtml = '';
+            if (hasHoliday) {
+                const holiday = context.season.holiday;
+                const holidayName = holiday.primaryHoliday?.name || 'Holiday';
+                const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
+                const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
+                const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
+                
+                // Calculate holiday progress (0-100%)
+                let holidayProgress = 50; // Default
+                if (daysUntil !== undefined && daysUntil !== null) {
+                    // Assume holiday has a buffer period (e.g., 30 days before/after)
+                    const bufferDays = 30;
+                    if (daysUntil >= 0 && daysUntil <= bufferDays) {
+                        // Before holiday: progress increases as we approach
+                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+                    } else if (daysUntil < 0) {
+                        // After holiday: progress decreases
+                        const daysPast = Math.abs(daysUntil);
+                        holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
+                    }
+                }
+                
+                // Get holiday data
+                const holidayData = holiday.primaryHoliday || {};
+                const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
+                const decorations = holidayData.decorations || holiday.decorations || '';
+                const colors = holidayData.colors || holiday.colors || '';
+                const activities = holidayData.activities || holiday.activities || '';
+                
+                // Get country flag icon and region name based on region
+                const getCountryFlagIcon = (region) => {
+                    const flagMap = {
+                        'us': 'fa-flag-usa',
+                        'asia': 'fa-flag',
+                        'japan': 'fa-flag'
+                    };
+                    return flagMap[region?.toLowerCase()] || 'fa-flag';
+                };
+                const getRegionName = (region) => {
+                    const regionMap = {
+                        'us': 'United States',
+                        'asia': 'Asia',
+                        'japan': 'Japan'
+                    };
+                    return regionMap[region?.toLowerCase()] || region || 'Global';
+                };
+                // Get holiday CSS class name
+                const getHolidayClass = (name) => {
+                    if (!name) return 'holiday-default';
+                    const nameLower = name.toLowerCase();
+                    // Map holiday names to CSS classes
+                    if (nameLower.includes('christmas') || nameLower.includes('holiday season')) return 'holiday-christmas';
+                    if (nameLower.includes('new year') && !nameLower.includes('japanese') && !nameLower.includes('chinese')) return 'holiday-new-year';
+                    if (nameLower.includes('halloween')) return 'holiday-halloween';
+                    if (nameLower.includes('thanksgiving')) return 'holiday-thanksgiving';
+                    if (nameLower.includes('independence day') || nameLower.includes('4th of july')) return 'holiday-independence-day';
+                    if (nameLower.includes('valentine')) return 'holiday-valentines-day';
+                    if (nameLower.includes('easter') || nameLower.includes('spring holiday')) return 'holiday-easter';
+                    if (nameLower.includes('chinese new year')) return 'holiday-chinese-new-year';
+                    if (nameLower.includes('setsubun')) return 'holiday-setsubun';
+                    if (nameLower.includes('hinamatsuri')) return 'holiday-hinamatsuri';
+                    if (nameLower.includes('summer festival')) return 'holiday-summer-festival';
+                    if (nameLower.includes('japanese new year') || nameLower.includes('oshogatsu')) return 'holiday-japanese-new-year';
+                    if (nameLower.includes('cherry blossom') || nameLower.includes('hanami')) return 'holiday-cherry-blossom';
+                    if (nameLower.includes('tanabata') || nameLower.includes('star festival')) return 'holiday-tanabata';
+                    if (nameLower.includes('golden week') || nameLower.includes('shukujitsu')) return 'holiday-golden-week';
+                    if (nameLower.includes('children') || nameLower.includes('kodomo')) return 'holiday-childrens-day';
+                    if (nameLower.includes('mid-autumn') || nameLower.includes('tsukimi')) return 'holiday-mid-autumn';
+                    if (nameLower.includes('obon') || nameLower.includes('bon odori')) return 'holiday-obon';
+                    return 'holiday-default';
+                };
+                const region = holidayData.region || holiday.region || 'us';
+                const flagIconClass = getCountryFlagIcon(region);
+                const regionName = getRegionName(region);
+                const holidayClass = getHolidayClass(holidayName);
+                
+                holidayCardHtml = `
+                    <div class="period-info-card holiday-info-card ${holidayClass}">
+                        <div class="period-info-content">
+                            <div class="period-main-info">
+                                <div class="period-title-section">
+                                    <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                        ${holidayName}
+                                        <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                    </div>
+                                    ${time.hour !== undefined ? `
+                                    <div class="period-title-indicators">
+                                        <div class="period-season-badge">
+                                            <i class="fa-solid ${flagIconClass}"></i>
+                                            <span>${regionName}</span>
+                                        </div>
+                                        <div class="period-title-indicator">
+                                            <div class="period-title-indicator-label">
+                                                <span>Holiday</span>
+                                                <span class="period-title-indicator-value">${holidayProgress.toFixed(0)}%</span>
+                                            </div>
+                                            <div class="period-title-progress-bar light-level">
+                                                <div class="period-progress-fill light-level" style="width: ${holidayProgress}%"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                                <div class="period-time-date">
+                                    <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
+                                        ${daysUntilText} ${daysUntilLabel}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="period-details hidden">
+                                ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
+                                ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
+                                ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
+                                ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -3182,7 +4101,7 @@ function renderTextReplacementLockList() {
             }
             
             // Combine context cards
-            const contextCardsHtml = periodCardHtml + weatherContent;
+            const contextCardsHtml = periodCardHtml + holidayCardHtml + weatherContent;
             if (contextCardsHtml) {
                 contextCardsContainer.innerHTML = contextCardsHtml;
                 listContainer.appendChild(contextCardsContainer);
@@ -3191,10 +4110,8 @@ function renderTextReplacementLockList() {
 
         // Render each replacement (reuse the same function from textReplacementManager.js)
         replacements.forEach((replacement, globalIndex) => {
-            if (typeof createDynamicReplacementItemForLockModal === 'function') {
-                const itemElement = createDynamicReplacementItemForLockModal(replacement, globalIndex);
-                listContainer.appendChild(itemElement);
-            }
+            const itemElement = createDynamicReplacementItemForLockModal(replacement, globalIndex);
+            listContainer.appendChild(itemElement);
         });
     }
 
@@ -3211,7 +4128,7 @@ function renderTextReplacementLockList() {
             usageHeader.innerHTML = `
                 <div class="section-title">
                     <i class="fas fa-gauge-high"></i>
-                    <span>Compiler Timeline</span>
+                    <span>Compiler Timeline & Costs</span>
                 </div>
             `;
             listContainer.appendChild(usageHeader);
@@ -3220,7 +4137,7 @@ function renderTextReplacementLockList() {
             const getCallIcon = (call) => {
                 if (!call) return '<i class="fas fa-circle"></i>';
                 if (call.callType === 'tool_call') return '<i class="fas fa-wrench"></i>';
-                if (call.callType === 'request') return '<i class="fas fa-robot"></i>';
+                if (call.callType === 'request') return '<i class="fas fa-code"></i>';
                 return '<i class="fas fa-circle"></i>';
             };
             const formatTokens = (u) => {
@@ -3265,11 +4182,11 @@ function renderTextReplacementLockList() {
                             <i class="fas fa-diagram-project"></i>
                             <span>${phaseDisplayName}</span>
                         </div>
-                        ${phaseTotals ? `<div style="margin: 6px 0 0 0; color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
+                        ${phaseTotals ? `<div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
                     `;
                 } else if (phaseTotals) {
                     phaseHeader.innerHTML = `
-                        ${phaseTotals ? `<div style="margin: 6px 0 0 0; color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
+                        ${phaseTotals ? `<div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
                     `;
                 }
                 listContainer.appendChild(phaseHeader);
@@ -3282,19 +4199,161 @@ function renderTextReplacementLockList() {
                     const typeIcon = getCallIcon(call);
                     const tokens = formatTokens(call.usage || {});
 
-                if (call.callType === 'tool_call' && Array.isArray(call.tools) && call.tools.length > 0) {
+                    if (call.callType === 'tool_call' && Array.isArray(call.tools) && call.tools.length > 0) {
                         // Build inner per-tool rows: name row and reason row, colored with toast manager background/icon
-                    const toolsBlocks = call.tools.map((t) => {
+                        const toolsBlocks = call.tools.map((t) => {
                             const toolName = t?.name || '';
-                            const toolStyle = (typeof getToolIconAndBackground === 'function')
-                                ? getToolIconAndBackground(toolName, 'completed')
-                                : { icon: '<i class="fas fa-cog"></i>', backgroundColor: 'rgba(156, 163, 175, 0.1)' };
-                            const display = (typeof getToolDisplayName === 'function' && toolName)
-                                ? getToolDisplayName(toolName) : toolName || 'Tool';
+                            const toolStyle = getToolIconAndBackground(toolName, 'completed');
+                            const display = getToolDisplayName(toolName) || toolName || 'Tool';
                             const toolParams = t?.parameters || {};
                             // Reason priority: tool.reason -> parameters.reason -> call.reason
-                        const toolReason = (t && t.reason) || (toolParams && toolParams.reason) || call.reason || '';
-                        const tagReasons = (toolName === 'searchTagsBatch' && Array.isArray(toolParams?.tags)) ? toolParams.tags : null;
+                            const toolReason = (t && t.reason) || (toolParams && toolParams.reason) || call.reason || '';
+                            const tagReasons = (toolName === 'searchTagsBatch' && Array.isArray(toolParams?.tags)) ? toolParams.tags : null;
+
+                            // Special handling for publishAnalysisResults
+                            if (toolName === 'publishAnalysisResults' && toolParams.existing_context) {
+                                const existingContext = toolParams.existing_context;
+                                const contextFields = ['time', 'season', 'holiday', 'location', 'weather_condition', 'sky'];
+                                const detectedIcons = contextFields.map(fieldName => {
+                                    const field = existingContext[fieldName];
+                                    let isMuted = true;
+                                    let tooltipText = fieldName;
+                                    
+                                    if (field) {
+                                        if (fieldName === 'location') {
+                                            const sceneType = field.scene_type || 'unknown';
+                                            isMuted = sceneType === 'unknown';
+                                            tooltipText = `Location: ${sceneType}`;
+                                        } else if (field.found && field.value && field.value !== 'none') {
+                                            isMuted = false;
+                                            tooltipText = `${fieldName}: ${field.value}`;
+                                        } else {
+                                            tooltipText = `${fieldName}: Not found`;
+                                        }
+                                    } else {
+                                        tooltipText = `${fieldName}: Not found`;
+                                    }
+                                    
+                                    const iconClass = getContextFieldIcon(fieldName);
+                                    
+                                    return `
+                                        <span class="usage-context-icon ${isMuted ? 'muted' : ''}" title="${tooltipText}">
+                                            <i class="fas ${iconClass}"></i>
+                                        </span>
+                                    `;
+                                }).join('');
+                                
+                                const sceneType = existingContext.location?.scene_type || 'unknown';
+                                
+                                return `
+                                    <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                        <div class="usage-tool-name-row">
+                                            <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                            <div class="text-replacement-lock-pattern">
+                                                <span class="usage-tool-name selectable">${display}</span>
+                                            </div>
+                                        </div>
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Detected:</span>
+                                            <div class="usage-context-icons">
+                                                ${detectedIcons}
+                                            </div>
+                                        </div>
+                                        ${sceneType !== 'unknown' ? `
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Scene:</span>
+                                            <span class="usage-context-value selectable">${sceneType}</span>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }
+                            
+                            // Special handling for planTextReplacements
+                            if (toolName === 'planTextReplacements' && toolParams.planned_changes) {
+                                const plannedChanges = Array.isArray(toolParams.planned_changes) ? toolParams.planned_changes : [];
+                                const researchNeeded = Array.isArray(toolParams.research_needed) ? toolParams.research_needed : [];
+                                const conflictsToResolve = Array.isArray(toolParams.conflicts_to_resolve) ? toolParams.conflicts_to_resolve : [];
+                                
+                                // Group planned changes by category
+                                const changesByCategory = {};
+                                plannedChanges.forEach(change => {
+                                    const category = change.category || 'Other';
+                                    if (!changesByCategory[category]) {
+                                        changesByCategory[category] = [];
+                                    }
+                                    changesByCategory[category].push(change);
+                                });
+                                
+                                // Map category names to field names for icon lookup
+                                const categoryToFieldMap = {
+                                    'Weather': 'weather_condition',
+                                    'Time of Day': 'time',
+                                    'Seasonal': 'season',
+                                    'Holiday': 'holiday',
+                                    'Lighting': 'lighting',
+                                    'Atmosphere': 'sky',
+                                    'Spelling': 'fa-spell-check',
+                                    'Text Overlay': 'fa-font',
+                                    'Conflict Resolution': 'fa-exclamation-triangle',
+                                    'Enhancement': 'fa-magic',
+                                    'Action Verbs': 'character_actions',
+                                    'Directive': 'fa-bullseye'
+                                };
+                                
+                                const categoryIcons = Object.keys(changesByCategory).map(category => {
+                                    const count = changesByCategory[category].length;
+                                    const fieldName = categoryToFieldMap[category];
+                                    let iconClass = 'fa-tag'; // default
+                                    if (fieldName && fieldName.startsWith('fa-')) {
+                                        iconClass = fieldName; // direct icon class
+                                    } else if (fieldName) {
+                                        iconClass = getContextFieldIcon(fieldName) || 'fa-tag';
+                                    }
+                                    return `
+                                        <span class="usage-context-icon" title="${category}: ${count} change(s)">
+                                            <i class="fas ${iconClass}"></i>
+                                            ${count > 1 ? `<span class="usage-context-badge">${count}</span>` : ''}
+                                        </span>
+                                    `;
+                                }).join('');
+                                
+                                return `
+                                    <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                        <div class="usage-tool-name-row">
+                                            <div class="usage-tool-icon">${toolStyle.icon}</div>
+                                            <div class="text-replacement-lock-pattern">
+                                                <span class="usage-tool-name selectable">${display}</span>
+                                            </div>
+                                        </div>
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Planned Changes:</span>
+                                            <div class="usage-context-icons">
+                                                ${categoryIcons || '<span class="usage-context-value">None</span>'}
+                                            </div>
+                                        </div>
+                                        ${plannedChanges.length > 0 ? `
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Total:</span>
+                                            <span class="usage-context-value selectable">${plannedChanges.length} change(s)</span>
+                                        </div>
+                                        ` : ''}
+                                        ${researchNeeded.length > 0 ? `
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Research Needed:</span>
+                                            <span class="usage-context-value selectable">${researchNeeded.length} item(s)</span>
+                                        </div>
+                                        ` : ''}
+                                        ${conflictsToResolve.length > 0 ? `
+                                        <div class="usage-context-row">
+                                            <span class="usage-context-label">Conflicts:</span>
+                                            <span class="usage-context-value selectable">${conflictsToResolve.length} conflict(s)</span>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }
+                            
 
                             // Two stacked rows (name + reason), both with same background
                             return `
@@ -3302,7 +4361,7 @@ function renderTextReplacementLockList() {
                                     <div class="usage-tool-name-row">
                                         <div class="usage-tool-icon">${toolStyle.icon}</div>
                                         <div class="text-replacement-lock-pattern">
-                                            <span class="usage-tool-name">${display}</span>
+                                            <span class="usage-tool-name selectable">${display}</span>
                                         </div>
                                     </div>
                                 ${Array.isArray(tagReasons) && tagReasons.length > 0 ? `
@@ -3314,7 +4373,7 @@ function renderTextReplacementLockList() {
                                             <div class="usage-tag-row">
                                                 <div class="usage-tool-icon"><i class="fas fa-tag"></i></div>
                                                 <div class="usage-tag-line">
-                                                    <span class="usage-tag-name">${tagName}</span>
+                                                    <span class="usage-tag-name selectable">${tagName}</span>
                                                     ${showReason ? `<span class="usage-tag-sep">•</span><span class="usage-tag-reason">${tagReason}</span>` : ''}
                                                 </div>
                                             </div>
@@ -3323,7 +4382,7 @@ function renderTextReplacementLockList() {
                                 ` : (toolReason ? `
                                     <div class="usage-tool-reason-row">
                                         <div class="text-replacement-lock-pattern">
-                                            <span class="usage-tool-reason">${toolReason}</span>
+                                            <span class="usage-tool-reason selectable">${toolReason}</span>
                                         </div>
                                     </div>
                                 ` : '')}
@@ -3349,7 +4408,7 @@ function renderTextReplacementLockList() {
                         `;
                     } else {
                         // Non-tool call (e.g., request): single line + optional reason + totals
-                        const displayName = (call.callType === 'request') ? 'Dynamic Generation Complete' : (call.functionName || call.callType || 'Call');
+                        const displayName = (call.callType === 'request') ? 'Structured Build Data' : (call.functionName || call.callType || 'Call');
                         const reason = call.reason || '';
                         callDiv.innerHTML = `
                             <div class="text-replacement-lock-content">
@@ -3544,7 +4603,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
         // Add progress bar for percentage values
         let progressBar = '';
         if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
-            progressBar = `<div class="progress-bar"><div class="progress-fill" style="width: ${progressValue}%"></div></div>`;
+            progressBar = `<div role="progressbar"><div style="width: ${progressValue}%"></div></div>`;
         }
 
         return `
@@ -3568,40 +4627,54 @@ function showCompiledPromptModal(compiledPromptData = null) {
     };
 
     // Weather icon mapping function using Weather Icons
-    function getWeatherIcon(condition) {
-        if (!condition) return '<i class="wi wi-day-sunny"></i>';
+    function getWeatherIcon(condition, isNight = false) {
+        if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
 
-        const iconMap = {
-            'clear sky': '<i class="wi wi-day-sunny"></i>',
-            'mainly clear': '<i class="wi wi-day-sunny-overcast"></i>',
-            'partly cloudy': '<i class="wi wi-day-cloudy"></i>',
-            'overcast': '<i class="wi wi-cloudy"></i>',
-            'fog': '<i class="wi wi-fog"></i>',
-            'depositing rime fog': '<i class="wi wi-fog"></i>',
-            'light drizzle': '<i class="wi wi-day-showers"></i>',
-            'moderate drizzle': '<i class="wi wi-day-showers"></i>',
-            'dense drizzle': '<i class="wi wi-day-showers"></i>',
-            'light freezing drizzle': '<i class="wi wi-day-snow"></i>',
-            'dense freezing drizzle': '<i class="wi wi-day-snow"></i>',
-            'slight rain': '<i class="wi wi-day-rain"></i>',
-            'moderate rain': '<i class="wi wi-day-rain"></i>',
-            'heavy rain': '<i class="wi wi-day-rain"></i>',
-            'light freezing rain': '<i class="wi wi-day-snow"></i>',
-            'heavy freezing rain': '<i class="wi wi-day-snow"></i>',
-            'slight snow fall': '<i class="wi wi-day-snow"></i>',
-            'moderate snow fall': '<i class="wi wi-snow"></i>',
-            'heavy snow fall': '<i class="wi wi-snow"></i>',
-            'snow grains': '<i class="wi wi-snow"></i>',
-            'slight rain showers': '<i class="wi wi-day-showers"></i>',
-            'moderate rain showers': '<i class="wi wi-day-rain"></i>',
-            'violent rain showers': '<i class="wi wi-day-storm-showers"></i>',
-            'slight snow showers': '<i class="wi wi-day-snow"></i>',
-            'heavy snow showers': '<i class="wi wi-snow"></i>',
-            'thunderstorm': '<i class="wi wi-day-thunderstorm"></i>',
-            'thunderstorm with slight hail': '<i class="wi wi-day-thunderstorm"></i>',
-            'thunderstorm with heavy hail': '<i class="wi wi-day-thunderstorm"></i>'
+        const timePrefix = isNight ? 'night-alt' : 'day';
+        
+        // Icons that don't change between day/night (no sun/moon influence)
+        const timeNeutralIcons = {
+            'overcast': 'cloudy',
+            'fog': 'fog',
+            'depositing rime fog': 'fog',
+            'moderate snow fall': 'snow',
+            'heavy snow fall': 'snow',
+            'snow grains': 'snow',
+            'heavy snow showers': 'snow'
         };
-        return iconMap[condition] || '<i class="wi wi-day-sunny"></i>';
+
+        // Check if this condition uses a time-neutral icon
+        if (timeNeutralIcons[condition]) {
+            return `<i class="wi wi-${timeNeutralIcons[condition]}"></i>`;
+        }
+
+        // Time-dependent icons (different for day/night)
+        const iconMap = {
+            'clear sky': isNight ? 'night-clear' : 'day-sunny',
+            'mainly clear': isNight ? 'night-alt-partly-cloudy' : 'day-sunny-overcast',
+            'partly cloudy': `${timePrefix}-cloudy`,
+            'light drizzle': `${timePrefix}-showers`,
+            'moderate drizzle': `${timePrefix}-showers`,
+            'dense drizzle': `${timePrefix}-showers`,
+            'light freezing drizzle': `${timePrefix}-snow`,
+            'dense freezing drizzle': `${timePrefix}-snow`,
+            'slight rain': `${timePrefix}-rain`,
+            'moderate rain': `${timePrefix}-rain`,
+            'heavy rain': `${timePrefix}-rain`,
+            'light freezing rain': `${timePrefix}-snow`,
+            'heavy freezing rain': `${timePrefix}-snow`,
+            'slight snow fall': `${timePrefix}-snow`,
+            'slight rain showers': `${timePrefix}-showers`,
+            'moderate rain showers': `${timePrefix}-rain`,
+            'violent rain showers': `${timePrefix}-storm-showers`,
+            'slight snow showers': `${timePrefix}-snow`,
+            'thunderstorm': `${timePrefix}-thunderstorm`,
+            'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
+            'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
+        };
+
+        const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
+        return `<i class="wi wi-${iconClass}"></i>`;
     }
 
     // Unit conversion functions
@@ -3815,12 +4888,6 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
         // Save preference to localStorage
         localStorage.setItem('weather_units_metric', useMetric.toString());
-
-        // Update dynamic generation overlay to reflect new units
-        const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
-        updateDynamicGenerationOverlay(context);
-
-        // Note: Unit toggle button removed since we're using info-item format
     };
 
     // Build context section
@@ -3834,7 +4901,9 @@ function showCompiledPromptModal(compiledPromptData = null) {
         // Build modern weather section
         let weatherContent = '';
         if (weather.condition || weather.temperature !== undefined) {
-            const weatherIcon = getWeatherIcon(weather.condition);
+            // Determine if it's night based on timePeriod
+            const isNight = context.timePeriod?.isDaytime === false;
+            const weatherIcon = getWeatherIcon(weather.condition, isNight);
 
             // Get weather alerts
             const alerts = weather.weatherQuality?.alerts || [];
@@ -4026,7 +5095,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                     ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
                     <div class="weather-card-header">
                         <div class="weather-quick-indicators">
-                            ${weather.uvIndex !== undefined ? `
+                            ${weather.uvIndex !== undefined && weather.uvIndex > 0 ? `
                             <div class="weather-quick-indicator">
                                 <div class="weather-quick-indicator-label">
                                     <i class="fa-solid fa-sun"></i>
@@ -4074,7 +5143,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
                 let progressBar = '';
                 if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
-                    progressBar = `<div class="weather-progress-bar"><div class="weather-progress-fill" style="width: ${progressValue}%"></div></div>`;
+                    progressBar = `<div role="progressbar"><div style="width: ${progressValue}%"></div></div>`;
                 }
 
                 return `
@@ -4135,6 +5204,10 @@ function showCompiledPromptModal(compiledPromptData = null) {
         let hourlyHtml = '';
         if (weather.hourly && Array.isArray(weather.hourly) && weather.hourly.length > 0) {
             const nextHours = weather.hourly.slice(0, 6); // Show next 6 hours for compact display
+            const timePeriodInfo = context.timePeriod || {};
+            const sunriseHour = timePeriodInfo.sunriseHour;
+            const sunsetHour = timePeriodInfo.sunsetHour;
+            
             const hourlyItems = nextHours.map((hour, index) => {
                 const hourTime = new Date(hour.timestamp);
                 const hourTemp = useMetric ?
@@ -4144,10 +5217,17 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 const precipDisplay = hour.precipitation > 0 ?
                     (useMetric ? `${hour.precipitation}mm` : `${(hour.precipitation * 0.0394).toFixed(1)}in`) : '';
 
+                // Determine if this hour is at night
+                const hourDecimal = hourTime.getHours() + hourTime.getMinutes() / 60;
+                let isNightHour = false;
+                if (sunriseHour !== undefined && sunsetHour !== undefined) {
+                    isNightHour = hourDecimal < sunriseHour || hourDecimal >= sunsetHour;
+                }
+
                 return `
                     <div class="weather-hour-item">
                         <div class="weather-hour-time">${timeLabel}</div>
-                        <div class="weather-hour-icon">${getWeatherIcon(hour.condition)}</div>
+                        <div class="weather-hour-icon">${getWeatherIcon(hour.condition, isNightHour)}</div>
                         <div class="weather-hour-temp">${hourTemp}</div>
                         ${precipDisplay ? `<div class="weather-hour-precip">${precipDisplay}</div>` : ''}
                     </div>
@@ -4266,6 +5346,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                     'late_afternoon': 'Late Afternoon',
                     'goldenhour': 'Golden Hour',
                     'golden_hour': 'Golden Hour',
+                    'evening': 'Evening',
                     'sunset': 'Sunset',
                     'dusk': 'Dusk',
                     'twilight': 'Twilight',
@@ -4297,27 +5378,28 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 location.city || location.country || '';
 
             // Progress bar data
-            const perceivableLight = timePeriodInfo.perceivableLight !== undefined ? timePeriodInfo.perceivableLight : 0;
+            const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
             const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
             
             // Calculate sun position for display
             const sunPhase = timePeriodInfo.sunPhase || 'rising';
             let sunPositionPercent;
             if (sunPhase === 'rising') {
-                sunPositionPercent = (perceivableLight / 100) * 50;
+                // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
+                sunPositionPercent = (sunProgressRaw / 0.5) * 50;
             } else if (sunPhase === 'setting') {
-                sunPositionPercent = 50 + ((100 - perceivableLight) / 100) * 50;
+                // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
+                sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
             } else {
                 sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
             }
 
-            // Calculate season progress
-            const seasonProgress = calculateSeasonProgress(time, context.season);
-            
-            // Extract season name for template (handle both object and string formats)
+            // Calculate season progress and template (needed for both period and holiday cards)
+            const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
             const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
             const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
-
+            const hasHoliday = context.season?.holiday?.primaryHoliday;
+            
             periodCardHtml = `
                 <div class="period-info-card ${periodBgClass}">
                     <div class="period-info-content">
@@ -4341,6 +5423,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                                         </div>
                                     </div>
                                     ` : ''}
+                                    ${lightLevelRaw !== undefined && lightLevelRaw > 0 ? `
                                     <div class="period-title-indicator">
                                         <div class="period-title-indicator-label">
                                             <span>Sun</span>
@@ -4357,6 +5440,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                                             <div class="period-progress-fill light-level" style="width: ${lightLevelRaw * 10}%"></div>
                                         </div>
                                     </div>
+                                    ` : ''}
                                 </div>
                                 ` : ''}
                             </div>
@@ -4369,35 +5453,150 @@ function showCompiledPromptModal(compiledPromptData = null) {
                             ` : ''}
                         </div>
                         <div class="period-details hidden">
-                            ${timePeriodInfo.period ? `<div class="period-detail"><i class="fa-solid fa-clock"></i><div class="detail-content"><div class="detail-label">Period</div><div class="detail-value">${timePeriodInfo.period}</div></div></div>` : ''}
-                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${timePeriodInfo.lighting}</div></div></div>` : ''}
-                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                            ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
+                                const text = typeof el === 'object' ? el.text : el;
+                                const bias = typeof el === 'object' ? el.bias : 1.0;
+                                return `${text} (${bias.toFixed(2)})`;
+                            }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                            ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
+                                const text = typeof el === 'object' ? el.text : el;
+                                const bias = typeof el === 'object' ? el.bias : 1.0;
+                                return `${text} (${bias.toFixed(2)})`;
+                            }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
                         </div>
                     </div>
                 </div>
             `;
         }
 
+        // Build holiday card for compiled prompt modal
+        let holidayCardHtmlModal = '';
+        if (hasHoliday) {
+            const holiday = context.season.holiday;
+            const holidayName = holiday.primaryHoliday?.name || 'Holiday';
+            const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
+            const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
+            const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
+            
+            // Calculate holiday progress (0-100%)
+            let holidayProgress = 50; // Default
+            if (daysUntil !== undefined && daysUntil !== null) {
+                const bufferDays = 30;
+                if (daysUntil >= 0 && daysUntil <= bufferDays) {
+                    holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysUntil) / bufferDays) * 100));
+                } else if (daysUntil < 0) {
+                    const daysPast = Math.abs(daysUntil);
+                    holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
+                }
+            }
+            
+            // Get holiday data
+            const holidayData = holiday.primaryHoliday || {};
+            const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
+            const decorations = holidayData.decorations || holiday.decorations || '';
+            const colors = holidayData.colors || holiday.colors || '';
+            const activities = holidayData.activities || holiday.activities || '';
+            
+            // Get country flag icon and region name based on region
+            const getCountryFlagIcon = (region) => {
+                const flagMap = {
+                    'us': 'fa-flag-usa',
+                    'asia': 'fa-flag',
+                    'japan': 'fa-flag'
+                };
+                return flagMap[region?.toLowerCase()] || 'fa-flag';
+            };
+            const getRegionName = (region) => {
+                const regionMap = {
+                    'us': 'United States',
+                    'asia': 'Asia',
+                    'japan': 'Japan'
+                };
+                return regionMap[region?.toLowerCase()] || region || 'Global';
+            };
+            // Get holiday CSS class name
+            const getHolidayClass = (name) => {
+                if (!name) return 'holiday-default';
+                const nameLower = name.toLowerCase();
+                // Map holiday names to CSS classes
+                if (nameLower.includes('christmas') || nameLower.includes('holiday season')) return 'holiday-christmas';
+                if (nameLower.includes('new year') && !nameLower.includes('japanese') && !nameLower.includes('chinese')) return 'holiday-new-year';
+                if (nameLower.includes('halloween')) return 'holiday-halloween';
+                if (nameLower.includes('thanksgiving')) return 'holiday-thanksgiving';
+                if (nameLower.includes('independence day') || nameLower.includes('4th of july')) return 'holiday-independence-day';
+                if (nameLower.includes('valentine')) return 'holiday-valentines-day';
+                if (nameLower.includes('easter') || nameLower.includes('spring holiday')) return 'holiday-easter';
+                if (nameLower.includes('chinese new year')) return 'holiday-chinese-new-year';
+                if (nameLower.includes('setsubun')) return 'holiday-setsubun';
+                if (nameLower.includes('hinamatsuri')) return 'holiday-hinamatsuri';
+                if (nameLower.includes('summer festival')) return 'holiday-summer-festival';
+                if (nameLower.includes('japanese new year') || nameLower.includes('oshogatsu')) return 'holiday-japanese-new-year';
+                if (nameLower.includes('cherry blossom') || nameLower.includes('hanami')) return 'holiday-cherry-blossom';
+                if (nameLower.includes('tanabata') || nameLower.includes('star festival')) return 'holiday-tanabata';
+                if (nameLower.includes('golden week') || nameLower.includes('shukujitsu')) return 'holiday-golden-week';
+                if (nameLower.includes('children') || nameLower.includes('kodomo')) return 'holiday-childrens-day';
+                if (nameLower.includes('mid-autumn') || nameLower.includes('tsukimi')) return 'holiday-mid-autumn';
+                if (nameLower.includes('obon') || nameLower.includes('bon odori')) return 'holiday-obon';
+                return 'holiday-default';
+            };
+            const region = holidayData.region || holiday.region || 'us';
+            const flagIconClass = getCountryFlagIcon(region);
+            const regionName = getRegionName(region);
+            const holidayClass = getHolidayClass(holidayName);
+            
+            holidayCardHtmlModal = `
+                <div class="period-info-card holiday-info-card ${holidayClass}">
+                    <div class="period-info-content">
+                        <div class="period-main-info">
+                            <div class="period-title-section">
+                                <div class="period-title clickable" onclick="togglePeriodDetails(this)">
+                                    ${holidayName}
+                                    <i class="fa-solid fa-chevron-down period-expand-icon"></i>
+                                </div>
+                                ${time.hour !== undefined ? `
+                                <div class="period-title-indicators">
+                                        <div class="period-season-badge">
+                                            <i class="fa-solid ${flagIconClass}"></i>
+                                            <span>${regionName}</span>
+                                        </div>
+                                    <div class="period-title-indicator">
+                                        <div class="period-title-indicator-label">
+                                            <span>Holiday</span>
+                                            <span class="period-title-indicator-value">${holidayProgress.toFixed(0)}%</span>
+                                        </div>
+                                        <div class="period-title-progress-bar light-level">
+                                            <div class="period-progress-fill light-level" style="width: ${holidayProgress}%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="period-time-date">
+                                <div class="period-time" style="font-size: 1.5rem; font-weight: 600;">
+                                    ${daysUntilText} ${daysUntilLabel}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="period-details hidden">
+                            ${atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${atmosphere}</div></div></div>` : ''}
+                            ${decorations ? `<div class="period-detail"><i class="fa-solid fa-gifts"></i><div class="detail-content"><div class="detail-label">Decorations</div><div class="detail-value selectable">${decorations}</div></div></div>` : ''}
+                            ${colors ? `<div class="period-detail"><i class="fa-solid fa-palette"></i><div class="detail-content"><div class="detail-label">Colors</div><div class="detail-value selectable">${colors}</div></div></div>` : ''}
+                            ${activities ? `<div class="period-detail"><i class="fa-solid fa-people-group"></i><div class="detail-content"><div class="detail-label">Activities</div><div class="detail-value selectable">${activities}</div></div></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
         // Combine weather and time content
         if (weatherContent) {
-            contextContent = periodCardHtml + weatherContent + (hourlyHtml ? hourlyHtml : '');
+            contextContent = periodCardHtml + holidayCardHtmlModal + weatherContent + (hourlyHtml ? hourlyHtml : '');
         }
 
         // Add time and season information if no weather
         if (!weatherContent && timeItems.length > 0) {
-            contextContent = periodCardHtml + `<div class="info-grid">${timeItems.filter(item => item).join('')}</div>`;
+            contextContent = periodCardHtml + holidayCardHtmlModal + `<div class="info-grid">${timeItems.filter(item => item).join('')}</div>`;
         }
-    }
-
-    // Build modifications section
-    let modificationsContent = '';
-    if (compiled.modifications_made && compiled.modifications_made.length > 0) {
-        const modItems = compiled.modifications_made.map(mod => `
-            <div class="info-item modification">
-                <span>${mod.description || mod}</span>
-            </div>
-        `).join('');
-        modificationsContent = `<div class="info-list compact">${modItems}</div>`;
     }
 
     // Build reasoning section
@@ -4828,9 +6027,9 @@ ${action ? `<span class="director-feedback-action"><i class="fas fa-exchange-alt
 </div>
 <div class="director-rule-text" contenteditable="true" data-feedback-id="${feedback.id}" style="white-space: pre-wrap; min-height: 60px; max-height: 200px; overflow-y: auto;">${escapeHtml(userFeedback)}</div>
 <div class="director-feedback-details">
-${selectText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-left"></i> Original:</span><span class="detail-value">${escapeHtml(selectText)}</span></div>` : ''}
-${replaceText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-right"></i> Replacement:</span><span class="detail-value">${escapeHtml(replaceText)}</span></div>` : ''}
-<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-robot"></i> AI Reason:</span><span class="detail-value">${escapeHtml(aiReason)}</span></div>
+${selectText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-left"></i> Original:</span><span class="detail-value selectable">${escapeHtml(selectText)}</span></div>` : ''}
+${replaceText ? `<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-arrow-right"></i> Replacement:</span><span class="detail-value selectable">${escapeHtml(replaceText)}</span></div>` : ''}
+<div class="director-feedback-detail-row"><span class="detail-label"><i class="fas fa-robot"></i> AI Reason:</span><span class="detail-value selectable">${escapeHtml(aiReason)}</span></div>
 </div>
 </div>
 <div class="director-rule-actions">
@@ -5087,6 +6286,7 @@ function getCurrentTodDisplay() {
                     'dawn': 'Dawn', 'sunrise': 'Sunrise',
                     'morning': 'Morning', 'latemorning': 'Late Morning', 'daytime': 'Daytime',
                     'afternoon': 'Afternoon', 'lateafternoon': 'Late Afternoon', 'goldenhour': 'Golden Hour',
+                    'evening': 'Evening',
                     'sunset': 'Sunset', 'dusk': 'Dusk',
                     'night': 'Night', 'midnight': 'Midnight'
                 };
@@ -5197,7 +6397,7 @@ function hasDateOverride() {
     }
     
     // Check if it's a date-only value (not a time-only value)
-    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'evening', 'sunset', 'dusk', 'night', 'midnight'];
     const isTimeOnly = timeNames.includes(currentOverride);
     if (isTimeOnly) return false;
     
@@ -5222,7 +6422,7 @@ function hasTimeOverride() {
     }
     
     // Check if it's a time-only value
-    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+    const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'evening', 'sunset', 'dusk', 'night', 'midnight'];
     if (timeNames.includes(currentOverride)) return true;
     
     // Check if it's HHmm format
@@ -5288,6 +6488,7 @@ function setupDynamicGenerationContextMenus() {
                             { text: 'Afternoon - Full warm sunlight', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'afternoon' },
                             { text: 'Late Afternoon - Golden hour approaching', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'lateafternoon' },
                             { text: 'Golden Hour - Warm magical light', icon: 'fas fa-sun', action: 'setTodTimeOverride', value: 'goldenhour' },
+                            { text: 'Evening - Post-afternoon, pre-sunset', icon: 'fas fa-sun-haze', action: 'setTodTimeOverride', value: 'evening' },
                             { text: 'Sunset - Sun setting, dramatic colors', icon: 'fas fa-sunset', action: 'setTodTimeOverride', value: 'sunset' },
                             { text: 'Dusk - Fading light to twilight', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'dusk' },
                             { text: 'Night - Nighttime darkness', icon: 'fas fa-moon', action: 'setTodTimeOverride', value: 'night' },
@@ -5533,9 +6734,7 @@ function setupDynamicGenerationContextMenus() {
                             }
                         }];
                         
-                        if (typeof openStandalonePhotoSwipe === 'function') {
-                            await openStandalonePhotoSwipe(standaloneData);
-                        }
+                        await openStandalonePhotoSwipe(standaloneData);
                     });
                     
                     // Add error handler
@@ -5568,10 +6767,10 @@ function setupDynamicGenerationContextMenus() {
                     loadfn: function(item, target) {
                         const forceRefreshEnabled = dynamicCarousel?.dataset.forceRefresh === 'true';
                         const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
-                        const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates !== 'false';
+                        const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
 
                         // Only enable if chain updates are on and we have previous response
-                        item.disabled = !hasPreviousResponse || !chainUpdatesEnabled;
+                        item.disabled = !hasPreviousResponse;
                         item.checked = forceRefreshEnabled;
                         item.className = forceRefreshEnabled ? 'text-warning' : '';
                     }
@@ -5635,8 +6834,8 @@ function setupDynamicGenerationContextMenus() {
                             icon: 'fas fa-link-horizontal',
                             keepMenuOpen: true,
                             loadfn: function(item, target) {
-                                // Default to true (enabled) if not set
-                                const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates !== 'false';
+                                // Default to false (disabled) if not set
+                                const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
                                 const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
 
                                 item.disabled = !hasPreviousResponse;
@@ -5796,10 +6995,25 @@ function setupDynamicGenerationContextMenus() {
                     text: 'Dialogs',
                     icon: 'fas fa-comments',
                     valueDisplay: function(target) {
-                        const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                        const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+                        if (dialogsValue === '0') {
+                            return 'Off';
+                        }
+                        const currentValue = parseInt(dialogsValue || '6');
                         return currentValue.toString();
                     },
                     submenu: [
+                        {
+                            text: 'Disable',
+                            icon: 'fas fa-times-circle',
+                            action: 'disableCreativeDirectiveDialogs',
+                            loadfn: function(item, target) {
+                                const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+                                const isDisabled = dialogsValue === '0';
+                                item.checked = isDisabled;
+                            }
+                        },
+                        { separator: true },
                         {
                             text: '4',
                             action: 'setCreativeDirectiveDialogs',
@@ -6139,6 +7353,22 @@ function setupDynamicGenerationContextMenus() {
                         item.checked = toggleActionEnabled;
                         item.className = toggleActionEnabled ? 'text-success' : '';
                     }
+                },
+                {
+                    text: 'Seasonal Guidance',
+                    icon: 'fas fa-snowflake',
+                    action: 'toggleGuidance',
+                    keepMenuOpen: true,
+                    loadfn: function(item, target) {
+                        const seasonBtn = document.getElementById('seasonBtn');
+                        const seasonEnabled = seasonBtn?.dataset.state === 'on';
+                        const guidanceEnabled = seasonBtn?.dataset.toggleGuidance === 'true';
+                        
+                        // Disable if season is off
+                        item.disabled = !seasonEnabled;
+                        item.checked = guidanceEnabled;
+                        item.className = guidanceEnabled ? 'text-success' : '';
+                    }
                 }
             ]
         }]
@@ -6286,7 +7516,7 @@ document.addEventListener('contextMenuAction', (e) => {
                 todBtn.removeAttribute('data-override');
             }
         } else if (currentOverride && !currentOverride.includes('_')) {
-            const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'sunset', 'dusk', 'night', 'midnight'];
+            const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'evening', 'sunset', 'dusk', 'night', 'midnight'];
             const cleanTimeStr = currentOverride.startsWith('%') ? currentOverride.substring(1) : currentOverride;
             if (timeNames.includes(currentOverride) || /^\d{4}$/.test(cleanTimeStr)) {
                 todBtn.removeAttribute('data-override');
@@ -6337,6 +7567,13 @@ document.addEventListener('contextMenuAction', (e) => {
         const seasonBtn = document.getElementById('seasonBtn');
         const observeHolidayEnabled = seasonBtn.dataset.toggleHoliday === 'true';
         seasonBtn.dataset.toggleHoliday = observeHolidayEnabled ? 'false' : 'true';
+    } else if (action === 'toggleGuidance') {
+        const seasonBtn = document.getElementById('seasonBtn');
+        // Only allow toggle if season is enabled
+        if (seasonBtn?.dataset.state === 'on') {
+            const guidanceEnabled = seasonBtn.dataset.toggleGuidance === 'true';
+            seasonBtn.dataset.toggleGuidance = guidanceEnabled ? 'false' : 'true';
+        }
     } else if (action === 'toggleWeatherForecast') {
         const weatherBtn = document.getElementById('weatherBtn');
         const useForecast = weatherBtn?.getAttribute('data-override') === 'forecast';
@@ -6376,8 +7613,8 @@ document.addEventListener('contextMenuAction', (e) => {
         // Update carousel lock icon visibility and type
         updateCarouselIndicators();
     } else if (action === 'toggleChainUpdates') {
-        // Default to true (enabled) if not set
-        const chainUpdatesEnabled = dynamicCarousel.dataset.chainUpdates !== 'false';
+        // Default to false (disabled) if not set
+        const chainUpdatesEnabled = dynamicCarousel.dataset.chainUpdates === 'true';
         dynamicCarousel.dataset.chainUpdates = chainUpdatesEnabled ? 'false' : 'true';
     } else if (action === 'toggleForceRefresh') {
         const forceRefreshEnabled = dynamicCarousel.dataset.forceRefresh === 'true';
@@ -6398,6 +7635,8 @@ document.addEventListener('contextMenuAction', (e) => {
     } else if (action === 'setCreativeDirectiveDialogs') {
         const value = e.detail.item.value;
         dynamicCarousel.dataset.creativeDirectiveDialogs = value.toString();
+    } else if (action === 'disableCreativeDirectiveDialogs') {
+        dynamicCarousel.dataset.creativeDirectiveDialogs = '0';
     } else if (action === 'setAiTemperature') {
         const value = e.detail.item.value;
         if (dynamicCarousel) {
@@ -6843,8 +8082,9 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             }
 
             // Update subscription notifications
-            updateSubscriptionNotifications().catch(error => {
-            });
+            updateSubscriptionNotifications().catch(error => {});
+            updateSubscriptionRenewalIndicator();
+            updateFixedCreditsIndicator();
 
             // Check user type and show appropriate message
             const userType = localStorage.getItem('userType');
@@ -6897,7 +8137,7 @@ async function handleWorkspaceDataFromOptions(workspaceInfo) {
         window.currentWorkspace = workspaceInfo.id;
         
         // Update workspace UI if the function exists
-        if (window.updateWorkspaceUI && typeof window.updateWorkspaceUI === 'function') {
+        if (window.updateWorkspaceUI) {
             window.updateWorkspaceUI(workspaceInfo.id);
         }
         
@@ -6922,9 +8162,6 @@ let focusCoverEnabled = true;
 // MANUAL MODAL MANAGEMENT SYSTEM EVENT LISTENERS - Move to manualModalManager.js
 function setupEventListeners() {
     // MANUAL MODAL SYSTEM - Load saved blur preference (belongs to modal system)
-    loadBlurPreference();
-
-    // GENERATE BUTTON POPOVER SYSTEM - Move to generateButtonPopoverManager.js
     const generateButtons = document.querySelectorAll('#manualGenerateBtn, #manualGenerateBtnAlt');
     generateButtons.forEach(button => {
         button.addEventListener('mouseenter', (e) => showGenerateButtonPopoverFor(e.target));
@@ -6935,12 +8172,88 @@ function setupEventListeners() {
     // MANUAL MODAL SYSTEM - Core modal show/hide events
     openGenEditorBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        showManualModal();
+        openManualModalWithContent();
     });
     closeManualBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        hideManualModal();
+        hideManualModal(e);
     });
+    
+    // Manual modal restore/maximize button (in title bar)
+    const restoreManualBtn = document.getElementById('restoreManualBtn');
+    const unmaximizeManualBtn = document.getElementById('unmaximizeManualBtn');
+    
+    function toggleManualModalWindowed() {
+        const manualModal = document.getElementById('manualModal');
+        if (!manualModal) return;
+        
+        if (manualModal.classList.contains('windowed')) {
+            // Restore to maximized (full screen)
+            manualModal.classList.remove('windowed');
+            
+            // Add editor-open class for full screen takeover
+            document.body.classList.add('editor-open');
+            
+            // Clear inline styles to let CSS take over
+            manualModal.style.removeProperty('width');
+            manualModal.style.removeProperty('height');
+            manualModal.style.removeProperty('z-index');
+            manualModal.style.removeProperty('--modal-offset-x');
+            manualModal.style.removeProperty('--modal-offset-y');
+            manualModal.removeAttribute('data-modal-moved');
+            
+            // In desktop-mode, keep modal in stack even when maximized
+            // Only remove from stack if not in desktop-mode
+            const isDesktopMode = document.body.classList.contains('desktop-mode');
+            if (!isDesktopMode && typeof modalStack !== 'undefined') {
+                const modalIndex = modalStack.indexOf(manualModal);
+                if (modalIndex !== -1) {
+                    modalStack.splice(modalIndex, 1);
+                    updateModalStackZIndexes();
+                }
+            } else if (isDesktopMode && typeof modalStack !== 'undefined') {
+                // Keep in stack but update z-indexes
+                updateModalStackZIndexes();
+            }
+            
+            // Update taskbar
+            updateTaskbarWindows();
+        } else {
+            // Switch to windowed mode
+            manualModal.classList.add('windowed');
+            
+            // Remove editor-open class for windowed mode
+            document.body.classList.remove('editor-open');
+            
+            // Add to modal stack for z-index management
+            assignModalZIndex(manualModal);
+            updateTaskbarWindows();
+        }
+    }
+    
+    if (restoreManualBtn) {
+        restoreManualBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleManualModalWindowed();
+        });
+    }
+    
+    // Unmaximize button (in manual preview section)
+    if (unmaximizeManualBtn) {
+        unmaximizeManualBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleManualModalWindowed();
+        });
+    }
+    
+    // Close button in title bar
+    const closeManualModalBtn = document.getElementById('closeManualModalBtn');
+    if (closeManualModalBtn) {
+        closeManualModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            hideManualModal(e);
+        });
+    }
 
     // TIME/DATE MODAL SYSTEM
     const closeTimeDateModalBtn = document.getElementById('closeTimeDateModalBtn');
@@ -6998,24 +8311,47 @@ function setupEventListeners() {
         });
     }
 
+    // API key modal
+    const apiKeyModal = document.getElementById('apiKeyModal');
+    const closeApiKeyModalBtn = document.getElementById('closeApiKeyModalBtn');
+    const refreshApiKeyModalBtn = document.getElementById('refreshApiKeyModalBtn');
+
+    if (closeApiKeyModalBtn) {
+        closeApiKeyModalBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (apiKeyModal) {
+                await handleApiKeyModalClose();
+            }
+        });
+    }
+
+    if (refreshApiKeyModalBtn) {
+        refreshApiKeyModalBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loadApiKeyModalData(true);
+        });
+    }
+
     if (textReplacementLockBtn) {
         textReplacementLockBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            openTextReplacementLockModal();
+            renderTextReplacementModal();
+            linkToolWindowToParent(textReplacementLockModal, manualModal);
+            openModal(textReplacementLockModal);
         });
 
-        // Add context menu for lock/unlock all options and individual text replacements
+        // Add context menu for lock/unlock all options and individual Genso
         const lockBtnContextMenu = {
             sections: [
                 {
                     type: 'list',
-                    title: 'Text Replacements',
+                    title: 'Renkin System',
                     items: [], // Initialize as empty array
                     initfn: function(section, target) {
                         // Clear and repopulate items dynamically
                         section.items.length = 0;
                         
-                        // Get all text replacements (excluding dynamic generation ones)
+                        // Get all Genso Expanders (excluding Rentan modifications)
                         const textReplacements = window.lastGenerationTextReplacements || [];
                         
                         if (textReplacements.length === 0) {
@@ -7087,47 +8423,90 @@ function setupEventListeners() {
         });
     }
 
-    const toggleCompiledPromptsBtn = document.getElementById('toggleCompiledPromptsBtn');
-    if (toggleCompiledPromptsBtn) {
-        toggleCompiledPromptsBtn.addEventListener('click', (e) => {
+    const toggleCompiledPromptsSectionBtn = document.getElementById('toggleCompiledPromptsSectionBtn');
+    if (toggleCompiledPromptsSectionBtn) {
+        toggleCompiledPromptsSectionBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleCompiledPromptsSection();
         });
     }
 
-    if (selectAllTextReplacementsBtn) {
-        selectAllTextReplacementsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectAllTextReplacements();
-        });
+    // Text Replacement Actions Dropdown
+    const textReplacementActionsDropdown = document.getElementById('textReplacementActionsDropdown');
+    const textReplacementActionsDropdownBtn = document.getElementById('textReplacementActionsDropdownBtn');
+    const textReplacementActionsDropdownMenu = document.getElementById('textReplacementActionsDropdownMenu');
+
+    if (textReplacementActionsDropdown && textReplacementActionsDropdownBtn && textReplacementActionsDropdownMenu) {
+        setupDropdown(
+            textReplacementActionsDropdown,
+            textReplacementActionsDropdownBtn,
+            textReplacementActionsDropdownMenu,
+            () => renderTextReplacementActionsDropdown(),
+            () => null, // No selected value needed for action menu
+            { preventFocusTransfer: true }
+        );
     }
 
-    if (deselectAllTextReplacementsBtn) {
-        deselectAllTextReplacementsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            deselectAllTextReplacements();
-        });
-    }
+    // Render function for text replacement actions dropdown
+    function renderTextReplacementActionsDropdown() {
+        if (!textReplacementActionsDropdownMenu) return;
 
-    // Text Replacement Lock Modal footer buttons
-    const openRequestBodyReplacementsBtn = document.getElementById('openRequestBodyReplacementsBtn');
-    const openGlobalReplacementsBtn = document.getElementById('openGlobalReplacementsBtn');
+        textReplacementActionsDropdownMenu.innerHTML = '';
 
-    if (openRequestBodyReplacementsBtn) {
-        openRequestBodyReplacementsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (typeof showRequestBodyReplacementsModal === 'function') {
-                showRequestBodyReplacementsModal();
+        const options = [
+            {
+                icon: 'fas fa-check-square',
+                text: 'Select All',
+                action: 'selectAll'
+            },
+            {
+                icon: 'fas fa-square',
+                text: 'Deselect All',
+                action: 'deselectAll'
+            },
+            {
+                icon: 'fas fa-book-font',
+                text: 'Global Expanders',
+                action: 'openGlobal'
+            },
+            {
+                icon: 'fas fa-notebook',
+                text: 'Local Expanders',
+                action: 'openLocal'
             }
-        });
-    }
+        ];
 
-    if (openGlobalReplacementsBtn) {
-        openGlobalReplacementsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            if (typeof showTextReplacementManager === 'function') {
-                showTextReplacementManager();
-            }
+        options.forEach(option => {
+            const optionElement = document.createElement('div');
+            optionElement.className = 'custom-dropdown-option';
+            optionElement.dataset.action = option.action;
+            optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.text}`;
+
+            optionElement.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Close the dropdown
+                closeDropdown(textReplacementActionsDropdownMenu, textReplacementActionsDropdownBtn);
+
+                // Handle the action
+                switch (option.action) {
+                    case 'selectAll':
+                        selectAllTextReplacements();
+                        break;
+                    case 'deselectAll':
+                        deselectAllTextReplacements();
+                        break;
+                    case 'openGlobal':
+                        showTextReplacementManager();
+                        break;
+                    case 'openLocal':
+                        showRequestBodyReplacementsModal();
+                        break;
+                }
+            });
+
+            textReplacementActionsDropdownMenu.appendChild(optionElement);
         });
     }
 
@@ -7214,7 +8593,7 @@ function setupEventListeners() {
         e.preventDefault();
         
         if (window.innerWidth >= 1300) {
-            hideManualModal(e, false);
+            hideManualModal(e);
         } else {
             hideManualPreviewResponsive();
         }
@@ -7239,7 +8618,7 @@ function setupEventListeners() {
         e.preventDefault();
         const presetName = manualPresetName.value.trim();
         if (presetName) {
-            loadPresetIntoForm(presetName);
+            openManualModalWithContent({ type: 'preset', name: presetName, title: presetName });
         }
     });
     manualSaveBtn.addEventListener('click', (e) => {
@@ -7310,18 +8689,6 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewChatBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (window.currentManualPreviewImage && window.chatSystem) {
-            const imageData = window.currentManualPreviewImage;
-            const filename = imageData.upscaled || imageData.original || imageData.filename;
-            if (filename) {
-                const characterName = imageData.characterName || imageData.metadata?.character_name || null;
-                window.chatSystem.openChatModal(filename, characterName);
-            }
-        }
-    });
-
     manualPreviewUpscaleBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.currentManualPreviewImage) {
@@ -7331,47 +8698,16 @@ function setupEventListeners() {
         }
     });
 
-    manualPreviewExpandBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        if (window.currentManualPreviewImage) {
-            try {
-                // Check if WebSocket is connected
-                if (!wsClient || !wsClient.isConnected()) {
-                    throw new Error('WebSocket not connected. Please check your connection.');
-                }
-
-                const filename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
-                
-                // Use existing metadata and dimensions from currentManualPreviewImage
-                const imageDimensions = {
-                    width: window.currentManualPreviewImage.width,
-                    height: window.currentManualPreviewImage.height,
-                    resPreset: window.currentManualPreviewImage.metadata?.resPreset || window.currentManualPreviewImage.metadata?.resolution
-                };
-
-                // Open the expansion modal
-                if (typeof openImageExpansionModal === 'function') {
-                    openImageExpansionModal(filename, imageDimensions);
-                } else {
-                    console.error('openImageExpansionModal function not found');
-                    showGlassToast('error', 'Error', 'Image expansion feature not available', false, 5000, '<i class="nai-cross"></i>');
-                }
-            } catch (error) {
-                console.error('Expand error:', error);
-                showGlassToast('error', 'Error', error.message || 'Failed to open expansion modal', false, 5000, '<i class="nai-cross"></i>');
-            }
-        } else {
-            showGlassToast('error', 'Expand Failed', 'No image available', false, undefined, '<i class="fas fa-image-slash"></i>');
-        }
-    });
-
     manualPreviewLoadBtn.addEventListener('click', (e) => {
         e.preventDefault();
         if (window.currentManualPreviewImage) {
             if (window.innerWidth <= 1300 && manualModal.classList.contains('show-preview')) {
                 hideManualPreviewResponsive();
             }
-            rerollImageWithEdit(window.currentManualPreviewImage);
+            openManualModalWithContent({
+                type: 'image',
+                image: window.currentManualPreviewImage
+            }, e);
         } else {
             showGlassToast('error', 'Load Failed', 'No image available', false, undefined, '<i class="fas fa-camera-slash"></i>');
         }
@@ -7452,58 +8788,55 @@ function setupEventListeners() {
         deleteManualPreviewImage();
     });
 
-    manualPreviewCompiledPromptBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (window.currentManualPreviewImage) {
-            const compiledPrompt = window.currentManualPreviewImage.metadata?.dynamic_generation?.compiled_prompt;
-            if (compiledPrompt) {
-                showCompiledPromptModal(compiledPrompt);
-            } else {
-                showGlassToast('warning', null, 'No compiled prompt data available for this image.', false, undefined, '<i class="fas fa-glasses-round"></i>');
+    [
+        manualPreviewToggleDialogsBtn,
+        windowManualPreviewToggleDialogsBtn
+    ].map(btn => {
+        if (btn) {
+            // Load saved state from localStorage
+            const savedState = localStorage.getItem('dialogsVisible');
+            if (savedState !== null) {
+                btn.dataset.state = savedState;
             }
-        } else {
-            showGlassToast('warning', null, 'No image selected.', false, undefined, '<i class="fas fa-image-slash"></i>');
-        }
-    });
-
-    const manualPreviewToggleDialogsBtn = document.getElementById('manualPreviewToggleDialogsBtn');
-    if (manualPreviewToggleDialogsBtn) {
-        // Load saved state from localStorage
-        const savedState = localStorage.getItem('dialogsVisible');
-        if (savedState !== null) {
-            manualPreviewToggleDialogsBtn.dataset.state = savedState;
-        }
-        
-        manualPreviewToggleDialogsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const currentState = manualPreviewToggleDialogsBtn.dataset.state;
-            const newState = currentState === 'on' ? 'off' : 'on';
-            manualPreviewToggleDialogsBtn.dataset.state = newState;
             
-            // Save to localStorage
-            localStorage.setItem('dialogsVisible', newState);
-            
-            // Update dialog visibility
-            const dialogContainer = document.getElementById('manualPreviewDialogs');
-            if (dialogContainer) {
-                if (newState === 'off') {
-                    dialogContainer.classList.add('hidden');
-                } else {
-                    // Re-render dialogs if they exist
-                    if (window.currentManualPreviewImage) {
-                        const allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage.metadata);
-                        if (allDialogs.length > 0) {
-                            dialogContainer.classList.remove('hidden');
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const currentState = btn.dataset.state;
+                const newState = currentState === 'on' ? 'off' : 'on';
+                btn.dataset.state = newState;
+                
+                // Save to localStorage
+                localStorage.setItem('dialogsVisible', newState);
+                
+                // Update dialog visibility
+                const dialogContainer = document.getElementById('manualPreviewDialogs');
+                if (dialogContainer) {
+                    if (newState === 'off') {
+                        dialogContainer.classList.add('hidden');
+                    } else {
+                        // Re-render dialogs if they exist
+                        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
+                            // Collect dialogs from metadata (same logic as updateManualPreview)
+                            let allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage.metadata);
+                            
+                            if (allDialogs.length > 0) {
+                                // Process dialog positions
+                                allDialogs = processDialogPositions(allDialogs);
+                                
+                                // Render the dialogs (using 'navigating' animation since this is a toggle, not generation)
+                                renderManualPreviewDialogs(allDialogs, false);
+                            } else {
+                                // No dialogs, hide container
+                                dialogContainer.classList.add('hidden');
+                            }
+                        } else {
+                            // No image or metadata, hide container
+                            dialogContainer.classList.add('hidden');
                         }
                     }
                 }
-            }
-        });
-    }
-
-    manualPresetManagerBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        showPresetManager();
+            });
+        }
     });
 
     manualPreviewPinBtn.addEventListener('click', (e) => {
@@ -7579,7 +8912,206 @@ function setupEventListeners() {
         e.preventDefault();
         forcePaidRequest = !forcePaidRequest;
         paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+        // Sync with window toggle
+        if (windowPaidToggle) {
+            windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+        }
     });
+
+    // Window paid request toggle handler (for windowed modal)
+    if (windowPaidRequestToggle) {
+        windowPaidRequestToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            forcePaidRequest = !forcePaidRequest;
+            windowPaidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+            // Sync with modal toggles
+            if (paidRequestToggle) {
+                paidRequestToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+            }
+        });
+    }
+
+    // Save button for desktop shortcuts (request type)
+    if (manualRequestSaveBtn) {
+        // Save button click handler
+        manualRequestSaveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await saveRequestAsDesktopShortcut();
+        });
+    }
+
+    // Save request as desktop shortcut
+    async function saveRequestAsDesktopShortcut() {
+        try {
+            const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
+            const values = collectManualFormValues();
+
+            // Helper: Validate required fields
+            function validateFields(requiredFields, msg) {
+                for (const field of requiredFields) {
+                    if (field === 'resolutionValue') {
+                        // Special handling for resolution: check for either resolutionValue or custom dimensions
+                        if (!values[field] && (!values.width || !values.height)) {
+                            showError(msg);
+                            return false;
+                        }
+                    } else if (!values[field]) {
+                        showError(msg);
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            // Validate required fields for both paths
+            if (!validateFields(['model', 'prompt', 'resolutionValue'], 'Please fill in all required fields (Model, Prompt, Resolution)')) return;
+
+            // Prepare base requestBody (shared between both paths)
+            const requestBody = {
+                prompt: values.prompt,
+                steps: values.steps,
+                guidance: values.guidance,
+                rescale: values.rescale,
+                allow_paid: forcePaidRequest,
+                workspace: activeWorkspace
+            };
+
+            // Process resolution to determine if it's custom or predefined
+            const resolutionData = processResolutionValue(values.resolutionValue);
+            if (resolutionData.isCustom) {
+                requestBody.width = resolutionData.width;
+                requestBody.height = resolutionData.height;
+            } else {
+                requestBody.resolution = resolutionData.resolution;
+            }
+
+            // Add img2img specific parameters if applicable
+            if (isImg2Img) {
+                requestBody.strength = parseFloat(manualStrengthValue.value) || 0.8;
+                requestBody.noise = parseFloat(manualNoiseValue.value) || 0.1;
+
+                // Handle uploaded image data
+                if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
+                    requestBody.image = window.uploadedImageData.image_source;
+                } else if (window.currentEditMetadata && window.currentEditMetadata.sourceFilename) {
+                    requestBody.image = `file:${window.currentEditMetadata.sourceFilename}`;
+                }
+                requestBody.image_bias = window.uploadedImageData.image_bias || window.uploadedImageData.bias;
+
+                if (!requestBody.image) {
+                    showError('No source image found for variation');
+                    return;
+                }
+
+                // Add mask data if it exists
+                if (window.currentMaskCompressed) {
+                    requestBody.mask_compressed = window.currentMaskCompressed.replace('data:image/png;base64,', '');
+                } else if (window.currentMaskData) {
+                    // Add compressed mask for server processing
+                    const compressedMask = saveMaskCompressed();
+                    if (compressedMask) {
+                        requestBody.mask_compressed = compressedMask.replace('data:image/png;base64,', '');
+                    }
+                }
+            }
+
+            // Add shared fields and preset name
+            addSharedFieldsToRequestBody(requestBody, values);
+
+            const generationParams = {
+                model: values.model.toLowerCase(),
+                ...requestBody
+            };
+            
+            // Remove skip_pipeline_stages from preset - this is a runtime flag only
+            delete generationParams.skip_pipeline_stages;
+
+            // Check if a seed value is set and ask user if they want to save it
+            if (generationParams.seed && generationParams.seed !== '') {
+                const seedChoice = await showConfirmationDialog(
+                    `A seed value "${generationParams.seed}" is currently set. Do you want to save this preset with a static seed or make it automatic?`,
+                    [
+                        { text: 'Static Seed', value: 'static', className: 'btn-secondary', icon: 'fas fa-lock' },
+                        { text: 'Automatic', value: 'automatic', className: 'btn-primary' },
+                        { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+                    ]
+                );
+
+                if (seedChoice === 'cancel' || seedChoice === null) {
+                    return; // User cancelled
+                }
+
+                if (seedChoice === 'automatic') {
+                    // Remove seed for automatic generation
+                    delete generationParams.seed;
+                }
+                // If 'static', keep the seed as is
+            }
+
+            // Get current preview image
+            const previewImage = document.getElementById('manualPreviewImage');
+            let previewDataUrl = null;
+            let embeddedPreview = null;
+
+            if (previewImage && previewImage.src && !previewImage.src.includes('data:image/svg')) {
+                try {
+                    // Create 256x256 center crop preview
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = previewImage.src;
+                    });
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 256;
+                    canvas.height = 256;
+                    const ctx = canvas.getContext('2d');
+
+                    // Calculate center crop
+                    const sourceSize = Math.min(img.width, img.height);
+                    const sourceX = (img.width - sourceSize) / 2;
+                    const sourceY = (img.height - sourceSize) / 2;
+
+                    ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 256, 256);
+                    
+                    // Convert to data URL
+                    previewDataUrl = canvas.toDataURL('image/png');
+                    
+                    // Convert to base64 for embedding
+                    embeddedPreview = previewDataUrl.split(',')[1];
+                } catch (error) {
+                    console.warn('Failed to create preview image:', error);
+                }
+            }
+
+            // Get name from preset name or use "Untitled"
+            const name = (manualPresetName && manualPresetName.value.trim()) || 'Untitled';
+
+            // Create shortcut
+            if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts.addShortcut) {
+                const shortcut = {
+                    name: name,
+                    type: 'request',
+                    data: {
+                        requestBody: generationParams,
+                        preview: embeddedPreview // Base64 encoded preview
+                    }
+                };
+
+                await desktopShortcuts.addShortcut(shortcut);
+                showGlassToast('success', null, 'Request saved as desktop shortcut', false, 3000, '<i class="fas fa-floppy-disk"></i>');
+            } else {
+                showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+        } catch (error) {
+            console.error('Failed to save request as desktop shortcut:', error);
+            showGlassToast('error', 'Error', 'Failed to save request shortcut', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+
 
     manualControlsToggle.addEventListener('click', (e) => {
         e.preventDefault();
@@ -7631,7 +9163,6 @@ function setupEventListeners() {
 
     // AUTOCOMPLETE POSITIONING SYSTEM - Update autocomplete positions on scroll and resize
     window.addEventListener('scroll', updateAutocompletePositions);
-    window.addEventListener('resize', updateAutocompletePositions);
 
     // Title bar scroll visibility with high-performance throttling
     let scrollTimeout;
@@ -7883,6 +9414,65 @@ function setupEventListeners() {
     //     if (e.target === metadataDialog) hideMetadataDialog();
     // });
 
+    // Page Up/Down navigation for gallery (only in desktop mode when gallery is active)
+    document.addEventListener('keydown', (e) => {
+        // Only handle Page Up/Down when in desktop mode and gallery window is active
+        if ((e.key === 'PageUp' || e.key === 'PageDown') && 
+            document.body.classList.contains('desktop-mode')) {
+            
+            // Check if we're in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                return;
+            }
+            
+            // Check if gallery window is the active window (top of modal stack)
+            const galleryWindow = document.querySelector('#galleryWindow');
+            if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
+                return;
+            }
+            
+            // Check if gallery window is the top modal (active window)
+            if (typeof window.isModalActive === 'function') {
+                if (!window.isModalActive(galleryWindow)) {
+                    return; // Gallery is not the active window
+                }
+            } else {
+                // Fallback: check modal stack directly
+                const modalStack = window.modalStack || [];
+                if (modalStack.length > 0 && modalStack[modalStack.length - 1] !== galleryWindow) {
+                    return; // Gallery is not the active window
+                }
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Get effective length (filtered or full)
+            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+            if (effectiveLength === 0) return;
+            
+            // Get current first visible row index
+            const currentFirstVisibleIndex = getFirstVisibleRowIndex();
+            const cols = realGalleryColumns || 5;
+            const currentRow = Math.floor(currentFirstVisibleIndex / cols);
+            
+            let targetRow;
+            if (e.key === 'PageDown') {
+                // Jump down 50 items (approximately 10 rows with 5 columns)
+                targetRow = currentRow + 10;
+            } else {
+                // Jump up 50 items
+                targetRow = Math.max(0, currentRow - 10);
+            }
+            
+            // Calculate target index
+            const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
+            const finalTargetIndex = Math.max(0, targetIndex);
+            displayGalleryFromStartIndex(finalTargetIndex, false);
+            
+            return;
+        }
+    });
+    
     // ESC key to close lightbox and modals
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -8096,9 +9686,7 @@ function setupEventListeners() {
                     updateManualUpscaleToggleState();
 
                     // Use debounced cropping for custom dimension changes
-                    if (typeof debouncedCropImageToResolution === 'function') {
-                        debouncedCropImageToResolution();
-                    }
+                    debouncedCropImageToResolution();
 
                     // Show feedback about the adjustment
                     if (currentArea > currentMaxArea) {
@@ -8151,9 +9739,7 @@ function setupEventListeners() {
             updateManualPriceDisplay();
             
             // Use debounced cropping for custom dimension changes
-            if (typeof debouncedCropImageToResolution === 'function') {
-                debouncedCropImageToResolution();
-            }
+            debouncedCropImageToResolution();
             
             isWheelUpdating = false;
         });
@@ -8194,9 +9780,7 @@ function setupEventListeners() {
                 updateManualPriceDisplay();
 
                 // Use debounced cropping for custom dimension changes
-                if (typeof debouncedCropImageToResolution === 'function') {
-                    debouncedCropImageToResolution();
-                }
+                debouncedCropImageToResolution();
 
                 isWheelUpdating = false;
             }
@@ -8250,9 +9834,7 @@ function setupEventListeners() {
             updateManualPriceDisplay();
             
             // Use debounced cropping for custom dimension changes
-            if (typeof debouncedCropImageToResolution === 'function') {
-                debouncedCropImageToResolution();
-            }
+            debouncedCropImageToResolution();
             
             isWheelUpdating = false;
         });
@@ -8293,9 +9875,7 @@ function setupEventListeners() {
                 updateManualPriceDisplay();
 
                 // Use debounced cropping for custom dimension changes
-                if (typeof debouncedCropImageToResolution === 'function') {
-                    debouncedCropImageToResolution();
-                }
+                debouncedCropImageToResolution();
 
                 isWheelUpdating = false;
             }
@@ -8426,9 +10006,7 @@ function setupEventListeners() {
     if (manualSteps) {
         manualSteps.addEventListener('input', () => {
             updateManualPriceDisplay();
-            if (typeof updateAllStagesInheritedValues === 'function') {
-                updateAllStagesInheritedValues();
-            }
+            updateAllStagesInheritedValues();
         });
     }
 
@@ -8484,9 +10062,6 @@ function setupEventListeners() {
     //     if (e.target === loginModal) hideLoginModal();
     // });
 
-    // Resize handler for dynamic gallery sizing
-    window.addEventListener('resize', handleResize);
-
     // Manual preview navigation buttons
     const manualPreviewPrevBtn = document.getElementById('manualPreviewPrevBtn');
     const manualPreviewNextBtn = document.getElementById('manualPreviewNextBtn');
@@ -8532,6 +10107,19 @@ function setupEventListeners() {
     if (enableStageGenerationBtn) {
         enableStageGenerationBtn.addEventListener('click', () => {
             const newState = enableStageGenerationBtn.dataset.state === 'on' ? 'off' : 'on';
+            enableStageGenerationBtn.dataset.state = newState;
+            windowEnableStageGenerationBtn.dataset.state = newState;
+            
+            // Update buttons next to manual resolution based on new state
+            updateSaveStage0BtnVisibility();
+        });
+    }
+
+    // Enable Stage Generation button toggle
+    if (windowEnableStageGenerationBtn) {
+        windowEnableStageGenerationBtn.addEventListener('click', () => {
+            const newState = windowEnableStageGenerationBtn.dataset.state === 'on' ? 'off' : 'on';
+            windowEnableStageGenerationBtn.dataset.state = newState;
             enableStageGenerationBtn.dataset.state = newState;
             
             // Update buttons next to manual resolution based on new state
@@ -8618,14 +10206,10 @@ function setupEventListeners() {
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
             this.value = newValue.toFixed(1);
-            if (typeof updateAllStagesInheritedValues === 'function') {
-                updateAllStagesInheritedValues();
-            }
+            updateAllStagesInheritedValues();
         });
         manualGuidance.addEventListener('input', () => {
-            if (typeof updateAllStagesInheritedValues === 'function') {
-                updateAllStagesInheritedValues();
-            }
+            updateAllStagesInheritedValues();
         });
     }
 
@@ -8637,16 +10221,12 @@ function setupEventListeners() {
             this.value = newValue.toFixed(2);
             if (manualRescaleOverlay)
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
-            if (typeof updateAllStagesInheritedValues === 'function') {
-                updateAllStagesInheritedValues();
-            }
+            updateAllStagesInheritedValues();
         });
         if (manualRescaleOverlay) {
             manualRescale.addEventListener('input', () => {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
-                if (typeof updateAllStagesInheritedValues === 'function') {
-                    updateAllStagesInheritedValues();
-                }
+                updateAllStagesInheritedValues();
             });
             manualRescale.addEventListener('blur', () => updatePercentageOverlay(manualRescale, manualRescaleOverlay));
             updatePercentageOverlay(manualRescale, manualRescaleOverlay);
@@ -8777,8 +10357,31 @@ function setupEventListeners() {
         updateManualPresetToggleBtn();
         updateManualPresetPlaceholder();
     });
+    
+    // Tag Wiki Search button click handler
+    const tagWikiSearchBtn = document.getElementById('tagWikiSearchBtn');
+    if (tagWikiSearchBtn) {
+        tagWikiSearchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
+            if (tagWikiSearchModal) {
+                openModal(tagWikiSearchModal);
+            }
+        });
+    }
 
-    // Dynamic Generation toggle button click handler
+    const openWikiBtn = document.getElementById('openWikiBtn');
+    if (openWikiBtn) {
+        openWikiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
+            if (tagWikiSearchModal) {
+                openModal(tagWikiSearchModal);
+            }
+        });
+    }
+
+    // Rentan toggle button click handler
     dynamicGenerationToggleBtn.addEventListener('click', (e) => {
         e.preventDefault();
         const wasHidden = dynamicGenerationGroup.classList.contains('hidden');
@@ -8794,7 +10397,7 @@ function setupEventListeners() {
         createDebouncedContextResolution();
     });
 
-    // Dynamic Generation button click handlers
+    // Rentan button click handlers
     // Buttons that affect carousel: todBtn, weatherBtn, seasonBtn, creativeBtn
     [todBtn, weatherBtn, seasonBtn, creativeBtn].forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -8829,9 +10432,7 @@ function setupEventListeners() {
             // Toggle main creative directive row visibility when creative button changes
             if (btn.id === 'creativeBtn') {
                 // Update main creative directive visibility
-                if (typeof updateCreativeDirectiveVisibility === 'function') {
-                    updateCreativeDirectiveVisibility();
-                }
+                updateCreativeDirectiveVisibility();
 
                 // Update all stage creative directive visibility
                 const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
@@ -8893,17 +10494,13 @@ function setupEventListeners() {
         });
     }
 
-    // Setup context menus for dynamic generation buttons
+    // Setup context menus for Rentan buttons
     setupDynamicGenerationContextMenus();
 
-    // Initialize dynamic generation carousel
+    // Initialize Rentan carousel
     initDynamicCarousel();
 
-    // GALLERY COLUMN CONTROLS SYSTEM - Move to galleryColumnManager.js
-    // This system handles gallery column adjustment via scroll wheel and buttons
-    // Includes functions: setGalleryColumns, updateGalleryColumnsFromLayout, etc.
 
-    // Gallery columns scroll wheel functionality
     const galleryToggleGroup = document.getElementById('galleryToggleGroup');
     if (galleryToggleGroup) {
         galleryToggleGroup.addEventListener('wheel', (e) => {
@@ -8912,15 +10509,12 @@ function setupEventListeners() {
             if (window.innerWidth <= 577) {
                 return false;
             }
-            const delta = e.deltaY > 0 ? -1 : 1;
-            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
-            const newColumns = Math.max(3, Math.min(10, currentColumns + delta));
-            galleryToggleGroup.dataset.columns = newColumns;
-            setGalleryColumns(newColumns);
-        });
+            // deltaY > 0 is scroll down (decrease), deltaY < 0 is scroll up (increase)
+            const direction = e.deltaY > 0 ? -1 : 1;
+            adjustGalleryColumnSize(direction);
+        }, { passive: false });
     }
 
-    // Gallery columns button controls
     const decreaseColumnsBtn = document.getElementById('decreaseColumnsBtn');
     const increaseColumnsBtn = document.getElementById('increaseColumnsBtn');
     
@@ -8931,10 +10525,7 @@ function setupEventListeners() {
             if (window.innerWidth <= 577) {
                 return false;
             }
-            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
-            const newColumns = Math.max(3, currentColumns - 1);
-            galleryToggleGroup.dataset.columns = newColumns;
-            setGalleryColumns(newColumns);
+            adjustGalleryColumnSize(-1); // Decrease
         });
     }
     
@@ -8945,10 +10536,7 @@ function setupEventListeners() {
             if (window.innerWidth <= 577) {
                 return false;
             }
-            const currentColumns = parseInt(galleryToggleGroup.dataset.columns) || 5;
-            const newColumns = Math.min(10, currentColumns + 1);
-            galleryToggleGroup.dataset.columns = newColumns;
-            setGalleryColumns(newColumns);
+            adjustGalleryColumnSize(1); // Increase
         });
     }
 
@@ -8982,9 +10570,7 @@ function setupEventListeners() {
     if (showAllReferencesBtn) {
         showAllReferencesBtn.addEventListener('click', () => {
             // Call the toggle function from referenceManager.js
-            if (typeof toggleShowAllReferences === 'function') {
-                toggleShowAllReferences();
-            }
+            toggleShowAllReferences();
         });
     }
 
@@ -8992,27 +10578,13 @@ function setupEventListeners() {
     let resizeTimeout;
     window.addEventListener('resize', () => {
         if (resizeTimeout) clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            // Update batch size and trigger distances for new viewport
-            imagesPerPage = calculateDynamicBatchSize();
-            
-            // Recalculate infinite scrolling layout if needed
-            if (gallery && gallery.children.length > 0) {
-                updateGalleryGrid();
-                updateGalleryColumnsFromLayout();
-            }
-        }, 250); // Debounce resize events
+        resizeTimeout = setTimeout(resizeHandler, 250);
     });
 
     // Handle orientation change for mobile devices
     window.addEventListener('orientationchange', () => {
-        // Use a longer timeout for orientation change to allow the browser to complete the rotation
-        setTimeout(() => {
-            if (gallery && gallery.children.length > 0) {
-                updateGalleryGrid();
-                updateGalleryColumnsFromLayout();
-            }
-        }, 500);
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(resizeHandler, 500);
     });
 
 
@@ -9020,6 +10592,8 @@ function setupEventListeners() {
     // Set up preset generation handlers
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
     window.contextMenu.attachToElement(document.getElementById('sproutSeedBtn'), getSproutSeedContextMenuConfig());
+    
+    initializeManualPreviewImageContextMenu();
     
     loadSeedBtn.addEventListener('click', loadSeedFromPreview);
     updateSproutSeedButton();
@@ -9138,6 +10712,9 @@ function setupEventListeners() {
 
         }
     }
+    
+    // Expose to window for external access (if needed)
+    window.showExitConfirmation = showExitConfirmation;
 
     // Always show browser warning for unsaved changes
     // This ensures the browser shows its native dialog for tab/window closing
@@ -9162,20 +10739,25 @@ function setupEventListeners() {
     window.addEventListener('popstate', (event) => {
         event.preventDefault();
         // Show confirmation dialog
-        window.showExitConfirmation(event, 'leave');
+        showExitConfirmation(event, 'leave');
     });
 
     // Intercept link clicks that might cause navigation
     document.addEventListener('click', (event) => {
         const link = event.target.closest('a');
         if (link && link.href && !link.target && !link.hasAttribute('download')) {
+            // Skip tag wiki links - they're handled by the tag wiki modal
+            if (link.classList.contains('tag-wiki-link')) {
+                return;
+            }
+            
             const href = link.href;
             const currentOrigin = window.location.origin;
             
             // Check if link navigates away from current page
             if (href.startsWith(currentOrigin) && href !== window.location.href) {
                 event.preventDefault();
-                window.showExitConfirmation(event, 'close');
+                showExitConfirmation(event, 'close');
             }
         }
     });
@@ -9192,9 +10774,7 @@ function setupEventListeners() {
         } catch (e) {
             // Browser security prevents programmatic tab closing
             // Fallback: show a message that user needs to close manually
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('info', 'Close Tab', 'Please close this tab manually using Ctrl+W or the close button', false, 3000);
-            }
+            showGlassToast('info', 'Close Tab', 'Please close this tab manually using Ctrl+W or the close button', false, 3000);
         }
     };
 }
@@ -9500,10 +11080,30 @@ function toggleSearchContainer() {
             if (mainMenuContents) {
                 mainMenuContents.classList.add('hidden');
             }
-            // Focus the search input
+            // Disable search input until it's ready
             const searchInput = document.getElementById('fileSearchInput');
             if (searchInput) {
-                setTimeout(() => searchInput.focus(), 100);
+                searchInput.disabled = true;
+                // Initialize search and enable input when ready
+                if (window.fileSearch) {
+                    window.fileSearch.initializeSearchIfNeeded().then(() => {
+                        // Enable and focus the search input after initialization AND top results are fully loaded
+                        searchInput.disabled = false;
+                        setTimeout(() => searchInput.focus(), 100);
+                    }).catch((error) => {
+                        console.error('Failed to initialize search:', error);
+                        // Still enable input even if initialization fails
+                        searchInput.disabled = false;
+                    });
+                } else {
+                    // If fileSearch not initialized yet, just enable after a short delay
+                    setTimeout(() => {
+                        if (searchInput) {
+                            searchInput.disabled = false;
+                            searchInput.focus();
+                        }
+                    }, 100);
+                }
             }
         } else {
             // Closing search - return to main menu mode
@@ -9539,6 +11139,10 @@ function closeSearchContainer() {
         if (window.fileSearch) {
             window.fileSearch.clearSearch(true, true);
         }
+        
+        // Clear gallery and reload from index 0
+        clearGallery();
+        displayGalleryFromStartIndex(0);
     }
 }
 
@@ -9613,6 +11217,9 @@ function updateBalanceDisplay(balance) {
         // Normal credits - show coin icon
         balanceIcon.className = 'nai-anla';
     }
+    
+    // Update fixed credits indicator
+    updateFixedCreditsIndicator();
 }
 
 async function rerollImage(image, event = null) {
@@ -9735,9 +11342,7 @@ async function rerollImage(image, event = null) {
                         window.lastGeneratedSeed = parseInt(result.seed);
                         const sproutSeedBtn = document.getElementById('sproutSeedBtn');
                         if (sproutSeedBtn) sproutSeedBtn.classList.add('available');
-                        if (typeof updateSproutSeedButtonFromPreviewSeed === 'function') {
-                            updateSproutSeedButtonFromPreviewSeed();
-                        }
+                        updateSproutSeedButtonFromPreviewSeed();
                     }
                     
                     // Show success message
@@ -9819,121 +11424,61 @@ async function rerollImage(image, event = null) {
     }
 }
 
-// Reroll an image with editable settings
-async function rerollImageWithEdit(image) {
-    try {
-        // Close lightbox
-        hideLightbox();
+// Check if manual modal is open and show confirmation dialog before loading new data
+async function checkManualModalBeforeLoad(event = null) {
+    const manualModal = document.getElementById('manualModal');
+    const isDesktopMode = document.body.classList.contains('desktop-mode');
+    
+    // Check if modal is open (multiple ways to detect)
+    let isManualModalOpen = false;
+    let hasFormContent = false;
+    
+    if (manualModal) {
+        isManualModalOpen = !manualModal.classList.contains('hidden');
         
-        openModal(manualModal);
+        // Also check if modal is in the modal stack (alternative way to detect if open)
+        const isInModalStack = typeof modalStack !== 'undefined' && modalStack.indexOf(manualModal) !== -1;
+        isManualModalOpen = isManualModalOpen || isInModalStack;
         
-        // Add initializing class to show loading state
-        manualModal.classList.add('initializing');
-        
-        // Show spinner overlay
-        const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
-        if (spinnerOverlay) {
-            spinnerOverlay.classList.remove('hidden');
-        }
-        
-        if (!document.body.classList.contains('editor-open')) {
-            document.body.classList.add('editor-open');
-        }
-
-        let metadata;
-        
-        // Check if this is a temp file (from blueprint upload)
-        if (image.isTempFile && image.metadata) {
-            // Use the metadata from the image object
-            metadata = image.metadata;
-        } else {
-            // Regular saved image - use existing logic
-            // Determine filename for metadata
-            let filenameForMetadata = image.filename || image.upscaled || image.original;
-            if (!filenameForMetadata) {
-                throw new Error('No filename available for metadata lookup');
-            }
-
-            // Get metadata
-            metadata = await getImageMetadata(filenameForMetadata);
-            if (!metadata) {
-                throw new Error('No metadata found for this image');
-            }
-        }
-
-
-        // Store metadata and image
-        window.currentEditMetadata = metadata;
-        window.currentEditImage = image;
-
-        await loadIntoManualForm(metadata, image);
-
-        // Only call cropImageToResolution if uploadedImageData is available
-        if (window.uploadedImageData?.image_source) {
-            try {
-                // Wait a bit for the image to load before cropping
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await cropImageToResolution();
-            } catch (error) {
-                console.warn('Failed to crop image to resolution:', error);
-                // Continue without cropping - the image will still be displayed
-            }
-        }
-        
-        // Set up preview to show the image being edited
-        if (allImages && Array.isArray(allImages)) {
-            const filename = image.filename || image.upscaled || image.original;
-            if (filename) {
-                const galleryIndex = findTrueImageIndexInGallery(filename);
-                if (galleryIndex >= 0) {
-                    await updateManualPreview(galleryIndex);
-                }
-            }
-        }
-        
-        manualPreviewOriginalImage.classList.add('hidden');
-        
-        // Save current gallery position
-        const firstNonPlaceholder = document.querySelector('.gallery-item:not(.gallery-placeholder)');
-        if (firstNonPlaceholder) {
-            savedGalleryPosition = parseInt(firstNonPlaceholder.dataset.index);
-        } else {
-            // If no real items found, save position 0
-            savedGalleryPosition = 0;
-        }
-        
-        // Clear gallery after 5 seconds
-        galleryClearTimeout = setTimeout(() => {
-            if (!manualModal.classList.contains('hidden')) {
-                clearGallery();
-            }
-        }, 5000);
-
-        // Auto-resize textareas after modal is shown
-        autoResizeTextareasAfterModalShow();
-        manualPrompt.focus();
-
-        // Remove initializing class after all async processes are complete
-        manualModal.classList.remove('initializing');
-        
-        // Hide spinner overlay
-        if (spinnerOverlay) {
-            spinnerOverlay.classList.add('hidden');
-        }
-
-    } catch (error) {
-        console.error('Reroll with edit error:', error);
-        showError('Failed to load image metadata: ' + error.message);
-        // Remove initializing class on error as well
-        manualModal.classList.remove('initializing');
-        
-        // Hide spinner overlay on error as well
-        const spinnerOverlay = manualModal.querySelector('.spinner-overlay');
-        if (spinnerOverlay) {
-            spinnerOverlay.classList.add('hidden');
-        }
+        // Check if form has content (prompt field, current edit metadata, or uploaded image)
+        const manualPrompt = document.getElementById('manualPrompt');
+        hasFormContent = (manualPrompt && manualPrompt.value.trim()) || 
+                       window.currentEditMetadata || 
+                       window.uploadedImageData ||
+                       (window.currentEditImage !== null && window.currentEditImage !== undefined);
     }
+    
+    // Show confirmation dialog if manual modal is open in desktop mode and has content
+    if (isManualModalOpen && isDesktopMode && hasFormContent) {
+        const confirmed = await showConfirmationDialog(
+            'Are you sure you want to overwrite the current request? Any unsaved changes will be lost if not used in a generated image.',
+            [
+                { text: 'Save', value: 'save', className: 'btn-secondary', icon: 'fas fa-floppy-disk' },
+                { text: 'Continue', value: 'load', className: 'btn-primary' },
+                { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
+            ],
+            event
+        );
+        
+        // If user cancelled, return false
+        if (!confirmed || confirmed === 'cancel') {
+            return false;
+        }
+        
+        // If user chose to save, save the request first
+        if (confirmed === 'save') {
+            await saveRequestAsDesktopShortcut();
+            // Continue with loading after saving
+        }
+        
+        // User confirmed (either 'load' or 'save'), return true
+        return true;
+    }
+    
+    // Modal not open or not desktop mode, proceed without confirmation
+    return true;
 }
+
 // Upscale an image
 async function upscaleImage(image, event = null) {
     // Calculate upscale cost and output resolution based on image dimensions
@@ -10110,13 +11655,13 @@ async function handleLogout() {
                 localStorage.removeItem('staticforge_master_session');
 
                 // Disconnect WebSocket client
-                if (window.wsClient && typeof window.wsClient.disconnect === 'function') {
+                if (window.wsClient) {
                     console.log('🔌 Disconnecting WebSocket client');
                     window.wsClient.disconnect();
                 }
 
                 // Clear master window status
-                if (window.masterWindowClient && typeof window.masterWindowClient.clearMaster === 'function') {
+                if (window.masterWindowClient) {
                     window.masterWindowClient.clearMaster();
                 }
             } catch (error) {
@@ -10215,13 +11760,15 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
             .replace(/\.(png|jpg|jpeg)$/i, '')
             .replace(/_upscaled$/, '');
 
-        
         // Get the blurred preview URL - encode the baseName to handle spaces and special characters
         const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
         
         // Check if the blurred preview exists
         try {
-            const response = await fetch(blurPreviewUrl, { method: 'HEAD' });
+            const response = await fetch(blurPreviewUrl, { 
+                method: 'HEAD',
+                cache: 'no-store' 
+            });
             if (!response.ok) {
                 // Blurred preview doesn't exist, hide backgrounds
                 const bg1 = document.getElementById('manualPreviewBlurBackground1');
@@ -10263,13 +11810,8 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
         const activeBg = bg1Opacity > 0 ? bg1 : bg2;
         const inactiveBg = bg1Opacity > 0 ? bg2 : bg1;
         
-
-        
-        // Set the new image on the inactive background
-        inactiveBg.style.backgroundImage = `url(${blurPreviewUrl})`;
-        
-        // Ensure the inactive background starts completely transparent
-        inactiveBg.style.opacity = '0';
+        const bgUrl = `url("${blurPreviewUrl}")`;
+        inactiveBg.setAttribute('style', `background-image: ${bgUrl}; opacity: 0;`);
         
         // Force a reflow to ensure the background image is applied before transition
         inactiveBg.offsetHeight;
@@ -10466,7 +12008,6 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -10656,14 +12197,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            if (manualPreviewChatBtn) manualPreviewChatBtn.classList.remove('hidden');
             
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
             }
             
-            if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
@@ -10692,25 +12231,16 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
             }
             if (deleteBtn) deleteBtn.classList.remove('hidden');
-
-            // Show compiled prompt button if image has compiled prompt data
-            const compiledPromptBtn = document.getElementById('manualPreviewCompiledPromptBtn');
-            const toggleDialogsBtn = document.getElementById('manualPreviewToggleDialogsBtn');
-            if (compiledPromptBtn) {
-                if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata?.dynamic_generation?.compiled_prompt) {
-                    compiledPromptBtn.classList.remove('hidden');
-                } else {
-                    compiledPromptBtn.classList.add('hidden');
-                }
-            }
             
             // Show toggle dialogs button if image has dialogs
-            if (toggleDialogsBtn) {
+            if (manualPreviewToggleDialogsBtn) {
                 const hasDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage?.metadata).length > 0;
                 if (hasDialogs) {
-                    toggleDialogsBtn.classList.remove('hidden');
+                    manualPreviewToggleDialogsBtn.classList.remove('hidden');
+                    windowManualPreviewToggleDialogsBtn?.classList.remove('hidden');
                 } else {
-                    toggleDialogsBtn.classList.add('hidden');
+                    manualPreviewToggleDialogsBtn.classList.add('hidden');
+                    windowManualPreviewToggleDialogsBtn?.classList.add('hidden');
                 }
             }
 
@@ -10766,8 +12296,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             
             if (allDialogs.length > 0) {
                 // Check if dialogs should be visible (from toggle button state)
-                const toggleDialogsBtnCheck = document.getElementById('manualPreviewToggleDialogsBtn');
-                const dialogsVisible = toggleDialogsBtnCheck ? toggleDialogsBtnCheck.dataset.state === 'on' : true;
+                const dialogsVisible = manualPreviewToggleDialogsBtn.dataset.state === 'on';
                 
                 if (dialogsVisible) {
                     // Check if this is a fresh generation (response parameter indicates new generation)
@@ -10800,9 +12329,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 sproutSeedBtn.classList.add('available');
                 updateSproutSeedButtonFromPreviewSeed();
                 // Add seed to history if addSeedToHistory function exists
-                if (typeof addSeedToHistory === 'function') {
-                    addSeedToHistory(seed);
-                }
+                addSeedToHistory(seed);
             } else {
                 window.lastGeneratedSeed = null;
                 sproutSeedBtn.classList.remove('available');
@@ -10821,9 +12348,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Update navigation buttons
             updateManualPreviewNavigation();
 
-            // Update dynamic generation overlay
+            // Update Rentan overlay
             const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
-            updateDynamicGenerationOverlay(context);
             
             // Update carousel with compiled prompt context if available
             if (context) {
@@ -10847,7 +12373,6 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -10903,9 +12428,12 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
 
             // Set the current image
             window.currentManualPreviewImage = imageObj;
-            if (window.currentManualPreviewImage.metadata) {
-                window.lastGeneration = window.currentManualPreviewImage.metadata;
+            // Metadata must be provided - no fallbacks
+            if (!metadata) {
+                const filename = imageObj.filename || imageObj.upscaled || imageObj.original;
+                showGlassToast('error', 'Metadata Error', `Cannot update preview: metadata is required for image ${filename || 'unknown'}`, false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
             }
+            window.lastGeneration = metadata;
             if (window.currentManualPreviewImage.filename) {
                 window.lastGeneration.filename = window.currentManualPreviewImage.filename;
             }
@@ -10940,14 +12468,12 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            if (manualPreviewChatBtn) manualPreviewChatBtn.classList.remove('hidden');
             
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
             }
             
-            if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.remove('hidden');
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
@@ -11015,8 +12541,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             
             if (allDialogsDirect.length > 0) {
                 // Check if dialogs should be visible (from toggle button state)
-                const toggleDialogsBtnCheckDirect = document.getElementById('manualPreviewToggleDialogsBtn');
-                const dialogsVisibleDirect = toggleDialogsBtnCheckDirect ? toggleDialogsBtnCheckDirect.dataset.state === 'on' : true;
+                const dialogsVisibleDirect = manualPreviewToggleDialogsBtn.dataset.state === 'on';
                 
                 if (dialogsVisibleDirect) {
                     // Use navigating animation for direct updates (not fresh generation)
@@ -11048,10 +12573,9 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Update navigation buttons
             updateManualPreviewNavigation();
 
-            // Update dynamic generation overlay
+            // Update Rentan overlay
             const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
-            updateDynamicGenerationOverlay(context);
-            
+
             // Update carousel with compiled prompt context if available
             if (context) {
                 // Update compiled context data and switch to compiled mode
@@ -11148,7 +12672,6 @@ function resetManualPreview() {
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
     const downloadBtn = document.getElementById('manualPreviewDownloadBtn');
     const upscaleBtn = document.getElementById('manualPreviewUpscaleBtn');
-    const manualPreviewExpandBtn = document.getElementById('manualPreviewExpandBtn');
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
@@ -11177,7 +12700,6 @@ function resetManualPreview() {
         if (downloadBtn) downloadBtn.classList.add('hidden');
         if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.add('hidden');
         if (upscaleBtn) upscaleBtn.classList.add('hidden');
-        if (manualPreviewExpandBtn) manualPreviewExpandBtn.classList.add('hidden');
         if (rerollBtn) rerollBtn.classList.add('hidden');
         if (variationBtn) variationBtn.classList.add('hidden');
         if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.add('hidden');
@@ -11185,8 +12707,6 @@ function resetManualPreview() {
         const scrapBtn = document.getElementById('manualPreviewScrapBtn');
         if (scrapBtn) scrapBtn.classList.add('hidden');
         if (deleteBtn) deleteBtn.classList.add('hidden');
-        const compiledPromptBtn = document.getElementById('manualPreviewCompiledPromptBtn');
-        if (compiledPromptBtn) compiledPromptBtn.classList.add('hidden');
         hideManualPreview();
 
         // Clear stored seed and current image
@@ -11200,9 +12720,7 @@ function resetManualPreview() {
         // Director new session functionality is always available
         
         // Clear generated image name display
-        if (typeof updateGeneratedImageNameDisplay === 'function') {
-            updateGeneratedImageNameDisplay(null);
-        }
+        updateGeneratedImageNameDisplay(null);
         
         // Reset blurred backgrounds
         const bg1 = document.getElementById('manualPreviewBlurBackground1');
@@ -12467,37 +13985,6 @@ function handleAuthError(error, context = '') {
     showErrorSubHeader(message, type, 15000);
 }
 
-// Debounced resize handler
-async function handleResize() {
-    if (resizeTimeout) {
-        clearTimeout(resizeTimeout);
-    }
-
-    resizeTimeout = setTimeout(() => {
-        // Recalculate rows based on new viewport dimensions
-        const newRows = calculateGalleryRows();
-        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-        const newImagesPerPage = parseInt(galleryToggleGroup?.dataset?.columns || 5) * newRows;
-
-        // Only update if the number of images per page has changed
-        if (newImagesPerPage !== imagesPerPage || newRows !== galleryRows) {
-            galleryRows = newRows;
-            imagesPerPage = newImagesPerPage;
-        }
-
-        updateGalleryItemToolbars();
-        updateGalleryPlaceholders(); // Update placeholders after resize
-        updateGalleryColumnsFromLayout();
-        updateMenuBarHeight();
-        
-        // Recalculate previewRatio if manual modal is open
-        if (manualModal && !manualModal.classList.contains('hidden')) {            
-            // Update preview container sizing if there's a loaded image
-            sizeManualPreviewContainer();
-        }
-    }, 250); // 250ms delay
-}
-
 async function updateMenuBarHeight() {
     const menubarStyle = getComputedStyle(document.getElementById('main-menu-bar'));
     const menuBarHeight = menubarStyle?.height ? `calc(${menubarStyle.height} + ${menubarStyle.marginTop})` : '8.5em';
@@ -12862,7 +14349,7 @@ function toggleSproutSeed() {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
         }
 
-        // Load text replacement seed data from current image
+        // Load Genso seed data from current image
         if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
             const metadata = window.currentManualPreviewImage.metadata;
             if (metadata.text_replacements_seed && Array.isArray(metadata.text_replacements_seed)) {
@@ -12978,9 +14465,11 @@ async function handleClipboardPaste(event) {
                             // Transform metadata to the format expected by the manual form
                             const transformedMetadata = window.transformMetadataForEditor(data);
                             
-                            // Open manual modal and load the metadata
-                            showManualModal();
-                            await loadIntoManualForm(transformedMetadata);
+                            // Use unified function to open modal and load NovelAI metadata
+                            await openManualModalWithContent({
+                                type: 'metadata',
+                                data: transformedMetadata
+                            });
                             
                             updateGlassToastComplete(toastId, {
                                 type: 'success',
@@ -13070,7 +14559,443 @@ async function checkFixedTrainingSteps() {
 async function updateSubscriptionNotifications() {
     await checkSubscriptionExpiration();
     await checkFixedTrainingSteps();
+    
+    // Update subscription renewal indicator
+    updateSubscriptionRenewalIndicator();
 }
+
+// System Tray Icons Management
+function initializeSystemTrayIcons() {
+    updateSubscriptionRenewalIndicator();
+    updateFixedCreditsIndicator();
+    updateWorkspaceTrayIcon();
+    updateImageGenerationIndicator();
+    updateSearchIndexingIndicator();
+    
+    // Update subscription indicator periodically
+    setInterval(updateSubscriptionRenewalIndicator, 3600000); // Every hour
+    
+    // Update fixed credits indicator periodically
+    setInterval(updateFixedCreditsIndicator, 60000); // Every minute
+    
+    // Update image generation indicator more frequently
+    setInterval(updateImageGenerationIndicator, 500); // Every 500ms
+}
+
+function updateSubscriptionRenewalIndicator() {
+    const indicator = document.getElementById('subscriptionRenewalIndicator');
+    if (!indicator) return;
+    
+    if (!window.optionsData?.user?.subscription?.expiresAt) {
+        indicator.classList.add('hidden');
+        return;
+    }
+    
+    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
+    const now = new Date();
+    const msUntilRenewal = expiresAt - now;
+    const daysUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60 * 24));
+    const hoursUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60));
+    
+    const subTier = window.optionsData.user.subscription.tier;
+    const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
+    const renewalDateStr = expiresAt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    
+    // Show indicator if renewal is within 7 days (including today/less than 1 day)
+    // Use hours for more accurate display when less than 1 day remains
+    if (daysUntilRenewal <= 7 && msUntilRenewal > 0) {
+        indicator.classList.remove('hidden');
+        
+        // Format time remaining message
+        let timeRemaining;
+        if (hoursUntilRenewal < 24) {
+            timeRemaining = `${hoursUntilRenewal} hour${hoursUntilRenewal !== 1 ? 's' : ''}`;
+        } else {
+            timeRemaining = `${daysUntilRenewal} day${daysUntilRenewal !== 1 ? 's' : ''}`;
+        }
+        
+        indicator.title = `Subscription renews in ${timeRemaining} (${renewalDateStr})`;
+        
+        // Update warning level
+        indicator.classList.remove('warning', 'critical');
+        if (daysUntilRenewal <= 1 || hoursUntilRenewal <= 24) {
+            indicator.classList.add('critical');
+        } else if (daysUntilRenewal <= 3) {
+            indicator.classList.add('warning');
+        }
+    } else {
+        indicator.classList.add('hidden');
+    }
+}
+
+function updateFixedCreditsIndicator() {
+    const indicator = document.getElementById('fixedCreditsIndicator');
+    if (!indicator) return;
+    
+    // Always show the indicator
+    indicator.classList.remove('hidden');
+    
+    // Ensure icon is always nai-anla
+    const iconElement = indicator.querySelector('i');
+    if (iconElement) {
+        iconElement.className = 'nai-anla';
+    }
+    
+    if (!window.optionsData?.balance) {
+        // No balance data - remove all state classes
+        indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
+        indicator.title = 'Loading balance...';
+        return;
+    }
+    
+    // Get fixed credits
+    const fixedCredits = window.optionsData.balance.fixedTrainingStepsLeft || 0;
+    const totalCredits = window.optionsData.balance.totalCredits || 0;
+    
+    // Get subscription expiration info
+    let daysUntilRenewal = null;
+    if (window.optionsData?.user?.subscription?.expiresAt) {
+        const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
+        const now = new Date();
+        daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+    }
+    
+    // Remove all state classes
+    indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
+    
+    // Determine state and set classes
+    if (fixedCredits === 0) {
+        // 0 credits - all requests are paid
+        indicator.classList.add('no-credits');
+        indicator.title = `No free credits remaining - all requests are paid (Total: ${totalCredits})`;
+    } else if (fixedCredits < 250) {
+        // Less than 250 credits
+        indicator.classList.add('low-credits');
+        indicator.title = `Low free credits: ${fixedCredits} remaining (Total: ${totalCredits})`;
+    } else if (fixedCredits >= 250 && daysUntilRenewal !== null && daysUntilRenewal <= 7 && daysUntilRenewal > 0) {
+        // More than 250 credits but subscription expiring soon
+        indicator.classList.add('expiring-credits');
+        const renewalDateStr = new Date(window.optionsData.user.subscription.expiresAt * 1000)
+            .toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+        indicator.title = `${fixedCredits} free credits remaining, subscription expires in ${daysUntilRenewal} day${daysUntilRenewal !== 1 ? 's' : ''} (${renewalDateStr})`;
+    } else {
+        // Normal state - no special classes
+        indicator.title = `Free credits: ${fixedCredits} (Total: ${totalCredits})`;
+    }
+    
+    // Attach context menu if not already attached
+    if (window.contextMenu && !indicator.dataset.contextMenu) {
+        const contextMenuId = 'fixedCreditsContextMenu';
+        indicator.dataset.contextMenu = contextMenuId;
+        
+        window.contextMenu.attachToElement(indicator, {
+            sections: [
+                {
+                    type: 'custom',
+                    content: `
+                        <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
+                            <div class="menu-item-row balance-list">
+                                <i class="nai-anla"></i>
+                                <div class="price-list-container">
+                                    <div class="price-list-fixed">
+                                        <span class="price-list-label hidden">Fixed</span> 
+                                        <span id="contextAnlasBalanceFixedTray" class="price-list balanceFixed">-</span>
+                                    </div>
+                                    <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                    <div class="price-list-paid">
+                                        <span class="price-list-label hidden">Paid</span>
+                                        <span id="contextAnlasBalancePaidTray" class="price-list balancePaid">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="menu-item-row balance-list">
+                                <i class="nai-opus" style="font-size: 1.15rem; margin: calc(-1.15rem / 2) 0;"></i>
+                                <div class="price-list-container">
+                                    <span class="anlas-subscription-value" id="contextAnlasSubscriptionTierTray">Free</span>
+                                    <i class="fas fa-circle hidden" id="contextAnlasSubscriptionDividerTray" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
+                                    <span class="anlas-subscription-value" id="contextAnlasDaysTillExpireTray">
+                                        <i class="fas fa-exclamation-triangle anlas-warning-icon hidden"></i>
+                                        <span class="anlas-days-text">Loading...</span>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    `,
+                    loadfn: (section, target) => {
+                        // Update balance values
+                        if (window.optionsData?.balance) {
+                            const balance = window.optionsData.balance;
+                            const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
+                            const purchasedCredits = balance?.purchasedTrainingSteps || 0;
+
+                            // Update context menu balance elements
+                            const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixedTray');
+                            const contextBalancePaid = document.getElementById('contextAnlasBalancePaidTray');
+                            
+                            if (contextBalanceFixed) {
+                                contextBalanceFixed.textContent = fixedCredits;
+                            }
+                            if (contextBalancePaid) {
+                                contextBalancePaid.textContent = purchasedCredits;
+                            }
+                        }
+                        
+                        // Update subscription values
+                        try {
+                            const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTierTray');
+                            const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpireTray');
+                            const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDividerTray');
+                            const warningIcon = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-warning-icon');
+                            const daysText = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-days-text');
+                            
+                            if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
+                                const accountData = window.optionsData;
+                                
+                                if (accountData?.user?.subscription?.tier !== undefined) {
+                                    // Update subscription tier
+                                    const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
+                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' : 
+                                                                              subscriptionTier === 2 ? 'Scroll' :
+                                                                              subscriptionTier === 1 ? 'Tablet' : 
+                                                                              subscriptionTier === 0 ? 'Free' : 'Unknown';
+                                    
+                                    if (subscriptionDivider) {
+                                        subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+                                    }
+                                    daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+
+                                    // Calculate days till expire
+                                    let daysTillExpire = 0;
+                                    if (accountData.user.subscription.expiresAt) {
+                                        const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
+                                        const now = new Date();
+                                        const diffTime = expireDate.getTime() - now.getTime();
+                                        daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    }
+                                    
+                                    daysText.textContent = `${daysTillExpire} days`;
+                                    
+                                    // Show warning icon if expiring in a week or less
+                                    if (daysTillExpire <= 7 && daysTillExpire > 0) {
+                                        warningIcon.classList.remove('hidden');
+                                    } else {
+                                        warningIcon.classList.add('hidden');
+                                    }
+
+                                    // Add color coding for urgency
+                                    if (daysTillExpire <= 3) {
+                                        daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
+                                    } else if (daysTillExpire <= 7) {
+                                        daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
+                                    } else {
+                                        daysTillExpireElement.style.color = '';
+                                    }
+                                } else {
+                                    subscriptionTierElement.textContent = 'No data';
+                                    daysText.textContent = 'No data';
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error updating subscription info in context menu:', error);
+                        }
+                    }
+                }
+            ]
+        });
+    }
+}
+
+function updateWorkspaceTrayIcon() {
+    const icon = document.getElementById('workspaceTrayIcon');
+    if (!icon) return;
+    
+    const activeWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
+    const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
+    const activeWorkspaceData = workspacesData[activeWorkspaceId];
+    
+    if (activeWorkspaceData?.color) {
+        icon.title = `Workspace: ${activeWorkspaceData.name || 'Unknown'}`;
+    } else {
+        icon.title = 'Workspace';
+    }
+    
+    // Attach context menu
+    if (window.contextMenu) {
+        window.contextMenu.attachToElement(icon, {
+            sections: [
+                {
+                    type: 'list',
+                    title: (target) => {
+                        // Get current active workspace name dynamically
+                        const currentWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
+                        const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
+                        const currentWorkspaceData = workspacesData[currentWorkspaceId];
+                        return currentWorkspaceData?.name || 'Workspace';
+                    },
+                    items: [
+                        {
+                            icon: 'fas fa-solar-system',
+                            text: 'Manage Solar System',
+                            action: 'workspace-manage'
+                        },
+                        {
+                            icon: 'fas fa-desktop',
+                            text: 'Desktop Settings',
+                            action: 'open-desktop-settings'
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-planet-ringed',
+                            text: 'Planets',
+                            optionsfn: (target) => {
+                                // Get planets submenu items (copy of planets submenu from start menu)
+                                if (typeof startMenuSubmenus !== 'undefined' && startMenuSubmenus?.planets) {
+                                    const planetsSubmenu = startMenuSubmenus.planets;
+                                    const planetsList = planetsSubmenu();
+                                    return planetsList.map(ws => {
+                                        const item = {
+                                            text: ws.text,
+                                            action: ws.action
+                                        };
+                                        // Add color indicator using custom content
+                                        if (ws.color) {
+                                            item.content = () => {
+                                                const container = document.createElement('div');
+                                                container.style.display = 'flex';
+                                                container.style.alignItems = 'center';
+                                                container.style.gap = '8px';
+                                                const colorDot = document.createElement('div');
+                                                colorDot.className = 'workspace-color-indicator';
+                                                colorDot.style.width = '12px';
+                                                colorDot.style.height = '12px';
+                                                colorDot.style.borderRadius = '50%';
+                                                colorDot.style.backgroundColor = ws.color;
+                                                colorDot.style.flexShrink = '0';
+                                                const textSpan = document.createElement('span');
+                                                textSpan.textContent = ws.text;
+                                                container.appendChild(colorDot);
+                                                container.appendChild(textSpan);
+                                                return container;
+                                            };
+                                        }
+                                        return item;
+                                    });
+                                }
+                                return [];
+                            },
+                            handlerfn: (subItem, target) => {
+                                // Handle workspace switching from planets submenu
+                                // The action from startMenuSubmenus.planets is a function that calls setActiveWorkspace
+                                if (subItem.action) {
+                                    if (typeof subItem.action === 'function') {
+                                        subItem.action();
+                                    } else if (typeof subItem.action === 'string' && window.contextMenu) {
+                                        // If it's a string action, use the context menu's executeAction
+                                        window.contextMenu.executeAction(subItem.action, target, subItem);
+                                    }
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+    }
+}
+
+function updateSearchIndexingIndicator() {
+    const indicator = document.getElementById('searchIndexingIndicator');
+    if (!indicator) return;
+
+    // Attach context menu - use a function to get dynamic state
+    if (window.contextMenu) {
+        const getMenuConfig = () => ({
+            sections: [
+                {
+                    type: 'list',
+                    title: 'Search Index',
+                    items: [
+                        {
+                            icon: 'fas fa-pause',
+                            text: 'Pause Indexing',
+                            action: 'search-index-toggle-pause',
+                            tooltip: 'Pause automatic indexing',
+                            loadfn: (item, target) => {
+                                const isPaused = target?.dataset?.indexingPaused === 'true';
+                                item.icon = isPaused ? 'fas fa-play' : 'fas fa-pause';
+                                item.text = isPaused ? 'Resume Indexing' : 'Pause Indexing';
+                                item.tooltip = isPaused ? 'Resume automatic indexing' : 'Pause automatic indexing';
+                            }
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-memory',
+                            text: 'Prepare Search Cache',
+                            action: 'search-index-prepare-cache',
+                            tooltip: 'Initialize search cache for current session'
+                        },
+                        {
+                            icon: 'fas fa-eraser',
+                            text: 'Clear Search Cache',
+                            action: 'search-index-clear-cache',
+                            tooltip: 'Clear search cache for current session'
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-sync',
+                            text: 'Start Indexing',
+                            action: 'search-index-trigger',
+                            tooltip: 'Trigger search index sync now'
+                        },
+                        {
+                            icon: 'fas fa-broom',
+                            text: 'Erase Index',
+                            action: 'search-index-rebuild-all',
+                            tooltip: 'Clear all search indexes and rebuild from scratch (takes a long time)',
+                            className: 'text-warning'
+                        }
+                    ]
+                }
+            ]
+        });
+
+        // Attach the menu
+        window.contextMenu.attachToElement(indicator, getMenuConfig());
+        
+        // Store the config function so we can update it when pause state changes
+        indicator._menuConfigFn = getMenuConfig;
+    }
+}
+
+function updateImageGenerationIndicator() {
+    const indicator = document.getElementById('imageGenerationIndicator');
+    if (!indicator) return;
+    
+    // Check if generation is active
+    const isManualGenerating = typeof isGenerating !== 'undefined' && isGenerating;
+    const isSpellbookGenerating = window.spellbookModalManager?.isGenerating || false;
+    const isAnyGenerating = isManualGenerating || isSpellbookGenerating;
+    
+    if (isAnyGenerating) {
+        indicator.classList.remove('hidden');
+        indicator.classList.add('active');
+    } else {
+        indicator.classList.remove('active');
+        indicator.classList.add('hidden');
+    }
+}
+
+// Initialize on page load
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeSystemTrayIcons);
+} else {
+    initializeSystemTrayIcons();
+}
+
+// Update workspace icon when workspace changes
+document.addEventListener('workspaceUpdated', () => {
+    updateWorkspaceTrayIcon();
+});
 
 // Upload multiple images to server
 async function uploadImages(files) {
@@ -13126,6 +15051,24 @@ async function uploadImages(files) {
             showProgress: false
         });
     }
+}
+
+function resizeHandler() {
+    // Update batch size and trigger distances for new viewport
+    imagesPerPage = calculateDynamicBatchSize();
+    
+    // Recalculate infinite scrolling layout if needed
+    if (isGalleryWindowHidden()) {
+        updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
+    }
+    updateMenuBarHeight();
+    
+    // Recalculate previewRatio if manual modal is open
+    if (manualModal && !manualModal.classList.contains('hidden')) {            
+        // Update preview container sizing if there's a loaded image
+        sizeManualPreviewContainer();
+    }
+    updateAutocompletePositions();
 }
 
 // Handle manual image upload for variation/reroll
@@ -13272,7 +15215,8 @@ function updateUploadDeleteButtonVisibility() {
 }
 
 async function handleBulkUnpin(event = null) {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showError('No images selected');
         return;
     }
@@ -13285,7 +15229,7 @@ async function handleBulkUnpin(event = null) {
 
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
-        `Are you sure you want to unpin ${selectedImages.size} selected image(s)?`,
+        `Are you sure you want to unpin ${selectedCount} selected image(s)?`,
         [
             { text: 'Unpin', value: true, className: 'btn-secondary' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -13300,8 +15244,8 @@ async function handleBulkUnpin(event = null) {
     try {
         showManualLoading(true, 'Unpinning images...');
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to unpin');
@@ -13350,7 +15294,8 @@ async function handleBulkUnpin(event = null) {
 }
 
 async function handleBulkPin(event = null) {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showError('No images selected');
         return;
     }
@@ -13363,7 +15308,7 @@ async function handleBulkPin(event = null) {
 
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
-        `Are you sure you want to pin ${selectedImages.size} selected image(s)?`,
+        `Are you sure you want to pin ${selectedCount} selected image(s)?`,
         [
             { text: 'Pin', value: true, className: 'btn-primary' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -13378,8 +15323,8 @@ async function handleBulkPin(event = null) {
     try {
         showManualLoading(true, 'Pinning images...');
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to pin');
@@ -13427,7 +15372,8 @@ async function handleBulkPin(event = null) {
 }
 
 async function handleBulkChangePreset() {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showError('No images selected');
         return;
     }
@@ -13443,7 +15389,7 @@ async function handleBulkChangePreset() {
     }
 
     // Update selected count
-    selectedCountSpan.textContent = selectedImages.size;
+    selectedCountSpan.textContent = selectedCount;
 
     // Clear input
     presetNameInput.value = '';
@@ -13469,8 +15415,8 @@ async function handleBulkChangePresetConfirm() {
     try {
         showManualLoading(true, 'Updating preset names...');
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to update');
@@ -15346,12 +17292,12 @@ function getTextOverlayData() {
             text = textArea.placeholder;
         }
         
-        // Skip empty overlays unless both the overlay AND dynamic generation are enabled
+        // Skip empty overlays unless both the overlay AND Rentan are enabled
         if (!text) {
             const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
             const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'on';
             
-            // Only include empty text if both overlay is enabled AND dynamic generation is enabled
+            // Only include empty text if both overlay is enabled AND Rentan is enabled
             if (!isDynamicGenerationEnabled) {
                 return; // Skip this empty overlay
             }
@@ -16003,7 +17949,7 @@ function addPipelineStage(type, options = {}) {
     lockPromptBtn.id = `${stageId}_lockPromptToggle`;
     lockPromptBtn.className = 'btn-secondary btn-small toggle-btn';
     lockPromptBtn.dataset.state = 'off';
-    lockPromptBtn.title = 'Lock prompt (skip dynamic generation, apply text replacements only)';
+    lockPromptBtn.title = 'Lock Prompt (skip Rentan, apply Expanders only)';
     lockPromptBtn.innerHTML = '<i class="fas fa-lock"></i>';
     lockPromptBtn.addEventListener('click', () => {
         const newState = lockPromptBtn.dataset.state === 'on' ? 'off' : 'on';
@@ -16635,7 +18581,7 @@ function updateStageInheritedDisplay(stageId) {
         stepsInput.placeholder = inheritedValues.steps.toString();
     }
     if (guidanceInput && guidanceInput.value === '') {
-        guidanceInput.placeholder = inheritedValues.guidance.toFixed(2);
+        guidanceInput.placeholder = inheritedValues.guidance >= 10 ? 10 : inheritedValues.guidance.toFixed(1);
     }
     if (rescaleInput && rescaleInput.value === '' && rescaleOverlay) {
         rescaleOverlay.textContent = `${(inheritedValues.rescale * 100).toFixed(0)}%`;
@@ -16973,10 +18919,13 @@ function updatePipelineStagesHeaderVisibility() {
     if (hasStages) {
         pipelineStagesHeader.classList.remove('hidden');
         enableStageGenerationBtn.classList.remove('hidden');
+        windowEnableStageGenerationBtn.classList.remove('hidden');
     } else {
         pipelineStagesHeader.classList.add('hidden');
         enableStageGenerationBtn.classList.add('hidden');
+        windowEnableStageGenerationBtn.classList.add('hidden');
         enableStageGenerationBtn.dataset.state = 'on';
+        windowEnableStageGenerationBtn.dataset.state = 'on';
     }
 }
 
@@ -17251,7 +19200,7 @@ function renderExpandCanvasStage(stageId) {
                     <div class="form-group group-guidance">
                         <label for="${stageId}_guidance">Guidance</label>
                         <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
-                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" placeholder="5.0">
+                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.1" placeholder="5.0">
                             <button type="button" id="${stageId}_varietyBtn" class="btn-secondary toggle-btn toggle_variety" title="Enable Variety+" data-state="off">
                                 <i class="fas fa-sparkle"></i>
                             </button>
@@ -17278,7 +19227,7 @@ function renderExpandCanvasStage(stageId) {
                     <div class="form-group group-model">
                         <label for="${stageId}_model">Model</label>
                         <div id="${stageId}_modelDropdown" class="custom-dropdown dropup">
-                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored right">
                                 <span id="${stageId}_modelSelected">Select model...</span>
                             </button>
                             <div id="${stageId}_modelDropdownMenu" class="custom-dropdown-menu hidden"></div>
@@ -17785,7 +19734,7 @@ function updateStageResetButtonVisibility(stageId) {
 
     // Auto-resize creative directive textarea and set initial visibility
     const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
-    if (stageDirective && typeof autoResizeTextarea === 'function') {
+    if (stageDirective) {
         autoResizeTextarea(stageDirective, 23);
         
         // Add input event listener for continuous auto-resizing
@@ -17903,7 +19852,7 @@ function renderEnhanceStage(stageId, options = {}) {
             <div class="form-row justify-spaced">
                 <div class="group-controls-container">
                     <div class="form-group group-use-base-image">
-                        <label for="${stageId}_useBaseImageToggle">Enhance</label>
+                        <label for="${stageId}_useBaseImageToggle">Mode</label>
                         <div>
                             <button type="button" id="${stageId}_useBaseImageToggle" class="btn-secondary toggle-btn" data-state="${initialUseBaseImage ? 'on' : 'off'}">
                                 <i class="fas fa-diagram-venn"></i>
@@ -17977,7 +19926,7 @@ function renderEnhanceStage(stageId, options = {}) {
                     <div class="form-group group-guidance">
                         <label for="${stageId}_guidance">Guidance</label>
                         <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
-                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.01" placeholder="5.0">
+                            <input type="number" id="${stageId}_guidance" class="form-control hover-show colored" min="0.0" max="10.0" step="0.1" placeholder="5.0">
                             <button type="button" id="${stageId}_varietyBtn" class="btn-secondary toggle-btn toggle_variety" title="Enable Variety+" data-state="off">
                                 <i class="fas fa-sparkle"></i>
                             </button>
@@ -18004,7 +19953,7 @@ function renderEnhanceStage(stageId, options = {}) {
                     <div class="form-group group-model">
                         <label for="${stageId}_model">Model</label>
                         <div id="${stageId}_modelDropdown" class="custom-dropdown dropup">
-                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                            <button type="button" id="${stageId}_modelDropdownBtn" class="custom-dropdown-btn hover-show colored right">
                                 <span id="${stageId}_modelSelected">Select model...</span>
                             </button>
                             <div id="${stageId}_modelDropdownMenu" class="custom-dropdown-menu hidden"></div>
@@ -18064,7 +20013,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
 
     // Auto-resize creative directive textarea and set initial visibility
     const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
-    if (stageDirective && typeof autoResizeTextarea === 'function') {
+    if (stageDirective) {
         autoResizeTextarea(stageDirective, 23);
         
         // Add input event listener for continuous auto-resizing
@@ -18516,7 +20465,7 @@ function setupStageAdvancedControls(stageId) {
     
     // Set placeholders for advanced controls
     if (stepsInput) stepsInput.placeholder = inheritedValues.steps.toString();
-    if (guidanceInput) guidanceInput.placeholder = inheritedValues.guidance.toFixed(2);
+    if (guidanceInput) guidanceInput.placeholder = inheritedValues.guidance >= 10 ? 10 : inheritedValues.guidance.toFixed(1);
     
     // Variety toggle
     if (varietyBtn) {
@@ -18690,12 +20639,12 @@ function setupStageAdvancedControls(stageId) {
         });
         guidanceInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const step = 0.01; // Use consistent step for guidance
+            const step = 0.1; // Use consistent step for guidance
             const delta = e.deltaY > 0 ? -step : step;
             // Use inherited value if no custom value set (handle 0 properly)
             const currentVal = guidanceInput.value !== '' ? parseFloat(guidanceInput.value) : parseFloat(guidanceInput.placeholder || 5.0);
             const newValue = Math.max(0.0, Math.min(10.0, currentVal + delta));
-            guidanceInput.value = newValue.toFixed(2);
+            guidanceInput.value = newValue >= 10 ? 10 : newValue.toFixed(1);
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
@@ -19936,9 +21885,11 @@ function updateStageSamplerDisplay(stageId) {
         
         // Build display exactly like manual modal
         samplerSelected.innerHTML = [
-            `<span class="custom-dropdown-text">${s.display_short_full || s.display_short || s.display}</span>`,
-            (s.badge || s.full_badge) ? `<span class="custom-dropdown-badge ${s.badge_class || ''}">${s.badge || s.full_badge}</span>` : '',
-            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge noise-scheduler-badge">${noiseShort}</span>` : ''
+            `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
+            `<span class="custom-dropdown-text full-viewport">${s.display_short_full || s.display}</span>`,
+            s.badge ? `<span class="custom-dropdown-badge small-viewport ${s.badge_class || ''}">${s.badge}</span>` : '',
+            s.full_badge ? `<span class="custom-dropdown-badge full-viewport ${s.badge_class || ''}">${s.full_badge}</span>` : '',
+            showNoiseBadge && noiseShort ? `<span class="custom-dropdown-badge full-viewport noise-scheduler-badge">${noiseShort}</span><span class="custom-dropdown-badge small-viewport noise-scheduler-badge">${noiseShort.slice(0, 1)}</span>` : ''
         ].filter(Boolean).join(' ');
     } else {
         samplerSelected.innerHTML = 'Select sampler...';
@@ -20245,7 +22196,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
                 const dir = document.getElementById(`${stageId}_creativeDirective`);
                 if (dir) {
                     dir.value = adv.directive;
-                    if (typeof autoResizeTextarea === 'function') autoResizeTextarea(dir);
+                    autoResizeTextarea(dir);
                 }
             }
             
@@ -20548,7 +22499,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
         // Set guidance
         const guidanceInput = document.getElementById(`${stageId}_guidance`);
         if (guidanceInput && adv.guidance !== null && adv.guidance !== undefined) {
-            guidanceInput.value = adv.guidance.toFixed(2);
+            guidanceInput.value = adv.guidance >= 10 ? 10 : adv.guidance.toFixed(1);
         }
         
         // Set rescale
@@ -20943,6 +22894,11 @@ function handleServerPing(data) {
     }
     if (data.balance !== undefined) {
         updateBalanceDisplay(data.balance);
+        // Update optionsData balance and increment version to keep things in sync
+        if (window.optionsData) {
+            window.optionsData.balance = data.balance;
+        }
+        
         // Check for subscription notifications when balance updates
         updateSubscriptionNotifications().catch(error => {
         });
@@ -21071,19 +23027,15 @@ async function initializeSessionValidation() {
 
 // Bulk operations with WebSocket support
 async function handleBulkMoveToWorkspace() {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showError('No images selected');
         return;
     }
 
     try {
         // Use the new gallery move modal with cross-fade functionality
-        if (typeof triggerGalleryMoveWithSelection === 'function') {
-            triggerGalleryMoveWithSelection();
-        } else {
-            showError('Gallery move functionality not available');
-            clearSelection();
-        }
+        triggerGalleryMoveWithSelection();
     } catch (error) {
         showError('Failed to open move modal: ' + error.message);
         clearSelection();
@@ -21095,8 +23047,8 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         const isScrapsView = currentGalleryView === 'scraps';
         const isPinnedView = currentGalleryView === 'pinned';
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames  = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to move');
@@ -21141,14 +23093,15 @@ async function moveBulkImagesToWorkspace(workspaceId) {
 }
 
 async function handleBulkDelete(event = null) {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showGlassToast('error', 'No Selection', 'Please select images to delete.');
         return;
     }
 
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
-        `Are you sure you want to delete ${selectedImages.size} selected image(s)? This will permanently delete both the original and upscaled versions.`,
+        `Are you sure you want to delete ${selectedCount} selected image(s)? This will permanently delete both the original and upscaled versions.`,
         [
             { text: 'Delete', value: true, className: 'btn-danger' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -21161,8 +23114,8 @@ async function handleBulkDelete(event = null) {
     }
 
     try {
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to delete');
@@ -21204,14 +23157,15 @@ async function handleBulkDelete(event = null) {
 }
 
 async function handleBulkSequenzia(event = null) {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showError('No images selected');
         return;
     }
 
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
-        `Are you sure you want to send ${selectedImages.size} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
+        `Are you sure you want to send ${selectedCount} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
         [
             { text: 'Send to Sequenzia', value: true, className: 'btn-primary' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -21226,8 +23180,8 @@ async function handleBulkSequenzia(event = null) {
     try {
         showManualLoading(true, 'Sending images to Sequenzia...');
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to send to Sequenzia');
@@ -21268,14 +23222,15 @@ async function handleBulkSequenzia(event = null) {
 }
 
 async function handleBulkMoveToScraps(event = null) {
-    if (selectedImages.size === 0) {
+    const selectedCount = getSelectedCount();
+    if (selectedCount === 0) {
         showGlassToast('error', 'No Selection', 'Please select images to move to scraps.');
         return;
     }
 
     // Show confirmation dialog
     const confirmed = await showConfirmationDialog(
-        `Are you sure you want to move ${selectedImages.size} selected image(s) to scraps?`,
+        `Are you sure you want to move ${selectedCount} selected image(s) to scraps?`,
         [
             { text: 'Move', value: true, className: 'btn-primary' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
@@ -21290,8 +23245,8 @@ async function handleBulkMoveToScraps(event = null) {
     try {
         showManualLoading(true, 'Moving images to scraps...');
 
-        // Filter out any null/undefined values from selectedImages
-        const validFilenames = Array.from(selectedImages).filter(filename => filename && typeof filename === 'string');
+        // Filter out any null/undefined values from selected images
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to move to scraps');
@@ -21365,7 +23320,7 @@ function disableReadOnlyFeatures() {
         input.title = 'Not available in read-only mode';
     });
     
-    // Disable text replacement management
+    // Disable Genso management
     const textReplacementBtns = document.querySelectorAll('[data-action="save-text-replacements"], [data-action="delete-text-replacement"]');
     textReplacementBtns.forEach(btn => {
         btn.disabled = true;
@@ -21394,9 +23349,7 @@ async function clearAllCachesAndReload() {
 
     } catch (error) {
         console.error('Error clearing caches:', error);
-        if (typeof showGlassToast === 'function') {
-            showGlassToast('error', 'Cache Clear Failed', 'Failed to clear caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-        }
+        showGlassToast('error', 'Cache Clear Failed', 'Failed to clear caches: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
     }
 }
 
@@ -21436,17 +23389,14 @@ async function handleRefreshMetadataCache() {
                     if (Math.floor(percentage) !== Math.floor(lastPercentage)) {
                         if (progressToastId) {
                             // Update existing toast with new progress and message
-                            if (typeof updateGlassToastComplete === 'function') {
-                                updateGlassToastComplete(progressToastId, {
-                                    type: 'info',
-                                    title: 'Metadata Cache',
-                                    message: `Rebuilding: ${message.data.current}/${message.data.total} files processed`
-                                });
-                            }
+                            updateGlassToastComplete(progressToastId, {
+                                type: 'info',
+                                title: 'Metadata Cache',
+                                message: `Rebuilding: ${message.data.current}/${message.data.total} files processed`
+                            });
+                            
                             // Update progress bar
-                            if (typeof updateGlassToastProgress === 'function') {
-                                updateGlassToastProgress(progressToastId, percentage);
-                            }
+                            updateGlassToastProgress(progressToastId, percentage);
                         } else {
                             // Create initial toast with progress bar
                             progressToastId = showGlassToast(
@@ -21465,7 +23415,7 @@ async function handleRefreshMetadataCache() {
                     wsClient.off('message', handleResponse);
                     
                     // Close progress toast
-                    if (progressToastId && typeof removeGlassToast === 'function') {
+                    if (progressToastId) {
                         removeGlassToast(progressToastId);
                     }
 
@@ -21561,6 +23511,169 @@ function setupMainMenuContextMenus() {
         }
     }
     
+    // Create jump points submenu options function
+    function getJumpPointsOptions(target) {
+        // Get current array length (filtered or all)
+        const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+        if (effectiveLength === 0) return [];
+        
+        // Only return options if cache is ready and length matches
+        if (cachedJumpPoints && cachedJumpPointsLength === effectiveLength) {
+            return cachedJumpPoints.map(point => ({
+                icon: 'fas fa-image',
+                text: point.label,
+                action: `jump-to-index-${point.index}`
+            }));
+        }
+        
+        // Cache not ready - return empty array (submenu will be disabled)
+        return [];
+    }
+    
+    // Create jump points submenu handler function
+    function handleJumpPointsAction(subItem, target) {
+        const action = subItem.action;
+        if (action && action.startsWith('jump-to-index-')) {
+            const index = parseInt(action.replace('jump-to-index-', ''), 10);
+            if (!isNaN(index)) {
+                displayGalleryFromStartIndex(index, true);
+            }
+        }
+    }
+    
+    // Pagination state for date jump options (stored in closure to persist across menu opens)
+    let dateJumpPaginationState = {
+        currentBatch: 0,
+        itemsPerBatch: 10,
+        totalItems: 0,
+        pendingAction: null // Tracks pending pagination action (load-more-dates-top/bottom)
+    };
+    
+    // Create date-based submenu options function
+    function getDateJumpOptions(target) {
+        const dateOptions = [];
+        
+        try {
+            // Get current array (filtered or all)
+            const sourceImages = window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0
+                ? window.originalAllImages
+                : (allImages || []);
+            
+            if (sourceImages.length === 0) return [];
+            
+            // Get all date groups (from cache or build on the fly)
+            let allDateGroups = [];
+            
+            // Only use cached date groups - no fallback
+            if (cachedDateGroups && cachedDateGroups.length > 0) {
+                // Map cached indices to filtered indices if in search mode
+                cachedDateGroups.forEach((week, weekIndex) => {
+                    const startDate = week.startDate;
+                    const endDate = week.endDate;
+                    
+                    // Get first index, mapping to filtered index if needed
+                    let firstIndex = Math.min(...week.indices);
+                    if (window.filteredImageIndices) {
+                        // Find the filtered position for this original index
+                        const filteredPos = window.filteredImageIndices.indexOf(firstIndex);
+                        if (filteredPos === -1) return; // Skip if not in filtered results
+                        firstIndex = filteredPos;
+                    }
+                    
+                    let label;
+                    if (week.dates.length === 1) {
+                        // Single day
+                        label = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    } else {
+                        // Date range
+                        const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                        label = `${startStr} - ${endStr}`;
+                    }
+                    
+                    allDateGroups.push({
+                        label: label,
+                        index: firstIndex
+                    });
+                });
+            }
+            
+            // If no date groups available, return empty (submenu will be disabled)
+            if (allDateGroups.length === 0) return [];
+            
+            // Check if we need to handle pagination (check pendingAction in state)
+            const pendingAction = dateJumpPaginationState.pendingAction;
+            if (pendingAction === 'load-more-dates-top') {
+                dateJumpPaginationState.currentBatch = Math.max(0, dateJumpPaginationState.currentBatch - 1);
+                dateJumpPaginationState.pendingAction = null; // Clear after processing
+            } else if (pendingAction === 'load-more-dates-bottom') {
+                dateJumpPaginationState.currentBatch = dateJumpPaginationState.currentBatch + 1;
+                dateJumpPaginationState.pendingAction = null; // Clear after processing
+            } else if (!pendingAction) {
+                // Reset to first batch when opening fresh (no pending action)
+                dateJumpPaginationState.currentBatch = 0;
+            }
+            
+            dateJumpPaginationState.totalItems = allDateGroups.length;
+            const itemsPerBatch = dateJumpPaginationState.itemsPerBatch;
+            const startIndex = dateJumpPaginationState.currentBatch * itemsPerBatch;
+            const endIndex = Math.min(startIndex + itemsPerBatch, allDateGroups.length);
+            const hasMoreTop = dateJumpPaginationState.currentBatch > 0;
+            const hasMoreBottom = endIndex < allDateGroups.length;
+            
+            // Add "Load more" at top if applicable
+            if (hasMoreTop) {
+                dateOptions.push({
+                    icon: 'fas fa-chevron-up',
+                    text: 'Load more',
+                    action: 'load-more-dates-top',
+                    keepMenuOpen: true, // Keep menu open when clicked
+                    noIndicator: true // Don't show indicator dot
+                });
+            }
+            
+            // Add current batch of date options
+            for (let i = startIndex; i < endIndex; i++) {
+                const group = allDateGroups[i];
+                dateOptions.push({
+                    icon: 'fas fa-calendar-days',
+                    text: group.label,
+                    action: `jump-to-date-${group.index}`
+                });
+            }
+            
+            // Add "Load more" at bottom if applicable
+            if (hasMoreBottom) {
+                dateOptions.push({
+                    icon: 'fas fa-chevron-down',
+                    text: 'Load more',
+                    action: 'load-more-dates-bottom',
+                    keepMenuOpen: true, // Keep menu open when clicked
+                    noIndicator: true // Don't show indicator dot
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error generating date jump options:', error);
+        }
+        
+        return dateOptions;
+    }
+    
+    // Create date-based submenu handler function
+    function handleDateJumpAction(subItem, target) {
+        const action = subItem.action;
+        if (action === 'load-more-dates-top' || action === 'load-more-dates-bottom') {
+            // Set pending action - this will be processed when optionsfn is called during refresh
+            dateJumpPaginationState.pendingAction = action;
+        } else if (action && action.startsWith('jump-to-date-')) {
+            const index = parseInt(action.replace('jump-to-date-', ''), 10);
+            if (!isNaN(index)) {
+                displayGalleryFromStartIndex(index, true);
+            }
+        }
+    }
+    
     // Create the shared context menu configuration
     const contextMenuConfig = {
             sections: [
@@ -21586,25 +23699,54 @@ function setupMainMenuContextMenus() {
                             action: 'invert-sort'
                         },
                         {
-                            icon: 'nai-import',
-                            tooltip: 'Import New Reference',
-                            action: 'upload'
+                            icon: 'fas fa-minus',
+                            tooltip: 'Decrease Gallery Column Size',
+                            action: 'gallery-size-decrease'
                         },
                         {
-                            icon: 'fa-light fa-book-spells',
-                            tooltip: 'Cast Spell',
-                            action: 'cast-spell'
-                        },
-                        {
-                            icon: 'fa-light fa-compass-drafting',
-                            tooltip: 'Editor',
-                            action: 'creator-model'
-                        },
+                            icon: 'fas fa-plus',
+                            tooltip: 'Increase Gallery Column Size',
+                            action: 'gallery-size-increase'
+                        }
                     ]
                 },
                 {
                     type: 'list',
                     items: [
+                        {
+                            icon: 'fa-light fa-location-dot',
+                            text: 'Jog to Position',
+                            optionsfn: getJumpPointsOptions,
+                            handlerfn: handleJumpPointsAction,
+                            openOnHover: false,
+                            disabled: () => {
+                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                                if (effectiveLength === 0) return true;
+                                // Disable if cache is not ready
+                                return !cachedJumpPoints || cachedJumpPointsLength !== effectiveLength;
+                            },
+                            hidden: () => {
+                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                                return effectiveLength === 0;
+                            }
+                        },
+                        {
+                            icon: 'fa-light fa-calendar-days',
+                            text: 'Jog to Date',
+                            optionsfn: getDateJumpOptions,
+                            handlerfn: handleDateJumpAction,
+                            openOnHover: false,
+                            disabled: () => {
+                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                                if (effectiveLength === 0) return true;
+                                // Disable if cache is not ready
+                                return !cachedDateGroups || cachedDateGroups.length === 0;
+                            },
+                            hidden: () => {
+                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                                return effectiveLength === 0;
+                            }
+                        },
                         {
                             content: (target) => {
                                 // Get current workspace from workspaces object using activeWorkspace variable
@@ -21629,14 +23771,23 @@ function setupMainMenuContextMenus() {
                             },
                             optionsfn: getWorkspaceOptions,
                             handlerfn: handleWorkspaceAction,
-                            openOnHover: true
+                            openOnHover: false,
+                            hidden: () => {
+                                // Hide in desktop mode (when gallery is windowed)
+                                const galleryWindow = document.getElementById('galleryWindow');
+                                return galleryWindow && galleryWindow.classList.contains('windowed');
+                            },
                         }
                     ]
                 },
                 {
                     type: 'list',
+                    hidden: () => {
+                        // Hide in desktop mode (when gallery is windowed)
+                        const galleryWindow = document.getElementById('galleryWindow');
+                        return galleryWindow && galleryWindow.classList.contains('windowed');
+                    },
                     items: [
-                        
                         {
                             icon: 'fa-light fa-solar-system',
                             text: 'Planets',
@@ -21653,6 +23804,15 @@ function setupMainMenuContextMenus() {
                             action: 'cache-manager'
                         },
                         {
+                            icon: 'nai-import',
+                            text: 'Import',
+                            action: 'upload',
+                            hidden: () => {
+                                // Hide in desktop mode
+                                return document.body.classList.contains('desktop-mode');
+                            }
+                        },
+                        {
                             icon: 'fa-light fa-book-font',
                             text: 'Expanders',
                             action: 'text-replacement-manager'
@@ -21663,10 +23823,17 @@ function setupMainMenuContextMenus() {
                             action: 'chat-manager'
                         },
                         {
-                            icon: 'fas fa-box-open-full',
+                            icon: 'fa-light fa-box-open-full',
                             text: 'Memories',
                             action: 'knowledge-memories'
-                        }/*,
+                        },
+                        {
+                            icon: 'fa-light fa-key-skeleton-left-right',
+                            text: 'Service Keychain',
+                            action: 'api-key-manager',
+                            desktopOnly: true,
+                            hidden: localStorage.getItem('userType') !== 'admin'
+                        },/*
                         {
                             icon: 'fa-light fa-rotate',
                             text: 'Refresh Metadata',
@@ -21678,10 +23845,21 @@ function setupMainMenuContextMenus() {
                             action: 'ip-manager',
                             desktopOnly: true,
                         } */
+                        {
+                            icon: 'fas fa-arrow-pointer',
+                            text: 'Melatonin',
+                            action: 'toggle-gallery-window',
+                            hidden: () => document.body.classList.contains('desktop-mode')
+                        }
                     ]
                 },
                 {
                     type: 'custom',
+                    hidden: () => {
+                        // Hide in desktop mode (when gallery is windowed)
+                        const galleryWindow = document.getElementById('galleryWindow');
+                        return galleryWindow && galleryWindow.classList.contains('windowed');
+                    },
                     content: `
                         <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
                             <div class="menu-item-row balance-list">
@@ -21858,6 +24036,11 @@ function setupMainMenuContextMenus() {
                 },
                 {
                     type: 'icons',
+                    hidden: () => {
+                        // Hide in desktop mode (when gallery is windowed)
+                        const galleryWindow = document.getElementById('galleryWindow');
+                        return galleryWindow && galleryWindow.classList.contains('windowed');
+                    },
                     icons: [
                         {
                             icon: 'fa-light fa-droplet',
@@ -21903,13 +24086,40 @@ function setupMainMenuContextMenus() {
     // Attach the same configuration to multiple elements
     window.contextMenu.attachToElements('#main-menu-bar, #galleryToggleGroup', contextMenuConfig);
     
+    // Add wheel support to main menu bar for adjusting gallery column size
+    const mainMenuBar = document.getElementById('main-menu-bar');
+    if (mainMenuBar && typeof adjustGalleryColumnSize === 'function') {
+        let wheelTimeout = null;
+        let lastWheelTime = 0;
+        const wheelThrottle = 500; // ms between wheel adjustments
+        
+        mainMenuBar.addEventListener('wheel', function(e) {
+            // Only handle vertical scrolling
+            if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+            
+            // Throttle wheel events
+            const now = Date.now();
+            if (now - lastWheelTime < wheelThrottle) {
+                e.preventDefault();
+                return;
+            }
+            
+            e.preventDefault();
+            lastWheelTime = now;
+            
+            // deltaY > 0 is scroll down (decrease), deltaY < 0 is scroll up (increase)
+            const direction = e.deltaY > 0 ? -1 : 1;
+            adjustGalleryColumnSize(direction);
+        }, { passive: false });
+    }
+    
     // Handle context menu actions
     document.addEventListener('contextMenuAction', async function(event) {
         const { action, target, item } = event.detail;
 
         switch (action) {
             case 'jump-to-top':
-                loadGalleryFromIndex(0);
+                displayGalleryFromStartIndex(0);
                 window.scrollTo(0, {behavior: 'instant'});
                 break;
                 
@@ -21935,7 +24145,7 @@ function setupMainMenuContextMenus() {
                 
             case 'creator-model':
                 // Open creator model modal directly
-                showManualModal();
+                openManualModalWithContent();
                 break;
                 
             case 'cache-manager':
@@ -21945,8 +24155,14 @@ function setupMainMenuContextMenus() {
             
             case 'knowledge-memories':
                 // Open knowledge memories modal
-                if (typeof openKnowledgeMemoriesModal === 'function') {
-                    openKnowledgeMemoriesModal();
+                openKnowledgeMemoriesModal();
+                break;
+
+            case 'api-key-manager':
+                if (localStorage.getItem('userType') === 'admin') {
+                    openApiKeyModal();
+                } else {
+                    showGlassToast('warning', null, 'Admin access required to manage API keys.', false, 5000, '<i class="fas fa-key-skeleton-left-right"></i>');
                 }
                 break;
                 
@@ -21961,26 +24177,26 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'lockAllReplacements':
-                // Lock all available text replacements
+                // Lock all available Genso
                 if (window.lastGenerationTextReplacements && Array.isArray(window.lastGenerationTextReplacements)) {
                     const lockableReplacements = window.lastGenerationTextReplacements.map(r => ({ ...r, locked: r.can_lock !== undefined ? r.can_lock !== false : true }));
                     window.lockedTextReplacements = lockableReplacements.filter(r => r.locked === true);
                     window.lastGenerationTextReplacements = lockableReplacements;
                     updateMainLockButtonState();
-                    showGlassToast('success', null, `Locked ${lockableReplacements.length} text replacement${lockableReplacements.length === 1 ? '' : 's'}.`);
+                    showGlassToast('success', null, `Locked ${lockableReplacements.length} Expander${lockableReplacements.length === 1 ? '' : 's'}.`);
                 }
                 break;
 
             case 'unlockAllReplacements':
-                // Unlock all text replacements
+                // Unlock all Genso
                 window.lockedTextReplacements = [];
                 window.lastGenerationTextReplacements = window.lastGenerationTextReplacements.map(r => ({ ...r, locked: false }));
                 updateMainLockButtonState();
-                showGlassToast('success', null, 'Unlocked all text replacements.');
+                showGlassToast('success', null, 'Unlocked all Expanders or Tsubo\'s.');
                 break;
 
             case 'text-replacement-manager':
-                // Open text replacement manager modal directly
+                // Open Genso manager modal directly
                 showTextReplacementManager();
                 break;
                 
@@ -21993,6 +24209,21 @@ function setupMainMenuContextMenus() {
                 // Open upload modal directly
                 unifiedUploadModalManager.show();
                 closeSubMenu();
+                break;
+                
+            case 'toggle-gallery-window':
+                // Toggle gallery window mode
+                toggleGalleryWindowMode();
+                break;
+                
+            case 'gallery-size-increase':
+                // Increase gallery column size
+                adjustGalleryColumnSize(1);
+                break;
+                
+            case 'gallery-size-decrease':
+                // Decrease gallery column size
+                adjustGalleryColumnSize(-1);                
                 break;
                 
             case 'toggle-glass':
@@ -22036,6 +24267,95 @@ function setupMainMenuContextMenus() {
                 }
                 break;
                 
+            case 'search-index-prepare-cache':
+                // Prepare search cache for current session
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        const viewType = window.currentGalleryView || 'images';
+                        await window.wsClient.sendMessage('search_index_prepare_cache', { viewType });
+                        showGlassToast('success', null, 'Search cache prepared', false, 3000, '<i class="fas fa-check"></i>');
+                    } catch (error) {
+                        console.error('Error preparing search cache:', error);
+                        showGlassToast('error', null, 'Failed to prepare search cache: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'search-index-clear-cache':
+                // Clear search cache for current session
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('search_index_clear_cache', {});
+                        showGlassToast('success', null, 'Search cache cleared', false, 3000, '<i class="fas fa-check"></i>');
+                    } catch (error) {
+                        console.error('Error clearing search cache:', error);
+                        showGlassToast('error', null, 'Failed to clear search cache: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'search-index-toggle-pause':
+                // Toggle indexing pause state
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        const result = await window.wsClient.sendMessage('search_index_toggle_pause', {});
+                        if (result && result.paused !== undefined) {
+                            const message = result.paused ? 'Indexing paused' : 'Indexing resumed';
+                            showGlassToast('info', null, message, false, 3000, '<i class="fas fa-info-circle"></i>');
+                        }
+                    } catch (error) {
+                        console.error('Error toggling indexing pause:', error);
+                        showGlassToast('error', null, 'Failed to toggle indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'search-index-trigger':
+                // Manually trigger indexing
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        await window.wsClient.sendMessage('search_index_trigger', {});
+                        showGlassToast('info', null, 'Indexing triggered', false, 3000, '<i class="fas fa-sync"></i>');
+                    } catch (error) {
+                        console.error('Error triggering indexing:', error);
+                        showGlassToast('error', null, 'Failed to trigger indexing: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+
+            case 'search-index-rebuild-all':
+                // Erase and reindex all search indexes
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    try {
+                        const confirmed = await showConfirmationDialog(
+                            'Are you sure you want to erase and rebuild all search indexes?<br><br><strong>This will take a long time to complete</strong> and will rebuild indexes for all images in the database.',
+                            [
+                                { text: 'Rebuild All', value: true, className: 'btn-danger', icon: 'fas fa-broom' },
+                                { text: 'Cancel', value: false, className: 'btn-secondary' }
+                            ],
+                            event
+                        );
+                        if (confirmed) {
+                            await window.wsClient.sendMessage('search_index_rebuild_all', {});
+                            showGlassToast('info', null, 'Rebuilding all search indexes... This may take a while.', false, 10000, '<i class="fas fa-sync fa-spin"></i>');
+                        }
+                    } catch (error) {
+                        console.error('Error rebuilding indexes:', error);
+                        showGlassToast('error', null, 'Failed to rebuild indexes: ' + error.message, false, 5000, '<i class="fas fa-exclamation-circle"></i>');
+                    }
+                } else {
+                    showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
+                }
+                break;
+                
             case 'logout':
                 // Logout directly
                 const confirmed = await showConfirmationDialog(
@@ -22053,7 +24373,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             default:
-                // Handle individual text replacement lock toggles
+                // Handle individual Genso lock toggles
                 if (action.startsWith('toggleTextReplacementLock_')) {
                     const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
                     const allReplacements = window.lastGenerationTextReplacements || [];
@@ -22144,11 +24464,11 @@ function calculateGenerationProgress(progressData) {
                 return 100;
 
             default:
-                return 15; // Default to 15% for non-dynamic generation
+                return 15; // Default to 15% for non-Rentan
         }
     }
 
-    // Normal path with dynamic generation
+    // Normal path with Rentan
     switch (phase) {
         case 'initializing':
             // 0-15%: AI processing starting (client-side timer)
@@ -22300,13 +24620,35 @@ if (window.wsClient) {
         }
     });
 
+    // Helper function to check if message is update-related
+    function isUpdateRelatedMessage(message) {
+        if (!message) return false;
+        const lowerMessage = message.toLowerCase();
+        return lowerMessage.includes('update') || 
+               lowerMessage.includes('available') || 
+               lowerMessage.includes('download') ||
+               lowerMessage.includes('install') ||
+               lowerMessage.includes('upgrade');
+    }
+
     // Handle system messages
     wsClient.on('system_message', (data) => {
         console.log('📢 System message received:', data);
         if (data.data && data.data.message) {
-            // Show system message as toast
-            if (typeof showGlassToast === 'function') {
-                showGlassToast(data.data.level || 'info', null, data.data.message);
+            const message = data.data.message;
+            
+            // Desktop mode: use Windows Update Modal for update-related messages
+            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
+                window.wsClient.showWindowsUpdateModal('System Update', 0);
+                window.wsClient.updateWindowsUpdateModal(message, 0);
+                window.wsClient.setUpdateModalCallbacks(
+                    () => window.wsClient.hideWindowsUpdateModal(),
+                    null,
+                    () => window.wsClient.hideWindowsUpdateModal()
+                );
+            } else {
+                // Show system message as toast
+                showGlassToast(data.data.level || 'info', null, message);
             }
         }
     });
@@ -22315,8 +24657,19 @@ if (window.wsClient) {
     wsClient.on('notification', (data) => {
         console.log('🔔 Notification received:', data);
         if (data.data && data.data.message) {
-            if (typeof showGlassToast === 'function') {
-                showGlassToast(data.data.type || 'info', null, data.data.message);
+            const message = data.data.message;
+            
+            // Desktop mode: use Windows Update Modal for update-related messages
+            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
+                window.wsClient.showWindowsUpdateModal('Update Notification', 0);
+                window.wsClient.updateWindowsUpdateModal(message, 0);
+                window.wsClient.setUpdateModalCallbacks(
+                    () => window.wsClient.hideWindowsUpdateModal(),
+                    null,
+                    () => window.wsClient.hideWindowsUpdateModal()
+                );
+            } else {
+                showGlassToast(data.data.type || 'info', null, message);
             }
         }
     });
@@ -22324,8 +24677,19 @@ if (window.wsClient) {
     // Handle receipt notifications
     wsClient.on('receipt', (data) => {
         if (data.data && data.data.message) {
-            if (typeof showGlassToast === 'function') {
-                showGlassToast(data.data.type || 'info', null, data.data.message, false);
+            const message = data.data.message;
+            
+            // Desktop mode: use Windows Update Modal for update-related messages
+            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
+                window.wsClient.showWindowsUpdateModal('Update Receipt', 0);
+                window.wsClient.updateWindowsUpdateModal(message, 0);
+                window.wsClient.setUpdateModalCallbacks(
+                    () => window.wsClient.hideWindowsUpdateModal(),
+                    null,
+                    () => window.wsClient.hideWindowsUpdateModal()
+                );
+            } else {
+                showGlassToast(data.data.type || 'info', null, message, false);
             }
         }
     });
@@ -22346,7 +24710,7 @@ if (window.wsClient) {
             allImages = data.data.gallery;
             
             // Apply current sort order to the updated gallery data
-            if (window.sortGalleryData && typeof window.sortGalleryData === 'function') {
+            if (window.sortGalleryData) {
                 window.sortGalleryData();
             }
             
@@ -22394,9 +24758,7 @@ if (window.wsClient) {
             }
             
             if (message) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
-                }
+                showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
             }
         }
     });
@@ -22410,7 +24772,7 @@ if (window.wsClient) {
 
         if (data.workspace && data.message) {
             // Update the UI to show the restored workspace
-            if (window.updateWorkspaceUI && typeof window.updateWorkspaceUI === 'function') {
+            if (window.updateWorkspaceUI) {
                 window.updateWorkspaceUI(data.workspace);
             }
         }
@@ -22470,14 +24832,10 @@ if (window.wsClient) {
         
         // Show notification if queue is blocked
         if (data.value === 2) {
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait.', false, 5000);
-            }
+            showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait.', false, 5000);
         } else if (data.value === 0 && (isQueueStopped || isQueueProcessing)) {
             // Queue was unblocked
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('success', 'Queue Unblocked', 'Generation is now available.', false, 3000);
-            }
+            showGlassToast('success', 'Queue Unblocked', 'Generation is now available.', false, 3000);
         }
     });
 
@@ -22549,6 +24907,73 @@ if (window.wsClient) {
             await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
         }
     });
+
+    // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
+    if (window.isDesktop) {
+        window.wsClient.registerInitStep(0.5, 'Loading Desktop Settings', async () => {
+            try {
+                if (window.wsClient && window.wsClient.isConnected()) {
+                    const settings = await window.wsClient.getDesktopSettings();
+                    
+                    if (settings) {
+                        const { wallpaper, wallpaperPosition, color, backgroundColor } = settings;
+                        
+                        // Apply colors
+                        if (color) {
+                            document.documentElement.style.setProperty('--workspace-color', color);
+                        }
+                        
+                        // Set background color to workspace color if no background is set
+                        const bgColor = backgroundColor || color;
+                        if (bgColor) {
+                            document.documentElement.style.setProperty('--workspace-background-color', bgColor);
+                        }
+                        
+                        // Apply wallpaper if present
+                        if (wallpaper && window.isDesktop) {
+                            let wallpaperUrl = null;
+                            const [type, ...idParts] = wallpaper.split(':');
+                            const id = idParts.join(':');
+                            
+                            switch (type) {
+                                case 'file':
+                                    wallpaperUrl = `/images/${id}`;
+                                    break;
+                                case 'cache':
+                                    wallpaperUrl = `/cache/upload/${id}`;
+                                    break;
+                                case 'cache-preview':
+                                    wallpaperUrl = `/cache/preview/${id}`;
+                                    break;
+                                case 'vibe':
+                                    wallpaperUrl = `/cache/vibe/${id}`;
+                                    break;
+                                case 'wallpaper':
+                                    wallpaperUrl = `/cache/wallpapers/${id}.png`;
+                                    break;
+                                case 'url':
+                                    wallpaperUrl = id;
+                                    break;
+                            }
+                            
+                            if (wallpaperUrl) {
+                                const position = wallpaperPosition || 'center';
+                                document.documentElement.style.setProperty('--desktop-wallpaper', `url('${wallpaperUrl}')`);
+                                document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
+                                
+                                // Preload the wallpaper image
+                                const img = new Image();
+                                img.src = wallpaperUrl;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('⚠️ Failed to load desktop settings early:', error);
+                // Non-critical, continue initialization
+            }
+        });
+    }
 
     // Priority 1: Initialize main app components
     window.wsClient.registerInitStep(1, 'Loading Application Data', async () => {
@@ -22632,14 +25057,38 @@ if (window.wsClient) {
 
         galleryRows = calculateGalleryRows();
         const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-        imagesPerPage = parseInt(galleryToggleGroup?.dataset?.columns || 5) * galleryRows;
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
     });
 
+    // Open gallery window before loading gallery
+    window.wsClient.registerInitStep(89, 'Opening Gallery Window', async () => {
+        if (window.isDesktop) {
+            const galleryWindow = document.getElementById('galleryWindow');
+            if (galleryWindow) {
+                // Show gallery window (openModal will handle active-window class)
+                if (typeof openModal === 'function') {
+                    openModal(galleryWindow);
+                } else {
+                    galleryWindow.classList.remove('hidden');
+                }
+                
+                // Add loading spinner
+                const spinner = document.getElementById('galleryLoadingSpinner');
+                const galleryContainer = galleryWindow.querySelector('.gallery-container');
+                if (galleryContainer && spinner) {
+                    spinner.classList.remove('hidden');
+                    if (!galleryContainer.contains(spinner)) {
+                        galleryContainer.appendChild(spinner);
+                    }
+                }
+            }
+        }
+    }, true);
+    
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
         await loadGallery();
-        await updateGalleryColumnsFromLayout();
+        await updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
         await updateMenuBarHeight();
     }, true);
 
@@ -22664,7 +25113,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Function to update window controls overlay classes
     function updateWindowControlsOverlayClasses() {
-
         const titlebarX = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-x');
         const titlebarY = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-y');
         const titlebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-width');
@@ -22848,6 +25296,3 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-
-
-

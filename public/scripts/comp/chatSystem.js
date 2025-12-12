@@ -202,7 +202,7 @@ class ChatSystem {
         this.chatSessionsHasMore = true;
 
         
-        closeModal(document.getElementById('chatModal'));
+        await closeModal(document.getElementById('chatModal'));
     }
 
     async startChat() {
@@ -449,7 +449,7 @@ class ChatSystem {
         const panelContainer = document.querySelector('.chat-messages-panel');
         if (panelContainer) {
             if (this.currentFilename) {
-                panelContainer.style.backgroundImage = `url('/images/${this.currentFilename}')`;
+                panelContainer.style.backgroundImage = `url("/images/${this.currentFilename}")`;
                 panelContainer.classList.add('has-background');
             } else {
                 panelContainer.style.backgroundImage = '';
@@ -545,7 +545,7 @@ class ChatSystem {
     
     renderAssistantResponse(eventMessages) {
         const container = document.getElementById('chatMessagesList');
-        const avatarSrc = `/images/${this.currentFilename}`;
+        const avatarSrc = `/images/${encodeURIComponent(this.currentFilename)}`;
         
         // Group events by timestamp
         const timestampGroups = {};
@@ -1114,14 +1114,12 @@ class ChatSystem {
 
     openPersonaSettingsModal() {
         const modal = document.getElementById('personaSettingsModal');
-        modal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
+        openModal(modal);
     }
 
     closePersonaSettingsModal() {
         const modal = document.getElementById('personaSettingsModal');
-        modal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
+        closeModal(modal);
     }
 
     async savePersonaSettings() {

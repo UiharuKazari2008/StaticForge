@@ -5,14 +5,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const logger = require('./logger');
-const { getImageMetadata } = require('./metadataDatabase');
-const { getChatMessages } = require('./chatDatabase');
-const memoryManager = require('./memoryManager');
 
 class PromptManager {
-    constructor() {
-        this.imagesDir = path.resolve(__dirname, '../images');
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('PromptManager requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.securePromptsDir = path.resolve(__dirname, '../securePrompts');
         this.promptTemplates = new Map();
         this.loadPromptTemplates();
@@ -31,7 +30,7 @@ class PromptManager {
                 const grokTemplate = JSON.parse(fs.readFileSync(grokPromptPathV3, 'utf8'));
                 if (grokTemplate.characterChat) {
                     this.promptTemplates.set('characterChat', grokTemplate.characterChat);
-                    logger.bootSubStep('Loaded prompt template from Grok v3');
+                    this.globalResources.getLogger().bootSubStep('Loaded prompt template from Grok v3');
                 }
             }
         } catch (error) {
@@ -106,7 +105,7 @@ class PromptManager {
      * Get persona image and prompt for a chat session
      */
     async getPersonaData(filename) {
-        const imagePath = path.join(this.imagesDir, filename);
+        const imagePath = path.join(this.globalResources.getPath('images'), filename);
         let personaImage = null;
         let userPrompt = '';
 
@@ -122,7 +121,7 @@ class PromptManager {
             };
             
             // Get the prompt data for this image
-            const metadata = await getImageMetadata(filename, this.imagesDir);
+            const metadata = await this.globalResources.getMetadataDatabase().getImageMetadata(filename, this.globalResources.getPath('images'));
             if (metadata) {
                 // Check if metadata is a string that needs parsing
                 if (typeof metadata.metadata === 'string') {
@@ -169,19 +168,17 @@ class PromptManager {
     /**
      * Check if persona needs to be established
      */
-    needsPersonaEstablishment(chatId) {
-        const { getChatMessageCount } = require('./chatDatabase');
-        const messageCount = getChatMessageCount(chatId);
+    async needsPersonaEstablishment(chatId) {
+        const messageCount = await this.globalResources.getChatDatabase().getChatMessageCount(chatId);
         return messageCount <= 1; // Only establish persona for first message
     }
 
     /**
      * Get conversation context for prompt
      */
-    getConversationContext(chatId) {
-        const { getChatMessages } = require('./chatDatabase');
+    async getConversationContext(chatId) {
         try {
-            const messages = getChatMessages(chatId, 20, 0);
+            const messages = await this.globalResources.getChatDatabase().getChatMessages(chatId, 20, 0);
             return messages.reverse().map(msg => ({
                 message_type: msg.message_type,
                 content: msg.content,
@@ -198,8 +195,7 @@ class PromptManager {
      */
     async preparePersonaData(chatId, filename) {
         const { personaImage, userPrompt } = await this.getPersonaData(filename);
-        const { getPersonaSettings } = require('./chatDatabase');
-        const personaSettings = getPersonaSettings();
+        const personaSettings = await this.globalResources.getChatDatabase().getPersonaSettings();
         const viewerAvatar = this.getViewerAvatar(personaSettings);
         const dynamicContext = await this.getDynamicContextFromMetadata(filename);
         
@@ -215,19 +211,19 @@ class PromptManager {
     /**
      * Prepare conversation context for prompt (for future sharding/recovery)
      */
-    prepareConversationContext(chatId, serviceName) {
+    async prepareConversationContext(chatId, serviceName) {
         // Map service names to their corresponding service files
         // Memory functions are now centralized in memoryManager
         
         try {
-            const messages = getChatMessages(chatId, 20, 0);
+            const messages = await this.globalResources.getChatDatabase().getChatMessages(chatId, 20, 0);
             const conversationHistory = messages.reverse().map(msg => ({
                 message_type: msg.message_type,
                 content: msg.content,
                 created_at: msg.created_at
             }));
             
-            const characterMemories = memoryManager.getCharacterMemories(chatId).map(m => m.content);
+            const characterMemories = (await this.globalResources.getMemoryManager().getCharacterMemories(chatId)).map(m => m.content);
             
             return {
                 conversationHistory: conversationHistory.length > 0 ? `- **Recent Conversation Context:** You remember your recent exchanges and the emotional journey you've shared together.` : '',
@@ -281,7 +277,7 @@ class PromptManager {
      * Context includes: location, time, weather, season, timePeriod, etc.
      */
     async getDynamicContextFromMetadata(filename) {
-        const metadata = await getImageMetadata(filename, this.imagesDir);
+        const metadata = await this.globalResources.getMetadataDatabase().getImageMetadata(filename, this.globalResources.getPath('images'));
         
         if (!metadata || !metadata.dynamic_generation) {
             return null;
@@ -400,7 +396,4 @@ class PromptManager {
     }
 }
 
-// Create singleton instance
-const promptManager = new PromptManager();
-
-module.exports = promptManager;
+module.exports = PromptManager;

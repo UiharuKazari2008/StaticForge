@@ -250,7 +250,7 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     }
 
     // Show modal
-    modal.classList.remove('hidden');
+    openModal(modal);
     modal.classList.add('visible');
 }
 
@@ -259,7 +259,7 @@ function closeImageExpansionModal() {
     const modal = document.getElementById('imageExpansionDialog');
     if (modal) {
         modal.classList.remove('visible');
-        modal.classList.add('hidden');
+        closeModal(modal);
     }
 }
 

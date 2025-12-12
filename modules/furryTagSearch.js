@@ -3,7 +3,11 @@ const path = require('path');
 const logger = require('./logger');
 
 class FurryTagSearch {
-    constructor() {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('FurryTagSearch requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
         this.tagData = null;
         this.searchIndex = null;
         this.lastModified = 0;

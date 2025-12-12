@@ -9,6 +9,8 @@ class KnowledgeMemoriesModalManager {
         this.currentMemory = null;
         this.selectedCategory = null;
         this.searchQuery = '';
+        this.isEditMode = false;
+        this.originalMemory = null;
         
         // Cache DOM elements
         this.cacheElements();
@@ -16,8 +18,9 @@ class KnowledgeMemoriesModalManager {
         // Setup event listeners
         this.setupEventListeners();
         
-        // Setup dropdown
+        // Setup dropdowns
         this.setupCategoryDropdown();
+        this.setupDeleteDropdown();
     }
     
     cacheElements() {
@@ -44,18 +47,35 @@ class KnowledgeMemoriesModalManager {
         this.detailsContainer = document.getElementById('knowledgeMemoryDetailsContainer');
         this.backToListBtn = document.getElementById('backToMemoriesListBtn');
         this.detailsName = document.getElementById('memoryDetailsName');
+        this.detailsNameDisplay = document.getElementById('memoryDetailsNameDisplay');
+        this.detailsNameInput = document.getElementById('memoryDetailsNameInput');
+        this.detailsNameEdit = document.getElementById('memoryDetailsNameEdit');
         this.detailsDescription = document.getElementById('memoryDetailsDescription');
+        this.detailsDescriptionEdit = document.getElementById('memoryDetailsDescriptionEdit');
         this.detailsCategory = document.getElementById('memoryDetailsCategory');
+        this.detailsCategoryEdit = document.getElementById('memoryDetailsCategoryEdit');
         this.detailsConfidence = document.getElementById('memoryDetailsConfidence');
+        this.detailsConfidenceEdit = document.getElementById('memoryDetailsConfidenceEdit');
         this.detailsUsageCount = document.getElementById('memoryDetailsUsageCount');
         this.detailsLastUsed = document.getElementById('memoryDetailsLastUsed');
         this.detailsEntities = document.getElementById('memoryDetailsEntities');
         this.detailsRelations = document.getElementById('memoryDetailsRelations');
         this.detailsObservations = document.getElementById('memoryDetailsObservations');
         this.deleteMemoryBtn = document.getElementById('deleteMemoryBtn');
+        this.editMemoryBtn = document.getElementById('editMemoryBtn');
+        this.saveMemoryBtn = document.getElementById('saveMemoryBtn');
+        this.cancelEditMemoryBtn = document.getElementById('cancelEditMemoryBtn');
+        this.addEntityBtn = document.getElementById('addEntityBtn');
+        this.addRelationBtn = document.getElementById('addRelationBtn');
+        this.addObservationBtn = document.getElementById('addObservationBtn');
         
         // Stats display
         this.statsDisplay = document.getElementById('memoryStatsDisplay');
+        
+        // Delete dropdown
+        this.deleteDropdown = document.getElementById('memoryDeleteDropdown');
+        this.deleteBtn = document.getElementById('memoryDeleteBtn');
+        this.deleteMenu = document.getElementById('memoryDeleteMenu');
     }
     
     setupEventListeners() {
@@ -90,6 +110,32 @@ class KnowledgeMemoriesModalManager {
         // Delete memory button
         if (this.deleteMemoryBtn) {
             this.deleteMemoryBtn.addEventListener('click', () => this.deleteCurrentMemory());
+        }
+        
+        // Edit mode buttons
+        if (this.editMemoryBtn) {
+            this.editMemoryBtn.addEventListener('click', () => this.enterEditMode());
+        }
+        
+        if (this.saveMemoryBtn) {
+            this.saveMemoryBtn.addEventListener('click', () => this.saveMemory());
+        }
+        
+        if (this.cancelEditMemoryBtn) {
+            this.cancelEditMemoryBtn.addEventListener('click', () => this.exitEditMode(true));
+        }
+        
+        // Add buttons
+        if (this.addEntityBtn) {
+            this.addEntityBtn.addEventListener('click', () => this.addEntity());
+        }
+        
+        if (this.addRelationBtn) {
+            this.addRelationBtn.addEventListener('click', () => this.addRelation());
+        }
+        
+        if (this.addObservationBtn) {
+            this.addObservationBtn.addEventListener('click', () => this.addObservation());
         }
     }
     
@@ -141,6 +187,108 @@ class KnowledgeMemoriesModalManager {
         this.filterMemories();
     }
     
+    setupDeleteDropdown() {
+        if (!this.deleteDropdown || !this.deleteBtn || !this.deleteMenu) {
+            return;
+        }
+        
+        setupDropdown(
+            this.deleteDropdown,
+            this.deleteBtn,
+            this.deleteMenu,
+            (selectedValue) => this.renderDeleteDropdown(selectedValue),
+            () => null,
+            { preventFocusTransfer: true }
+        );
+    }
+    
+    renderDeleteDropdown(selectedValue) {
+        if (!this.deleteMenu) return;
+        
+        const options = [
+            { value: 'low_confidence', name: 'Low Confidence' },
+            { value: 'old_usage', name: '>30 Days Usage' },
+            { value: 'never_used', name: 'Never Used' },
+            { value: 'everything', name: 'Everything' }
+        ];
+        
+        if (typeof renderSimpleDropdown === 'function') {
+            renderSimpleDropdown(
+                this.deleteMenu,
+                options,
+                'value',
+                'name',
+                (value) => this.handleDeleteOption(value),
+                () => closeDropdown(this.deleteMenu, this.deleteBtn),
+                selectedValue,
+                { preventFocusTransfer: true }
+            );
+        }
+    }
+    
+    async handleDeleteOption(option) {
+        try {
+            // First, get the count from the server
+            const countResponse = await window.wsClient.sendMessage('count_knowledge_memories_by_filter', {
+                filterType: option
+            });
+            
+            if (!countResponse || !countResponse.success) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, 'Failed to count memories');
+                }
+                return;
+            }
+            
+            const count = countResponse.count || 0;
+            const description = countResponse.description || option;
+            
+            if (count === 0) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', null, `No memories found matching "${description}"`);
+                }
+                return;
+            }
+            
+            // Show confirmation dialog
+            const confirmed = await showConfirmationDialog(
+                `Are you sure you want to delete ${count} memor${count === 1 ? 'y' : 'ies'} matching "${description}"? This action cannot be undone.`,
+                [
+                    { text: 'Delete', value: true, className: 'btn-danger' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            );
+            
+            if (!confirmed) return;
+            
+            // Send delete request with filter type
+            const deleteResponse = await window.wsClient.sendMessage('delete_knowledge_memories_by_filter', {
+                filterType: option
+            });
+            
+            if (deleteResponse && deleteResponse.success) {
+                const deletedCount = deleteResponse.deletedCount || 0;
+                
+                // Reload memories to update the list and stats
+                await this.loadMemories();
+                
+                // Show toast notification
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, `Successfully deleted ${deletedCount} memor${deletedCount === 1 ? 'y' : 'ies'}`);
+                }
+            } else {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, 'Failed to delete memories');
+                }
+            }
+        } catch (error) {
+            console.error('Error deleting memories:', error);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, 'Error deleting memories');
+            }
+        }
+    }
+    
     async openModal() {
         if (!this.modal) return;
         
@@ -151,9 +299,9 @@ class KnowledgeMemoriesModalManager {
         await this.loadMemories();
     }
     
-    closeModal() {
+    async closeModal() {
         if (!this.modal) return;
-        closeModal(this.modal);
+        await closeModal(this.modal);
         
         // Reset view to list
         this.showListView();
@@ -314,8 +462,9 @@ class KnowledgeMemoriesModalManager {
         
         const memory = this.currentMemory;
         
-        // Basic info
+        // Basic info - display mode
         if (this.detailsName) this.detailsName.textContent = memory.name;
+        if (this.detailsNameDisplay) this.detailsNameDisplay.textContent = memory.name;
         if (this.detailsDescription) this.detailsDescription.textContent = memory.description;
         if (this.detailsCategory) this.detailsCategory.textContent = memory.category || 'Uncategorized';
         if (this.detailsConfidence) this.detailsConfidence.textContent = `${((memory.confidence || 0) * 100).toFixed(0)}%`;
@@ -335,22 +484,186 @@ class KnowledgeMemoriesModalManager {
         
         // Observations
         this.renderObservations(memory.observations || []);
+        
+        // Update edit mode UI
+        this.updateEditModeUI();
+    }
+    
+    enterEditMode() {
+        if (!this.currentMemory) return;
+        
+        this.isEditMode = true;
+        this.originalMemory = JSON.parse(JSON.stringify(this.currentMemory));
+        
+        // Populate edit fields
+        if (this.detailsNameEdit) {
+            this.detailsNameEdit.value = this.currentMemory.name || '';
+        }
+        if (this.detailsDescriptionEdit) {
+            this.detailsDescriptionEdit.value = this.currentMemory.description || '';
+        }
+        if (this.detailsCategoryEdit) {
+            this.detailsCategoryEdit.value = this.currentMemory.category || '';
+        }
+        if (this.detailsConfidenceEdit) {
+            this.detailsConfidenceEdit.value = (this.currentMemory.confidence || 0).toString();
+        }
+        
+        // Re-render in edit mode
+        this.renderMemoryDetails();
+        
+        // Auto-resize all textareas after rendering
+        // Use setTimeout to ensure DOM is fully updated
+        setTimeout(() => {
+            this.autoResizeAllTextareas();
+        }, 0);
+    }
+    
+    autoResizeAllTextareas() {
+        // Resize description textarea
+        if (this.detailsDescriptionEdit && !this.detailsDescriptionEdit.classList.contains('hidden')) {
+            this.autoResizeTextarea(this.detailsDescriptionEdit);
+        }
+        
+        // Resize all entity attribute textareas
+        if (this.detailsEntities) {
+            const entityTextareas = this.detailsEntities.querySelectorAll('.entity-attributes-input');
+            entityTextareas.forEach(textarea => {
+                this.autoResizeTextarea(textarea);
+            });
+        }
+        
+        // Resize all observation content textareas
+        if (this.detailsObservations) {
+            const observationTextareas = this.detailsObservations.querySelectorAll('.observation-content-input');
+            observationTextareas.forEach(textarea => {
+                this.autoResizeTextarea(textarea);
+            });
+        }
+    }
+    
+    exitEditMode(revert = false) {
+        this.isEditMode = false;
+        
+        if (revert && this.originalMemory) {
+            this.currentMemory = JSON.parse(JSON.stringify(this.originalMemory));
+            this.renderMemoryDetails();
+        }
+        
+        this.originalMemory = null;
+        this.updateEditModeUI();
+    }
+    
+    updateEditModeUI() {
+        const isEdit = this.isEditMode;
+        
+        // Toggle visibility of display vs edit elements
+        if (this.detailsName) this.detailsName.classList.toggle('hidden', isEdit);
+        if (this.detailsNameDisplay) this.detailsNameDisplay.classList.toggle('hidden', isEdit);
+        if (this.detailsNameEdit) this.detailsNameEdit.classList.toggle('hidden', !isEdit);
+        if (this.detailsDescription) this.detailsDescription.classList.toggle('hidden', isEdit);
+        if (this.detailsDescriptionEdit) {
+            this.detailsDescriptionEdit.classList.toggle('hidden', !isEdit);
+            if (isEdit) {
+                // Apply auto-height to description textarea
+                this.autoResizeTextarea(this.detailsDescriptionEdit);
+            }
+        }
+        if (this.detailsCategory) this.detailsCategory.classList.toggle('hidden', isEdit);
+        if (this.detailsCategoryEdit) this.detailsCategoryEdit.classList.toggle('hidden', !isEdit);
+        if (this.detailsConfidence) this.detailsConfidence.classList.toggle('hidden', isEdit);
+        if (this.detailsConfidenceEdit) this.detailsConfidenceEdit.classList.toggle('hidden', !isEdit);
+        
+        // Toggle buttons
+        if (this.editMemoryBtn) this.editMemoryBtn.classList.toggle('hidden', isEdit);
+        if (this.saveMemoryBtn) this.saveMemoryBtn.classList.toggle('hidden', !isEdit);
+        if (this.cancelEditMemoryBtn) this.cancelEditMemoryBtn.classList.toggle('hidden', !isEdit);
+        if (this.deleteMemoryBtn) this.deleteMemoryBtn.classList.toggle('hidden', isEdit);
+        
+        // Toggle add buttons
+        if (this.addEntityBtn) this.addEntityBtn.classList.toggle('hidden', !isEdit);
+        if (this.addRelationBtn) this.addRelationBtn.classList.toggle('hidden', !isEdit);
+        if (this.addObservationBtn) this.addObservationBtn.classList.toggle('hidden', !isEdit);
+    }
+    
+    autoResizeTextarea(textarea) {
+        if (!textarea) return;
+        
+        // Reset height to auto to get the correct scrollHeight
+        textarea.style.height = 'auto';
+        
+        // Set height to scrollHeight
+        textarea.style.height = textarea.scrollHeight + 'px';
+        
+        // Add input event listener if not already added
+        if (!textarea.dataset.autoResizeListener) {
+            textarea.dataset.autoResizeListener = 'true';
+            textarea.addEventListener('input', () => {
+                textarea.style.height = 'auto';
+                textarea.style.height = textarea.scrollHeight + 'px';
+            });
+        }
     }
     
     renderEntities(entities) {
         if (!this.detailsEntities) return;
         
-        if (entities.length === 0) {
+        this.detailsEntities.innerHTML = '';
+        
+        if (entities.length === 0 && !this.isEditMode) {
             this.detailsEntities.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No entities</div>';
             return;
         }
         
-        this.detailsEntities.innerHTML = '';
+        entities.forEach((entity, index) => {
+            const entityEl = this.createEntityElement(entity, index);
+            this.detailsEntities.appendChild(entityEl);
+        });
+    }
+    
+    createEntityElement(entity, index) {
+        const entityEl = document.createElement('div');
+        entityEl.className = 'knowledge-memory-entity';
+        entityEl.dataset.index = index;
         
-        entities.forEach(entity => {
-            const entityEl = document.createElement('div');
-            entityEl.className = 'knowledge-memory-entity';
+        if (this.isEditMode) {
+            const attributesJson = entity.attributes && Object.keys(entity.attributes).length > 0
+                ? JSON.stringify(entity.attributes, null, 2)
+                : '{}';
             
+            entityEl.innerHTML = `
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Name</label>
+                        <input type="text" class="form-control entity-name-input" value="${this.escapeHtml(entity.name || '')}" placeholder="Entity name">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Type</label>
+                        <input type="text" class="form-control entity-type-input" value="${this.escapeHtml(entity.type || '')}" placeholder="Entity type">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self: flex-end;">
+                        <button type="button" class="btn-danger btn-small remove-entity-btn" title="Remove entity">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Attributes (JSON)</label>
+                    <textarea class="form-control entity-attributes-input" placeholder='{"key": "value"}' style="font-family: var(--font-mono); font-size: 0.9em; resize: none; overflow: hidden;">${this.escapeHtml(attributesJson)}</textarea>
+                </div>
+            `;
+            
+            const removeBtn = entityEl.querySelector('.remove-entity-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => this.removeEntity(index));
+            }
+            
+            // Apply auto-height to attributes textarea
+            const attributesTextarea = entityEl.querySelector('.entity-attributes-input');
+            if (attributesTextarea) {
+                this.autoResizeTextarea(attributesTextarea);
+            }
+        } else {
             const attributesHtml = entity.attributes && Object.keys(entity.attributes).length > 0
                 ? `<div class="knowledge-memory-entity-attributes">${this.escapeHtml(JSON.stringify(entity.attributes, null, 2))}</div>`
                 : '';
@@ -362,25 +675,95 @@ class KnowledgeMemoriesModalManager {
                 </div>
                 ${attributesHtml}
             `;
-            
-            this.detailsEntities.appendChild(entityEl);
+        }
+        
+        return entityEl;
+    }
+    
+    addEntity() {
+        if (!this.currentMemory) return;
+        
+        if (!this.currentMemory.entities) {
+            this.currentMemory.entities = [];
+        }
+        
+        this.currentMemory.entities.push({
+            name: '',
+            type: '',
+            attributes: {}
         });
+        
+        this.renderEntities(this.currentMemory.entities);
+        
+        // Auto-resize the newly added entity's textarea
+        setTimeout(() => {
+            const entityTextareas = this.detailsEntities.querySelectorAll('.entity-attributes-input');
+            if (entityTextareas.length > 0) {
+                this.autoResizeTextarea(entityTextareas[entityTextareas.length - 1]);
+            }
+        }, 0);
+    }
+    
+    removeEntity(index) {
+        if (!this.currentMemory || !this.currentMemory.entities) return;
+        
+        this.currentMemory.entities.splice(index, 1);
+        this.renderEntities(this.currentMemory.entities);
     }
     
     renderRelations(relations) {
         if (!this.detailsRelations) return;
         
-        if (relations.length === 0) {
+        this.detailsRelations.innerHTML = '';
+        
+        if (relations.length === 0 && !this.isEditMode) {
             this.detailsRelations.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No relations</div>';
             return;
         }
         
-        this.detailsRelations.innerHTML = '';
+        relations.forEach((relation, index) => {
+            const relationEl = this.createRelationElement(relation, index);
+            this.detailsRelations.appendChild(relationEl);
+        });
+    }
+    
+    createRelationElement(relation, index) {
+        const relationEl = document.createElement('div');
+        relationEl.className = 'knowledge-memory-relation';
+        relationEl.dataset.index = index;
         
-        relations.forEach(relation => {
-            const relationEl = document.createElement('div');
-            relationEl.className = 'knowledge-memory-relation';
+        if (this.isEditMode) {
+            relationEl.innerHTML = `
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label>From</label>
+                        <input type="text" class="form-control relation-from-input" value="${this.escapeHtml(relation.from || '')}" placeholder="From entity">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Type</label>
+                        <input type="text" class="form-control relation-type-input" value="${this.escapeHtml(relation.type || '')}" placeholder="Relation type">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>To</label>
+                        <input type="text" class="form-control relation-to-input" value="${this.escapeHtml(relation.to || '')}" placeholder="To entity">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 100px;">
+                        <label>Weight</label>
+                        <input type="number" class="form-control relation-weight-input" value="${relation.weight !== undefined ? relation.weight : 1.0}" step="0.01" min="0" max="1" placeholder="1.0">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self: flex-end;">
+                        <button type="button" class="btn-danger btn-small remove-relation-btn" title="Remove relation">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
             
+            const removeBtn = relationEl.querySelector('.remove-relation-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => this.removeRelation(index));
+            }
+        } else {
             relationEl.innerHTML = `
                 <div class="knowledge-memory-relation-content">
                     <span class="knowledge-memory-relation-from">${this.escapeHtml(relation.from)}</span>
@@ -391,32 +774,123 @@ class KnowledgeMemoriesModalManager {
                     ${relation.weight !== undefined && relation.weight !== 1.0 ? `<span style="color: var(--text-muted);">(${relation.weight.toFixed(2)})</span>` : ''}
                 </div>
             `;
-            
-            this.detailsRelations.appendChild(relationEl);
+        }
+        
+        return relationEl;
+    }
+    
+    addRelation() {
+        if (!this.currentMemory) return;
+        
+        if (!this.currentMemory.relations) {
+            this.currentMemory.relations = [];
+        }
+        
+        this.currentMemory.relations.push({
+            from: '',
+            type: '',
+            to: '',
+            weight: 1.0
         });
+        
+        this.renderRelations(this.currentMemory.relations);
+    }
+    
+    removeRelation(index) {
+        if (!this.currentMemory || !this.currentMemory.relations) return;
+        
+        this.currentMemory.relations.splice(index, 1);
+        this.renderRelations(this.currentMemory.relations);
     }
     
     renderObservations(observations) {
         if (!this.detailsObservations) return;
         
-        if (observations.length === 0) {
+        this.detailsObservations.innerHTML = '';
+        
+        if (observations.length === 0 && !this.isEditMode) {
             this.detailsObservations.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No observations</div>';
             return;
         }
         
-        this.detailsObservations.innerHTML = '';
+        observations.forEach((observation, index) => {
+            const observationEl = this.createObservationElement(observation, index);
+            this.detailsObservations.appendChild(observationEl);
+        });
+    }
+    
+    createObservationElement(observation, index) {
+        const observationEl = document.createElement('div');
+        observationEl.className = 'knowledge-memory-observation';
+        observationEl.dataset.index = index;
         
-        observations.forEach(observation => {
-            const observationEl = document.createElement('div');
-            observationEl.className = 'knowledge-memory-observation';
+        if (this.isEditMode) {
+            observationEl.innerHTML = `
+                <div class="form-group">
+                    <label>Content</label>
+                    <textarea class="form-control observation-content-input" placeholder="Observation content" style="resize: none; overflow: hidden;">${this.escapeHtml(observation.content || '')}</textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Importance (0.0 - 1.0)</label>
+                        <input type="number" class="form-control observation-importance-input" value="${observation.importance !== undefined ? observation.importance : 0.5}" step="0.01" min="0" max="1" placeholder="0.5">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self: flex-end;">
+                        <button type="button" class="btn-danger btn-small remove-observation-btn" title="Remove observation">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
             
+            const removeBtn = observationEl.querySelector('.remove-observation-btn');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => this.removeObservation(index));
+            }
+            
+            // Apply auto-height to observation content textarea
+            const contentTextarea = observationEl.querySelector('.observation-content-input');
+            if (contentTextarea) {
+                this.autoResizeTextarea(contentTextarea);
+            }
+        } else {
             observationEl.innerHTML = `
                 <div class="knowledge-memory-observation-content">${this.escapeHtml(observation.content)}</div>
                 ${observation.importance !== undefined ? `<div class="knowledge-memory-observation-importance">Importance: ${(observation.importance * 100).toFixed(0)}%</div>` : ''}
             `;
-            
-            this.detailsObservations.appendChild(observationEl);
+        }
+        
+        return observationEl;
+    }
+    
+    addObservation() {
+        if (!this.currentMemory) return;
+        
+        if (!this.currentMemory.observations) {
+            this.currentMemory.observations = [];
+        }
+        
+        this.currentMemory.observations.push({
+            content: '',
+            importance: 0.5
         });
+        
+        this.renderObservations(this.currentMemory.observations);
+        
+        // Auto-resize the newly added observation's textarea
+        setTimeout(() => {
+            const observationTextareas = this.detailsObservations.querySelectorAll('.observation-content-input');
+            if (observationTextareas.length > 0) {
+                this.autoResizeTextarea(observationTextareas[observationTextareas.length - 1]);
+            }
+        }, 0);
+    }
+    
+    removeObservation(index) {
+        if (!this.currentMemory || !this.currentMemory.observations) return;
+        
+        this.currentMemory.observations.splice(index, 1);
+        this.renderObservations(this.currentMemory.observations);
     }
     
     toggleSearch() {
@@ -439,11 +913,198 @@ class KnowledgeMemoriesModalManager {
         if (this.listContainer) this.listContainer.classList.remove('hidden');
         if (this.detailsContainer) this.detailsContainer.classList.add('hidden');
         this.currentMemory = null;
+        if (this.isEditMode) {
+            this.exitEditMode(true);
+        }
     }
     
     showDetailsView() {
         if (this.listContainer) this.listContainer.classList.add('hidden');
         if (this.detailsContainer) this.detailsContainer.classList.remove('hidden');
+    }
+    
+    collectEditFormData() {
+        if (!this.currentMemory) return null;
+        
+        const data = {
+            name: this.currentMemory.name, // Original name for lookup
+            updates: {}
+        };
+        
+        // Basic fields
+        if (this.detailsNameEdit) {
+            const newName = this.detailsNameEdit.value.trim();
+            if (newName) {
+                data.updates.name = newName;
+            }
+        }
+        
+        if (this.detailsDescriptionEdit) {
+            data.updates.description = this.detailsDescriptionEdit.value.trim();
+        }
+        
+        if (this.detailsCategoryEdit) {
+            data.updates.category = this.detailsCategoryEdit.value.trim() || null;
+        }
+        
+        if (this.detailsConfidenceEdit) {
+            const confidence = parseFloat(this.detailsConfidenceEdit.value);
+            if (!isNaN(confidence) && confidence >= 0 && confidence <= 1) {
+                data.updates.confidence = confidence;
+            }
+        }
+        
+        // Collect entities
+        const entityElements = this.detailsEntities.querySelectorAll('.knowledge-memory-entity');
+        const entities = [];
+        entityElements.forEach((el, index) => {
+            const nameInput = el.querySelector('.entity-name-input');
+            const typeInput = el.querySelector('.entity-type-input');
+            const attributesInput = el.querySelector('.entity-attributes-input');
+            
+            if (nameInput && nameInput.value.trim()) {
+                const entity = {
+                    name: nameInput.value.trim(),
+                    type: typeInput ? typeInput.value.trim() : '',
+                    attributes: {}
+                };
+                
+                if (attributesInput && attributesInput.value.trim()) {
+                    try {
+                        entity.attributes = JSON.parse(attributesInput.value.trim());
+                    } catch (e) {
+                        console.error('Invalid JSON for entity attributes:', e);
+                    }
+                }
+                
+                entities.push(entity);
+            }
+        });
+        data.updates.entities = entities;
+        
+        // Collect relations
+        const relationElements = this.detailsRelations.querySelectorAll('.knowledge-memory-relation');
+        const relations = [];
+        relationElements.forEach((el) => {
+            const fromInput = el.querySelector('.relation-from-input');
+            const typeInput = el.querySelector('.relation-type-input');
+            const toInput = el.querySelector('.relation-to-input');
+            const weightInput = el.querySelector('.relation-weight-input');
+            
+            if (fromInput && typeInput && toInput && 
+                fromInput.value.trim() && typeInput.value.trim() && toInput.value.trim()) {
+                const relation = {
+                    from: fromInput.value.trim(),
+                    type: typeInput.value.trim(),
+                    to: toInput.value.trim(),
+                    weight: weightInput ? parseFloat(weightInput.value) || 1.0 : 1.0
+                };
+                relations.push(relation);
+            }
+        });
+        data.updates.relations = relations;
+        
+        // Collect observations
+        const observationElements = this.detailsObservations.querySelectorAll('.knowledge-memory-observation');
+        const observations = [];
+        observationElements.forEach((el) => {
+            const contentInput = el.querySelector('.observation-content-input');
+            const importanceInput = el.querySelector('.observation-importance-input');
+            
+            if (contentInput && contentInput.value.trim()) {
+                const observation = {
+                    content: contentInput.value.trim(),
+                    importance: importanceInput ? parseFloat(importanceInput.value) || 0.5 : 0.5
+                };
+                observations.push(observation);
+            }
+        });
+        data.updates.observations = observations;
+        
+        return data;
+    }
+    
+    async saveMemory() {
+        if (!this.currentMemory) return;
+        
+        try {
+            const formData = this.collectEditFormData();
+            if (!formData) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, 'Failed to collect form data');
+                }
+                return;
+            }
+            
+            // Validate name (required)
+            const newName = formData.updates.name || this.currentMemory.name;
+            if (!newName || !newName.trim()) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, 'Memory name is required');
+                }
+                return;
+            }
+            
+            // Send update request via WebSocket
+            const response = await window.wsClient.sendMessage('update_knowledge_memory', {
+                name: this.currentMemory.name, // Original name for lookup
+                updates: formData.updates
+            });
+            
+            if (response && response.success) {
+                // Store original name for lookup
+                const originalName = this.currentMemory.name;
+                
+                // Update local memory data
+                if (formData.updates.name) {
+                    this.currentMemory.name = formData.updates.name;
+                }
+                if (formData.updates.description !== undefined) {
+                    this.currentMemory.description = formData.updates.description;
+                }
+                if (formData.updates.category !== undefined) {
+                    this.currentMemory.category = formData.updates.category;
+                }
+                if (formData.updates.confidence !== undefined) {
+                    this.currentMemory.confidence = formData.updates.confidence;
+                }
+                if (formData.updates.entities !== undefined) {
+                    this.currentMemory.entities = formData.updates.entities;
+                }
+                if (formData.updates.relations !== undefined) {
+                    this.currentMemory.relations = formData.updates.relations;
+                }
+                if (formData.updates.observations !== undefined) {
+                    this.currentMemory.observations = formData.updates.observations;
+                }
+                
+                // If name changed, update in memories list
+                if (formData.updates.name && formData.updates.name !== originalName) {
+                    const memoryIndex = this.memories.findIndex(m => m.name === originalName);
+                    if (memoryIndex !== -1) {
+                        this.memories[memoryIndex].name = formData.updates.name;
+                    }
+                }
+                
+                // Exit edit mode and refresh display
+                this.exitEditMode(false);
+                this.renderMemoryDetails();
+                
+                // Show success toast
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', null, 'Memory updated successfully');
+                }
+            } else {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', null, response?.error || 'Failed to update memory');
+                }
+            }
+        } catch (error) {
+            console.error('Error saving memory:', error);
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, 'Error saving memory: ' + error.message);
+            }
+        }
     }
     
     async deleteCurrentMemory() {

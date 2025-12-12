@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const Database = require('better-sqlite3');
 
 /**
@@ -16,9 +15,111 @@ class DatabaseCheckpointManager {
         this.checkpointDir = path.join(path.dirname(dbPath), '.checkpoints');
         this.dbName = path.basename(dbPath, path.extname(dbPath));
         this.dbExt = path.extname(dbPath);
+        this.lastCheckpointSignature = null;
         
         // Ensure checkpoint directory exists
         this.ensureCheckpointDirectory();
+        this.loadLastCheckpointSignature();
+    }
+
+    /**
+     * Capture size/mtime signature for the database + WAL/SHM companions
+     * @param {string} basePath - Base path (without -wal/-shm) to inspect
+     */
+    getFileSignature(basePath) {
+        const signature = {
+            dbSize: 0,
+            dbMtimeMs: 0,
+            walSize: 0,
+            walMtimeMs: 0,
+            shmSize: 0,
+            shmMtimeMs: 0
+        };
+
+        try {
+            if (fs.existsSync(basePath)) {
+                const stats = fs.statSync(basePath);
+                signature.dbSize = stats.size;
+                signature.dbMtimeMs = stats.mtimeMs;
+            }
+
+            const walPath = `${basePath}-wal`;
+            if (fs.existsSync(walPath)) {
+                const walStats = fs.statSync(walPath);
+                signature.walSize = walStats.size;
+                signature.walMtimeMs = walStats.mtimeMs;
+            }
+
+            const shmPath = `${basePath}-shm`;
+            if (fs.existsSync(shmPath)) {
+                const shmStats = fs.statSync(shmPath);
+                signature.shmSize = shmStats.size;
+                signature.shmMtimeMs = shmStats.mtimeMs;
+            }
+        } catch (error) {
+            console.warn(`⚠️ Unable to read signature for ${basePath}:`, error.message);
+        }
+
+        return signature;
+    }
+
+    /**
+     * Capture signature for the live database files
+     */
+    getDatabaseSignature() {
+        return this.getFileSignature(this.dbPath);
+    }
+
+    /**
+     * Determine if the on-disk database has changed since the last checkpoint
+     * @param {Object} currentSignature
+     */
+    hasDatabaseChanged(currentSignature) {
+        if (!this.lastCheckpointSignature) {
+            return true;
+        }
+
+        const keys = [
+            'dbSize',
+            'dbMtimeMs',
+            'walSize',
+            'walMtimeMs',
+            'shmSize',
+            'shmMtimeMs'
+        ];
+
+        return keys.some(key => this.lastCheckpointSignature[key] !== currentSignature[key]);
+    }
+
+    /**
+     * Load signature metadata on boot by comparing timestamps with latest checkpoint
+     */
+    loadLastCheckpointSignature() {
+        try {
+            const checkpointFiles = this.getCheckpointFiles();
+            if (checkpointFiles.length === 0 || !fs.existsSync(this.dbPath)) {
+                return;
+            }
+
+            const walPath = this.dbPath + '-wal';
+            const walStats = fs.existsSync(walPath) ? fs.statSync(walPath) : null;
+            if (walStats && walStats.size > 0) {
+                // WAL contains unapplied changes - force a checkpoint on startup
+                return;
+            }
+
+            const latestCheckpoint = checkpointFiles[0];
+            const checkpointPath = path.join(this.checkpointDir, latestCheckpoint.filename);
+
+            const dbStats = fs.statSync(this.dbPath);
+            const checkpointStats = fs.statSync(checkpointPath);
+
+            if (dbStats.mtimeMs <= checkpointStats.mtimeMs) {
+                this.lastCheckpointSignature = this.getDatabaseSignature();
+            }
+        } catch (error) {
+            console.warn(`⚠️ Unable to load checkpoint signature for ${this.dbPath}: ${error.message}`);
+        }
     }
 
     /**
@@ -102,6 +203,12 @@ class DatabaseCheckpointManager {
                 return false;
             }
 
+            const currentSignature = this.getDatabaseSignature();
+            if (!this.hasDatabaseChanged(currentSignature)) {
+                console.log(`ℹ️ Database unchanged, skipping checkpoint for ${this.dbName}`);
+                return false;
+            }
+
             const checkpointFilename = this.generateCheckpointFilename();
             const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
 
@@ -125,6 +232,8 @@ class DatabaseCheckpointManager {
             
             // Clean up old checkpoints
             this.cleanupOldCheckpoints();
+
+            this.lastCheckpointSignature = currentSignature;
             
             return true;
         } catch (error) {
@@ -135,30 +244,42 @@ class DatabaseCheckpointManager {
 
     /**
      * Create a checkpoint using SQLite backup API (more reliable for active databases)
+     * @param {boolean} forceDirty - Force checkpoint even if signature check suggests no changes (from dirty state tracking)
      */
-    createCheckpointWithBackup() {
+    async createCheckpointWithBackup(forceDirty = false) {
         try {
             if (!fs.existsSync(this.dbPath)) {
                 console.warn(`⚠️ Database file does not exist: ${this.dbPath}`);
                 return false;
             }
 
+            const currentSignature = this.getDatabaseSignature();
+            // If forceDirty is true, skip signature check (we know writes occurred)
+            if (!forceDirty && !this.hasDatabaseChanged(currentSignature)) {
+                console.log(`ℹ️ Database unchanged, skipping checkpoint for ${this.dbName}`);
+                return false;
+            }
+
             const checkpointFilename = this.generateCheckpointFilename();
             const checkpointPath = path.join(this.checkpointDir, checkpointFilename);
 
-            // Open source database
+            // Open source database (better-sqlite3 for synchronous backup)
             const sourceDb = new Database(this.dbPath, { readonly: true });
             
-            // Perform backup - backup() expects a destination path string
-            sourceDb.backup(checkpointPath);
-            
-            // Close source database
-            sourceDb.close();
-
-            console.log(`✅ Created database checkpoint with backup API: ${checkpointFilename}`);
+            try {
+                // Perform backup - backup() returns a promise and must be awaited
+                await sourceDb.backup(checkpointPath);
+                
+                console.log(`✅ Created database checkpoint with backup API: ${checkpointFilename}`);
+            } finally {
+                // Always close source database, even if backup fails
+                sourceDb.close();
+            }
             
             // Clean up old checkpoints
             this.cleanupOldCheckpoints();
+
+            this.lastCheckpointSignature = currentSignature;
             
             return true;
         } catch (error) {

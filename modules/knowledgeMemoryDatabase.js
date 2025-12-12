@@ -369,6 +369,155 @@ function deleteKnowledgeMemory(name) {
 }
 
 /**
+ * Delete multiple knowledge memories by names (bulk delete)
+ * @param {Array<string>} names - Array of memory names to delete
+ * @returns {Object} Result with deleted count and failed names
+ */
+function deleteKnowledgeMemoriesBulk(names) {
+    if (!db) {
+        throw new Error('Knowledge memory database not initialized');
+    }
+
+    if (!Array.isArray(names) || names.length === 0) {
+        return { deletedCount: 0, failedNames: [] };
+    }
+
+    // Use a transaction for better performance
+    const deleteStmt = db.prepare('DELETE FROM knowledge_memories WHERE name = ?');
+    const transaction = db.transaction((namesToDelete) => {
+        let deletedCount = 0;
+        const failedNames = [];
+        
+        for (const name of namesToDelete) {
+            try {
+                const result = deleteStmt.run(name);
+                if (result.changes > 0) {
+                    deletedCount++;
+                } else {
+                    failedNames.push(name);
+                }
+            } catch (error) {
+                failedNames.push(name);
+            }
+        }
+        
+        return { deletedCount, failedNames };
+    });
+
+    return transaction(names);
+}
+
+/**
+ * Count knowledge memories by filter criteria (without deleting)
+ * @param {string} filterType - Filter type: 'low_confidence', 'old_usage', 'never_used', 'everything'
+ * @returns {number} Count of matching memories
+ */
+function countKnowledgeMemoriesByFilter(filterType) {
+    if (!db) {
+        throw new Error('Knowledge memory database not initialized');
+    }
+
+    const now = Math.floor(Date.now() / 1000); // Current time in seconds
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60); // 30 days ago in seconds
+
+    let countStmt;
+
+    switch (filterType) {
+        case 'low_confidence':
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE confidence < 0.3');
+            break;
+        
+        case 'old_usage':
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE last_used_at IS NOT NULL AND last_used_at < ?');
+            break;
+        
+        case 'never_used':
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE (usage_count = 0 OR usage_count IS NULL) AND last_used_at IS NULL');
+            break;
+        
+        case 'everything':
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories');
+            break;
+        
+        default:
+            throw new Error(`Invalid filter type: ${filterType}`);
+    }
+
+    if (filterType === 'old_usage') {
+        return countStmt.get(thirtyDaysAgo).count;
+    } else {
+        return countStmt.get().count;
+    }
+}
+
+/**
+ * Delete knowledge memories by filter criteria
+ * @param {string} filterType - Filter type: 'low_confidence', 'old_usage', 'never_used', 'everything'
+ * @returns {Object} Result with deleted count and matched count
+ */
+function deleteKnowledgeMemoriesByFilter(filterType) {
+    if (!db) {
+        throw new Error('Knowledge memory database not initialized');
+    }
+
+    const now = Math.floor(Date.now() / 1000); // Current time in seconds
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60); // 30 days ago in seconds
+
+    let deleteStmt;
+    let countStmt;
+
+    switch (filterType) {
+        case 'low_confidence':
+            // Delete memories with confidence < 0.3 (30%)
+            deleteStmt = db.prepare('DELETE FROM knowledge_memories WHERE confidence < 0.3');
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE confidence < 0.3');
+            break;
+        
+        case 'old_usage':
+            // Delete memories not used in the last 30 days
+            // last_used_at is stored in seconds, and NULL means never used
+            deleteStmt = db.prepare('DELETE FROM knowledge_memories WHERE last_used_at IS NOT NULL AND last_used_at < ?');
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE last_used_at IS NOT NULL AND last_used_at < ?');
+            break;
+        
+        case 'never_used':
+            // Delete memories that have never been used (usage_count = 0 AND last_used_at IS NULL)
+            deleteStmt = db.prepare('DELETE FROM knowledge_memories WHERE (usage_count = 0 OR usage_count IS NULL) AND last_used_at IS NULL');
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories WHERE (usage_count = 0 OR usage_count IS NULL) AND last_used_at IS NULL');
+            break;
+        
+        case 'everything':
+            // Delete all memories
+            deleteStmt = db.prepare('DELETE FROM knowledge_memories');
+            countStmt = db.prepare('SELECT COUNT(*) as count FROM knowledge_memories');
+            break;
+        
+        default:
+            throw new Error(`Invalid filter type: ${filterType}`);
+    }
+
+    // Get count before deletion
+    let matchedCount;
+    if (filterType === 'old_usage') {
+        matchedCount = countStmt.get(thirtyDaysAgo).count;
+    } else {
+        matchedCount = countStmt.get().count;
+    }
+
+    // Perform deletion
+    let deletedCount;
+    if (filterType === 'old_usage') {
+        const result = deleteStmt.run(thirtyDaysAgo);
+        deletedCount = result.changes;
+    } else {
+        const result = deleteStmt.run();
+        deletedCount = result.changes;
+    }
+
+    return { deletedCount, matchedCount };
+}
+
+/**
  * Search for memories by category or keyword
  * Searches across multiple dimensions: memory name/description, entities, observations, and relations
  * Breaks down query into components for more comprehensive matching
@@ -892,6 +1041,9 @@ module.exports = {
     getKnowledgeMemory,
     saveKnowledgeMemory,
     deleteKnowledgeMemory,
+    deleteKnowledgeMemoriesBulk,
+    countKnowledgeMemoriesByFilter,
+    deleteKnowledgeMemoriesByFilter,
     searchKnowledgeMemories,
     getKnowledgeMemoryStats
 };

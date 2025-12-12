@@ -1364,7 +1364,7 @@ function openMaskEditor() {
         // Check if we have a placeholder image (current image for regular image)
         if (window.uploadedImageData && window.uploadedImageData.isPlaceholder) {
             // Use the placeholder image as background
-            const backgroundImageValue = `url(${window.uploadedImageData.image_source.replace('file:', '/images/')})`;
+            const backgroundImageValue = `url("${window.uploadedImageData.image_source.replace('file:', '/images/')}")`;
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
@@ -1386,7 +1386,7 @@ function openMaskEditor() {
             window.uploadedImageData.isPlaceholder = true;
 
             // Use the placeholder as background
-            const backgroundImageValue = `url(${window.uploadedImageData.image_source})`;
+            const backgroundImageValue = `url("${window.uploadedImageData.image_source}")`;
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');
@@ -1394,7 +1394,7 @@ function openMaskEditor() {
             canvasInner.style.setProperty('--background-height', '90%');
         } else {
             // Use the variation image as background with aspect ratio scaling
-            const backgroundImageValue = `url(${variationImage.src})`;
+            const backgroundImageValue = `url("${variationImage.src}")`;
             canvasInner.style.setProperty('--background-image', backgroundImageValue);
             canvasInner.style.setProperty('--background-aspect-ratio', `${canvasWidth} / ${canvasHeight}`);
             canvasInner.style.setProperty('--background-size', 'contain');

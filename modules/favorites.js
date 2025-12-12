@@ -1,51 +1,9 @@
-const fs = require('fs');
-const path = require('path');
-const { loadPromptConfig, savePromptConfig } = require('./textReplacements');
-const { createJSONCheckpointManager } = require('./jsonCheckpoint');
-
 class FavoritesManager {
-    constructor() {
-        this.favoritesFilePath = path.join(__dirname, '..', '.cache', 'favorites.json');
-        this.ensureDataDirectory();
-        // Initialize checkpoint manager for favorites
-        this.checkpointManager = createJSONCheckpointManager(this.favoritesFilePath, 4);
-    }
-
-    ensureDataDirectory() {
-        const dataDir = path.dirname(this.favoritesFilePath);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('FavoritesManager requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
-    }
-
-    loadFavorites() {
-        try {
-            if (fs.existsSync(this.favoritesFilePath)) {
-                const data = fs.readFileSync(this.favoritesFilePath, 'utf8');
-                return JSON.parse(data);
-            }
-        } catch (error) {
-            console.error('Error loading favorites:', error);
-        }
-        
-        // Return default structure if file doesn't exist or can't be read
-        return {
-            tags: [],
-            textReplacements: []
-        };
-    }
-
-    saveFavorites(favorites) {
-        try {
-            this.checkpointManager.saveWithCheckpoint(favorites, {
-                createCheckpoint: true,
-                validateData: true
-            });
-            return true;
-        } catch (error) {
-            console.error('Error saving favorites:', error);
-            return false;
-        }
+        this.globalResources = globalResources;
     }
 
     addFavorite(type, item) {
@@ -54,14 +12,10 @@ class FavoritesManager {
             return this.addTextReplacementToConfig(item);
         }
 
-        const favorites = this.loadFavorites();
-        
-        if (!favorites[type]) {
-            favorites[type] = [];
-        }
+        const favoriteArray = this.globalResources.getFavorites({ path: type }) || [];
 
         // Check if already exists
-        const exists = favorites[type].some(fav => 
+        const exists = favoriteArray.some(fav => 
             fav.name === item.name && fav.type === item.type
         );
 
@@ -72,9 +26,7 @@ class FavoritesManager {
                 id: this.generateId()
             };
             
-            favorites[type].push(favoriteItem);
-            
-            if (this.saveFavorites(favorites)) {
+            if (this.globalResources.modifyConfig('favorites').append(type, favoriteItem)) {
                 return { success: true, item: favoriteItem };
             }
         } else {
@@ -86,26 +38,10 @@ class FavoritesManager {
 
     addTextReplacementToConfig(item) {
         try {
-            const config = loadPromptConfig();
-            
-            if (!config.text_replacements) {
-                config.text_replacements = {};
-            }
-
             const placeholder = item.placeholder || item.name;
             const replacementValue = item.replacementValue || item.description;
 
-            // Add to config
-            config.text_replacements[placeholder] = replacementValue;
-
-            // Save config
-            if (savePromptConfig(config)) {
-                // Also save to favorites for tracking
-                const favorites = this.loadFavorites();
-                if (!favorites.textReplacements) {
-                    favorites.textReplacements = [];
-                }
-
+            if (this.globalResources.modifyConfig('promptConfig').assign(['text_replacements', placeholder], replacementValue)) {
                 const favoriteItem = {
                     ...item,
                     placeholder: placeholder,
@@ -113,8 +49,7 @@ class FavoritesManager {
                     id: this.generateId()
                 };
 
-                favorites.textReplacements.push(favoriteItem);
-                this.saveFavorites(favorites);
+                this.globalResources.modifyConfig('favorites').append('textReplacements', favoriteItem);
 
                 return { success: true, item: favoriteItem };
             } else {
@@ -132,58 +67,41 @@ class FavoritesManager {
             return this.removeTextReplacementFromConfig(itemId);
         }
 
-        const favorites = this.loadFavorites();
+        const favoriteArray = this.globalResources.getFavorites({ path: type });
         
-        if (!favorites[type]) {
+        if (!favoriteArray || !Array.isArray(favoriteArray)) {
             return { success: false, error: 'Invalid favorite type' };
         }
 
-        const originalLength = favorites[type].length;
-        favorites[type] = favorites[type].filter(fav => fav.id !== itemId);
-        
-        if (favorites[type].length < originalLength) {
-            if (this.saveFavorites(favorites)) {
-                return { success: true };
-            }
+        if (!favoriteArray.some(fav => fav.id === itemId)) {
+            return { success: false, error: 'Item not found' };
         }
         
-        return { success: false, error: 'Item not found or failed to save' };
+        if (this.globalResources.modifyConfig('favorites').delete(type, fav => fav.id === itemId)) {
+            return { success: true };
+        }
+        
+        return { success: false, error: 'Failed to save' };
     }
 
     removeTextReplacementFromConfig(itemId) {
         try {
-            const favorites = this.loadFavorites();
+            const textReplacements = this.globalResources.getFavorites({ path: 'textReplacements' });
+            const itemToRemove = textReplacements.find(fav => fav.id === itemId);
             
-            if (!favorites.textReplacements) {
-                return { success: false, error: 'No text replacement favorites found' };
-            }
-
-            // Find the item to remove
-            const itemToRemove = favorites.textReplacements.find(fav => fav.id === itemId);
             if (!itemToRemove) {
                 return { success: false, error: 'Text replacement favorite not found' };
             }
 
-            // Remove from prompt config
-            const config = loadPromptConfig();
-            if (config.text_replacements && config.text_replacements[itemToRemove.placeholder]) {
-                delete config.text_replacements[itemToRemove.placeholder];
-                
-                if (savePromptConfig(config)) {
-                    // Also remove from favorites
-                    favorites.textReplacements = favorites.textReplacements.filter(fav => fav.id !== itemId);
-                    this.saveFavorites(favorites);
-                    
-                    return { success: true };
-                } else {
-                    return { success: false, error: 'Failed to save config' };
-                }
-            } else {
-                // Item not in config, just remove from favorites
-                favorites.textReplacements = favorites.textReplacements.filter(fav => fav.id !== itemId);
-                this.saveFavorites(favorites);
-                return { success: true };
+            const promptTextReplacements = this.globalResources.getPromptConfig({ path: 'text_replacements' });
+            
+            if (promptTextReplacements && promptTextReplacements[itemToRemove.placeholder]) {
+                this.globalResources.modifyConfig('promptConfig').delete(['text_replacements', itemToRemove.placeholder]);
             }
+            
+            this.globalResources.modifyConfig('favorites').delete('textReplacements', fav => fav.id === itemId);
+            
+            return { success: true };
         } catch (error) {
             console.error('Error removing text replacement from config:', error);
             return { success: false, error: 'Failed to remove text replacement' };
@@ -191,7 +109,7 @@ class FavoritesManager {
     }
 
     getFavorites(type = null) {
-        const favorites = this.loadFavorites();
+        const favorites = this.globalResources.getFavorites();
         
         if (type) {
             return favorites[type] || [];
@@ -227,39 +145,6 @@ class FavoritesManager {
         return favoriteItem;
     }
 
-    // Checkpoint management methods
-    getCheckpointInfo() {
-        return this.checkpointManager.getCheckpointInfo();
-    }
-
-    restoreFromCheckpoint(checkpointFilename) {
-        try {
-            const success = this.checkpointManager.restoreFromCheckpoint(checkpointFilename);
-            return success;
-        } catch (error) {
-            console.error('Error restoring favorites from checkpoint:', error);
-            throw error;
-        }
-    }
-
-    restoreFromLatestCheckpoint() {
-        try {
-            const success = this.checkpointManager.restoreFromLatestCheckpoint();
-            return success;
-        } catch (error) {
-            console.error('Error restoring favorites from latest checkpoint:', error);
-            throw error;
-        }
-    }
-
-    clearCheckpoints() {
-        try {
-            return this.checkpointManager.clearAllCheckpoints();
-        } catch (error) {
-            console.error('Error clearing favorites checkpoints:', error);
-            throw error;
-        }
-    }
 }
 
 module.exports = FavoritesManager;

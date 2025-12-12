@@ -12,101 +12,7 @@ class ServiceWorkerManager {
         this.swReadyTimeout = null;
         this.initialCheckDone = false;
 
-        // Client-side key caching
-        this.cachedRollingKey = null;
-        this.keyExpiresAt = 0;
-        this.keyFetchPromise = null;
-        this.lastKeyRequestTime = 0;
-        this.keyRequestCount = 0;
-        this.KEY_REFRESH_BUFFER = 60000; // Refresh 1 minute before expiry
-        this.KEY_REQUEST_COOLDOWN = 5000; // Minimum 5 seconds between requests
-        this.MAX_KEY_REQUESTS_PER_MINUTE = 10;
-
         this.init();
-    }
-
-    // Client-side key caching methods
-    async getCachedRollingKey() {
-        const now = Date.now();
-        
-        // Check if we have a valid cached key
-        if (this.cachedRollingKey && this.keyExpiresAt > 0 && now < this.keyExpiresAt - this.KEY_REFRESH_BUFFER) {
-            console.log('🔑 Using cached rolling key');
-            return this.cachedRollingKey;
-        }
-
-        // Check rate limiting
-        if (this.lastKeyRequestTime > 0 && now - this.lastKeyRequestTime < this.KEY_REQUEST_COOLDOWN) {
-            console.log('🔑 Key request in cooldown, using cached key if available');
-            return this.cachedRollingKey;
-        }
-
-        // Check if we're already fetching a key
-        if (this.keyFetchPromise) {
-            console.log('🔑 Key fetch already in progress, waiting...');
-            return this.keyFetchPromise;
-        }
-
-        // Reset request count if it's been more than a minute
-        if (now - this.lastKeyRequestTime > 60000) {
-            this.keyRequestCount = 0;
-        }
-
-        // Check if we've exceeded rate limit
-        if (this.keyRequestCount >= this.MAX_KEY_REQUESTS_PER_MINUTE) {
-            console.warn('🔑 Key request rate limit exceeded, using cached key');
-            return this.cachedRollingKey;
-        }
-
-        // Fetch new key
-        this.keyFetchPromise = this.fetchRollingKey();
-        
-        try {
-            const result = await this.keyFetchPromise;
-            return result;
-        } finally {
-            this.keyFetchPromise = null;
-        }
-    }
-
-    async fetchRollingKey() {
-        const now = Date.now();
-        this.lastKeyRequestTime = now;
-        this.keyRequestCount++;
-
-        try {
-            console.log('🔑 Fetching new rolling key...');
-            const keyResponse = await fetch('/sw.js', {
-                method: 'OPTIONS',
-                cache: 'no-store',
-                headers: {
-                    'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                    'Pragma': 'no-cache'
-                }
-            });
-
-            if (!keyResponse.ok) {
-                throw new Error(`Failed to fetch rolling key: ${keyResponse.status}`);
-            }
-
-            const keyData = await keyResponse.json();
-            this.cachedRollingKey = keyData.key;
-            this.keyExpiresAt = keyData.expiresAt;
-
-            console.log('🔑 Rolling key cached successfully');
-            return this.cachedRollingKey;
-
-        } catch (error) {
-            console.error('🔑 Failed to fetch rolling key:', error);
-            
-            // Return cached key if available, even if expired
-            if (this.cachedRollingKey) {
-                console.log('🔑 Using expired cached key as fallback');
-                return this.cachedRollingKey;
-            }
-            
-            throw error;
-        }
     }
     
     async init() {
@@ -360,14 +266,10 @@ class ServiceWorkerManager {
     
     async checkStaticFileUpdates(noToast = false) {
         try {
-            // Get cached rolling key with independent refresh logic
-            const rollingKey = await this.getCachedRollingKey();
-
-            // Make the actual request with the rolling key
+            // Make the actual request
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers: {
-                    'X-SW-Key': rollingKey,
                     'X-Service-Worker-Version': '2.0',
                     'X-Requested-With': 'ServiceWorker'
                 }
@@ -471,15 +373,23 @@ class ServiceWorkerManager {
     }
     
     showCheckingForUpdatesToast() {
-        if (typeof showGlassToast === 'function') {
-            this.checkingToastId = showGlassToast(
-                'info',
-                'Checking for Updates',
-                'Scanning for available updates...',
-                false,
-                false,
-                '<i class="fas fa-search"></i>'
-            );
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
+            window.wsClient.showWindowsUpdateModal('Checking for Updates', 0);
+            window.wsClient.updateWindowsUpdateModal('Scanning for available updates...', 0);
+            this.checkingToastId = 'windows-update-modal'; // Mark as using modal
+        } else {
+            // Non-desktop mode: use toast
+            if (typeof showGlassToast === 'function') {
+                this.checkingToastId = showGlassToast(
+                    'info',
+                    'Checking for Updates',
+                    'Scanning for available updates...',
+                    false,
+                    false,
+                    '<i class="fas fa-search"></i>'
+                );
+            }
         }
     }
 
@@ -556,52 +466,92 @@ class ServiceWorkerManager {
         this.isUpdating = true;
         this.updateProgress = 0;
 
-        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.checkingToastId, {
-                type: 'info',
-                title: 'Downloading Updates',
-                message: `Downloading ${files.length} updates...`,
-                showProgress: true,
-                customIcon: '<i class="fas fa-download"></i>'
-            });
-            // Keep the same toast ID for progress updates
-            this.updateToastId = this.checkingToastId;
-            this.checkingToastId = null;
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
+            if (this.checkingToastId === 'windows-update-modal') {
+                // Update existing modal
+                window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
+                this.updateToastId = 'windows-update-modal';
+                this.checkingToastId = null;
+            } else {
+                // Show new modal
+                window.wsClient.showWindowsUpdateModal('Downloading Updates', 0);
+                window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
+                this.updateToastId = 'windows-update-modal';
+            }
+        } else {
+            // Non-desktop mode: use toast
+            if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(this.checkingToastId, {
+                    type: 'info',
+                    title: 'Downloading Updates',
+                    message: `Downloading ${files.length} updates...`,
+                    showProgress: true,
+                    customIcon: '<i class="fas fa-download"></i>'
+                });
+                // Keep the same toast ID for progress updates
+                this.updateToastId = this.checkingToastId;
+                this.checkingToastId = null;
+            }
         }
     }
 
     showNoUpdatesFromChecking() {
-        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.checkingToastId, {
-                type: 'success',
-                title: 'Up to Date',
-                message: 'Your app is already up to date!',
-                showProgress: false,
-                customIcon: '<i class="fas fa-check-circle"></i>',
-                timeout: 3000
-            });
-            // Clear the checking toast ID since it's now a completion toast
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
+            if (this.checkingToastId === 'windows-update-modal') {
+                window.wsClient.updateWindowsUpdateModal('Your app is already up to date!', 100);
+                // Auto-hide after 3 seconds
+                setTimeout(() => {
+                    if (window.wsClient && window.wsClient.hideWindowsUpdateModal) {
+                        window.wsClient.hideWindowsUpdateModal();
+                    }
+                }, 3000);
+            }
             this.checkingToastId = null;
+        } else {
+            // Non-desktop mode: use toast
+            if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(this.checkingToastId, {
+                    type: 'success',
+                    title: 'Up to Date',
+                    message: 'Your app is already up to date!',
+                    showProgress: false,
+                    customIcon: '<i class="fas fa-check-circle"></i>',
+                    timeout: 3000
+                });
+                // Clear the checking toast ID since it's now a completion toast
+                this.checkingToastId = null;
+            }
         }
     }
 
     showCacheUpdateErrorFromChecking(error) {
-        if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.checkingToastId, {
-                type: 'error',
-                title: 'Update Check Failed',
-                message: 'Failed to check for updates. Please try again.',
-                showProgress: false,
-                customIcon: '<i class="fas fa-exclamation-triangle"></i>'
-            });
-            // Clear the checking toast ID since it's now an error toast
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
+            if (this.checkingToastId === 'windows-update-modal') {
+                window.wsClient.updateWindowsUpdateModal('Failed to check for updates. Please try again.', 0);
+            }
             this.checkingToastId = null;
+        } else {
+            // Non-desktop mode: use toast
+            if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
+                updateGlassToastComplete(this.checkingToastId, {
+                    type: 'error',
+                    title: 'Update Check Failed',
+                    message: 'Failed to check for updates. Please try again.',
+                    showProgress: false,
+                    customIcon: '<i class="fas fa-exclamation-triangle"></i>'
+                });
+                // Clear the checking toast ID since it's now an error toast
+                this.checkingToastId = null;
+            }
         }
     }
 
     showUpdateToast(files) {
         // Hide checking toast if it exists
-        if (this.checkingToastId && typeof removeGlassToast === 'function') {
+        if (this.checkingToastId && this.checkingToastId !== 'windows-update-modal' && typeof removeGlassToast === 'function') {
             removeGlassToast(this.checkingToastId);
             this.checkingToastId = null;
         }
@@ -610,32 +560,57 @@ class ServiceWorkerManager {
         this.isUpdating = true;
         this.updateProgress = 0;
 
-        // Check if showGlassToast function is available
-        if (typeof showGlassToast === 'function') {
-            // Show progress toast
-            this.updateToastId = showGlassToast(
-                'info',
-                'Downloading Updates',
-                `Downloading ${files.length} updates...`,
-                true,
-                false,
-                '<i class="fas fa-download"></i>'
-            );
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
+            window.wsClient.showWindowsUpdateModal('Downloading Updates', 0);
+            window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
+            this.updateToastId = 'windows-update-modal';
+        } else {
+            // Non-desktop mode: use toast
+            if (typeof showGlassToast === 'function') {
+                // Show progress toast
+                this.updateToastId = showGlassToast(
+                    'info',
+                    'Downloading Updates',
+                    `Downloading ${files.length} updates...`,
+                    true,
+                    false,
+                    '<i class="fas fa-download"></i>'
+                );
+            }
         }
     }
     
     updateProgressToast(progress) {
         this.updateProgress = progress;
-        if (this.updateToastId && typeof updateGlassToastProgress === 'function') {
-            updateGlassToastProgress(this.updateToastId, progress);
+        
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
+            if (this.updateToastId === 'windows-update-modal') {
+                const message = `Downloading updates... ${Math.round(progress)}%`;
+                window.wsClient.updateWindowsUpdateModal(message, progress);
+            }
+        } else {
+            // Non-desktop mode: use toast
+            if (this.updateToastId && typeof updateGlassToastProgress === 'function') {
+                updateGlassToastProgress(this.updateToastId, progress);
+            }
         }
     }
     
     hideUpdateToast() {
-        if (this.updateToastId && typeof removeGlassToast === 'function') {
-            removeGlassToast(this.updateToastId);
-            this.updateToastId = null;
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.hideWindowsUpdateModal) {
+            if (this.updateToastId === 'windows-update-modal') {
+                window.wsClient.hideWindowsUpdateModal();
+            }
+        } else {
+            // Non-desktop mode: use toast
+            if (this.updateToastId && typeof removeGlassToast === 'function') {
+                removeGlassToast(this.updateToastId);
+            }
         }
+        this.updateToastId = null;
         this.updateAvailable = false;
         this.isUpdating = false;
     }
@@ -674,6 +649,52 @@ class ServiceWorkerManager {
                     this.messageHandlers.delete(requestId);
                     navigator.serviceWorker.removeEventListener('message', handler);
                     reject(new Error('Cache operation timed out'));
+                }
+            }, 10000);
+        });
+    }
+    
+    // Delete from cache and precache a file
+    async deleteAndPrecache(url) {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            console.warn('Service Worker not ready - skipping cache operation');
+            return false;
+        }
+        
+        return new Promise((resolve, reject) => {
+            const requestId = Date.now().toString();
+            
+            // Set up message handler
+            const handler = (event) => {
+                if (event.data.type === 'DELETE_AND_PRECACHE_COMPLETE' && 
+                    event.data.requestId === requestId) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    resolve(true);
+                } else if (event.data.type === 'DELETE_AND_PRECACHE_ERROR' && 
+                          event.data.requestId === requestId) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    reject(new Error(event.data.error || 'Delete and precache failed'));
+                }
+            };
+            
+            this.messageHandlers.set(requestId, handler);
+            navigator.serviceWorker.addEventListener('message', handler);
+            
+            // Send message to service worker
+            this.swRegistration.active.postMessage({
+                type: 'DELETE_AND_PRECACHE',
+                url: url,
+                requestId: requestId
+            });
+            
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                if (this.messageHandlers.has(requestId)) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    reject(new Error('Delete and precache operation timed out'));
                 }
             }, 10000);
         });
@@ -1010,14 +1031,10 @@ class ServiceWorkerManager {
         try {
             console.log('🔍 Checking for application updates during startup...');
 
-            // Get cached rolling key with independent refresh logic
-            const rollingKey = await this.getCachedRollingKey();
-
-            // Make the actual request with the rolling key
+            // Make the actual request
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers: {
-                    'X-SW-Key': rollingKey,
                     'X-Service-Worker-Version': '2.0',
                     'X-Requested-With': 'ServiceWorker'
                 }
@@ -1073,33 +1090,71 @@ class ServiceWorkerManager {
             let skipRequested = false;
             let downloadCompleted = false;
 
-            // Add Skip button to the progress notification
-            if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastButtons === 'function') {
-                const skipButton = {
-                    text: 'Skip',
-                    type: 'secondary',
-                    onClick: () => {
+            // Setup update UI based on desktop mode
+            if (window.isDesktop && window.wsClient) {
+                // Desktop mode: use update modal
+                window.wsClient.showWindowsUpdateModal('Checking for updates...', 0);
+                
+                // Setup callbacks for update modal buttons
+                window.wsClient.setUpdateModalCallbacks(
+                    // Skip callback
+                    () => {
                         console.log('User chose to skip update download during startup');
                         skipRequested = true;
-
-                        // Hide the progress notification buttons
-                        if (typeof updateGlassToastButtons === 'function') {
-                            updateGlassToastButtons(window.wsClient.progressToastId, []);
+                        if (window.wsClient) {
+                            window.wsClient.hideWindowsUpdateModal();
                         }
-
                         // Show the normal update toast
                         this.showUpdateToast(files);
-
                         // Resolve immediately when skipped
                         if (!downloadCompleted) {
                             downloadCompleted = true;
                             resolve({ success: false, skipped: true });
                         }
                     },
-                    closeOnClick: false
-                };
+                    // Restart callback
+                    () => {
+                        console.log('User chose to restart after update during startup');
+                        this.forceRestart();
+                    },
+                    // Later callback
+                    () => {
+                        console.log('User chose to skip restart after update during startup');
+                        if (window.wsClient) {
+                            window.wsClient.hideWindowsUpdateModal();
+                        }
+                        resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'skip' });
+                    }
+                );
+            } else {
+                // Non-desktop mode: use toast with Skip button
+                if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastButtons === 'function') {
+                    const skipButton = {
+                        text: 'Skip',
+                        type: 'secondary',
+                        onClick: () => {
+                            console.log('User chose to skip update download during startup');
+                            skipRequested = true;
 
-                updateGlassToastButtons(window.wsClient.progressToastId, [skipButton]);
+                            // Hide the progress notification buttons
+                            if (typeof updateGlassToastButtons === 'function') {
+                                updateGlassToastButtons(window.wsClient.progressToastId, []);
+                            }
+
+                            // Show the normal update toast
+                            this.showUpdateToast(files);
+
+                            // Resolve immediately when skipped
+                            if (!downloadCompleted) {
+                                downloadCompleted = true;
+                                resolve({ success: false, skipped: true });
+                            }
+                        },
+                        closeOnClick: false
+                    };
+
+                    updateGlassToastButtons(window.wsClient.progressToastId, [skipButton]);
+                }
             }
 
             // Listen for progress updates
@@ -1108,16 +1163,28 @@ class ServiceWorkerManager {
 
                 if (event.data.type === 'STATIC_CACHE_PROGRESS') {
                     const progress = Math.round((event.data.completed / event.data.total) * 100);
-                    // Update the startup progress notification with download progress
+                    // Update progress notification
                     if (window.wsClient) {
-                        window.wsClient.updateProgressNotification(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress); // 10-90% range
+                        if (window.isDesktop) {
+                            // Desktop mode: use update modal
+                            window.wsClient.updateWindowsUpdateModal(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress);
+                        } else {
+                            // Non-desktop mode: use startup progress
+                            window.wsClient.updateProgressNotification(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress);
+                        }
                     }
                 } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
                     updatesDownloaded = event.data.total;
                     navigator.serviceWorker.removeEventListener('message', progressHandler);
 
                     if (window.wsClient) {
-                        window.wsClient.updateProgressNotification(`Downloading updates...`, 100); // 10-90% range
+                        if (window.isDesktop) {
+                            // Desktop mode: use update modal
+                            window.wsClient.updateWindowsUpdateModal('Downloading updates...', 100);
+                        } else {
+                            // Non-desktop mode: use startup progress
+                            window.wsClient.updateProgressNotification(`Downloading updates...`, 100);
+                        }
                     }
                     if (!skipRequested && !downloadCompleted) {
                         downloadCompleted = true;
@@ -1125,9 +1192,27 @@ class ServiceWorkerManager {
 
                         // Show Restart and Skip buttons if updates were downloaded successfully
                         if (!hasErrors && updatesDownloaded > 0) {
-                            this.showRestartSkipButtonsForInit((choice) => {
-                                resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: choice.action });
-                            });
+                            if (window.isDesktop && window.wsClient) {
+                                // Desktop mode: show restart prompt in update modal
+                                // Update the Later callback to resolve with user choice
+                                window.wsClient.setUpdateModalCallbacks(
+                                    window.wsClient.onUpdateSkip,
+                                    window.wsClient.onUpdateRestart,
+                                    () => {
+                                        console.log('User chose to skip restart after update during startup');
+                                        if (window.wsClient) {
+                                            window.wsClient.hideWindowsUpdateModal();
+                                        }
+                                        resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'skip' });
+                                    }
+                                );
+                                window.wsClient.showWindowsUpdateRestartPrompt('Updates have been installed. Restart is required.');
+                            } else {
+                                // Non-desktop mode: use existing toast buttons
+                                this.showRestartSkipButtonsForInit((choice) => {
+                                    resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: choice.action });
+                                });
+                            }
                         } else {
                             resolve({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
                         }
@@ -1258,36 +1343,55 @@ class ServiceWorkerManager {
     
     // Show update complete toast with restart button
     showUpdateCompleteToast() {
-        if (this.updateToastId && typeof updateGlassToastButtons === 'function') {
-            const restartButton = {
-                text: 'Restart Now',
-                type: 'primary',
-                onClick: () => {
-                    console.log('Restart requested by user');
-                    this.forceRestart();
-                },
-                closeOnClick: true
-            };
-            
-            const laterButton = {
-                text: 'Later',
-                type: 'secondary',
-                onClick: () => {
-                    console.log('User chose to restart later');
-                },
-                closeOnClick: true
-            };
-            
-            updateGlassToastButtons(this.updateToastId, [restartButton, laterButton]);
-            
-            // Update the toast content to show completion
-            if (typeof updateGlassToastComplete === 'function') {
-                updateGlassToastComplete(this.updateToastId, {
-                    type: 'success',
-                    title: 'Updates Complete',
-                    message: 'Updates have been downloaded. Restart to apply changes.',
-                    customIcon: '<i class="fas fa-check-circle"></i>'
-                });
+        // Desktop mode: use Windows Update Modal
+        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateRestartPrompt) {
+            if (this.updateToastId === 'windows-update-modal') {
+                window.wsClient.showWindowsUpdateRestartPrompt('Updates have been downloaded. Restart to apply changes.');
+                window.wsClient.setUpdateModalCallbacks(
+                    null, // Skip callback (not used for restart prompt)
+                    () => {
+                        console.log('Restart requested by user');
+                        this.forceRestart();
+                    },
+                    () => {
+                        console.log('User chose to restart later');
+                        window.wsClient.hideWindowsUpdateModal();
+                    }
+                );
+            }
+        } else {
+            // Non-desktop mode: use toast
+            if (this.updateToastId && typeof updateGlassToastButtons === 'function') {
+                const restartButton = {
+                    text: 'Restart Now',
+                    type: 'primary',
+                    onClick: () => {
+                        console.log('Restart requested by user');
+                        this.forceRestart();
+                    },
+                    closeOnClick: true
+                };
+
+                const laterButton = {
+                    text: 'Later',
+                    type: 'secondary',
+                    onClick: () => {
+                        console.log('User chose to restart later');
+                    },
+                    closeOnClick: true
+                };
+
+                updateGlassToastButtons(this.updateToastId, [restartButton, laterButton]);
+
+                // Update the toast content to show completion
+                if (typeof updateGlassToastComplete === 'function') {
+                    updateGlassToastComplete(this.updateToastId, {
+                        type: 'success',
+                        title: 'Updates Complete',
+                        message: 'Updates have been downloaded. Restart to apply changes.',
+                        customIcon: '<i class="fas fa-check-circle"></i>'
+                    });
+                }
             }
         }
     }

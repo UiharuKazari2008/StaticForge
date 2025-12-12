@@ -1,7 +1,7 @@
-const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
+const SQLiteAsyncWrapper = require('./sqliteAsyncWrapper');
 
 // Database file path
 const dbPath = path.join(__dirname, '..', '.cache', 'director.db');
@@ -12,28 +12,33 @@ if (!fs.existsSync(cacheDir)) {
     fs.mkdirSync(cacheDir, { recursive: true });
 }
 
-let db = null;
+let db = null; // Now an instance of SQLiteAsyncWrapper
+
+/**
+ * Get checkpoint manager for director database
+ */
+function getCheckpointManager() {
+    return db ? db.getCheckpointManager() : null;
+}
 
 /**
  * Initialize the SQLite database for Director system
  */
-function initializeDirectorDatabase() {
+async function initializeDirectorDatabase() {
     try {
-        // Open database (creates if doesn't exist)
-        db = new Database(dbPath);
+        // Initialize async wrapper (checkpoint manager is automatically connected)
+        db = new SQLiteAsyncWrapper(dbPath, 'director', 30); // 30 minute idle timeout
         
-        // Enable WAL mode for better concurrency
-        db.pragma('journal_mode = WAL');
-        db.pragma('synchronous = NORMAL');
-        db.pragma('cache_size = 10000');
-        db.pragma('temp_store = MEMORY');
+        // Initialize database (opens connection and creates tables)
+        await db.initialize();
         
         // Create tables if they don't exist
-        createDirectorTables();
+        await createDirectorTables();
         
         return true;
     } catch (error) {
-        logger.error('Error initializing SQLite Director database:', error.message);
+        logger.error('Error initializing SQLite Director database:', error);
+        console.error('Full error stack:', error.stack);
         return false;
     }
 }
@@ -41,9 +46,9 @@ function initializeDirectorDatabase() {
 /**
  * Create database tables for Director system
  */
-function createDirectorTables() {
+async function createDirectorTables() {
     // Director sessions table
-    db.exec(`
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS director_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -61,27 +66,27 @@ function createDirectorTables() {
     
     // Add image_type column if it doesn't exist (for existing databases)
     try {
-        db.exec(`ALTER TABLE director_sessions ADD COLUMN image_type TEXT DEFAULT 'generated'`);
+        await db.exec(`ALTER TABLE director_sessions ADD COLUMN image_type TEXT DEFAULT 'generated'`);
     } catch (e) {
         // Column already exists, ignore error
     }
 
     // Add session_mode column if it doesn't exist
     try {
-        db.exec(`ALTER TABLE director_sessions ADD COLUMN session_mode TEXT DEFAULT 'analyse'`);
+        await db.exec(`ALTER TABLE director_sessions ADD COLUMN session_mode TEXT DEFAULT 'analyse'`);
     } catch (e) {
         // Column already exists, ignore error
     }
 
     // Add user_intent column if it doesn't exist
     try {
-        db.exec(`ALTER TABLE director_sessions ADD COLUMN user_intent TEXT DEFAULT ''`);
+        await db.exec(`ALTER TABLE director_sessions ADD COLUMN user_intent TEXT DEFAULT ''`);
     } catch (e) {
         // Column already exists, ignore error
     }
 
     // Director messages table - stores OpenAI format messages
-    db.exec(`
+    await db.exec(`
         CREATE TABLE IF NOT EXISTS director_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             director_session_id INTEGER NOT NULL,
@@ -97,20 +102,20 @@ function createDirectorTables() {
 
     // Add message_type column if it doesn't exist (for existing databases)
     try {
-        db.exec(`ALTER TABLE director_messages ADD COLUMN message_type TEXT`);
+        await db.exec(`ALTER TABLE director_messages ADD COLUMN message_type TEXT`);
     } catch (e) {
         // Column already exists, ignore error
     }
 
     // Add user_input column if it doesn't exist (for existing databases)
     try {
-        db.exec(`ALTER TABLE director_messages ADD COLUMN user_input TEXT`);
+        await db.exec(`ALTER TABLE director_messages ADD COLUMN user_input TEXT`);
     } catch (e) {
         // Column already exists, ignore error
     }
 
     // Create indexes for better performance
-    db.exec(`
+    await db.exec(`
         CREATE INDEX IF NOT EXISTS idx_director_sessions_created_at ON director_sessions (created_at);
         CREATE INDEX IF NOT EXISTS idx_director_sessions_model ON director_sessions (model);
         CREATE INDEX IF NOT EXISTS idx_director_messages_session_id ON director_messages (director_session_id);
@@ -124,22 +129,21 @@ function createDirectorTables() {
 /**
  * Close database connection
  */
-function closeDirectorDatabase() {
+async function closeDirectorDatabase() {
     if (db) {
-        db.close();
+        await db.close();
         db = null;
     }
 }
 
 // Director Session Functions
-function createDirectorSession(sessionData) {
+async function createDirectorSession(sessionData) {
     try {
-        const stmt = db.prepare(`
+        const result = await db.run(`
             INSERT INTO director_sessions
             (name, filename, image_type, provider, model, max_resolution, session_mode, user_intent)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        const result = stmt.run(
+        `, [
             sessionData.name,
             sessionData.filename,
             sessionData.imageType || 'generated',
@@ -148,35 +152,33 @@ function createDirectorSession(sessionData) {
             sessionData.max_resolution ? 1 : 0,
             sessionData.sessionMode || 'analyse',
             sessionData.userIntent || ''
-        );
-        return result.lastInsertRowid;
+        ]);
+        return result.lastID;
     } catch (error) {
         console.error('❌ Error creating Director session:', error.message);
         return null;
     }
 }
 
-function getDirectorSession(sessionId) {
+async function getDirectorSession(sessionId) {
     try {
-        const stmt = db.prepare('SELECT * FROM director_sessions WHERE id = ?');
-        return stmt.get(sessionId);
+        return await db.get('SELECT * FROM director_sessions WHERE id = ?', [sessionId]);
     } catch (error) {
         console.error('❌ Error getting Director session:', error.message);
         return null;
     }
 }
 
-function getAllDirectorSessions() {
+async function getAllDirectorSessions() {
     try {
-        const stmt = db.prepare('SELECT * FROM director_sessions ORDER BY created_at DESC');
-        return stmt.all();
+        return await db.all('SELECT * FROM director_sessions ORDER BY created_at DESC');
     } catch (error) {
         console.error('❌ Error getting all Director sessions:', error.message);
         return [];
     }
 }
 
-function updateDirectorSession(sessionId, updates) {
+async function updateDirectorSession(sessionId, updates) {
     try {
         const fields = [];
         const values = [];
@@ -193,8 +195,7 @@ function updateDirectorSession(sessionId, updates) {
         fields.push('updated_at = strftime(\'%s\', \'now\')');
         values.push(sessionId);
         
-        const stmt = db.prepare(`UPDATE director_sessions SET ${fields.join(', ')} WHERE id = ?`);
-        const result = stmt.run(...values);
+        const result = await db.run(`UPDATE director_sessions SET ${fields.join(', ')} WHERE id = ?`, values);
         return result.changes > 0;
     } catch (error) {
         console.error('❌ Error updating Director session:', error.message);
@@ -202,10 +203,9 @@ function updateDirectorSession(sessionId, updates) {
     }
 }
 
-function deleteDirectorSession(sessionId) {
+async function deleteDirectorSession(sessionId) {
     try {
-        const stmt = db.prepare('DELETE FROM director_sessions WHERE id = ?');
-        const result = stmt.run(sessionId);
+        const result = await db.run('DELETE FROM director_sessions WHERE id = ?', [sessionId]);
         return result.changes > 0;
     } catch (error) {
         console.error('❌ Error deleting Director session:', error.message);
@@ -214,7 +214,7 @@ function deleteDirectorSession(sessionId) {
 }
 
 // Director Message Functions
-function addDirectorMessage(directorSessionId, role, content, previousMessageId = null, messageType = null, userInput = null) {
+async function addDirectorMessage(directorSessionId, role, content, previousMessageId = null, messageType = null, userInput = null) {
     try {
         // Calculate expiration date (30 days from now)
         const expiresAt = Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60);
@@ -225,12 +225,11 @@ function addDirectorMessage(directorSessionId, role, content, previousMessageId 
             contentString = JSON.stringify(content);
         }
         
-        const stmt = db.prepare(`
+        const result = await db.run(`
             INSERT INTO director_messages 
             (director_session_id, role, content, message_type, user_input, previous_message_id, expires_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        `);
-        const result = stmt.run(
+        `, [
             directorSessionId,
             role,
             contentString,
@@ -238,12 +237,12 @@ function addDirectorMessage(directorSessionId, role, content, previousMessageId 
             userInput,
             previousMessageId,
             expiresAt
-        );
+        ]);
         
         // Update session's updated_at timestamp
-        updateDirectorSession(directorSessionId, {});
+        await updateDirectorSession(directorSessionId, {});
         
-        return result.lastInsertRowid;
+        return result.lastID;
     } catch (error) {
         console.error('❌ Error adding Director message:', error.message);
         return null;
@@ -301,7 +300,7 @@ function extractAssistantData(rawContent) {
     }
 }
 
-function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSystem = false, includeExtraFields = true) {
+async function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSystem = false, includeExtraFields = true) {
     try {
         // Filter out system messages unless explicitly requested
         let sql = 'SELECT * FROM director_messages';
@@ -318,8 +317,7 @@ function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSystem =
         sql += ' ORDER BY created_at ASC LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
-        const stmt = db.prepare(sql);
-        const messages = stmt.all(...params);
+        const messages = await db.all(sql, params);
         
         // Return messages in OpenAI format
         return messages.map(msg => {
@@ -380,10 +378,9 @@ function getDirectorMessages(sessionId, limit = 100, offset = 0, includeSystem =
     }
 }
 
-function getDirectorMessageCount(sessionId) {
+async function getDirectorMessageCount(sessionId) {
     try {
-        const stmt = db.prepare('SELECT COUNT(*) as count FROM director_messages WHERE director_session_id = ?');
-        const result = stmt.get(sessionId);
+        const result = await db.get('SELECT COUNT(*) as count FROM director_messages WHERE director_session_id = ?', [sessionId]);
         return result.count;
     } catch (error) {
         console.error('❌ Error getting Director message count:', error.message);
@@ -391,15 +388,14 @@ function getDirectorMessageCount(sessionId) {
     }
 }
 
-function getLastDirectorMessage(sessionId) {
+async function getLastDirectorMessage(sessionId) {
     try {
-        const stmt = db.prepare(`
+        const message = await db.get(`
             SELECT * FROM director_messages 
             WHERE director_session_id = ? 
             ORDER BY created_at DESC 
             LIMIT 1
-        `);
-        const message = stmt.get(sessionId);
+        `, [sessionId]);
         
         if (message) {
             return {
@@ -417,15 +413,14 @@ function getLastDirectorMessage(sessionId) {
     }
 }
 
-function getLastDirectorMessageId(sessionId) {
+async function getLastDirectorMessageId(sessionId) {
     try {
-        const stmt = db.prepare(`
+        const result = await db.get(`
             SELECT id FROM director_messages 
             WHERE director_session_id = ? 
             ORDER BY created_at DESC 
             LIMIT 1
-        `);
-        const result = stmt.get(sessionId);
+        `, [sessionId]);
         return result ? result.id : null;
     } catch (error) {
         console.error('❌ Error getting last Director message ID:', error.message);
@@ -434,10 +429,10 @@ function getLastDirectorMessageId(sessionId) {
 }
 
 // Database statistics
-function getDirectorDatabaseStats() {
+async function getDirectorDatabaseStats() {
     try {
-        const sessionCount = db.prepare('SELECT COUNT(*) as count FROM director_sessions').get().count;
-        const messageCount = db.prepare('SELECT COUNT(*) as count FROM director_messages').get().count;
+        const sessionCount = (await db.get('SELECT COUNT(*) as count FROM director_sessions'))?.count;
+        const messageCount = (await db.get('SELECT COUNT(*) as count FROM director_messages'))?.count;
 
         return {
             sessions: sessionCount,
@@ -452,13 +447,13 @@ function getDirectorDatabaseStats() {
 /**
  * Delete a director message and all messages after it in the session
  */
-function deleteDirectorMessagesFrom(sessionId, messageId) {
+async function deleteDirectorMessagesFrom(sessionId, messageId) {
     try {
         // First get the target message to find its timestamp
-        const targetMessage = db.prepare(`
+        const targetMessage = await db.get(`
             SELECT created_at FROM director_messages
             WHERE id = ? AND director_session_id = ?
-        `).get(messageId, sessionId);
+        `, [messageId, sessionId]);
 
         if (!targetMessage) {
             console.error(`❌ Message ${messageId} not found in session ${sessionId}`);
@@ -467,12 +462,11 @@ function deleteDirectorMessagesFrom(sessionId, messageId) {
 
         // Delete all messages from the target message onwards (including the target)
         // We need to be careful about foreign key constraints
-        const deleteStmt = db.prepare(`
+        const result = await db.run(`
             DELETE FROM director_messages
             WHERE director_session_id = ? AND created_at >= ?
-        `);
-
-        const result = deleteStmt.run(sessionId, targetMessage.created_at);
+        `, [sessionId, targetMessage.created_at]);
+        
         console.log(`🗑️ Deleted ${result.changes} messages from session ${sessionId} starting from message ${messageId}`);
 
         return result.changes > 0;
@@ -480,19 +474,6 @@ function deleteDirectorMessagesFrom(sessionId, messageId) {
         console.error('❌ Error deleting director messages:', error);
         return false;
     }
-}
-
-// Initialize database on module load
-let dbInitialized = false;
-try {
-    dbInitialized = initializeDirectorDatabase();
-    if (!dbInitialized) {
-        throw new Error('Failed to initialize Director database');
-    }
-    // Logging happens in createDirectorTables during boot
-} catch (error) {
-    logger.error('Failed to initialize Director database:', error.message);
-    process.exit(1);
 }
 
 // Graceful shutdown
@@ -509,6 +490,7 @@ process.on('SIGTERM', () => {
 module.exports = {
     initializeDirectorDatabase,
     closeDirectorDatabase,
+    getCheckpointManager,
     createDirectorSession,
     getDirectorSession,
     getAllDirectorSessions,

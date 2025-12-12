@@ -148,10 +148,10 @@ async function showPresetManager() {
 }
 
 // Hide preset manager modal
-function hidePresetManager() {
+async function hidePresetManager() {
     const modal = document.getElementById('presetManagerModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
 
     // Reset to first page and clear search
@@ -345,85 +345,7 @@ async function createPresetItem(key, preset) {
     nameDiv.appendChild(colorIndicator);
     nameDiv.appendChild(nameSpan);
 
-    // Actions
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'text-replacement-actions';
-
-    // Button factory
-    function makeBtn({className, title, iconClass, onClick}) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = className;
-        btn.title = title;
-        btn.appendChild(document.createElement('i')).className = iconClass;
-        btn.addEventListener('click', onClick);
-        return btn;
-    }
-
-    // Generate
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-primary generate-btn',
-        title: 'Generate Image',
-        iconClass: 'nai-sparkles',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            generateFromPreset(key);
-            hidePresetManager();
-        }
-    }));
-
-    // Edit (manual modal)
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-secondary edit-btn manual-modal-btn',
-        title: 'Edit Preset',
-        iconClass: 'fas fa-compass-drafting',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            hidePresetManager();
-            showManualModal(key);
-        }
-    }));
-
-    // Edit (cog)
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-secondary edit-btn cog-edit-btn',
-        title: 'Edit Request Settings',
-        iconClass: 'fas fa-cog',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            editPreset(key);
-        }
-    }));
-
-    // Copy UUID
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-secondary copy-btn',
-        title: 'Copy UUID',
-        iconClass: 'fas fa-link-horizontal',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            copyPresetUuid(key);
-        }
-    }));
-
-    // Delete
-    actionsDiv.appendChild(makeBtn({
-        className: 'btn-small btn-danger delete-btn',
-        title: 'Delete',
-        iconClass: 'fas fa-trash',
-        onClick: (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            deletePreset(key);
-        }
-    }));
-
     header.appendChild(nameDiv);
-    header.appendChild(actionsDiv);
 
     // Content
     const content = document.createElement('div');
@@ -705,6 +627,88 @@ async function createPresetItem(key, preset) {
 
     item.appendChild(header);
     item.appendChild(content);
+
+    // Add click handler to trigger edit action (manual modal) by default
+    item.addEventListener('click', (e) => {
+        // Don't trigger if clicking on a button or interactive element
+        if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.context-menu')) {
+            return;
+        }
+        // Don't trigger if modifier keys are held (might be used for other actions)
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+            return;
+        }
+        // Only close preset manager modal if not in desktop mode
+        const isDesktopMode = document.body.classList.contains('desktop-mode');
+        if (!isDesktopMode) {
+            hidePresetManager();
+        }
+        openManualModalWithContent({ type: 'preset', name: key, title: key });
+    });
+
+    // Add context menu with all actions
+    if (window.contextMenu) {
+        window.contextMenu.attachToElement(item, {
+            sections: [{
+                type: 'list',
+                items: [
+                    {
+                        text: 'Generate Image',
+                        icon: 'nai-sparkles',
+                        action: 'generate'
+                    },
+                    {
+                        text: 'Edit in Studio',
+                        icon: 'fas fa-compass-drafting',
+                        action: 'edit-manual'
+                    },
+                    {
+                        text: 'Request Settings',
+                        icon: 'fas fa-cog',
+                        action: 'edit-settings'
+                    },
+                    {
+                        text: 'Copy UUID',
+                        icon: 'fas fa-link-horizontal',
+                        action: 'copy-uuid'
+                    },
+                    {
+                        text: 'Add to Desktop',
+                        icon: 'fas fa-arrow-down-left',
+                        action: 'add-to-desktop'
+                    },
+                    { separator: true },
+                    {
+                        text: 'Delete',
+                        icon: 'fas fa-trash',
+                        action: 'delete',
+                        className: 'context-menu-item-danger'
+                    }
+                ]
+            }],
+            onAction: (actionName, target) => {
+                if (actionName === 'generate') {
+                    generateFromPreset(key);
+                    hidePresetManager();
+                } else if (actionName === 'edit-manual') {
+                    // Only close preset manager modal if not in desktop mode
+                    const isDesktopMode = document.body.classList.contains('desktop-mode');
+                    if (!isDesktopMode) {
+                        hidePresetManager();
+                    }
+                    openManualModalWithContent({ type: 'preset', name: key, title: key });
+                } else if (actionName === 'edit-settings') {
+                    editPreset(key);
+                } else if (actionName === 'copy-uuid') {
+                    copyPresetUuid(key);
+                } else if (actionName === 'add-to-desktop') {
+                    addPresetToDesktop(key);
+                } else if (actionName === 'delete') {
+                    deletePreset(key);
+                }
+            }
+        });
+    }
 
     return item;
 }
@@ -1053,10 +1057,10 @@ function initializeUpdatePresetToggleButtons() {
 }
 
 // Hide update preset modal
-function hideUpdatePresetModal() {
+async function hideUpdatePresetModal() {
     const modal = document.getElementById('updatePresetModal');
     if (modal) {
-        closeModal(modal);
+        await closeModal(modal);
     }
 
     const searchInput = document.getElementById('presetSearch');
@@ -1382,6 +1386,57 @@ async function copyPresetUuid(presetName) {
     } catch (error) {
         console.error('Error copying UUID:', error);
         showGlassToast('error', null, 'Failed to copy URL', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Add preset to desktop
+async function addPresetToDesktop(presetName) {
+    try {
+        const preset = presetData[presetName];
+        if (!preset) {
+            showGlassToast('error', null, 'Preset not found', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        if (!preset.uuid) {
+            showGlassToast('error', null, 'Preset does not have a UUID', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        // Check if desktop shortcuts manager is available
+        if (typeof desktopShortcuts === 'undefined' || !desktopShortcuts) {
+            showGlassToast('error', null, 'Desktop shortcuts not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        // Check if shortcut already exists
+        const existingShortcut = desktopShortcuts.shortcuts.find(s => 
+            s.type === 'preset' && 
+            s.data && 
+            s.data.uuid === preset.uuid
+        );
+
+        if (existingShortcut) {
+            showGlassToast('info', null, 'Preset shortcut already exists on desktop', false, 3000, '<i class="fas fa-info-circle"></i>');
+            return;
+        }
+
+        // Create shortcut with only UUID in data
+        const shortcut = {
+            name: preset.name || presetName,
+            type: 'preset',
+            data: {
+                uuid: preset.uuid
+            }
+        };
+
+        // Add to desktop
+        await desktopShortcuts.addShortcut(shortcut);
+        
+        showGlassToast('success', null, `Added "${preset.name || presetName}" to desktop`, false, 3000, '<i class="fas fa-desktop"></i>');
+    } catch (error) {
+        console.error('Error adding preset to desktop:', error);
+        showGlassToast('error', null, 'Failed to add preset to desktop: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
     }
 }
 

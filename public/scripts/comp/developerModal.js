@@ -76,15 +76,13 @@ class DeveloperModal {
     }
     
     openModal() {
-        this.modal.classList.remove('hidden');
+        openModal(this.modal);
         this.loadSettings();
         this.updateStatus();
-        document.body.style.overflow = 'hidden';
     }
     
     closeModal() {
-        this.modal.classList.add('hidden');
-        document.body.style.overflow = '';
+        closeModal(this.modal);
     }
     
     loadSettings() {

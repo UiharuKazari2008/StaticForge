@@ -1,7 +1,28 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
-const config = require('../config.json');
+
+// NOTE: This module is required by globalResources, so we use a setter pattern to avoid circular dependency
+// TODO: Consider migrating this module to a class that takes globalResources in constructor
+let globalResourcesInstance = null;
+
+function setGlobalResources(gr) {
+    globalResourcesInstance = gr;
+    // Update verbosity from config after globalResources is set
+    updateVerbosityFromConfig();
+}
+
+function getConfig() {
+    if (globalResourcesInstance) {
+        return globalResourcesInstance.getConfig();
+    }
+    try {
+        return require('../config.json');
+    } catch (error) {
+        // Return empty config if file doesn't exist
+        return {};
+    }
+}
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -19,33 +40,48 @@ const VERBOSITY_LEVELS = {
 
 // Current verbosity level (can be set via env or config)
 let currentVerbosity = VERBOSITY_LEVELS.NORMAL;
+let verbosityLoaded = false; // Flag to prevent duplicate logging
 
-// Load from config.json first
-try {
-    const appConfig = require('../config.json');
-    if (appConfig.log_verbosity) {
-        const level = VERBOSITY_LEVELS[appConfig.log_verbosity.toUpperCase()];
-        if (level !== undefined) {
-            currentVerbosity = level;
-            console.log(`📊 Verbosity loaded from config: ${appConfig.log_verbosity}`);
+// Function to update verbosity from config
+function updateVerbosityFromConfig() {
+    try {
+        const appConfig = getConfig();
+        if (appConfig.log_verbosity) {
+            const level = VERBOSITY_LEVELS[appConfig.log_verbosity.toUpperCase()];
+            if (level !== undefined) {
+                currentVerbosity = level;
+                // Only log once when verbosity is first loaded
+                if (!verbosityLoaded) {
+                    console.log(`📊 Verbosity loaded from config: ${appConfig.log_verbosity}`);
+                    verbosityLoaded = true;
+                }
+            }
         }
+    } catch (error) {
+        // Config not found, use default
     }
-} catch (error) {
-    // Config not found, use default
 }
 
-// Environment variable overrides config
+// Environment variable overrides config (checked at module load time)
 const envVerbosity = process.env.LOG_VERBOSITY;
 if (envVerbosity) {
     const level = VERBOSITY_LEVELS[envVerbosity.toUpperCase()];
     if (level !== undefined) {
         currentVerbosity = level;
-        console.log(`📊 Verbosity overridden by env: ${envVerbosity}`);
+        // Only log if we haven't already loaded from config
+        if (!verbosityLoaded) {
+            console.log(`📊 Verbosity overridden by env: ${envVerbosity}`);
+            verbosityLoaded = true;
+        }
     }
 }
 
 // Detailed generation logger - separate stream for detailed generation logs
 const generationLogPath = path.join(logsDir, 'generation-detailed.log');
+const GENERATION_ARCHIVE_PREFIX = 'generation-detailed-';
+const GENERATION_ARCHIVE_SUFFIX = '.log';
+const MAX_GENERATION_ARCHIVES = 5;
+const GENERATION_LOG_MIN_LINES = 100;
 let generationLogStream = null;
 
 // Boot tree state
@@ -101,6 +137,107 @@ const logger = winston.createLogger({
         })
     ]
 });
+
+function countLinesUpTo(filePath, maxLines) {
+    const bufferSize = 64 * 1024;
+    const buffer = Buffer.allocUnsafe(bufferSize);
+    let lines = 0;
+    let fd = null;
+    
+    try {
+        fd = fs.openSync(filePath, 'r');
+        let bytesRead = 0;
+        
+        do {
+            bytesRead = fs.readSync(fd, buffer, 0, bufferSize, null);
+            for (let i = 0; i < bytesRead; i++) {
+                if (buffer[i] === 10) {
+                    lines++;
+                    if (lines >= maxLines) {
+                        return lines;
+                    }
+                }
+            }
+        } while (bytesRead === bufferSize);
+    } catch (error) {
+        logger.warn(`Failed to inspect generation log lines: ${error.message}`);
+    } finally {
+        if (fd !== null) {
+            try {
+                fs.closeSync(fd);
+            } catch (closeError) {
+                logger.warn(`Failed to close generation log while counting lines: ${closeError.message}`);
+            }
+        }
+    }
+    
+    return lines;
+}
+
+function shouldRotateGenerationLog(filePath) {
+    try {
+        const stats = fs.statSync(filePath);
+        if (stats.size === 0) {
+            return {
+                rotate: false,
+                reason: 'empty',
+                lineCount: 0
+            };
+        }
+    } catch (error) {
+        return {
+            rotate: false,
+            reason: 'missing',
+            lineCount: 0
+        };
+    }
+    
+    const lineCount = countLinesUpTo(filePath, GENERATION_LOG_MIN_LINES);
+    if (lineCount < GENERATION_LOG_MIN_LINES) {
+        return {
+            rotate: false,
+            reason: 'insufficient_lines',
+            lineCount
+        };
+    }
+    
+    return {
+        rotate: true,
+        reason: null,
+        lineCount
+    };
+}
+
+function pruneGenerationLogArchives(maxArchives = MAX_GENERATION_ARCHIVES) {
+    try {
+        const archiveFiles = fs.readdirSync(logsDir)
+            .filter(file => file.startsWith(GENERATION_ARCHIVE_PREFIX) && file.endsWith(GENERATION_ARCHIVE_SUFFIX))
+            .map(file => {
+                const fullPath = path.join(logsDir, file);
+                const stats = fs.statSync(fullPath);
+                return {
+                    file,
+                    fullPath,
+                    mtime: stats.mtime
+                };
+            })
+            .sort((a, b) => b.mtime - a.mtime);
+        
+        if (archiveFiles.length > maxArchives) {
+            const filesToDelete = archiveFiles.slice(maxArchives);
+            filesToDelete.forEach(({ file, fullPath }) => {
+                try {
+                    fs.unlinkSync(fullPath);
+                    logger.info(`Deleted old generation log: ${file}`);
+                } catch (error) {
+                    logger.warn(`Failed to delete old generation log ${file}: ${error.message}`);
+                }
+            });
+        }
+    } catch (error) {
+        logger.warn(`Failed to prune generation log archives: ${error.message}`);
+    }
+}
 
 // Tree drawing characters
 const TREE_CHARS = {
@@ -680,59 +817,97 @@ logger.logGeneration = function(section, data, requestId = null) {
                     generationLogStream.write(JSON.stringify(data.citations, null, 2) + '\n');
                 }
                 
-                generationLogStream.write('\n---\n\n');
+                return; // Skip default AI section formatting
+            }
+            
+            // Special formatting for AI_AUTO_COMPLETE - just show JSON or formatted text, not structured breakdown
+            if (section === 'AI_AUTO_COMPLETE') {
+                const tool = data.tool || 'unknown';
+                const finalOutput = data.finalOutput;
+                
+                generationLogStream.write(`Tool: ${tool}\n\n`);
+                
+                if (finalOutput !== undefined && finalOutput !== null) {
+                    if (typeof finalOutput === 'object') {
+                        // Display as JSON
+                        generationLogStream.write('=== JSON ===\n');
+                        generationLogStream.write(JSON.stringify(finalOutput, null, 2) + '\n');
+                    } else if (typeof finalOutput === 'string') {
+                        // Check if it's JSON string
+                        if (isJSON(finalOutput)) {
+                            try {
+                                const parsed = JSON.parse(finalOutput);
+                                generationLogStream.write('=== JSON ===\n');
+                                generationLogStream.write(JSON.stringify(parsed, null, 2) + '\n');
+                            } catch (e) {
+                                // If parsing fails, treat as text
+                                generationLogStream.write('=== TEXT ===\n');
+                                generationLogStream.write(finalOutput.replace(/\\n/g, '\n') + '\n');
+                            }
+                        } else {
+                            // Regular text - convert \n to actual newlines
+                            generationLogStream.write('=== TEXT ===\n');
+                            generationLogStream.write(finalOutput.replace(/\\n/g, '\n') + '\n');
+                        }
+                    } else {
+                        // Other types - convert to string
+                        generationLogStream.write('=== TEXT ===\n');
+                        generationLogStream.write(String(finalOutput) + '\n');
+                    }
+                }
+                
                 return; // Skip default AI section formatting
             }
             
             // First, write the structured data as JSON
-            generationLogStream.write('=== STRUCTURED DATA ===\n');
-            generationLogStream.write(JSON.stringify(data, null, 2) + '\n');
+            //generationLogStream.write('=== STRUCTURED DATA ===\n');
+            //generationLogStream.write(JSON.stringify(data, null, 2) + '\n');
             
             // Then extract and format inner text/JSON content from nested objects
-            function extractAndFormatContent(obj, prefix = '') {
-                if (typeof obj === 'string') {
-                    // Found a string value - check if it needs formatting
-                    // Check for common content field names or significant length
-                    const isContentField = prefix && (
-                        prefix.includes('fullContent') || 
-                        prefix.includes('text') || 
-                        prefix.includes('response') || 
-                        prefix.includes('message') ||
-                        prefix.includes('content')
-                    );
+            // function extractAndFormatContent(obj, prefix = '') {
+            //     if (typeof obj === 'string') {
+            //         // Found a string value - check if it needs formatting
+            //         // Check for common content field names or significant length
+            //         const isContentField = prefix && (
+            //             prefix.includes('fullContent') || 
+            //             prefix.includes('text') || 
+            //             prefix.includes('response') || 
+            //             prefix.includes('message') ||
+            //             prefix.includes('content')
+            //         );
                     
-                    if (isJSON(obj)) {
-                        generationLogStream.write(`\n--- ${prefix || 'root'} (JSON) ---\n`);
-                        try {
-                            const parsed = JSON.parse(obj);
-                            generationLogStream.write(JSON.stringify(parsed, null, 2) + '\n');
-                        } catch (e) {
-                            generationLogStream.write(obj + '\n');
-                        }
-                    } else if (isContentField || obj.includes('\\n') || obj.includes('\n') || obj.length > 100) {
-                        // Format text content - convert \n escape sequences to actual newlines
-                        generationLogStream.write(`\n--- ${prefix || 'root'} (TEXT) ---\n`);
-                        // Replace both \\n (escape sequence) and preserve actual newlines
-                        const formatted = obj.replace(/\\n/g, '\n');
-                        generationLogStream.write(formatted + '\n');
-                    }
-                } else if (typeof obj === 'object' && obj !== null) {
-                    if (Array.isArray(obj)) {
-                        obj.forEach((item, idx) => {
-                            const newPrefix = prefix ? `${prefix}[${idx}]` : `[${idx}]`;
-                            extractAndFormatContent(item, newPrefix);
-                        });
-                    } else {
-                        for (const [key, value] of Object.entries(obj)) {
-                            const newPrefix = prefix ? `${prefix}.${key}` : key;
-                            extractAndFormatContent(value, newPrefix);
-                        }
-                    }
-                }
-            }
+            //         if (isJSON(obj)) {
+            //             generationLogStream.write(`\n--- ${prefix || 'root'} (JSON) ---\n`);
+            //             try {
+            //                 const parsed = JSON.parse(obj);
+            //                 generationLogStream.write(JSON.stringify(parsed, null, 2) + '\n');
+            //             } catch (e) {
+            //                 generationLogStream.write(obj + '\n');
+            //             }
+            //         } else if (isContentField || obj.includes('\\n') || obj.includes('\n') || obj.length > 100) {
+            //             // Format text content - convert \n escape sequences to actual newlines
+            //             generationLogStream.write(`\n--- ${prefix || 'root'} (TEXT) ---\n`);
+            //             // Replace both \\n (escape sequence) and preserve actual newlines
+            //             const formatted = obj.replace(/\\n/g, '\n');
+            //             generationLogStream.write(formatted + '\n');
+            //         }
+            //     } else if (typeof obj === 'object' && obj !== null) {
+            //         if (Array.isArray(obj)) {
+            //             obj.forEach((item, idx) => {
+            //                 const newPrefix = prefix ? `${prefix}[${idx}]` : `[${idx}]`;
+            //                 extractAndFormatContent(item, newPrefix);
+            //             });
+            //         } else {
+            //             for (const [key, value] of Object.entries(obj)) {
+            //                 const newPrefix = prefix ? `${prefix}.${key}` : key;
+            //                 extractAndFormatContent(value, newPrefix);
+            //             }
+            //         }
+            //     }
+            // }
             
-            // Extract and format all text/JSON content from the object
-            extractAndFormatContent(data);
+            // // Extract and format all text/JSON content from the object
+            // extractAndFormatContent(data);
         } else {
             // Non-AI sections: just write the JSON
             generationLogStream.write(JSON.stringify(data, null, 2) + '\n');
@@ -787,20 +962,42 @@ logger.rotateGenerationLog = function() {
             generationLogStream = null;
         }
         
+        let rotated = false;
+        let rotationSkippedReason = null;
+        
         // Check if log file exists
         if (fs.existsSync(generationLogPath)) {
-            // Generate timestamp for the archived log
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').split('.')[0];
-            const archivedLogPath = path.join(logsDir, `generation-detailed-${timestamp}.log`);
+            const rotationDecision = shouldRotateGenerationLog(generationLogPath);
             
-            // Rename the existing log file
-            fs.renameSync(generationLogPath, archivedLogPath);
-            logger.info(`Rotated generation log: ${path.basename(archivedLogPath)}`);
+            if (rotationDecision.rotate) {
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').split('.')[0];
+                const archivedLogPath = path.join(logsDir, `${GENERATION_ARCHIVE_PREFIX}${timestamp}${GENERATION_ARCHIVE_SUFFIX}`);
+                
+                fs.renameSync(generationLogPath, archivedLogPath);
+                logger.info(`Rotated generation log: ${path.basename(archivedLogPath)}`);
+                rotated = true;
+                
+            } else {
+                rotationSkippedReason = rotationDecision.reason === 'empty'
+                    ? 'file is empty'
+                    : rotationDecision.reason === 'insufficient_lines'
+                        ? `only ${rotationDecision.lineCount} lines (< ${GENERATION_LOG_MIN_LINES})`
+                        : 'file missing';
+                logger.info(`Skipped generation log rotation (${rotationSkippedReason})`);
+            }
         }
         
-        // Create new log file immediately
-        generationLogStream = fs.createWriteStream(generationLogPath, { flags: 'w' });
-        logger.info('Created new generation log file');
+        // Always enforce archive limit on startup even if we skipped rotation
+        pruneGenerationLogArchives();
+
+        const shouldTruncate = rotated || !fs.existsSync(generationLogPath);
+        generationLogStream = fs.createWriteStream(generationLogPath, { flags: shouldTruncate ? 'w' : 'a' });
+        
+        if (rotated || shouldTruncate) {
+            logger.info('Created new generation log file');
+        } else if (rotationSkippedReason) {
+            logger.info('Resuming write on existing generation log file');
+        }
     } catch (error) {
         logger.warn(`Failed to rotate generation log: ${error.message}`);
     }
@@ -818,6 +1015,9 @@ logger.shutdown = function() {
 
 // Export verbosity levels for use in other modules
 logger.VERBOSITY_LEVELS = VERBOSITY_LEVELS;
+
+// Add setter to logger object for circular dependency resolution
+logger.setGlobalResources = setGlobalResources;
 
 module.exports = logger;
 

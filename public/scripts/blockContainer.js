@@ -630,15 +630,21 @@ class BlockContainer {
                                         element.style.animationPlayState = 'paused';
                                     }
                                     // After fade completes, add ready-state class and ensure interactivity
-                                    setTimeout(() => {
-                                        if (this.isActive) {
-                                            element.classList.add('ready-state');
-                                            // Ensure the block is interactive by setting proper opacity
-                                            element.style.setProperty('--random-opacity', '0');
-                                            // Remove any transition durations that might interfere
-                                            element.style.removeProperty('--transition-duration');
+                                    // Use transitionend event instead of setTimeout for accurate timing
+                                    const handleTransitionEnd = (e) => {
+                                        // Only handle opacity transitions to avoid multiple triggers
+                                        if (e.target === element && e.propertyName === 'opacity') {
+                                            element.removeEventListener('transitionend', handleTransitionEnd);
+                                            if (this.isActive) {
+                                                element.classList.add('ready-state');
+                                                // Ensure the block is interactive by setting proper opacity
+                                                element.style.setProperty('--random-opacity', '0');
+                                                // Remove any transition durations that might interfere
+                                                element.style.removeProperty('--transition-duration');
+                                            }
                                         }
-                                    }, 800); // CSS transition duration
+                                    };
+                                    element.addEventListener('transitionend', handleTransitionEnd);
                                 }
                             }, 1000);
                         }

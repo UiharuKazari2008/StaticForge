@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const { z } = require('zod');
+const globalResources = require('./globalResources');
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -21,9 +22,9 @@ function normalizePeriodKey(periodKey) {
     const legacyMappings = {
         'earlymorning': 'morning',
         'early_morning': 'morning',
-        'earlyevening': 'night',
-        'early_evening': 'night',
-        'evening': 'night',
+        'earlyevening': 'evening', // Keep as evening, not night
+        'early_evening': 'evening',
+        // 'evening' is now a valid period name (used for cloudy afternoon golden hour), don't map to 'night'
         'lateevening': 'night',
         'late_evening': 'night'
     };
@@ -70,11 +71,6 @@ const {
     extractAssistantData,
     deleteDirectorMessagesFrom
 } = require('./directorDatabase');
-
-const { 
-    callDirectorAIWithCompletion
-} = require('./aiServices/grokService');
-const TextReplacements = require('./textReplacements');
 
 // Director structured output schema using Zod (xAI recommended)
 const DirectorResponseSchema = z.object({
@@ -268,13 +264,6 @@ const DirectorResponseSchema = z.object({
         .nullable()
         .describe("Set to true if unsure about changes affecting last image")
 });
-
-const cacheDir = path.resolve(__dirname, '../.cache');
-const uploadCacheDir = path.join(cacheDir, 'upload');
-const previewCacheDir = path.join(cacheDir, 'preview');
-const vibeCacheDir = path.join(cacheDir, 'vibe');
-const imagesDir = path.resolve(__dirname, '../images');
-const previewsDir = path.resolve(__dirname, '../.previews');
 
 // Placeholder for director functions - will be copied from websocketHandlers.js
 function generateDirectorSystemMessage(presetConfig = null, model = null, enableLiveSearch = false) {
@@ -847,8 +836,8 @@ async function compileDirectorPrompts(inputPrompt) {
     }
 
     // Apply text replacements to base prompts
-    const processedPromptResult = TextReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
-    const processedNegativePromptResult = TextReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
+    const processedPromptResult = globalResources.textReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
+    const processedNegativePromptResult = globalResources.textReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
     let processedPrompt = processedPromptResult.text || '';
     let processedNegativePrompt = processedNegativePromptResult.text || '';
 
@@ -857,8 +846,8 @@ async function compileDirectorPrompts(inputPrompt) {
     if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
         processedCharacterPrompts = processedCharacterPrompts.map(char => {
             // Apply text replacements to character prompt and UC
-            const processedCharPromptResult = TextReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
-            const processedCharUCResult = TextReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
+            const processedCharPromptResult = globalResources.textReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
+            const processedCharUCResult = globalResources.textReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
 
             return {
                 ...char,
@@ -879,7 +868,7 @@ async function compileDirectorPrompts(inputPrompt) {
 
 async function handleDirectorGetSessions(handler, ws, message, clientInfo, wsServer) {
     try {
-        const sessions = getAllDirectorSessions();
+        const sessions = await getAllDirectorSessions();
         
         handler.sendToClient(ws, {
             type: 'director_get_sessions_response',
@@ -973,13 +962,13 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         if (sessionMode === 'analyse' && selectedImageData) {
             try {
                 // Create sessions images directory if it doesn't exist
-                const sessionsImagesDir = path.join(cacheDir, 'sessions', 'images');
+                const sessionsImagesDir = path.join(globalResources.getPath("cache"), 'sessions', 'images');
                 if (!fs.existsSync(sessionsImagesDir)) {
                     fs.mkdirSync(sessionsImagesDir, { recursive: true });
                 }
 
                 // Create preview directory if it doesn't exist
-                const previewDir = path.join(cacheDir, 'preview');
+                const previewDir = path.join(globalResources.getPath("cache"), 'preview');
                 if (!fs.existsSync(previewDir)) {
                     fs.mkdirSync(previewDir, { recursive: true });
                 }
@@ -1037,7 +1026,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
             characterReference: characterReference || null
         };
         
-        const sessionId = createDirectorSession(sessionData);
+        const sessionId = await createDirectorSession(sessionData);
         
         if (!sessionId) {
             handler.sendError(ws, 'Failed to create session', 'CREATE_FAILED', message.requestId);
@@ -1054,13 +1043,13 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
                 let imagePath;
                 if (imageType === 'cache') {
                     // For cache images, look in upload cache directory
-                    imagePath = path.join(uploadCacheDir, parsedFilename);
+                    imagePath = path.join(globalResources.getPath("uploadCache"), parsedFilename);
                 } else if (imageType === 'sessions') {
                     // For session images, look in sessions/images directory
-                    imagePath = path.join(cacheDir, 'sessions', 'images', parsedFilename);
+                    imagePath = path.join(globalResources.getPath("cache"), 'sessions', 'images', parsedFilename);
                 } else {
                     // For generated images, look in images directory
-                    imagePath = path.join(imagesDir, parsedFilename);
+                    imagePath = path.join(globalResources.getPath("images"), parsedFilename);
                 }
             
                 if (fs.existsSync(imagePath)) {
@@ -1170,7 +1159,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         }
 
         // Get the session to determine the mode
-        const session = getDirectorSession(sessionId);
+        const session = await getDirectorSession(sessionId);
         const isEfficiencyMode = session?.session_mode === 'efficiency';
         const isCreateMode = session?.session_mode === 'create';
         const userIntent = session?.user_intent || '';
@@ -1289,7 +1278,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         }
         
         const initialMessageText = isCreateMode ? 'Create creative prompt from text input' : 'Analyze this image';
-        addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', initialMessageText);
+        await addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', initialMessageText);
         
         // Send session creation response first
         handler.sendToClient(ws, {
@@ -1324,7 +1313,7 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
     try {
         console.log('🔄 Processing initial Director AI request for session:', sessionId);
         // Get session data to access user intent
-        const session = getDirectorSession(sessionId);
+        const session = await getDirectorSession(sessionId);
         if (!session) {
             throw new Error('Session not found');
         }
@@ -1344,7 +1333,7 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
         
         // Store the assistant response
         const assistantContent = aiResponse.content || aiResponse.message || 'No content';
-        const assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
+        const assistantMessageId = await addDirectorMessage(sessionId, 'assistant', [{
             type: "text",
             text: assistantContent
         }]);
@@ -1359,7 +1348,7 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
             if (clientResponse.SuggestedName && clientResponse.SuggestedName.trim()) {
                 const suggestedName = clientResponse.SuggestedName.trim();
                 console.log(`📝 Updating session name to: ${suggestedName}`);
-                updateDirectorSession(sessionId, { name: suggestedName });
+                await updateDirectorSession(sessionId, { name: suggestedName });
             }
         } else {
             // Error case - return error structure
@@ -1427,7 +1416,7 @@ async function handleDirectorGetSession(handler, ws, message, clientInfo, wsServ
             return;
         }
         
-        const session = getDirectorSession(sessionId);
+        const session = await getDirectorSession(sessionId);
         
         if (!session) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -1458,7 +1447,7 @@ async function handleDirectorDeleteSession(handler, ws, message, clientInfo, wsS
             return;
         }
         
-        const success = deleteDirectorSession(sessionId);
+        const success = await deleteDirectorSession(sessionId);
         
         if (!success) {
             handler.sendError(ws, 'Failed to delete session', 'DELETE_FAILED', message.requestId);
@@ -1501,15 +1490,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         }
         
         // Get session
-        const session = getDirectorSession(sessionId);
+        const session = await getDirectorSession(sessionId);
         if (!session) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
             return;
         }
         
         // Get the last message ID for conversation continuity
-        const lastMessageId = getLastDirectorMessageId(sessionId);
-        const userMessageId = addDirectorMessage(sessionId, 'user', [{
+        const lastMessageId = await getLastDirectorMessageId(sessionId);
+        const userMessageId = await addDirectorMessage(sessionId, 'user', [{
             type: "text",
             text: content
         }], lastMessageId, messageType, content);
@@ -1616,16 +1605,16 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
         }
         
         // Get session
-        const session = getDirectorSession(sessionId);
+        const session = await getDirectorSession(sessionId);
         if (!session) {
             throw new Error('Session not found');
         }
         
         // Load current prompt config for dynamic preset content
-        const currentPromptConfig = TextReplacements.loadPromptConfig();
+        const currentPromptConfig = globalResources.getPromptConfig();
         
         // Get conversation history in OpenAI format
-        const dbMessages = getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
+        const dbMessages = await getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
 
         // Ensure all message content is properly stringified
         const sanitizedMessages = dbMessages.map(msg => ({
@@ -1860,7 +1849,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             
                             switch (imageType) {
                                 case 'file':
-                                    const filePath = path.join(imagesDir, imageIdentifier);
+                                    const filePath = path.join(globalResources.getPath("images"), imageIdentifier);
                                     if (fs.existsSync(filePath)) {
                                         baseImageBuffer = fs.readFileSync(filePath);
                                     } else {
@@ -1868,7 +1857,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                     }
                                     break;
                                 case 'cache':
-                                    const cachedImagePath = path.join(uploadCacheDir, imageIdentifier);
+                                    const cachedImagePath = path.join(globalResources.getPath("uploadCache"), imageIdentifier);
                                     if (fs.existsSync(cachedImagePath)) {
                                         baseImageBuffer = fs.readFileSync(cachedImagePath);
                                     } else {
@@ -1892,7 +1881,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             // Apply bias if provided (from bias_settings)
                             if (baseImageData.bias_settings) {
                                 // For bias processing, use original dimensions first
-                                const session = getDirectorSession(sessionId);
+                                const session = await getDirectorSession(sessionId);
                                 const baseDims = session?.maxResolution ? 
                                     { width: 1024, height: 1024 } : 
                                     { width: 512, height: 512 };
@@ -1986,24 +1975,22 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                 // Process vibe transfers if provided (efficiency only)
                 if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
                     try {
-                        const vibeCacheDir = path.join(cacheDir, 'vibe');
+                        const refDb = globalResources.getReferenceMetadataDatabase();
                         
                         for (let i = 0; i < vibeTransfers.length; i++) {
                             const vibeTransfer = vibeTransfers[i];
-                            const vibeFilePath = path.join(vibeCacheDir, `${vibeTransfer.id}.json`);
+                            const vibeData = refDb.getVibeMetadata(vibeTransfer.id);
                             
-                            if (fs.existsSync(vibeFilePath)) {
-                                const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                
+                            if (vibeData) {
                                 let vibeImageBuffer = null;
                                 
                                 // Handle different vibe data types
-                                if (vibeData.type === 'base64' && vibeData.image) {
+                                if (vibeData.type === 'base64' && vibeData.imageSource) {
                                     // Image is stored as base64 in the vibe data
-                                    vibeImageBuffer = Buffer.from(vibeData.image, 'base64');
-                                } else if (vibeData.type === 'cache' && vibeData.image) {
+                                    vibeImageBuffer = Buffer.from(vibeData.imageSource, 'base64');
+                                } else if (vibeData.type === 'cache' && vibeData.imageSource) {
                                     // Image is stored in cache directory with hash as filename
-                                    const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
+                                    const cacheImagePath = path.join(globalResources.getPath("uploadCache"), vibeData.imageSource);
                                     if (fs.existsSync(cacheImagePath)) {
                                         vibeImageBuffer = fs.readFileSync(cacheImagePath);
                                     } else {
@@ -2038,7 +2025,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                     });
                                 }
                             } else {
-                                console.warn(`⚠️ Vibe file not found: ${vibeFilePath}`);
+                                console.warn(`⚠️ Vibe not found in database: ${vibeTransfer.id}`);
                             }
                         }
                     } catch (error) {
@@ -2064,7 +2051,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
 
                     switch (charaRefData.type) {
                         case 'cache':
-                            charaImagePath = path.join(uploadCacheDir, charaRefData.id);
+                            charaImagePath = path.join(globalResources.getPath("uploadCache"), charaRefData.id);
                             if (fs.existsSync(charaImagePath)) {
                                 charaImageBuffer = fs.readFileSync(charaImagePath);
                             } else {
@@ -2072,7 +2059,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             }
                             break;
                         case 'file':
-                            charaImagePath = path.join(imagesDir, charaRefData.filename || charaRefData.id);
+                            charaImagePath = path.join(globalResources.getPath("images"), charaRefData.filename || charaRefData.id);
                             if (fs.existsSync(charaImagePath)) {
                                 charaImageBuffer = fs.readFileSync(charaImagePath);
                             } else {
@@ -2080,27 +2067,27 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             }
                             break;
                         case 'vibe':
-                            // For vibe type, try to load from vibe cache directory
-                            const vibeCacheDir = path.join(cacheDir, 'vibe');
-                            const vibeFilePath = path.join(vibeCacheDir, `${charaRefData.id}.json`);
-                            if (fs.existsSync(vibeFilePath)) {
-                                try {
-                                    const vibeData = JSON.parse(fs.readFileSync(vibeFilePath, 'utf8'));
-                                    if (vibeData.type === 'base64' && vibeData.image) {
-                                        charaImageBuffer = Buffer.from(vibeData.image, 'base64');
-                                    } else if (vibeData.type === 'cache' && vibeData.image) {
-                                        const cacheImagePath = path.join(uploadCacheDir, vibeData.image);
+                            // For vibe type, load from database
+                            try {
+                                const refDb = globalResources.getReferenceMetadataDatabase();
+                                const vibe = refDb.getVibeMetadata(charaRefData.id);
+                                
+                                if (vibe) {
+                                    if (vibe.type === 'base64' && vibe.imageSource) {
+                                        charaImageBuffer = Buffer.from(vibe.imageSource, 'base64');
+                                    } else if (vibe.type === 'cache' && vibe.imageSource) {
+                                        const cacheImagePath = path.join(globalResources.getPath("uploadCache"), vibe.imageSource);
                                         if (fs.existsSync(cacheImagePath)) {
                                             charaImageBuffer = fs.readFileSync(cacheImagePath);
                                         } else {
                                             console.warn(`⚠️ Vibe cache image not found: ${cacheImagePath}`);
                                         }
                                     }
-                                } catch (error) {
-                                    console.warn(`⚠️ Error reading vibe data for character reference: ${error.message}`);
+                                } else {
+                                    console.warn(`⚠️ Character reference vibe not found in database: ${charaRefData.id}`);
                                 }
-                            } else {
-                                console.warn(`⚠️ Character reference vibe file not found: ${vibeFilePath}`);
+                            } catch (error) {
+                                console.warn(`⚠️ Error reading vibe data for character reference: ${error.message}`);
                             }
                             break;
                         default:
@@ -2263,7 +2250,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                         };
                     })(ws, handler, sessionId);
 
-                    aiResponse = await callDirectorAIWithCompletion(conversationMessages, {
+                    aiResponse = await globalResources.getGrokService().callDirectorAIWithCompletion(conversationMessages, {
                         model: selectedModel,
                         reasoningEffort,
                         timeout,
@@ -2306,7 +2293,7 @@ async function handleDirectorGetMessages(handler, ws, message, clientInfo, wsSer
             return;
         }
         
-        const messages = getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
+        const messages = await getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
         
         handler.sendToClient(ws, {
             type: 'director_get_messages_response',
@@ -2338,7 +2325,7 @@ async function handleDirectorRollbackMessage(handler, ws, message, clientInfo, w
         }
 
         // Get all messages for the session to find the target message
-        const messages = getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
+        const messages = await getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
         const targetMessageIndex = messages.findIndex(msg => msg.id === messageId || msg.timestamp === messageId);
 
         if (targetMessageIndex === -1) {
@@ -2357,7 +2344,7 @@ async function handleDirectorRollbackMessage(handler, ws, message, clientInfo, w
         console.log(`🗑️ Deleting ${messagesToDelete.length} messages from session ${sessionId}`);
 
         // Delete messages from database for this specific session
-        const success = deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
+        const success = await deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
 
         if (!success) {
             handler.sendError(ws, 'Failed to delete messages from database', 'DATABASE_ERROR', message.requestId);

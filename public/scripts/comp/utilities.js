@@ -1005,20 +1005,21 @@ function updateManualPriceDisplay(bypass = false) {
 
             // Update display
             priceIcon.className = 'nai-anla';
-            const paidRequestToggle = document.getElementById('paidRequestToggle');
             if (!cost.isFree || (cost.isFree && cost.opus > 0) || totalCost > 0) {
                 // Paid request
                 priceList.textContent = `${totalCost}`;
                 priceDisplay.classList.remove('free');
                 if (paidRequestToggle) paidRequestToggle.classList.add('active');
+                if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'on');
             } else {
                 // Free request
                 priceList.textContent = '0';
                 priceDisplay.classList.add('free');
                 if (paidRequestToggle) paidRequestToggle.classList.remove('active');
+                if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'off');
             }
 
-            // Show the price display
+            // Show the price displays
             priceDisplay.classList.remove('hidden');
 
         } catch (error) {
@@ -1790,6 +1791,7 @@ function validatePresetWithTimeout() {
     presetValidationTimeout = setTimeout(() => {
         updatePresetLoadSaveState();
         updateManualPresetToggleBtn();
+        updateManualModalTitlebar();
     }, 300); // 300ms delay
 }
 

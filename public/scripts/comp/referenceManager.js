@@ -16,7 +16,6 @@ const cacheManagerRefreshBtn = document.getElementById('cacheManagerRefreshBtn')
 const cacheManagerUploadBtn = document.getElementById('cacheManagerUploadBtn');
 const showAllReferencesBtn = document.getElementById('showAllReferencesBtn');
 const closeVibeEncodingBtn = document.getElementById('closeVibeEncodingBtn');
-const vibeEncodingCancelBtn = document.getElementById('vibeEncodingCancelBtn');
 const vibeEncodingConfirmBtn = document.getElementById('vibeEncodingConfirmBtn');
 const vibeEncodingFileInput = document.getElementById('vibeEncodingFileInput');
 const vibeEncodingIeInput = document.getElementById('vibeEncodingIeInput');
@@ -30,7 +29,6 @@ const vibeEncodingReferenceSection = document.getElementById('vibeEncodingRefere
 const vibeEncodingReferencePreview = document.getElementById('vibeEncodingReferencePreview');
 const closeVibeManagerMoveModalBtn = document.getElementById('closeVibeManagerMoveModalBtn');
 const closeVibeManagerDeleteModalBtn = document.getElementById('closeVibeManagerDeleteModalBtn');
-const vibeManagerDeleteCancelBtn = document.getElementById('vibeManagerDeleteCancelBtn');
 const vibeManagerDeleteConfirmBtn = document.getElementById('vibeManagerDeleteConfirmBtn');
 const cacheManagerMoveConfirmBtn = document.getElementById('cacheManagerMoveConfirmBtn');
 const vibeManagerMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
@@ -1016,7 +1014,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'btn-danger blur btn-small';
-    deleteBtn.innerHTML = '<i class="nai-thin-cross"></i>';
+    deleteBtn.innerHTML = '<i class="fa-regular fa-xmark-large"></i>';
     deleteBtn.title = 'Remove vibe reference';
     deleteBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1149,7 +1147,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
             
             // Check if vibe is locked
             if (vibeRef.locked) {
-                const shouldRemove = await window.showConfirmationDialog(
+                const shouldRemove = await showConfirmationDialog(
                     'This reference cannot be modified. Would you like to remove it from your references?',
                     [
                         { text: 'Remove Reference', value: true, className: 'btn-danger' },
@@ -1642,7 +1640,7 @@ async function hideCacheManagerModal() {
     detachContextMenuFromManagerItems();
 
     if (cacheManagerModal) {
-        closeModal(cacheManagerModal);
+        await closeModal(cacheManagerModal);
     }
     
     if (!cacheBrowserContainer.classList.contains('hidden')) {
@@ -1954,6 +1952,12 @@ function createCacheManagerGalleryItem(cacheImage) {
 
     item.appendChild(img);
     item.appendChild(badgesContainer);
+    
+    // Add click handler to open in image viewer
+    item.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.openReferenceImageInViewer(cacheImage); // Open in image viewer
+    });
 
     return item;
 }
@@ -2035,6 +2039,90 @@ function createReferenceManagerContextMenuConfig() {
                                 menuItem.disabled = false;
                             }
                         }
+                    },
+                    {
+                        icon: 'fas fa-image',
+                        text: 'Set as Wallpaper',
+                        action: 'reference-manager-set-wallpaper',
+                        hidden: () => !document.body.classList.contains('desktop-mode')
+                    },
+                    {
+                        icon: 'fas fa-arrow-down-left',
+                        text: 'Add to Desktop...',
+                        submenu: [
+                            {
+                                text: 'Base Image',
+                                icon: 'nai-img2img',
+                                action: 'reference-manager-create-shortcut-base'
+                            },
+                            {
+                                text: 'Vibe',
+                                icon: 'nai-vibe-transfer',
+                                action: 'reference-manager-create-shortcut-vibe'
+                            },
+                            {
+                                text: 'Character',
+                                icon: 'nai-image-tool-line-art',
+                                action: 'reference-manager-create-shortcut-character'
+                            }
+                        ],
+                        hidden: () => !document.body.classList.contains('desktop-mode')
+                    },
+                    {
+                        icon: 'fas fa-plus',
+                        text: 'Add to Studio as...',
+                        hidden: () => {
+                            const isDesktopMode = document.body.classList.contains('desktop-mode');
+                            const manualModal = document.getElementById('manualModal');
+                            const isManualModalActive = manualModal && !manualModal.classList.contains('hidden');
+                            return !isDesktopMode || !isManualModalActive;
+                        },
+                        submenu: [
+                            {
+                                text: 'Base Image',
+                                icon: 'nai-img2img',
+                                action: 'reference-manager-add-as-base',
+                                loadfn: (menuItem, target) => {
+                                    const cacheImage = getCacheManagerImageFromElement(target);
+                                    menuItem.disabled = (!cacheImage) ? true : (cacheImage.isStandalone || false);
+                                }
+                            },
+                            {
+                                text: 'Vibe',
+                                icon: 'nai-vibe-transfer',
+                                action: 'reference-manager-add-as-vibe',
+                                loadfn: (menuItem, target) => {
+                                    const cacheImage = getCacheManagerImageFromElement(target);
+                                    if (!cacheImage || window.currentMaskData) {
+                                        menuItem.disabled = true;
+                                        return;
+                                    }
+                                    
+                                    // Check if there are available encodings for the current model
+                                    const currentModel = getCurrentSelectedModel();
+                                    let hasCompatibleEncodings = false;
+                                    if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
+                                        hasCompatibleEncodings = cacheImage.vibes.some(vibe => 
+                                            vibe.encodings && vibe.encodings.some(encoding => 
+                                                encoding.model.toLowerCase() === currentModel.toLowerCase()
+                                            )
+                                        );
+                                    }
+                                    
+                                    // Disable if no compatible encodings or no vibes at all
+                                    menuItem.disabled = !hasCompatibleEncodings;
+                                }
+                            },
+                            {
+                                text: 'Character',
+                                icon: 'nai-image-tool-line-art',
+                                action: 'reference-manager-add-as-character',
+                                loadfn: (menuItem, target) => {
+                                    const cacheImage = getCacheManagerImageFromElement(target);
+                                    menuItem.disabled = (!cacheImage || !cacheImage.hash);
+                                }
+                            }
+                        ]
                     }
                 ]
             },
@@ -2046,7 +2134,8 @@ function createReferenceManagerContextMenuConfig() {
                         icon: 'fas fa-planet-ringed',
                         text: 'Move to...',
                         optionsfn: getMoveWorkspaceOptions,
-                        handlerfn: handleMoveWorkspaceAction
+                        handlerfn: handleMoveWorkspaceAction,
+                        openOnHover: false
                     },
                     {
                         icon: 'fas fa-fire',
@@ -2141,6 +2230,12 @@ function createReferenceBrowserContextMenuConfig() {
                             menuItem.disabled = !cacheImage;
                         }
                     },
+                ]
+            },
+            {
+                type: 'list',
+                hidden: () => !document.body.classList.contains('desktop-mode'),
+                items: [
                     {
                         icon: 'fas fa-external-link-alt',
                         tooltip: 'Open in Window',
@@ -2149,6 +2244,27 @@ function createReferenceBrowserContextMenuConfig() {
                             const cacheImage = getReferenceBrowserImageFromElement(target);
                             menuItem.disabled = !cacheImage;
                         }
+                    },
+                    {
+                        icon: 'fas fa-arrow-down-left',
+                        text: 'Add to Desktop...',
+                        submenu: [
+                            {
+                                text: 'Base Image',
+                                icon: 'nai-img2img',
+                                action: 'reference-browser-create-shortcut-base'
+                            },
+                            {
+                                text: 'Vibe',
+                                icon: 'nai-vibe-transfer',
+                                action: 'reference-browser-create-shortcut-vibe'
+                            },
+                            {
+                                text: 'Character',
+                                icon: 'nai-image-tool-line-art',
+                                action: 'reference-browser-create-shortcut-character'
+                            }
+                        ]
                     }
                 ]
             },
@@ -2669,7 +2785,14 @@ function handleReferenceManagerContextMenuAction(event) {
         'reference-manager-preview',
         'reference-manager-vibe-encode',
         'reference-manager-director',
-        'reference-manager-manage'
+        'reference-manager-manage',
+        'reference-manager-set-wallpaper',
+        'reference-manager-create-shortcut-base',
+        'reference-manager-create-shortcut-vibe',
+        'reference-manager-create-shortcut-character',
+        'reference-manager-add-as-base',
+        'reference-manager-add-as-vibe',
+        'reference-manager-add-as-character'
     ];
 
     if (!referenceManagerActions.includes(action)) {
@@ -2736,6 +2859,28 @@ function handleReferenceManagerContextMenuAction(event) {
         case 'reference-manager-manage':
             showManageReferenceModal(cacheImage);
             break;
+        case 'reference-manager-set-wallpaper':
+            // Open desktop settings modal with this image
+            openDesktopSettingsModal(`cache:${cacheImage.hash}`);
+            break;
+        case 'reference-manager-create-shortcut-base':
+            createDesktopShortcutFromReference(cacheImage, 'base');
+            break;
+        case 'reference-manager-create-shortcut-vibe':
+            createDesktopShortcutFromReference(cacheImage, 'vibe');
+            break;
+        case 'reference-manager-create-shortcut-character':
+            createDesktopShortcutFromReference(cacheImage, 'character');
+            break;
+        case 'reference-manager-add-as-base':
+            addAsBaseImage(cacheImage);
+            break;
+        case 'reference-manager-add-as-vibe':
+            addAsVibeReference(cacheImage);
+            break;
+        case 'reference-manager-add-as-character':
+            addAsCharacterReference(cacheImage);
+            break;
     }
 }
 
@@ -2755,7 +2900,10 @@ function handleReferenceBrowserContextMenuAction(event) {
         'reference-browser-all-workspaces',
         'reference-browser-open-manager',
         'reference-browser-import',
-        'reference-browser-cancel'
+        'reference-browser-cancel',
+        'reference-browser-create-shortcut-base',
+        'reference-browser-create-shortcut-vibe',
+        'reference-browser-create-shortcut-character'
     ];
 
     if (!referenceBrowserActions.includes(action)) {
@@ -2838,6 +2986,15 @@ function handleReferenceBrowserContextMenuAction(event) {
             break;
         case 'reference-browser-cancel':
             hideCacheBrowser();
+            break;
+        case 'reference-browser-create-shortcut-base':
+            createDesktopShortcutFromReference(cacheImage, 'base');
+            break;
+        case 'reference-browser-create-shortcut-vibe':
+            createDesktopShortcutFromReference(cacheImage, 'vibe');
+            break;
+        case 'reference-browser-create-shortcut-character':
+            createDesktopShortcutFromReference(cacheImage, 'character');
             break;
 
         case 'reference-browser-open-in-window':
@@ -2984,8 +3141,8 @@ const unifiedUploadModalManager = {
     },
 
     // Hide modal
-    hide() {
-        if (unifiedUploadModal) closeModal(unifiedUploadModal);
+    async hide() {
+        if (unifiedUploadModal) await closeModal(unifiedUploadModal);
         hideGalleryMoveRightPanelCover();
         this.reset();
     }
@@ -3404,15 +3561,12 @@ async function handleUnifiedUploadOpenInEditor() {
                 };
             }
             
-            // Close upload modal
-            unifiedUploadModalManager.hide();
-            
             // Open manual modal directly without img2img functionality
             // This is a blueprint edit, not an image variation edit
-            showManualModal();
+            await openManualModalWithContent({ type: 'metadata', data: finalMetadata, title: imageData?.filename });
             
-            // Load the blueprint metadata into the manual form
-            await loadIntoManualForm(finalMetadata);
+            // Close upload modal
+            unifiedUploadModalManager.hide();
 
         } else {
             showError('Open in Editor is only available for blueprint mode');
@@ -3633,7 +3787,7 @@ function transformMetadataForEditor(metadata) {
     // Create a copy of the metadata to avoid modifying the original
     const transformed = { ...metadata };
     
-    // Map fields to match what loadIntoManualForm expects
+    // Map fields to match
     if (transformed.characterPrompts && Array.isArray(transformed.characterPrompts)) {
         transformed.allCharacterPrompts = transformed.characterPrompts;
 
@@ -4928,9 +5082,7 @@ function showVibeEncodingModal(mode, data = null, targetModel = null, targetIe =
 }
 
 async function hideVibeEncodingModal() {
-    if (vibeEncodingModal) {
-        closeModal(vibeEncodingModal);
-    }
+    await closeModal(vibeEncodingModal);
     
     // Reset state
     vibeEncodingCurrentMode = null;
@@ -6870,7 +7022,6 @@ function initializeCacheManager() {
 
     // Combined Vibe Encoding Modal Controls
     if (closeVibeEncodingBtn) closeVibeEncodingBtn.addEventListener('click', async () => await hideVibeEncodingModal());
-    if (vibeEncodingCancelBtn) vibeEncodingCancelBtn.addEventListener('click', async () => await hideVibeEncodingModal());
     if (vibeEncodingConfirmBtn) vibeEncodingConfirmBtn.addEventListener('click', handleVibeEncodingConfirm);
 
 
@@ -6906,7 +7057,6 @@ function initializeCacheManager() {
     // Vibe Manager delete modal controls
 
     if (closeVibeManagerDeleteModalBtn) closeVibeManagerDeleteModalBtn.addEventListener('click', hideVibeManagerDeleteModal);
-    if (vibeManagerDeleteCancelBtn) vibeManagerDeleteCancelBtn.addEventListener('click', hideVibeManagerDeleteModal);
     if (vibeManagerDeleteConfirmBtn) vibeManagerDeleteConfirmBtn.addEventListener('click', handleVibeManagerDeleteConfirm);
     // Vibe Manager move modal controls
 
@@ -8430,13 +8580,13 @@ function showManageReferenceModal(reference) {
     }
     
     // Show modal
-    modal.classList.remove('hidden');
+    openModal(modal);
 }
 
-function hideManageReferenceModal() {
+async function hideManageReferenceModal() {
     const modal = document.getElementById('cacheMetadataModal');
     if (modal) {
-        modal.classList.add('hidden');
+        await closeModal(modal);
     }
     currentManageReference = null;
 }
@@ -8520,6 +8670,80 @@ window.refreshCacheBrowser = refreshCacheBrowser;
 window.createDirectorSessionWithImage = createDirectorSessionWithImage;
 window.showManageReferenceModal = showManageReferenceModal;
 window.transformMetadataForEditor = transformMetadataForEditor;
+
+// Create desktop shortcut from reference
+async function createDesktopShortcutFromReference(cacheImage, refType = null) {
+    try {
+        if (!desktopShortcuts) {
+            showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        
+        if (!cacheImage || !cacheImage.hash) {
+            showGlassToast('error', 'Error', 'Reference data not found', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+        
+        // Use provided refType or auto-detect
+        if (!refType) {
+            // Auto-detect from cache image
+            if (cacheImage.hasVibes && cacheImage.vibes && cacheImage.vibes.length > 0) {
+                refType = 'vibe';
+            } else {
+                refType = 'base'; // default
+            }
+        }
+        
+        // Create shortcut object
+        // Determine the correct preview value:
+        // - If preview/hasPreview is a string, use it directly (standalone vibes)
+        // - If hasPreview is boolean true, convert to hash.webp (regular cache images)
+        // - Otherwise, leave undefined
+        let previewValue;
+        if (cacheImage.preview && typeof cacheImage.preview === 'string') {
+            previewValue = cacheImage.preview;
+        } else if (cacheImage.hasPreview && typeof cacheImage.hasPreview === 'string') {
+            previewValue = cacheImage.hasPreview;
+        } else if (cacheImage.hasPreview === true) {
+            // Convert boolean true to the actual preview filename for display
+            previewValue = `${cacheImage.hash}.webp`;
+        } else {
+            previewValue = undefined;
+        }
+        
+        // Collect additional data needed for drag-and-drop to manual modal
+        const shortcutData = {
+            hash: cacheImage.hash,
+            filename: cacheImage.filename,
+            preview: previewValue,
+            refType: refType,
+            isStandalone: cacheImage.isStandalone || false,
+            hasVibes: cacheImage.hasVibes || false,
+            workspaceId: cacheImage.workspaceId
+        };
+        
+        // For vibe shortcuts, store the vibe ID for direct lookup
+        if (refType === 'vibe' && cacheImage.vibes && cacheImage.vibes.length > 0) {
+            shortcutData.vibeId = cacheImage.vibes[0].id;
+        }
+        
+        const shortcut = {
+            name: cacheImage.filename || cacheImage.hash.substring(0, 16),
+            type: 'reference',
+            data: shortcutData
+        };
+        
+        // Add shortcut
+        await desktopShortcuts.addShortcut(shortcut);
+        
+        const typeNames = { vibe: 'Vibe', base: 'Base Image', character: 'Character' };
+        const typeName = typeNames[refType] || 'Reference';
+        showGlassToast('success', null, `${typeName} shortcut added to desktop`, false, 3000, '<i class="fas fa-link"></i>');
+    } catch (error) {
+        console.error('Failed to create desktop shortcut:', error);
+        showGlassToast('error', 'Error', 'Failed to create shortcut', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
 
 window.wsClient.registerInitStep(40, 'Initializing reference manager', async () => {
     await initializeCacheManager();

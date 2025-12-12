@@ -1,5 +1,5 @@
 const fs = require('fs');
-const config = require('./../config.json');
+const globalResources = require('./globalResources');
 
 // Authentication middleware
 const authMiddleware = (req, res, next) => {
@@ -11,7 +11,8 @@ const authMiddleware = (req, res, next) => {
     res.setHeader('ETag', `"${Date.now()}"`);
     
     // Check if authentication is required
-    if (config.loginKey === null) {
+    const loginKey = globalResources.getConfig({ path: 'loginKey' });
+    if (loginKey === null) {
         return next();
     }
 
@@ -61,7 +62,8 @@ const devAuthMiddleware = (req, res, next) => {
     res.setHeader('ETag', `"${Date.now()}"`);
     
     // Check if development mode is enabled
-    if (!config.enable_dev) {
+    const enableDev = globalResources.getConfig({ path: 'enable_dev' });
+    if (!enableDev) {
         return res.status(404).json({ error: 'Development mode not enabled' });
     }
     

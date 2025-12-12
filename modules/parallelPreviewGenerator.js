@@ -1,5 +1,4 @@
 const { generateMobilePreviews } = require('./previewUtils');
-const { getBaseName } = require('./pngMetadata');
 const fs = require('fs');
 const path = require('path');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -36,7 +35,8 @@ if (!isMainThread) {
 
 // Main thread code
 class ParallelPreviewGenerator {
-    constructor(options = {}) {
+    constructor(globalResources, options = {}) {
+        this.globalResources = globalResources;
         this.batchSize = options.batchSize || Math.min(os.cpus().length, 6); // Max 6 workers
         this.skipExisting = options.skipExisting || false;
         this.forceRegenerate = options.forceRegenerate || false;
@@ -60,7 +60,7 @@ class ParallelPreviewGenerator {
             
             const workers = batch.map(imageFile => {
                 const imagePath = path.join(imagesDir, imageFile);
-                const basename = getBaseName(imageFile);
+                const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);
                 
                 // Remove existing previews if force regenerate
                 if (this.forceRegenerate) {
@@ -172,7 +172,7 @@ class ParallelPreviewGenerator {
         
         // Filter to only images without previews
         const imagesNeedingPreviews = imageFiles.filter(imageFile => {
-            const basename = getBaseName(imageFile);
+            const basename = this.globalResources.getPngMetadata().getBaseName(imageFile);
             const previewTypes = ['.webp', '@2x.webp', '@lq.webp', '@blur.webp'];
             return !previewTypes.every(type => {
                 const previewPath = path.join(previewsDir, `${basename}${type}`);

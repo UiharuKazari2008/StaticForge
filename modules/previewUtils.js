@@ -151,7 +151,21 @@ async function generateMobilePreviews(imagePath, basename) {
                     ...qualitySettings.medium,
                     ...commonWebPOptions
                 })
-                .toFile(blurPreviewPath)
+                .toFile(blurPreviewPath),
+                // Tiny thumbnail (32x32) - generated as buffer and stored in database only
+                image.clone()
+                    .resize(32, 32, { 
+                        fit: 'cover',
+                        withoutEnlargement: true,
+                        kernel: sharp.kernel.nearest, // Fastest kernel for tiny images
+                        fastShrinkOnLoad: true
+                    })
+                    .jpeg({ 
+                        quality: 30, // Very low quality for minimal size
+                        mozjpeg: true, // Better compression
+                        progressive: false // No progressive encoding for smaller size
+                    })
+                    .toBuffer()
         ];
         
         // Wait for all previews to complete in parallel with error handling
@@ -165,6 +179,26 @@ async function generateMobilePreviews(imagePath, basename) {
             return false;
         }
         
+        // Store tiny thumbnail in database (no file write needed)
+        const tinyThumbnailResult = results[results.length - 1];
+        if (tinyThumbnailResult.status === 'fulfilled' && tinyThumbnailResult.value) {
+            try {
+                // Extract filename from imagePath
+                const filename = path.basename(imagePath);
+                const globalResources = require('./globalResources');
+                const metadataDb = globalResources.getMetadataDatabase();
+                
+                if (metadataDb && typeof metadataDb.updateTinyThumbnail === 'function') {
+                    const base64 = tinyThumbnailResult.value.toString('base64');
+                    const dataUrl = `data:image/jpeg;base64,${base64}`;
+                    await metadataDb.updateTinyThumbnail(filename, dataUrl);
+                }
+            } catch (error) {
+                // Silently fail - database update is optional
+                console.warn(`⚠️ Could not update tiny thumbnail in database for ${basename}:`, error.message);
+            }
+        }
+        
         return true;
     } catch (e) {
         console.error('Failed to generate mobile previews for', imagePath, ':', e.message);
@@ -173,8 +207,55 @@ async function generateMobilePreviews(imagePath, basename) {
 }
 
 
+// Generate only the tiny thumbnail and return as data URL (no database write)
+// Database writes should be done in batches via updateTinyThumbnailsBatch
+async function generateTinyThumbnailOnly(imagePath, filename) {
+    try {
+        if (!imagePath || !filename) {
+            console.error('generateTinyThumbnailOnly: Missing required parameters');
+            return null;
+        }
+
+        // Check if source image exists
+        if (!fs.existsSync(imagePath)) {
+            console.error('generateTinyThumbnailOnly: Source image does not exist:', imagePath);
+            return null;
+        }
+
+        // Generate tiny thumbnail as buffer
+        const buffer = await sharp(imagePath, {
+            failOnError: false,
+            unlimited: true,
+            sequentialRead: true,
+            density: 72
+        })
+            .resize(32, 32, { 
+                fit: 'cover',
+                withoutEnlargement: true,
+                kernel: sharp.kernel.nearest, // Fastest kernel for tiny images
+                fastShrinkOnLoad: true
+            })
+            .jpeg({ 
+                quality: 30, // Very low quality for minimal size
+                mozjpeg: true, // Better compression
+                progressive: false // No progressive encoding for smaller size
+            })
+            .toBuffer();
+        
+        // Convert to base64 data URL
+        const base64 = buffer.toString('base64');
+        const dataUrl = `data:image/jpeg;base64,${base64}`;
+        
+        return dataUrl;
+    } catch (error) {
+        console.error('Failed to generate tiny thumbnail for', imagePath, ':', error.message);
+        return null;
+    }
+}
+
 module.exports = {
     generatePreview,
     generateBlurredPreview,
-    generateMobilePreviews
+    generateMobilePreviews,
+    generateTinyThumbnailOnly
 };

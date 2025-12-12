@@ -3,135 +3,140 @@ const path = require('path');
 const sharp = require('sharp');
 const { getImageDimensions, getResolutionFromDimensions } = require('./imageTools');
 
-// Helper: Read PNG metadata
-function readMetadata(buffer) {
-    const result = {};
-    const chunks = extractChunks(buffer);
-    chunks.forEach(chunk => {
-        switch (chunk.name) {
-            case 'tEXt':
-                if (!result.tEXt) {
-                    result.tEXt = {};
-                }
-                const textChunk = textDecode(chunk.data);
-                result.tEXt[textChunk.keyword] = textChunk.text;
-                break;
-            case 'pHYs':
-                result.pHYs = {
-                    x: readUint32(chunk.data, 0),
-                    y: readUint32(chunk.data, 4),
-                    unit: chunk.data[8]
-                };
-                break;
-            case 'iTXt':
-                const textDecodeResult = textDecode(chunk.data);
-                if (textDecodeResult.keyword === "Comment" || textDecodeResult.keyword === "Source" || textDecodeResult.keyword === "Software") {
-                    try {
-                        if (!result.tEXt) {
-                            result.tEXt = {};
-                        }
-                        result.tEXt[textDecodeResult.keyword] = textDecodeResult.text.replaceAll("\x00", "");
-                    } catch (e) {
-                        console.error(e.message);
+class PngMetadata {
+    constructor(globalResources) {
+        this.globalResources = globalResources;
+    }
+
+    // Helper: Read PNG metadata
+    readMetadata(buffer) {
+        const result = {};
+        const chunks = this.extractChunks(buffer);
+        chunks.forEach(chunk => {
+            switch (chunk.name) {
+                case 'tEXt':
+                    if (!result.tEXt) {
+                        result.tEXt = {};
                     }
+                    const textChunk = this.textDecode(chunk.data);
+                    result.tEXt[textChunk.keyword] = textChunk.text;
+                    break;
+                case 'pHYs':
+                    result.pHYs = {
+                        x: this.readUint32(chunk.data, 0),
+                        y: this.readUint32(chunk.data, 4),
+                        unit: chunk.data[8]
+                    };
+                    break;
+                case 'iTXt':
+                    const textDecodeResult = this.textDecode(chunk.data);
+                    if (textDecodeResult.keyword === "Comment" || textDecodeResult.keyword === "Source" || textDecodeResult.keyword === "Software") {
+                        try {
+                            if (!result.tEXt) {
+                                result.tEXt = {};
+                            }
+                            result.tEXt[textDecodeResult.keyword] = textDecodeResult.text.replaceAll("\x00", "");
+                        } catch (e) {
+                            console.error(e.message);
+                        }
+                    }
+                    break;
+                default:
+                    result[chunk.name] = true;
+            }
+        });
+        return result;
+    }
+
+    // Helper: Update PNG metadata with forge_data
+    updateMetadata(imageBuffer, forgeData) {
+        try {
+            const metadata = this.readMetadata(imageBuffer);
+            let existingMetadata = {};
+            
+            // Parse existing Comment metadata if it exists
+            if (metadata.tEXt && metadata.tEXt.Comment) {
+                try {
+                    existingMetadata = JSON.parse(metadata.tEXt.Comment);
+                } catch (e) {
+                    console.error('Error parsing existing metadata:', e.message);
+                    existingMetadata = {};
                 }
+            }
+            
+            // Merge forge_data
+            const hasExistingForgeData = !!existingMetadata.forge_data;
+            if (!existingMetadata.forge_data) {
+                existingMetadata.forge_data = {};
+            }
+            existingMetadata.forge_data.software = 'StaticForge v1.0';
+            if (!existingMetadata.forge_data.history) {
+                existingMetadata.forge_data.history = [];
+            }
+            // Preserve existing preset_name if it exists
+            const existingPresetName = existingMetadata.forge_data.preset_name;
+            
+            if (hasExistingForgeData) {
+                const currentSeed = existingMetadata.seed;
+                const historyEntry = {
+                    generation_type: existingMetadata.forge_data.generation_type || 'unknown',
+                    date_generated: existingMetadata.forge_data.date_generated || Date.now(),
+                    seed: currentSeed,
+                    filename: existingMetadata.filename || 'unknown'
+                };
+                existingMetadata.forge_data.history.push(historyEntry);
+            }
+            
+            // Merge new data into existing forge_data, excluding null values
+            const cleanForgeData = {};
+            for (const [key, value] of Object.entries(forgeData)) {
+                if (value !== null) {
+                    cleanForgeData[key] = value;
+                }
+            }
+            
+            existingMetadata.forge_data = { ...existingMetadata.forge_data, ...cleanForgeData };
+            
+            // Restore existing preset_name if it was there
+            if (existingPresetName && !forgeData.preset_name) {
+                existingMetadata.forge_data.preset_name = existingPresetName;
+            }
+            
+            // Create new PNG with updated metadata
+            return this.insertTextChunk(imageBuffer, 'Comment', JSON.stringify(existingMetadata));
+            
+        } catch (error) {
+            console.error('Error updating metadata:', error.message);
+            return imageBuffer; // Return original buffer if update fails
+        }
+    }
+
+    // Helper: Extract PNG chunks
+    extractChunks(buffer) {
+        const data = new Uint8Array(buffer);
+        if (!this.isValidPngHeader(data)) {
+            throw new Error('Invalid .png file header');
+        }
+        let idx = 8;
+        const chunks = [];
+        while (idx < data.length) {
+            const length = this.readUint32(data, idx) + 4;
+            idx += 4;
+            const name = String.fromCharCode(...data.slice(idx, idx + 4));
+            idx += 4;
+            if (name === 'IEND') {
+                chunks.push({ name, data: new Uint8Array(0) });
                 break;
-            default:
-                result[chunk.name] = true;
-        }
-    });
-    return result;
-}
-
-// Helper: Update PNG metadata with forge_data
-function updateMetadata(imageBuffer, forgeData) {
-    try {
-        const metadata = readMetadata(imageBuffer);
-        let existingMetadata = {};
-        
-        // Parse existing Comment metadata if it exists
-        if (metadata.tEXt && metadata.tEXt.Comment) {
-            try {
-                existingMetadata = JSON.parse(metadata.tEXt.Comment);
-            } catch (e) {
-                console.error('Error parsing existing metadata:', e.message);
-                existingMetadata = {};
             }
+            const chunkData = data.slice(idx, idx + length - 4);
+            idx += length;
+            chunks.push({ name, data: chunkData });
         }
-        
-        // Merge forge_data
-        const hasExistingForgeData = !!existingMetadata.forge_data;
-        if (!existingMetadata.forge_data) {
-            existingMetadata.forge_data = {};
-        }
-        existingMetadata.forge_data.software = 'StaticForge v1.0';
-        if (!existingMetadata.forge_data.history) {
-            existingMetadata.forge_data.history = [];
-        }
-        // Preserve existing preset_name if it exists
-        const existingPresetName = existingMetadata.forge_data.preset_name;
-        
-        if (hasExistingForgeData) {
-            const currentSeed = existingMetadata.seed;
-            const historyEntry = {
-                generation_type: existingMetadata.forge_data.generation_type || 'unknown',
-                date_generated: existingMetadata.forge_data.date_generated || Date.now(),
-                seed: currentSeed,
-                filename: existingMetadata.filename || 'unknown'
-            };
-            existingMetadata.forge_data.history.push(historyEntry);
-        }
-        
-        // Merge new data into existing forge_data, excluding null values
-        const cleanForgeData = {};
-        for (const [key, value] of Object.entries(forgeData)) {
-            if (value !== null) {
-                cleanForgeData[key] = value;
-            }
-        }
-        
-        existingMetadata.forge_data = { ...existingMetadata.forge_data, ...cleanForgeData };
-        
-        // Restore existing preset_name if it was there
-        if (existingPresetName && !forgeData.preset_name) {
-            existingMetadata.forge_data.preset_name = existingPresetName;
-        }
-        
-        // Create new PNG with updated metadata
-        return insertTextChunk(imageBuffer, 'Comment', JSON.stringify(existingMetadata));
-        
-    } catch (error) {
-        console.error('Error updating metadata:', error.message);
-        return imageBuffer; // Return original buffer if update fails
+        return chunks;
     }
-}
 
-// Helper: Extract PNG chunks
-function extractChunks(buffer) {
-    const data = new Uint8Array(buffer);
-    if (!isValidPngHeader(data)) {
-        throw new Error('Invalid .png file header');
-    }
-    let idx = 8;
-    const chunks = [];
-    while (idx < data.length) {
-        const length = readUint32(data, idx) + 4;
-        idx += 4;
-        const name = String.fromCharCode(...data.slice(idx, idx + 4));
-        idx += 4;
-        if (name === 'IEND') {
-            chunks.push({ name, data: new Uint8Array(0) });
-            break;
-        }
-        const chunkData = data.slice(idx, idx + length - 4);
-        idx += length;
-        chunks.push({ name, data: chunkData });
-    }
-    return chunks;
-}
-
-// Helper: Decode text chunks
-function textDecode(data) {
+    // Helper: Decode text chunks
+    textDecode(data) {
     let naming = true;
     let text = '';
     let name = '';
@@ -148,24 +153,24 @@ function textDecode(data) {
             break;
         }
     }
-    return { keyword: name, text };
-}
+        return { keyword: name, text };
+    }
 
-// Helper: Read 32-bit unsigned integer
-function readUint32(data, offset) {
-    return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
-}
+    // Helper: Read 32-bit unsigned integer
+    readUint32(data, offset) {
+        return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+    }
 
-// Helper: Validate PNG header
-function isValidPngHeader(data) {
+    // Helper: Validate PNG header
+    isValidPngHeader(data) {
     return (
         data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47 &&
-        data[4] === 0x0D && data[5] === 0x0A && data[6] === 0x1A && data[7] === 0x0A
-    );
-}
+            data[4] === 0x0D && data[5] === 0x0A && data[6] === 0x1A && data[7] === 0x0A
+        );
+    }
 
-// Helper: Insert text chunk into PNG
-function insertTextChunk(imageBuffer, keyword, text) {
+    // Helper: Insert text chunk into PNG
+    insertTextChunk(imageBuffer, keyword, text) {
     try {
         const data = new Uint8Array(imageBuffer);
         let commentStart = -1;
@@ -173,7 +178,7 @@ function insertTextChunk(imageBuffer, keyword, text) {
         let iendPos = -1;
         let idx = 8;
         while (idx < data.length - 4) {
-            const length = readUint32(data, idx);
+            const length = this.readUint32(data, idx);
             const name = String.fromCharCode(...data.slice(idx + 4, idx + 8));
             if (name === 'tEXt') {
                 const chunkData = data.slice(idx + 8, idx + 8 + length);
@@ -209,7 +214,7 @@ function insertTextChunk(imageBuffer, keyword, text) {
         fullChunk[3] = chunkLength & 0xFF;
         fullChunk.set(typeBytes, 4);
         fullChunk.set(chunkData, 8);
-        const crc = calculateCRC(fullChunk.slice(4, 8 + chunkLength));
+        const crc = this.calculateCRC(fullChunk.slice(4, 8 + chunkLength));
         fullChunk[8 + chunkLength] = (crc >>> 24) & 0xFF;
         fullChunk[8 + chunkLength + 1] = (crc >>> 16) & 0xFF;
         fullChunk[8 + chunkLength + 2] = (crc >>> 8) & 0xFF;
@@ -237,51 +242,50 @@ function insertTextChunk(imageBuffer, keyword, text) {
     }
 }
 
-// Helper: Calculate CRC32
-function calculateCRC(data) {
-    let crc = 0xFFFFFFFF;
-    const table = [];
-    for (let i = 0; i < 256; i++) {
-        let c = i;
-        for (let j = 0; j < 8; j++) {
-            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+    // Helper: Calculate CRC32
+    calculateCRC(data) {
+        let crc = 0xFFFFFFFF;
+        const table = [];
+        for (let i = 0; i < 256; i++) {
+            let c = i;
+            for (let j = 0; j < 8; j++) {
+                c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+            }
+            table[i] = c;
         }
-        table[i] = c;
-    }
-    for (let i = 0; i < data.length; i++) {
-        crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
-    }
-    return (crc ^ 0xFFFFFFFF) >>> 0;
-}
-
-// Utility: Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer
-function stripPngTextChunks(buffer) {
-    // PNG header is 8 bytes
-    if (!buffer || buffer.length < 8 || buffer.readUInt32BE(0) !== 0x89504e47) return buffer;
-    const PNG_HEADER = buffer.slice(0, 8);
-    let offset = 8;
-    const outChunks = [PNG_HEADER];
-    while (offset < buffer.length) {
-        if (offset + 8 > buffer.length) break;
-        const length = buffer.readUInt32BE(offset);
-        const type = buffer.toString('ascii', offset + 4, offset + 8);
-        const chunkStart = offset;
-        const chunkEnd = offset + 12 + length;
-        // Strip all text-related chunks: tEXt, iTXt, and zTXt
-        if (type !== 'tEXt' && type !== 'iTXt' && type !== 'zTXt') {
-            outChunks.push(buffer.slice(chunkStart, chunkEnd));
+        for (let i = 0; i < data.length; i++) {
+            crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
         }
-        offset = chunkEnd;
+        return (crc ^ 0xFFFFFFFF) >>> 0;
     }
-    return Buffer.concat(outChunks);
-}
 
+    // Utility: Strip all text chunks (tEXt, iTXt, zTXt) from a PNG buffer
+    stripPngTextChunks(buffer) {
+        // PNG header is 8 bytes
+        if (!buffer || buffer.length < 8 || buffer.readUInt32BE(0) !== 0x89504e47) return buffer;
+        const PNG_HEADER = buffer.slice(0, 8);
+        let offset = 8;
+        const outChunks = [PNG_HEADER];
+        while (offset < buffer.length) {
+            if (offset + 8 > buffer.length) break;
+            const length = buffer.readUInt32BE(offset);
+            const type = buffer.toString('ascii', offset + 4, offset + 8);
+            const chunkStart = offset;
+            const chunkEnd = offset + 12 + length;
+            // Strip all text-related chunks: tEXt, iTXt, and zTXt
+            if (type !== 'tEXt' && type !== 'iTXt' && type !== 'zTXt') {
+                outChunks.push(buffer.slice(chunkStart, chunkEnd));
+            }
+            offset = chunkEnd;
+        }
+        return Buffer.concat(outChunks);
+    }
 
-// Helper: Extract NovelAI metadata from PNG
-function extractNovelAIMetadata(filePath) {
-    try {
-        const buffer = fs.readFileSync(filePath);
-        const metadata = readMetadata(buffer);
+    // Helper: Extract NovelAI metadata from PNG
+    extractNovelAIMetadata(filePath) {
+        try {
+            const buffer = fs.readFileSync(filePath);
+            const metadata = this.readMetadata(buffer);
         
         if (metadata.tEXt && metadata.tEXt.Comment) {
             let _metadata = JSON.parse(metadata.tEXt.Comment);
@@ -313,7 +317,7 @@ function extractNovelAIMetadata(filePath) {
                 if (fs.existsSync(originalPath)) {
                     try {
                         const originalBuffer = fs.readFileSync(originalPath);
-                        const originalMetadata = readMetadata(originalBuffer);
+                        const originalMetadata = this.readMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
                             _metadata = JSON.parse(originalMetadata.tEXt.Comment);
                             console.log(`✅ Loaded original metadata from: ${originalFilename}`);
@@ -413,144 +417,55 @@ function extractNovelAIMetadata(filePath) {
     } catch (error) {
         console.error('Error extracting metadata:', error.message);
         return null;
-    }
-}
-
-// Dynamic prompt config loading
-let promptConfig = null;
-let promptConfigLastModified = 0;
-
-function loadPromptConfig() {
-    const promptConfigPath = './prompt.config.json';
-    
-    if (!fs.existsSync(promptConfigPath)) {
-        console.error('prompt.config.json not found');
-        process.exit(1);
-    }
-    
-    const stats = fs.statSync(promptConfigPath);
-    if (stats.mtime.getTime() > promptConfigLastModified) {
-        try {
-            const configData = fs.readFileSync(promptConfigPath, 'utf8');
-            promptConfig = JSON.parse(configData);
-            promptConfigLastModified = stats.mtime.getTime();
-        } catch (error) {
-            console.error('❌ Error reloading prompt config:', error.message);
-            if (!promptConfig) {
-                process.exit(1);
-            }
         }
     }
-    
-    return promptConfig;
-}
 
-// Helper: Extract relevant fields from metadata
-async function extractRelevantFields(meta, filename) {
-    if (!meta) return null;
-    
-    const model = determineModelFromMetadata(meta);
-    const modelDisplayName = getModelDisplayName(model);
-    
-    // Check if dimensions match a known resolution
-    const resolution = getResolutionFromDimensions(meta.width, meta.height);
-    
-    // Extract metadata from forge_data only
-    const forgeData = meta.forge_data || {};
-    const upscaled = forgeData.upscale_ratio !== null && forgeData.upscale_ratio !== undefined;
-    const hasBaseImage = forgeData.image_source !== undefined && forgeData.image_source !== 'data:base64';
-    
-    // Extract character prompts from forge_data (includes disabled characters and character names)
-    let characterPrompts = [];
-    let compiledCharacterPrompts = [];
-
-    if (meta.v4_prompt && meta.v4_prompt.caption.char_captions && Array.isArray(meta.v4_prompt.caption.char_captions) && meta.v4_prompt.caption.char_captions.length > 0) {
-        const positiveCaptions = meta.v4_prompt.caption.char_captions;
-        const negativeCaptions = meta.v4_negative_prompt && meta.v4_negative_prompt.caption.char_captions ? meta.v4_negative_prompt.caption.char_captions : [];
+    // Helper: Extract relevant fields from metadata
+    async extractRelevantFields(meta, filename) {
+        if (!meta) return null;
         
-        // Process positive captions by index
-        positiveCaptions.forEach((caption, index) => {
-            compiledCharacterPrompts.push({
-                prompt: caption.char_caption,
-                uc: '',
-                center: caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
-                    ? caption.centers[0]
-                    : null,
-                enabled: true,
-                chara_name: ''
-            });
-        });
-        
-        // Process negative captions by index and merge with positive ones
-        negativeCaptions.forEach((caption, index) => {
-            if (caption.char_caption && compiledCharacterPrompts[index]) {
-                compiledCharacterPrompts[index].uc = caption.char_caption;
-            }
-        });
-        if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
-            // Insert disabled characters at their correct indices
-            forgeData.disabledCharacters.forEach(disabledChar => {
-                compiledCharacterPrompts.splice(disabledChar.index, 0, {
-                    prompt: disabledChar.prompt,
-                    uc: disabledChar.uc,
-                    center: disabledChar.center,
-                    enabled: false,
-                    chara_name: disabledChar.chara_name
-                });
-            });
-        }
-        if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
-            compiledCharacterPrompts.forEach((char, index) => {
-                if (forgeData.characterNames[index]) {
-                    compiledCharacterPrompts[index].chara_name = forgeData.characterNames[index];
-                }
-            });
-        }
-    }
+        const model = this.determineModelFromMetadata(meta);
+        const modelDisplayName = this.getModelDisplayName(model);
     
-    // First, process v4_prompt character data if available
-    let hasCharacterPrompts = false;
-    if (forgeData.allCharacters) {
-        characterPrompts = forgeData.allCharacters;
-    } else if (meta.v4_prompt && meta.v4_prompt.caption.char_captions && Array.isArray(meta.v4_prompt.caption.char_captions) && meta.v4_prompt.caption.char_captions.length > 0) {
-        hasCharacterPrompts = true;
-        if (forgeData.allCharacters) {
-            characterPrompts = forgeData.allCharacters;
-        } else {
+        // Check if dimensions match a known resolution
+        const resolution = getResolutionFromDimensions(meta.width, meta.height);
+        
+        // Extract metadata from forge_data only
+        const forgeData = meta.forge_data || {};
+        const upscaled = forgeData.upscale_ratio !== null && forgeData.upscale_ratio !== undefined;
+        const hasBaseImage = forgeData.image_source !== undefined && forgeData.image_source !== 'data:base64';
+        
+        // Extract character prompts from forge_data (includes disabled characters and character names)
+        let characterPrompts = [];
+        let compiledCharacterPrompts = [];
+
+        if (meta.v4_prompt && meta.v4_prompt.caption.char_captions && Array.isArray(meta.v4_prompt.caption.char_captions) && meta.v4_prompt.caption.char_captions.length > 0) {
             const positiveCaptions = meta.v4_prompt.caption.char_captions;
             const negativeCaptions = meta.v4_negative_prompt && meta.v4_negative_prompt.caption.char_captions ? meta.v4_negative_prompt.caption.char_captions : [];
             
-            // Process characters by index - simple and straightforward
-            characterPrompts = [];
-            
             // Process positive captions by index
             positiveCaptions.forEach((caption, index) => {
-                if (caption.char_caption) {
-                    // Only use actual coordinates if they exist and are valid
-                    const center = caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
+                compiledCharacterPrompts.push({
+                    prompt: caption.char_caption,
+                    uc: '',
+                    center: caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
                         ? caption.centers[0]
-                        : null;
-                    
-                    characterPrompts.push({
-                        prompt: caption.char_caption,
-                        uc: '',
-                        center: center,
-                        enabled: true,
-                        chara_name: ''
-                    });
-                }
+                        : null,
+                    enabled: true,
+                    chara_name: ''
+                });
             });
             
             // Process negative captions by index and merge with positive ones
             negativeCaptions.forEach((caption, index) => {
-                if (caption.char_caption && characterPrompts[index]) {
-                    characterPrompts[index].uc = caption.char_caption;
+                if (caption.char_caption && compiledCharacterPrompts[index]) {
+                    compiledCharacterPrompts[index].uc = caption.char_caption;
                 }
             });
             if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
                 // Insert disabled characters at their correct indices
                 forgeData.disabledCharacters.forEach(disabledChar => {
-                    characterPrompts.splice(disabledChar.index, 0, {
+                    compiledCharacterPrompts.splice(disabledChar.index, 0, {
                         prompt: disabledChar.prompt,
                         uc: disabledChar.uc,
                         center: disabledChar.center,
@@ -560,376 +475,442 @@ async function extractRelevantFields(meta, filename) {
                 });
             }
             if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
-                characterPrompts.forEach((char, index) => {
+                compiledCharacterPrompts.forEach((char, index) => {
                     if (forgeData.characterNames[index]) {
-                        characterPrompts[index].chara_name = forgeData.characterNames[index];
+                        compiledCharacterPrompts[index].chara_name = forgeData.characterNames[index];
                     }
                 });
             }
         }
-    } else if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
-        // Fallback: only forge data available (no API character data)
-        characterPrompts = forgeData.disabledCharacters.map(disabledChar => ({
-            prompt: disabledChar.prompt,
-            uc: disabledChar.uc,
-            center: disabledChar.center,
-            enabled: false,
-            chara_name: disabledChar.chara_name
-        }));
         
-        // Apply character names if available
-        if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
-            characterPrompts.forEach((char, index) => {
-                if (forgeData.characterNames[index]) {
-                    char.chara_name = forgeData.characterNames[index];
+        // First, process v4_prompt character data if available
+        let hasCharacterPrompts = false;
+        if (forgeData.allCharacters) {
+            characterPrompts = forgeData.allCharacters;
+        } else if (meta.v4_prompt && meta.v4_prompt.caption.char_captions && Array.isArray(meta.v4_prompt.caption.char_captions) && meta.v4_prompt.caption.char_captions.length > 0) {
+            hasCharacterPrompts = true;
+            if (forgeData.allCharacters) {
+                characterPrompts = forgeData.allCharacters;
+            } else {
+                const positiveCaptions = meta.v4_prompt.caption.char_captions;
+                const negativeCaptions = meta.v4_negative_prompt && meta.v4_negative_prompt.caption.char_captions ? meta.v4_negative_prompt.caption.char_captions : [];
+                
+                // Process characters by index - simple and straightforward
+                characterPrompts = [];
+                
+                // Process positive captions by index
+                positiveCaptions.forEach((caption, index) => {
+                    if (caption.char_caption) {
+                        // Only use actual coordinates if they exist and are valid
+                        const center = caption.centers && Array.isArray(caption.centers) && caption.centers.length > 0
+                            ? caption.centers[0]
+                            : null;
+                        
+                        characterPrompts.push({
+                            prompt: caption.char_caption,
+                            uc: '',
+                            center: center,
+                            enabled: true,
+                            chara_name: ''
+                        });
+                    }
+                });
+                
+                // Process negative captions by index and merge with positive ones
+                negativeCaptions.forEach((caption, index) => {
+                    if (caption.char_caption && characterPrompts[index]) {
+                        characterPrompts[index].uc = caption.char_caption;
+                    }
+                });
+                if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
+                    // Insert disabled characters at their correct indices
+                    forgeData.disabledCharacters.forEach(disabledChar => {
+                        characterPrompts.splice(disabledChar.index, 0, {
+                            prompt: disabledChar.prompt,
+                            uc: disabledChar.uc,
+                            center: disabledChar.center,
+                            enabled: false,
+                            chara_name: disabledChar.chara_name
+                        });
+                    });
                 }
-            });
-        }
-        
-        // Apply use_coords setting to all characters if available
-        if (forgeData.use_coords !== undefined) {
-            characterPrompts.forEach((char) => {
-                char.use_coords = forgeData.use_coords;
-            });
-        }
-        
-    }
-    
-    const resultPrompt = forgeData.input_prompt !== undefined ? forgeData.input_prompt : meta.prompt;
-    const resultUc = forgeData.input_prompt !== undefined ? (forgeData?.input_uc || '') : meta.uc;
-    const result = {
-        prompt: resultPrompt,
-        uc: resultUc,
-        model: model,
-        model_display_name: modelDisplayName,
-        steps: meta.steps,
-        scale: meta.scale,
-        cfg_rescale: meta.cfg_rescale,
-        skip_cfg_above_sigma: meta.skip_cfg_above_sigma,
-        sampler: meta.sampler,
-        noise_schedule: meta.noise_schedule,
-        characterPrompts: characterPrompts,
-        upscaled: upscaled,
-        base_image: hasBaseImage,
-        history: forgeData.history,
-        request_type: forgeData.request_type,
-        image_source: forgeData.image_source !== 'data:base64' ? forgeData.image_source : undefined,
-        image_bias: forgeData.image_bias,
-        preset_name: forgeData.preset_name,
-        use_coords: hasCharacterPrompts ? (
-            characterPrompts.some(char => 
-                char.center && 
-                char.center.x !== null && 
-                char.center.y !== null && 
-                (char.center.x !== 0.5 || char.center.y !== 0.5)
-            ) || meta.v4_prompt.use_coords
-        ) : forgeData.use_coords || false,
-        strength: meta.strength || forgeData.img2img_strength,
-        noise: meta.noise || forgeData.img2img_noise,
-        dynamic_generation: forgeData.dynamic_generation,
-        // Store the final compiled prompts (what was actually sent to generation)
-        compiled_prompt: meta.prompt || '',
-        compiled_uc: meta.uc || '',
-        compiled_characterPrompts: compiledCharacterPrompts
-    };
-
-    // If image_source is present, get width and height from the file and add to result
-    if (result.image_source) {
-        try {
-            const imagePath = result.image_source.startsWith('file:')
-                ? path.join(imagesDir, result.image_source.replace('file:', ''))
-                : result.image_source.startsWith('cache:')
-                    ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
-                    : null;
-            if (imagePath && fs.existsSync(imagePath)) {
-                const { width, height } = await getImageDimensions(fs.readFileSync(imagePath));
-                result.image_source_width = width;
-                result.image_source_height = height;
-            }
-    
-            // Add mask bias if present in forge data
-            if (forgeData.mask_bias !== undefined) {
-                result.mask_bias = forgeData.mask_bias;
-            }
-            if (forgeData.mask_compressed !== undefined) {
-                result.mask_compressed = forgeData.mask_compressed;
-            } else if (forgeData.mask !== undefined) {
-                result.mask = forgeData.mask;
-            }
-        } catch (e) {
-            // Ignore errors, do not set width/height
-        }
-    } else {
-        delete result.image_source_width;
-        delete result.image_source_height;
-        delete result.image_source;
-        delete result.image_source_seed;
-        delete result.image_bias;
-        delete result.mask_compressed;
-        delete result.mask;
-        delete result.mask_bias;
-        delete result.strength;
-        delete result.noise;
-    }
-    
-    if (forgeData.layer1_seed !== undefined) {
-        result.layer1Seed = forgeData.layer1_seed;
-        result.layer2Seed = meta.seed;
-    } else if (meta.seed !== undefined) {
-        result.seed = meta.seed;
-    }
-    
-    // Add resolution if it matches, otherwise add height and width
-    if (resolution) {
-        result.resolution = resolution.toUpperCase();
-    }
-    result.height = meta.height;
-    result.width = meta.width;
-
-    // Add actual dimensions if available (from stored metadata)
-    if (meta.actual_width && meta.actual_height) {
-        result.actual_width = meta.actual_width;
-        result.actual_height = meta.actual_height;
-    }
-
-    // Add actual resolution if available
-    if (meta.actual_resolution) {
-        result.actual_resolution = meta.actual_resolution;
-    }
-    
-    // Handle detection and removal of append_quality and append_uc
-    // Only apply this logic if we're using extracted values, not saved input values
-    const currentPromptConfig = loadPromptConfig();
-    let detectedAppendQuality = false;
-    let detectedAppendUc = 0;
-    
-    // If we have saved values in forge data, use those append flags directly
-    if (forgeData.append_quality !== undefined) {
-        detectedAppendQuality = forgeData.append_quality;
-    } else {
-        // Detect and remove quality preset from prompt (only for extracted values)
-        if (result.prompt && currentPromptConfig.quality_presets) {
-            const modelKey = model.toLowerCase();
-            const qualityValue = currentPromptConfig.quality_presets[modelKey];
-            if (qualityValue && result.prompt.includes(qualityValue)) {
-                // Split by "|" and check if quality is at the end of the first group
-                const groups = result.prompt.split('|').map(group => group.trim());
-                if (groups.length > 0) {
-                    const qualityPattern = ', ' + qualityValue;
-                    if (groups[0].endsWith(qualityPattern)) {
-                        groups[0] = groups[0].slice(0, -qualityPattern.length);
-                        result.prompt = groups.join(' | ');
-                        detectedAppendQuality = true;
-                    }
-                } else {
-                    // Fallback for single group
-                    const qualityPattern = ', ' + qualityValue;
-                    if (result.prompt.endsWith(qualityPattern)) {
-                        result.prompt = result.prompt.slice(0, -qualityPattern.length);
-                        detectedAppendQuality = true;
-                    }
+                if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
+                    characterPrompts.forEach((char, index) => {
+                        if (forgeData.characterNames[index]) {
+                            characterPrompts[index].chara_name = forgeData.characterNames[index];
+                        }
+                    });
                 }
             }
+        } else if (forgeData.disabledCharacters && Array.isArray(forgeData.disabledCharacters)) {
+            // Fallback: only forge data available (no API character data)
+            characterPrompts = forgeData.disabledCharacters.map(disabledChar => ({
+                prompt: disabledChar.prompt,
+                uc: disabledChar.uc,
+                center: disabledChar.center,
+                enabled: false,
+                chara_name: disabledChar.chara_name
+            }));
+            
+            // Apply character names if available
+            if (forgeData.characterNames && Array.isArray(forgeData.characterNames)) {
+                characterPrompts.forEach((char, index) => {
+                    if (forgeData.characterNames[index]) {
+                        char.chara_name = forgeData.characterNames[index];
+                    }
+                });
+            }
+            
+            // Apply use_coords setting to all characters if available
+            if (forgeData.use_coords !== undefined) {
+                characterPrompts.forEach((char) => {
+                    char.use_coords = forgeData.use_coords;
+                });
+            }
+            
         }
-    }
-    
-    if (forgeData.append_uc !== undefined) {
-        detectedAppendUc = forgeData.append_uc;
-    } else {
-        // Detect and remove UC preset from negative prompt (only for extracted values)
-        if (result.uc && currentPromptConfig.uc_presets) {
-            const modelKey = model.toLowerCase();
-            const ucPresets = currentPromptConfig.uc_presets[modelKey];
-            if (ucPresets && Array.isArray(ucPresets)) {
-                for (let i = ucPresets.length - 1; i >= 0; i--) {
-                    const ucValue = ucPresets[i];
-                    if (result.uc.startsWith(ucValue)) {
-                        // Check if it's at the start with ", " separator
-                        const ucPattern = ucValue + ', ';
-                        if (result.uc.startsWith(ucPattern)) {
-                            result.uc = result.uc.slice(ucPattern.length);
-                            detectedAppendUc = i + 1; // 1-based index
-                            break;
-                        } else if (result.uc === ucValue) {
-                            // UC preset is the entire UC
-                            result.uc = '';
-                            detectedAppendUc = i + 1;
-                            break;
+        
+        const resultPrompt = forgeData.input_prompt !== undefined ? forgeData.input_prompt : meta.prompt;
+        const resultUc = forgeData.input_prompt !== undefined ? (forgeData?.input_uc || '') : meta.uc;
+        const result = {
+            prompt: resultPrompt,
+            uc: resultUc,
+            model: model,
+            model_display_name: modelDisplayName,
+            steps: meta.steps,
+            scale: meta.scale,
+            cfg_rescale: meta.cfg_rescale,
+            skip_cfg_above_sigma: meta.skip_cfg_above_sigma,
+            sampler: meta.sampler,
+            noise_schedule: meta.noise_schedule,
+            characterPrompts: characterPrompts,
+            upscaled: upscaled,
+            base_image: hasBaseImage,
+            history: forgeData.history,
+            request_type: forgeData.request_type,
+            image_source: forgeData.image_source !== 'data:base64' ? forgeData.image_source : undefined,
+            image_bias: forgeData.image_bias,
+            preset_name: forgeData.preset_name,
+            use_coords: hasCharacterPrompts ? (
+                characterPrompts.some(char => 
+                    char.center && 
+                    char.center.x !== null && 
+                    char.center.y !== null && 
+                    (char.center.x !== 0.5 || char.center.y !== 0.5)
+                ) || meta.v4_prompt.use_coords
+            ) : forgeData.use_coords || false,
+            strength: meta.strength || forgeData.img2img_strength,
+            noise: meta.noise || forgeData.img2img_noise,
+            dynamic_generation: forgeData.dynamic_generation,
+            // Store the final compiled prompts (what was actually sent to generation)
+            compiled_prompt: meta.prompt || '',
+            compiled_uc: meta.uc || '',
+            compiled_characterPrompts: compiledCharacterPrompts
+        };
+
+        // If image_source is present, get width and height from the file and add to result
+        if (result.image_source) {
+            try {
+                const imagesDir = this.globalResources.getPath('images');
+                const uploadCacheDir = this.globalResources.getPath('uploadCache');
+                const imagePath = result.image_source.startsWith('file:')
+                    ? path.join(imagesDir, result.image_source.replace('file:', ''))
+                    : result.image_source.startsWith('cache:')
+                        ? path.join(uploadCacheDir, result.image_source.replace('cache:', ''))
+                        : null;
+                if (imagePath && fs.existsSync(imagePath)) {
+                    const { width, height } = await getImageDimensions(fs.readFileSync(imagePath));
+                    result.image_source_width = width;
+                    result.image_source_height = height;
+                }
+        
+                // Add mask bias if present in forge data
+                if (forgeData.mask_bias !== undefined) {
+                    result.mask_bias = forgeData.mask_bias;
+                }
+                if (forgeData.mask_compressed !== undefined) {
+                    result.mask_compressed = forgeData.mask_compressed;
+                } else if (forgeData.mask !== undefined) {
+                    result.mask = forgeData.mask;
+                }
+            } catch (e) {
+                // Ignore errors, do not set width/height
+            }
+        } else {
+            delete result.image_source_width;
+            delete result.image_source_height;
+            delete result.image_source;
+            delete result.image_source_seed;
+            delete result.image_bias;
+            delete result.mask_compressed;
+            delete result.mask;
+            delete result.mask_bias;
+            delete result.strength;
+            delete result.noise;
+        }
+        
+        if (forgeData.layer1_seed !== undefined) {
+            result.layer1Seed = forgeData.layer1_seed;
+            result.layer2Seed = meta.seed;
+        } else if (meta.seed !== undefined) {
+            result.seed = meta.seed;
+        }
+        
+        // Add resolution if it matches, otherwise add height and width
+        if (resolution) {
+            result.resolution = resolution.toUpperCase();
+        }
+        result.height = meta.height;
+        result.width = meta.width;
+
+        // Add actual dimensions if available (from stored metadata)
+        if (meta.actual_width && meta.actual_height) {
+            result.actual_width = meta.actual_width;
+            result.actual_height = meta.actual_height;
+        }
+
+        // Add actual resolution if available
+        if (meta.actual_resolution) {
+            result.actual_resolution = meta.actual_resolution;
+        }
+        
+        // Handle detection and removal of append_quality and append_uc
+        // Only apply this logic if we're using extracted values, not saved input values
+        const currentPromptConfig = this.globalResources.getPromptConfig();
+        let detectedAppendQuality = false;
+        let detectedAppendUc = 0;
+        
+        // If we have saved values in forge data, use those append flags directly
+        if (forgeData.append_quality !== undefined) {
+            detectedAppendQuality = forgeData.append_quality;
+        } else {
+            // Detect and remove quality preset from prompt (only for extracted values)
+            if (result.prompt && currentPromptConfig.quality_presets) {
+                const modelKey = model.toLowerCase();
+                const qualityValue = currentPromptConfig.quality_presets[modelKey];
+                if (qualityValue && result.prompt.includes(qualityValue)) {
+                    // Split by "|" and check if quality is at the end of the first group
+                    const groups = result.prompt.split('|').map(group => group.trim());
+                    if (groups.length > 0) {
+                        const qualityPattern = ', ' + qualityValue;
+                        if (groups[0].endsWith(qualityPattern)) {
+                            groups[0] = groups[0].slice(0, -qualityPattern.length);
+                            result.prompt = groups.join(' | ');
+                            detectedAppendQuality = true;
+                        }
+                    } else {
+                        // Fallback for single group
+                        const qualityPattern = ', ' + qualityValue;
+                        if (result.prompt.endsWith(qualityPattern)) {
+                            result.prompt = result.prompt.slice(0, -qualityPattern.length);
+                            detectedAppendQuality = true;
                         }
                     }
                 }
             }
         }
+        
+        if (forgeData.append_uc !== undefined) {
+            detectedAppendUc = forgeData.append_uc;
+        } else {
+            // Detect and remove UC preset from negative prompt (only for extracted values)
+            if (result.uc && currentPromptConfig.uc_presets) {
+                const modelKey = model.toLowerCase();
+                const ucPresets = currentPromptConfig.uc_presets[modelKey];
+                if (ucPresets && Array.isArray(ucPresets)) {
+                    for (let i = ucPresets.length - 1; i >= 0; i--) {
+                        const ucValue = ucPresets[i];
+                        if (result.uc.startsWith(ucValue)) {
+                            // Check if it's at the start with ", " separator
+                            const ucPattern = ucValue + ', ';
+                            if (result.uc.startsWith(ucPattern)) {
+                                result.uc = result.uc.slice(ucPattern.length);
+                                detectedAppendUc = i + 1; // 1-based index
+                                break;
+                            } else if (result.uc === ucValue) {
+                                // UC preset is the entire UC
+                                result.uc = '';
+                                detectedAppendUc = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (forgeData.vibe_transfer !== undefined) {
+            result.vibe_transfer = forgeData.vibe_transfer;
+        }
+        if (forgeData.normalize_vibes !== undefined) {
+            result.normalize_vibes = forgeData.normalize_vibes;
+        }
+        
+        // Add new metadata fields
+        result.append_quality = detectedAppendQuality;
+        result.append_uc = detectedAppendUc;
+        result.append_quality_id = forgeData.append_quality_id || null;
+        result.append_uc_id = forgeData.append_uc_id || null;
+        result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
+
+        // Add character reference fields
+        if (forgeData.chara_reference_source) {
+            result.chara_reference_source = forgeData.chara_reference_source;
+            result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
+        }
+
+        // Add director session and message IDs
+        if (forgeData.director_session_id) {
+            result.director_session_id = forgeData.director_session_id;
+        }
+        if (forgeData.director_message_id) {
+            result.director_message_id = forgeData.director_message_id;
+        }
+
+        // Add image source seed for preset-based img2img
+        if (forgeData.image_source_seed !== undefined) {
+            result.image_source_seed = forgeData.image_source_seed;
+        }
+
+        // Add dynamic generation data
+        if (forgeData.dynamic_generation) {
+            result.dynamic_generation = forgeData.dynamic_generation;
+        }
+
+        // Add text replacement seed data
+        if (forgeData.text_replacements_seed) {
+            result.text_replacements_seed = forgeData.text_replacements_seed;
+        }
+
+        // Add character reference fidelity data
+        if (forgeData.chara_reference_fidelity !== undefined) {
+            result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
+        }
+        
+        // Add expansion data if present
+        if (forgeData.expansion_source) {
+            result.expansion_source = forgeData.expansion_source;
+            result.expansion_mode = forgeData.expansion_mode;
+            result.expansion_resolution = forgeData.expansion_resolution;
+            result.expansion_bias = forgeData.expansion_bias;
+            result.expansion_direction = forgeData.expansion_direction;
+            result.expansion_percentages = forgeData.expansion_percentages;
+            result.expansion_prompt = forgeData.expansion_prompt;
+            result.expansion_reason = forgeData.expansion_reason;
+            result.expansion_params = forgeData.expansion_params;
+            result.expansion_requested_content = forgeData.expansion_requested_content;
+        }
+
+        // Add stage data if present
+        if (forgeData.pipeline !== undefined) {
+            result.pipeline = forgeData.pipeline;
+            result.save_base_output = forgeData.save_base_output;
+            result.skip_pipeline_stages = forgeData.skip_pipeline_stages;
+        }
+        if (forgeData.stage_index !== undefined) {
+            result.stage_index = forgeData.stage_index;
+        }
+        if (forgeData.stage_type !== undefined) {
+            result.stage_type = forgeData.stage_type;
+        }
+        if (forgeData.stage_seeds !== undefined) {
+            result.stage_seeds = forgeData.stage_seeds;
+        }
+        if (forgeData.text_replacements !== undefined) {
+            result.text_replacements = forgeData.text_replacements;
+        }
+
+        if (forgeData.text_overlays !== undefined) {
+            result.text_overlays = forgeData.text_overlays;
+        }
+        
+        // Add auto_clean_uc if available
+        if (forgeData.auto_clean_uc !== undefined) {
+            result.auto_clean_uc = forgeData.auto_clean_uc;
+        }
+        
+        // Include forge_data in result
+        result.forge_data = forgeData;
+
+        return result;
     }
 
-    if (forgeData.vibe_transfer !== undefined) {
-        result.vibe_transfer = forgeData.vibe_transfer;
-    }
-    if (forgeData.normalize_vibes !== undefined) {
-        result.normalize_vibes = forgeData.normalize_vibes;
-    }
-    
-    // Add new metadata fields
-    result.append_quality = detectedAppendQuality;
-    result.append_uc = detectedAppendUc;
-    result.append_quality_id = forgeData.append_quality_id || null;
-    result.append_uc_id = forgeData.append_uc_id || null;
-    result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
 
-    // Add character reference fields
-    if (forgeData.chara_reference_source) {
-        result.chara_reference_source = forgeData.chara_reference_source;
-        result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
-    }
-
-    // Add director session and message IDs
-    if (forgeData.director_session_id) {
-        result.director_session_id = forgeData.director_session_id;
-    }
-    if (forgeData.director_message_id) {
-        result.director_message_id = forgeData.director_message_id;
-    }
-
-    // Add image source seed for preset-based img2img
-    if (forgeData.image_source_seed !== undefined) {
-        result.image_source_seed = forgeData.image_source_seed;
-    }
-
-    // Add dynamic generation data
-    if (forgeData.dynamic_generation) {
-        result.dynamic_generation = forgeData.dynamic_generation;
-    }
-
-    // Add text replacement seed data
-    if (forgeData.text_replacements_seed) {
-        result.text_replacements_seed = forgeData.text_replacements_seed;
-    }
-
-    // Add character reference fidelity data
-    if (forgeData.chara_reference_fidelity !== undefined) {
-        result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
-    }
-    
-    // Add expansion data if present
-    if (forgeData.expansion_source) {
-        result.expansion_source = forgeData.expansion_source;
-        result.expansion_mode = forgeData.expansion_mode;
-        result.expansion_resolution = forgeData.expansion_resolution;
-        result.expansion_bias = forgeData.expansion_bias;
-        result.expansion_direction = forgeData.expansion_direction;
-        result.expansion_percentages = forgeData.expansion_percentages;
-        result.expansion_prompt = forgeData.expansion_prompt;
-        result.expansion_reason = forgeData.expansion_reason;
-        result.expansion_params = forgeData.expansion_params;
-        result.expansion_requested_content = forgeData.expansion_requested_content;
-    }
-
-    // Add stage data if present
-    if (forgeData.pipeline !== undefined) {
-        result.pipeline = forgeData.pipeline;
-        result.save_base_output = forgeData.save_base_output;
-        result.skip_pipeline_stages = forgeData.skip_pipeline_stages;
-    }
-    if (forgeData.stage_index !== undefined) {
-        result.stage_index = forgeData.stage_index;
-    }
-    if (forgeData.stage_type !== undefined) {
-        result.stage_type = forgeData.stage_type;
-    }
-    if (forgeData.stage_seeds !== undefined) {
-        result.stage_seeds = forgeData.stage_seeds;
-    }
-    if (forgeData.text_replacements !== undefined) {
-        result.text_replacements = forgeData.text_replacements;
-    }
-
-    if (forgeData.text_overlays !== undefined) {
-        result.text_overlays = forgeData.text_overlays;
-    }
-    
-    // Include forge_data in result
-    result.forge_data = forgeData;
-
-    return result;
-}
-
-
-// Helper: Determine model from metadata using exact hash matching (from NovelAI inspect page)
-function determineModelFromMetadata(meta) {
-    if (!meta || !meta.source) {
-        return "unknown";
-    }
-    
-    const source = meta.source;
-    
-    // NovelAI Diffusion V4/V4.5 models
-    if (source.includes("NovelAI Diffusion V4") || source.includes("NovelAI Diffusion V4.5")) {
+    // Helper: Determine model from metadata using exact hash matching (from NovelAI inspect page)
+    determineModelFromMetadata(meta) {
+        if (!meta || !meta.source) {
+            return "unknown";
+        }
+        
+        const source = meta.source;
+        
+        // NovelAI Diffusion V4/V4.5 models
+        if (source.includes("NovelAI Diffusion V4") || source.includes("NovelAI Diffusion V4.5")) {
+            switch (source) {
+                case "NovelAI Diffusion V4.5 4BDE2A90":
+                case "NovelAI Diffusion V4.5 1229B44F":
+                case "NovelAI Diffusion V4.5 B9F340FD":
+                case "NovelAI Diffusion V4.5 F3D95188":
+                    return "V4_5";
+                case "NovelAI Diffusion V4.5 C02D4F98":
+                case "NovelAI Diffusion V4.5 5AB81C7C":
+                case "NovelAI Diffusion V4.5 B5A2A797":
+                case "NovelAI Diffusion V4 5AB81C7C":
+                case "NovelAI Diffusion V4 B5A2A797":
+                    return "V4_5_CUR";
+                case "NovelAI Diffusion V4 37442FCA":
+                case "NovelAI Diffusion V4 4F49EC75":
+                case "NovelAI Diffusion V4 CA4B7203":
+                case "NovelAI Diffusion V4 79F47848":
+                case "NovelAI Diffusion V4 F6302A9D":
+                    return "V4";
+                case "NovelAI Diffusion V4 7ABFFA2A":
+                case "NovelAI Diffusion V4 C1CCBA86":
+                case "NovelAI Diffusion V4 770A9E12":
+                    return "V4_CUR";
+                default:
+                    return "V4_5";
+            }
+        }
+        
+        // Stable Diffusion models
         switch (source) {
-            case "NovelAI Diffusion V4.5 4BDE2A90":
-            case "NovelAI Diffusion V4.5 1229B44F":
-            case "NovelAI Diffusion V4.5 B9F340FD":
-            case "NovelAI Diffusion V4.5 F3D95188":
-                return "V4_5";
-            case "NovelAI Diffusion V4.5 C02D4F98":
-            case "NovelAI Diffusion V4.5 5AB81C7C":
-            case "NovelAI Diffusion V4.5 B5A2A797":
-            case "NovelAI Diffusion V4 5AB81C7C":
-            case "NovelAI Diffusion V4 B5A2A797":
-                return "V4_5_CUR";
-            case "NovelAI Diffusion V4 37442FCA":
-            case "NovelAI Diffusion V4 4F49EC75":
-            case "NovelAI Diffusion V4 CA4B7203":
-            case "NovelAI Diffusion V4 79F47848":
-            case "NovelAI Diffusion V4 F6302A9D":
-                return "V4";
-            case "NovelAI Diffusion V4 7ABFFA2A":
-            case "NovelAI Diffusion V4 C1CCBA86":
-            case "NovelAI Diffusion V4 770A9E12":
-                return "V4_CUR";
+            case "Stable Diffusion XL B0BDF6C1":
+            case "Stable Diffusion XL C1E1DE52":
+            case "Stable Diffusion XL 7BCCAA2C":
+            case "Stable Diffusion XL 1120E6A9":
+            case "Stable Diffusion XL 8BA2AF87":
+                return "V3";
+            case "Stable Diffusion XL 4BE8C60C":
+            case "Stable Diffusion XL C8704949":
+            case "Stable Diffusion XL 37C2B166":
+            case "Stable Diffusion XL F306816B":
+            case "Stable Diffusion XL 9CC2F394":
+                return "FURRY";
             default:
-                return "V4_5";
+                return "unknown";
         }
     }
-    
-    // Stable Diffusion models
-    switch (source) {
-        case "Stable Diffusion XL B0BDF6C1":
-        case "Stable Diffusion XL C1E1DE52":
-        case "Stable Diffusion XL 7BCCAA2C":
-        case "Stable Diffusion XL 1120E6A9":
-        case "Stable Diffusion XL 8BA2AF87":
-            return "V3";
-        case "Stable Diffusion XL 4BE8C60C":
-        case "Stable Diffusion XL C8704949":
-        case "Stable Diffusion XL 37C2B166":
-        case "Stable Diffusion XL F306816B":
-        case "Stable Diffusion XL 9CC2F394":
-            return "FURRY";
-        default:
-            return "unknown";
+
+    // Helper: Get model display name
+    getModelDisplayName(model) {
+        return model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
     }
-}
 
-// Helper: Get model display name
-function getModelDisplayName(model) {
-    return model === "V4_5" ? "V4.5" : model === "V4_5_CUR" ? "V4.5 (Curated)" : model === "V4" ? "V4" : model === "V4_CUR" ? "V4 (Curated)" : model === "V3" ? "V3" : "Unknown";
-}
+    // Helper: get base name for pairing
+    getBaseName(filename) {
+        return filename
+            .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
+            .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
+            .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
+            .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
+                .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
+    }
 
-
-// Helper: get base name for pairing
-function getBaseName(filename) {
-    return filename
-        .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
-        .replace(/@blur(?=\.)/, '')  // Remove @blur suffix
-        .replace(/@lq(?=\.)/, '')  // Remove @lq suffix
-        .replace(/@2x(?=\.)/, '')  // Remove @2x suffix
-        .replace(/\.(png|jpg|jpeg)$/i, '');  // Remove file extension
-}
-
-// New comprehensive metadata extraction function for download URL functionality
-async function extractMetadataSummary(buffer, filename = null) {
-    try {
-        const metadata = readMetadata(buffer);
+    // New comprehensive metadata extraction function for download URL functionality
+    async extractMetadataSummary(buffer, filename = null) {
+        try {
+            const metadata = this.readMetadata(buffer);
         
         if (!metadata.tEXt || !metadata.tEXt.Comment) {
             return {
@@ -1000,7 +981,7 @@ async function extractMetadataSummary(buffer, filename = null) {
             const actualResolution = getResolutionFromDimensions(actualWidth, actualHeight);
             if (actualResolution) {
                 condensedMetadata.actual_resolution = actualResolution;
-                condensedMetadata.actual_resolution_display = formatResolution(actualResolution, actualWidth, actualHeight);
+                condensedMetadata.actual_resolution_display = this.formatResolution(actualResolution, actualWidth, actualHeight);
             } else {
                 condensedMetadata.actual_resolution_display = `${actualWidth} × ${actualHeight}`;
             }
@@ -1053,16 +1034,60 @@ async function extractMetadataSummary(buffer, filename = null) {
             error: error.message,
             isBlueprint: false
         };
+        }
     }
-}
 
-// Helper function to format resolution with aspect ratio matching (ported from frontend)
-function formatResolution(resolution, width, height) {
-    if (!resolution && !width && !height) return '';
-    
-    // If we have a resolution string, try to match it first
-    if (resolution) {
-        const RESOLUTIONS = [
+    // Helper function to format resolution with aspect ratio matching (ported from frontend)
+    formatResolution(resolution, width, height) {
+        if (!resolution && !width && !height) return '';
+        
+        // If we have a resolution string, try to match it first
+        if (resolution) {
+            const RESOLUTIONS = [
+                { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
+                { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
+                { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
+                { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
+                { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
+                { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
+                { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
+                { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
+                { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
+                { value: 'xlarge_portrait', display: 'Max Portrait', width: 1408, height: 2112, aspect: 0.667 },
+                { value: 'xlarge_landscape', display: 'Max Landscape', width: 2112, height: 1408, aspect: 1.5 },
+                { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
+                { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
+                { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
+            ];
+            
+            // Handle custom resolution format: custom_1024x768
+            if (resolution.startsWith('custom_')) {
+                const dimensions = resolution.replace('custom_', '');
+                const [w, h] = dimensions.split('x').map(Number);
+                if (w && h) {
+                    return `Custom ${w}×${h}`;
+                }
+            }
+            
+            // Try to find the resolution in our array first
+            const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
+            if (res) {
+                return res.display;
+            }
+            
+            // Fallback: Convert snake_case to Title Case
+            return resolution
+                .split('_')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+        
+        // If no resolution string but we have dimensions, match by aspect ratio
+        if (width && height) {
+            const aspect = width / height;
+            const tolerance = 0.05; // 5% tolerance for aspect ratio matching
+            
+            const RESOLUTIONS = [
             { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
             { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
             { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
@@ -1077,146 +1102,90 @@ function formatResolution(resolution, width, height) {
             { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
             { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
             { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
-        ];
-        
-        // Handle custom resolution format: custom_1024x768
-        if (resolution.startsWith('custom_')) {
-            const dimensions = resolution.replace('custom_', '');
-            const [w, h] = dimensions.split('x').map(Number);
-            if (w && h) {
-                return `Custom ${w}×${h}`;
+            ];
+            
+            // Find resolution by aspect ratio with tolerance
+            const matchedResolution = RESOLUTIONS.find(r => 
+                Math.abs(r.aspect - aspect) < tolerance
+            );
+            
+            if (matchedResolution) {
+                return matchedResolution.display;
             }
+            
+            // If no match found, return dimensions
+            return `${width} × ${height}`;
         }
         
-        // Try to find the resolution in our array first
-        const res = RESOLUTIONS.find(r => r.value.toLowerCase() === resolution.toLowerCase());
-        if (res) {
-            return res.display;
-        }
-        
-        // Fallback: Convert snake_case to Title Case
-        return resolution
-            .split('_')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ');
+        return '';
     }
-    
-    // If no resolution string but we have dimensions, match by aspect ratio
-    if (width && height) {
-        const aspect = width / height;
-        const tolerance = 0.05; // 5% tolerance for aspect ratio matching
-        
-        const RESOLUTIONS = [
-            { value: 'small_portrait', display: 'Small Portrait', width: 512, height: 768, aspect: 0.667 },
-            { value: 'small_landscape', display: 'Small Landscape', width: 768, height: 512, aspect: 1.5 },
-            { value: 'small_square', display: 'Small Square', width: 640, height: 640, aspect: 1.0 },
-            { value: 'normal_portrait', display: 'Normal Portrait', width: 832, height: 1216, aspect: 0.684 },
-            { value: 'normal_landscape', display: 'Normal Landscape', width: 1216, height: 832, aspect: 1.462 },
-            { value: 'normal_square', display: 'Normal Square', width: 1024, height: 1024, aspect: 1.0 },
-            { value: 'large_portrait', display: 'Large Portrait', width: 1024, height: 1536, aspect: 0.667 },
-            { value: 'large_landscape', display: 'Large Landscape', width: 1536, height: 1024, aspect: 1.5 },
-            { value: 'large_square', display: 'Large Square', width: 1472, height: 1472, aspect: 1.0 },
-            { value: 'xlarge_portrait', display: 'Max Portrait', width: 1408, height: 2112, aspect: 0.667 },
-            { value: 'xlarge_landscape', display: 'Max Landscape', width: 2112, height: 1408, aspect: 1.5 },
-            { value: 'xlarge_square', display: 'Max Square', width: 1728, height: 1728, aspect: 1.0 },
-            { value: 'wallpaper_portrait', display: 'Wallpaper Portrait', width: 1088, height: 1920, aspect: 0.567 },
-            { value: 'wallpaper_landscape', display: 'Wallpaper Widescreen', width: 1920, height: 1088, aspect: 1.765 }
-        ];
-        
-        // Find resolution by aspect ratio with tolerance
-        const matchedResolution = RESOLUTIONS.find(r => 
-            Math.abs(r.aspect - aspect) < tolerance
-        );
-        
-        if (matchedResolution) {
-            return matchedResolution.display;
-        }
-        
-        // If no match found, return dimensions
-        return `${width} × ${height}`;
-    }
-    
-    return '';
-}
 
-// Helper: Copy metadata from source image to target image buffer
-function copyMetadataToImage(sourceBuffer, targetBuffer, additionalForgeData = {}) {
-    try {
-        // Read metadata from source image
-        const sourceMetadata = readMetadata(sourceBuffer);
+    // Helper: Copy metadata from source image to target image buffer
+    copyMetadataToImage(sourceBuffer, targetBuffer, additionalForgeData = {}) {
+        try {
+            // Read metadata from source image
+            const sourceMetadata = this.readMetadata(sourceBuffer);
 
-        // Extract the Comment metadata (which contains forge_data)
-        let existingMetadata = {};
-        if (sourceMetadata.tEXt && sourceMetadata.tEXt.Comment) {
-            try {
-                existingMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
-            } catch (e) {
-                console.error('Error parsing source metadata:', e.message);
-                existingMetadata = {};
+            // Extract the Comment metadata (which contains forge_data)
+            let existingMetadata = {};
+            if (sourceMetadata.tEXt && sourceMetadata.tEXt.Comment) {
+                try {
+                    existingMetadata = JSON.parse(sourceMetadata.tEXt.Comment);
+                } catch (e) {
+                    console.error('Error parsing source metadata:', e.message);
+                    existingMetadata = {};
+                }
             }
+
+            // Update the forge_data with upscaling information
+            if (!existingMetadata.forge_data) {
+                existingMetadata.forge_data = {};
+            }
+
+            // Merge additional forge data (like upscaling info)
+            existingMetadata.forge_data = { ...existingMetadata.forge_data, ...additionalForgeData };
+            existingMetadata.forge_data.software = 'StaticForge v1.0';
+
+            // Ensure history array exists
+            if (!existingMetadata.forge_data.history) {
+                existingMetadata.forge_data.history = [];
+            }
+
+            // Add history entry for the upscaling operation
+            if (additionalForgeData.generation_type === 'upscaled') {
+                const historyEntry = {
+                    generation_type: 'upscaled',
+                    upscaled_at: additionalForgeData.upscaled_at,
+                    upscaler_provider: additionalForgeData.upscaler_provider,
+                    upscale_ratio: additionalForgeData.upscale_ratio
+                };
+                existingMetadata.forge_data.history.push(historyEntry);
+            }
+
+            // Apply the metadata to the target buffer
+            return this.updateMetadataWithExisting(targetBuffer, existingMetadata);
+
+        } catch (error) {
+            console.error('Error copying metadata:', error.message);
+            // Fallback: just add the additional forge data to the target
+            return this.updateMetadata(targetBuffer, additionalForgeData);
         }
+    }
 
-        // Update the forge_data with upscaling information
-        if (!existingMetadata.forge_data) {
-            existingMetadata.forge_data = {};
+    // Helper: Update metadata with existing metadata object (internal function)
+    updateMetadataWithExisting(imageBuffer, existingMetadata) {
+        try {
+            // Create new Comment chunk with the merged metadata
+            const commentText = JSON.stringify(existingMetadata);
+
+            // Insert the Comment chunk into the PNG
+            return this.insertTextChunk(imageBuffer, 'Comment', commentText);
+
+        } catch (error) {
+            console.error('Error updating metadata with existing data:', error.message);
+            return imageBuffer;
         }
-
-        // Merge additional forge data (like upscaling info)
-        existingMetadata.forge_data = { ...existingMetadata.forge_data, ...additionalForgeData };
-        existingMetadata.forge_data.software = 'StaticForge v1.0';
-
-        // Ensure history array exists
-        if (!existingMetadata.forge_data.history) {
-            existingMetadata.forge_data.history = [];
-        }
-
-        // Add history entry for the upscaling operation
-        if (additionalForgeData.generation_type === 'upscaled') {
-            const historyEntry = {
-                generation_type: 'upscaled',
-                upscaled_at: additionalForgeData.upscaled_at,
-                upscaler_provider: additionalForgeData.upscaler_provider,
-                upscale_ratio: additionalForgeData.upscale_ratio
-            };
-            existingMetadata.forge_data.history.push(historyEntry);
-        }
-
-        // Apply the metadata to the target buffer
-        return updateMetadataWithExisting(targetBuffer, existingMetadata);
-
-    } catch (error) {
-        console.error('Error copying metadata:', error.message);
-        // Fallback: just add the additional forge data to the target
-        return updateMetadata(targetBuffer, additionalForgeData);
     }
 }
 
-// Helper: Update metadata with existing metadata object (internal function)
-function updateMetadataWithExisting(imageBuffer, existingMetadata) {
-    try {
-        // Create new Comment chunk with the merged metadata
-        const commentText = JSON.stringify(existingMetadata);
-
-        // Insert the Comment chunk into the PNG
-        return insertTextChunk(imageBuffer, 'Comment', commentText);
-
-    } catch (error) {
-        console.error('Error updating metadata with existing data:', error.message);
-        return imageBuffer;
-    }
-}
-
-module.exports = {
-    readMetadata,
-    updateMetadata,
-    copyMetadataToImage,
-    stripPngTextChunks,
-    insertTextChunk,
-    extractNovelAIMetadata,
-    extractRelevantFields,
-    getModelDisplayName,
-    determineModelFromMetadata,
-    getBaseName,
-    extractMetadataSummary,
-    formatResolution
-}; 
+module.exports = PngMetadata; 

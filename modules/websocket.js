@@ -1,15 +1,82 @@
 const WebSocket = require('ws');
-const session = require('express-session');
 
 class WebSocketServer {
-    constructor(server, sessionStore = null, messageHandler = null) {
+    constructor(globalResources = null) {
+        if (!globalResources) {
+            throw new Error('WebSocketServer requires globalResources instance and shoudl only be instantiated by globalResources.js');
+        }
+        this.globalResources = globalResources;
+        const server = globalResources.getHttpServer();
+        this.sessionStore = globalResources.getSessionStore();
+        
         this.wss = new WebSocket.Server({ server });
         this.clients = new Map(); // Map to store client connections with user info
-        this.sessionStore = sessionStore;
-        this.messageHandler = messageHandler; // Store message handler from web server
         this.pingInterval = null;
         this.queueStatusInterval = null;
+        this.indexingSyncInterval = null;
+        this.isIndexing = false;
+        this.indexingPaused = false; // Track if indexing is paused
         this.setupWebSocket();
+        this.setupPlumbingSubscriptions();
+        this.startIndexingSync();
+    }
+    
+    /**
+     * Set up plumbing subscriptions for WebSocket broadcasts
+     * This allows other modules to trigger broadcasts without requiring websocket module
+     */
+    setupPlumbingSubscriptions() {
+        try {
+            const plumbing = this.globalResources.getDataPlumbing();
+            
+            // Subscribe to receipt notification broadcasts
+            plumbing.subscribe('ws:broadcast:receipt', (receipt) => {
+                this.broadcast({
+                    type: 'receipt_notification',
+                    receipt: receipt
+                });
+            });
+            
+            // Subscribe to queue status broadcasts - directly broadcast queue status from globalResources
+            plumbing.subscribe('ws:broadcast:queueStatus', () => {
+                try {
+                    const queueStatus = this.globalResources.getQueue().getStatus();
+                    this.broadcastQueueUpdate(queueStatus);
+                } catch (error) {
+                    console.warn('⚠️ Failed to get queue status from globalResources:', error.message);
+                }
+            });
+            
+            // Subscribe to workspace image addition broadcasts
+            plumbing.subscribe('ws:broadcast:workspaceImageAdded', (data) => {
+                const { workspaceId, imageFilenames } = data;
+                
+                this.broadcastWorkspaceImageAdded(workspaceId, imageFilenames);
+            });
+            
+            // Subscribe to progress updates (routed by requestId)
+            plumbing.subscribe('ws:progress:update', (data) => {
+                const { requestId, ...messageData } = data;
+                if (requestId) {
+                    this.sendToRequest(requestId, {
+                        type: 'dynamic_generation_progress_update',
+                        ...messageData,
+                        timestamp: new Date().toISOString()
+                    });
+                } else {
+                    // If no requestId, broadcast to all
+                    this.broadcast({
+                        type: 'dynamic_generation_progress_update',
+                        ...messageData,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('❌ Failed to set up WebSocket plumbing subscriptions:', error);
+            // Retry after a short delay
+            setTimeout(() => this.setupPlumbingSubscriptions(), 1000);
+        }
     }
 
     setupWebSocket() {
@@ -73,6 +140,20 @@ class WebSocketServer {
             // Restore session workspace for reconnection sync
             this.restoreSessionWorkspace(sessionId, ws);
 
+            // Send current indexing state to newly connected client
+            this.sendToClient(ws, {
+                type: 'search_indexing_status',
+                status: this.indexingPaused ? 'paused' : (this.isIndexing ? 'indexing' : 'idle'),
+                message: this.indexingPaused 
+                    ? 'Search indexing is paused' 
+                    : (this.isIndexing 
+                        ? 'Search indexing in progress' 
+                        : 'Search index up to date'),
+                paused: this.indexingPaused,
+                indexing: this.isIndexing,
+                timestamp: new Date().toISOString()
+            });
+
             // Handle client disconnect
             ws.on('close', (code, reason) => {
                 const clientInfo = this.clients.get(ws);
@@ -80,8 +161,7 @@ class WebSocketServer {
                     console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
                     
                     // Clean up session workspace
-                    const { cleanupSessionWorkspace } = require('./workspace');
-                    cleanupSessionWorkspace(clientInfo.sessionId);
+                    this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
                     
                     this.clients.delete(ws);
                 }
@@ -95,14 +175,13 @@ class WebSocketServer {
             });
         });
 
-        console.log('🚀 WebSocket server initialized');
+        console.log('✓ WebSocket server initialized');
     }
 
     // Restore session workspace when user reconnects
     async restoreSessionWorkspace(sessionId, ws) {
         try {
-            const { restoreSessionWorkspace } = require('./workspace');
-            const restoredWorkspace = await restoreSessionWorkspace(sessionId);
+            const restoredWorkspace = await this.globalResources.getWorkspaceManager().restoreSessionWorkspace(sessionId);
             
             if (restoredWorkspace) {
                 // Send workspace restoration notification to client
@@ -113,8 +192,7 @@ class WebSocketServer {
                 });
                 
                 // Also send the current workspace data
-                const { getActiveWorkspaceData } = require('./workspace');
-                const workspaceData = getActiveWorkspaceData(sessionId);
+                const workspaceData = this.globalResources.getWorkspaceManager().getActiveWorkspaceData(sessionId);
                 if (workspaceData) {
                     this.sendToClient(ws, {
                         type: 'workspace_data',
@@ -213,28 +291,17 @@ class WebSocketServer {
             return;
         }
 
-        // Use the message handler passed from web server if available
-        if (this.messageHandler) {
-            this.messageHandler(ws, message, clientInfo, this);
-            return;
-        }
-
-        // Fallback to default message handling
-        switch (message.type) {
-            case 'ping':
-                this.sendToClient(ws, {
-                    type: 'pong',
-                    requestId: message.requestId,
-                    timestamp: new Date().toISOString()
-                });
-                break;
-
-            default:
-                this.sendToClient(ws, {
-                    type: 'error',
-                    message: 'Unknown message type',
-                    timestamp: new Date().toISOString()
-                });
+        // Get message handlers from globalResources
+        try {
+            const handlers = this.globalResources.getWebSocketMessageHandlers();
+            handlers.handleMessage(ws, message, clientInfo, this);
+        } catch (error) {
+            console.error('❌ Failed to get WebSocket message handlers:', error.message);
+            this.sendToClient(ws, {
+                type: 'error',
+                message: 'Message handler not available',
+                timestamp: new Date().toISOString()
+            });
         }
     }
 
@@ -262,6 +329,29 @@ class WebSocketServer {
             }
         });
     }
+    
+    /**
+     * Send message to client by requestId
+     * Uses requestId -> sessionId mapping stored in plumbing system
+     */
+    sendToRequest(requestId, message) {
+        try {
+            const plumbing = this.globalResources.getDataPlumbing();
+            // Get sessionId from requestId mapping
+            const requestData = plumbing.get(`request:${requestId}`);
+            if (requestData && requestData.sessionId) {
+                this.sendToUser(requestData.sessionId, message);
+            } else {
+                // Fallback: broadcast to all if requestId not found
+                // This handles cases where requestId mapping wasn't set up
+                console.warn(`⚠️ RequestId ${requestId} not found in mapping, broadcasting to all`);
+                this.broadcast(message);
+            }
+        } catch (error) {
+            // Fallback to broadcast if plumbing fails
+            this.broadcast(message);
+        }
+    }
 
     getConnectedUsers() {
         const sessions = new Map();
@@ -275,17 +365,6 @@ class WebSocketServer {
 
     getConnectionCount() {
         return this.wss.clients.size;
-    }
-
-    // Method to update message handler
-    updateMessageHandler(newMessageHandler) {
-        this.messageHandler = newMessageHandler;
-        console.log('🔄 WebSocket message handler updated');
-    }
-
-    // Method to get current message handler
-    getMessageHandler() {
-        return this.messageHandler;
     }
 
     // Utility methods for broadcasting specific events
@@ -331,8 +410,6 @@ class WebSocketServer {
 
     // Broadcast image addition to workspace (workspace-aware)
     broadcastWorkspaceImageAdded(workspaceId, imageFilenames) {
-        const { getActiveWorkspace } = require('./workspace');
-        
         // Broadcast to all clients viewing the same workspace
         this.broadcast({
             type: 'workspace_image_added',
@@ -343,7 +420,7 @@ class WebSocketServer {
             timestamp: new Date().toISOString()
         }, (clientInfo) => {
             // Filter: only send to clients viewing the same workspace
-            const clientWorkspace = getActiveWorkspace(clientInfo.sessionId);
+            const clientWorkspace = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
             return clientWorkspace === workspaceId;
         });
         
@@ -378,8 +455,12 @@ class WebSocketServer {
 
         // Check queue status every minute and broadcast if changed
         this.queueStatusInterval = setInterval(() => {
-            // Always broadcast every minute, but also check for immediate changes
-            this.broadcastQueueStatusIfChanged();
+            const queue = this.globalResources.getQueue();
+            if (queue.hasStatusChanged()) {
+                const queueStatus = queue.getStatus();
+                this.broadcastQueueUpdate(queueStatus);
+                return true; // Status was broadcast
+            }
         }, 60000); // Every minute
     }
 
@@ -390,26 +471,6 @@ class WebSocketServer {
         }
     }
 
-    // Method to manually broadcast queue status (for immediate updates)
-    broadcastQueueStatusImmediate() {
-        const { getStatus } = require('./queue');
-        const queueStatus = getStatus();
-        this.broadcastQueueUpdate(queueStatus);
-    }
-
-    // Enhanced method to broadcast queue status with change detection
-    broadcastQueueStatusIfChanged() {
-        const { getStatus, hasStatusChanged } = require('./queue');
-        
-        if (hasStatusChanged()) {
-            const queueStatus = getStatus();
-            this.broadcastQueueUpdate(queueStatus);
-            return true; // Status was broadcast
-        }
-        
-        return false; // No change detected
-    }
-
     broadcastPing(serverData = null) {
         this.broadcast({
             type: 'ping',
@@ -417,17 +478,208 @@ class WebSocketServer {
             timestamp: new Date().toISOString()
         });
     }
+
+    /**
+     * Start automatic indexing sync after 1 minute delay
+     * Runs sync to index files that don't have search indexes yet
+     */
+    startIndexingSync() {
+        // Wait 1 minute after server start before running initial sync
+        setTimeout(() => {
+            this.runIndexingSync();
+        }, 60000); // 60 seconds = 1 minute
+    }
+
+    /**
+     * Run indexing sync and broadcast progress updates
+     */
+    async runIndexingSync() {
+        if (this.isIndexing) {
+            console.log('⚠️ Indexing sync already in progress, skipping...');
+            return;
+        }
+
+        if (this.indexingPaused) {
+            console.log('⏸️ Indexing is paused, skipping sync...');
+            return;
+        }
+
+        try {
+            this.isIndexing = true;
+            const metadataDb = this.globalResources.getMetadataDatabase();
+            
+            // Broadcast that indexing is starting
+            this.broadcast({
+                type: 'search_indexing_status',
+                status: 'starting',
+                message: 'Starting search index sync...',
+                timestamp: new Date().toISOString()
+            });
+
+            // Throttled progress callback setup
+            let lastProgressSent = null;
+            let lastProgressTime = 0;
+            const MIN_PROGRESS_INTERVAL_MS = 2000; // 2 seconds minimum between progress updates
+            const DEFAULT_ITEMS_INTERVAL = 100; // Send every 100 items by default
+            let progressUpdateInterval = DEFAULT_ITEMS_INTERVAL; // Auto-adjusts based on rate
+            let firstProgress = true;
+
+            // Run sync with progress callback
+            const result = await metadataDb.syncSearchIndexes((progress) => {
+                // Broadcast progress updates with throttling
+                if (progress.status === 'indexing') {
+                    const now = Date.now();
+                    const timeSinceLastUpdate = now - lastProgressTime;
+                    const itemsSinceLastUpdate = lastProgressSent ? (progress.current - lastProgressSent.current) : progress.current;
+                    
+                    // Determine if we should send this update
+                    const shouldSend = 
+                        firstProgress || // Always send first progress
+                        itemsSinceLastUpdate >= progressUpdateInterval || // Every N items (auto-adjusted)
+                        timeSinceLastUpdate >= MIN_PROGRESS_INTERVAL_MS; // At least 2 seconds since last update
+
+                    if (shouldSend) {
+                        // Auto-adjust interval based on processing rate to maintain ~2 second intervals
+                        if (!firstProgress && lastProgressTime > 0 && lastProgressSent && progress.current > 0) {
+                            const actualProcessingRate = itemsSinceLastUpdate / (timeSinceLastUpdate / 1000); // items per second
+                            
+                            if (actualProcessingRate > 0) {
+                                // Calculate interval to send updates roughly every 2 seconds
+                                // If processing 50 items/sec, we want to send every 100 items (every 2 seconds)
+                                const targetInterval = Math.round(actualProcessingRate * (MIN_PROGRESS_INTERVAL_MS / 1000));
+                                progressUpdateInterval = Math.max(10, Math.min(500, targetInterval));
+                            }
+                        }
+
+                        firstProgress = false;
+                        lastProgressTime = now;
+                        lastProgressSent = progress;
+
+                        const percentage = progress.total > 0 
+                            ? Math.round((progress.current / progress.total) * 100) 
+                            : 0;
+                        
+                        this.broadcast({
+                            type: 'search_indexing_status',
+                            status: 'indexing',
+                            message: `Indexing: ${progress.current}/${progress.total} files (${percentage}%)`,
+                            current: progress.current,
+                            total: progress.total,
+                            percentage: percentage,
+                            filename: progress.filename,
+                            updatedCount: progress.updatedCount,
+                            errorCount: progress.errorCount,
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                } else if (progress.status === 'complete') {
+                    // Always send completion
+                    this.broadcast({
+                        type: 'search_indexing_status',
+                        status: 'complete',
+                        message: `Search index sync complete: ${progress.updatedCount} files indexed`,
+                        updatedCount: progress.updatedCount,
+                        errorCount: progress.errorCount,
+                        totalFiles: progress.total,
+                        timestamp: new Date().toISOString()
+                    });
+                    // Reset progress tracking
+                    lastProgressSent = null;
+                    lastProgressTime = 0;
+                    progressUpdateInterval = DEFAULT_ITEMS_INTERVAL;
+                    firstProgress = true;
+                } else if (progress.status === 'error') {
+                    // Always send errors
+                    this.broadcast({
+                        type: 'search_indexing_status',
+                        status: 'error',
+                        message: `Search index sync error: ${progress.error || 'Unknown error'}`,
+                        error: progress.error,
+                        timestamp: new Date().toISOString()
+                    });
+                    // Reset progress tracking
+                    lastProgressSent = null;
+                    lastProgressTime = 0;
+                    progressUpdateInterval = DEFAULT_ITEMS_INTERVAL;
+                    firstProgress = true;
+                } else if (progress.status === 'up_to_date') {
+                    // Always send up_to_date status
+                    this.broadcast({
+                        type: 'search_indexing_status',
+                        status: 'up_to_date',
+                        message: 'Search index up to date',
+                        timestamp: new Date().toISOString()
+                    });
+                    // Reset progress tracking
+                    lastProgressSent = null;
+                    lastProgressTime = 0;
+                    progressUpdateInterval = DEFAULT_ITEMS_INTERVAL;
+                    firstProgress = true;
+                }
+            });
+
+
+        } catch (error) {
+            console.error('❌ Error running indexing sync:', error);
+            this.broadcast({
+                type: 'search_indexing_status',
+                status: 'error',
+                message: `Search index sync failed: ${error.message}`,
+                error: error.message,
+                timestamp: new Date().toISOString()
+            });
+        } finally {
+            this.isIndexing = false;
+        }
+    }
+
+    /**
+     * Set indexing pause state
+     */
+    setIndexingPaused(paused) {
+        this.indexingPaused = paused;
+        // Also update metadata database pause state
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        if (metadataDb && typeof metadataDb.setIndexingPaused === 'function') {
+            metadataDb.setIndexingPaused(paused);
+        }
+        
+        // Broadcast pause state change
+        this.broadcast({
+            type: 'search_indexing_status',
+            status: paused ? 'paused' : 'resumed',
+            message: paused ? 'Search indexing paused' : 'Search indexing resumed',
+            timestamp: new Date().toISOString()
+        });
+
+        // If resuming and not currently indexing, trigger a scan
+        if (!paused && !this.isIndexing) {
+            // Wait a moment then run sync
+            setTimeout(() => {
+                this.runIndexingSync();
+            }, 1000);
+        }
+    }
+
+    /**
+     * Check if indexing is paused
+     */
+    isIndexingPaused() {
+        return this.indexingPaused;
+    }
+
+    /**
+     * Manually trigger indexing sync
+     */
+    async triggerIndexingSync() {
+        if (this.indexingPaused) {
+            console.log('⏸️ Cannot trigger indexing sync - indexing is paused');
+            return;
+        }
+        await this.runIndexingSync();
+    }
 }
 
-// Global instance for use in other modules
-let globalWsServer = null;
-
-function setGlobalWsServer(wsServer) {
-    globalWsServer = wsServer;
-}
-
-function getGlobalWsServer() {
-    return globalWsServer;
-}
-
-module.exports = { WebSocketServer, setGlobalWsServer, getGlobalWsServer }; 
+module.exports = { 
+    WebSocketServer
+}; 
