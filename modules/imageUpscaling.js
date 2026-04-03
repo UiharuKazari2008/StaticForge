@@ -367,12 +367,25 @@ async function upscaleImageWebSocket(filename, workspaceId, userType, sessionId,
             console.log(`📸 Generated previews for ${baseName}`);
         }
         
+        // Get metadata for the response
+        let responseMetadata = null;
+        try {
+            const metadataDatabase = globalResources.getMetadataDatabase();
+            responseMetadata = await metadataDatabase.getImageMetadata(upscaledFilename, globalResources.getPath('images'));
+            if (responseMetadata) {
+                responseMetadata = globalResources.getPngMetadata().extractRelevantFields(responseMetadata, upscaledFilename);
+            }
+        } catch (metadataError) {
+            console.warn('⚠️ Failed to get metadata for upscaled image:', metadataError);
+        }
+
         // Return the result object instead of sending HTTP response
         return {
             buffer: updatedUpscaledBuffer,
             filename: upscaledFilename,
             width: width * scale,
-            height: height * scale
+            height: height * scale,
+            metadata: responseMetadata
         };
         
     } catch (error) {

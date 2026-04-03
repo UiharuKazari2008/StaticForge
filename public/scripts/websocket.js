@@ -314,6 +314,7 @@ class BannerManager {
 
             // Gallery operations
             'request_gallery': 'Get Gallery',
+            'request_gallery_paginated': 'Get Gallery',
             'request_image_metadata': 'Get Image Metadata',
             'request_url_upload_metadata': 'Get Upload Metadata',
             'request_image_by_index': 'Get Image',
@@ -421,10 +422,11 @@ class WebSocketClient {
      */
     constructor() {
         // Client version for compatibility checking
-        this.clientVersion = '1.0.1'; // Update this when making breaking changes to client
+        this.clientVersion = '1.0.2'; // Update this when making breaking changes to client
 
         this.ws = null;
         this.reconnectAttempts = 0;
+        this.updateCheckAttempted = false; // Track if update check has been attempted
         this.maxReconnectAttempts = WebSocketClient.ATTEMPTS_MAX_RECONNECT;
         this.reconnectDelay = WebSocketClient.DELAY_RECONNECT_INITIAL;
         this.maxReconnectDelay = WebSocketClient.DELAY_RECONNECT_MAX;
@@ -437,6 +439,18 @@ class WebSocketClient {
         this.pingInterval = null;
         this.pingTimeout = null;
         this.healthCheckInterval = null;
+
+        // RTT (Round-Trip Time) tracking for dynamic timeout adjustment
+        this.rttMeasurements = []; // Array of recent RTT measurements
+        this.currentRtt = null; // Current average RTT
+        this.minRtt = null; // Minimum observed RTT
+        this.maxRtt = null; // Maximum observed RTT
+        this.rttHistorySize = 10; // Number of recent measurements to keep
+        this.pendingPings = new Map(); // Track ping requests with timestamps for RTT calculation
+        this.rttVariability = null; // Standard deviation of recent RTT measurements
+        this.pingWarningThreshold = 500; // Show warning if ping exceeds this (ms)
+        this.pingVariabilityThreshold = 0.3; // Show warning if variability exceeds 30% of average
+
         this.progressToastId = null;
         this.serverNotRespondingToastId = null;
         this.messageHandlers = new Map();
@@ -445,6 +459,7 @@ class WebSocketClient {
         this.currentInitStep = 0;
         this.totalInitSteps = 0;
         this.initializationCompleted = false; // Track if initialization has been completed
+        this.initializationStarted = false; // Track if initialization has been started
         this.initializationLock = false; // Prevent concurrent initialization
         this.stepByStepMode = false; // Step-by-step mode (Shift key on startup)
         this.stepByStepPaused = false; // Whether we're waiting for user to advance step
@@ -452,6 +467,15 @@ class WebSocketClient {
         // Pending requests tracking
         this.pendingRequestsCount = 0;
         this.completionTimer = null;
+        this.tickerCycleTimer = null;
+        this.tickerCycleIndex = 0;
+
+        // Completed requests tracking (last 10, excluding ping)
+        this.completedRequests = [];
+        this.maxCompletedRequests = 10;
+
+        // Store handler reference for cleanup
+        this.openRequestsModalHandler = () => this.openRequestsModal();
 
         // WebSocket indicator elements (dynamically populated array)
         this.websocketIndicators = [];
@@ -529,6 +553,226 @@ class WebSocketClient {
         console.log(`ℹ️ ${context}:`, infoData);
 
         return infoData;
+    }
+
+    /**
+     * Records a new RTT measurement and updates statistics
+     * @param {number} rtt - Round-trip time in milliseconds
+     */
+    recordRtt(rtt) {
+        if (rtt <= 0 || !isFinite(rtt)) {
+            return; // Ignore invalid measurements
+        }
+
+        this.rttMeasurements.push(rtt);
+
+        // Keep only recent measurements
+        if (this.rttMeasurements.length > this.rttHistorySize) {
+            this.rttMeasurements.shift();
+        }
+
+        // Update statistics
+        const sum = this.rttMeasurements.reduce((a, b) => a + b, 0);
+        this.currentRtt = sum / this.rttMeasurements.length;
+
+        if (this.minRtt === null || rtt < this.minRtt) {
+            this.minRtt = rtt;
+        }
+        if (this.maxRtt === null || rtt > this.maxRtt) {
+            this.maxRtt = rtt;
+        }
+
+        // Calculate variability (standard deviation)
+        if (this.rttMeasurements.length >= 3) {
+            const variance = this.rttMeasurements.reduce((acc, val) => {
+                return acc + Math.pow(val - this.currentRtt, 2);
+            }, 0) / this.rttMeasurements.length;
+            this.rttVariability = Math.sqrt(variance);
+        } else {
+            this.rttVariability = null;
+        }
+
+        // Update UI with ping information
+        this.updatePingDisplay();
+    }
+
+    /**
+     * Updates ping display in UI (tooltips and warning icon)
+     */
+    updatePingDisplay() {
+        // Update tooltips on websocket indicators
+        const pingText = this.getPingDisplayText();
+
+        // Update all websocket status tooltips
+        this.websocketIndicators.forEach(indicator => {
+            if (indicator.status) {
+                indicator.status.setAttribute('title', pingText);
+            }
+        });
+
+        // Update ping warning tray icon
+        this.updatePingWarningIcon();
+    }
+
+    /**
+     * Gets formatted ping display text for tooltips
+     * @returns {string} Formatted ping information
+     */
+    getPingDisplayText() {
+        if (this.currentRtt === null) {
+            return 'WebSocket Status\nPing: Measuring...';
+        }
+
+        const pingMs = Math.round(this.currentRtt);
+        let text = `WebSocket Status\nPing: ${pingMs}ms`;
+
+        if (this.minRtt !== null && this.maxRtt !== null) {
+            text += `\nRange: ${Math.round(this.minRtt)}ms - ${Math.round(this.maxRtt)}ms`;
+        }
+
+        if (this.rttVariability !== null) {
+            const variabilityPercent = Math.round((this.rttVariability / this.currentRtt) * 100);
+            text += `\nVariability: ${variabilityPercent}%`;
+        }
+
+        return text;
+    }
+
+    /**
+     * Updates the ping warning tray icon visibility and tooltip
+     */
+    updatePingWarningIcon() {
+        const warningIcon = document.getElementById('pingWarningIndicator');
+        if (!warningIcon) return;
+
+        const shouldShow = this.shouldShowPingWarning();
+
+        if (shouldShow) {
+            warningIcon.classList.remove('hidden');
+
+            // Add appropriate classes based on warning type
+            const isHighPing = this.currentRtt !== null && this.currentRtt > this.pingWarningThreshold;
+            // Only consider variability warning if ping is above 250ms
+            const isVariablePing = this.rttVariability !== null && this.currentRtt > 0 && this.currentRtt >= 250 &&
+                (this.rttVariability / this.currentRtt) > this.pingVariabilityThreshold;
+
+            // Remove existing state classes
+            warningIcon.classList.remove('high-ping', 'variable-ping');
+
+            // Add appropriate class
+            if (isHighPing && isVariablePing) {
+                warningIcon.classList.add('high-ping'); // High ping takes priority
+            } else if (isHighPing) {
+                warningIcon.classList.add('high-ping');
+            } else if (isVariablePing) {
+                warningIcon.classList.add('variable-ping');
+            }
+
+            const reason = this.getPingWarningReason();
+            warningIcon.setAttribute('title', reason);
+        } else {
+            warningIcon.classList.add('hidden');
+            warningIcon.classList.remove('high-ping', 'variable-ping');
+        }
+    }
+
+    /**
+     * Determines if ping warning should be shown
+     * @returns {boolean} True if warning should be shown
+     */
+    shouldShowPingWarning() {
+        if (this.currentRtt === null || this.rttMeasurements.length < 3) {
+            return false; // Not enough data yet
+        }
+
+        // Check for high ping
+        if (this.currentRtt > this.pingWarningThreshold) {
+            return true;
+        }
+
+        // Check for high variability (if variability is > 30% of average)
+        // Only show variability warning if ping is above 250ms (variability is less concerning at low ping)
+        if (this.rttVariability !== null && this.currentRtt > 0 && this.currentRtt >= 250) {
+            const variabilityPercent = (this.rttVariability / this.currentRtt);
+            if (variabilityPercent > this.pingVariabilityThreshold) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Gets the reason for ping warning
+     * @returns {string} Warning message
+     */
+    getPingWarningReason() {
+        if (this.currentRtt === null) {
+            return 'Ping: Measuring...';
+        }
+
+        const reasons = [];
+
+        if (this.currentRtt > this.pingWarningThreshold) {
+            reasons.push(`High ping: ${Math.round(this.currentRtt)}ms`);
+        }
+
+        // Only show variability warning if ping is above 250ms
+        if (this.rttVariability !== null && this.currentRtt > 0 && this.currentRtt >= 250) {
+            const variabilityPercent = Math.round((this.rttVariability / this.currentRtt) * 100);
+            if (variabilityPercent > this.pingVariabilityThreshold * 100) {
+                reasons.push(`Variable ping: ${variabilityPercent}% variation`);
+            }
+        }
+
+        if (reasons.length === 0) {
+            return `Ping: ${Math.round(this.currentRtt)}ms`;
+        }
+
+        return reasons.join('\n');
+    }
+
+    /**
+     * Calculates a dynamic timeout based on current RTT
+     * Uses a multiplier to ensure timeouts are liberal enough for slow connections
+     * @param {number} baseTimeout - Base timeout in milliseconds
+     * @param {number} minMultiplier - Minimum multiplier (default: 3)
+     * @param {number} maxMultiplier - Maximum multiplier (default: 10)
+     * @returns {number} Adjusted timeout in milliseconds
+     */
+    calculateDynamicTimeout(baseTimeout, minMultiplier = 3, maxMultiplier = 10) {
+        // If we don't have RTT data yet, use a conservative multiplier
+        if (this.currentRtt === null || this.rttMeasurements.length === 0) {
+            return baseTimeout * 5; // Use 5x multiplier until we have RTT data
+        }
+
+        // Calculate multiplier based on RTT
+        // For slow connections (high RTT), use higher multiplier
+        // For fast connections (low RTT), use lower multiplier
+        const rttMultiplier = Math.max(
+            minMultiplier,
+            Math.min(maxMultiplier, this.currentRtt / 100) // Scale multiplier based on RTT (100ms = 1x, 500ms = 5x, etc.)
+        );
+
+        // Calculate timeout using RTT-based multiplier
+        const dynamicTimeout = baseTimeout * rttMultiplier;
+
+        // Ensure timeout is at least 30 seconds
+        const minTimeout = 30000; // 30 seconds minimum
+        const adjustedTimeout = Math.max(dynamicTimeout, minTimeout);
+
+        // Cap at reasonable maximum (5 minutes)
+        const maxTimeout = 300000;
+        return Math.min(adjustedTimeout, maxTimeout);
+    }
+
+    /**
+     * Gets the current effective timeout for a given base timeout
+     * @param {number} baseTimeout - Base timeout in milliseconds
+     * @returns {number} Effective timeout in milliseconds
+     */
+    getEffectiveTimeout(baseTimeout) {
+        return this.calculateDynamicTimeout(baseTimeout);
     }
 
     // Ping host over HTTP before attempting WebSocket connection
@@ -633,7 +877,11 @@ class WebSocketClient {
     // Progress notification methods
     showProgressNotification(message = 'Connecting...', progress = 0) {
         if (window.isDesktop) {
-            // Desktop mode: use Windows startup modal
+            // Desktop mode: use Windows startup modal (clear any toast from before isDesktop flipped, e.g. auto layout)
+            if (this.progressToastId && typeof removeGlassToast === 'function') {
+                removeGlassToast(this.progressToastId);
+                this.progressToastId = null;
+            }
             this.showWindowsStartupModal(message, progress);
         } else {
             // Non-desktop: use toast
@@ -656,20 +904,32 @@ class WebSocketClient {
     }
 
     hideProgressNotification() {
+        if (this.progressToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.progressToastId);
+            this.progressToastId = null;
+        }
         if (window.isDesktop) {
             this.hideWindowsStartupModal();
-        } else {
-            if (this.progressToastId && typeof removeGlassToast === 'function') {
-                removeGlassToast(this.progressToastId);
-                this.progressToastId = null;
-            }
         }
         document.body.classList.remove('initializing');
+
+        // Activate all deferred resize listeners after initialization is hidden
+        if (typeof activateAllResizeListeners === 'function') {
+            activateAllResizeListeners();
+        }
     }
 
     updateProgressNotification(message, progress) {
         if (window.isDesktop) {
-            this.updateWindowsStartupModal(message, progress);
+            if (this.progressToastId) {
+                if (typeof removeGlassToast === 'function') {
+                    removeGlassToast(this.progressToastId);
+                }
+                this.progressToastId = null;
+                this.showWindowsStartupModal(message, progress);
+            } else {
+                this.updateWindowsStartupModal(message, progress);
+            }
         } else {
             if (!this.progressToastId) return;
 
@@ -690,24 +950,43 @@ class WebSocketClient {
         }
     }
 
+    // Allow initialization steps to update their progress dynamically
+    updateCurrentInitStepProgress(subProgress = 0) {
+        if (this.currentInitStep > 0 && this.totalInitSteps > 0) {
+            // Calculate base progress for current step
+            const baseProgressForStep = WebSocketClient.PROGRESS_INIT_BASE +
+                (((this.currentInitStep - 1) / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
+
+            // Add sub-progress within this step (0-1 range expected)
+            const stepRange = WebSocketClient.PROGRESS_INIT_STEPS / this.totalInitSteps;
+            const totalProgress = baseProgressForStep + (subProgress * stepRange);
+
+            // Get current step message
+            const currentStep = this.initSteps[this.currentInitStep - 1];
+            if (currentStep) {
+                this.updateProgressNotification(currentStep.message, Math.min(totalProgress, 100));
+            }
+        }
+    }
+
     // Windows Startup Modal Methods (Desktop Mode Only)
     showWindowsStartupModal(message = 'Initializing...', progress = 0) {
         if (!window.isDesktop) return;
-        
+
         const modal = document.getElementById('windowsStartupModal');
         const statusElement = document.getElementById('windowsStartupStatus');
         const progressBar = document.getElementById('windowsStartupProgressBar');
         const advanceBtn = document.getElementById('windowsStartupAdvanceStepBtn');
-        
+
         if (!modal || !statusElement || !progressBar) return;
-        
+
         // Apply Windows Classic theme initially
         if (!document.body.classList.contains('windows-classic-theme')) {
             document.body.classList.add('windows-classic-theme');
         }
-        
+
         openModal(modal);
-        
+
         // Explicitly set startup modal as active (openModal doesn't do this for new modals)
         // Keep it active until gallery window opens
         if (typeof setActiveWindow === 'function') {
@@ -715,10 +994,10 @@ class WebSocketClient {
         } else {
             modal.classList.add('active-window');
         }
-        
+
         statusElement.textContent = message;
         progressBar.style.width = `${progress}%`;
-        
+
         // Setup advance step button handler if not already set up
         if (advanceBtn && !this.advanceStepHandlerSetup) {
             advanceBtn.addEventListener('click', () => {
@@ -726,31 +1005,31 @@ class WebSocketClient {
             });
             this.advanceStepHandlerSetup = true;
         }
-        
+
         // Update button visibility
         this.updateStepByStepButton();
     }
 
     updateWindowsStartupModal(message, progress) {
         if (!window.isDesktop) return;
-        
+
         const statusElement = document.getElementById('windowsStartupStatus');
         const progressBar = document.getElementById('windowsStartupProgressBar');
-        
+
         if (statusElement) {
             statusElement.textContent = message;
         }
         if (progressBar) {
             progressBar.style.width = `${Math.min(100, Math.max(0, progress))}%`;
         }
-        
+
         // Update button visibility when progress updates
         this.updateStepByStepButton();
     }
 
     hideWindowsStartupModal() {
         if (!window.isDesktop) return;
-        
+
         const modal = document.getElementById('windowsStartupModal');
         if (modal) {
             // Use normal modal closing process
@@ -760,7 +1039,7 @@ class WebSocketClient {
                 modal.classList.add('hidden');
             }
         }
-        
+
         // Remove startup background
         document.body.classList.remove('windows-startup');
         // Keep windows-classic-theme until workspace theme is loaded (handled in workspace loading step)
@@ -769,43 +1048,43 @@ class WebSocketClient {
     // Windows Update Modal Methods (Desktop Mode Only)
     showWindowsUpdateModal(message = 'Preparing to install updates...', progress = 0) {
         if (!window.isDesktop) return;
-        
+
         const modal = document.getElementById('windowsUpdateModal');
         const statusElement = document.getElementById('windowsUpdateStatus');
         const progressBar = document.getElementById('windowsUpdateProgressBar');
         const skipBtn = document.getElementById('windowsUpdateSkipBtn');
         const restartActions = document.getElementById('windowsUpdateRestartActions');
         const progressContainer = modal?.querySelector('.windows-update-progress-container');
-        
+
         if (!modal || !statusElement || !progressBar) return;
-        
+
         // Show progress container, hide restart actions
         if (progressContainer) progressContainer.classList.remove('hidden');
         if (restartActions) restartActions.classList.add('hidden');
         if (skipBtn) skipBtn.style.display = '';
-        
+
         // Use normal modal opening process
         if (typeof openModal === 'function') {
             openModal(modal);
         } else {
             modal.classList.remove('hidden');
         }
-        
+
         statusElement.textContent = message;
         progressBar.style.width = `${progress}%`;
-        
+
         // Setup button handlers if not already set up
         this.setupUpdateModalHandlers();
     }
-    
+
     setupUpdateModalHandlers() {
         if (this.updateModalHandlersSetup) return;
         this.updateModalHandlersSetup = true;
-        
+
         const skipBtn = document.getElementById('windowsUpdateSkipBtn');
         const restartBtn = document.getElementById('windowsUpdateRestartBtn');
         const laterBtn = document.getElementById('windowsUpdateLaterBtn');
-        
+
         if (skipBtn) {
             skipBtn.addEventListener('click', () => {
                 if (this.onUpdateSkip) {
@@ -813,7 +1092,7 @@ class WebSocketClient {
                 }
             });
         }
-        
+
         if (restartBtn) {
             restartBtn.addEventListener('click', () => {
                 if (this.onUpdateRestart) {
@@ -821,7 +1100,7 @@ class WebSocketClient {
                 }
             });
         }
-        
+
         if (laterBtn) {
             laterBtn.addEventListener('click', () => {
                 if (this.onUpdateLater) {
@@ -830,7 +1109,7 @@ class WebSocketClient {
             });
         }
     }
-    
+
     setUpdateModalCallbacks(onSkip, onRestart, onLater) {
         this.onUpdateSkip = onSkip;
         this.onUpdateRestart = onRestart;
@@ -839,10 +1118,10 @@ class WebSocketClient {
 
     updateWindowsUpdateModal(message, progress) {
         if (!window.isDesktop) return;
-        
+
         const statusElement = document.getElementById('windowsUpdateStatus');
         const progressBar = document.getElementById('windowsUpdateProgressBar');
-        
+
         if (statusElement) {
             statusElement.textContent = message;
         }
@@ -853,28 +1132,28 @@ class WebSocketClient {
 
     showWindowsUpdateRestartPrompt(message = 'Updates have been installed. Restart is required.') {
         if (!window.isDesktop) return;
-        
+
         const modal = document.getElementById('windowsUpdateModal');
         const statusElement = document.getElementById('windowsUpdateStatus');
         const progressBar = document.getElementById('windowsUpdateProgressBar');
         const skipBtn = document.getElementById('windowsUpdateSkipBtn');
         const restartActions = document.getElementById('windowsUpdateRestartActions');
         const progressContainer = modal?.querySelector('.windows-update-progress-container');
-        
+
         if (!modal || !statusElement || !restartActions) return;
-        
+
         // Hide progress container, show restart actions
         if (progressContainer) progressContainer.classList.add('hidden');
         if (restartActions) restartActions.classList.remove('hidden');
         if (skipBtn) skipBtn.style.display = 'none';
         if (progressBar) progressBar.style.width = '100%';
-        
+
         statusElement.textContent = message;
     }
 
     hideWindowsUpdateModal() {
         if (!window.isDesktop) return;
-        
+
         const modal = document.getElementById('windowsUpdateModal');
         if (modal) {
             // Use normal modal closing process
@@ -1088,7 +1367,7 @@ class WebSocketClient {
     // Update step-by-step button visibility
     updateStepByStepButton() {
         if (!window.isDesktop) return;
-        
+
         const button = document.getElementById('windowsStartupAdvanceStepBtn');
         if (button) {
             if (this.stepByStepMode && this.stepByStepPaused) {
@@ -1101,12 +1380,19 @@ class WebSocketClient {
 
     // Initialize the websocket client with proper sequence
     async init() {
+        // Prevent multiple initializations
+        if (this.initializationStarted) {
+            console.log('⚠️ WebSocket initialization already started, skipping');
+            return;
+        }
+        this.initializationStarted = true;
+
         // Check for Shift key to enable step-by-step mode (desktop mode only)
         if (window.isDesktop && window.shiftKeyOnStartup) {
             this.stepByStepMode = true;
             console.log('🔍 Step-by-step mode enabled (Shift key detected on startup)');
         }
-        
+
         // Show progress notification immediately
         this.showProgressNotification('Initializing...', 0);
 
@@ -1120,10 +1406,10 @@ class WebSocketClient {
             this.connect();
         }
 
-        // Handle page visibility changes
+        // Handle page visibility changes (covers tab switching, app minimise, screen lock)
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && !this.ws) {
-                this.connect();
+            if (document.visibilityState === 'visible') {
+                this._reconnectOnFocusRegain('visibilitychange');
             }
         });
 
@@ -1133,11 +1419,14 @@ class WebSocketClient {
             this.disconnect();
         });
 
-        // Handle page focus events
+        // Handle window focus (covers alt-tab, clicking back into the window)
         window.addEventListener('focus', () => {
-            if (!this.isConnected() && !this.isConnecting) {
-                this.connect();
-            }
+            this._reconnectOnFocusRegain('window-focus');
+        });
+
+        // Handle mobile browser lifecycle freeze/resume (Android Chrome, iOS Safari)
+        window.addEventListener('resume', () => {
+            this._reconnectOnFocusRegain('resume');
         });
 
         // Listen for service worker network activity events
@@ -1158,7 +1447,8 @@ class WebSocketClient {
      */
     async connect() {
         this.initWebSocketIndicators();
-        
+        this.setupRequestsModalHandlers();
+
         // Dismiss the server not responding toast when attempting to connect
         if (this.serverNotRespondingToastId && typeof removeGlassToast === 'function') {
             removeGlassToast(this.serverNotRespondingToastId);
@@ -1192,6 +1482,18 @@ class WebSocketClient {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on ping failure
+
+                // Check for updates using HTTP method since WebSocket connection failed
+                if (!this.initializationCompleted && window.serviceWorkerManager && !this.updateCheckAttempted) {
+                    this.updateCheckAttempted = true; // Prevent duplicate checks
+                    try {
+                        console.log('🔍 WebSocket connection failed, checking for updates via HTTP...');
+                        await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
+                    } catch (updateError) {
+                        console.warn('⚠️ Update check via HTTP failed (non-critical):', updateError);
+                        // Don't block error handling if update check fails
+                    }
+                }
 
                 // If we're already in circuit breaker mode, don't retry immediately
                 if (this.circuitBreaker) {
@@ -1236,7 +1538,7 @@ class WebSocketClient {
             }
 
             // Step 3: Now attempt WebSocket connection
-            this.updateProgressNotification('Establishing Session...', 25);
+            this.updateProgressNotification('Establishing Session...', 20);
 
             // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1244,7 +1546,7 @@ class WebSocketClient {
 
             this.ws = new WebSocket(wsUrl);
 
-            this.ws.onopen = () => {
+            this.ws.onopen = async () => {
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on success
                 this.reconnectAttempts = 0;
@@ -1258,12 +1560,38 @@ class WebSocketClient {
                 // Trigger connection event
                 this.triggerEvent('connected');
 
-                // Complete any remaining initialization steps
+                // Start periodic pings to measure RTT and keep connection alive
+                this.startPeriodicPings();
+
+                // Trigger refresh callbacks on reconnection (not initial connection)
+                if (this.initializationCompleted) {
+                    this.executeRefreshCallbacks()
+                        .catch(error => {
+                            console.error('❌ Error triggering refresh callbacks:', error);
+                        })
+                        .finally(() => {
+                            console.log('✅ Refresh callbacks triggered successfully');
+                        });
+                }
+
+                // Check for updates after successful connection but before authentication
                 if (!this.initializationCompleted) {
+                    if (!this.updateCheckAttempted && window.serviceWorkerManager) {
+                        this.updateCheckAttempted = true; // Prevent duplicate checks
+                        try {
+                            console.log('🔍 Checking for updates after connection (before authentication)...');
+                            await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
+                        } catch (error) {
+                            console.warn('⚠️ Update check failed (non-critical):', error);
+                            // Don't block initialization if update check fails
+                        }
+                    }
+
+                    // Complete any remaining initialization steps (includes authentication)
+                    // Now with RTT data available for dynamic timeout adjustment
                     this.executeInitSteps();
                 } else {
                     this.hideProgressNotification();
-                    // ON CONNECT CHECK IN WITH SERVICE WORKER TO SEE IF IT HAS UPDATES
                 }
 
                 // Sync current workspace with server (only on reconnection, not initial connection)
@@ -1293,6 +1621,10 @@ class WebSocketClient {
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
                 this.isConnecting = false;
+                this.connectionLock = false;
+
+                // Stop periodic pings when connection is closed
+                this.stopPeriodicPings();
 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -1364,10 +1696,23 @@ class WebSocketClient {
                 this.triggerEvent('disconnected', event);
             };
 
-            this.ws.onerror = (error) => {
+            this.ws.onerror = async (error) => {
                 console.error('❌ WebSocket error:', error);
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on error
+
+                // Check for updates using HTTP method since WebSocket connection failed
+                // Only check if we haven't completed initialization yet
+                if (!this.initializationCompleted && window.serviceWorkerManager && !this.updateCheckAttempted) {
+                    this.updateCheckAttempted = true; // Prevent duplicate checks
+                    try {
+                        console.log('🔍 WebSocket connection error, checking for updates via HTTP...');
+                        await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
+                    } catch (updateError) {
+                        console.warn('⚠️ Update check via HTTP failed (non-critical):', updateError);
+                        // Don't block error handling if update check fails
+                    }
+                }
 
                 // Reset generation button state if generation was interrupted
                 if (typeof updateManualGenerateBtnState === 'function') {
@@ -1451,11 +1796,26 @@ class WebSocketClient {
      * Closes the WebSocket connection, clears all pending requests,
      * releases connection locks, and cleans up all timeouts and intervals.
      * This method is safe to call multiple times.
+     *
+     * @param {boolean} [markManualClose=true] - When false, the socket is torn down but automatic
+     *   reconnection stays enabled (used when recycling the connection, e.g. after PIN auth).
      */
-    disconnect() {
-        this.isManualClose = true;
+    disconnect(markManualClose = true) {
+        if (markManualClose) {
+            this.isManualClose = true;
+        }
         this.connectionLock = false; // Release connection lock
         this.initializationLock = false; // Release initialization lock
+
+        // Stop periodic pings
+        this.stopPeriodicPings();
+
+        // Reset RTT statistics on disconnect
+        this.rttMeasurements = [];
+        this.currentRtt = null;
+        this.minRtt = null;
+        this.maxRtt = null;
+        this.pendingPings.clear();
 
         // Clear and fail all pending requests
         this.clearPendingRequests();
@@ -1539,7 +1899,7 @@ class WebSocketClient {
         this.reconnectDelay = 1000;
         this.circuitBreaker = false; // Reset circuit breaker
         // Don't reset initializationCompleted - we only want to run steps flagged as runOnReconnect
-        this.disconnect();
+        this.disconnect(false);
         setTimeout(() => {
             this.connect();
         }, 100);
@@ -1557,6 +1917,40 @@ class WebSocketClient {
         this.bannerManager.showWebSocketTicker('connecting', 'Reconnecting...', 'fa-signal', false);
 
         // Attempt connection
+        this.connect();
+    }
+
+    /**
+     * Reconnects the WebSocket when the app regains focus/visibility.
+     *
+     * Resets the circuit breaker and reconnect counter so the user is never stuck
+     * in a cooldown simply because they switched away from the app and back.
+     * No-ops if the connection is already open or a connect attempt is in progress.
+     *
+     * @param {string} source - The event that triggered this call (for logging)
+     */
+    _reconnectOnFocusRegain(source) {
+        // Already connected or actively connecting — nothing to do
+        if (this.isConnected() || this.isConnecting || this.connectionLock) {
+            return;
+        }
+
+        console.log(`👁️ App regained focus (${source}) — checking WebSocket...`);
+
+        // If the page was manually closed (e.g. beforeunload was fired), don't reconnect
+        if (this.isManualClose) {
+            return;
+        }
+
+        // Reset circuit breaker and retry counter: losing focus is not a failure on the
+        // user's part, so we should reconnect eagerly when they return.
+        if (this.circuitBreaker || this.reconnectAttempts > 0) {
+            console.log('🔄 Resetting circuit breaker / reconnect attempts due to focus regain');
+            this.circuitBreaker = false;
+            this.reconnectAttempts = 0;
+            this.lastConnectionAttempt = 0;
+        }
+
         this.connect();
     }
 
@@ -1683,6 +2077,14 @@ class WebSocketClient {
         // Handle pong responses with requestId for authentication checking
         if (message.type === 'pong') {
             if (message.requestId) {
+                // Calculate RTT if we have the ping timestamp
+                if (this.pendingPings.has(message.requestId)) {
+                    const pingTimestamp = this.pendingPings.get(message.requestId);
+                    const rtt = Date.now() - pingTimestamp;
+                    this.recordRtt(rtt);
+                    this.pendingPings.delete(message.requestId);
+                }
+
                 this.resolveRequest(message.requestId, { success: true }, null);
             }
             return;
@@ -1793,6 +2195,19 @@ class WebSocketClient {
             console.error('❌ Image generation error:', message.error);
             console.error('❌ Full error details:', message);
 
+            this.clearStreamingStepQueues();
+            if (this.progressStates && message.requestId) {
+                const progressState = this.progressStates.get(message.requestId);
+                if (progressState) {
+                    if (progressState.timer) clearInterval(progressState.timer);
+                    if (progressState.delayTimer) clearInterval(progressState.delayTimer);
+                    this.progressStates.delete(message.requestId);
+                }
+            }
+            if (typeof progressToastId !== 'undefined' && progressToastId && typeof clearGlassToastImagePreview === 'function') {
+                clearGlassToastImagePreview(progressToastId);
+            }
+
             if (message.requestId) {
                 // Build detailed error message
                 let errorMsg = message.error || 'Image generation failed';
@@ -1842,11 +2257,6 @@ class WebSocketClient {
                 });
             }
 
-            // Special handling for gallery responses
-            if (message.type === 'request_gallery_response') {
-                this.handleGalleryResponse(message.data, message.requestId);
-            }
-
             // Special handling for workspace activation responses
             if (message.type === 'workspace_activate_response') {
                 this.handleWorkspaceActivationResponse(message.data);
@@ -1879,7 +2289,7 @@ class WebSocketClient {
             // Show success/error message
             if (message.success) {
                 const successMessage = `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`;
-                
+
                 // Desktop mode: use Windows Update Modal
                 if (window.isDesktop && this.showWindowsUpdateModal) {
                     this.showWindowsUpdateModal('Cache Refreshed', 100);
@@ -1901,7 +2311,7 @@ class WebSocketClient {
                 }
             } else {
                 const errorMessage = message.error || 'Failed to refresh server cache';
-                
+
                 // Desktop mode: use Windows Update Modal
                 if (window.isDesktop && this.showWindowsUpdateModal) {
                     this.showWindowsUpdateModal('Cache Refresh Failed', 0);
@@ -1943,12 +2353,12 @@ class WebSocketClient {
         // Handle resource update notifications
         if (message.type === 'resource_update_available') {
             const updateMessage = message.data.message || 'Resource updates are available for download';
-            
+
             // Desktop mode: use Windows Update Modal
             if (window.isDesktop && this.showWindowsUpdateModal) {
                 this.showWindowsUpdateModal('Updates Available', 0);
                 this.updateWindowsUpdateModal(updateMessage, 0);
-                
+
                 // Setup callbacks for update modal buttons
                 this.setUpdateModalCallbacks(
                     // Skip callback (maps to "Later" button behavior)
@@ -1964,14 +2374,14 @@ class WebSocketClient {
                         this.hideWindowsUpdateModal();
                     }
                 );
-                
+
                 // Override skip button to trigger download
                 const skipBtn = document.getElementById('windowsUpdateSkipBtn');
                 if (skipBtn) {
                     // Remove existing listeners by cloning
                     const newSkipBtn = skipBtn.cloneNode(true);
                     skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-                    
+
                     newSkipBtn.addEventListener('click', () => {
                         console.log('User chose to download updates now');
                         // Trigger the service worker update check
@@ -1980,7 +2390,7 @@ class WebSocketClient {
                         }
                         this.hideWindowsUpdateModal();
                     });
-                    
+
                     // Change button text to "Download Now"
                     newSkipBtn.textContent = 'Download Now';
                     newSkipBtn.classList.remove('btn-secondary');
@@ -2077,8 +2487,32 @@ class WebSocketClient {
                 this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
                 break;
 
-            case 'image_generated':
+            case 'image_generation_response':
                 this.handleGeneratedImage(message.data);
+                break;
+
+            case 'image_upscaling_response':
+                this.handleUpscalingResponse(message.data);
+                break;
+
+            case 'image_upscaling_error':
+                this.handleUpscalingError(message.data);
+                break;
+
+            case 'image_expansion_response':
+                this.handleExpansionResponse(message.data);
+                break;
+
+            case 'image_expansion_error':
+                this.handleExpansionError(message.data);
+                break;
+
+            case 'image_expansion_reroll_response':
+                this.handleExpansionRerollResponse(message.data);
+                break;
+
+            case 'image_expansion_reroll_error':
+                this.handleExpansionRerollError(message.data);
                 break;
 
             case 'gallery_updated':
@@ -2105,10 +2539,163 @@ class WebSocketClient {
                 this.handleKeepAlive(message);
                 break;
 
+            case 'note_created':
+                // Add new note to cache
+                if (notepadManager && message.data && message.data.note) {
+                    notepadManager.addNoteToCache(message.data.note);
+                }
+
+                // Refresh notebook list if open
+                if (notepadManager && notepadManager.notebookModal &&
+                    !notepadManager.notebookModal.classList.contains('hidden')) {
+                    notepadManager.notebookRefreshNotesList();
+                }
+                break;
+
+            case 'note_updated':
+                // Update the notes cache with the new data
+                if (notepadManager && message.data && message.data.noteId && message.data.note) {
+                    notepadManager.updateNoteInCache(message.data.note);
+                }
+
+                // Route to specific notepad instance if open
+                if (notepadManager && message.data && message.data.noteId) {
+                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
+                    if (notepad) {
+                        notepad.handleNoteUpdated(message.data);
+                    }
+
+                    // Also update notebook if showing this note
+                    if (notepadManager.notebookCurrentNote &&
+                        notepadManager.notebookCurrentNote.id === message.data.noteId) {
+                        notepadManager.notebookLoadNote(message.data.noteId, false);
+                    }
+
+                    // Refresh notebook list if open
+                    if (notepadManager.notebookModal &&
+                        !notepadManager.notebookModal.classList.contains('hidden')) {
+                        notepadManager.notebookRefreshNotesList();
+                    }
+                }
+                // Invalidate cache for the affected workspace
+                if (notepadManager && message.data && message.data.workspaceId) {
+                    notepadManager.invalidateWorkspaceNotesCache(message.data.workspaceId);
+                }
+                break;
+
+            case 'note_deleted':
+                // Remove note from cache
+                if (notepadManager && message.data && message.data.noteId) {
+                    notepadManager.removeNoteFromCache(message.data.noteId);
+                }
+
+                // Close notepad if it's open
+                if (notepadManager && message.data && message.data.noteId) {
+                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
+                    if (notepad) {
+                        notepad.handleNoteDeleted();
+                    }
+
+                    // Clear notebook if showing this note
+                    if (notepadManager.notebookCurrentNote &&
+                        notepadManager.notebookCurrentNote.id === message.data.noteId) {
+                        notepadManager.notebookCurrentNote = null;
+                        if (notepadManager.notebookTextarea) {
+                            notepadManager.notebookTextarea.value = '';
+                        }
+                        notepadManager.notebookUpdateTitle();
+                    }
+
+                    // Refresh notebook list if open
+                    if (notepadManager.notebookModal &&
+                        !notepadManager.notebookModal.classList.contains('hidden')) {
+                        notepadManager.notebookRefreshNotesList();
+                    }
+                }
+                break;
+
+            case 'note_content_updated':
+                // Update notepad content if open
+                if (notepadManager && message.data && message.data.noteId) {
+                    const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
+                    if (notepad) {
+                        notepad.handleNoteContentUpdated(message.data);
+                    }
+                }
+                // Invalidate cache for the affected workspace
+                if (notepadManager && message.data && message.data.workspaceId) {
+                    notepadManager.invalidateWorkspaceNotesCache(message.data.workspaceId);
+                }
+                break;
+
+            case 'workspace_deleted':
+                // Clear cache for deleted workspace
+                if (notepadManager && message.data && message.data.workspaceId) {
+                    notepadManager.clearWorkspaceNotesCache(message.data.workspaceId);
+                }
+                break;
+
             default:
                 // Handle custom message types
                 this.triggerEvent(message.type, message);
         }
+    }
+
+    /**
+     * Register a refresh callback for websocket reconnection
+     * @param {string} callbackId - Unique identifier for the callback
+     * @param {number} priority - Priority (lower numbers run first)
+     * @param {Function} callback - Async function to call on reconnection
+     */
+    registerRefreshCallback(callbackId, priority, callback) {
+        if (!this.refreshCallbacks) {
+            this.refreshCallbacks = new Map();
+        }
+
+        if (typeof callback !== 'function') {
+            console.error('❌ Refresh callback must be a function');
+            return false;
+        }
+
+        this.refreshCallbacks.set(callbackId, {
+            callback,
+            priority
+        });
+
+        // Sort callbacks by priority
+        this.refreshCallbacks = new Map(
+            Array.from(this.refreshCallbacks.entries()).sort((a, b) => a[1].priority - b[1].priority)
+        );
+
+        return true;
+    }
+
+    /**
+     * Remove a refresh callback
+     * @param {string} callbackId - The callback ID to remove
+     * @returns {boolean} True if callback was removed
+     */
+    removeRefreshCallback(callbackId) {
+        if (!this.refreshCallbacks) return false;
+        return this.refreshCallbacks.delete(callbackId);
+    }
+
+    /**
+     * Execute all refresh callbacks (called on websocket reconnection)
+     * @returns {Promise<void>}
+     */
+    async executeRefreshCallbacks() {
+        if (!this.refreshCallbacks || this.refreshCallbacks.size === 0) return;
+
+        const promises = Array.from(this.refreshCallbacks.values()).map(async ({ callback }) => {
+            try {
+                await callback();
+            } catch (error) {
+                console.error('❌ Error in refresh callback:', error);
+            }
+        });
+
+        await Promise.allSettled(promises);
     }
 
     handleAuthError(message) {
@@ -2159,6 +2746,11 @@ class WebSocketClient {
             // Clear existing timeout safely
             request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
 
+            // Base timeout of 2 minutes (matches server-side keep-alive for image generation)
+            // TODO: This should be based on if Rentan is running 30 minutes for image gen and 2 min for Rentan
+            const baseTimeout = 120000;
+            const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+
             // Set new timeout
             const timeoutId = setTimeout(() => {
                 if (this.pendingRequests.has(requestId)) {
@@ -2166,14 +2758,14 @@ class WebSocketClient {
                     this.pendingRequests.delete(requestId);
                     this.decrementPendingRequests();
 
-                    console.warn(`⚠️ Request timeout after keep-alive reset for ${requestId}`);
+                    console.warn(`⚠️ Request timeout after keep-alive reset for ${requestId} (${Math.round(timeoutMs / 1000)}s)`);
 
-                    const timeoutError = new Error(`Request timeout after 2 minutes (with keep-alive)`);
+                    const timeoutError = new Error(`Request timeout after ${Math.round(timeoutMs / 1000)} seconds (with keep-alive)`);
                     timeoutError.code = 'REQUEST_TIMEOUT';
                     timeoutError.requestId = requestId;
                     request.reject(timeoutError);
                 }
-            }, 120000); // 2 minute timeout (matches server-side keep-alive for image generation) TODO: This should be based on if Rentan is running 30 minutes for image gen and 2 min for Rentan
+            }, timeoutMs);
 
             // Update timeout ID
             request.timeoutId = timeoutId;
@@ -2241,12 +2833,32 @@ class WebSocketClient {
         this.triggerEvent('imageGenerated', data);
     }
 
-    handleGalleryUpdate(data) {
-        this.triggerEvent('galleryUpdated', data);
+    handleUpscalingResponse(data) {
+        this.triggerEvent('imageUpscalingResponse', data);
     }
 
-    handleGalleryResponse(data, requestId) {
-        this.triggerEvent('galleryResponse', { data, requestId });
+    handleUpscalingError(data) {
+        this.triggerEvent('imageUpscalingError', data);
+    }
+
+    handleExpansionResponse(data) {
+        this.triggerEvent('imageExpansionResponse', data);
+    }
+
+    handleExpansionError(data) {
+        this.triggerEvent('imageExpansionError', data);
+    }
+
+    handleExpansionRerollResponse(data) {
+        this.triggerEvent('imageExpansionRerollResponse', data);
+    }
+
+    handleExpansionRerollError(data) {
+        this.triggerEvent('imageExpansionRerollError', data);
+    }
+
+    handleGalleryUpdate(data) {
+        this.triggerEvent('galleryUpdated', data);
     }
 
     handleWorkspaceUpdate(data) {
@@ -2258,14 +2870,14 @@ class WebSocketClient {
                 Object.assign(workspaces[workspaceId], data.settings);
             }
         }
-        
+
         // Update global window positions if window positions were updated
         // Window positions are stored in the same file as shortcuts (workspaceDesktop config) as global object
         if (data.action === 'window_positions_updated' && data.windowPositions) {
             // Update global window positions directly
             Object.assign(globalWindowPositions, data.windowPositions);
         }
-        
+
         // Dispatch custom event for workspace updates
         const event = new CustomEvent('workspaceUpdated', {
             detail: data
@@ -2455,7 +3067,7 @@ class WebSocketClient {
 
         // Update overlay if dynamic generation is active, even if modal is hidden (modal hides during generation)
         const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
-        
+
         if (isDynamicGenerationActive) {
             updateDynamicGenerationProgressOverlay(phase, data);
         }
@@ -2630,8 +3242,8 @@ class WebSocketClient {
 
                 // Also handle modal streaming updates for intermediate images
                 if (data.phase === 'generating' && data.currentStep !== undefined) {
-                    // Add step to the appropriate queue
-                    if (!manualModal.classList.contains('hidden')) {
+                    const manualModalForStream = document.getElementById('manualModal');
+                    if (manualModalForStream && !manualModalForStream.classList.contains('hidden')) {
                         this.queueStreamingStep('manual', data);
                     }
 
@@ -2643,10 +3255,16 @@ class WebSocketClient {
 
             // Handle completion
             if (data.phase === 'complete') {
+                this.clearStreamingStepQueues();
+
                 // Clear any running timers
                 if (progressState.timer) {
                     clearInterval(progressState.timer);
                     progressState.timer = null;
+                }
+                if (progressState.delayTimer) {
+                    clearInterval(progressState.delayTimer);
+                    progressState.delayTimer = null;
                 }
 
                 if (typeof updateGlassToastComplete === 'function') {
@@ -2842,21 +3460,47 @@ class WebSocketClient {
     }
 
     // Method to request gallery data via WebSocket
-    async requestGallery(viewType = 'images', includePinnedStatus = true) {
+    async requestGallery(viewType = 'images', includePinnedStatus = true, options = {}) {
         try {
-            const result = await this.sendMessageWithCallback('request_gallery', {
+            const requestData = {
                 viewType,
-                includePinnedStatus
-            }, (response, error) => {
-                if (error) {
-                    console.error('Gallery request callback error:', error);
+                includePinnedStatus,
+                ...options // Support light, offset, limit parameters
+            };
+
+            // All gallery requests during active pagination loading should use pagination tracking
+            let result;
+            if (this.isGalleryLoadingActive) {
+                // Use pagination tracking for all gallery requests during active loading
+                if (!this.activeGalleryPaginationGroupId) {
+                    this.activeGalleryPaginationGroupId = `gallery_load_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 }
-            });
+
+                result = await this.sendGalleryPaginationRequest('request_gallery', requestData, (response, error) => {
+                    if (error) {
+                        console.error('Gallery pagination request callback error:', error);
+                    }
+                }, true, this.activeGalleryPaginationGroupId);
+            } else {
+                // Regular request - could potentially start pagination
+                result = await this.sendMessageWithCallback('request_gallery', requestData, (response, error) => {
+                    if (error) {
+                        console.error('Gallery request callback error:', error);
+                    }
+                });
+            }
+
             return result;
         } catch (error) {
             console.error('Gallery request error:', error);
             throw error;
         }
+    }
+
+    // Mark gallery loading as complete
+    completeGalleryLoading() {
+        this.isGalleryLoadingActive = false;
+        this.activeGalleryPaginationGroupId = null;
     }
 
     // Method to request specific gallery view (scraps, pinned, upscaled)
@@ -2867,6 +3511,27 @@ class WebSocketClient {
     // Method to request all images with pinned status
     async requestAllImages() {
         return this.requestGallery('images', true);
+    }
+
+    // Method to request gallery data with pagination info
+    async requestGalleryData(viewType = 'images', offset = 0, limit = 100) {
+        try {
+            const result = await this.sendMessageWithCallback('request_gallery', {
+                viewType,
+                includePinnedStatus: true,
+                offset,
+                limit,
+                light: false
+            }, (response, error) => {
+                if (error) {
+                    console.error('Gallery data request callback error:', error);
+                }
+            });
+            return result;
+        } catch (error) {
+            console.error('Gallery data request error:', error);
+            throw error;
+        }
     }
 
     // Method to request image metadata via WebSocket
@@ -2955,6 +3620,10 @@ class WebSocketClient {
 
     async resolveDynamicContext(dynamicConfig) {
         return this.sendMessageWithRequestId('resolve_dynamic_context', this.generateRequestId(), { dynamicConfig });
+    }
+
+    async resolveTextReplacements(text, presetName = null, model = null, periodKey = null) {
+        return this.sendMessageWithRequestId('resolve_text_replacements', this.generateRequestId(), { text, presetName, model, periodKey });
     }
 
     async deletePreset(presetName) {
@@ -3095,24 +3764,6 @@ class WebSocketClient {
         }
     }
 
-    // Request fresh gallery data for search filtering
-    async requestGalleryData(viewType = 'images') {
-        if (!this.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        try {
-            const result = await this.sendMessage('request_gallery', {
-                viewType: viewType,
-                includeMetadata: false // We only need the image list for filtering
-            });
-            return result;
-        } catch (error) {
-            console.error('Gallery data request error:', error);
-            throw error;
-        }
-    }
-
     // Workspace methods
     async getWorkspaces() {
         return this.sendMessage('workspace_list');
@@ -3244,7 +3895,7 @@ class WebSocketClient {
         if (!this.isConnected()) {
             return;
         }
-        
+
         // Use sendAcklessMessage to avoid triggering the ticket system
         // workspaceId is ignored - positions are stored globally
         this.sendAcklessMessage('workspace_update_window_positions', {
@@ -3412,6 +4063,7 @@ class WebSocketClient {
             }
 
             const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const pingTimestamp = Date.now(); // Record when ping is sent
             const message = {
                 type: 'ping',
                 requestId
@@ -3424,8 +4076,11 @@ class WebSocketClient {
                 reject,
                 type: 'ping',
                 showBanner: false,
-                timestamp: Date.now()
+                timestamp: pingTimestamp
             });
+
+            // Store ping timestamp for RTT calculation
+            this.pendingPings.set(requestId, pingTimestamp);
 
             // Increment pending requests count
             this.incrementPendingRequests();
@@ -3433,16 +4088,19 @@ class WebSocketClient {
             try {
                 this.send(message);
 
-                // Set timeout for ping requests
-                const timeoutMs = 5000; // 5 seconds for ping requests
+                // Calculate dynamic timeout based on RTT
+                const baseTimeout = WebSocketClient.TIMEOUT_PING;
+                const timeoutMs = this.getEffectiveTimeout(baseTimeout);
+
                 const timeoutId = setTimeout(() => {
                     if (this.pendingRequests.has(requestId)) {
                         const request = this.pendingRequests.get(requestId);
                         this.pendingRequests.delete(requestId);
+                        this.pendingPings.delete(requestId);
                         this.decrementPendingRequests();
 
-                        console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after 5000ms`);
-                        const timeoutError = new Error('Ping request timeout after 5000ms');
+                        console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after ${timeoutMs}ms`);
+                        const timeoutError = new Error(`Ping request timeout after ${timeoutMs}ms`);
                         timeoutError.code = 'PING_TIMEOUT';
                         timeoutError.requestId = requestId;
                         reject(timeoutError);
@@ -3454,10 +4112,56 @@ class WebSocketClient {
 
             } catch (error) {
                 this.pendingRequests.delete(requestId);
+                this.pendingPings.delete(requestId);
                 this.decrementPendingRequests();
                 reject(error);
             }
         });
+    }
+
+    /**
+     * Starts periodic ping sending to measure RTT and keep connection alive
+     */
+    startPeriodicPings() {
+        // Clear any existing ping interval
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+
+        // Don't start if not connected
+        if (!this.isConnected()) {
+            return;
+        }
+
+        // Start periodic pings
+        this.pingInterval = setInterval(() => {
+            if (this.isConnected()) {
+                // Send ping and measure RTT (don't wait for response)
+                this.pingWithAuth().catch(error => {
+                    // Only log if it's not a timeout (timeouts are expected on slow connections)
+                    if (error.code !== 'PING_TIMEOUT') {
+                        console.warn('⚠️ Periodic ping failed:', error.message);
+                    }
+                });
+            } else {
+                // Stop pinging if connection is lost
+                this.stopPeriodicPings();
+            }
+        }, WebSocketClient.DELAY_PING_INTERVAL);
+
+        console.log('🔄 Started periodic ping interval');
+    }
+
+    /**
+     * Stops periodic ping sending
+     */
+    stopPeriodicPings() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+            console.log('🛑 Stopped periodic ping interval');
+        }
     }
 
     async refreshServerCache() {
@@ -3657,12 +4361,15 @@ class WebSocketClient {
             this.incrementPendingRequests();
 
             // Set timeout based on request type BEFORE sending - critical requests should fail fast
-            let timeoutMs = 60000; // Default 60 seconds
+            let baseTimeout = 60000; // Default 60 seconds
 
             // Critical initialization requests should fail fast if server is not ready
             if (message.type === 'get_app_options') {
-                timeoutMs = WebSocketClient.TIMEOUT_GET_APP_OPTIONS;
+                baseTimeout = WebSocketClient.TIMEOUT_GET_APP_OPTIONS;
             }
+
+            // Calculate dynamic timeout based on RTT
+            const timeoutMs = this.getEffectiveTimeout(baseTimeout);
 
             const timeoutId = setTimeout(() => {
                 if (this.pendingRequests.has(requestId)) {
@@ -3806,13 +4513,148 @@ class WebSocketClient {
         return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
 
+    // Send paginated gallery request with special tracking
+    sendGalleryPaginationRequest(type, data = {}, callback = null, showBanner = true, paginationGroupId = null) {
+        return new Promise((resolve, reject) => {
+            if (!this.isConnected()) {
+                console.error('❌ WebSocket not connected - rejecting paginated gallery request:', {
+                    type,
+                    connectionState: this.getConnectionState(),
+                    readyState: this.ws?.readyState,
+                    pendingRequests: this.pendingRequests.size
+                });
+                reject(new Error('WebSocket not connected'));
+                return;
+            }
+
+            const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const message = {
+                type,
+                requestId,
+                ...data
+            };
+
+            // Initialize pagination groups if not exists
+            this.paginationGroups = this.paginationGroups || new Map();
+
+            // Create or get pagination group
+            if (paginationGroupId) {
+                if (!this.paginationGroups.has(paginationGroupId)) {
+                    this.paginationGroups.set(paginationGroupId, {
+                        totalRequests: 0,
+                        completedRequests: 0,
+                        currentPage: 0,
+                        totalPages: 0,
+                        hasMore: true,
+                        lastUpdated: Date.now()
+                    });
+                }
+                const group = this.paginationGroups.get(paginationGroupId);
+                group.totalRequests++;
+                group.currentPage = data.offset ? Math.floor(data.offset / data.limit) + 1 : 1;
+                group.lastUpdated = Date.now();
+            }
+
+            // Store pending request with callback and pagination info
+            this.pendingRequests = this.pendingRequests || new Map();
+            this.pendingRequests.set(requestId, {
+                resolve,
+                reject,
+                callback: callback || null,
+                type,
+                showBanner,
+                paginationGroupId,
+                isGalleryPaginationRequest: true,
+                offset: data.offset || 0
+            });
+
+            // Only increment pending requests count if not part of pagination group or first request in group
+            if (!paginationGroupId || this.paginationGroups.get(paginationGroupId).totalRequests === 1) {
+                this.incrementPendingRequests();
+            }
+
+            try {
+                this.send(message);
+            } catch (error) {
+                this.pendingRequests.delete(requestId);
+                if (paginationGroupId) {
+                    const group = this.paginationGroups.get(paginationGroupId);
+                    if (group) {
+                        group.totalRequests--;
+                        if (group.totalRequests <= 0) {
+                            this.paginationGroups.delete(paginationGroupId);
+                        }
+                    }
+                }
+                // Only decrement if we incremented above
+                if (!paginationGroupId || this.paginationGroups.get(paginationGroupId)?.totalRequests === 0) {
+                    this.decrementPendingRequests();
+                }
+                reject(error);
+            }
+        });
+    }
+
+    // Update pagination group progress
+    updatePaginationProgress(paginationGroupId, pagination, currentOffset = 0) {
+        if (!this.paginationGroups || !this.paginationGroups.has(paginationGroupId)) {
+            return;
+        }
+
+        const group = this.paginationGroups.get(paginationGroupId);
+        group.hasMore = pagination?.hasMore || false;
+        group.totalItems = pagination?.totalItems || group.totalItems;
+        group.currentOffset = currentOffset;
+        group.lastUpdated = Date.now();
+
+        // Force ticker update to show pagination progress
+        this.updateTickerDisplay();
+    }
+
+    // Check if pagination group is complete
+    isPaginationGroupComplete(paginationGroupId) {
+        if (!this.paginationGroups || !this.paginationGroups.has(paginationGroupId)) {
+            return true;
+        }
+        const group = this.paginationGroups.get(paginationGroupId);
+        return !group.hasMore && group.completedRequests >= group.totalRequests;
+    }
+
+    // Get pagination group info for ticker display
+    getPaginationGroupInfo(paginationGroupId) {
+        if (!this.paginationGroups || !this.paginationGroups.has(paginationGroupId)) {
+            return null;
+        }
+        return this.paginationGroups.get(paginationGroupId);
+    }
+
+    // Check if all pagination groups are complete
+    areAllPaginationGroupsComplete() {
+        if (!this.paginationGroups || this.paginationGroups.size === 0) {
+            return true;
+        }
+
+        for (const [groupId, group] of this.paginationGroups) {
+            if (!this.isPaginationGroupComplete(groupId)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // 🎯 SINGLE SOURCE OF TRUTH for ALL ticker display logic
     updateTickerDisplay() {
         // Update ticker badge
         this.updateTickerBadge();
 
-        if (this.pendingRequestsCount === 0) {
-            // No pending requests - show check mark for 2 seconds then close
+        if (this.pendingRequestsCount === 0 && this.areAllPaginationGroupsComplete()) {
+            // No pending requests and all pagination groups complete - clear cycle timer and show check mark for 2 seconds then close
+            if (this.tickerCycleTimer) {
+                clearTimeout(this.tickerCycleTimer);
+                this.tickerCycleTimer = null;
+                this.tickerCycleIndex = 0;
+            }
+
             const tickers = document.querySelectorAll('.websocket-ticker');
             const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
 
@@ -3833,20 +4675,26 @@ class WebSocketClient {
 
                 // Set timer to hide after 2 seconds
                 this.completionTimer = setTimeout(() => {
-                    // Only hide if there are still no pending requests
-                    if (this.pendingRequestsCount === 0) {
+                    // Only hide if there are still no pending requests and pagination groups are complete
+                    if (this.pendingRequestsCount === 0 && this.areAllPaginationGroupsComplete()) {
                         this.bannerManager.hideWebSocketTicker();
                         this.completionTimer = null;
                     }
                 }, 2000);
             }
         } else {
-            // Have pending requests - cancel any completion timer and show oldest request
+            // Have pending requests - cancel any completion timer and start cycling through requests
             if (this.completionTimer) {
                 clearTimeout(this.completionTimer);
                 this.completionTimer = null;
             }
-            this.showOldestPendingRequest();
+            // Always ensure ticker cycle is running when there are pending requests
+            // If cycle is not running, start it (reset to beginning)
+            // If cycle is running, check if we need to restart due to request changes
+            const tickerRequests = this.getPendingRequestsForTicker();
+            const needsRestart = !this.tickerCycleTimer || tickerRequests.length === 0;
+            // Reset index when starting/restarting cycle (e.g., when requests change or cycle stopped)
+            this.startTickerCycle(needsRestart);
         }
     }
 
@@ -3875,10 +4723,10 @@ class WebSocketClient {
     initWebSocketIndicators() {
         // Clear existing indicators
         this.websocketIndicators = [];
-        
+
         // Find all websocket indicator containers on the page
         const containers = document.querySelectorAll('.websocket-indicator');
-        
+
         // Populate indicator array with elements from each container
         containers.forEach(container => {
             this.websocketIndicators.push({
@@ -3895,24 +4743,55 @@ class WebSocketClient {
         this.updateWebSocketStatus('disconnected');
     }
 
+    // Setup click handlers for ticker and indicators to open requests modal
+    setupRequestsModalHandlers() {
+        // Add click handler to all tickers
+        const tickers = document.querySelectorAll('.websocket-ticker');
+        tickers.forEach(ticker => {
+            // Remove existing handler if any
+            ticker.removeEventListener('click', this.openRequestsModalHandler);
+            // Add click handler
+            ticker.addEventListener('click', this.openRequestsModalHandler);
+        });
+
+        // Add click handler to all indicators
+        this.websocketIndicators.forEach(indicator => {
+            if (indicator.container) {
+                // Remove existing handler if any
+                indicator.container.removeEventListener('click', this.openRequestsModalHandler);
+                // Add click handler
+                indicator.container.addEventListener('click', this.openRequestsModalHandler);
+            }
+        });
+    }
+
+    // Open requests modal
+    openRequestsModal() {
+        if (typeof websocketRequestsModal !== 'undefined' && websocketRequestsModal) {
+            websocketRequestsModal.open();
+        } else {
+            console.warn('WebSocket Requests Modal not initialized');
+        }
+    }
+
     // Refresh websocket indicators (useful if new indicators are added to DOM dynamically)
     refreshWebSocketIndicators() {
         // Clear any existing timeouts before refreshing
         this.clearWebSocketIndicatorTimeouts();
-        
+
         // Determine current connection status
-        const currentStatus = this.ws && this.ws.readyState === WebSocket.OPEN 
-            ? 'connected' 
-            : this.isConnecting 
-            ? 'connecting' 
-            : 'disconnected';
-        
+        const currentStatus = this.ws && this.ws.readyState === WebSocket.OPEN
+            ? 'connected'
+            : this.isConnecting
+                ? 'connecting'
+                : 'disconnected';
+
         // Clear existing indicators
         this.websocketIndicators = [];
-        
+
         // Find all websocket indicator containers on the page
         const containers = document.querySelectorAll('.websocket-indicator');
-        
+
         // Populate indicator array with elements from each container
         containers.forEach(container => {
             this.websocketIndicators.push({
@@ -3927,7 +4806,10 @@ class WebSocketClient {
 
         // Restore current status to all indicators
         this.updateWebSocketStatus(currentStatus);
-        
+
+        // Re-setup click handlers for new indicators
+        this.setupRequestsModalHandlers();
+
         this.logInfo(`WebSocket indicators refreshed. Found ${this.websocketIndicators.length} indicator(s).`);
     }
 
@@ -3947,6 +4829,25 @@ class WebSocketClient {
                 indicator.status.className = `websocket-status ${statusClass}`;
             }
         });
+
+        // Update ping display (tooltips and warning icon)
+        // Only update if connected (ping data only available when connected)
+        if (status === 'connected') {
+            this.updatePingDisplay();
+        } else {
+            // Reset tooltips when disconnected/connecting
+            this.websocketIndicators.forEach(indicator => {
+                if (indicator.status) {
+                    const statusText = status === 'connecting' ? 'Connecting...' : 'Disconnected';
+                    indicator.status.setAttribute('title', `WebSocket Status\n${statusText}`);
+                }
+            });
+            // Hide ping warning when not connected
+            const warningIcon = document.getElementById('pingWarningIndicator');
+            if (warningIcon) {
+                warningIcon.classList.add('hidden');
+            }
+        }
     }
 
     // Flash WebSocket arrow for traffic indication with rapid activity support
@@ -4023,43 +4924,133 @@ class WebSocketClient {
     }
 
 
-    // Show the oldest pending request in the ticker (prioritizing showBanner requests)
-    showOldestPendingRequest() {
+    // Get all pending requests that should be shown in the ticker
+    getPendingRequestsForTicker() {
         if (!this.pendingRequests || this.pendingRequests.size === 0) {
-            return;
+            return [];
         }
 
-        // Find the highest priority request (only showBanner: true requests)
-        let selectedRequest = null;
-        let selectedRequestId = null;
+        const tickerRequests = [];
+        const paginationGroups = new Map(); // Track pagination groups we've seen
 
         for (const [requestId, request] of this.pendingRequests) {
-            // Skip requests with showBanner: false
-            if (request.showBanner === false) {
+            // Handle pagination groups specially
+            if (request.isGalleryPaginationRequest && request.paginationGroupId) {
+                if (!paginationGroups.has(request.paginationGroupId)) {
+                    // Create aggregated pagination request
+                    const groupInfo = this.getPaginationGroupInfo(request.paginationGroupId);
+                    if (groupInfo) {
+                        const aggregatedRequest = {
+                            requestId: `pagination_${request.paginationGroupId}`,
+                            request: {
+                                ...request,
+                                type: 'request_gallery_paginated',
+                                paginationGroupId: request.paginationGroupId,
+                                paginationInfo: groupInfo,
+                                showBanner: true // Always show pagination groups
+                            }
+                        };
+                        tickerRequests.push(aggregatedRequest);
+                        paginationGroups.set(request.paginationGroupId, true);
+                    }
+                }
+                // Skip individual pagination requests - they're aggregated above
                 continue;
             }
 
-            if (!selectedRequest) {
-                // First request with showBanner: true we find
-                selectedRequest = request;
-                selectedRequestId = requestId;
-            } else if (request.showBanner && !selectedRequest.showBanner) {
-                // This request has banner priority (showBanner: true) and current selected doesn't
-                selectedRequest = request;
-                selectedRequestId = requestId;
+            // Only include non-pagination requests with showBanner: true
+            if (request.showBanner !== false && request.type) {
+                tickerRequests.push({ requestId, request });
             }
-            // If both have same priority, keep the first one (oldest)
         }
+        return tickerRequests;
+    }
 
-        if (!selectedRequest || !selectedRequest.type) {
+    // Start cycling through pending requests in the ticker
+    startTickerCycle(resetIndex = false) {
+        // Always check if we have pending requests first
+        if (this.pendingRequestsCount === 0) {
+            // No pending requests, clear cycle if running
+            if (this.tickerCycleTimer) {
+                clearTimeout(this.tickerCycleTimer);
+                this.tickerCycleTimer = null;
+            }
+            this.tickerCycleIndex = 0;
             return;
         }
 
-        // Format the request type for display
-        const displayName = this.bannerManager.formatRequestType(selectedRequest.type);
+        // Clear any existing cycle timer
+        const wasRunning = !!this.tickerCycleTimer;
+        if (this.tickerCycleTimer) {
+            clearTimeout(this.tickerCycleTimer);
+            this.tickerCycleTimer = null;
+        }
 
-        // Show in ticker with spinner
-        this.bannerManager.showWebSocketTicker('info', displayName, 'fa-spinner fa-spin', false);
+        // Get all pending requests for ticker
+        const tickerRequests = this.getPendingRequestsForTicker();
+
+        if (tickerRequests.length === 0) {
+            // No requests to show in ticker, but we have pending requests
+            // This means all requests have showBanner: false, so don't show ticker
+            this.tickerCycleIndex = 0;
+            return;
+        }
+
+        // Reset index if requested (e.g., when restarting due to new requests) or if out of bounds
+        if (resetIndex || !wasRunning || this.tickerCycleIndex >= tickerRequests.length) {
+            this.tickerCycleIndex = 0;
+        }
+
+        // Ensure index is valid
+        if (this.tickerCycleIndex < 0 || this.tickerCycleIndex >= tickerRequests.length) {
+            this.tickerCycleIndex = 0;
+        }
+
+        // Show current request - this will also expand the ticker if it's hidden
+        const current = tickerRequests[this.tickerCycleIndex];
+        let displayName = this.bannerManager.formatRequestType(current.request.type);
+        let iconClass = 'fa-spinner-third fa-spin';
+
+        // Handle pagination groups specially
+        if (current.request.paginationInfo) {
+            const pagination = current.request.paginationInfo;
+            // Show remaining items if we have total and current offset
+            if (pagination.totalItems && pagination.currentOffset !== undefined) {
+                const remaining = pagination.totalItems - pagination.currentOffset;
+                if (remaining > 0) {
+                    displayName = `Loading Gallery [${remaining} left]`;
+                    iconClass = 'fa-download';
+                } else {
+                    displayName = `Loading Gallery`;
+                    iconClass = 'fa-download';
+                }
+            } else {
+                displayName = `Loading Gallery`;
+                iconClass = 'fa-download';
+            }
+        }
+
+        this.bannerManager.showWebSocketTicker('info', displayName, iconClass, false);
+
+        // Move to next request after 2 seconds
+        this.tickerCycleTimer = setTimeout(() => {
+            // Double-check we still have pending requests before continuing
+            if (this.pendingRequestsCount > 0) {
+                this.tickerCycleIndex++;
+                // Continue cycling - don't reset index when continuing the cycle
+                this.startTickerCycle(false);
+            } else {
+                // No more pending requests, clean up
+                this.tickerCycleTimer = null;
+                this.tickerCycleIndex = 0;
+            }
+        }, 2000);
+    }
+
+    // Show the oldest pending request in the ticker (prioritizing showBanner requests)
+    // Kept for backward compatibility, but now redirects to cycle
+    showOldestPendingRequest() {
+        this.startTickerCycle();
     }
 
     // Resolve pending request
@@ -4076,15 +5067,61 @@ class WebSocketClient {
             // Clear timeout safely
             request.timeoutId = this.clearTimeoutSafely(request.timeoutId);
 
+            // Handle pagination group completion
+            let shouldDecrementCounter = true;
+            if (request.isGalleryPaginationRequest && request.paginationGroupId) {
+                // Update pagination group progress
+                if (this.paginationGroups && this.paginationGroups.has(request.paginationGroupId)) {
+                    const group = this.paginationGroups.get(request.paginationGroupId);
+                    group.completedRequests++;
+
+                    // Update pagination info if available in response data
+                    if (data && data.pagination) {
+                        this.updatePaginationProgress(request.paginationGroupId, data.pagination, request.offset || 0);
+                    }
+
+                    // Only decrement counter if this is the last request in the group or no more pages
+                    shouldDecrementCounter = this.isPaginationGroupComplete(request.paginationGroupId);
+                }
+            }
+
             // Check if this was the currently displayed request BEFORE decrementing
             const oldestRequestId = this.pendingRequests.size > 0 ?
                 this.pendingRequests.keys().next().value : null;
             const wasDisplayedRequest = requestId === oldestRequestId;
 
-            // Decrement pending requests count
-            this.decrementPendingRequests();
+            // Track completed request (only if not ping)
+            if (request.type && request.type !== 'ping') {
+                const completedAt = Date.now();
+                const duration = request.timestamp ? completedAt - request.timestamp : null;
 
-            // Handle completion display if this was the currently displayed request
+                const completedRequest = {
+                    id: requestId,
+                    type: request.type,
+                    timestamp: request.timestamp,
+                    completedAt: completedAt,
+                    duration: duration,
+                    error: error ? (error.message || error) : null,
+                    paginationGroupId: request.paginationGroupId,
+                    isGalleryPaginationRequest: request.isGalleryPaginationRequest
+                };
+
+                // Add to completed requests array
+                this.completedRequests = this.completedRequests || [];
+                this.completedRequests.push(completedRequest);
+
+                // Keep only last maxCompletedRequests
+                if (this.completedRequests.length > this.maxCompletedRequests) {
+                    this.completedRequests.shift();
+                }
+            }
+
+            // Decrement pending requests count only if not part of incomplete pagination group
+            if (shouldDecrementCounter) {
+                this.decrementPendingRequests();
+            }
+
+            // Handle completion display if this was the currently displayed request (prioritizing showBanner requests)
             if (wasDisplayedRequest && request.type && request.showBanner !== false) {
                 // Show completion with check mark for 2 seconds (only if showBanner is true)
                 const displayName = this.bannerManager.formatRequestType(request.type);
@@ -4097,6 +5134,18 @@ class WebSocketClient {
             } else {
                 // For non-displayed requests or requests with showBanner=false, just update the ticker display
                 this.updateTickerDisplay();
+            }
+
+            // Handle gallery pagination state changes
+            if (request.type === 'request_gallery' && data && data.pagination) {
+                if (data.pagination.hasMore && !this.isGalleryLoadingActive) {
+                    // This response indicates pagination has started - set the flag for future requests
+                    this.isGalleryLoadingActive = true;
+                    // Don't create pagination group yet - wait for the next request
+                } else if (!data.pagination.hasMore && this.isGalleryLoadingActive) {
+                    // This was the final pagination chunk
+                    this.completeGalleryLoading();
+                }
             }
 
             // Execute callback if provided

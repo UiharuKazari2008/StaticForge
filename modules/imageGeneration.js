@@ -2029,15 +2029,84 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Context is locked - reuse from compiled_prompt
                 console.log('🔒 Context locked: Reusing existing context from compiled prompt');
                 contextForAI = dynaRequest.compiled_prompt.context;
+                
+                // Send context phase progress update when context is reused
+                if (ws && handler && contextForAI) {
+                    const carouselData = formatContextForCarousel(contextForAI);
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'context',
+                        data: {
+                            date: contextForAI.time ? {
+                                year: contextForAI.time.year,
+                                month: contextForAI.time.month, // 0-based
+                                day: contextForAI.time.dayOfMonth
+                            } : null,
+                            time: contextForAI.time ? `${String(contextForAI.time.hour).padStart(2, '0')}:${String(contextForAI.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
+                            season: contextForAI.season?.name,
+                            weather: contextForAI.weather,
+                            holiday: contextForAI.season?.holiday || null,
+                            location: contextForAI.location,
+                            carousel: carouselData
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
             } else if (dynaRequest.locked && dynaRequest.compiled_prompt?.context) {
                 // Pipeline stage inheritance - reuse context from previous stage
                 console.log('🔒 Pipeline locked mode: Reusing context from previous stage');
                 contextForAI = dynaRequest.compiled_prompt.context;
+                
+                // Send context phase progress update when context is reused
+                if (ws && handler && contextForAI) {
+                    const carouselData = formatContextForCarousel(contextForAI);
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'context',
+                        data: {
+                            date: contextForAI.time ? {
+                                year: contextForAI.time.year,
+                                month: contextForAI.time.month, // 0-based
+                                day: contextForAI.time.dayOfMonth
+                            } : null,
+                            time: contextForAI.time ? `${String(contextForAI.time.hour).padStart(2, '0')}:${String(contextForAI.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
+                            season: contextForAI.season?.name,
+                            weather: contextForAI.weather,
+                            holiday: contextForAI.season?.holiday || null,
+                            location: contextForAI.location,
+                            carousel: carouselData
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
             } else {
                 // Generate context for AI processing
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
                 contextForAI = await compileContext(dynaRequest, clientIP);
+                
+                // Send context phase progress update when context is freshly compiled
+                if (ws && handler && contextForAI) {
+                    const carouselData = formatContextForCarousel(contextForAI);
+                    handler.sendToClient(ws, {
+                        type: 'dynamic_generation_progress_update',
+                        phase: 'context',
+                        data: {
+                            date: contextForAI.time ? {
+                                year: contextForAI.time.year,
+                                month: contextForAI.time.month, // 0-based
+                                day: contextForAI.time.dayOfMonth
+                            } : null,
+                            time: contextForAI.time ? `${String(contextForAI.time.hour).padStart(2, '0')}:${String(contextForAI.time.minute).padStart(2, '0')}` : new Date().toTimeString().split(' ')[0],
+                            season: contextForAI.season?.name,
+                            weather: contextForAI.weather,
+                            holiday: contextForAI.season?.holiday || null,
+                            location: contextForAI.location,
+                            carousel: carouselData
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                }
             }
 
             // If we have cache and it's either not expired OR cache_locked, try to apply transforms
@@ -3585,12 +3654,13 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 
         // Update buffer with forge metadata
         let finalBuffer;
+        let metadata;
         if (baseMetadata) {
+            metadata = JSON.parse(baseMetadata.tEXt.Comment);
             // Stage mode: preserve base metadata, update only specific forge_data fields
             finalBuffer = globalResources.getPngMetadata().stripPngTextChunks(buffer);
             
-            const parsedBase = JSON.parse(baseMetadata.tEXt.Comment);
-            forgeData = parsedBase.forge_data || {};
+            forgeData = metadata.forge_data || {};
             
             // Conditionally update only allowed fields
             forgeData.date_generated = Date.now();
@@ -3612,11 +3682,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 console.log(`💾 Injecting ${completeStageSeeds.length} stage seeds into metadata (${stageSeeds.length} previous + current)`);
             }
             
-            // Update parsedBase with modified forge_data
-            parsedBase.forge_data = { ...forgeData };
+            // Update metadata with modified forge_data
+            metadata.forge_data = { ...forgeData };
             
             // Re-inject complete metadata structure directly
-            finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(parsedBase));
+            finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
             
             // Preserve Source and Software from base metadata if they exist
             if (baseMetadata.tEXt?.Source) {
@@ -3630,9 +3700,26 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         } else {
             // Normal mode: create new metadata
             finalBuffer = globalResources.getPngMetadata().updateMetadata(buffer, forgeData);
+
+            // Extract the metadata that was just embedded into the buffer
+            const rawMetadata = globalResources.getPngMetadata().readMetadata(finalBuffer);
+            metadata = rawMetadata?.tEXt?.Comment ? JSON.parse(rawMetadata.tEXt.Comment) : null;
         }
         
         const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
+        
+        // Always send receipt notification when there's a cost, regardless of whether image is saved
+        if (creditUsage.totalUsage > 0) {
+            const receiptData = {
+                type: 'generation',
+                cost: creditUsage.totalUsage,
+                creditType: creditUsage.usageType,
+                date: Date.now().valueOf()
+            };
+            
+            const plumbing = globalResources.getDataPlumbing();
+            plumbing.publish('ws:broadcast:receipt', receiptData);
+        }
         
         if (shouldSave) {
             fs.writeFileSync(path.join(globalResources.getPath('images'), name), finalBuffer);
@@ -3641,17 +3728,16 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             // Add file to workspace
             globalResources.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
             
-            // Update metadata cache
-            const receiptData = {
-                type: 'generation',
-                cost: creditUsage.totalUsage,
-                creditType: creditUsage.usageType,
-                date: Date.now().valueOf()
-            };
-            await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), receiptData, forgeData);
-            
-            const plumbing = globalResources.getDataPlumbing();
-            plumbing.publish('ws:broadcast:receipt', receiptData);
+            // Update metadata cache with receipt (only when saving)
+            if (creditUsage.totalUsage > 0) {
+                const receiptData = {
+                    type: 'generation',
+                    cost: creditUsage.totalUsage,
+                    creditType: creditUsage.usageType,
+                    date: Date.now().valueOf()
+                };
+                await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), receiptData, forgeData);
+            }
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -3756,6 +3842,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 // Attach receipt to parent image instead of upscaled image
                 await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), upscaledReceiptData, upscaledForgeData);
                 
+                await generateMobilePreviews(path.join(globalResources.getPath('images'), upscaledName), upscaledBaseName);
+                
                 const plumbing = globalResources.getDataPlumbing();
                 plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
             }
@@ -3799,7 +3887,8 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             seed: seed,
             compiled_prompt: opts.dynamic_generation?.compiled_prompt,
             text_replacements_seed: opts.text_replacements_seed && Array.isArray(opts.text_replacements_seed) && opts.text_replacements_seed.length > 0 ? opts.text_replacements_seed : undefined,
-            stageData: stageData // Only populated for pipeline stages
+            stageData: stageData, // Only populated for pipeline stages
+            metadata // The complete metadata object that gets embedded in the PNG
         };
         return finalResult;
     } else {
@@ -6220,13 +6309,26 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
         // Generate preview
         const expandedBaseName = globalResources.getPngMetadata().getBaseName(expandedFilename);
         await generateMobilePreviews(expandedPath, expandedBaseName);
-        
+
+        // Get metadata for the response
+        let responseMetadata = null;
+        try {
+            const metadataDatabase = globalResources.getMetadataDatabase();
+            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, globalResources.getPath('images'));
+            if (responseMetadata) {
+                responseMetadata = globalResources.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
+            }
+        } catch (metadataError) {
+            console.warn('⚠️ Failed to get metadata for expanded image:', metadataError);
+        }
+
         return {
             filename: expandedFilename,
             image: expandedBuffer.toString('base64'),
             seed: result.seed,
             expansionPrompt,
-            expansionReason
+            expansionReason,
+            metadata: responseMetadata
         };
         
     } catch (error) {
@@ -6544,13 +6646,26 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         
         // Generate preview
         await generateMobilePreviews(expandedPath, globalResources.getPngMetadata().getBaseName(expandedFilename));
-        
+
+        // Get metadata for the response
+        let responseMetadata = null;
+        try {
+            const metadataDatabase = globalResources.getMetadataDatabase();
+            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, globalResources.getPath('images'));
+            if (responseMetadata) {
+                responseMetadata = globalResources.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
+            }
+        } catch (metadataError) {
+            console.warn('⚠️ Failed to get metadata for rerolled expanded image:', metadataError);
+        }
+
         return {
             filename: expandedFilename,
             image: expandedBuffer.toString('base64'),
             seed: result.seed,
             expansionPrompt,
-            expansionReason: forgeData.expansion_reason
+            expansionReason: forgeData.expansion_reason,
+            metadata: responseMetadata
         };
     } catch (error) {
         console.error('❌ Image reroll error:', error);

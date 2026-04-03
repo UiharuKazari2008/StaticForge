@@ -146,11 +146,8 @@ function createWindowSwitcherOverlay() {
 
 // Handle key down events
 function handleKeyDown(event) {
-    // Check if we're in desktop mode for window switcher
-    const isDesktopMode = document.body.classList.contains('desktop-mode');
-    
     // Handle CTRL+TAB for window switcher (only in desktop mode)
-    if (isDesktopMode && event.ctrlKey && event.key === 'Tab' && !event.shiftKey) {
+    if (window.isDesktop && event.ctrlKey && event.key === 'Tab' && !event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();
         
@@ -169,7 +166,7 @@ function handleKeyDown(event) {
     }
     
     // Handle CTRL+SHIFT+TAB for reverse navigation (only in desktop mode)
-    if (isDesktopMode && event.ctrlKey && event.key === 'Tab' && event.shiftKey) {
+    if (window.isDesktop && event.ctrlKey && event.key === 'Tab' && event.shiftKey) {
         event.preventDefault();
         event.stopPropagation();
         
@@ -195,7 +192,7 @@ function handleKeyDown(event) {
     // If manualModal is open, check if it should handle keyboard actions
     let shouldHandleManualModalActions = false;
     if (isManualModalOpen) {
-        if (isDesktopMode) {
+        if (window.isDesktop) {
             // In desktop mode, only handle if manualModal is the active main window
             shouldHandleManualModalActions = manualModal.classList.contains('active-window');
         } else {

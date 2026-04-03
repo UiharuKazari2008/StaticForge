@@ -17,6 +17,16 @@ const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require(
 const ClothingDatabase = require('./clothingDatabase');
 
 /**
+ * Strip disabled text blocks (!/.../) from text. These blocks are not included in the prompt when sent.
+ * @param {string} text - Raw text that may contain !/content/ blocks
+ * @returns {string} Text with disabled blocks removed
+ */
+function stripDisabledBlocks(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    return text.replace(/!\/[^\/]+\//g, '');
+}
+
+/**
  * Normalizes legacy period keys to new period key names
  * @param {string} periodKey - The period key to normalize
  * @returns {string} - Normalized period key
@@ -2541,13 +2551,13 @@ const DAY_NAMES = [
 
 // Constants for holiday intensity calculation
 const HOLIDAY_INTENSITY_LEVELS = {
-    MINIMAL: { level: 'minimal', description: 'subtle hints only', multiplier: 0.1 },
-    EARLY: { level: 'early', description: 'gentle introduction', multiplier: 0.3 },
-    BUILDING: { level: 'building', description: 'increasing presence', multiplier: 0.5 },
-    STRONG: { level: 'strong', description: 'prominent elements', multiplier: 0.75 },
-    PEAK: { level: 'peak', description: 'full immersion', multiplier: 1.0 },
-    EXTENDED: { level: 'extended', description: 'sustained celebration', multiplier: 0.8 },
-    FADING: { level: 'fading', description: 'residual elements', multiplier: 0.2 }
+    MINIMAL: { level: 'minimal', description: 'add a few elements that blend naturally with the scene and hint at the holiday', multiplier: 0.1 },
+    EARLY: { level: 'early', description: 'add multiple elements of the holiday without overwhelming the scene', multiplier: 0.3 },
+    BUILDING: { level: 'building', description: 'multiple elements of the holiday changing the atmosphere of the scene', multiplier: 0.5 },
+    STRONG: { level: 'strong', description: 'add prominent elements of the holiday without overwhelming the scene', multiplier: 0.75 },
+    PEAK: { level: 'peak', description: 'fully immerse the holiday into the scene and change elements to fit the holiday', multiplier: 1.0 },
+    EXTENDED: { level: 'extended', description: 'add prominent elements of the holiday without overwhelming the scene', multiplier: 0.8 },
+    FADING: { level: 'fading', description: 'add a few elements that blend naturally with the scene and hint the end of the holiday', multiplier: 0.2 }
 };
 
 const HOLIDAY_BUFFER_THRESHOLDS = {
@@ -2560,24 +2570,24 @@ const HOLIDAY_BUFFER_THRESHOLDS = {
 
 // Centralized holiday names mapping (prevents duplication)
 const HOLIDAY_NAMES = {
-    10: 'Christmas/Holiday Season',
-    11: 'New Year\'s Celebration',
+    10: 'Christmas',
+    11: 'New Year\'s',
     12: 'Halloween',
     13: 'Thanksgiving',
     14: 'Independence Day',
     15: 'Valentine\'s Day',
-    16: 'Easter/Spring Holiday',
+    16: 'Easter',
     17: 'Chinese New Year',
     18: 'Setsubun',
     19: 'Hinamatsuri',
     20: 'Summer Festival',
-    21: 'Japanese New Year (Oshogatsu)',
-    22: 'Cherry Blossom Season (Hanami)',
-    23: 'Star Festival (Tanabata)',
-    24: 'Golden Week (Shukujitsu)',
-    25: 'Children\'s Day (Kodomo no Hi)',
-    26: 'Mid-Autumn Festival (Tsukimi)',
-    27: 'Obon Festival (Bon Odori)'
+    21: 'Japanese New Year',
+    22: 'Cherry Blossom',
+    23: 'Star Festival',
+    24: 'Golden Week',
+    25: 'Children\'s Day',
+    26: 'Mid-Autumn Festival',
+    27: 'Obon Festival'
 };
 
 /**
@@ -2587,30 +2597,30 @@ const HOLIDAY_NAMES = {
 const HOLIDAY_DATA = {
     // Global Holidays
     10: { // Christmas
-        name: 'Christmas/Holiday Season',
+        name: 'Christmas',
         region: 'US',
         priority: 5,
         bufferDays: 21,
         dateLogic: (month, dayOfMonth) => month === 11 && dayOfMonth >= 9 && dayOfMonth <= 30,
         targetMonth: 11,
         targetDay: 25,
-        decorations: 'christmas tree, santa claus, merry christmas, christmas, mistletoe, santa costume, holiday lights, wreaths, ornaments, stockings, snowflakes, candles, garlands, bells',
-        atmosphere: 'festive, warm, magical, cozy winter wonderland, joyful, merry',
-        colors: 'red, green, gold, white, silver, deep blue accents',
-        activities: 'gift giving, family gatherings, holiday meals, caroling, festive celebrations, winter activities, cocoa by the fire'
+        decorations: 'christmas tree, santa claus, merry christmas, christmas, mistletoe, santa costume, holiday lights, wreaths, ornaments, stockings, snowflakes, candles, garlands, bells, decorated pine trees, nativity scenes, advent calendars, poinsettia, holly berries, candy canes, ribbon bows, gift boxes, wrapped presents, christmas cookies, snow-covered scenes, fireplace, christmas cards',
+        atmosphere: 'festive, warm, magical, cozy, joyful, merry, celebratory, peaceful, winter scenes, candlelit rooms, decorated spaces',
+        colors: 'red, green, gold, white, silver, deep blue, crimson, emerald, candlelight yellow, twinkling lights, white',
+        activities: 'gift giving, holiday meals, singing, festive celebrations, decorating trees, wrapping presents, baking cookies, watching movies, building snowmen, ice skating, singing, lighting candles, opening presents, setting up decorations'
     },
     11: { // Western New Year
-        name: 'New Year\'s Celebration',
+        name: 'New Year\'s',
         region: 'US',
         priority: 4,
         bufferDays: 14,
         dateLogic: (month, dayOfMonth) => (month === 11 && dayOfMonth >= 26) || (month === 0 && dayOfMonth <= 9),
         targetMonth: 0,
         targetDay: 1,
-        decorations: 'new year, happy new year, fireworks, countdown clocks, party hats, streamers, confetti cannons, balloons, banners, disco balls, rooftop launch pads, champagne towers',
-        atmosphere: 'celebratory, fresh start, hopeful, energetic, optimistic, renewal',
-        colors: 'gold, silver, white, black, metallic accents',
-        activities: 'countdowns, celebrations, resolutions, fireworks finales, midnight toasts, rooftop viewing parties, bustling street festivals, televised ball drops, fresh beginnings'
+        decorations: 'fireworks, countdown clocks, party hats, streamers, confetti cannons, balloons, banners, disco balls, rooftop launch pads, champagne towers, year numbers displayed, sparklers, noisemakers, glitter, festive banners, celebratory signs, illuminated displays, midnight countdown displays, champagne glasses, party decorations',
+        atmosphere: 'celebratory, energetic, exciting, vibrant, joyous, anticipatory, dynamic, party atmosphere, fireworks displays, crowded celebrations',
+        colors: 'gold, silver, white, black, metallic accents, bright yellow, shimmering silver, midnight blue, vibrant purple, electric blue, neon highlights',
+        activities: 'countdowns, celebrations, fireworks displays, midnight toasts, rooftop viewing parties, street festivals, televised ball drops, watching fireworks, attending parties, kissing at midnight, dancing, singing, drinking champagne, throwing confetti, lighting sparklers'
     },
     12: { // Halloween
         name: 'Halloween',
@@ -2620,10 +2630,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => (month === 9 && dayOfMonth >= 20) || (month === 10 && dayOfMonth <= 3),
         targetMonth: 9,
         targetDay: 31,
-        decorations: 'jack-o\'-lantern, trick or treat, happy halloween, halloween, ghosts, witches, bats, cobwebs, spooky lights, haunted houses',
-        atmosphere: 'mysterious, spooky, playful fright, autumn evening, thrilling, eerie, halloween',
-        colors: 'orange, black, purple, green, white accents',
-        activities: 'trick-or-treating, costume parties, cosplay, haunted houses, pumpkin carving, spooky events, candy trading'
+        decorations: 'jack-o\'-lantern, trick or treat, happy halloween, halloween, ghosts, witches, bats, cobwebs, spooky lights, haunted houses, carved pumpkins, skeletons, tombstones, spider webs, black cats, cauldrons, broomsticks, monster masks, eerie shadows, fog machines, orange string lights, candy bowls, trick-or-treat buckets, costume accessories, halloween decorations, spooky props',
+        atmosphere: 'mysterious, spooky, playful fright, autumn evening, thrilling, eerie, darkly festive, whimsically scary, fun-loving, creatively macabre, dimly lit scenes, shadowy environments',
+        colors: 'orange, black, purple, green, white accents, deep orange, midnight black, eerie purple, lime green, blood red, pale yellow candlelight, shadowy gray',
+        activities: 'trick-or-treating, costume parties, cosplay, haunted houses, pumpkin carving, spooky events, candy trading, dressing up in costumes, going door-to-door, watching horror movies, decorating homes, attending halloween parties, bobbing for apples, visiting haunted attractions, making halloween treats, costume contests, neighborhood gatherings, wearing costumes'
     },
     13: { // Thanksgiving
         name: 'Thanksgiving',
@@ -2633,10 +2643,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => month === 10 && dayOfMonth >= 15 && dayOfMonth <= 25,
         targetMonth: 10,
         targetDay: 23,
-        decorations: 'thanksgiving, roasted turkey (food), autumn leaves, cornucopias, harvest displays, gourds, fall centerpieces, pies, food platters, fall wreaths, overflowing dining tables, seasonal floral arrangements, acorns, wheat sheaves, rustic table settings, candlelit dinners, family heirlooms on display',
-        atmosphere: 'warm, thankful, harvest celebration, family gathering, grateful, cozy, food-centric, nostalgic, homey, abundant, welcoming, traditional, intergenerational connection, comfort, appreciation, togetherness',
-        colors: 'orange, brown, yellow, gold, deep reds, burgundy, earth tones, amber, rust, burnt sienna, cream, warm neutrals',
-        activities: 'family dinners, cooking together, preparing traditional recipes, sharing gratitude, watching football games, Thanksgiving parades, playing board games, taking family photos, sharing stories, enjoying dessert, relaxing after the meal, helping with cleanup, setting the table, carving the turkey, passing dishes around the table, harvest celebration'
+        decorations: 'thanksgiving, roasted turkey (food), autumn leaves, cornucopias, harvest displays, gourds, fall centerpieces, pies, food platters, fall wreaths, overflowing dining tables, seasonal floral arrangements, acorns, wheat sheaves, rustic table settings, candlelit dinners, family heirlooms on display, harvest baskets, pumpkins, squash, autumn decorations, traditional table settings, festive centerpieces',
+        atmosphere: 'warm, thankful, harvest celebration, family gathering, grateful, cozy, food-centric, nostalgic, homey, abundant, welcoming, traditional, intergenerational connection, comfort, appreciation, togetherness, heartwarming, generous, community-spirited, reflective, celebratory',
+        colors: 'orange, brown, yellow, gold, deep reds, burgundy, earth tones, amber, rust, burnt sienna, cream, warm neutrals, harvest oranges, autumn browns, golden yellows, deep burgundies, warm creams',
+        activities: 'family dinners, cooking together, preparing traditional recipes, sharing gratitude, watching football games, Thanksgiving parades, playing board games, taking family photos, sharing stories, enjoying dessert, relaxing after the meal, helping with cleanup, setting the table, carving the turkey, passing dishes around the table, harvest celebration, expressing thanks, sharing meals, family traditions, cooking feasts, gathering together, celebrating abundance'
     },
     14: { // Independence Day
         name: 'Independence Day',
@@ -2646,10 +2656,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => (month === 5 && dayOfMonth >= 29) || (month === 6 && dayOfMonth <= 6),
         targetMonth: 6,
         targetDay: 4,
-        decorations: 'fireworks, american flag, patriotic colors, sparklers, red white blue streamers, parade floats, block party lights, picnic table spreads',
-        atmosphere: 'patriotic, celebratory, freedom, summer fun, community spirit, backyard block party energy',
-        colors: 'red, white, blue, stars, stripes, gold accents',
-        activities: 'fireworks, barbecues, sparklers, parade marches, backyard games, rooftop viewing parties, lakeside gatherings, patriotic concerts, late-night parties'
+        decorations: 'fireworks, american flag, sparklers, red white blue streamers, parade floats, block party lights, picnic table spreads, patriotic banners, star-spangled decorations, red white and blue displays, festive decorations, summer party setups, patriotic motifs, flags displayed, bunting, red white blue decorations',
+        atmosphere: 'patriotic, celebratory, summer fun, backyard block party energy, vibrant, energetic, festive, outdoor celebrations, summer scenes, crowded gatherings',
+        colors: 'red, white, blue, gold accents, bright red, pure white, deep blue',
+        activities: 'fireworks displays, barbecues, sparklers, parade marches, backyard games, rooftop viewing parties, lakeside gatherings, patriotic concerts, late-night parties, watching fireworks, grilling, outdoor celebrations, summer festivities, patriotic celebrations, enjoying summer weather, waving flags'
     },
     15: { // Valentine's Day
         name: 'Valentine\'s Day',
@@ -2659,23 +2669,23 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => month === 1 && dayOfMonth >= 9 && dayOfMonth <= 16,
         targetMonth: 1,
         targetDay: 14,
-        decorations: 'valentine, happy valentine, heart-shaped chocolate, heart-shaped box, box of chocolates, roses, cupids, romantic candles, lace, pink ribbons, love letters',
-        atmosphere: 'romantic, loving, warm, affectionate, sweet, intimate',
-        colors: 'red, pink, white, gold, silver accents',
-        activities: 'romantic dinners, gift giving, love celebrations, date nights, affection displays, handwritten notes'
+        decorations: 'valentine, happy valentine, heart-shaped chocolate, heart-shaped box, box of chocolates, roses, cupids, romantic candles, lace, pink ribbons, love letters, heart motifs, doves, winged cupid figures, romantic flowers, valentine cards, gift wrapping, romantic table settings, heart decorations, romantic lighting, chocolate making displays',
+        atmosphere: 'romantic, loving, warm, affectionate, sweet, intimate, passionate, dreamy, sentimental, caring, devoted, candlelit scenes, romantic settings',
+        colors: 'red, pink, white, gold, silver accents, deep rose, soft blush, creamy white, warm candlelight, romantic pastels, crimson, cherry red, rose gold',
+        activities: 'romantic dinners, gift giving, love celebrations, date nights, affection displays, handwritten notes, exchanging chocolates, giving flowers, writing love letters, sharing special moments, making handmade gifts, chocolate making, romantic walks, candlelit dinners, expressing love, sharing heartfelt messages, celebrating relationships, creating memories together'
     },
     16: { // Easter
-        name: 'Easter/Spring Holiday',
+        name: 'Easter',
         region: 'US',
         priority: 4,
         bufferDays: 14,
         dateLogic: (month, dayOfMonth) => (month === 2 && dayOfMonth >= 15) || (month === 3 && dayOfMonth <= 25),
         targetMonth: 3,
         targetDay: 12,
-        decorations: 'easter, easter egg, pastel eggs, bunnies, spring flowers, baskets, chicks, spring blossoms, easter lilies',
-        atmosphere: 'renewal, rebirth, fresh, hopeful, joyful, spring awakening',
-        colors: 'pastels, yellow, white, green, lavender, pink',
-        activities: 'egg hunts, spring celebrations, renewal rituals, family gatherings, sunrise services, brunch feasts, spring festivals'
+        decorations: 'easter, easter egg, decorated eggs, bunnies, spring flowers, baskets, chicks, spring blossoms, easter lilies, easter baskets, easter bunny, spring decorations, floral arrangements, ribbons, easter bonnets, spring wreaths, decorative nests, colorful eggs, springtime motifs, easter decorations, flower arrangements',
+        atmosphere: 'renewal, fresh, joyful, spring awakening, uplifting, bright, cheerful, optimistic, peaceful, celebratory, nature-focused, spring scenes, outdoor settings',
+        colors: 'yellow, white, green, lavender, pink, soft blue, mint green, peach, butter yellow, spring green, purple, cream, light coral',
+        activities: 'egg hunts, spring celebrations, family gatherings, sunrise services, brunch feasts, spring festivals, decorating eggs, easter egg hunting, attending church services, family brunches, spring picnics, nature walks, flower picking, sharing easter baskets, springtime photography, enjoying spring weather, hunting for eggs'
     },
     17: { // Chinese New Year
         name: 'Chinese New Year',
@@ -2685,10 +2695,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => (month === 0 && dayOfMonth >= 20) || (month === 1 && dayOfMonth <= 20),
         targetMonth: 1,
         targetDay: 5,
-        decorations: 'chinese new year, lion dance, dragon dance, hongbao, firecrackers, fireworks, dao fu, nian (mythology), lanterns, red envelopes, festive banners, zodiac motifs',
-        atmosphere: 'celebratory, auspicious, family reunion focused, tradition-rich, energetic',
-        colors: 'red, gold, black, jade accents, warm lantern glow',
-        activities: 'dumpling feasts, lantern festivals, lion dances, dragon parades, hongbao gifting, temple visits, house cleansing rituals'
+        decorations: 'chinese new year, lion dance, dragon dance, hongbao, firecrackers, fireworks, dao fu, nian (mythology), lanterns, red envelopes, festive banners, zodiac motifs, red couplets, paper cuttings, kumquat trees, tangerines, red decorations, auspicious symbols, calligraphy scrolls, red paper lanterns, dragon and lion costumes, red decorations displayed',
+        atmosphere: 'celebratory, energetic, vibrant, prosperous, joyful, festive, crowded celebrations, lantern-lit scenes, parade scenes',
+        colors: 'red, gold, black, jade green, lantern glow, bright crimson, gold, deep black, emerald green, warm yellow, metallic gold',
+        activities: 'dumpling feasts, lantern festivals, lion dances, dragon parades, hongbao gifting, temple visits, family reunions, exchanging red envelopes, watching performances, visiting relatives, setting off firecrackers, enjoying traditional foods, community gatherings, eating dumplings, watching parades'
     },
     18: { // Setsubun
         name: 'Setsubun',
@@ -2698,10 +2708,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => month === 1 && dayOfMonth >= 1 && dayOfMonth <= 5,
         targetMonth: 1,
         targetDay: 3,
-        decorations: 'setsubun, mamemaki, makizushi, masu, oni masks, roasted soybeans, seasonal lanterns',
-        atmosphere: 'playful, ritualistic, warding off evil, lively home celebration',
-        colors: 'red, white, gold, natural wood tones',
-        activities: 'bean throwing, ehomaki eating, doorway charms, chants to chase oni, family gatherings'
+        decorations: 'setsubun, mamemaki, makizushi, masu, oni masks, roasted soybeans, seasonal lanterns, wooden boxes, oni decorations, ritual items, protective charms, seasonal arrangements, soybeans displayed',
+        atmosphere: 'playful, ritualistic, lively home celebration, protective, family-oriented, festive, energetic, indoor celebrations',
+        colors: 'red, white, gold, wood brown, deep red, warm white, golden yellow, earthy brown',
+        activities: 'bean throwing, ehomaki eating, doorway charms, family gatherings, mamemaki ritual, eating uncut sushi rolls, throwing beans, wearing oni masks, eating sushi rolls'
     },
     19: { // Hinamatsuri
         name: 'Hinamatsuri',
@@ -2711,10 +2721,10 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => month === 2 && dayOfMonth >= 1 && dayOfMonth <= 5,
         targetMonth: 2,
         targetDay: 3,
-        decorations: 'hinamatsuri, hina ningyou, hishimochi, doll platforms, peach blossoms, paper lanterns, ceremonial screens',
-        atmosphere: 'elegant, protective, springtime, hopeful, family focused',
-        colors: 'pink, white, gold, soft pastels, lacquer black',
-        activities: 'doll displays, tea gatherings, amazake sipping, family prayers for girls, spring photo sessions'
+        decorations: 'hinamatsuri, hina ningyou, hishimochi, doll platforms, peach blossoms, paper lanterns, ceremonial screens, ornamental dolls, tiered displays, peach flower arrangements, paper decorations, ceremonial items, spring floral displays, doll displays',
+        atmosphere: 'elegant, protective, springtime, family focused, graceful, refined, celebratory, beautiful, indoor displays, spring scenes',
+        colors: 'pink, white, gold, lacquer black, sakura pink, pure white, warm gold, deep black, spring green, lavender',
+        activities: 'doll displays, tea gatherings, amazake sipping, spring photo sessions, displaying hina dolls, tea ceremonies, family celebrations, enjoying traditional foods, springtime gatherings, taking photos with displays, drinking tea, viewing dolls'
     },
     20: { // Summer Festival
         name: 'Summer Festival',
@@ -2724,67 +2734,67 @@ const HOLIDAY_DATA = {
         dateLogic: (month, dayOfMonth) => (month === 6 && dayOfMonth >= 10) || (month === 7 && dayOfMonth <= 31),
         targetMonth: 6,
         targetDay: 20,
-        decorations: 'summer festival, aerial fireworks, goldfish scooping, bagged fish, shooting gallery, paper lanterns, yukata stalls, festival food carts',
-        atmosphere: 'lively, humid evening, nostalgic, firework filled, community carnival',
-        colors: 'navy, indigo, lantern gold, white, vibrant candy colors',
-        activities: 'yukata wearing, festival games, taiko performances, street food binges, fireworks watching, night river walks'
+        decorations: 'summer festival, aerial fireworks, goldfish scooping, bagged fish, shooting gallery, paper lanterns, yukata stalls, festival food carts, festival decorations, yukata displayed',
+        atmosphere: 'lively, humid evening, firework filled, community carnival, outdoor evening scenes, crowded festivals',
+        colors: 'navy, indigo, lantern gold, white, vibrant colors',
+        activities: 'yukata wearing, festival games, taiko performances, street food eating, fireworks watching, night river walks, playing games, eating street food, watching fireworks, wearing yukata'
     },
 
     // Japanese Holidays (existing)
     21: { // Japanese New Year
-        name: 'Japanese New Year (Oshogatsu)',
+        name: 'Japanese New Year',
         region: 'Japan',
         priority: 4,
         bufferDays: 2,
         dateLogic: (month, dayOfMonth) => isWithinBuffer(0, 1, 2) || (month === 0 && dayOfMonth <= 3),
         targetMonth: 0,
         targetDay: 1,
-        decorations: 'kadomatsu, kagami mochi, shimekazari, mochitsuki setups, nengajou, bamboo decorations, pine branches, traditional new year motifs, shrine ornaments',
-        atmosphere: 'traditional, solemn, hopeful, family-oriented, reflective, auspicious',
-        colors: 'red, white, gold, black, natural wood tones',
-        activities: 'hatsumode temple visits, family gatherings, traditional foods, mochitsuki (rice pounding), nengajou writing, first sunrise watching, new year rituals'
+        decorations: 'kadomatsu, kagami mochi, shimekazari, mochitsuki setups, nengajou, bamboo decorations, pine branches, new year motifs, shrine ornaments, decorations displayed',
+        atmosphere: 'solemn, family-oriented, auspicious, shrine visits, family gatherings, early morning scenes',
+        colors: 'red, white, gold, black, wood brown',
+        activities: 'hatsumode temple visits, family gatherings, mochitsuki rice pounding, nengajou writing, first sunrise watching, visiting temples, pounding rice, writing cards, watching sunrise'
     },
     22: { // Cherry Blossom
-        name: 'Cherry Blossom Season (Hanami)',
+        name: 'Cherry Blossom',
         region: 'Japan',
         priority: 4,
         bufferDays: 10,
         dateLogic: (month, dayOfMonth) => (month === 2 && dayOfMonth >= 20) || (month === 3 && dayOfMonth <= 20),
         targetMonth: 3,
         targetDay: 15, // Approximate
-        decorations: 'cherry blossoms, hanami, pink petals, traditional picnic setups, lanterns, floral arrangements, tatami picnic mats, delicate sake sets, paper fans',
-        atmosphere: 'serene, beautiful, ephemeral, celebratory, peaceful, contemplative, petal-drift dreamlike',
-        colors: 'pink, white, soft pastels, light green, natural earth tones, sunset lavender glows',
-        activities: 'hanami picnics, cherry blossom viewing, photography, festivals, nature appreciation, poetry writing, rooftop tea gatherings, petal shower walks'
+        decorations: 'cherry blossoms, hanami, pink petals, picnic setups, lanterns, floral arrangements, tatami picnic mats, sake sets, paper fans, sakura trees, falling petals, picnic blankets, bento boxes, seasonal decorations, petal displays, spring motifs, nature arrangements',
+        atmosphere: 'serene, beautiful, ephemeral, celebratory, peaceful, romantic, tranquil, nature-connected, aesthetically pleasing, outdoor picnic scenes, petal-filled scenes',
+        colors: 'pink, white, light green, sakura pink, cherry blossom pink, soft white, spring green, lavender',
+        activities: 'hanami picnics, cherry blossom viewing, photography, festivals, rooftop tea gatherings, petal shower walks, sitting under sakura trees, enjoying seasonal foods, picnics, taking photos, writing haiku, enjoying sake, springtime celebrations, eating bento, drinking sake'
     },
     23: { // Tanabata
-        name: 'Star Festival (Tanabata)',
+        name: 'Star Festival',
         region: 'Japan',
         priority: 3,
         bufferDays: 3,
         dateLogic: (month, dayOfMonth) => isWithinBuffer(6, 7, 3) || (month === 6 && dayOfMonth >= 4 && dayOfMonth <= 10),
         targetMonth: 6,
         targetDay: 7,
-        decorations: 'tanabata, tanzaku, colorful paper strips, bamboo branches, stars, wishes, lanterns, summer motifs',
-        atmosphere: 'romantic, hopeful, magical, celebratory, wish-making, summer evening',
-        colors: 'blue, gold, red, white, starry night colors',
-        activities: 'wish writing, lantern displays, festivals, romance celebrations, summer events'
+        decorations: 'tanabata, tanzaku, colorful paper strips, bamboo branches, stars, wishes, lanterns, summer motifs, wish papers, decorated bamboo, star decorations, summer festival displays, colorful streamers, traditional decorations, celestial motifs',
+        atmosphere: 'romantic, magical, celebratory, summer evening, dreamy, festive, starry, warm summer nights, outdoor evening scenes',
+        colors: 'blue, gold, red, white, starry night colors, deep blues, golden yellows, vibrant reds, pure whites, starry purples, summer sky blues, warm lantern glows',
+        activities: 'wish writing, lantern displays, festivals, romance celebrations, summer events, writing wishes on tanzaku, hanging decorations on bamboo, stargazing, attending festivals, celebrating the meeting of stars, enjoying summer festivities, traditional celebrations, making wishes, community gatherings'
     },
     24: { // Golden Week
-        name: 'Golden Week (Shukujitsu)',
+        name: 'Golden Week',
         region: 'Japan',
         priority: 4,
         bufferDays: 7,
         dateLogic: (month, dayOfMonth) => (month === 3 && dayOfMonth >= 29) || (month === 4 && dayOfMonth <= 5),
         targetMonth: 4,
         targetDay: 29,
-        decorations: 'traditional banners, family crests, seasonal flowers, festive displays, travel motifs, Showa Day scrolls, Constitution Memorial calligraphy, Greenery Day foliage, Children\'s Day carp streamers',
-        atmosphere: 'celebratory, relaxed, family-oriented, travel-focused, joyful, restful, nationwide holiday buzz',
-        colors: 'red, white, gold, green, spring colors, carp streamer hues, travel poster tones',
-        activities: 'travel, family visits, festivals, relaxation, cherry blossom viewing, shrine visits, theme park trips, countryside getaways, Showa Day reflections, Constitution ceremonies, Greenery Day nature hikes'
+        decorations: 'banners, family crests, seasonal flowers, travel motifs, scrolls, calligraphy displayed, foliage, carp streamers, decorations displayed',
+        atmosphere: 'celebratory, relaxed, family-oriented, joyful, restful, travel scenes, outdoor activities, family gatherings',
+        colors: 'red, white, gold, green, spring green, carp streamer colors',
+        activities: 'travel, family visits, festivals, cherry blossom viewing, shrine visits, theme park trips, countryside getaways, nature hikes, visiting places, attending festivals'
     },
     25: { // Children's Day
-        name: 'Children\'s Day (Kodomo no Hi)',
+        name: 'Children\'s Day',
         region: 'Japan',
         priority: 3,
         bufferDays: 7,
@@ -2797,36 +2807,36 @@ const HOLIDAY_DATA = {
         },
         targetMonth: 4,
         targetDay: 5,
-        decorations: 'koinobori, koinobori carp streamers, samurai dolls, iris flowers, traditional toys, warrior imagery',
-        atmosphere: 'celebratory, hopeful, protective, family-oriented, proud, traditional',
-        colors: 'blue, white, red, gold, natural tones',
-        activities: 'family celebrations, carp streamer displays, traditional foods, child-focused events'
+        decorations: 'koinobori, koinobori carp streamers, samurai dolls, iris flowers, traditional toys, warrior imagery, colorful carp flags, traditional displays, iris arrangements, warrior helmets, protective charms, family decorations, traditional motifs',
+        atmosphere: 'celebratory, protective, family-oriented, proud, joyful, nurturing, strength-focused, growth-oriented, family-centered, outdoor displays',
+        colors: 'blue, white, red, gold, natural tones, vibrant blues, pure whites, bright reds, warm golds, spring greens, traditional colors',
+        activities: 'family celebrations, carp streamer displays, traditional foods, child-focused events, displaying koinobori, family gatherings, enjoying traditional foods, celebrating children\'s growth, protective rituals, family traditions, honoring children, community celebrations'
     },
     26: { // Mid-Autumn
-        name: 'Mid-Autumn Festival (Tsukimi)',
+        name: 'Mid-Autumn Festival',
         region: 'Asia',
         priority: 2,
         bufferDays: 5,
         dateLogic: (month, dayOfMonth) => month === 8 && dayOfMonth >= 10 && dayOfMonth <= 20,
         targetMonth: 8,
         targetDay: 15, // Approximate
-        decorations: 'mid-autumn festival, tsukimi, tsukimi dango, moon rabbit, susuki grass, mooncake, lantern on liquid, moon motifs, traditional offerings, harvest displays',
-        atmosphere: 'serene, appreciative, harvest-focused, reflective, natural beauty, lantern-lit calm',
-        colors: 'white, silver, gold, indigo night, autumn colors, moonlit tones',
-        activities: 'moon viewing, lantern floats, tea offerings, traditional foods, family reunions, nature appreciation'
+        decorations: 'mid-autumn festival, tsukimi, tsukimi dango, moon rabbit, susuki grass, mooncake, lantern on liquid, moon motifs, offerings displayed, harvest displays, full moon, mooncakes, lanterns, autumn decorations, harvest symbols, moon viewing setups',
+        atmosphere: 'serene, natural beauty, lantern-lit calm, peaceful, family-centered, nature-connected, outdoor evening scenes, harvest scenes',
+        colors: 'white, silver, gold, indigo, moonlit white, silvery gray, warm gold, deep indigo, autumn orange, harvest gold',
+        activities: 'moon viewing, lantern floats, tea offerings, family reunions, tsukimi celebrations, enjoying mooncakes, family gatherings, viewing the full moon, harvest celebrations, sharing mooncakes, lantern displays, autumn festivities, eating mooncakes'
     },
     27: { // Obon
-        name: 'Obon Festival (Bon Odori)',
+        name: 'Obon Festival',
         region: 'Japan',
         priority: 3,
         bufferDays: 5,
         dateLogic: (month, dayOfMonth) => month === 7 && dayOfMonth >= 10 && dayOfMonth <= 20,
         targetMonth: 7,
         targetDay: 15, // Approximate
-        decorations: 'obon, lanterns, ancestor altars, white flowers, memorial displays, traditional motifs, floating toro nagashi lanterns, guiding bon fires',
-        atmosphere: 'respectful, spiritual, celebratory, ancestral, reflective, community-oriented',
-        colors: 'white, gold, red, purple, traditional colors',
-        activities: 'bon odori dancing, ancestor remembrance, lantern displays, family gatherings, memorial services, toro nagashi send-offs, taiko drum circles, grave sweeping rituals'
+        decorations: 'obon, lanterns, ancestor altars, white flowers, memorial displays, floating toro nagashi lanterns, bon fires, lanterns displayed, ancestor memorials, white chrysanthemums, decorations, festival displays',
+        atmosphere: 'respectful, celebratory, family-centered, outdoor evening scenes, lantern-lit scenes, community gatherings',
+        colors: 'white, gold, red, purple, pure white, warm gold, deep red, purple, lantern glow',
+        activities: 'bon odori dancing, lantern displays, family gatherings, memorial services, toro nagashi send-offs, taiko drum circles, grave sweeping rituals, traditional dancing, floating lanterns, community festivals, family reunions, cultural celebrations, dancing, floating lanterns on water'
     }
 };
 
@@ -10135,15 +10145,16 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         context.lockSubject = lockSubjectEnabled;
 
         // Count tokens for all prompts (only if token count enforcement is enabled)
+        // Strip disabled blocks (!/.../) so they are not counted
         if (tokenCountEnabled) {
             try {
                 const t5TokenizerService = globalResources.getT5Tokenizer();
-                const promptTokenCount = t5TokenizerService.countTokens(prompt || '');
-                const ucTokenCount = t5TokenizerService.countTokens(uc || '');
+                const promptTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(prompt || ''));
+                const ucTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(uc || ''));
                 
                 const characterTokenCounts = characterPrompts.map(char => ({
-                    prompt: t5TokenizerService.countTokens(char.prompt || ''),
-                    uc: t5TokenizerService.countTokens(char.uc || '')
+                    prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt || '')),
+                    uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc || ''))
                 }));
                 
                 const totalCharacterPromptTokens = characterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);
@@ -11258,17 +11269,16 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 }
                 
                 // Apply replacements to get final text and check token counts if token counting is enabled
+                // (finalPrompt/finalUC already have disabled blocks stripped by text replacement step; strip again for consistency)
                 if (tokenCountEnabled) {
                     try {
-                        
-                        // Count tokens on final texts
                         const t5TokenizerService = globalResources.getT5Tokenizer();
-                        const finalPromptTokens = t5TokenizerService.countTokens(finalPrompt);
-                        const finalUCTokens = t5TokenizerService.countTokens(finalUC);
+                        const finalPromptTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalPrompt));
+                        const finalUCTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalUC));
                         
                         const finalCharacterTokenCounts = finalCharacterPrompts.map(char => ({
-                            prompt: t5TokenizerService.countTokens(char.prompt),
-                            uc: t5TokenizerService.countTokens(char.uc)
+                            prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt)),
+                            uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc))
                         }));
                         
                         const finalTotalPromptTokens = finalPromptTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);

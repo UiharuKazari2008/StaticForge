@@ -2,7 +2,7 @@
 const backdrop = document.querySelector('.modal-backdrop');
 
 // Modal z-index management
-const MODAL_Z_BASE = 1001; // Base z-index for modal stacking (above --z-modal = 1100)
+const MODAL_Z_BASE = 1002; // Base z-index for modal stacking (above --z-modal = 1100)
 const MODAL_Z_ON_TOP_BASE = 2800; // Base z-index for on-top modals (matches --z-modal-top CSS variable)
 const MODAL_Z_INCREMENT = 10; // Increment between modal layers
 let modalStack = []; // Array to track modal stack order
@@ -69,7 +69,7 @@ function linkToolWindowToParent(toolWindow, parentModal) {
     const toolElement = typeof toolWindow === 'string' ? document.getElementById(toolWindow) : toolWindow;
     const parentElement = typeof parentModal === 'string' ? document.getElementById(parentModal) : parentModal;
     if (!toolElement || !parentElement) return;
-    
+
     // Set the parent modal ID on the tool window
     toolElement.setAttribute('data-parent-modal-id', parentElement.id);
 }
@@ -79,9 +79,9 @@ function getLinkedToolWindows(parentModal) {
     if (!parentModal) return [];
     const parentElement = typeof parentModal === 'string' ? document.getElementById(parentModal) : parentModal;
     if (!parentElement || !parentElement.id) return [];
-    
+
     // Find all tool windows with this parent's ID
-    return Array.from(document.querySelectorAll('.modal.tool-window')).filter(modal => 
+    return Array.from(document.querySelectorAll('.modal.tool-window')).filter(modal =>
         modal.getAttribute('data-parent-modal-id') === parentElement.id &&
         !modal.classList.contains('hidden')
     );
@@ -90,20 +90,20 @@ function getLinkedToolWindows(parentModal) {
 // Update window usage stack - add modal to top of stack (most recent at end)
 function updateWindowUsageStack(modal) {
     if (!modal || !modal.classList.contains('modal')) return;
-    
+
     // Only track moveable windows (those with title bars) in the usage stack
     const hasTitleBar = modal.querySelector('.modal-window-title') !== null;
     if (!hasTitleBar) return;
-    
+
     // Skip on-top modals from usage stack (they're always active)
     if (modal.classList.contains('on-top')) return;
-    
+
     // Remove modal from stack if it's already there
     const existingIndex = windowUsageStack.indexOf(modal);
     if (existingIndex !== -1) {
         windowUsageStack.splice(existingIndex, 1);
     }
-    
+
     // Add to end of stack (most recent at end)
     windowUsageStack.push(modal);
 }
@@ -124,7 +124,7 @@ function setActiveWindow(modalId) {
             debouncedUpdateTaskbarWindows();
             return;
         }
-        
+
         // Check if this is a tool window
         if (isToolWindow(modal)) {
             // Tool windows don't remove active class from main window
@@ -142,19 +142,16 @@ function setActiveWindow(modalId) {
                     m.classList.remove('active-window');
                 }
             });
-            
-            // Check if main window is changing
-            const previousMainWindowId = mainActiveWindowId;
-            
+
             // Set new active window
             modal.classList.add('active-window');
             currentActiveWindowId = modal.id;
             mainActiveWindowId = modal.id; // Update main active window
-            
+
             // Update usage stack for main windows
             updateWindowUsageStack(modal);
         }
-        
+
         // Ensure all on-top modals have active-window class (doesn't affect taskbar)
         document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
             onTopModal.classList.add('active-window');
@@ -181,26 +178,31 @@ function initializeModalDragging() {
     document.addEventListener('mousedown', handleModalInteraction);
     document.addEventListener('mousemove', handleModalInteraction);
     document.addEventListener('mouseup', handleModalInteractionEnd);
-    
+
+    // Add touch support for dragging and resizing
+    document.addEventListener('touchstart', handleModalInteraction, { passive: false });
+    document.addEventListener('touchmove', handleModalInteraction, { passive: false });
+    document.addEventListener('touchend', handleModalInteractionEnd, { passive: false });
+
     // Add global minimize button handler
     document.addEventListener('click', (e) => {
         const minimizeBtn = e.target.closest('.minimize-btn');
         if (!minimizeBtn) return;
-        
+
         const modal = minimizeBtn.closest('.modal');
         if (modal) {
             e.preventDefault();
             e.stopPropagation();
-            
+
             // Get or create the taskbar item to minimize to
             const taskbarItem = getOrCreateTaskbarItem(modal);
             if (taskbarItem) {
                 setMinimizeTargetVariables(modal, taskbarItem);
             }
-            
+
             // Add minimising animation class
             modal.classList.add('minimising');
-            
+
             // After animation completes, add minimised class and remove animation class
             const minimisingAnimationHandler = (e) => {
                 // Only handle animations on this modal while it has the minimising class
@@ -214,46 +216,46 @@ function initializeModalDragging() {
             modal.addEventListener('animationend', minimisingAnimationHandler);
         }
     });
-    
+
     // Add desktop click handler to clear active window when clicking empty desktop space
     // This handler checks if the click is on desktop area (not on windows, icons, or other interactive elements)
     document.addEventListener('click', (e) => {
         // Only handle in desktop mode
         if (!document.body.classList.contains('desktop-mode')) return;
-        
+
         // Don't handle if clicking on a modal or its children
         if (e.target.closest('.modal')) return;
-        
+
         // Don't handle if clicking on desktop icons/shortcuts or their children
         if (e.target.closest('.desktop-icon, .desktop-shortcut')) return;
-        
+
         // Don't handle if clicking on taskbar
         if (e.target.closest('#desktopTaskbar')) return;
-        
+
         // Don't handle if clicking on start menu
         if (e.target.closest('#startMenu')) return;
-        
+
         // Check if click is on desktop area (empty desktop space)
         const desktopFreeformContainer = document.getElementById('desktopFreeformContainer');
         const desktopGridContainer = document.getElementById('desktopGridContainer');
         const desktopIcons = document.getElementById('desktopIcons');
-        
+
         // Click is on desktop if:
         // 1. Directly on the freeform container (empty space)
         // 2. Directly on the grid container (empty space)
         // 3. Directly on the desktop-icons container (empty space)
-        const clickedOnDesktop = 
+        const clickedOnDesktop =
             e.target === desktopFreeformContainer ||
             e.target === desktopGridContainer ||
             e.target === desktopIcons;
-        
+
         if (clickedOnDesktop) {
             // Don't clear active window if clicking right after browser window regained focus
             const timeSinceFocus = Date.now() - windowFocusRegainedTime;
             if (timeSinceFocus < FOCUS_GRACE_PERIOD) {
                 return; // User is just trying to regain browser window focus
             }
-            
+
             // Clear active window (make no window active)
             setActiveWindow(null);
         }
@@ -261,9 +263,9 @@ function initializeModalDragging() {
 }
 
 function handleModalInteraction(e) {
-    if (e.type === 'mousedown') {
+    if (e.type === 'mousedown' || e.type === 'touchstart') {
         handleModalDragStart(e) || handleModalResizeStart(e);
-    } else if (e.type === 'mousemove') {
+    } else if (e.type === 'mousemove' || e.type === 'touchmove') {
         // Find any modal that's currently being dragged or resized
         const draggedModal = document.querySelector('.modal[data-dragging="true"]');
         const resizedModal = document.querySelector('.modal[data-resizing="true"]');
@@ -303,10 +305,14 @@ function handleModalDragStart(e) {
 
     e.preventDefault();
 
+    // Get coordinates from touch or mouse event
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     // Store drag state as data attributes on the modal
     modal.setAttribute('data-dragging', 'true');
-    modal.setAttribute('data-drag-start-x', e.clientX);
-    modal.setAttribute('data-drag-start-y', e.clientY);
+    modal.setAttribute('data-drag-start-x', clientX);
+    modal.setAttribute('data-drag-start-y', clientY);
 
     // Get current offset values and store them
     const computedStyle = getComputedStyle(modal);
@@ -343,8 +349,12 @@ function handleModalDrag(e, draggedModal) {
     const modalStartOffsetX = parseFloat(draggedModal.getAttribute('data-modal-start-offset-x'));
     const modalStartOffsetY = parseFloat(draggedModal.getAttribute('data-modal-start-offset-y'));
 
-    const deltaX = e.clientX - dragStartX;
-    const deltaY = e.clientY - dragStartY;
+    // Get coordinates from touch or mouse event
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const deltaX = clientX - dragStartX;
+    const deltaY = clientY - dragStartY;
 
     let newOffsetX = modalStartOffsetX + deltaX;
     let newOffsetY = modalStartOffsetY + deltaY;
@@ -405,9 +415,9 @@ function handleModalDrag(e, draggedModal) {
         newOffsetY = Math.max(minOffsetY, Math.min(maxOffsetY, newOffsetY));
     }
 
-    // Apply the new offsets
-    draggedModal.style.setProperty('--modal-offset-x', `${newOffsetX}px`);
-    draggedModal.style.setProperty('--modal-offset-y', `${newOffsetY}px`);
+    // Apply the new offsets (rounded to whole numbers)
+    draggedModal.style.setProperty('--modal-offset-x', `${Math.round(newOffsetX)}px`);
+    draggedModal.style.setProperty('--modal-offset-y', `${Math.round(newOffsetY)}px`);
 }
 
 function handleModalDragEnd(e, draggedModal) {
@@ -427,7 +437,7 @@ function handleModalDragEnd(e, draggedModal) {
 
     // Check backdrop when stopping drag
     updateBackdropVisibility();
-    
+
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = draggedModal.classList.contains('transient');
     if (!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier))) {
@@ -450,10 +460,14 @@ function handleModalResizeStart(e) {
 
     e.preventDefault();
 
+    // Get coordinates from touch or mouse event
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
     // Store resize state as data attributes on the modal
     modal.setAttribute('data-resizing', 'true');
-    modal.setAttribute('data-resize-start-x', e.clientX);
-    modal.setAttribute('data-resize-start-y', e.clientY);
+    modal.setAttribute('data-resize-start-x', clientX);
+    modal.setAttribute('data-resize-start-y', clientY);
 
     // Get modal current dimensions and position and store them
     const modalRect = modal.getBoundingClientRect();
@@ -503,8 +517,12 @@ function handleModalResize(e, resizedModal) {
     const resizeStartTop = parseFloat(resizedModal.getAttribute('data-resize-start-top'));
     const resizeDirection = resizedModal.getAttribute('data-resize-direction');
 
-    const deltaX = e.clientX - resizeStartX;
-    const deltaY = e.clientY - resizeStartY;
+    // Get coordinates from touch or mouse event
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const deltaX = clientX - resizeStartX;
+    const deltaY = clientY - resizeStartY;
 
     let newWidth = resizeStartWidth;
     let newHeight = resizeStartHeight;
@@ -556,9 +574,9 @@ function handleModalResize(e, resizedModal) {
     newWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
     newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
 
-    // Apply new dimensions
-    resizedModal.style.width = `${newWidth}px`;
-    resizedModal.style.height = `${newHeight}px`;
+    // Apply new dimensions (rounded to whole numbers)
+    resizedModal.style.width = `${Math.round(newWidth)}px`;
+    resizedModal.style.height = `${Math.round(newHeight)}px`;
 
     // Only update position if we actually moved the window (left/top edge resize)
     if (shouldUpdatePosition) {
@@ -566,8 +584,8 @@ function handleModalResize(e, resizedModal) {
         const offsetX = (newLeft + newWidth / 2) - (window.innerWidth / 2);
         const offsetY = (newTop + newHeight / 2) - (window.innerHeight / 2);
 
-        resizedModal.style.setProperty('--modal-offset-x', `${offsetX}px`);
-        resizedModal.style.setProperty('--modal-offset-y', `${offsetY}px`);
+        resizedModal.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
+        resizedModal.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
     }
 }
 
@@ -586,11 +604,11 @@ function handleModalResizeEnd(e, resizedModal) {
     resizedModal.removeAttribute('data-resize-start-left');
     resizedModal.removeAttribute('data-resize-start-top');
     resizedModal.removeAttribute('data-resize-direction');
-    resizedModal.dispatchEvent(new CustomEvent('modalResized', { 
+    resizedModal.dispatchEvent(new CustomEvent('modalResized', {
         bubbles: false,
         detail: { modal: resizedModal }
     }));
-    
+
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = resizedModal.classList.contains('transient');
     if (!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier))) {
@@ -605,7 +623,7 @@ function openModal(modal) {
     const isAlreadyOpen = !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');
     // Manual modal is blocked from stacking only when not windowed AND not in desktop-mode
     // In desktop-mode, it should be part of the window stack even when maximized
-    const isBlocked = modal.id === 'manualModal' && !modal.classList.contains('windowed') && !document.body.classList.contains('desktop-mode');
+    const isBlocked = modal.id === 'manualModal' && !modal.classList.contains('windowed') && !window.isDesktop;
     const hasTitleBar = modal.querySelector('.modal-window-title') !== null;
     const isMoveable = hasTitleBar && !isBlocked;
 
@@ -616,7 +634,7 @@ function openModal(modal) {
         }
         return;
     }
-    
+
     // Check if modal is soft-opened (has hidden-alt class)
     // If so, remove hidden-alt and proceed with normal opening animation
     const isSoftOpened = modal.classList.contains('hidden-alt');
@@ -624,7 +642,7 @@ function openModal(modal) {
     // Restore window position BEFORE opening and animating
     // This ensures the position is set before the opening animation starts
     // Restore for non-transient windows, or transient windows with dataset identifier
-    if (isMoveable) {
+    if (isMoveable && window.isDesktop) {
         const isTransient = modal.classList.contains('transient');
         if (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier))) {
             restoreWindowPosition(modal);
@@ -733,13 +751,13 @@ async function closeModal(modal) {
                     closeModal(toolWindow);
                 }
             });
-            
+
             // Close the main modal and wait for it
             await closeMainModal(modal);
             return;
         }
     }
-    
+
     // If no tool windows to wait for, proceed with normal close and wait for it
     await closeMainModal(modal);
 }
@@ -766,7 +784,7 @@ function closeMainModal(modal) {
 
     // Add closing class to trigger animation
     modal.classList.add('closing');
-    
+
     // Update taskbar (debounced for performance)
     debouncedUpdateTaskbarWindows();
 
@@ -828,15 +846,15 @@ function closeMainModal(modal) {
         requestAnimationFrame(() => {
             modal.classList.remove('closing');
         });
-        
+
         // If closing a tool window, restore the main active window
         if (isToolWindow(modal)) {
             // Remove active class from the tool window
             modal.classList.remove('active-window');
-            
+
             // Clean up the parent link
             modal.removeAttribute('data-parent-modal-id');
-            
+
             // Restore main active window if it exists and is still visible
             if (mainActiveWindowId) {
                 const mainActiveModal = document.getElementById(mainActiveWindowId);
@@ -857,22 +875,22 @@ function closeMainModal(modal) {
                 // Remove active class (already removed by setActiveWindow if called)
                 modal.classList.remove('active-window');
                 currentActiveWindowId = null;
-                
+
                 // Find the last active window from usage stack that's still open
                 // Usage stack is in order (oldest to newest), so we iterate backwards
                 let lastActiveWindow = null;
                 for (let i = windowUsageStack.length - 1; i >= 0; i--) {
                     const candidateModal = windowUsageStack[i];
                     // Check if modal is still open and not hidden
-                    if (candidateModal && 
-                        !candidateModal.classList.contains('hidden') && 
+                    if (candidateModal &&
+                        !candidateModal.classList.contains('hidden') &&
                         !candidateModal.classList.contains('closing') &&
                         candidateModal.querySelector('.modal-window-title')) {
                         lastActiveWindow = candidateModal;
                         break;
                     }
                 }
-                
+
                 // Activate the last active window if found
                 if (lastActiveWindow) {
                     setActiveWindow(lastActiveWindow);
@@ -890,7 +908,7 @@ function closeMainModal(modal) {
                 }, 500);
             }
         }
-        
+
         // Update taskbar after cleanup
         debouncedUpdateTaskbarWindows();
     };
@@ -930,13 +948,13 @@ function assignModalZIndex(modal) {
 
     // Reassign z-indexes to all modals in the stack
     updateModalStackZIndexes();
-    
+
     setActiveWindow(modal);
 }
 
 function bringModalToFront(modal) {
     if (!modal) return;
-    
+
     // Move modal to the top of the stack
     const modalIndex = modalStack.indexOf(modal);
     if (modalIndex !== -1) {
@@ -946,12 +964,11 @@ function bringModalToFront(modal) {
     // Add to top of stack
     modalStack.push(modal);
 
-
     // Reassign z-indexes to all modals in the stack
     updateModalStackZIndexes();
-    
+
     setActiveWindow(modal);
-    
+
     // Update taskbar active states only (lightweight, no DOM recreation)
     updateTaskbarActiveStates();
 }
@@ -960,7 +977,7 @@ function updateModalStackZIndexes() {
     // Separate modals into regular and on-top groups
     const regularModals = [];
     const onTopModals = [];
-    
+
     modalStack.forEach((modal) => {
         if (modal.classList.contains('on-top')) {
             onTopModals.push(modal);
@@ -968,7 +985,7 @@ function updateModalStackZIndexes() {
             regularModals.push(modal);
         }
     });
-    
+
     // Assign z-indexes to regular modals first (bottom to top)
     regularModals.forEach((modal, index) => {
         const zIndex = MODAL_Z_BASE + (index * MODAL_Z_INCREMENT);
@@ -976,7 +993,7 @@ function updateModalStackZIndexes() {
         modal.setAttribute('data-modal-stack-position', index + 1);
         modal.style.zIndex = zIndex;
     });
-    
+
     // Assign z-indexes to on-top modals
     // Most recent modals (at end of array) get higher z-indexes
     onTopModals.forEach((modal, index) => {
@@ -985,12 +1002,12 @@ function updateModalStackZIndexes() {
         modal.setAttribute('data-modal-stack-position', regularModals.length + index + 1);
         modal.style.zIndex = zIndex;
     });
-    
+
     // Ensure all on-top modals have active-window class (doesn't affect taskbar)
     document.querySelectorAll('.modal.on-top').forEach(onTopModal => {
         onTopModal.classList.add('active-window');
     });
-    
+
     // When z-indexes change, the top window (last in stack) should be active
     // But don't override main active window if the top modal is a tool window
     // Also don't change active state for on-top modals (they always stay active)
@@ -1016,13 +1033,13 @@ function handleModalClick(modal) {
     if (!document.hasFocus()) {
         return;
     }
-    
+
     // Don't change active window if clicking right after browser window regained focus
     const timeSinceFocus = Date.now() - windowFocusRegainedTime;
     if (timeSinceFocus < FOCUS_GRACE_PERIOD) {
         return; // User is just trying to regain browser window focus
     }
-    
+
     // Bring modal to front when clicked (unless it's currently being dragged) - only for moveable modals
     // Manual modal participates in stacking when windowed OR when in desktop-mode (even if maximized)
     // Manual modal is blocked from stacking only when not windowed AND not in desktop-mode
@@ -1055,9 +1072,8 @@ function updateBackdropVisibility() {
 
     // Disable backdrop completely in desktop mode (when gallery is windowed)
     const galleryWindow = document.getElementById('galleryWindow');
-    const isDesktopMode = galleryWindow && galleryWindow.classList.contains('windowed');
-    
-    if (isDesktopMode) {
+
+    if (window.isDesktop) {
         // In desktop mode, never show backdrop
         if (backdrop.classList.contains('fade-in') || !backdrop.classList.contains('fade-out')) {
             backdrop.classList.add('fade-out');
@@ -1104,11 +1120,10 @@ function updateBackdropVisibility() {
 
 // Gallery Window Management - Windowed Mode
 let galleryWindow = null;
-let isGalleryHidden = false; // Track if gallery is hidden in desktop mode
 
 function initializeGalleryWindow() {
     galleryWindow = document.getElementById('galleryWindow');
-    
+
     if (!galleryWindow) {
         console.error('Gallery window element not found');
         return;
@@ -1120,20 +1135,17 @@ function initializeGalleryWindow() {
     // Check if we're in desktop mode (wide screen)
     const isWideScreen = window.innerWidth >= 1200;
     const willBeDesktopMode = isWideScreen && (galleryWindowPreference !== 'maximized');
-    
+
     // If not in desktop mode, show gallery immediately (it's hidden by default in HTML)
     if (!willBeDesktopMode) {
         galleryWindow.classList.remove('hidden');
     }
-    
+
     // Check and update gallery window mode based on viewport and preference
     updateGalleryWindowMode();
-    
-    // Add resize listener to handle viewport changes
-    window.addEventListener('resize', debounceGalleryResize(updateGalleryWindowMode, 150));
 
     galleryWindow.addEventListener('modalResized', () => { updateGalleryGrid(true, true); }); // onlyIfChanged=true, updatePlaceholders=true
-    
+
     // Add maximize button handler
     const maximizeBtn = document.getElementById('maximizeGalleryBtn');
     if (maximizeBtn) {
@@ -1142,7 +1154,7 @@ function initializeGalleryWindow() {
             maximizeGalleryWindow();
         });
     }
-    
+
     // Add close button handler for desktop mode
     const closeBtn = galleryWindow.querySelector('.close-btn');
     if (closeBtn) {
@@ -1157,14 +1169,13 @@ function initializeGalleryWindow() {
 
 function updateGalleryWindowMode() {
     if (!galleryWindow) return;
-    
+
     const isWideScreen = window.innerWidth >= 1200;
     const isWindowed = galleryWindow.classList.contains('windowed');
-    const isDesktopMode = document.body.classList.contains('desktop-mode');
-    
+
     // Determine if windowed mode should be active
     let shouldBeWindowed = false;
-    
+
     if (galleryWindowPreference === 'windowed') {
         // User explicitly wants windowed mode
         shouldBeWindowed = isWideScreen; // Only on wide screens
@@ -1175,17 +1186,58 @@ function updateGalleryWindowMode() {
         // Auto mode: enable windowed by default on wide screens
         shouldBeWindowed = isWideScreen;
     }
-    
+
     if (shouldBeWindowed && !isWindowed) {
         // Switch to windowed mode (desktop mode)
         galleryWindow.classList.add('windowed');
         galleryWindow.classList.add('modal'); // Add modal class for windowed mode
-        
+
         // Update desktop-mode class on body (class is set initially in inline script after body tag)
         if (!document.body.classList.contains('desktop-mode')) {
             document.body.classList.add('desktop-mode');
+
+            // Update window.isDesktop to stay in sync
+            window.isDesktop = true;
+
+            // Show taskbar when entering desktop mode
+            const taskbar = document.getElementById('desktopTaskbar');
+            if (taskbar) {
+                taskbar.classList.remove('hidden');
+            }
+
+            // Initialize and load desktop shortcuts if not already done
+            if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
+                // Initialize if not already initialized
+                if (!desktopShortcuts.desktopContainer) {
+                    desktopShortcuts.init();
+                }
+
+                // Load and render shortcuts for current workspace if not already loaded
+                if (typeof activeWorkspace !== 'undefined' && activeWorkspace) {
+                    if (desktopShortcuts.currentWorkspace !== activeWorkspace || desktopShortcuts.shortcuts.length === 0) {
+                        desktopShortcuts.currentWorkspace = activeWorkspace;
+                        desktopShortcuts.loadShortcuts(activeWorkspace).then(() => {
+                            desktopShortcuts.renderShortcuts();
+                        }).catch(err => {
+                            console.error('Error loading desktop shortcuts:', err);
+                        });
+                    } else {
+                        // Shortcuts already loaded for this workspace, just render them
+                        desktopShortcuts.renderShortcuts();
+                    }
+                }
+            }
+
+            // Rebuild start menu when entering desktop mode
+            // Ensure startMenuItems is set (in case initializeStartMenu hasn't run yet)
+            if (!startMenuItems) {
+                startMenuItems = document.getElementById('startMenuItems');
+            }
+            if (startMenuItems) {
+                buildStartMenu();
+            }
         }
-        
+
         // Only show gallery window if window positions are already loaded
         // If positions aren't loaded yet, keep it hidden - desktopShortcuts will show it after loading
         if (Object.keys(globalWindowPositions).length > 0) {
@@ -1195,7 +1247,7 @@ function updateGalleryWindowMode() {
             // The positions will be loaded by desktopShortcuts manager, which will then show the window
             // Don't return here - continue with initialization so window is ready when positions load
         }
-        
+
         // Initialize modal functionality if not already done
         if (!galleryWindow.hasAttribute('data-modal-initialized')) {
             // Add resize handles for this resizeable window
@@ -1204,14 +1256,14 @@ function updateGalleryWindowMode() {
             }
             galleryWindow.setAttribute('data-modal-initialized', 'true');
         }
-        
+
         restoreWindowPosition(galleryWindow);
-        
+
         // Add gallery window to modal stack for z-index management
         if (modalStack.indexOf(galleryWindow) === -1) {
             assignModalZIndex(galleryWindow);
         }
-        
+
         // Add click handler to bring gallery to front when clicking anywhere inside it
         if (!galleryWindow._modalClickHandler) {
             const clickHandler = (e) => {
@@ -1229,49 +1281,106 @@ function updateGalleryWindowMode() {
             galleryWindow.addEventListener('mousedown', clickHandler);
             galleryWindow._modalClickHandler = clickHandler;
         }
-        
+
         // Enable close button in windowed mode
         const closeBtn = galleryWindow.querySelector('.close-btn');
         if (closeBtn) {
             closeBtn.disabled = false;
         }
-        
+
         // Update taskbar to show gallery
         debouncedUpdateTaskbarWindows();
-        
+
         updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
-        
+
     } else if (!shouldBeWindowed && isWindowed) {
         // Switch to maximized mode (exit desktop mode)
         galleryWindow.classList.remove('windowed');
         galleryWindow.classList.remove('modal'); // Remove modal class for maximized mode
-        
+
         // Always unhide gallery when leaving desktop mode
         galleryWindow.classList.remove('hidden');
-        isGalleryHidden = false;
-        
+
         // Update desktop-mode class on body (class is set initially in inline script after body tag)
         document.body.classList.remove('desktop-mode');
-        
+
+        // Update window.isDesktop to stay in sync
+        window.isDesktop = false;
+
+        // Hide taskbar when exiting desktop mode
+        const taskbar = document.getElementById('desktopTaskbar');
+        if (taskbar) {
+            taskbar.classList.add('hidden');
+        }
+
+        // Unload desktop shortcuts and other desktop-only elements to free memory
+        if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts) {
+            // Clear desktop shortcuts DOM
+            if (desktopShortcuts.gridContainer) {
+                desktopShortcuts.gridContainer.innerHTML = '';
+            }
+            if (desktopShortcuts.freeformContainer) {
+                desktopShortcuts.freeformContainer.innerHTML = '';
+            }
+            // Clear collision offsets
+            if (desktopShortcuts.collisionOffsets) {
+                desktopShortcuts.collisionOffsets.clear();
+            }
+            // Clear shortcuts data array
+            desktopShortcuts.shortcuts = [];
+            // Reset manager state
+            desktopShortcuts.currentWorkspace = null;
+            desktopShortcuts.draggedShortcut = null;
+            desktopShortcuts.dragOffset = { x: 0, y: 0 };
+            desktopShortcuts.dragStartPos = { x: 0, y: 0 };
+            desktopShortcuts.isDragging = false;
+            desktopShortcuts.notesMetadataCache = null;
+            // Clear any pending save timers
+            if (desktopShortcuts.saveDebounceTimer) {
+                clearTimeout(desktopShortcuts.saveDebounceTimer);
+                desktopShortcuts.saveDebounceTimer = null;
+            }
+            desktopShortcuts.pendingChanges = false;
+        }
+
+        // Clear window positions
+        globalWindowPositions = {};
+
+        // Clear start menu content
+        const startMenuItems = document.getElementById('startMenuItems');
+        if (startMenuItems) {
+            startMenuItems.innerHTML = '';
+        }
+
+        // Hide start menu if open
+        const startMenu = document.getElementById('startMenu');
+        if (startMenu) {
+            startMenu.classList.add('hidden');
+            const startBtn = document.getElementById('taskbarStartBtn');
+            if (startBtn) {
+                startBtn.classList.remove('active');
+            }
+        }
+
         // Remove from modal stack
         const modalIndex = modalStack.indexOf(galleryWindow);
         if (modalIndex !== -1) {
             modalStack.splice(modalIndex, 1);
             updateModalStackZIndexes();
         }
-        
+
         // Reset container z-index
         const container = galleryWindow.parentElement;
         if (container) {
             container.style.removeProperty('z-index');
         }
-        
+
         // Remove click handler
         if (galleryWindow._modalClickHandler) {
             galleryWindow.removeEventListener('mousedown', galleryWindow._modalClickHandler);
             delete galleryWindow._modalClickHandler;
         }
-        
+
         // Remove scroll handler
         if (galleryWindow._modalScrollHandler && galleryWindow._modalScrollHandlerTarget) {
             galleryWindow._modalScrollHandlerTarget.removeEventListener('scroll', galleryWindow._modalScrollHandler);
@@ -1282,116 +1391,50 @@ function updateGalleryWindowMode() {
             delete galleryWindow._modalScrollHandlerTarget;
             delete galleryWindow._modalScrollThrottleTimer;
         }
-        
+
         // Disable close button in maximized mode
         const closeBtn = galleryWindow.querySelector('.close-btn');
         if (closeBtn) {
             closeBtn.disabled = true;
         }
-        
+
         // Reload gallery when leaving desktop mode
         const savedPosition = window.savedGalleryPosition || 0;
-        if (loadGalleryFromIndex) {
+        if (displayGalleryFromStartIndex) {
             displayGalleryFromStartIndex(savedPosition);
         } else {
             loadGallery();
         }
-        
+
         // Update taskbar
         debouncedUpdateTaskbarWindows();
-        
-        // Clear modal positioning
-        galleryWindow.style.removeProperty('--modal-offset-x');
-        galleryWindow.style.removeProperty('--modal-offset-y');
-        galleryWindow.style.removeProperty('width');
-        galleryWindow.style.removeProperty('height');
     }
-    
-    // Ensure desktop-mode class is always in sync with shouldBeWindowed state
+
+    // Ensure desktop-mode class and window.isDesktop are always in sync with shouldBeWindowed state
     // (class is set initially in inline script after body tag, but we need to keep it in sync)
     if (shouldBeWindowed && !document.body.classList.contains('desktop-mode')) {
         document.body.classList.add('desktop-mode');
+        window.isDesktop = true;
     } else if (!shouldBeWindowed && document.body.classList.contains('desktop-mode')) {
         document.body.classList.remove('desktop-mode');
+        window.isDesktop = false;
     }
 }
 
 function maximizeGalleryWindow() {
     if (!galleryWindow) return;
-    
+
     // Toggle between windowed and maximized
     if (galleryWindow.classList.contains('windowed')) {
         // Switch to maximized mode
         galleryWindowPreference = 'maximized';
         localStorage.setItem('galleryWindowMode', 'maximized');
-        galleryWindow.classList.remove('windowed');
-        galleryWindow.classList.remove('hidden'); // Always unhide when maximizing
-        isGalleryHidden = false;
-        document.body.classList.remove('desktop-mode');
-        galleryWindow.classList.remove('modal'); // Remove modal class
-        
-        // Remove from modal stack
-        const modalIndex = modalStack.indexOf(galleryWindow);
-        if (modalIndex !== -1) {
-            modalStack.splice(modalIndex, 1);
-            updateModalStackZIndexes();
-        }
-        
-        // Reset container z-index
-        const container = galleryWindow.parentElement;
-        if (container) {
-            container.style.removeProperty('z-index');
-        }
-        
-        // Remove click handler
-        if (galleryWindow._modalClickHandler) {
-            galleryWindow.removeEventListener('mousedown', galleryWindow._modalClickHandler);
-            delete galleryWindow._modalClickHandler;
-        }
-        
-        // Remove scroll handler
-        if (galleryWindow._modalScrollHandler && galleryWindow._modalScrollHandlerTarget) {
-            galleryWindow._modalScrollHandlerTarget.removeEventListener('scroll', galleryWindow._modalScrollHandler);
-            if (galleryWindow._modalScrollThrottleTimer) {
-                clearTimeout(galleryWindow._modalScrollThrottleTimer);
-            }
-            delete galleryWindow._modalScrollHandler;
-            delete galleryWindow._modalScrollHandlerTarget;
-            delete galleryWindow._modalScrollThrottleTimer;
-        }
-        
-        // Disable close button
-        const closeBtn = galleryWindow.querySelector('.close-btn');
-        if (closeBtn) {
-            closeBtn.disabled = true;
-        }
-        
-        // Reload gallery when maximizing
-        const savedPosition = window.savedGalleryPosition || 0;
-        if (loadGalleryFromIndex) {
-            displayGalleryFromStartIndex(savedPosition);
-        } else {
-            loadGallery();
-        }
-        
-        // Clear positioning
-        galleryWindow.style.removeProperty('--modal-offset-x');
-        galleryWindow.style.removeProperty('--modal-offset-y');
-        galleryWindow.style.removeProperty('width');
-        galleryWindow.style.removeProperty('height');
-        galleryWindow.removeAttribute('data-modal-moved');
-        
-        // Update taskbar
-        debouncedUpdateTaskbarWindows();
-        
         updateGalleryWindowMode();
     } else {
         // Switch to windowed mode (only if screen is wide enough)
         if (window.innerWidth >= 1200) {
             galleryWindowPreference = 'windowed';
             localStorage.setItem('galleryWindowMode', 'windowed');
-            galleryWindow.classList.add('modal'); // Add modal class
-            isGalleryHidden = false; // Reset hidden state when entering windowed mode
             updateGalleryWindowMode();
         }
     }
@@ -1410,16 +1453,15 @@ async function hideGalleryWindow() {
     if (!galleryWindow || !galleryWindow.classList.contains('windowed')) {
         return;
     }
-    
-    isGalleryHidden = true;
+
     await closeModal(galleryWindow);
-    
+
     // Clear gallery content like manual modal does
     clearGallery();
-        
+
     // Update taskbar (will remove gallery from taskbar)
     debouncedUpdateTaskbarWindows();
-    
+
     console.log('Gallery hidden in desktop mode');
 }
 
@@ -1432,19 +1474,18 @@ function showGalleryWindow() {
     if (!galleryWindow || !galleryWindow.classList.contains('windowed')) {
         return;
     }
-    
+
     // Mark gallery as visible
-    isGalleryHidden = false;
     openModal(galleryWindow);
 
     // Reload gallery content like manual modal close does
     const savedPosition = window.savedGalleryPosition || 0;
-    if (loadGalleryFromIndex) {
+    if (savedPosition) {
         displayGalleryFromStartIndex(savedPosition);
     } else {
         loadGallery();
     }
-    
+
     console.log('Gallery shown in desktop mode');
 }
 
@@ -1452,7 +1493,36 @@ function showGalleryWindow() {
 // Gallery update functions use this to skip updates when gallery is hidden
 // Similar to how they check for manual modal open state
 function isGalleryWindowHidden() {
-    return isGalleryHidden && galleryWindow && galleryWindow.classList.contains('windowed');
+    return galleryWindow && galleryWindow.classList.contains('hidden') && galleryWindow.classList.contains('windowed');
+}
+
+/**
+ * Activates all deferred resize listeners after application has fully loaded.
+ */
+function activateAllResizeListeners() {
+    console.log('🚀 Activating all deferred resize listeners');
+
+    // 1. Activate gallery specific listeners
+    activateGalleryResizeListener();
+
+    // 2. Activate main application layout listeners (in app.js)
+    if (typeof activateMainResizeListeners === 'function') {
+        activateMainResizeListeners();
+    }
+
+    // 3. Activate titlebar/WCO listeners (in app.js)
+    if (typeof activateTitlebarResizeListeners === 'function') {
+        activateTitlebarResizeListeners();
+    }
+}
+
+/**
+ * Activates the gallery resize listener.
+ */
+function activateGalleryResizeListener() {
+    window.addEventListener('resize', debounceGalleryResize(updateGalleryWindowMode, 150));
+    // Perform one check in case the window was resized during loading
+    updateGalleryWindowMode();
 }
 
 // Utility function for debouncing (specifically for gallery resize)
@@ -1475,19 +1545,19 @@ let taskbarClock = null;
 function initializeDesktopTaskbar() {
     taskbarWindows = document.getElementById('taskbarWindows');
     taskbarClock = document.getElementById('taskbarClock');
-    
+
     if (!taskbarWindows || !taskbarClock) {
         console.warn('Taskbar elements not found');
         return;
     }
-    
+
     // Update clock every second
     updateTaskbarClock();
     setInterval(updateTaskbarClock, 1000);
-    
+
     // Set up modal observation
     observeModals();
-    
+
     // Initial update
     setTimeout(() => {
         debouncedUpdateTaskbarWindows();
@@ -1543,14 +1613,14 @@ const desktopIconsConfig = [
 
 function updateTaskbarClock() {
     if (!taskbarClock) return;
-    
+
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     const dateStr = `${now.getMonth() + 1}/${now.getDate()}`;
-    
+
     const timeEl = taskbarClock.querySelector('.taskbar-time');
     const dateEl = taskbarClock.querySelector('.taskbar-date');
-    
+
     if (timeEl) timeEl.textContent = timeStr;
     if (dateEl) dateEl.textContent = dateStr;
 }
@@ -1558,30 +1628,30 @@ function updateTaskbarClock() {
 function observeModals() {
     // Track previous state of modals to only trigger on meaningful changes
     const modalStates = new Map();
-    
+
     const getModalState = (element) => {
         return {
             hidden: element.classList.contains('hidden'),
             minimised: element.classList.contains('minimised')
         };
     };
-    
+
     // Observe when modals open/close/minimize
     const observer = new MutationObserver((mutations) => {
         let hasRelevantChange = false;
-        
+
         mutations.forEach(mutation => {
             const element = mutation.target;
             const modalId = element.id;
-            
+
             if (!modalId) return;
-            
+
             const previousState = modalStates.get(modalId);
             const currentState = getModalState(element);
-            
+
             // Only trigger update if hidden or minimised state changed
             if (previousState) {
-                if (previousState.hidden !== currentState.hidden || 
+                if (previousState.hidden !== currentState.hidden ||
                     previousState.minimised !== currentState.minimised) {
                     hasRelevantChange = true;
                     modalStates.set(modalId, currentState);
@@ -1592,13 +1662,13 @@ function observeModals() {
                 hasRelevantChange = true;
             }
         });
-        
+
         // Only update taskbar if there was a meaningful state change
         if (hasRelevantChange) {
             debouncedUpdateTaskbarWindows();
         }
     });
-    
+
     // Observe all modals for class changes (including gallery window which gets modal class later)
     const observeElement = (element) => {
         if (element.id) {
@@ -1609,9 +1679,9 @@ function observeModals() {
             attributeFilter: ['class']
         });
     };
-    
+
     document.querySelectorAll('.modal').forEach(observeElement);
-    
+
     // Also observe gallery window even if it doesn't have modal class yet
     const galleryWin = document.getElementById('galleryWindow');
     if (galleryWin) {
@@ -1622,11 +1692,11 @@ function observeModals() {
 // Lightweight function to update active states and content without recreating DOM elements or triggering animations
 function updateTaskbarActiveStates() {
     if (!taskbarWindows) return;
-    
+
     // Get all open modals (not hidden and not closing) - includes minimised windows
     const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
         .filter(modal => !modal.classList.contains('closing'));
-    
+
     // Group modals by type to check grouping state
     const modalGroups = new Map();
     openModals.forEach(modal => {
@@ -1636,42 +1706,42 @@ function updateTaskbarActiveStates() {
         }
         modalGroups.get(type).push(modal);
     });
-    
+
     // Get existing taskbar items (both individual and grouped)
     const existingItems = Array.from(taskbarWindows.querySelectorAll('.taskbar-window-item, .taskbar-window-group'));
-    
+
     // Update active/minimised states and content (no DOM recreation, no animations)
     existingItems.forEach(item => {
         const modalId = item.dataset.modalId;
         const groupType = item.dataset.groupType;
-        
+
         if (modalId) {
             // Individual item
             const modal = openModals.find(m => m.id === modalId);
-            
+
             if (modal) {
                 const isActive = isModalActive(modal);
                 const isMinimised = modal.classList.contains('minimised');
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
-                
+
                 // Update classes without recreating the element
                 // Preserve entering/leaving animation classes
                 const hasEntering = item.classList.contains('entering');
                 const hasLeaving = item.classList.contains('leaving');
-                
+
                 item.className = 'taskbar-window-item';
                 if (hasEntering) item.classList.add('entering');
                 if (hasLeaving) item.classList.add('leaving');
                 if (isActive && !isMinimised) item.classList.add('active');
                 if (isMinimised) item.classList.add('minimised');
-                
+
                 // Update icon and text content without recreating elements (preserves event listeners)
                 // Only update if elements already exist - don't add/remove elements here (that's handled by updateTaskbarWindows)
                 const iconEl = item.querySelector('i');
                 const imageIconEl = item.querySelector('img.icon-image');
                 const textEl = item.querySelector('span');
-                
+
                 // Update font icon if it exists and changed
                 if (iconEl && icon && !isImageIcon(icon)) {
                     const expectedClass = imageIcon ? `${icon} icon-fa` : icon;
@@ -1679,7 +1749,7 @@ function updateTaskbarActiveStates() {
                         iconEl.className = expectedClass;
                     }
                 }
-                
+
                 // Update image icon src if it exists and changed
                 if (imageIconEl && imageIcon) {
                     const imagePath = imageIcon.startsWith('/') ? imageIcon : `/static_images/app_icons/${imageIcon}`;
@@ -1688,7 +1758,7 @@ function updateTaskbarActiveStates() {
                         imageIconEl.src = expectedSrc;
                     }
                 }
-                
+
                 if (textEl && textEl.textContent !== title) {
                     textEl.textContent = title;
                 }
@@ -1697,23 +1767,23 @@ function updateTaskbarActiveStates() {
             // Group item - update based on modals in the group
             const modals = modalGroups.get(groupType) || [];
             const shouldGroup = modals.length > 3;
-            
+
             if (shouldGroup && modals.length > 0) {
                 // Recalculate active state for the group
                 const hasActive = modals.some(m => isModalActive(m) && !m.classList.contains('minimised'));
                 const allMinimised = modals.every(m => m.classList.contains('minimised'));
-                
+
                 // Update classes - preserve entering/leaving
                 const hasEntering = item.classList.contains('entering');
                 const hasLeaving = item.classList.contains('leaving');
-                
+
                 let className = 'taskbar-window-item taskbar-window-group';
                 if (hasEntering) className += ' entering';
                 if (hasLeaving) className += ' leaving';
                 if (hasActive && !allMinimised) className += ' active';
                 if (allMinimised) className += ' minimised';
                 item.className = className;
-                
+
                 // Update count badge if it exists
                 const countBadge = item.querySelector('.taskbar-group-count');
                 if (countBadge && countBadge.textContent !== String(modals.length)) {
@@ -1726,16 +1796,16 @@ function updateTaskbarActiveStates() {
 
 function updateTaskbarWindows() {
     if (!taskbarWindows) return;
-    
+
     // Close any open group menu when updating (to prevent stale menus)
     closeTaskbarGroupMenu();
-    
+
     // STEP 1: EVALUATE - Determine what SHOULD exist
     // Get all open modals (not hidden and not closing) - includes minimised windows
     // Exclude modals that are closing (they'll be hidden soon)
     const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
         .filter(modal => !modal.classList.contains('closing'));
-    
+
     // Group modals by type
     const modalGroups = new Map();
     openModals.forEach(modal => {
@@ -1745,19 +1815,19 @@ function updateTaskbarWindows() {
         }
         modalGroups.get(type).push(modal);
     });
-    
+
     // Determine what taskbar items should exist
     const itemsThatShouldExist = new Map(); // modalId or groupType -> { type: 'individual'|'group', data: {...} }
-    
+
     modalGroups.forEach((modals, type) => {
         const shouldGroup = modals.length > 3;
-        
+
         if (shouldGroup) {
             // Should have a group item
             const modalIds = modals.map(m => m.id);
             const hasActive = modals.some(m => isModalActive(m) && !m.classList.contains('minimised'));
             const allMinimised = modals.every(m => m.classList.contains('minimised'));
-            
+
             itemsThatShouldExist.set(`group:${type}`, {
                 type: 'group',
                 groupType: type,
@@ -1771,7 +1841,7 @@ function updateTaskbarWindows() {
             modals.forEach(modal => {
                 const isActive = isModalActive(modal);
                 const isMinimised = modal.classList.contains('minimised');
-                
+
                 itemsThatShouldExist.set(modal.id, {
                     type: 'individual',
                     modal: modal,
@@ -1781,28 +1851,28 @@ function updateTaskbarWindows() {
             });
         }
     });
-    
+
     // STEP 2: REMOVE - Remove items that shouldn't exist
     const existingItems = Array.from(taskbarWindows.querySelectorAll('.taskbar-window-item, .taskbar-window-group'));
-    
+
     existingItems.forEach(item => {
         if (item.classList.contains('leaving')) return; // Already being removed
-        
+
         const modalId = item.dataset.modalId;
         const groupType = item.dataset.groupType;
-        
+
         let shouldExist = false;
-        
+
         if (modalId) {
             // Individual item - check if it should exist
-            shouldExist = itemsThatShouldExist.has(modalId) && 
-                         itemsThatShouldExist.get(modalId).type === 'individual';
+            shouldExist = itemsThatShouldExist.has(modalId) &&
+                itemsThatShouldExist.get(modalId).type === 'individual';
         } else if (groupType) {
             // Group item - check if it should exist
-            shouldExist = itemsThatShouldExist.has(`group:${groupType}`) && 
-                         itemsThatShouldExist.get(`group:${groupType}`).type === 'group';
+            shouldExist = itemsThatShouldExist.has(`group:${groupType}`) &&
+                itemsThatShouldExist.get(`group:${groupType}`).type === 'group';
         }
-        
+
         if (!shouldExist) {
             item.classList.add('leaving');
             item.addEventListener('animationend', () => {
@@ -1810,29 +1880,29 @@ function updateTaskbarWindows() {
             }, { once: true });
         }
     });
-    
+
     // STEP 3: CREATE/UPDATE - Create or update items that should exist
     itemsThatShouldExist.forEach((itemData, key) => {
         if (itemData.type === 'group') {
             // Handle group item
             const { groupType, modalIds, modals, hasActive, allMinimised } = itemData;
-            
+
             // Check if group item exists - query ALL group items first, then filter
             const allGroupItems = Array.from(taskbarWindows.querySelectorAll('.taskbar-window-group'));
-            let groupItem = allGroupItems.find(item => 
+            let groupItem = allGroupItems.find(item =>
                 item.dataset.groupType === groupType && !item.classList.contains('leaving')
             );
-            
+
             if (groupItem) {
                 // Update existing group item - FORCE update everything
                 groupItem.dataset.groupedModals = JSON.stringify(modalIds);
-                
+
                 // Update classes - always recalculate, don't preserve entering/leaving
                 let className = 'taskbar-window-item taskbar-window-group';
                 if (hasActive && !allMinimised) className += ' active';
                 if (allMinimised) className += ' minimised';
                 groupItem.className = className;
-                
+
                 // ALWAYS update count badge - don't check if it exists, just update it
                 let countBadge = groupItem.querySelector('.taskbar-group-count');
                 if (!countBadge) {
@@ -1850,9 +1920,9 @@ function updateTaskbarWindows() {
             } else {
                 // Create new group item
                 const { icon, imageIcon } = getModalIcons(modals[0]);
-                const typeName = groupType === 'imageViewer' ? 'Image Viewer' : 
-                                groupType === 'notepad' ? 'Notepad' : groupType;
-                
+                const typeName = groupType === 'imageViewer' ? 'Image Viewer' :
+                    groupType === 'notepad' ? 'Notepad' : groupType;
+
                 groupItem = document.createElement('div');
                 let className = 'taskbar-window-item taskbar-window-group entering';
                 if (hasActive && !allMinimised) className += ' active';
@@ -1860,7 +1930,7 @@ function updateTaskbarWindows() {
                 groupItem.className = className;
                 groupItem.dataset.groupType = groupType;
                 groupItem.dataset.groupedModals = JSON.stringify(modalIds);
-                
+
                 groupItem.innerHTML = `
                     <div class="taskbar-window-item-content">
                         ${getIconHTML(icon, imageIcon)}
@@ -1868,7 +1938,7 @@ function updateTaskbarWindows() {
                         <span class="taskbar-group-count">${modals.length}</span>
                     </div>
                 `;
-                
+
                 // Click handler
                 groupItem.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -1876,7 +1946,7 @@ function updateTaskbarWindows() {
                         .filter(modal => getModalType(modal) === groupType);
                     toggleTaskbarGroupMenu(groupItem, currentModals);
                 });
-                
+
                 // Right click handler - show group context menu
                 groupItem.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
@@ -1885,41 +1955,41 @@ function updateTaskbarWindows() {
                         showTaskbarGroupContextMenu(e, groupItem, modals);
                     }
                 });
-                
+
                 // Remove entering class after animation
                 groupItem.addEventListener('animationend', () => {
                     groupItem.classList.remove('entering');
                 }, { once: true });
-                
+
                 taskbarWindows.appendChild(groupItem);
             }
         } else {
             // Handle individual item
             const { modal, isActive, isMinimised } = itemData;
             const modalId = modal.id;
-            
+
             // Check if individual item exists
             let existingItem = taskbarWindows.querySelector(
                 `.taskbar-window-item[data-modal-id="${modalId}"]:not(.taskbar-window-group):not(.leaving)`
             );
-            
+
             if (existingItem) {
                 // Update existing item
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
-                
+
                 // Update classes - always recalculate
                 let className = 'taskbar-window-item';
                 if (isActive && !isMinimised) className += ' active';
                 if (isMinimised) className += ' minimised';
                 existingItem.className = className;
-                
+
                 // Update content if changed - check both font icon and image icon
                 const currentTitle = existingItem.querySelector('span')?.textContent;
                 const currentIconEl = existingItem.querySelector('i');
                 const currentImageIconEl = existingItem.querySelector('img.icon-image');
                 const currentIcon = currentIconEl?.className || '';
-                
+
                 // Extract current image icon filename for comparison
                 let currentImageIcon = null;
                 if (currentImageIconEl) {
@@ -1940,16 +2010,16 @@ function updateTaskbarWindows() {
                         }
                     }
                 }
-                
+
                 // Check if icons actually changed
-                const expectedIconClass = (icon && !isImageIcon(icon)) ? 
+                const expectedIconClass = (icon && !isImageIcon(icon)) ?
                     (imageIcon ? `${icon} icon-fa` : icon) : '';
                 const iconChanged = expectedIconClass && (currentIcon !== expectedIconClass);
-                
+
                 // Check if image icon changed
                 const expectedImageIcon = imageIcon || null;
                 const imageIconChanged = (expectedImageIcon !== currentImageIcon);
-                
+
                 if (currentTitle !== title || iconChanged || imageIconChanged) {
                     existingItem.innerHTML = `
                         <div class="taskbar-window-item-content">
@@ -1957,10 +2027,10 @@ function updateTaskbarWindows() {
                             <span>${title}</span>
                         </div>
                     `;
-                    
+
                     // Reattach event listeners
                     const newItem = existingItem.cloneNode(true);
-                    
+
                     newItem.addEventListener('click', () => {
                         if (modal.classList.contains('minimised')) {
                             setMinimizeTargetVariables(modal, newItem);
@@ -1983,12 +2053,12 @@ function updateTaskbarWindows() {
                         }
                         bringModalToFront(modal);
                     });
-                    
+
                     newItem.addEventListener('contextmenu', (e) => {
                         e.preventDefault();
                         showTaskbarItemContextMenu(e, modal, newItem);
                     });
-                    
+
                     existingItem.replaceWith(newItem);
                 } else {
                     // Content unchanged, just update event listeners if needed
@@ -2011,7 +2081,7 @@ function updateTaskbarWindows() {
                         }
                         bringModalToFront(modal);
                     };
-                    
+
                     // Remove old listeners and add new ones
                     const newItem = existingItem.cloneNode(true);
                     newItem.addEventListener('click', clickHandler);
@@ -2025,21 +2095,21 @@ function updateTaskbarWindows() {
                 // Create new individual item
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
-                
+
                 const item = document.createElement('div');
                 let className = 'taskbar-window-item entering';
                 if (isActive && !isMinimised) className += ' active';
                 if (isMinimised) className += ' minimised';
                 item.className = className;
                 item.dataset.modalId = modalId;
-                
+
                 item.innerHTML = `
                     <div class="taskbar-window-item-content">
                         ${getIconHTML(icon, imageIcon)}
                         <span>${title}</span>
                     </div>
                 `;
-                
+
                 // Click handler
                 item.addEventListener('click', () => {
                     if (modal.classList.contains('minimised')) {
@@ -2063,18 +2133,18 @@ function updateTaskbarWindows() {
                     }
                     bringModalToFront(modal);
                 });
-                
+
                 // Right click handler
                 item.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     showTaskbarItemContextMenu(e, modal, item);
                 });
-                
+
                 // Remove entering class after animation
                 item.addEventListener('animationend', () => {
                     item.classList.remove('entering');
                 }, { once: true });
-                
+
                 taskbarWindows.appendChild(item);
             }
         }
@@ -2105,11 +2175,11 @@ function getModalTitle(modal) {
             }
         }
     }
-    
+
     // Fallback to modal header
     const headerEl = modal.querySelector('.modal-header span');
     if (headerEl) return headerEl.textContent;
-    
+
     // Fallback to modal ID
     return modal.id || 'Window';
 }
@@ -2124,9 +2194,9 @@ function isImageIcon(icon) {
 }
 
 // Helper function to render an icon (Font Awesome class or image)
-function renderIcon(icon, className = '', isDesktopMode = false) {
+function renderIcon(icon, className = '') {
     if (!icon) return '';
-    
+
     // If it's an image icon, render as img tag
     if (isImageIcon(icon)) {
         // If it's already a full path starting with /, use it as-is
@@ -2135,7 +2205,7 @@ function renderIcon(icon, className = '', isDesktopMode = false) {
         const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
         return `<img src="${imagePath}" alt=""${classAttr} />`;
     }
-    
+
     // Otherwise, it's a Font Awesome icon class
     const classAttr = className ? ` class="${icon} ${className}"` : ` class="${icon}"`;
     return `<i${classAttr}></i>`;
@@ -2144,7 +2214,7 @@ function renderIcon(icon, className = '', isDesktopMode = false) {
 // Helper function to render both icon and imageIcon (for CSS-based switching)
 function renderDualIcon(icon, imageIcon, className = '') {
     let html = '';
-    
+
     // Render Font Awesome icon
     // Only add icon-fa class if there's an imageIcon (so it can be hidden in desktop mode)
     // If no imageIcon, don't add icon-fa class so the icon always shows
@@ -2159,7 +2229,7 @@ function renderDualIcon(icon, imageIcon, className = '') {
             html += `<i${classAttr}></i>`;
         }
     }
-    
+
     // Render image icon (shown in desktop mode)
     if (imageIcon) {
         const imagePath = imageIcon.startsWith('/') ? imageIcon : `/static_images/app_icons/${imageIcon}`;
@@ -2171,7 +2241,7 @@ function renderDualIcon(icon, imageIcon, className = '') {
         const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
         html += `<img src="${imagePath}" alt=""${classAttr} />`;
     }
-    
+
     return html;
 }
 
@@ -2182,7 +2252,7 @@ function getIconHTML(icon, imageIcon = null, className = '') {
     if (imageIcon !== null) {
         return renderDualIcon(icon, imageIcon, className);
     }
-    
+
     // Otherwise, use single icon mode (backward compatible)
     return renderIcon(icon, className);
 }
@@ -2197,7 +2267,7 @@ function getModalIcon(modal) {
         const url = new URL(src, window.location.origin);
         return url.pathname; // Return just the path part (e.g., "/static_images/app_icons/studio.png")
     }
-    
+
     // Fallback to Font Awesome icon
     const iconEl = modal.querySelector('.modal-window-title-main i');
     if (iconEl) {
@@ -2229,7 +2299,7 @@ function getModalIcon(modal) {
             }
         }
     }
-    
+
     // Fallback to default icon
     return 'fas fa-window';
 }
@@ -2238,7 +2308,7 @@ function getModalIcon(modal) {
 function getModalIcons(modal) {
     let icon = null;
     let imageIcon = null;
-    
+
     // Get Font Awesome icon
     const iconEl = modal.querySelector('.modal-window-title-main i');
     if (iconEl) {
@@ -2246,7 +2316,7 @@ function getModalIcons(modal) {
         // Remove icon-fa class if present to get just the icon classes
         icon = iconClass.replace(/\bicon-fa\b/g, '').trim();
     }
-    
+
     // Get image icon
     const imgEl = modal.querySelector('.modal-window-title-main img.icon-image');
     if (imgEl) {
@@ -2256,7 +2326,7 @@ function getModalIcons(modal) {
         const pathParts = url.pathname.split('/');
         imageIcon = pathParts[pathParts.length - 1]; // Get filename (e.g., "studio.png")
     }
-    
+
     // Check if this is a gallery-move-modal-content modal (no titlebar)
     if (!icon && !imageIcon) {
         const galleryMoveContent = modal.querySelector('.gallery-move-modal-content');
@@ -2285,12 +2355,12 @@ function getModalIcons(modal) {
             }
         }
     }
-    
+
     // Fallback to default icon if nothing found
     if (!icon && !imageIcon) {
         icon = 'fas fa-window';
     }
-    
+
     return { icon, imageIcon };
 }
 
@@ -2300,17 +2370,17 @@ function getModalType(modal) {
     if (modal.id && modal.id.startsWith('imageViewer_')) {
         return 'imageViewer';
     }
-    
+
     // Check for notepad modals (if they follow similar pattern)
     if (modal.id && modal.id.startsWith('notepad_')) {
         return 'notepad';
     }
-    
+
     // Check for specific modal classes
     if (modal.classList.contains('image-viewer-modal')) {
         return 'imageViewer';
     }
-    
+
     // For other modals, use their ID as the type (they won't group)
     // This allows unique modals to remain ungrouped
     return modal.id || 'unknown';
@@ -2325,33 +2395,33 @@ function isModalActive(modal) {
 // Get or temporarily create taskbar item for minimize animation
 function getOrCreateTaskbarItem(modal) {
     if (!taskbarWindows) return null;
-    
+
     // Try to find existing taskbar item
     let taskbarItem = taskbarWindows.querySelector(`.taskbar-window-item[data-modal-id="${modal.id}"]`);
-    
+
     // If it doesn't exist yet (minimize before taskbar updates), create a temporary one
     if (!taskbarItem) {
         const title = getModalTitle(modal);
         const icon = getModalIcon(modal);
-        
+
         taskbarItem = document.createElement('div');
         taskbarItem.className = 'taskbar-window-item minimised';
         taskbarItem.dataset.modalId = modal.id;
         taskbarItem.style.opacity = '0'; // Hidden until properly created
-        
+
         // Get both icons for dual rendering
         const { icon: faIcon, imageIcon } = getModalIcons(modal);
         const iconToUse = icon || faIcon; // Use provided icon or fallback to modal icon
-        
+
         taskbarItem.innerHTML = `
             <div class="taskbar-window-item-content">
                 ${getIconHTML(iconToUse, imageIcon)}
                 <span>${title}</span>
             </div>
         `;
-        
+
         taskbarWindows.appendChild(taskbarItem);
-        
+
         // Remove temporary flag after a short delay (will be replaced by real item)
         setTimeout(() => {
             if (taskbarItem.style.opacity === '0') {
@@ -2359,7 +2429,7 @@ function getOrCreateTaskbarItem(modal) {
             }
         }, 100);
     }
-    
+
     return taskbarItem;
 }
 
@@ -2367,23 +2437,23 @@ function getOrCreateTaskbarItem(modal) {
 function setMinimizeTargetVariables(modal, taskbarItem) {
     const modalRect = modal.getBoundingClientRect();
     const taskbarRect = taskbarItem.getBoundingClientRect();
-    
+
     // Calculate the target position relative to the modal's current center
     // Modal is positioned at 50% 50% (center of viewport)
     const modalCenterX = window.innerWidth / 2;
     const modalCenterY = window.innerHeight / 2;
-    
+
     // Taskbar item center position
     const taskbarCenterX = taskbarRect.left + taskbarRect.width / 2;
     const taskbarCenterY = taskbarRect.top + taskbarRect.height / 2;
-    
+
     // Calculate offset from modal center to taskbar center
     const offsetX = taskbarCenterX - modalCenterX;
     const offsetY = taskbarCenterY - modalCenterY;
-    
+
     // Calculate scale based on taskbar item width vs modal width
     const scale = Math.min(taskbarRect.width / modalRect.width, 0.3);
-    
+
     // Set CSS variables on the modal
     modal.style.setProperty('--minimize-target-x', `${offsetX}px`);
     modal.style.setProperty('--minimize-target-y', `${offsetY}px`);
@@ -2399,7 +2469,7 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
     if (activeGroupMenu && activeGroupMenu !== groupItem) {
         closeTaskbarGroupMenu();
     }
-    
+
     // Check if this menu is already open
     const existingMenu = document.querySelector('.taskbar-group-menu');
     if (existingMenu && existingMenu.dataset.groupId === groupItem.dataset.groupType) {
@@ -2407,45 +2477,45 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
         closeTaskbarGroupMenu();
         return;
     }
-    
+
     // Create menu
     const menu = document.createElement('div');
     menu.className = 'taskbar-group-menu';
     menu.dataset.groupId = groupItem.dataset.groupType;
-    
+
     // Determine if menu should be dropup (if taskbar is at bottom)
     const taskbarRect = taskbarWindows.getBoundingClientRect();
     const isBottom = taskbarRect.bottom > window.innerHeight / 2;
     if (isBottom) {
         menu.classList.add('dropup');
     }
-    
+
     // Create menu items for each modal
     const menuItems = modals.map(modal => {
         const title = getModalTitle(modal);
         const icon = getModalIcon(modal);
         const isActive = isModalActive(modal) && !modal.classList.contains('minimised');
         const isMinimised = modal.classList.contains('minimised');
-        
+
         const item = document.createElement('div');
         item.className = 'taskbar-group-menu-item';
         if (isActive) item.classList.add('active');
         if (isMinimised) item.classList.add('minimised');
         item.dataset.modalId = modal.id;
-        
+
         item.innerHTML = `
             <i class="${icon}"></i>
             <span>${title}</span>
         `;
-        
+
         // Click handler
         item.addEventListener('click', (e) => {
             e.stopPropagation();
-            
+
             if (modal.classList.contains('minimised')) {
                 // Set CSS variables for unminimize animation
                 setMinimizeTargetVariables(modal, groupItem);
-                
+
                 modal.classList.remove('minimised');
                 modal.classList.add('unminimising');
                 const unminimisingHandler = (e) => {
@@ -2460,28 +2530,28 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
                 modal.classList.remove('hidden');
             }
             bringModalToFront(modal);
-            
+
             // Close menu
             closeTaskbarGroupMenu();
         });
-        
+
         // Right click handler - show context menu for the actual window
         item.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             // Create a temporary taskbar item reference for the context menu
             const tempTaskbarItem = document.createElement('div');
             tempTaskbarItem.dataset.taskbarModal = modal.id;
             showTaskbarItemContextMenu(e, modal, tempTaskbarItem);
         });
-        
+
         return item;
     });
-    
+
     menu.append(...menuItems);
     document.body.appendChild(menu);
-    
+
     // Position menu above or below the taskbar item
     const itemRect = groupItem.getBoundingClientRect();
     if (isBottom) {
@@ -2493,11 +2563,11 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
         menu.style.top = `${itemRect.bottom + 4}px`;
         menu.style.left = `${itemRect.left}px`;
     }
-    
+
     // Mark as active
     activeGroupMenu = groupItem;
     groupItem.classList.add('group-menu-open');
-    
+
     // Close menu when clicking outside
     const closeHandler = (e) => {
         if (!menu.contains(e.target) && !groupItem.contains(e.target)) {
@@ -2505,7 +2575,7 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
             document.removeEventListener('click', closeHandler);
         }
     };
-    
+
     // Use setTimeout to avoid immediate close
     setTimeout(() => {
         document.addEventListener('click', closeHandler);
@@ -2517,7 +2587,7 @@ function closeTaskbarGroupMenu() {
     if (menu) {
         menu.remove();
     }
-    
+
     if (activeGroupMenu) {
         activeGroupMenu.classList.remove('group-menu-open');
         activeGroupMenu = null;
@@ -2528,47 +2598,47 @@ function closeTaskbarGroupMenu() {
 function showTaskbarItemContextMenu(e, modal, taskbarItem) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!contextMenu) {
         console.warn('Context menu not available');
         return;
     }
-    
+
     // Store modal reference on taskbar item for action handling
     taskbarItem.dataset.taskbarModal = modal.id;
-    
+
     // Register context menu config if not already done
     if (!contextMenu.configs) {
         contextMenu.configs = {};
     }
-    
+
     // Build context menu dynamically from modal-window-controls
     const menuItems = [];
     const bottomItems = []; // For Center, Minimize, Maximize, Close
-    
+
     const windowControls = modal.querySelector('.modal-window-controls');
     if (windowControls) {
         // Get all buttons and dropdowns in the window controls
         const controls = Array.from(windowControls.children);
-        
+
         controls.forEach(control => {
             // Skip if hidden
             const computedStyle = window.getComputedStyle(control);
             if (computedStyle.display === 'none' || control.classList.contains('hidden')) {
                 return;
             }
-            
+
             // Handle dropdown menus
             if (control.classList.contains('custom-dropdown')) {
                 const button = control.querySelector('button');
                 if (!button) return;
-                
+
                 // Get icon and current value
                 const icon = button.querySelector('i:not(.fa-chevron-down)')?.className || 'fas fa-chevron-down';
                 const selectedSpan = button.querySelector('span');
                 const currentValue = selectedSpan ? selectedSpan.textContent.trim() : '';
                 const title = button.getAttribute('title') || false;
-                
+
                 // Add as disabled item showing current value
                 menuItems.push({
                     icon: icon,
@@ -2577,18 +2647,18 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
                 });
                 return;
             }
-            
+
             // Handle regular buttons
             if (control.tagName === 'BUTTON') {
                 const iconEl = control.querySelector('i');
                 const icon = iconEl ? iconEl.className : 'fas fa-circle';
                 const title = control.getAttribute('title') || control.textContent.trim();
                 const isDisabled = control.disabled;
-                
+
                 // Determine action based on button class or ID
                 let action = null;
                 let itemData = { icon, text: title, disabled: isDisabled };
-                
+
                 // Check for special buttons that should go to bottom
                 if (control.classList.contains('minimize-btn')) {
                     itemData.action = 'taskbar-window-minimize';
@@ -2604,48 +2674,48 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
                     bottomItems.push(itemData);
                     return;
                 }
-                
+
                 // Regular button - add as-is with a generic action based on button ID
                 if (control.id) {
                     itemData.action = `taskbar-window-button-${control.id}`;
                     itemData.buttonId = control.id;
                 }
-                
+
                 menuItems.push(itemData);
             }
         });
     }
-    
+
     // Add "Center" option to bottom items
     bottomItems.unshift({
         icon: 'fa-regular fa-compress-arrows-alt',
         text: 'Center',
         action: 'taskbar-window-center'
     });
-    
+
     // Reorder bottom items: Center, Minimize, Maximize, Close
     const orderedBottomItems = [];
     const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
     const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
     const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
     const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
-    
+
     if (centerItem) orderedBottomItems.push(centerItem);
     if (minimizeItem) orderedBottomItems.push(minimizeItem);
     if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
-    
+
     // Add separator before close
     if (closeItem) {
         orderedBottomItems.push({ separator: true });
         orderedBottomItems.push(closeItem);
     }
-    
+
     // Combine regular items with bottom items
     const allItems = [...menuItems, ...orderedBottomItems];
-    
+
     const menuConfigId = `taskbar-window-controls-${modal.id}`;
     taskbarItem.dataset.contextMenu = menuConfigId;
-    
+
     contextMenu.configs[menuConfigId] = {
         sections: [
             {
@@ -2654,7 +2724,7 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
             }
         ]
     };
-    
+
     // Show context menu
     contextMenu.showMenu(e, taskbarItem);
 }
@@ -2663,115 +2733,115 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
 function showTaskbarGroupContextMenu(e, groupItem, modals) {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (!contextMenu) {
         console.warn('Context menu not available');
         return;
     }
-    
+
     if (modals.length === 0) return;
-    
+
     // Check if the currently active window is in this group
     const currentlyActiveModal = modalStack.length > 0 ? modalStack[modalStack.length - 1] : null;
-    const activeModalInGroup = currentlyActiveModal && modals.includes(currentlyActiveModal) 
-        ? currentlyActiveModal 
+    const activeModalInGroup = currentlyActiveModal && modals.includes(currentlyActiveModal)
+        ? currentlyActiveModal
         : modals.find(m => isModalActive(m) && !m.classList.contains('minimised'));
-    
+
     // Build context menu - only include active modal's menu if it's in the group
     const menuItems = [];
     const bottomItems = [];
-    
+
     // Only build window controls menu if active modal is in the group
     if (activeModalInGroup) {
         const windowControls = activeModalInGroup.querySelector('.modal-window-controls');
         if (windowControls) {
-        const controls = Array.from(windowControls.children);
-        
-        controls.forEach(control => {
-            const computedStyle = window.getComputedStyle(control);
-            if (computedStyle.display === 'none' || control.classList.contains('hidden')) {
-                return;
-            }
-            
-            if (control.classList.contains('custom-dropdown')) {
-                const button = control.querySelector('button');
-                if (!button) return;
-                
-                const icon = button.querySelector('i:not(.fa-chevron-down)')?.className || 'fas fa-chevron-down';
-                const selectedSpan = button.querySelector('span');
-                const currentValue = selectedSpan ? selectedSpan.textContent.trim() : '';
-                const title = button.getAttribute('title') || false;
-                
-                menuItems.push({
-                    icon: icon,
-                    text: title ? `${title}: ${currentValue}` : currentValue,
-                    disabled: true
-                });
-                return;
-            }
-            
-            if (control.tagName === 'BUTTON') {
-                const iconEl = control.querySelector('i');
-                const icon = iconEl ? iconEl.className : 'fas fa-circle';
-                const title = control.getAttribute('title') || control.textContent.trim();
-                const isDisabled = control.disabled;
-                
-                let action = null;
-                let itemData = { icon, text: title, disabled: isDisabled };
-                
-                if (control.classList.contains('minimize-btn')) {
-                    itemData.action = 'taskbar-window-minimize';
-                    bottomItems.push(itemData);
-                    return;
-                } else if (control.classList.contains('close-btn')) {
-                    itemData.action = 'taskbar-window-close';
-                    bottomItems.push(itemData);
-                    return;
-                } else if (control.id === 'maximizeGalleryBtn' || control.id === 'restoreManualBtn' || title.toLowerCase().includes('maximize')) {
-                    itemData.action = 'taskbar-window-maximize';
-                    itemData.hidden = activeModalInGroup.id === 'galleryWindow';
-                    bottomItems.push(itemData);
+            const controls = Array.from(windowControls.children);
+
+            controls.forEach(control => {
+                const computedStyle = window.getComputedStyle(control);
+                if (computedStyle.display === 'none' || control.classList.contains('hidden')) {
                     return;
                 }
-                
-                if (control.id) {
-                    itemData.action = `taskbar-window-button-${control.id}`;
-                    itemData.buttonId = control.id;
+
+                if (control.classList.contains('custom-dropdown')) {
+                    const button = control.querySelector('button');
+                    if (!button) return;
+
+                    const icon = button.querySelector('i:not(.fa-chevron-down)')?.className || 'fas fa-chevron-down';
+                    const selectedSpan = button.querySelector('span');
+                    const currentValue = selectedSpan ? selectedSpan.textContent.trim() : '';
+                    const title = button.getAttribute('title') || false;
+
+                    menuItems.push({
+                        icon: icon,
+                        text: title ? `${title}: ${currentValue}` : currentValue,
+                        disabled: true
+                    });
+                    return;
                 }
-                
-                menuItems.push(itemData);
+
+                if (control.tagName === 'BUTTON') {
+                    const iconEl = control.querySelector('i');
+                    const icon = iconEl ? iconEl.className : 'fas fa-circle';
+                    const title = control.getAttribute('title') || control.textContent.trim();
+                    const isDisabled = control.disabled;
+
+                    let action = null;
+                    let itemData = { icon, text: title, disabled: isDisabled };
+
+                    if (control.classList.contains('minimize-btn')) {
+                        itemData.action = 'taskbar-window-minimize';
+                        bottomItems.push(itemData);
+                        return;
+                    } else if (control.classList.contains('close-btn')) {
+                        itemData.action = 'taskbar-window-close';
+                        bottomItems.push(itemData);
+                        return;
+                    } else if (control.id === 'maximizeGalleryBtn' || control.id === 'restoreManualBtn' || title.toLowerCase().includes('maximize')) {
+                        itemData.action = 'taskbar-window-maximize';
+                        itemData.hidden = activeModalInGroup.id === 'galleryWindow';
+                        bottomItems.push(itemData);
+                        return;
+                    }
+
+                    if (control.id) {
+                        itemData.action = `taskbar-window-button-${control.id}`;
+                        itemData.buttonId = control.id;
+                    }
+
+                    menuItems.push(itemData);
+                }
+            });
+
+            // Add "Center" option to bottom items
+            bottomItems.unshift({
+                icon: 'fa-regular fa-compress-arrows-alt',
+                text: 'Center',
+                action: 'taskbar-window-center'
+            });
+
+            // Reorder bottom items: Center, Minimize, Maximize, Close
+            const orderedBottomItems = [];
+            const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
+            const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
+            const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
+            const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
+
+            if (centerItem) orderedBottomItems.push(centerItem);
+            if (minimizeItem) orderedBottomItems.push(minimizeItem);
+            if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
+
+            // Add separator before close
+            if (closeItem) {
+                orderedBottomItems.push({ separator: true });
+                orderedBottomItems.push(closeItem);
             }
-        });
-        
-        // Add "Center" option to bottom items
-        bottomItems.unshift({
-            icon: 'fa-regular fa-compress-arrows-alt',
-            text: 'Center',
-            action: 'taskbar-window-center'
-        });
-        
-        // Reorder bottom items: Center, Minimize, Maximize, Close
-        const orderedBottomItems = [];
-        const centerItem = bottomItems.find(item => item.action === 'taskbar-window-center');
-        const minimizeItem = bottomItems.find(item => item.action === 'taskbar-window-minimize');
-        const maximizeItem = bottomItems.find(item => item.action === 'taskbar-window-maximize');
-        const closeItem = bottomItems.find(item => item.action === 'taskbar-window-close');
-        
-        if (centerItem) orderedBottomItems.push(centerItem);
-        if (minimizeItem) orderedBottomItems.push(minimizeItem);
-        if (maximizeItem && !maximizeItem.hidden) orderedBottomItems.push(maximizeItem);
-        
-        // Add separator before close
-        if (closeItem) {
-            orderedBottomItems.push({ separator: true });
-            orderedBottomItems.push(closeItem);
-        }
-        
-        // Combine regular items with bottom items
-        menuItems.push(...orderedBottomItems);
+
+            // Combine regular items with bottom items
+            menuItems.push(...orderedBottomItems);
         }
     }
-    
+
     // Add group-specific actions
     const groupActions = [
         ...(activeModalInGroup && menuItems.length > 0 ? [{ separator: true }] : []), // Only add separator if we have items above
@@ -2791,9 +2861,9 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
             action: 'taskbar-group-close-all'
         }
     ];
-    
+
     const finalItems = [...menuItems, ...groupActions];
-    
+
     // Store group info on the taskbar item for action handling
     groupItem.dataset.taskbarGroupModals = JSON.stringify(modals.map(m => m.id));
     // Also store the active modal for individual actions (only if it's in the group)
@@ -2803,10 +2873,10 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
         // Remove it if it was set before
         delete groupItem.dataset.taskbarModal;
     }
-    
+
     const menuConfigId = `taskbar-group-controls-${groupItem.dataset.groupType}`;
     groupItem.dataset.contextMenu = menuConfigId;
-    
+
     contextMenu.configs[menuConfigId] = {
         sections: [
             {
@@ -2815,7 +2885,7 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
             }
         ]
     };
-    
+
     // Show context menu
     contextMenu.showMenu(e, groupItem);
 }
@@ -2824,38 +2894,38 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
 document.addEventListener('contextMenuAction', (e) => {
     const action = e.detail.action;
     const target = e.detail.target;
-    
+
     // Handle open desktop settings action
     if (action === 'open-desktop-settings') {
         openDesktopSettingsModal();
         return;
     }
-    
+
     // Handle exit desktop action
     if (action === 'exit-desktop') {
         maximizeGalleryWindow();
         return;
     }
-    
+
     // Handle about Melaton action
     if (action === 'open-about-melatonin') {
         openAboutMelatoninModal();
         return;
     }
-    
+
     // Handle group actions
     if (action.startsWith('taskbar-group-')) {
         const groupModalsJson = target.dataset.taskbarGroupModals;
         if (!groupModalsJson) return;
-        
+
         const modalIds = JSON.parse(groupModalsJson);
         const modals = modalIds.map(id => document.getElementById(id)).filter(m => m);
-        
+
         switch (action) {
             case 'taskbar-group-pull-top':
                 // Bring all group modals to front by moving them to top of stack
                 if (modals.length === 0) return;
-                
+
                 // Remove all group modals from stack first (in reverse order to maintain indices)
                 modals.forEach(modal => {
                     const index = modalStack.indexOf(modal);
@@ -2863,20 +2933,20 @@ document.addEventListener('contextMenuAction', (e) => {
                         modalStack.splice(index, 1);
                     }
                 });
-                
+
                 // Add all group modals to top of stack (they'll get highest z-indexes)
                 modals.forEach(modal => {
                     modalStack.push(modal);
                 });
-                
+
                 // Update z-indexes for all modals - group modals will now have highest z-indexes
                 // This will also update the active window (top modal in stack)
                 updateModalStackZIndexes();
-                
+
                 // Update taskbar to reflect new active state
                 updateTaskbarActiveStates();
                 break;
-                
+
             case 'taskbar-group-minimize-all':
                 modals.forEach(modal => {
                     if (!modal.classList.contains('minimised') && !modal.classList.contains('minimising')) {
@@ -2884,7 +2954,7 @@ document.addEventListener('contextMenuAction', (e) => {
                         if (taskbarItem) {
                             setMinimizeTargetVariables(modal, taskbarItem);
                         }
-                        
+
                         modal.classList.add('minimising');
                         setTimeout(() => {
                             modal.classList.add('minimised');
@@ -2894,7 +2964,7 @@ document.addEventListener('contextMenuAction', (e) => {
                     }
                 });
                 break;
-                
+
             case 'taskbar-group-close-all':
                 modals.forEach(modal => {
                     closeModal(modal);
@@ -2903,15 +2973,15 @@ document.addEventListener('contextMenuAction', (e) => {
         }
         return;
     }
-    
+
     if (!action.startsWith('taskbar-window-')) return;
-    
+
     const modalId = target.dataset.taskbarModal;
     if (!modalId) return;
-    
+
     const modal = document.getElementById(modalId);
     if (!modal) return;
-    
+
     switch (action) {
         case 'taskbar-window-maximize':
             modal.style.width = '90vw';
@@ -2919,23 +2989,23 @@ document.addEventListener('contextMenuAction', (e) => {
             modal.style.setProperty('--modal-offset-x', '0px');
             modal.style.setProperty('--modal-offset-y', '0px');
             break;
-            
+
         case 'taskbar-window-center':
             modal.style.setProperty('--modal-offset-x', '0px');
             modal.style.setProperty('--modal-offset-y', '0px');
             modal.removeAttribute('data-modal-moved');
             break;
-            
+
         case 'taskbar-window-minimize':
             // Get or create the taskbar item to minimize to
             const taskbarItem = getOrCreateTaskbarItem(modal);
             if (taskbarItem) {
                 setMinimizeTargetVariables(modal, taskbarItem);
             }
-            
+
             // Add minimising animation class
             modal.classList.add('minimising');
-            
+
             // After animation completes, add minimised class and remove animation class
             const minimisingAnimationHandler = (e) => {
                 // Only handle animations on this modal while it has the minimising class
@@ -2948,12 +3018,12 @@ document.addEventListener('contextMenuAction', (e) => {
             };
             modal.addEventListener('animationend', minimisingAnimationHandler);
             break;
-            
+
         case 'taskbar-window-close':
             const closeBtn = modal.querySelector('.close-btn');
             if (closeBtn) closeBtn.click();
             break;
-            
+
         default:
             // Handle generic button clicks (taskbar-window-button-{buttonId})
             if (action.startsWith('taskbar-window-button-')) {
@@ -2972,22 +3042,25 @@ let startMenu = null;
 let startMenuItems = null;
 
 const startMenuConfig = [
-    { launchId: 'workspace', icon: 'fas fa-film-canister', imageIcon: 'art.png', text: 'Workspace', action: () => {
-        // In desktop mode, show the gallery if hidden
-        if (isGalleryHidden) {
-            showGalleryWindow();
-        } else {
-            bringModalToFront(galleryWindow);
+    {
+        launchId: 'workspace', icon: 'fas fa-film-canister', imageIcon: 'art.png', text: 'Workspace', action: () => {
+            // In desktop mode, show the gallery if hidden
+            if (isGalleryWindowHidden()) {
+                showGalleryWindow();
+            } else {
+                bringModalToFront(galleryWindow);
+            }
         }
-    } },
+    },
     { launchId: 'studio', icon: 'fas fa-compass-drafting', imageIcon: 'studio.png', text: 'DreamStudio 2025', action: () => { openManualModalWithContent(); } },
-    { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { if (window.spellbookModalManager) window.spellbookModalManager.openModal(); } },
+    { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
-    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notebook', action: () => { window.notepadManager.openNotebook(); }, 
-      rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
+    {
+        launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notebook', action: () => { window.notepadManager.openNotebook(); },
+        rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } }
+    },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Encyclopedia', action: () => { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
-    { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { if (typeof unifiedUploadModalManager !== 'undefined') unifiedUploadModalManager.show(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'cabinet.png', text: 'Explorer', action: () => { openExplorerApplet(); } },
     { separator: true },
     { icon: 'fas fa-planet-ringed', imageIcon: 'planet.png', text: 'Planets', hasSubmenu: true, submenu: 'planets' },
@@ -2999,11 +3072,11 @@ const startMenuSubmenus = {
         // Get workspace options dynamically (workspaces is an object, not array)
         const workspacesData = workspaces || window.workspaces || {};
         const workspacesList = Object.values(workspacesData).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-        
+
         if (workspacesList.length === 0) {
             return [{ icon: 'fas fa-planet-ringed', text: 'No workspaces', action: null }];
         }
-        
+
         return workspacesList.map(ws => ({
             text: ws.name,
             color: ws.color,
@@ -3013,33 +3086,42 @@ const startMenuSubmenus = {
         }));
     },
     toolbox: [
+        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', action: () => { showWorkspaceManagementModal(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'stencil.png', text: 'Spellbook', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', action: () => { showTextReplacementManager(); } },
+        { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', action: () => { showFavoritesManager(); } },
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', action: () => { openKnowledgeMemoriesModal(); } },
         { launchId: 'rules', icon: 'fas fa-book-law', imageIcon: 'rules.png', text: 'Rules', action: () => { showDirectorRulesManager(); } },
         { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', action: () => { window.chatSystem.openPersonaSettingsModal() } },
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } }
+        { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
     ]
 };
 
 const startMenuIconRow = [
-    { 
-        icon: 'fas fa-right-from-bracket', 
-        tooltip: 'Logout', 
-        action: () => { logout(); } 
+    {
+        icon: 'fas fa-window-maximize',
+        tooltip: 'Exit Desktop Mode',
+        action: () => {
+            maximizeGalleryWindow();
+        }
+    },
+    {
+        icon: 'fas fa-right-from-bracket',
+        tooltip: 'Logout',
+        action: () => { logout(); }
     }
 ];
 
 function initializeStartMenu() {
     startMenu = document.getElementById('startMenu');
     startMenuItems = document.getElementById('startMenuItems');
-    
+
     if (!startMenu || !startMenuItems) return;
-    
+
     // Build start menu
     buildStartMenu();
-    
+
     // Toggle start menu on button click
     const startBtn = document.getElementById('taskbarStartBtn');
     if (startBtn) {
@@ -3048,7 +3130,7 @@ function initializeStartMenu() {
             toggleStartMenu();
         });
     }
-    
+
     // Close start menu when clicking outside
     document.addEventListener('click', (e) => {
         const startBtn = document.getElementById('taskbarStartBtn');
@@ -3062,9 +3144,9 @@ function initializeStartMenu() {
 
 function buildStartMenu() {
     if (!startMenuItems) return;
-    
+
     startMenuItems.innerHTML = '';
-    
+
     // Add main items
     startMenuConfig.forEach(item => {
         if (item.separator) {
@@ -3074,24 +3156,24 @@ function buildStartMenu() {
         } else {
             const menuItem = document.createElement('div');
             menuItem.className = 'start-menu-item' + (item.hasSubmenu ? ' has-submenu' : '') + (item.rightAction ? ' has-right-action' : '');
-            
+
             menuItem.innerHTML = `
                 ${getIconHTML(item.icon, item.imageIcon)}
                 <span>${item.text}</span>
                 ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
             `;
-            
+
             if (item.hasSubmenu) {
                 // Handle submenu - expand inline
                 menuItem.addEventListener('click', () => {
                     const submenuData = startMenuSubmenus[item.submenu];
                     let submenuItems = typeof submenuData === 'function' ? submenuData() : submenuData;
-                    
+
                     if (!submenuItems || submenuItems.length === 0) {
                         console.warn('No submenu items for:', item.submenu);
                         return;
                     }
-                    
+
                     // Toggle submenu expansion
                     const existingSubmenu = menuItem.nextElementSibling?.classList.contains('start-menu-submenu');
                     if (existingSubmenu) {
@@ -3102,11 +3184,11 @@ function buildStartMenu() {
                         // Expand submenu
                         const submenuContainer = document.createElement('div');
                         submenuContainer.className = 'start-menu-submenu';
-                        
+
                         submenuItems.forEach(subItem => {
                             const subMenuItem = document.createElement('div');
                             subMenuItem.className = 'start-menu-item submenu-item';
-                            
+
                             // Use color dot if color is provided, otherwise use icon
                             if (subItem.color) {
                                 subMenuItem.innerHTML = `
@@ -3119,7 +3201,7 @@ function buildStartMenu() {
                                     <span>${subItem.text}</span>
                                 `;
                             }
-                            
+
                             subMenuItem.addEventListener('click', (e) => {
                                 e.stopPropagation();
                                 if (subItem.action) subItem.action();
@@ -3128,15 +3210,15 @@ function buildStartMenu() {
                                 const startBtn = document.getElementById('taskbarStartBtn');
                                 if (startBtn) startBtn.classList.remove('active');
                             });
-                            
+
                             // Attach context menu to submenu item if it has a launch ID
                             if (subItem.launchId) {
                                 attachStartMenuItemContextMenu(subMenuItem, subItem);
                             }
-                            
+
                             submenuContainer.appendChild(subMenuItem);
                         });
-                        
+
                         menuItem.after(submenuContainer);
                         menuItem.classList.add('expanded');
                     }
@@ -3156,7 +3238,7 @@ function buildStartMenu() {
                         });
                     }
                 }
-                
+
                 menuItem.addEventListener('click', () => {
                     if (item.action) item.action();
                     closeAllStartMenuSubmenus();
@@ -3164,36 +3246,36 @@ function buildStartMenu() {
                     const startBtn = document.getElementById('taskbarStartBtn');
                     if (startBtn) startBtn.classList.remove('active');
                 });
-                
+
                 // Attach context menu to main menu item if it has a launch ID
                 if (item.launchId) {
                     attachStartMenuItemContextMenu(menuItem, item);
                 }
             }
-            
+
             startMenuItems.appendChild(menuItem);
         }
     });
-    
+
     // Add icon row at bottom
     const iconRow = document.createElement('div');
     iconRow.className = 'start-menu-icons-row';
-    
+
     startMenuIconRow.forEach(iconConfig => {
         const btn = document.createElement('button');
         btn.className = 'start-menu-icon-btn';
         btn.title = iconConfig.tooltip;
         btn.innerHTML = getIconHTML(iconConfig.icon);
-        
+
         // Add indicator class and data-state for toggle buttons
         if (iconConfig.getState) {
             btn.classList.add('indicator');
             btn.setAttribute('data-state', iconConfig.getState());
         }
-        
+
         btn.addEventListener('click', () => {
             if (iconConfig.action) iconConfig.action();
-            
+
             // If this is a toggle button, just update its state (keep menu open)
             if (iconConfig.getState) {
                 btn.setAttribute('data-state', iconConfig.getState());
@@ -3205,22 +3287,22 @@ function buildStartMenu() {
                 if (startBtn) startBtn.classList.remove('active');
             }
         });
-        
+
         iconRow.appendChild(btn);
     });
-    
+
     startMenuItems.appendChild(iconRow);
 }
 
 function closeAllStartMenuSubmenus() {
     if (!startMenu) return;
-    
+
     // Find all expanded menu items
     const expandedItems = startMenu.querySelectorAll('.start-menu-item.expanded');
     expandedItems.forEach(item => {
         // Remove the expanded class
         item.classList.remove('expanded');
-        
+
         // Find and remove the submenu container
         const submenu = item.nextElementSibling;
         if (submenu && submenu.classList.contains('start-menu-submenu')) {
@@ -3232,15 +3314,15 @@ function closeAllStartMenuSubmenus() {
 function toggleStartMenu() {
     if (!startMenu) return;
     const startBtn = document.getElementById('taskbarStartBtn');
-    
+
     const wasHidden = startMenu.classList.contains('hidden');
     startMenu.classList.toggle('hidden');
-    
+
     // If closing the menu, close all submenus
     if (!wasHidden) {
         closeAllStartMenuSubmenus();
     }
-    
+
     // Toggle active class on start button
     if (startBtn) {
         if (startMenu.classList.contains('hidden')) {
@@ -3254,7 +3336,7 @@ function toggleStartMenu() {
 // Attach context menu to start menu items
 function attachStartMenuItemContextMenu(element, item) {
     if (!contextMenu || !item.launchId) return;
-    
+
     const contextMenuConfig = {
         sections: [
             {
@@ -3281,7 +3363,7 @@ function attachStartMenuItemContextMenu(element, item) {
             }
         }
     };
-    
+
     contextMenu.attachToElement(element, contextMenuConfig);
 }
 
@@ -3291,13 +3373,13 @@ async function addAppletToDesktop(appletItem) {
         console.error('Desktop shortcuts manager not available');
         return;
     }
-    
+
     // Check if already exists
     if (desktopShortcuts.hasAppletShortcut(appletItem.launchId)) {
         showGlassToast('info', null, 'Shortcut already exists', false, 3000, '<i class="fas fa-info-circle"></i>');
         return;
     }
-    
+
     try {
         await desktopShortcuts.addShortcut({
             name: appletItem.text,
@@ -3307,7 +3389,7 @@ async function addAppletToDesktop(appletItem) {
                 icon: appletItem.icon
             }
         });
-        
+
         showGlassToast('success', null, 'Added to desktop', false, 3000, '<i class="fas fa-check"></i>');
     } catch (error) {
         console.error('Failed to add applet to desktop:', error);
@@ -3323,12 +3405,12 @@ function initializeDesktopWallpaper() {
 // Save wallpaper to workspace (server will broadcast update)
 async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center') {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    
+
     if (!workspaces || !workspaces[currentWorkspace]) {
         console.warn('Current workspace not found');
         return;
     }
-    
+
     // Update local workspace object first
     if (wallpaperPath) {
         workspaces[currentWorkspace].wallpaper = wallpaperPath;
@@ -3337,13 +3419,13 @@ async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center') 
         delete workspaces[currentWorkspace].wallpaper;
         delete workspaces[currentWorkspace].wallpaperPosition;
     }
-    
+
     // Regenerate styles for immediate visual update
     generateWorkspaceStyles(currentWorkspace);
-    
+
     // Save via WebSocket (server will broadcast to other clients)
     if (wsClient && wsClient.isConnected()) {
-        const settings = { 
+        const settings = {
             wallpaper: wallpaperPath,
             wallpaperPosition: wallpaperPath ? (wallpaperPosition || 'center') : null
         };
@@ -3380,39 +3462,39 @@ async function precacheWallpaper(wallpaperUrl) {
 // Upload custom wallpaper
 async function uploadCustomWallpaper(file) {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    
+
     if (!workspaces || !workspaces[currentWorkspace]) {
         showGlassToast('error', 'Error', 'Current workspace not found', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
-    
+
     // Check if fileToBase64 is available
     if (typeof fileToBase64 !== 'function') {
         showGlassToast('error', 'Error', 'File upload utility not available', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
-    
+
     let toastId = showGlassToast('info', 'Uploading Wallpaper', 'Uploading custom wallpaper...', true, false, '<i class="fas fa-upload"></i>');
-    
+
     try {
         // Convert file to base64
         const base64 = await fileToBase64(file);
-        
+
         // Upload via WebSocket
         if (wsClient && wsClient.isConnected()) {
             const response = await wsClient.uploadWallpaper(base64, currentWorkspace);
-            
+
             if (response.success) {
                 // Precache the new wallpaper: delete old cache entry, then load and cache the new one
                 const wallpaperUrl = `/cache/wallpapers/${currentWorkspace}.png`;
                 await precacheWallpaper(wallpaperUrl);
-                
+
                 // Update the wallpaper state to use the custom wallpaper
                 desktopSettingsState.wallpaperUrl = wallpaperUrl;
-                
+
                 // Update preview after precaching so user can position it before saving
                 updateDesktopSettingsPreview();
-                
+
                 updateGlassToastComplete(toastId, {
                     type: 'success',
                     title: 'Wallpaper Uploaded',
@@ -3475,29 +3557,21 @@ const ALIGNMENT_OPTIONS = {
 function setupDesktopContextMenu() {
     const freeformContainer = document.getElementById('desktopFreeformContainer');
     if (!freeformContainer || !contextMenu) return;
-    
+
     const desktopContextMenuConfig = {
         sections: [
             {
                 type: 'list',
                 items: [
                     {
-                        icon: 'fa-light fa-desktop',
-                        text: 'Desktop Settings',
+                        icon: 'fa-light fa-paint-roller',
+                        text: 'Personalize',
                         action: 'open-desktop-settings'
                     },
                     {
                         icon: 'fa-light fa-info-circle',
                         text: 'About Melaton',
                         action: 'open-about-melatonin'
-                    },
-                    {
-                        separator: true
-                    },
-                    {
-                        icon: 'fas fa-window-maximize',
-                        text: 'Exit Desktop',
-                        action: 'exit-desktop'
                     }
                 ]
             },
@@ -3532,17 +3606,12 @@ function setupDesktopContextMenu() {
                         icon: 'fa-light fa-laptop-arrow-down',
                         tooltip: 'Reinstall',
                         action: 'clear-cache'
-                    },
-                    {
-                        icon: 'fa-light fa-power-off',
-                        tooltip: 'Logout',
-                        action: 'logout'
                     }
                 ]
             }
         ]
     };
-    
+
     // Attach context menu to freeform container (empty space)
     contextMenu.attachToElement(freeformContainer, desktopContextMenuConfig);
 }
@@ -3571,11 +3640,11 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     const nameInput = document.getElementById('desktopSettingsWorkspaceName');
     const colorInput = document.getElementById('desktopSettingsWorkspaceColor');
     const bgColorInput = document.getElementById('desktopSettingsWorkspaceBackground');
-    
+
     if (nameInput) nameInput.value = desktopSettingsState.name;
     if (colorInput) colorInput.value = desktopSettingsState.color;
     if (bgColorInput) bgColorInput.value = desktopSettingsState.backgroundColor;
-    
+
     // Set font dropdown labels from temp state
     const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
     const textareaFontSelected = document.getElementById('desktopSettingsTextareaFontSelected');
@@ -3604,7 +3673,7 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
         // Editing existing wallpaper
         pathToUse = workspace.wallpaper;
     }
-    
+
     // Convert path to URL
     if (pathToUse) {
         const [type, ...idParts] = pathToUse.split(':');
@@ -3683,14 +3752,14 @@ function parseWallpaperPosition(position) {
 
 // Get CSS background-position value from current state
 function getBackgroundPositionValue() {
-    const horizontal = desktopSettingsState.horizontalAlign === 'custom' 
+    const horizontal = desktopSettingsState.horizontalAlign === 'custom'
         ? `${desktopSettingsState.customHorizontal}%`
         : desktopSettingsState.horizontalAlign;
-    
+
     const vertical = desktopSettingsState.verticalAlign === 'custom'
         ? `${desktopSettingsState.customVertical}%`
         : desktopSettingsState.verticalAlign;
-    
+
     return `${horizontal} ${vertical}`;
 }
 
@@ -3703,7 +3772,7 @@ function updateDesktopSettingsPreview() {
     }
 
     const position = getBackgroundPositionValue();
-    
+
     if (desktopSettingsState.wallpaperUrl) {
         preview.style.backgroundImage = `url('${desktopSettingsState.wallpaperUrl}')`;
         preview.style.backgroundPosition = position;
@@ -3717,7 +3786,7 @@ function updateDesktopSettingsPreview() {
 function initializeDesktopSettingsModal() {
     // Setup dropdowns
     setupDesktopSettingsDropdowns();
-    
+
     // Setup button handlers
     setupDesktopSettingsButtonHandlers();
 }
@@ -3764,11 +3833,11 @@ function setupDesktopSettingsDropdowns() {
         if (horizValue) {
             horizValue.textContent = `${desktopSettingsState.customHorizontal}%`;
         }
-        
+
         // Remove old listeners by cloning
         const newHorizSlider = horizSlider.cloneNode(true);
         horizSlider.parentNode.replaceChild(newHorizSlider, horizSlider);
-        
+
         newHorizSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             desktopSettingsState.customHorizontal = value;
@@ -3786,11 +3855,11 @@ function setupDesktopSettingsDropdowns() {
         if (vertValue) {
             vertValue.textContent = `${desktopSettingsState.customVertical}%`;
         }
-        
+
         // Remove old listeners by cloning
         const newVertSlider = vertSlider.cloneNode(true);
         vertSlider.parentNode.replaceChild(newVertSlider, vertSlider);
-        
+
         newVertSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             desktopSettingsState.customVertical = value;
@@ -3805,17 +3874,17 @@ function setupDesktopSettingsDropdowns() {
     // Update UI based on current state
     updateAlignmentUI('horizontal');
     updateAlignmentUI('vertical');
-    
+
     // Primary font dropdown
     const primaryFontContainer = document.getElementById('desktopSettingsPrimaryFontDropdown');
     const primaryFontBtn = document.getElementById('desktopSettingsPrimaryFontBtn');
     const primaryFontMenu = document.getElementById('desktopSettingsPrimaryFontMenu');
     const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
-    
+
     if (primaryFontContainer && primaryFontBtn && primaryFontMenu && primaryFontSelected) {
         const renderPrimaryFontMenu = (selectedVal = '') => {
             primaryFontMenu.innerHTML = '';
-            
+
             if (typeof AVAILABLE_PRIMARY_FONTS !== 'undefined') {
                 AVAILABLE_PRIMARY_FONTS.forEach(font => {
                     const option = document.createElement('div');
@@ -3823,11 +3892,11 @@ function setupDesktopSettingsDropdowns() {
                     option.textContent = font.label;
                     option.dataset.value = font.value;
                     option.style.fontFamily = font.value ? `'${font.value}', sans-serif` : (font.fontFamily || 'var(--font-primary)');
-                    
+
                     if (font.value === selectedVal) {
                         option.classList.add('selected');
                     }
-                    
+
                     option.addEventListener('click', () => {
                         // Update temp state, not workspace directly
                         desktopSettingsState.primaryFont = font.value || null;
@@ -3835,12 +3904,12 @@ function setupDesktopSettingsDropdowns() {
                         primaryFontSelected.style.fontFamily = font.value ? `'${font.value}', sans-serif` : (font.fontFamily || 'var(--font-primary)');
                         closeDropdown(primaryFontMenu, primaryFontBtn);
                     });
-                    
+
                     primaryFontMenu.appendChild(option);
                 });
             }
         };
-        
+
         setupDropdown(
             primaryFontContainer,
             primaryFontBtn,
@@ -3856,17 +3925,17 @@ function setupDesktopSettingsDropdowns() {
             }
         );
     }
-    
+
     // Textarea font dropdown
     const textareaFontContainer = document.getElementById('desktopSettingsTextareaFontDropdown');
     const textareaFontBtn = document.getElementById('desktopSettingsTextareaFontBtn');
     const textareaFontMenu = document.getElementById('desktopSettingsTextareaFontMenu');
     const textareaFontSelected = document.getElementById('desktopSettingsTextareaFontSelected');
-    
+
     if (textareaFontContainer && textareaFontBtn && textareaFontMenu && textareaFontSelected) {
         const renderTextareaFontMenu = (selectedVal = '') => {
             textareaFontMenu.innerHTML = '';
-            
+
             if (typeof AVAILABLE_TEXTAREA_FONTS !== 'undefined') {
                 AVAILABLE_TEXTAREA_FONTS.forEach(font => {
                     const option = document.createElement('div');
@@ -3874,11 +3943,11 @@ function setupDesktopSettingsDropdowns() {
                     option.textContent = font.label;
                     option.dataset.value = font.value;
                     option.style.fontFamily = font.value ? `'${font.value}', monospace` : (font.fontFamily || 'var(--font-mono)');
-                    
+
                     if (font.value === selectedVal) {
                         option.classList.add('selected');
                     }
-                    
+
                     option.addEventListener('click', () => {
                         // Update temp state, not workspace directly
                         desktopSettingsState.textareaFont = font.value || null;
@@ -3886,12 +3955,12 @@ function setupDesktopSettingsDropdowns() {
                         textareaFontSelected.style.fontFamily = font.value ? `'${font.value}', monospace` : (font.fontFamily || 'var(--font-mono)');
                         closeDropdown(textareaFontMenu, textareaFontBtn);
                     });
-                    
+
                     textareaFontMenu.appendChild(option);
                 });
             }
         };
-        
+
         setupDropdown(
             textareaFontContainer,
             textareaFontBtn,
@@ -3926,7 +3995,7 @@ function renderAlignmentDropdown(menu, axis, selectedValue) {
             } else {
                 desktopSettingsState.verticalAlign = opt.value;
             }
-            
+
             updateAlignmentUI(axis);
             updateDesktopSettingsPreview();
             closeDropdown(menu, menu.previousElementSibling);
@@ -3942,12 +4011,12 @@ function updateAlignmentUI(axis) {
         const selectedSpan = document.getElementById('desktopSettingsHorizontalSelected');
         const sliderContainer = document.getElementById('desktopSettingsHorizontalSliderContainer');
         const value = desktopSettingsState.horizontalAlign;
-        
+
         const option = ALIGNMENT_OPTIONS.horizontal.find(opt => opt.value === value);
         if (selectedSpan && option) {
             selectedSpan.textContent = option.label;
         }
-        
+
         if (sliderContainer) {
             if (value === 'custom') {
                 sliderContainer.classList.remove('hidden');
@@ -3959,12 +4028,12 @@ function updateAlignmentUI(axis) {
         const selectedSpan = document.getElementById('desktopSettingsVerticalSelected');
         const sliderContainer = document.getElementById('desktopSettingsVerticalSliderContainer');
         const value = desktopSettingsState.verticalAlign;
-        
+
         const option = ALIGNMENT_OPTIONS.vertical.find(opt => opt.value === value);
         if (selectedSpan && option) {
             selectedSpan.textContent = option.label;
         }
-        
+
         if (sliderContainer) {
             if (value === 'custom') {
                 sliderContainer.classList.remove('hidden');
@@ -3983,24 +4052,24 @@ function setupDesktopSettingsButtonHandlers() {
         // Remove existing listeners by cloning
         const newResetBtn = resetBtn.cloneNode(true);
         resetBtn.parentNode.replaceChild(newResetBtn, resetBtn);
-        
+
         newResetBtn.addEventListener('click', () => {
             desktopSettingsState.horizontalAlign = 'center';
             desktopSettingsState.verticalAlign = 'center';
             desktopSettingsState.customHorizontal = 50;
             desktopSettingsState.customVertical = 50;
-            
+
             // Update sliders
             const horizSlider = document.getElementById('desktopSettingsHorizontalSlider');
             const vertSlider = document.getElementById('desktopSettingsVerticalSlider');
             const horizValue = document.getElementById('desktopSettingsHorizontalValue');
             const vertValue = document.getElementById('desktopSettingsVerticalValue');
-            
+
             if (horizSlider) horizSlider.value = 50;
             if (vertSlider) vertSlider.value = 50;
             if (horizValue) horizValue.textContent = '50%';
             if (vertValue) vertValue.textContent = '50%';
-            
+
             updateAlignmentUI('horizontal');
             updateAlignmentUI('vertical');
             updateDesktopSettingsPreview();
@@ -4013,7 +4082,7 @@ function setupDesktopSettingsButtonHandlers() {
         // Remove existing listeners by cloning
         const newRemoveBtn = removeBtn.cloneNode(true);
         removeBtn.parentNode.replaceChild(newRemoveBtn, removeBtn);
-        
+
         newRemoveBtn.addEventListener('click', async () => {
             await clearDesktopWallpaper();
             const modal = document.getElementById('desktopSettingsModal');
@@ -4027,7 +4096,7 @@ function setupDesktopSettingsButtonHandlers() {
         // Remove existing listeners by cloning
         const newSaveBtn = saveBtn.cloneNode(true);
         saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-        
+
         newSaveBtn.addEventListener('click', async () => {
             await saveDesktopSettings();
         });
@@ -4039,7 +4108,7 @@ function setupDesktopSettingsButtonHandlers() {
         // Remove existing listeners by cloning
         const newCloseBtn = closeBtn.cloneNode(true);
         closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-        
+
         newCloseBtn.addEventListener('click', () => {
             const modal = document.getElementById('desktopSettingsModal');
             closeModal(modal);
@@ -4049,28 +4118,28 @@ function setupDesktopSettingsButtonHandlers() {
     // Wallpaper upload button and file input
     const uploadBtn = document.getElementById('desktopSettingsWallpaperUploadBtn');
     const uploadInput = document.getElementById('desktopSettingsWallpaperUpload');
-    
+
     if (uploadBtn && uploadInput) {
         // Remove existing listeners by cloning
         const newUploadBtn = uploadBtn.cloneNode(true);
         uploadBtn.parentNode.replaceChild(newUploadBtn, uploadBtn);
-        
+
         const newUploadInput = uploadInput.cloneNode(true);
         uploadInput.parentNode.replaceChild(newUploadInput, uploadInput);
-        
+
         newUploadBtn.addEventListener('click', () => {
             newUploadInput.click();
         });
-        
+
         newUploadInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            
+
             if (!file.type.startsWith('image/')) {
                 showGlassToast('error', 'Invalid File', 'Please select an image file', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
-            
+
             await uploadCustomWallpaper(file);
         });
     }
@@ -4080,7 +4149,7 @@ function setupDesktopSettingsButtonHandlers() {
 async function saveDesktopSettings() {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
     const workspace = workspaces[currentWorkspace];
-    
+
     if (!workspace) {
         console.error('Current workspace not found');
         return;
@@ -4090,7 +4159,7 @@ async function saveDesktopSettings() {
     const nameInput = document.getElementById('desktopSettingsWorkspaceName');
     const colorInput = document.getElementById('desktopSettingsWorkspaceColor');
     const bgColorInput = document.getElementById('desktopSettingsWorkspaceBackground');
-    
+
     const newName = nameInput ? nameInput.value.trim() : desktopSettingsState.name;
     const newColor = colorInput ? colorInput.value : desktopSettingsState.color;
     const newBgColor = bgColorInput ? bgColorInput.value : desktopSettingsState.backgroundColor;
@@ -4100,10 +4169,10 @@ async function saveDesktopSettings() {
     // Get the current wallpaper path from workspace
     const currentWallpaperPath = workspace.wallpaper || null;
     const currentPosition = workspace.wallpaperPosition || 'center center';
-    
+
     // Get the new wallpaper path in the correct format (type:id)
     let newWallpaperPath = null;
-    
+
     // Convert URL to wallpaper path format if wallpaper is set
     if (desktopSettingsState.wallpaperUrl) {
         const url = desktopSettingsState.wallpaperUrl;
@@ -4128,7 +4197,7 @@ async function saveDesktopSettings() {
     }
 
     const newPosition = getBackgroundPositionValue();
-    
+
     // Determine what changed
     const nameChanged = newName !== workspace.name;
     const colorChanged = newColor !== workspace.color;
@@ -4137,7 +4206,7 @@ async function saveDesktopSettings() {
     const textareaFontChanged = newTextareaFont !== (workspace.textareaFont || null);
     const wallpaperChanged = currentWallpaperPath !== newWallpaperPath;
     const positionChanged = currentPosition !== newPosition;
-    
+
     // Only update if something changed
     if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !wallpaperChanged && !positionChanged) {
         const modal = document.getElementById('desktopSettingsModal');
@@ -4145,10 +4214,10 @@ async function saveDesktopSettings() {
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
         return;
     }
-    
+
     // Build settings object with only changed values
     const settings = {};
-    
+
     if (nameChanged) {
         settings.name = newName;
     }
@@ -4164,7 +4233,7 @@ async function saveDesktopSettings() {
     if (textareaFontChanged) {
         settings.textareaFont = newTextareaFont;
     }
-    
+
     if (wallpaperChanged) {
         settings.wallpaper = newWallpaperPath;
         // If wallpaper is being cleared, also clear position
@@ -4176,16 +4245,16 @@ async function saveDesktopSettings() {
     } else if (positionChanged) {
         settings.wallpaperPosition = newPosition;
     }
-    
+
     // Save via WebSocket (server will broadcast workspace_updated to all clients including this one)
     try {
         if (wsClient && wsClient.isConnected()) {
             await wsClient.updateWorkspaceSettings(currentWorkspace, settings);
         }
-        
+
         const modal = document.getElementById('desktopSettingsModal');
         closeModal(modal);
-        
+
         // Show appropriate message based on what changed
         const changes = [];
         if (nameChanged) changes.push('name');
@@ -4193,7 +4262,7 @@ async function saveDesktopSettings() {
         if (primaryFontChanged || textareaFontChanged) changes.push('fonts');
         if (wallpaperChanged) changes.push('wallpaper');
         if (positionChanged) changes.push('position');
-        
+
         let message = 'Settings Saved';
         if (changes.length === 1) {
             if (changes[0] === 'wallpaper' && !newWallpaperPath) {
@@ -4204,7 +4273,7 @@ async function saveDesktopSettings() {
         } else if (changes.length > 1) {
             message = `${changes.length} Settings Updated`;
         }
-        
+
         showGlassToast('success', null, message, false, 3000, '<i class="fa-light fa-check"></i>');
     } catch (error) {
         console.error('Error saving workspace settings:', error);
@@ -4217,15 +4286,15 @@ async function saveDesktopSettings() {
 
 async function updateWallpaperPosition(position) {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    
+
     if (!workspaces || !workspaces[currentWorkspace]) return;
-    
+
     // Update local workspace object first
     workspaces[currentWorkspace].wallpaperPosition = position;
-    
+
     // Regenerate styles for immediate visual update
     generateWorkspaceStyles(currentWorkspace);
-    
+
     // Save via WebSocket (server will broadcast to other clients)
     if (wsClient && wsClient.isConnected()) {
         const settings = { wallpaperPosition: position };
@@ -4239,7 +4308,7 @@ function debouncedSaveWindowPositions() {
     if (windowPositionSaveTimer) {
         clearTimeout(windowPositionSaveTimer);
     }
-    
+
     // Set new debounce timer
     windowPositionSaveTimer = setTimeout(() => {
         saveWindowPositions();
@@ -4249,7 +4318,7 @@ function debouncedSaveWindowPositions() {
             windowPositionSaveMaxTimer = null;
         }
     }, WINDOW_POSITION_SAVE_DEBOUNCE);
-    
+
     // Set max wait timer if not already set (forces save after 5 minutes regardless of activity)
     if (!windowPositionSaveMaxTimer) {
         windowPositionSaveMaxTimer = setTimeout(() => {
@@ -4268,9 +4337,9 @@ function debouncedSaveWindowPositions() {
 function pixelToQuadrantPosition(pixelX, pixelY, containerWidth, containerHeight) {
     const halfWidth = containerWidth / 2;
     const halfHeight = containerHeight / 2;
-    
+
     let index, baseX, baseY, rangeX, rangeY;
-    
+
     if (pixelX < halfWidth && pixelY < halfHeight) {
         // Top-left (1)
         index = 1;
@@ -4300,11 +4369,11 @@ function pixelToQuadrantPosition(pixelX, pixelY, containerWidth, containerHeight
         rangeX = halfWidth;
         rangeY = halfHeight;
     }
-    
+
     // Convert to percentage within quadrant (0.0 to 1.0)
     const xPercent = Math.max(0, Math.min(1, (pixelX - baseX) / rangeX));
     const yPercent = Math.max(0, Math.min(1, (pixelY - baseY) / rangeY));
-    
+
     return { index, x: xPercent, y: yPercent };
 }
 
@@ -4313,9 +4382,9 @@ function quadrantToPixelPosition(quadrantPos, containerWidth, containerHeight) {
     const { index, x: xPercent, y: yPercent } = quadrantPos;
     const halfWidth = containerWidth / 2;
     const halfHeight = containerHeight / 2;
-    
+
     let baseX, baseY, rangeX, rangeY;
-    
+
     switch (index) {
         case 1: // Top-left
             baseX = 0;
@@ -4344,31 +4413,33 @@ function quadrantToPixelPosition(quadrantPos, containerWidth, containerHeight) {
         default:
             return { x: 0, y: 0 };
     }
-    
+
     const x = baseX + rangeX * xPercent;
     const y = baseY + rangeY * yPercent;
-    
+
     return { x, y };
 }
 
 function saveWindowPositions() {
     // Collect positions of all windows (non-transient, or transient that are marked for restoration)
+    if (!window.isDesktop) return;
+
     const windowPositions = {};
     const containerWidth = window.innerWidth;
     const containerHeight = window.innerHeight;
-    
+
     // Get all modals that should have positions saved
     const allModals = document.querySelectorAll('.modal');
-    
+
     allModals.forEach(modal => {
         // Skip if modal is hidden or doesn't have a title bar (not a window)
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || !modal.querySelector('.modal-window-title')) {
             return;
         }
-        
+
         // Skip transient windows unless they're marked for position restoration
         const isTransient = modal.classList.contains('transient');
-        
+
         // For transient windows, use dataset identifier instead of ID (IDs change on recreation)
         let windowKey = null;
         if (isTransient && modal.dataset.windowIdentifier) {
@@ -4386,16 +4457,17 @@ function saveWindowPositions() {
             const modalType = getModalType(modal);
             windowKey = modal.id || modalType;
         }
-        
+
         // Get current position and size in pixels
         const modalRect = modal.getBoundingClientRect();
         const computedStyle = getComputedStyle(modal);
-        
+
         // Use actual rendered top-left corner position from getBoundingClientRect
         // This accounts for all CSS adjustments (true-inset-top, desktop mode, etc.)
-        const topLeftX = modalRect.left;
-        const topLeftY = modalRect.top;
-        
+        // Round to whole numbers for consistency
+        const topLeftX = Math.round(modalRect.left);
+        const topLeftY = Math.round(modalRect.top);
+
         // Debug logging
         const cssOffsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
         const cssOffsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
@@ -4405,47 +4477,48 @@ function saveWindowPositions() {
             topLeftPixel: { x: topLeftX, y: topLeftY },
             windowSize: { width: containerWidth, height: containerHeight }
         });
-        
+
         // Convert top-left to quadrant position
         const topLeftQuadrant = pixelToQuadrantPosition(topLeftX, topLeftY, containerWidth, containerHeight);
-        
+
         // Get bottom-right corner for size (if window is resizable and has custom size)
         let bottomRightQuadrant = null;
         if (modal.classList.contains('resizeable-window')) {
             const width = modal.style.width || computedStyle.width;
             const height = modal.style.height || computedStyle.height;
-            
+
             if (width && height) {
                 // Parse width/height (could be "500px" or "50%")
                 const widthPx = width.includes('px') ? parseFloat(width) : (parseFloat(width) / 100) * containerWidth;
                 const heightPx = height.includes('px') ? parseFloat(height) : (parseFloat(height) / 100) * containerHeight;
-                
-                const bottomRightX = topLeftX + widthPx;
-                const bottomRightY = topLeftY + heightPx;
-                
+
+                // Round to whole numbers for consistency
+                const bottomRightX = Math.round(topLeftX + widthPx);
+                const bottomRightY = Math.round(topLeftY + heightPx);
+
                 bottomRightQuadrant = pixelToQuadrantPosition(bottomRightX, bottomRightY, containerWidth, containerHeight);
             }
         }
-        
+
         // Only save if window has been moved or resized
         if (modal.hasAttribute('data-modal-moved') || bottomRightQuadrant) {
             const position = {
                 topLeft: topLeftQuadrant
             };
-            
+
             // Add bottom-right corner if window has custom size
             if (bottomRightQuadrant) {
                 position.bottomRight = bottomRightQuadrant;
             }
-            
+
             // Use windowKey (ID for non-transient, dataset identifier for transient)
             windowPositions[windowKey] = position;
         }
     });
-    
+
     // Update global window positions
     Object.assign(globalWindowPositions, windowPositions);
-    
+
     // Save via WebSocket using ackless message (doesn't trigger ticket system)
     // Saves to the same file as desktop shortcuts (workspaceDesktop config) as global object
     if (wsClient && wsClient.isConnected() && Object.keys(windowPositions).length > 0) {
@@ -4462,11 +4535,11 @@ function restoreWindowPosition(modal) {
     if (Object.keys(globalWindowPositions).length === 0) {
         return;
     }
-    
+
     // For transient windows, use dataset identifier instead of ID (IDs change on recreation)
     const isTransient = modal.classList.contains('transient');
     let windowKey = null;
-    
+
     if (isTransient && modal.dataset.windowIdentifier) {
         // Use the stable dataset identifier for transient windows
         windowKey = modal.dataset.windowIdentifier;
@@ -4478,51 +4551,51 @@ function restoreWindowPosition(modal) {
         // Transient window without identifier - can't restore
         return;
     }
-    
+
     // Try to find saved position for this window
     let savedPosition = globalWindowPositions[windowKey];
-    
+
     if (savedPosition && savedPosition.topLeft) {
         const containerWidth = window.innerWidth;
         const containerHeight = window.innerHeight;
-        
+
         // Convert top-left quadrant position to pixel position
         const topLeftPixel = quadrantToPixelPosition(savedPosition.topLeft, containerWidth, containerHeight);
-        
+
         // Get modal dimensions for centering calculation
         // If modal is hidden, getBoundingClientRect() may return incorrect dimensions
         // So we'll calculate from saved size if available, or use computed/default dimensions
         const modalRect = modal.getBoundingClientRect();
         const currentWidth = modalRect.width;
         const currentHeight = modalRect.height;
-        
+
         // Calculate size from bottom-right corner if available
         let targetWidth = currentWidth;
         let targetHeight = currentHeight;
-        
+
         if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
             const bottomRightPixel = quadrantToPixelPosition(savedPosition.bottomRight, containerWidth, containerHeight);
             targetWidth = Math.max(200, bottomRightPixel.x - topLeftPixel.x);
             targetHeight = Math.max(150, bottomRightPixel.y - topLeftPixel.y);
-            
+
             // Apply constraints
             const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth) : Infinity;
             const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight) : Infinity;
             const minWidth = modal.dataset.windowMinWidth ? parseInt(modal.dataset.windowMinWidth) : 200;
             const minHeight = modal.dataset.windowMinHeight ? parseInt(modal.dataset.windowMinHeight) : 150;
-            
+
             targetWidth = Math.max(minWidth, Math.min(targetWidth, maxWidth));
             targetHeight = Math.max(minHeight, Math.min(targetHeight, maxHeight));
         }
-        
+
         // We have the saved topLeft pixel position from quadrant system (index, x%, y%)
         // The modal CSS positions the center, then transform: translate(-50%, -50%) moves it
         // So we need to calculate what center position would put the topLeft at the saved position
-        
+
         // Calculate where the center needs to be for topLeft to be at saved position
         const requiredCenterX = topLeftPixel.x + targetWidth / 2;
         const requiredCenterY = topLeftPixel.y + targetHeight / 2;
-        
+
         // Get CSS variables that affect positioning
         // --true-inset-top is a calc() expression, so we need to get the computed pixel value
         const tempEl = document.createElement('div');
@@ -4533,9 +4606,7 @@ function restoreWindowPosition(modal) {
         document.body.appendChild(tempEl);
         const trueInsetTop = tempEl.offsetTop || 0;
         document.body.removeChild(tempEl);
-        
-        const isDesktopMode = document.body.classList.contains('desktop-mode');
-        
+
         // CSS formula for modal positioning:
         // left: calc(50% + var(--modal-offset-x))
         // Normal top: calc(50% + calc(0.5 * var(--true-inset-top)) + var(--modal-offset-y))
@@ -4549,24 +4620,24 @@ function restoreWindowPosition(modal) {
         // We want: requiredCenterY = centerY
         // So: requiredCenterY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
         // Therefore: offsetY = requiredCenterY - window.innerHeight/2 - 0.5*trueInsetTop + (desktopMode ? 17.5 : 0)
-        
+
         let offsetX = requiredCenterX - containerWidth / 2;
-        let offsetY = requiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (isDesktopMode ? 17.5 : 0);
-        
+        let offsetY = requiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+
         // Bounds checking: ensure window stays on screen (at least 85px visible)
         // Use the same formula as CSS to calculate actual rendered position
         const minVisible = 85;
-        
+
         // Calculate actual center position (same as CSS formula)
         const actualCenterX = containerWidth / 2 + offsetX;
-        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - (isDesktopMode ? 17.5 : 0);
-        
+        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - (window.isDesktop ? 17.5 : 0);
+
         // Calculate window edges from center
         const leftEdge = actualCenterX - targetWidth / 2;
         const rightEdge = actualCenterX + targetWidth / 2;
         const topEdge = actualCenterY - targetHeight / 2;
         const bottomEdge = actualCenterY + targetHeight / 2;
-        
+
         // Debug bounds checking
         console.log(`[RESTORE-BOUNDS-CHECK] ${windowKey}:`, {
             actualCenter: { x: actualCenterX, y: actualCenterY },
@@ -4580,11 +4651,11 @@ function restoreWindowPosition(modal) {
                 bottomThreshold: containerHeight - minVisible
             }
         });
-        
+
         // Only constrain if window is actually off-screen (with tolerance for minVisible)
         let constrainedX = offsetX;
         let constrainedY = offsetY;
-        
+
         if (leftEdge < -targetWidth + minVisible) {
             // Window too far left - adjust so left edge is at -targetWidth + minVisible
             const desiredLeftEdge = -targetWidth + minVisible;
@@ -4596,24 +4667,24 @@ function restoreWindowPosition(modal) {
             const desiredCenterX = desiredRightEdge - targetWidth / 2;
             constrainedX = desiredCenterX - containerWidth / 2;
         }
-        
+
         // Recalculate centerY with potentially constrained offsetX
-        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - (isDesktopMode ? 17.5 : 0);
+        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - (window.isDesktop ? 17.5 : 0);
         const recalculatedTopEdge = recalculatedCenterY - targetHeight / 2;
         const recalculatedBottomEdge = recalculatedCenterY + targetHeight / 2;
-        
+
         if (recalculatedTopEdge < 0) {
             // Window too far up - adjust so top edge is at 0
             const desiredTopEdge = 0;
             const desiredCenterY = desiredTopEdge + targetHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (isDesktopMode ? 17.5 : 0);
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
         } else if (recalculatedBottomEdge > containerHeight - minVisible) {
             // Window too far down - adjust so bottom edge is at containerHeight - minVisible
             const desiredBottomEdge = containerHeight - minVisible;
             const desiredCenterY = desiredBottomEdge - targetHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (isDesktopMode ? 17.5 : 0);
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
         }
-        
+
         // Only apply constraints if they actually changed the offsets
         if (constrainedX !== offsetX || constrainedY !== offsetY) {
             console.log(`[RESTORE-BOUNDS] ${windowKey}:`, {
@@ -4624,12 +4695,12 @@ function restoreWindowPosition(modal) {
             offsetX = constrainedX;
             offsetY = constrainedY;
         }
-        
+
         // Apply position while modal is still hidden
         // Use visibility: hidden to keep it in layout but invisible, so position can be calculated and applied
         const wasHidden = modal.classList.contains('hidden');
         const wasHiddenAlt = modal.classList.contains('hidden-alt');
-        
+
         // If modal is hidden, temporarily use visibility: hidden instead of display: none
         // This keeps it in the layout so position calculations work correctly
         if (wasHidden || wasHiddenAlt) {
@@ -4641,24 +4712,24 @@ function restoreWindowPosition(modal) {
                 modal.classList.remove('hidden-alt'); // Remove hidden-alt class temporarily
             }
         }
-        
-        // Apply position
-        modal.style.setProperty('--modal-offset-x', `${offsetX}px`);
-        modal.style.setProperty('--modal-offset-y', `${offsetY}px`);
-        
-        // Apply size if window is resizable and we have a saved size
+
+        // Apply position (rounded to whole numbers)
+        modal.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
+        modal.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
+
+        // Apply size if window is resizable and we have a saved size (rounded to whole numbers)
         if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
-            modal.style.width = `${targetWidth}px`;
-            modal.style.height = `${targetHeight}px`;
+            modal.style.width = `${Math.round(targetWidth)}px`;
+            modal.style.height = `${Math.round(targetHeight)}px`;
         }
-        
+
         // Mark as moved so backdrop behavior is correct
         modal.setAttribute('data-modal-moved', 'true');
-        
+
         // Force a layout recalculation to ensure position is applied before showing
         // Access offsetHeight to trigger reflow - this ensures CSS is calculated
         void modal.offsetHeight;
-        
+
         // Restore visibility state - openModal will handle showing it properly with animation
         if (wasHidden || wasHiddenAlt) {
             modal.style.visibility = '';
@@ -4669,7 +4740,7 @@ function restoreWindowPosition(modal) {
                 modal.classList.add('hidden-alt'); // Re-add hidden-alt class - openModal will handle it
             }
         }
-        
+
         // After applying, check actual rendered position (wait for next frame)
         requestAnimationFrame(() => {
             const actualRect = modal.getBoundingClientRect();
@@ -4691,7 +4762,7 @@ function restoreWindowPosition(modal) {
 // This function is kept for potential future use but is not called automatically
 function restoreWindowPositions() {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    
+
     if (!workspaces || !workspaces[currentWorkspace]) {
         return;
     }
@@ -4714,7 +4785,7 @@ async function openAboutMelatoninModal() {
 
     // Setup close button
     const closeBtn = document.getElementById('closeAboutMelatoninBtn');
-    
+
     const closeModalHandler = () => {
         closeModal(modal);
     };
@@ -4733,24 +4804,24 @@ async function loadAboutMelatoninSystemInfo() {
 
     // Check if websocket is connected
     if (!window.wsClient || !window.wsClient.isConnected()) {
-            systemInfoElement.innerHTML = '<p class="text-danger">System information unavailable (WebSocket not connected)</p>';
+        systemInfoElement.innerHTML = '<p class="text-danger">System information unavailable (WebSocket not connected)</p>';
         return;
     }
 
     try {
         systemInfoElement.innerHTML = '<p class="text-muted">Loading system information...</p>';
-        
+
         const response = await window.wsClient.sendMessage('get_system_info', {});
 
         if (response) {
             aboutMelatoninSystemInfo = response;
-            
+
             // Update version display
             const versionElement = document.getElementById('aboutMelatoninVersion');
             if (versionElement && response.gitHash) {
                 versionElement.textContent = response.gitHash;
             }
-            
+
             renderAboutMelatoninSystemInfo(response);
         } else {
             systemInfoElement.innerHTML = '<p class="text-danger">Failed to load system information</p>';

@@ -47,7 +47,9 @@ class PolymoduleManager {
             timeout: config.timeout || 30000,
             sleepTimeout: config.sleepTimeout || null, // null = disabled
             startAsleep: config.startAsleep || false,
-            pendingRequests: new Map(), // requestId -> { resolve, reject, timeout }
+            pendingRequests: new Map(), // requestId -> { resolve, reject, timeout, data }
+            failedWork: [], // Requests that failed due to module exit and need retry after restart
+            maxRetries: config.maxRetries || 3, // Maximum retry attempts for failed work
             restartCount: 0,
             lastError: null,
             lastActivityTime: null // Track last activity for sleep
@@ -132,16 +134,47 @@ class PolymoduleManager {
             moduleState.isReady = false;
             moduleState.process = null;
 
-            // Reject all pending requests
-            for (const [requestId, { reject }] of moduleState.pendingRequests) {
-                reject(new Error(`Module ${name} process exited`));
-            }
-            moduleState.pendingRequests.clear();
+            // Determine if this is an unexpected exit (needs restart and retry)
+            // SIGTERM during active work (pending requests) is treated as unexpected
+            // SIGTERM with no pending work is likely a graceful sleep
+            const hasActiveWork = moduleState.pendingRequests.size > 0 || moduleState.queue.length > 0;
+            const isUnexpectedExit = code !== 0 || (signal !== 'SIGTERM' && signal !== null) || (signal === 'SIGTERM' && hasActiveWork);
+            const isGracefulSleep = code === 0 && (signal === 'SIGTERM' || signal === null) && !hasActiveWork;
 
-            // Auto-restart if not intentionally stopped
-            if (code !== 0 && signal !== 'SIGTERM') {
+            if (isUnexpectedExit && moduleState.pendingRequests.size > 0) {
+                // Move pending requests to failedWork queue for retry after restart
+                logger.info(`Polymodule ${name} exited unexpectedly with ${moduleState.pendingRequests.size} pending requests, queuing for retry after restart`);
+                for (const [requestId, requestInfo] of moduleState.pendingRequests) {
+                    clearTimeout(requestInfo.timeout);
+                    const retryCount = (requestInfo.retryCount || 0) + 1;
+                    
+                    if (retryCount <= moduleState.maxRetries) {
+                        // Add to failedWork queue with retry count
+                        moduleState.failedWork.push({
+                            ...requestInfo,
+                            requestId,
+                            retryCount
+                        });
+                    } else {
+                        // Max retries exceeded, reject the request
+                        logger.warn(`Polymodule ${name} request ${requestId} exceeded max retries (${moduleState.maxRetries}), rejecting`);
+                        requestInfo.reject(new Error(`Module ${name} process exited after ${moduleState.maxRetries} retry attempts`));
+                    }
+                }
+                moduleState.pendingRequests.clear();
+            } else {
+                // Graceful exit or no pending requests - reject normally
+                for (const [requestId, { reject, timeout }] of moduleState.pendingRequests) {
+                    clearTimeout(timeout);
+                    reject(new Error(`Module ${name} process exited`));
+                }
+                moduleState.pendingRequests.clear();
+            }
+
+            // Auto-restart if not intentionally stopped (or if we have failed work to retry)
+            if (isUnexpectedExit || (!isGracefulSleep && moduleState.failedWork.length > 0)) {
                 moduleState.restartCount++;
-                logger.info(`Restarting polymorphic module ${name} in ${moduleState.restartDelay}ms (restart #${moduleState.restartCount})`);
+                logger.info(`Restarting polymorphic module ${name} in ${moduleState.restartDelay}ms (restart #${moduleState.restartCount})${moduleState.failedWork.length > 0 ? `, ${moduleState.failedWork.length} request(s) queued for retry` : ''}`);
                 setTimeout(() => {
                     if (this.modules.has(name)) {
                         this.startModule(name);
@@ -171,6 +204,8 @@ class PolymoduleManager {
                 logger.info(`Polymodule ${name} is ready`);
                 // Process queued requests
                 this.processQueue(name);
+                // Retry failed work from previous crash/restart
+                this.retryFailedWork(name);
             }
         }, 1000);
     }
@@ -342,8 +377,8 @@ class PolymoduleManager {
                 reject(new Error(`Polymodule ${name} request timeout`));
             }, moduleState.timeout);
 
-            // Store request
-            moduleState.pendingRequests.set(requestId, { resolve, reject, timeout });
+            // Store request (include data for potential retry)
+            moduleState.pendingRequests.set(requestId, { resolve, reject, timeout, data: request });
 
             // Send request
             try {
@@ -378,6 +413,67 @@ class PolymoduleManager {
     }
 
     /**
+     * Retry failed work after module restart
+     * @param {string} name - Module name
+     */
+    async retryFailedWork(name) {
+        const moduleState = this.modules.get(name);
+        if (!moduleState || !moduleState.isReady || moduleState.failedWork.length === 0) return;
+
+        logger.info(`Polymodule ${name}: Retrying ${moduleState.failedWork.length} failed request(s) after restart`);
+
+        // Process all failed work
+        while (moduleState.failedWork.length > 0 && moduleState.isReady) {
+            const failedRequest = moduleState.failedWork.shift();
+            const { requestId, resolve, reject, data, retryCount } = failedRequest;
+
+            if (!data) {
+                logger.error(`Polymodule ${name}: Failed request ${requestId} missing data, rejecting`);
+                reject(new Error(`Module ${name} request data lost during retry`));
+                continue;
+            }
+
+            logger.debug(`Polymodule ${name}: Retrying request ${requestId} (attempt ${retryCount}/${moduleState.maxRetries})`);
+
+            try {
+                // Retry using internal method (with new request ID to avoid conflicts)
+                // Preserve all original request data, only override request_id
+                const newRequestId = `req_${++this.requestIdCounter}_${Date.now()}`;
+                const retryRequest = { ...data, request_id: newRequestId };
+                
+                // Store the retry request with original resolve/reject
+                const timeout = setTimeout(() => {
+                    moduleState.pendingRequests.delete(newRequestId);
+                    reject(new Error(`Polymodule ${name} request timeout (retry attempt ${retryCount})`));
+                }, moduleState.timeout);
+
+                moduleState.pendingRequests.set(newRequestId, { 
+                    resolve, 
+                    reject, 
+                    timeout, 
+                    data: retryRequest,
+                    retryCount 
+                });
+
+                // Send the retry request
+                const requestLine = JSON.stringify(retryRequest) + '\n';
+                moduleState.process.stdin.write(requestLine, 'utf8');
+                moduleState.lastActivityTime = Date.now();
+            } catch (error) {
+                // If retry fails, check if we should try again or reject
+                if (retryCount < moduleState.maxRetries) {
+                    // Put back in failedWork queue for next restart
+                    failedRequest.retryCount = retryCount + 1;
+                    moduleState.failedWork.unshift(failedRequest);
+                } else {
+                    // Max retries exceeded
+                    reject(new Error(`Polymodule ${name} request failed after ${moduleState.maxRetries} retry attempts: ${error.message}`));
+                }
+            }
+        }
+    }
+
+    /**
      * Stop a polymorphic module
      * @param {string} name - Module name
      * @param {boolean} isSleep - Whether this is a sleep (not a crash/stop)
@@ -406,8 +502,9 @@ class PolymoduleManager {
 
         // Only reject pending requests if not sleeping (sleep is graceful)
         if (!isSleep) {
-        // Reject all pending requests
-        for (const [requestId, { reject }] of moduleState.pendingRequests) {
+        // Reject all pending requests (intentional stop, don't retry)
+        for (const [requestId, { reject, timeout }] of moduleState.pendingRequests) {
+            clearTimeout(timeout);
             reject(new Error(`Module ${name} stopped`));
         }
         moduleState.pendingRequests.clear();
@@ -417,10 +514,17 @@ class PolymoduleManager {
             reject(new Error(`Module ${name} stopped`));
         }
         moduleState.queue = [];
+
+        // Clear failed work on intentional stop
+        for (const { reject } of moduleState.failedWork) {
+            reject(new Error(`Module ${name} stopped`));
+        }
+        moduleState.failedWork = [];
         } else {
             // For sleep, just clear pending requests (they'll be retried on wake)
             moduleState.pendingRequests.clear();
             moduleState.queue = [];
+            // Keep failedWork for retry after wake
         }
         
         // Clear activity time when sleeping

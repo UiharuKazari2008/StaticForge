@@ -2743,14 +2743,16 @@ function openTokenDisplayModal(textarea) {
         return;
     }
     
-    const text = textarea.value;
+    const rawText = textarea.value;
+    // Strip disabled blocks (!/.../) so analysis matches effective prompt token count
+    const text = (rawText || '').replace(/!\/[^\/]+\//g, '');
     if (!text.trim()) {
         showGlassToast('info', 'Info', 'No text to analyze', false, 3000, '<i class="fas fa-info-circle"></i>');
         return;
     }
     
     try {
-        // Analyze text to get detailed tokens
+        // Analyze text to get detailed tokens (using stripped text)
         const analysis = t5Tokenizer.analyzeTexts([text], true);
         if (!analysis?.results?.[0]?.detailedTokens) {
             showGlassToast('error', 'Error', 'Failed to analyze tokens', false, 5000, '<i class="nai-cross"></i>');

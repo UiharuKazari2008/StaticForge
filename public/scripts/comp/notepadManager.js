@@ -41,20 +41,25 @@ class NotepadManager {
         this.notepads = new Map(); // Map of notepad IDs to notepad instances
         this.nextId = 1;
         this.template = null;
-        
+
         // Notebook-related properties
         this.notebookModal = null;
         this.notebookNotesList = null;
         this.notebookTextarea = null;
         this.notebookTitleElement = null;
         this.notebookCurrentNote = null;
+
+        // Notes metadata cache (global - all notes from all workspaces)
+        this.notesMetadataCache = new Map(); // noteId -> noteData (includes workspaceId in data)
+        this.notesMetadataCacheLoaded = false;
+        this.notesMetadataCacheLastUpdated = 0;
         this.notebookHasUnsavedChanges = false;
         this.notebookSaveDebounceTimer = null;
         this.notebookSaveDebounceDelay = 2000;
     }
 
     // Initialize the notepad manager
-    init() {
+    async init() {
         this.template = document.getElementById('notepadModalTemplate');
         if (!this.template) {
             console.error('Notepad template not found');
@@ -90,11 +95,11 @@ class NotepadManager {
             });
         }
 
-        // Listen for WebSocket events
-        this.initializeWebSocketListeners();
-
         // Initialize notebook modal
         this.initializeNotebook();
+
+        // Initialize notes metadata cache
+        await this.initializeNotesMetadataCache();
 
         // Save pending changes before page unload
         window.addEventListener('beforeunload', (e) => {
@@ -108,73 +113,344 @@ class NotepadManager {
         });
     }
 
-    // Initialize WebSocket listeners for notepad events
-    initializeWebSocketListeners() {
-        if (!wsClient) {
-            console.warn('WebSocket client not available');
+    // ===== NOTES METADATA CACHE METHODS =====
+
+    /**
+     * Initialize notes metadata cache websocket listeners
+     */
+    async initializeNotesMetadataCache() {
+        // Load initial cache data
+        try {
+            await this.loadNotesMetadataCache(true);
+        } catch (error) {
+            console.warn('Failed to load initial notes cache:', error);
+        }
+
+        this.notesMetadataCacheInitialized = true;
+
+        // Register cache refresh callback for websocket reconnection
+        if (wsClient && typeof wsClient.registerRefreshCallback === 'function') {
+            wsClient.registerRefreshCallback('refresh_notes_cache', 10, async () => {
+                try {
+                    await this.loadNotesMetadataCache(true); // Force full refresh
+                } catch (error) {
+                    console.warn('Failed to refresh notes cache:', error);
+                }
+            });
+        }
+    }
+
+    /**
+     * Get notes metadata for a specific workspace
+     * @param {string} workspaceId - The workspace ID
+     * @param {boolean} forceRefresh - Force refresh from server
+     * @returns {Promise<Map|null>} Map of noteId -> note metadata or null if failed
+     */
+    async getNotesMetadata(workspaceId, forceRefresh = false) {
+        if (!workspaceId || typeof wsClient === 'undefined' || !wsClient.isConnected()) {
+            return null;
+        }
+
+        // Initialize cache listeners if not already done
+        if (!this.notesMetadataCacheLoaded || forceRefresh) {
+            await this.loadNotesMetadataCache(forceRefresh);
+        }
+
+        // Filter notes for the requested workspace from global cache
+        const workspaceNotes = new Map();
+        for (const [noteId, noteData] of this.notesMetadataCache.entries()) {
+            if (noteData.workspaceId === workspaceId) {
+                workspaceNotes.set(noteId, noteData);
+            }
+        }
+
+        return workspaceNotes;
+    }
+
+    async loadNotesMetadataCache(forceRefresh = false) {
+        const now = Date.now();
+        const cacheAge = now - this.notesMetadataCacheLastUpdated;
+
+        // Skip if cache is fresh (within 30 seconds) and not forcing refresh
+        if (!forceRefresh && this.notesMetadataCacheLoaded && cacheAge < 30000) {
             return;
         }
 
-        // Register handlers using wsClient.on()
-        wsClient.on('note_created', (message) => {
-            // Note created by another client or action
-            // Refresh notebook list if open
-            if (this.notebookModal && !this.notebookModal.classList.contains('hidden')) {
-                this.notebookRefreshNotesList();
-            }
-        });
+        try {
+            const response = await wsClient.getAllNotesMetadata();
 
-        wsClient.on('note_updated', (message) => {
-            const data = message.data || message;
-            // Route to specific notepad instance if open
-            if (data && data.noteId) {
-                const notepad = this.getNotepadByNoteId(data.noteId);
-                if (notepad) {
-                    notepad.handleNoteUpdated(data);
-                }
-                
-                // Also update notebook if showing this note
-                if (this.notebookCurrentNote && this.notebookCurrentNote.id === data.noteId) {
-                    this.notebookLoadNote(data.noteId, false);
-                }
-                
-                // Refresh notebook list if open
-                if (this.notebookModal && !this.notebookModal.classList.contains('hidden')) {
-                    this.notebookRefreshNotesList();
-                }
-            }
-        });
+            if (response && response.notes) {
+                // Clear existing cache
+                this.notesMetadataCache.clear();
 
-        wsClient.on('note_deleted', (message) => {
-            const data = message.data || message;
-            // Close notepad if it's open
-            if (data && data.noteId) {
-                const notepad = this.getNotepadByNoteId(data.noteId);
-                if (notepad) {
-                    notepad.handleNoteDeleted();
-                }
-                
-                // Clear notebook if showing this note
-                if (this.notebookCurrentNote && this.notebookCurrentNote.id === data.noteId) {
-                    this.notebookCurrentNote = null;
-                    if (this.notebookTextarea) {
-                        this.notebookTextarea.value = '';
-                    }
-                    this.notebookUpdateTitle();
-                }
-                
-                // Refresh notebook list if open
-                if (this.notebookModal && !this.notebookModal.classList.contains('hidden')) {
-                    this.notebookRefreshNotesList();
-                }
-            }
-        });
+                // Populate global cache with all notes
+                response.notes.forEach(note => {
+                    this.notesMetadataCache.set(note.id, {
+                        id: note.id,
+                        name: note.name,
+                        icon: note.icon || 'fas fa-file-lines',
+                        color: note.color || '#ffc107',
+                        workspaceId: note.workspace_id || note.workspaceId,
+                        createdAt: note.created_at || note.createdAt,
+                        updatedAt: note.updated_at || note.updatedAt
+                    });
+                });
 
-        wsClient.on('note_content_updated', (message) => {
-            // Content was updated by another client
-            // We could show a notification or refresh
+                this.notesMetadataCacheLoaded = true;
+                this.notesMetadataCacheLastUpdated = now;
+            }
+        } catch (error) {
+            console.warn('Failed to load notes metadata cache:', error);
+        }
+    }
+
+    /**
+     * Get a specific note's metadata
+     * @param {string} workspaceId - The workspace ID
+     * @param {string} noteId - The note ID
+     * @returns {Promise<Object|null>} Note metadata or null if not found
+     */
+    async getNoteMetadata(workspaceId, noteId) {
+        // Ensure cache is loaded
+        if (!this.notesMetadataCacheLoaded) {
+            await this.loadNotesMetadataCache();
+        }
+
+        // Look up note directly in global cache
+        return this.notesMetadataCache.get(noteId) || null;
+    }
+
+    /**
+     * Get all notes for a workspace as an array
+     * @param {string} workspaceId - The workspace ID
+     * @param {boolean} forceRefresh - Force refresh from server
+     * @returns {Promise<Array>} Array of note objects
+     */
+    async getNotesArray(workspaceId, forceRefresh = false) {
+        const metadata = await this.getNotesMetadata(workspaceId, forceRefresh);
+        return metadata ? Array.from(metadata.values()) : [];
+    }
+
+    /**
+     * Check if cache is loaded
+     * @returns {boolean} True if cache is loaded
+     */
+    isNotesCacheLoaded() {
+        return this.notesMetadataCacheLoaded;
+    }
+
+    /**
+     * Invalidate cache for a specific workspace (mark notes from that workspace as stale)
+     * @param {string} workspaceId - The workspace ID
+     */
+    invalidateWorkspaceNotesCache(workspaceId) {
+        // Mark cache as needing refresh (next access will reload)
+        this.notesMetadataCacheLoaded = false;
+    }
+
+    /**
+     * Invalidate all cached data
+     */
+    invalidateAllNotesCache() {
+        this.notesMetadataCacheLoaded = false;
+    }
+
+    /**
+     * Clear cache for a specific workspace (remove notes from that workspace)
+     * @param {string} workspaceId - The workspace ID
+     */
+    clearWorkspaceNotesCache(workspaceId) {
+        // Remove all notes from the specified workspace
+        for (const [noteId, noteData] of this.notesMetadataCache.entries()) {
+            if (noteData.workspaceId === workspaceId) {
+                this.notesMetadataCache.delete(noteId);
+            }
+        }
+    }
+
+    /**
+     * Add a new note to the cache
+     * @param {Object} newNote - The new note data
+     */
+    addNoteToCache(newNote) {
+        if (!newNote || !newNote.id) {
+            return;
+        }
+
+        this.notesMetadataCache.set(newNote.id, {
+            id: newNote.id,
+            name: newNote.name,
+            icon: newNote.icon || 'fas fa-file-lines',
+            color: newNote.color || '#ffc107',
+            workspaceId: newNote.workspace_id || newNote.workspaceId,
+            createdAt: newNote.created_at || newNote.createdAt,
+            updatedAt: newNote.updated_at || newNote.updatedAt
         });
     }
+
+    /**
+     * Update a note in the cache
+     * @param {Object} updatedNote - The updated note data
+     */
+    updateNoteInCache(updatedNote) {
+        if (!updatedNote || !updatedNote.id) {
+            return;
+        }
+
+        if (this.notesMetadataCache.has(updatedNote.id)) {
+            // Update existing note in cache
+            const existingNote = this.notesMetadataCache.get(updatedNote.id);
+            Object.assign(existingNote, {
+                name: updatedNote.name || existingNote.name,
+                icon: updatedNote.icon || existingNote.icon,
+                color: updatedNote.color || existingNote.color,
+                workspaceId: updatedNote.workspace_id || updatedNote.workspaceId || existingNote.workspaceId,
+                updatedAt: updatedNote.updated_at || updatedNote.updatedAt || new Date().toISOString()
+            });
+        }
+    }
+
+    /**
+     * Remove a note from the cache
+     * @param {string} noteId - The note ID to remove
+     */
+    removeNoteFromCache(noteId) {
+        if (!noteId) {
+            return;
+        }
+
+        if (this.notesMetadataCache.has(noteId)) {
+            this.notesMetadataCache.delete(noteId);
+        }
+    }
+
+    /**
+     * Clear all cached data
+     */
+    clearAllNotesCache() {
+        this.notesMetadataCache.clear();
+        this.notesMetadataCacheLoaded = false;
+        this.notesMetadataCacheLastUpdated = 0;
+    }
+
+    /**
+     * Get cache statistics
+     * @returns {Object} Cache statistics
+     */
+    getNotesCacheStats() {
+        const stats = {
+            loaded: this.notesMetadataCacheLoaded,
+            lastUpdated: this.notesMetadataCacheLastUpdated,
+            totalNotes: this.notesMetadataCache.size,
+            workspaces: new Set()
+        };
+
+        // Count notes per workspace
+        for (const noteData of this.notesMetadataCache.values()) {
+            stats.workspaces.add(noteData.workspaceId);
+        }
+
+        stats.workspaceCount = stats.workspaces.size;
+        stats.workspaces = Array.from(stats.workspaces);
+
+        return stats;
+    }
+
+    /**
+     * Preload metadata for multiple workspaces
+     * @param {Array<string>} workspaceIds - Array of workspace IDs to preload
+     * @returns {Promise<void>}
+     */
+    async preloadNotesForWorkspaces(workspaceIds) {
+        if (!Array.isArray(workspaceIds)) return;
+
+        const promises = workspaceIds.map(workspaceId =>
+            this.getNotesMetadata(workspaceId)
+        );
+
+        await Promise.allSettled(promises);
+    }
+
+    /**
+     * Get notes for workspace sorted by name (for notes application)
+     * @param {string} workspaceId - The workspace ID
+     * @param {boolean} forceRefresh - Force refresh from server
+     * @returns {Promise<Array>} Sorted array of note objects
+     */
+    async getNotesSortedByName(workspaceId, forceRefresh = false) {
+        const notes = await this.getNotesArray(workspaceId, forceRefresh);
+        return notes.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    /**
+     * Get notes for workspace sorted by creation date (newest first)
+     * @param {string} workspaceId - The workspace ID
+     * @param {boolean} forceRefresh - Force refresh from server
+     * @returns {Promise<Array>} Sorted array of note objects
+     */
+    async getNotesSortedByDate(workspaceId, forceRefresh = false) {
+        const notes = await this.getNotesArray(workspaceId, forceRefresh);
+        return notes.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
+    /**
+     * Search notes by name or content preview
+     * @param {string} workspaceId - The workspace ID
+     * @param {string} query - Search query
+     * @param {boolean} caseSensitive - Case sensitive search
+     * @returns {Promise<Array>} Filtered array of note objects
+     */
+    async searchNotes(workspaceId, query, caseSensitive = false) {
+        const notes = await this.getNotesArray(workspaceId);
+        if (!query || !query.trim()) return notes;
+
+        const searchTerm = caseSensitive ? query : query.toLowerCase();
+
+        return notes.filter(note => {
+            const name = caseSensitive ? note.name : note.name.toLowerCase();
+            return name.includes(searchTerm);
+        });
+    }
+
+    /**
+     * Get note count for a workspace
+     * @param {string} workspaceId - The workspace ID
+     * @returns {Promise<number>} Number of notes in workspace
+     */
+    async getNoteCount(workspaceId) {
+        const metadata = await this.getNotesMetadata(workspaceId);
+        return metadata ? metadata.size : 0;
+    }
+
+    /**
+     * Check if workspace has any notes
+     * @param {string} workspaceId - The workspace ID
+     * @returns {Promise<boolean>} True if workspace has notes
+     */
+    async hasNotes(workspaceId) {
+        const count = await this.getNoteCount(workspaceId);
+        return count > 0;
+    }
+
+    /**
+     * Get recent notes (created within last N days)
+     * @param {string} workspaceId - The workspace ID
+     * @param {number} days - Number of days to look back
+     * @returns {Promise<Array>} Array of recent note objects
+     */
+    async getRecentNotes(workspaceId, days = 7) {
+        const notes = await this.getNotesArray(workspaceId);
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+
+        return notes.filter(note => {
+            if (!note.createdAt) return false;
+            return new Date(note.createdAt) >= cutoffDate;
+        }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    }
+
+    // ===== END NOTES METADATA CACHE METHODS =====
+
 
     // Create a blank notepad (not saved yet)
     createBlankNotepad() {
@@ -205,7 +481,7 @@ class NotepadManager {
                 return existing;
             }
 
-            // Fetch note data
+            // Fetch full note data (cache validation happens in getNoteMetadata if needed)
             const response = await wsClient.getNote(noteId);
 
             if (!response || !response.note) {
@@ -287,9 +563,9 @@ class NotepadManager {
 
         try {
             const workspaceId = activeWorkspace || 'default';
-            const response = await wsClient.getNotesByWorkspace(workspaceId);
 
-            const notes = response?.notes || [];
+            // Use cached notes metadata instead of making server call
+            const notes = await this.getNotesSortedByName(workspaceId);
 
             if (notes.length === 0) {
                 if (typeof showGlassToast === 'function') {
@@ -612,14 +888,6 @@ class NotepadManager {
             });
         }
 
-        // Add button to open notebook
-        const openNotebookBtn = document.getElementById('openNotebookBtn');
-        if (openNotebookBtn) {
-            openNotebookBtn.addEventListener('click', () => {
-                this.openNotebook();
-            });
-        }
-
         // Listen for workspace changes to refresh list if open
         document.addEventListener('workspaceChanged', () => {
             if (this.notebookModal && !this.notebookModal.classList.contains('hidden')) {
@@ -659,6 +927,11 @@ class NotepadManager {
     // Refresh notes list in notebook
     async notebookRefreshNotesList() {
         try {
+            // Ensure cache is loaded before trying to get notes
+            if (!this.notesMetadataCacheLoaded) {
+                await this.loadNotesMetadataCache();
+            }
+
             const notes = await this.getNotesByWorkspace();
             this.notebookRenderNotesList(notes);
         } catch (error) {
@@ -1092,12 +1365,14 @@ class NotepadManager {
 
     /**
      * Get all notes for current workspace
-     * @returns {Promise<Array>} - Array of notes
+     * @returns {Promise<Array>} - Array of notes metadata
      */
     async getNotesByWorkspace() {
         const workspaceId = activeWorkspace || 'default';
-        const response = await wsClient.getNotesByWorkspace(workspaceId);
-        return response?.notes || [];
+
+        // Use cached metadata (will load cache if needed)
+        const notesMap = await this.getNotesMetadata(workspaceId);
+        return notesMap ? Array.from(notesMap.values()) : [];
     }
 
     /**
@@ -1565,7 +1840,7 @@ const notepadManager = new NotepadManager();
 
 // Register WebSocket initialization step
 wsClient.registerInitStep(19, 'Initializing notepad manager', async () => {
-    notepadManager.init();
+    await notepadManager.init();
 });
 
 // Export for global access

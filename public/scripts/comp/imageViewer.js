@@ -24,7 +24,7 @@ class ImageViewerManager {
 
         // Update IDs to be unique
         this.updateElementIds(viewerElement, viewerId);
-        
+
         // Set stable identifier for position restoration (based on image source/filename)
         // For transient windows, we need a stable ID that persists across window recreations
         let windowIdentifier = null;
@@ -44,7 +44,7 @@ class ImageViewerManager {
                 windowIdentifier = `imageViewer:${imageSrc.substring(0, 100)}`; // Limit length
             }
         }
-        
+
         if (windowIdentifier) {
             viewerElement.dataset.windowIdentifier = windowIdentifier;
             // Mark this transient window for position restoration
@@ -53,8 +53,8 @@ class ImageViewerManager {
 
         // Calculate tiling offset for this window
         const tileOffset = this.calculateTileOffset();
-        viewerElement.style.setProperty('--modal-offset-x', `${tileOffset.x}px`);
-        viewerElement.style.setProperty('--modal-offset-y', `${tileOffset.y}px`);
+        viewerElement.style.setProperty('--modal-offset-x', `${Math.round(tileOffset.x)}px`);
+        viewerElement.style.setProperty('--modal-offset-y', `${Math.round(tileOffset.y)}px`);
 
         // Insert into DOM
         document.body.appendChild(viewerElement);
@@ -71,12 +71,12 @@ class ImageViewerManager {
         const existingViewers = Array.from(this.viewers.values());
         const tileOffsetX = 40; // Horizontal offset between windows
         const tileOffsetY = 40; // Vertical offset between windows
-        
+
         // Use default modal size for calculations (modal size is adjusted later, but we need bounds now)
         // Get from template or use reasonable defaults
         const defaultModalWidth = parseInt(this.template?.dataset?.windowMaxWidth) || 800;
         const defaultModalHeight = parseInt(this.template?.dataset?.windowMaxHeight) || 600;
-        
+
         // Use actual size from first existing viewer if available (more accurate)
         let modalWidth = defaultModalWidth;
         let modalHeight = defaultModalHeight;
@@ -88,59 +88,59 @@ class ImageViewerManager {
             modalWidth = width;
             modalHeight = height;
         }
-        
+
         // Calculate viewport center
         const centerX = window.innerWidth / 2;
         const centerY = window.innerHeight / 2;
-        
+
         // Calculate maximum allowed offsets to keep window on screen
         // Modal is centered, so offset is relative to center
         // Left edge: centerX - modalWidth/2 + offsetX >= 0
         // Right edge: centerX + modalWidth/2 + offsetX <= window.innerWidth
         const minOffsetX = modalWidth / 2 - centerX;
         const maxOffsetX = window.innerWidth - centerX - modalWidth / 2;
-        
+
         // Top edge: centerY - modalHeight/2 + offsetY >= 0
         // Bottom edge: centerY + modalHeight/2 + offsetY <= window.innerHeight
         const minOffsetY = modalHeight / 2 - centerY;
         const maxOffsetY = window.innerHeight - centerY - modalHeight / 2;
-        
+
         if (existingViewers.length === 0) {
-            // First window - centered (within bounds)
-            return { 
-                x: Math.max(minOffsetX, Math.min(0, maxOffsetX)), 
-                y: Math.max(minOffsetY, Math.min(0, maxOffsetY)) 
+            // First window - centered (within bounds, rounded to whole numbers)
+            return {
+                x: Math.round(Math.max(minOffsetX, Math.min(0, maxOffsetX))),
+                y: Math.round(Math.max(minOffsetY, Math.min(0, maxOffsetY)))
             };
         }
-        
+
         // Calculate position based on number of existing windows
         // Cascade diagonally: each new window is offset by tileOffsetX and tileOffsetY
         const index = existingViewers.length;
-        
+
         // Try diagonal cascade first
         let x = index * tileOffsetX;
         let y = index * tileOffsetY;
-        
+
         // Clamp to bounds
         x = Math.max(minOffsetX, Math.min(x, maxOffsetX));
         y = Math.max(minOffsetY, Math.min(y, maxOffsetY));
-        
+
         // If we've hit the horizontal limit, wrap to a new row
         if (x >= maxOffsetX - tileOffsetX) {
             const row = Math.floor(index / Math.floor((maxOffsetX - minOffsetX) / tileOffsetX));
             const col = index % Math.floor((maxOffsetX - minOffsetX) / tileOffsetX);
             x = minOffsetX + col * tileOffsetX;
             y = minOffsetY + row * tileOffsetY;
-            
+
             // Clamp again after wrapping
             x = Math.max(minOffsetX, Math.min(x, maxOffsetX));
             y = Math.max(minOffsetY, Math.min(y, maxOffsetY));
         }
-        
-        // Final safety check - ensure we're within bounds
+
+        // Final safety check - ensure we're within bounds (rounded to whole numbers)
         return {
-            x: Math.max(minOffsetX, Math.min(x, maxOffsetX)),
-            y: Math.max(minOffsetY, Math.min(y, maxOffsetY))
+            x: Math.round(Math.max(minOffsetX, Math.min(x, maxOffsetX))),
+            y: Math.round(Math.max(minOffsetY, Math.min(y, maxOffsetY)))
         };
     }
 
@@ -213,7 +213,7 @@ class ImageViewer {
     loadImage() {
         const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
         const blurBackground = this.element.querySelector('.image-viewer-blur-background');
-        
+
         if (imgElement) {
             imgElement.src = this.imageSrc;
             imgElement.onload = () => {
@@ -236,21 +236,21 @@ class ImageViewer {
     adjustModalSizeForImage(imgElement) {
         const width = imgElement.naturalWidth || this.metadata?.width || 512;
         const height = imgElement.naturalHeight || this.metadata?.height || 512;
-        
+
         // Calculate aspect ratio
         const aspectRatio = width / height;
-        
+
         // Get constraints from modal data attributes
         const maxWidth = parseInt(this.element.dataset.windowMaxWidth) || 1600;
         const maxHeight = parseInt(this.element.dataset.windowMaxHeight) || 1200;
         const minWidth = parseInt(this.element.dataset.windowMinWidth) || 400;
         const minHeight = parseInt(this.element.dataset.windowMinHeight) || 300;
-        
+
         let modalWidth, modalHeight;
-        
+
         // Base height - reasonable viewing size
         const baseHeight = 600;
-        
+
         if (aspectRatio >= 1.5) {
             // Wide landscape - wider modal
             modalWidth = Math.min(baseHeight * aspectRatio, maxWidth);
@@ -268,11 +268,11 @@ class ImageViewer {
             modalWidth = minWidth;
             modalHeight = Math.min(minWidth / aspectRatio, maxHeight);
         }
-        
+
         // Apply constraints
         modalWidth = Math.max(minWidth, Math.min(modalWidth, maxWidth));
         modalHeight = Math.max(minHeight, Math.min(modalHeight, maxHeight));
-        
+
         // Set modal size
         this.element.style.width = `${Math.round(modalWidth)}px`;
         this.element.style.height = `${Math.round(modalHeight)}px`;
@@ -286,13 +286,13 @@ class ImageViewer {
             const baseName = this.getBaseName(filename);
             return `/previews/${encodeURIComponent(baseName)}@blur.webp`;
         }
-        
+
         // For cache/reference images with preview info
         if (this.metadata.preview) {
             const blurPreview = this.metadata.preview.replace('.webp', '@blur.webp');
             return `/previews/${encodeURIComponent(blurPreview)}`;
         }
-        
+
         return null;
     }
 
@@ -327,9 +327,29 @@ class ImageViewer {
 
         this.boundDragMove = (e) => this.handleDragMove(e);
         this.boundDragEnd = (e) => this.handleDragEnd(e);
-        
+
         document.addEventListener('mousemove', this.boundDragMove);
         document.addEventListener('mouseup', this.boundDragEnd);
+
+        // Touch events
+        this.boundTouchStart = (e) => this.handleTouchStart(e);
+        this.boundTouchMove = (e) => this.handleTouchMove(e);
+        this.boundTouchEnd = (e) => this.handleTouchEnd(e);
+
+        if (imgElement) {
+            imgElement.addEventListener('touchstart', this.boundTouchStart, { passive: false });
+        }
+
+        if (container) {
+            container.addEventListener('touchstart', (e) => {
+                if (e.target === container) {
+                    this.boundTouchStart(e);
+                }
+            }, { passive: false });
+        }
+
+        document.addEventListener('touchmove', this.boundTouchMove, { passive: false });
+        document.addEventListener('touchend', this.boundTouchEnd);
 
         // Close button
         const closeBtn = this.element.querySelector(`.close-btn`);
@@ -366,7 +386,7 @@ class ImageViewer {
         if (!container || !window.contextMenu) return;
 
         const hasMetadata = this.hasValidMetadata();
-        
+
         // Build context menu config dynamically
         const contextMenuConfig = {
             maxHeight: true,
@@ -397,10 +417,10 @@ class ImageViewer {
                 icon: 'fa-regular fa-star',
                 tooltip: 'Favorite',
                 action: 'image-viewer-toggle-pin',
-                loadfn: async (menuItem, target) => {
+                loadfn: (menuItem, target) => {
                     const filename = this.metadata.filename || this.metadata.original || this.metadata.upscaled;
                     if (filename && typeof checkIfImageIsPinned === 'function') {
-                        const isPinned = await checkIfImageIsPinned(filename);
+                        const isPinned = checkIfImageIsPinned(filename);
                         menuItem.icon = isPinned ? 'fa-solid fa-star' : 'fa-regular fa-star';
                         menuItem.tooltip = isPinned ? 'Unfavorite' : 'Favorite';
                     }
@@ -473,7 +493,7 @@ class ImageViewer {
 
         // Attach context menu
         window.contextMenu.attachToElement(container, contextMenuConfig);
-        
+
         // Handle context menu actions on document level
         this.boundContextMenuHandler = (e) => this.handleContextMenuAction(e);
         document.addEventListener('contextMenuAction', this.boundContextMenuHandler);
@@ -481,10 +501,10 @@ class ImageViewer {
 
     handleContextMenuAction(event) {
         const { action, target } = event.detail;
-        
+
         // Check if this action is for our image viewer
         if (!action || !action.startsWith('image-viewer-')) return;
-        
+
         // Verify the target is within our modal
         if (!this.element.contains(target)) return;
 
@@ -554,7 +574,7 @@ class ImageViewer {
             this.zoomLevel = 1.0;
             this.panX = 0;
             this.panY = 0;
-            
+
             this.updateImageTransform();
             this.updateZoomDisplay();
             this.updateCursor();
@@ -577,11 +597,11 @@ class ImageViewer {
 
             // To get actual 1:1 pixels, we need to zoom by the inverse of CSS scale
             const actualSizeZoom = 1.0 / cssScale;
-            
+
             this.zoomLevel = Math.min(actualSizeZoom, this.maxZoom);
             this.panX = 0;
             this.panY = 0;
-            
+
             this.updateImageTransform();
             this.updateZoomDisplay();
             this.updateCursor();
@@ -614,7 +634,7 @@ class ImageViewer {
             // Calculate actual zoom percentage relative to 1:1 size
             const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
             const container = this.element.querySelector('.image-container');
-            
+
             if (imgElement && container && imgElement.naturalWidth && imgElement.naturalHeight) {
                 const containerRect = container.getBoundingClientRect();
                 const imgNaturalWidth = imgElement.naturalWidth;
@@ -644,38 +664,80 @@ class ImageViewer {
     handleDragStart(e) {
         // Only allow dragging when zoomed in
         if (this.zoomLevel <= 1.0) return;
-        
+
         // Don't interfere with text selection or other interactions
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
 
         e.preventDefault();
-        
+
         this.isDragging = true;
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
         this.dragStartPanX = this.panX;
         this.dragStartPanY = this.panY;
-        
+
         this.updateCursor();
     }
 
     handleDragMove(e) {
         if (!this.isDragging) return;
-        
+
         e.preventDefault();
-        
+
         const deltaX = e.clientX - this.dragStartX;
         const deltaY = e.clientY - this.dragStartY;
-        
+
         this.panX = this.dragStartPanX + deltaX;
         this.panY = this.dragStartPanY + deltaY;
-        
+
         this.updateImageTransform();
     }
 
     handleDragEnd(e) {
         if (!this.isDragging) return;
-        
+
+        this.isDragging = false;
+        this.updateCursor();
+    }
+
+    handleTouchStart(e) {
+        // Only allow dragging when zoomed in
+        if (this.zoomLevel <= 1.0) return;
+
+        // Don't interfere with text selection or other interactions
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+
+        // Use the first touch point
+        const touch = e.touches[0];
+
+        this.isDragging = true;
+        this.dragStartX = touch.clientX;
+        this.dragStartY = touch.clientY;
+        this.dragStartPanX = this.panX;
+        this.dragStartPanY = this.panY;
+
+        e.preventDefault(); // Prevent default touch actions (scrolling)
+        this.updateCursor();
+    }
+
+    handleTouchMove(e) {
+        if (!this.isDragging) return;
+
+        e.preventDefault(); // Prevent default touch actions (scrolling)
+
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - this.dragStartX;
+        const deltaY = touch.clientY - this.dragStartY;
+
+        this.panX = this.dragStartPanX + deltaX;
+        this.panY = this.dragStartPanY + deltaY;
+
+        this.updateImageTransform();
+    }
+
+    handleTouchEnd(e) {
+        if (!this.isDragging) return;
+
         this.isDragging = false;
         this.updateCursor();
     }
@@ -687,7 +749,7 @@ class ImageViewer {
                 this.updateCursor();
             }
         };
-        
+
         window.addEventListener('blur', this.boundBlurHandler);
     }
 
@@ -701,7 +763,7 @@ class ImageViewer {
                 });
             }
         };
-        
+
         this.element.addEventListener('modalResized', this.boundResizeHandler);
     }
 
@@ -716,7 +778,7 @@ class ImageViewer {
                 const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
                 const width = imgElement ? (imgElement.naturalWidth || 1024) : 1024;
                 const height = imgElement ? (imgElement.naturalHeight || 1024) : 1024;
-                
+
                 showLightbox({
                     url: this.imageSrc,
                     width: width,
@@ -725,16 +787,16 @@ class ImageViewer {
             }
         }
     }
-    
+
     maximize() {
         // Maximize the modal window
         if (!this.element) return;
-        
+
         this.element.style.width = '90vw';
         this.element.style.height = '90vh';
         this.element.style.setProperty('--modal-offset-x', '0px');
         this.element.style.setProperty('--modal-offset-y', '0px');
-        
+
         // Fit image to screen after maximizing
         setTimeout(() => this.fitToScreen(), 50);
     }
@@ -832,6 +894,19 @@ class ImageViewer {
         if (this.boundDragEnd) {
             document.removeEventListener('mouseup', this.boundDragEnd);
         }
+        if (this.boundTouchMove) {
+            document.removeEventListener('touchmove', this.boundTouchMove);
+        }
+        if (this.boundTouchEnd) {
+            document.removeEventListener('touchend', this.boundTouchEnd);
+        }
+
+        // Remove element listeners if possible (though standard destroy removes element)
+        const imgElement = this.element ? this.element.querySelector(`#imageViewerImage_${this.id}`) : null;
+        if (imgElement && this.boundTouchStart) {
+            imgElement.removeEventListener('touchstart', this.boundTouchStart);
+        }
+
         if (this.boundBlurHandler) {
             window.removeEventListener('blur', this.boundBlurHandler);
         }
@@ -841,7 +916,7 @@ class ImageViewer {
         if (this.boundContextMenuHandler) {
             document.removeEventListener('contextMenuAction', this.boundContextMenuHandler);
         }
-        
+
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);
         }
@@ -859,12 +934,12 @@ if (document.readyState === 'loading') {
 }
 
 // Helper functions for opening images from different sources
-window.openImageInViewer = function(imageSrc, title = 'Image Viewer', metadata = {}) {
+window.openImageInViewer = function (imageSrc, title = 'Image Viewer', metadata = {}) {
     return imageViewerManager.createViewer(imageSrc, title, metadata);
 };
 
 // Helper for opening gallery images
-window.openGalleryImageInViewer = function(imageData) {
+window.openGalleryImageInViewer = function (imageData) {
     if (!imageData) return null;
 
     // Determine the correct URL for gallery images
@@ -883,7 +958,7 @@ window.openGalleryImageInViewer = function(imageData) {
 };
 
 // Helper for opening reference images
-window.openReferenceImageInViewer = function(cacheImage) {
+window.openReferenceImageInViewer = function (cacheImage) {
     if (!cacheImage) return null;
 
     // Use the same logic as the reference browser preview function

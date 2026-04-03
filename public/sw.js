@@ -12,6 +12,18 @@ const STATIC_CACHE = 'static-cache-v1';
 const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 
+// Download state tracking
+let downloadState = {
+    isDownloading: false,
+    completed: 0,
+    total: 0,
+    currentFile: null,
+    startTime: null,
+    lastProgressTime: null,
+    files: [],
+    abortController: null
+};
+
 // Helper function to add cache-busting headers to responses
 function addCacheBustingHeaders(response) {
   const headers = new Headers(response.headers);
@@ -463,32 +475,314 @@ self.addEventListener('message', (event) => {
         cacheInternalData(event.data.url, event.data.data);
     } else if (event.data && event.data.type === 'GET_CACHE_STATUS') {
         getCacheStatus(event.data.requestId);
+    } else if (event.data && event.data.type === 'GET_CACHED_FILES') {
+        getCachedFiles(event.data.requestId);
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         deleteAndPrecache(event.data.url, event.data.requestId);
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+    } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {
+        getDownloadState(event.data.requestId);
+    } else if (event.data && event.data.type === 'CANCEL_DOWNLOAD') {
+        cancelDownload();
+    } else if (event.data && event.data.type === 'ping') {
+        // Respond to health check ping
+        event.ports && event.ports[0] && event.ports[0].postMessage({
+            type: 'pong',
+            timestamp: Date.now()
+        });
+        // Also send via postMessage for compatibility
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'ping',
+                    timestamp: Date.now()
+                });
+            });
+        });
     }
 });
 
-// Cache static files from server
-async function cacheStaticFiles(files) {
+// Get list of cached files with their hashes
+async function getCachedFiles(requestId) {
     try {
         const cache = await caches.open(STATIC_CACHE);
-        let completed = 0;
-        const total = files.length;
+        const keys = await cache.keys();
+        const cachedFiles = [];
+        
+        for (const key of keys) {
+            try {
+                const response = await cache.match(key);
+                if (response) {
+                    const hash = response.headers.get('x-file-hash') || '';
+                    const url = key.url;
+                    cachedFiles.push({
+                        url: url,
+                        hash: hash
+                    });
+                }
+            } catch (error) {
+                console.error(`Error getting cached file info for ${key.url}:`, error);
+            }
+        }
+        
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'CACHED_FILES_LIST',
+                    requestId: requestId,
+                    files: cachedFiles
+                });
+            });
+        });
+    } catch (error) {
+        console.error('Error getting cached files:', error);
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'CACHED_FILES_ERROR',
+                    requestId: requestId,
+                    error: error.message
+                });
+            });
+        });
+    }
+}
+
+// Helper function to determine content type from file path
+function getContentTypeFromPath(filePath) {
+    const ext = filePath.split('.').pop().toLowerCase();
+    const contentTypes = {
+        'html': 'text/html',
+        'css': 'text/css',
+        'js': 'application/javascript',
+        'json': 'application/json',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'svg': 'image/svg+xml',
+        'webp': 'image/webp',
+        'woff': 'font/woff',
+        'woff2': 'font/woff2',
+        'ttf': 'font/ttf',
+        'eot': 'application/vnd.ms-fontobject',
+        'otf': 'font/otf',
+        'ico': 'image/x-icon',
+        'xml': 'application/xml',
+        'txt': 'text/plain',
+        'map': 'application/json'
+    };
+    return contentTypes[ext] || 'application/octet-stream';
+}
+
+// Get current download state
+function getDownloadState(requestId) {
+    self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'DOWNLOAD_STATE',
+                requestId: requestId,
+                isDownloading: downloadState.isDownloading,
+                completed: downloadState.completed,
+                total: downloadState.total,
+                currentFile: downloadState.currentFile,
+                startTime: downloadState.startTime,
+                lastProgressTime: downloadState.lastProgressTime,
+                files: downloadState.files
+            });
+        });
+    });
+}
+
+// Cancel current download
+function cancelDownload() {
+    if (downloadState.isDownloading && downloadState.abortController) {
+        downloadState.abortController.abort();
+        downloadState.isDownloading = false;
+        downloadState.abortController = null;
+        
+        // Notify clients of cancellation
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'STATIC_CACHE_CANCELLED',
+                    completed: downloadState.completed,
+                    total: downloadState.total
+                });
+            });
+        });
+        
+        // Reset state
+        downloadState = {
+            isDownloading: false,
+            completed: 0,
+            total: 0,
+            currentFile: null,
+            startTime: null,
+            lastProgressTime: null,
+            files: [],
+            abortController: null
+        };
+    }
+}
+
+// Check for stalled downloads (no progress for 30 seconds)
+let lastHeartbeatTime = 0;
+function checkStallDetection() {
+    if (downloadState.isDownloading && downloadState.lastProgressTime) {
+        const timeSinceLastProgress = Date.now() - downloadState.lastProgressTime;
+        const STALL_TIMEOUT = 30000; // 30 seconds
+        
+        if (timeSinceLastProgress > STALL_TIMEOUT) {
+            console.warn(`Download appears stalled (${Math.round(timeSinceLastProgress/1000)}s since last progress), notifying clients`);
+            self.clients.matchAll().then(clients => {
+                clients.forEach(client => {
+                    client.postMessage({
+                        type: 'STATIC_CACHE_STALLED',
+                        completed: downloadState.completed,
+                        total: downloadState.total,
+                        currentFile: downloadState.currentFile,
+                        timeSinceLastProgress: timeSinceLastProgress,
+                        stalled: true
+                    });
+                });
+            });
+        } else {
+            // Send periodic progress updates even if no new files complete (every 10 seconds)
+            // This helps keep the UI updated and detects if the service worker is still alive
+            const now = Date.now();
+            if (now - lastHeartbeatTime > 10000) {
+                lastHeartbeatTime = now;
+                // Send a heartbeat progress update
+                self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                        client.postMessage({
+                            type: 'STATIC_CACHE_PROGRESS',
+                            completed: downloadState.completed,
+                            total: downloadState.total,
+                            currentFile: downloadState.currentFile,
+                            heartbeat: true
+                        });
+                    });
+                });
+            }
+        }
+    }
+}
+
+// Start stall detection interval
+let stallDetectionInterval = null;
+function startStallDetection() {
+    if (stallDetectionInterval) {
+        clearInterval(stallDetectionInterval);
+    }
+    // Check every 2 seconds for more responsive stall detection
+    stallDetectionInterval = setInterval(() => {
+        try {
+            checkStallDetection();
+        } catch (error) {
+            console.error('Error in stall detection:', error);
+        }
+    }, 2000);
+}
+
+function stopStallDetection() {
+    if (stallDetectionInterval) {
+        clearInterval(stallDetectionInterval);
+        stallDetectionInterval = null;
+    }
+    lastHeartbeatTime = 0;
+}
+
+// Cache static files from server
+async function cacheStaticFiles(files) {
+    // Check if already downloading
+    if (downloadState.isDownloading) {
+        console.warn('Download already in progress, sending current status');
+        // Immediately send current status to all clients
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                // Send current status immediately
+                client.postMessage({
+                    type: 'STATIC_CACHE_ALREADY_IN_PROGRESS',
+                    currentDownload: {
+                        completed: downloadState.completed,
+                        total: downloadState.total,
+                        currentFile: downloadState.currentFile,
+                        startTime: downloadState.startTime,
+                        lastProgressTime: downloadState.lastProgressTime
+                    }
+                });
+                // Also send a progress update to sync the UI
+                client.postMessage({
+                    type: 'STATIC_CACHE_PROGRESS',
+                    completed: downloadState.completed,
+                    total: downloadState.total,
+                    currentFile: downloadState.currentFile
+                });
+            });
+        });
+        return;
+    }
+    
+    try {
+        // Initialize download state
+        downloadState.isDownloading = true;
+        downloadState.completed = 0;
+        downloadState.total = files.length;
+        downloadState.currentFile = null;
+        downloadState.startTime = Date.now();
+        downloadState.lastProgressTime = Date.now();
+        downloadState.files = files;
+        downloadState.abortController = new AbortController();
+        
+        // Start stall detection
+        startStallDetection();
+        
+        // Notify clients that download has started
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'STATIC_CACHE_STARTED',
+                    total: files.length
+                });
+            });
+        });
+        
+        const cache = await caches.open(STATIC_CACHE);
+        const signal = downloadState.abortController.signal;
         
         // Cache files one by one to track progress
         for (const file of files) {
+            // Check if download was cancelled
+            if (signal.aborted) {
+                console.log('Download cancelled by user');
+                return;
+            }
+            
+            downloadState.currentFile = file.url;
+            
+            // Update lastProgressTime when starting a new file (even if fetch hasn't completed yet)
+            // This helps detect if we're stuck on a single file
+            downloadState.lastProgressTime = Date.now();
+            
             try {
                 // Fetch with cache-busting headers to prevent browser caching
+                const fetchStartTime = Date.now();
                 const response = await fetch(file.url, {
                   cache: 'no-store',
+                  signal: signal,
                   headers: {
                     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                     'Pragma': 'no-cache',
                     'Expires': '0'
                   }
                 });
+                
+                // Update progress time after fetch completes (even if it fails)
+                downloadState.lastProgressTime = Date.now();
+                
                 if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
                     try {
                         // Check if file already exists in cache
@@ -527,15 +821,16 @@ async function cacheStaticFiles(files) {
                             }
                         }
 
-                        completed++;
+                        downloadState.completed++;
+                        downloadState.lastProgressTime = Date.now();
 
                         // Notify client of progress
                         self.clients.matchAll().then(clients => {
                             clients.forEach(client => {
                                 client.postMessage({
                                     type: 'STATIC_CACHE_PROGRESS',
-                                    completed: completed,
-                                    total: total,
+                                    completed: downloadState.completed,
+                                    total: downloadState.total,
                                     currentFile: file.url
                                 });
                             });
@@ -552,7 +847,8 @@ async function cacheStaticFiles(files) {
                                 });
                             });
                         });
-                        completed++;
+                        downloadState.completed++;
+                        downloadState.lastProgressTime = Date.now();
                     }
                 } else {
                     console.warn(`Failed to fetch ${file.url}: ${response.status} ${response.statusText}`);
@@ -566,13 +862,27 @@ async function cacheStaticFiles(files) {
                             });
                         });
                     });
-                    completed++;
+                    downloadState.completed++;
+                    downloadState.lastProgressTime = Date.now();
                 }
             } catch (error) {
+                // Check if error is due to abort
+                if (error.name === 'AbortError') {
+                    console.log('Download aborted');
+                    return;
+                }
                 console.error(`Failed to cache ${file.url}:`, error);
-                completed++;
+                downloadState.completed++;
+                downloadState.lastProgressTime = Date.now();
             }
         }
+        
+        // Stop stall detection
+        stopStallDetection();
+        
+        // Capture values before resetting state (defensive against race conditions)
+        const completedCount = downloadState.completed > 0 ? downloadState.completed : files.length;
+        const totalCount = downloadState.total > 0 ? downloadState.total : files.length;
         
         // Notify client of completion
         self.clients.matchAll().then(clients => {
@@ -580,13 +890,57 @@ async function cacheStaticFiles(files) {
                 client.postMessage({
                     type: 'STATIC_CACHE_COMPLETE',
                     files: files,
-                    completed: completed,
-                    total: total
+                    completed: completedCount,
+                    total: totalCount
                 });
             });
         });
+        
+        // Reset download state
+        downloadState = {
+            isDownloading: false,
+            completed: 0,
+            total: 0,
+            currentFile: null,
+            startTime: null,
+            lastProgressTime: null,
+            files: [],
+            abortController: null
+        };
     } catch (error) {
+        // Check if error is due to abort
+        if (error.name === 'AbortError') {
+            console.log('Download aborted');
+            return;
+        }
+        
         console.error('Error caching static files:', error);
+        
+        // Stop stall detection
+        stopStallDetection();
+        
+        // Notify clients of error
+        self.clients.matchAll().then(clients => {
+            clients.forEach(client => {
+                client.postMessage({
+                    type: 'STATIC_CACHE_ERROR',
+                    file: 'unknown',
+                    error: error.message
+                });
+            });
+        });
+        
+        // Reset download state
+        downloadState = {
+            isDownloading: false,
+            completed: 0,
+            total: 0,
+            currentFile: null,
+            startTime: null,
+            lastProgressTime: null,
+            files: [],
+            abortController: null
+        };
     }
 }
 

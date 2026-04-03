@@ -190,6 +190,11 @@ const RESOLUTION_GROUPS = [
     }
 ];
 
+/** Exact same aspect ratio as width×height pairs (integer cross-multiply, no floats). */
+function samePixelAspectRatio(w1, h1, w2, h2) {
+    return w1 > 0 && h1 > 0 && w2 > 0 && h2 > 0 && w1 * h2 === h1 * w2;
+}
+
 /**
  * Model groups
  * @type {object[]}

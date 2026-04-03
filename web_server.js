@@ -627,161 +627,6 @@ const previewsDir = path.resolve(__dirname, '.previews');
     }
 });
 
-// Get pinned/favorited images from workspaces
-async function getPinnedImages() {
-    try {
-        const workspaces = globalResources.getWorkspaceManager().getWorkspaces();
-
-        if (!workspaces || typeof workspaces !== 'object') {
-            console.warn('⚠️ Workspaces is not a valid object:', typeof workspaces);
-            return [];
-        }
-        
-        // Validate workspace structure
-        if (Object.keys(workspaces).length === 0) {
-            console.warn('⚠️ No workspaces found');
-            return [];
-        }
-        
-        const pinnedImages = [];
-        
-        // workspaces is an object with workspace IDs as keys, so we need to iterate over its values
-        Object.entries(workspaces).forEach(([workspaceId, workspace]) => {
-            if (!workspace || typeof workspace !== 'object') {
-                console.warn(`⚠️ Invalid workspace object for ID: ${workspaceId}`);
-                return;
-            }
-            
-            if (workspace.pinned && Array.isArray(workspace.pinned) && workspace.pinned.length > 0) {
-                // Select only 1 pinned image from this workspace for variety
-                const randomPinnedIndex = Math.floor(Math.random() * workspace.pinned.length);
-                const pinnedFile = workspace.pinned[randomPinnedIndex];
-                
-                if (!pinnedFile || typeof pinnedFile !== 'string') {
-                    console.warn(`  ⚠️ Invalid pinned file entry:`, pinnedFile);
-                    return;
-                }
-                
-                const imagePath = path.join(imagesDir, pinnedFile);
-                if (fs.existsSync(imagePath) && pinnedFile.match(/\.(png|jpg|jpeg)$/i)) {
-                    pinnedImages.push({
-                        filename: pinnedFile,
-                        path: imagePath,
-                        workspace: workspace.name || workspaceId
-                    });
-                } else {
-                    console.log(`  ⚠️ Skipped pinned image (not found or invalid): ${pinnedFile}`);
-                }
-            } else {
-            }
-        });
-        
-        return pinnedImages;
-    } catch (error) {
-        console.error('❌ Error getting pinned images:', error);
-        return [];
-    }
-}
-
-// Get random workspace images
-async function getRandomWorkspaceImages() {
-    try {
-        // Check if images directory exists
-        if (!fs.existsSync(imagesDir)) {
-            console.warn('⚠️ Images directory does not exist:', imagesDir);
-            return [];
-        }
-        
-        const imageFiles = fs.readdirSync(imagesDir)
-            .filter(file => file.match(/\.(png|jpg|jpeg)$/i))
-            .map(file => ({
-                filename: file,
-                path: path.join(imagesDir, file)
-            }));
-        
-        if (imageFiles.length === 0) {
-            console.warn('⚠️ No image files found in images directory');
-            return [];
-        }
-        
-        // Shuffle and return random images
-        return imageFiles.sort(() => 0.5 - Math.random());
-    } catch (error) {
-        console.error('❌ Error getting random workspace images:', error);
-        return [];
-    }
-}
-
-// On startup: generate missing previews and clean up orphans
-async function syncCachePreviews() {
-    // Ensure upload cache and preview cache directories exist
-    if (!fs.existsSync(uploadCacheDir)) {
-        return;
-    }
-    if (!fs.existsSync(previewCacheDir)) {
-        fs.mkdirSync(previewCacheDir, { recursive: true });
-    }
-
-    // Get all files in upload cache
-    const cacheFiles = fs.readdirSync(uploadCacheDir);
-
-    globalResources.logger.bootSubStep(`Found ${cacheFiles.length} cache files`);
-
-    // Find cache files that don't have previews
-    let missingPreviews = 0;
-    let generatedPreviews = 0;
-
-    for (const cacheFile of cacheFiles) {
-        const cachePath = path.join(uploadCacheDir, cacheFile);
-        const previewPath = path.join(previewCacheDir, `${cacheFile}.webp`);
-
-        if (!fs.existsSync(previewPath)) {
-            try {
-                missingPreviews++;
-
-                await sharp(cachePath)
-                    .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                    .webp({ quality: 80 })
-                    .toFile(previewPath);
-
-                generatedPreviews++;
-            } catch (error) {
-                globalResources.logger.error(`Failed to generate cache preview for ${cacheFile}:`, error);
-            }
-        }
-    }
-
-    if (missingPreviews === 0) {
-        globalResources.logger.bootSubStep('All cache previews are up to date');
-    } else {
-        globalResources.logger.bootSubStep(`Generated ${generatedPreviews}/${missingPreviews} cache previews`);
-    }
-
-    // Remove orphan cache previews (previews without corresponding cache files)
-    /*const previewFiles = fs.readdirSync(previewCacheDir).filter(f => f.endsWith('.webp'));
-    let orphanCount = 0;
-
-    for (const previewFile of previewFiles) {
-        // Remove .webp extension to get original filename
-        const baseName = previewFile.replace(/\.webp$/, '');
-        const sourcePath = path.join(uploadCacheDir, baseName);
-
-        if (!fs.existsSync(sourcePath)) {
-            const orphanPath = path.join(previewCacheDir, previewFile);
-            fs.unlinkSync(orphanPath);
-            orphanCount++;
-            console.log(`🧹 Removed orphan cache preview: ${previewFile}`);
-        }
-    }
-
-    if (orphanCount > 0) {
-        console.log(`🧹 Cache cleanup complete: ${orphanCount} orphan previews removed`);
-    } else {
-        console.log('🧹 No orphan cache previews found');
-    }
-
-    console.log('✅ Cache preview synchronization complete');*/
-}
 
 async function getBalance() {
     try {
@@ -883,6 +728,9 @@ async function getBalance() {
 }
 
 async function getUserData() {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+    
     try {
         const apiKeyManager = globalResources.getApiKeyManager();
         const novelAiApiKey = apiKeyManager.getActiveApiKey('novelai');
@@ -917,51 +765,108 @@ async function getUserData() {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:138.0) Gecko/20100101 Firefox/138.0"
               }
         };
-        const userData = await new Promise((resolve, reject) => {
-            const req = https.request(options, (res) => {
-                let data = [];
-                res.on('data', chunk => data.push(chunk));
-                res.on('end', () => {
-                    const buffer = Buffer.concat(data);
-                    if (res.statusCode === 200) {
-                        try {
-                            const response = JSON.parse(buffer.toString());
-                            resolve({
-                                ok: true,
-                                ...response,
-                            });
-                        } catch (e) {
-                            reject(new Error('Invalid JSON response from NovelAI API'));
+
+        // Helper function to check if error is retryable (network errors)
+        const isRetryableError = (error) => {
+            if (!error || !error.code) return false;
+            const retryableCodes = ['ETIMEDOUT', 'ENETUNREACH', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN'];
+            return retryableCodes.includes(error.code);
+        };
+
+        // Helper function to make the API request
+        const makeRequest = () => {
+            return new Promise((resolve, reject) => {
+                const req = https.request(options, (res) => {
+                    let data = [];
+                    res.on('data', chunk => data.push(chunk));
+                    res.on('end', () => {
+                        const buffer = Buffer.concat(data);
+                        if (res.statusCode === 200) {
+                            try {
+                                const response = JSON.parse(buffer.toString());
+                                resolve({
+                                    ok: true,
+                                    ...response,
+                                });
+                            } catch (e) {
+                                reject(new Error('Invalid JSON response from NovelAI API'));
+                            }
+                        } else {
+                            try {
+                                const errorResponse = JSON.parse(buffer.toString());
+                                console.error('❌ User data API error:', errorResponse);
+                                resolve({
+                                    ok: false,
+                                    statusCode: res.statusCode,
+                                    error: errorResponse.message || 'Unknown error'
+                                })
+                            } catch (e) {
+                                reject(new Error(`User data API error: HTTP ${res.statusCode}`));
+                            }
                         }
-                    } else {
-                        try {
-                            const errorResponse = JSON.parse(buffer.toString());
-                            console.error('❌ User data API error:', errorResponse);
-                            resolve({
-                                ok: false,
-                                statusCode: res.statusCode,
-                                error: errorResponse.message || 'Unknown error'
-                            })
-                        } catch (e) {
-                            reject(new Error(`User data API error: HTTP ${res.statusCode}`));
-                        }
-                    }
+                    });
                 });
+                req.on('error', error => {
+                    reject(error);
+                });
+                req.end();
             });
-            req.on('error', error => {
-                console.error('❌ User data API request error:', error.message);
-                reject(error);
-            });
-            req.end();
-        });
+        };
+
+        // Retry logic
+        let lastError = null;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                const userData = await makeRequest();
+                
+                // If we got a response (even if ok: false), return it (don't retry API errors)
+                if (userData.ok === false && userData.statusCode) {
+                    // This is an API error (not a network error), don't retry
+                    return {
+                        ok: false,
+                        statusCode: userData.statusCode,
+                        error: userData.error
+                    };
+                }
+                
+                // Success case
+                return {
+                    ok: true,
+                    ...userData
+                };
+            } catch (error) {
+                lastError = error;
+                
+                // Only retry on network errors
+                if (isRetryableError(error)) {
+                    if (attempt < MAX_RETRIES) {
+                        console.warn(`⚠️ User data API request failed (attempt ${attempt}/${MAX_RETRIES}): ${error.message}. Retrying in ${RETRY_DELAY_MS}ms...`);
+                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                        continue;
+                    } else {
+                        console.error(`❌ User data API request failed after ${MAX_RETRIES} attempts: ${error.message}`);
+                    }
+                } else {
+                    // Non-retryable error (e.g., invalid JSON), don't retry
+                    console.error('❌ User data API request error:', error.message);
+                    return {
+                        ok: false,
+                        error: error.message
+                    };
+                }
+            }
+        }
+
+        // All retries exhausted
         return {
-            ok: true,
-            ...userData
+            ok: false,
+            error: lastError ? lastError.message : 'Unknown error'
         };
     } catch (error) {
         console.error('User data error:', error);
         return {
-            ok: false
+            ok: false,
+            error: error.message
         }
     }
 }
@@ -1525,9 +1430,8 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
     }
 });
 
-
 app.options('/app', authMiddleware, (req, res) => {
-    const serverVersion = '1.0.1'; // Update this when making breaking changes
+    const serverVersion = '1.0.2'; // Update this when making breaking changes
     const message = 'A new version is available. Some features may not work correctly.';
     let response = { 
         success: true, 
@@ -1546,11 +1450,11 @@ app.options('/app', authMiddleware, (req, res) => {
 app.get('/app', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
 });
+
 // Traces viewer page
 app.get('/traces', authMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'traces.html'));
 });
-
 // Traces API
 app.get('/traces/list', authMiddleware, (req, res) => {
     try {
@@ -1581,15 +1485,6 @@ app.use('/traces/files', authMiddleware, (req, res, next) => {
 app.get('/launch', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'launch.html'));
 });
-
-/*// Reload cache data endpoint (for development/deployment)
-!!!!HALT!!!!! DO NOT UNCOMMENT THIS CODE !!!!!
-YOU SHOUD NOT BE USING REST API ENDPOINTS FOR PRETTY MUCH ANYTHING
-USE THE WEBSOCKETS FOR ALL INTERACTIONS WITH THE SERVER
-
-
-*/
-
 app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (req, res) => {
     try {
         res.setHeader('Cache-Control', 'realtime, no-cache, no-store, must-revalidate, private, max-age=0');
@@ -2215,13 +2110,6 @@ app.get('/pending', authMiddleware, (req, res) => {
     }
 });
 
-// Cache save scheduling function
-function scheduleCacheSave() {
-    if (tagSuggestionsCache.isDirty) {
-        tagSuggestionsCache.markDirty();
-    }
-}
-
 // Scheduled preset generation queue processing with timeout-based scheduling
 async function scheduleNextRequest() {
     if (scheduledQueue.length === 0) return;
@@ -2454,7 +2342,13 @@ globalResources.setAccountData({
     }
 });
 
-/*
+
+/*// Reload cache data endpoint (for development/deployment)
+!!!!HALT!!!!! DO NOT UNCOMMENT THIS CODE !!!!!
+YOU SHOUD NOT BE USING REST API ENDPOINTS FOR PRETTY MUCH ANYTHING
+USE THE WEBSOCKETS FOR ALL INTERACTIONS WITH THE SERVER
+
+
 // Development Bridge Server - will be initialized in the startup function
 let devBridgeServer = null;
 

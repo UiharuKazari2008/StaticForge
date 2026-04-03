@@ -480,6 +480,66 @@ async function initializePhotoSwipe() {
             }
         });
 
+        // Add PageDown/PageUp keyboard navigation
+        lightbox.on('afterInit', function() {
+            if (!lightbox.pswp) return;
+            
+            // Calculate how many images to skip based on viewport
+            const calculateSkipCount = () => {
+                // Get viewport height
+                const viewportHeight = window.innerHeight;
+                // Estimate image height (most images are roughly square, so use viewport height)
+                // Skip approximately one viewport worth of images
+                return Math.max(1, Math.floor(viewportHeight / 200)); // At least 1, roughly 3-5 images per page
+            };
+            
+            // Add keyboard event listener
+            const handleKeyDown = (e) => {
+                // Only handle if PhotoSwipe is open
+                if (!lightbox.pswp || !lightbox.pswp.isOpen) return;
+                
+                // Don't handle if user is typing in an input
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+                    return;
+                }
+                
+                if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const skipCount = calculateSkipCount();
+                    const currentIndex = lightbox.pswp.currIndex;
+                    const totalImages = lightbox.pswp.numItems;
+                    const nextIndex = Math.min(currentIndex + skipCount, totalImages - 1);
+                    
+                    if (nextIndex !== currentIndex) {
+                        lightbox.pswp.goTo(nextIndex);
+                    }
+                } else if (e.key === 'PageUp') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const skipCount = calculateSkipCount();
+                    const currentIndex = lightbox.pswp.currIndex;
+                    const prevIndex = Math.max(currentIndex - skipCount, 0);
+                    
+                    if (prevIndex !== currentIndex) {
+                        lightbox.pswp.goTo(prevIndex);
+                    }
+                }
+            };
+            
+            // Add event listener when PhotoSwipe opens
+            lightbox.on('openingAnimationEnd', () => {
+                document.addEventListener('keydown', handleKeyDown, true);
+            });
+            
+            // Remove event listener when PhotoSwipe closes
+            lightbox.on('close', () => {
+                document.removeEventListener('keydown', handleKeyDown, true);
+            });
+        });
+
         // Initialize the lightbox
         lightbox.init();
     } catch (error) {
@@ -638,21 +698,54 @@ async function showLightbox(input) {
                 return;
             }
         } else if (input.element) {
-            // Check if element has data-file-index (gallery item)
-            const fileIndex = input.element.getAttribute('data-file-index');
-            if (fileIndex !== null) {
-                imageIndex = parseInt(fileIndex, 10);
+            // Gallery item element - use filename as unique identifier (more reliable than indices)
+            const filename = input.element.getAttribute('data-filename');
+            
+            if (filename) {
+                // Find the image by filename - use the source array that lightbox will use
+                // When filtered, lightbox uses originalAllImages, otherwise allImages
                 const sourceImages = (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0)
                     ? window.originalAllImages
                     : allImages;
-
-                if (imageIndex >= 0 && imageIndex < sourceImages.length) {
+                
+                // Find the index by filename (most reliable method)
+                // Match against all possible filename fields
+                imageIndex = sourceImages.findIndex(img => {
+                    if (!img) return false;
+                    const imgFilename = img.filename || img.original || img.upscaled;
+                    // Exact match
+                    if (imgFilename === filename) return true;
+                    // Also check if filename matches any of the image's filename variants
+                    return (img.filename && img.filename === filename) ||
+                           (img.original && img.original === filename) ||
+                           (img.upscaled && img.upscaled === filename);
+                });
+                
+                if (imageIndex !== -1 && imageIndex >= 0 && imageIndex < sourceImages.length) {
                     targetImage = getImageFromLightboxIndex(imageIndex);
                 } else {
-                    imageIndex = -1;
+                    // Image not found by filename - try using findImageByFilename helper if available
+                    const foundImage = findImageByFilename(filename);
+                    if (foundImage) {
+                        // Find the index of this image in sourceImages
+                        imageIndex = sourceImages.findIndex(img => {
+                            if (!img) return false;
+                            const imgFilename = img.filename || img.original || img.upscaled;
+                            const foundFilename = foundImage.filename || foundImage.original || foundImage.upscaled;
+                            return imgFilename === foundFilename;
+                        });
+                        
+                        if (imageIndex !== -1 && imageIndex >= 0 && imageIndex < sourceImages.length) {
+                            targetImage = getImageFromLightboxIndex(imageIndex);
+                        } else {
+                            imageIndex = -1;
+                        }
+                    } else {
+                        imageIndex = -1;
+                    }
                 }
             } else {
-                // Standalone element - try to extract image data
+                // No filename - try standalone element
                 const img = input.element.querySelector('img');
                 if (img && img.src) {
                     const standaloneData = [{

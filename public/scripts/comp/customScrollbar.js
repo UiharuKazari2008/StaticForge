@@ -7,13 +7,14 @@
 class CustomScrollbar {
     constructor() {
         this.scrollbars = new Map();
+        this.maxScrollCache = new WeakMap(); // Cache max scroll values to avoid recalculating
         this.init();
     }
 
     init() {
         // Initialize existing elements
         this.initExistingElements();
-        
+
         // Watch for new elements
         this.observeNewElements();
     }
@@ -22,15 +23,15 @@ class CustomScrollbar {
         // Support both data attribute and legacy class for backward compatibility
         const dataAttrElements = document.querySelectorAll('[data-custom-scrollbar]');
         const classElements = document.querySelectorAll('.form-section-scroll:not([data-custom-scrollbar])');
-        
+
         dataAttrElements.forEach(element => this.createScrollbar(element));
         classElements.forEach(element => this.createScrollbar(element));
     }
 
     // Check if an element should have a custom scrollbar
     shouldHaveScrollbar(element) {
-        return element.hasAttribute('data-custom-scrollbar') || 
-               (element.classList && element.classList.contains('form-section-scroll'));
+        return element.hasAttribute('data-custom-scrollbar') ||
+            (element.classList && element.classList.contains('form-section-scroll'));
     }
 
     // Force re-initialization of a specific element (useful when content is added dynamically)
@@ -67,7 +68,7 @@ class CustomScrollbar {
                         // Check children of added node
                         const dataAttrElements = node.querySelectorAll && node.querySelectorAll('[data-custom-scrollbar]');
                         const classElements = node.querySelectorAll && node.querySelectorAll('.form-section-scroll:not([data-custom-scrollbar])');
-                        
+
                         if (dataAttrElements) {
                             dataAttrElements.forEach(element => this.createScrollbar(element));
                         }
@@ -76,7 +77,7 @@ class CustomScrollbar {
                         }
                     }
                 });
-                
+
                 // Handle attribute changes (e.g., when hidden class is removed from modal)
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                     const target = mutation.target;
@@ -112,16 +113,16 @@ class CustomScrollbar {
         // Create scrollable content wrapper
         const content = element.firstElementChild;
         if (!content) return;
-        
+
         // Get custom wrapper class from data attribute, or default to 'scrollable-content'
         const customWrapperClass = element.dataset.scrollableWrapperClass || 'scrollable-content';
 
         const scrollableContent = document.createElement('div');
         // Always include 'scrollable-content' for base styles, plus custom class if specified
-        scrollableContent.className = customWrapperClass === 'scrollable-content' 
-            ? 'scrollable-content' 
+        scrollableContent.className = customWrapperClass === 'scrollable-content'
+            ? 'scrollable-content'
             : `scrollable-content ${customWrapperClass}`;
-        
+
         // Add class to element BEFORE accessing scroll properties to prevent browser from setting overflow: auto
         // This must happen before any scrollHeight/scrollTop access
         element.classList.add('has-custom-scrollbar');
@@ -132,19 +133,24 @@ class CustomScrollbar {
         }
         element.appendChild(scrollableContent);
 
+        // Ensure scrollable-content uses full height
+        // Force it to take up 100% of parent height
+        scrollableContent.style.height = '100%';
+        scrollableContent.style.minHeight = '100%';
+
         // Create custom scrollbar
         const scrollbar = document.createElement('div');
         scrollbar.className = 'custom-scrollbar';
-        
+
         const thumb = document.createElement('div');
         thumb.className = 'custom-scrollbar-thumb';
         scrollbar.appendChild(thumb);
-        
+
         element.appendChild(scrollbar);
 
         // Initialize scrollbar functionality
         this.initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, customWrapperClass);
-        
+
         // Store reference
         this.scrollbars.set(element, {
             scrollableContent,
@@ -153,8 +159,10 @@ class CustomScrollbar {
             wrapperClass: customWrapperClass
         });
 
-        // Initial update
-        this.updateScrollbar(element);
+        // Initial update - use requestAnimationFrame to ensure layout is complete
+        requestAnimationFrame(() => {
+            this.updateScrollbar(element);
+        });
     }
 
     initScrollbarFunctionality(element, scrollableContent, scrollbar, thumb, wrapperClass = 'scrollable-content') {
@@ -185,7 +193,8 @@ class CustomScrollbar {
 
                     // Check if we can scroll in the requested direction
                     const atTop = scrollTop <= 0;
-                    const atBottom = scrollTop >= scrollHeight - clientHeight;
+                    const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+                    const atBottom = scrollTop >= maxScrollDistance;
                     const scrollingUp = delta < 0; // negative delta = scrolling up
                     const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
 
@@ -204,23 +213,36 @@ class CustomScrollbar {
             isDragging = true;
             startY = e.clientY;
             startScrollTop = scrollableContent.scrollTop;
-            
+
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
-            
+
             e.preventDefault();
         });
 
+        // Touch drag handling for thumb
+        thumb.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            startY = e.touches[0].clientY;
+            startScrollTop = scrollableContent.scrollTop;
+
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
+
+            e.preventDefault(); // Prevent scrolling the page while dragging scrollbar
+        }, { passive: false });
+
         const handleMouseMove = (e) => {
             if (!isDragging) return;
-            
+
             const deltaY = e.clientY - startY;
             const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
             const scrollRatio = deltaY / scrollbarTrackHeight;
-            const maxScrollDistance = scrollableContent.scrollHeight - scrollableContent.clientHeight;
+            const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
             const scrollDistance = scrollRatio * maxScrollDistance;
-            
-            scrollableContent.scrollTop = startScrollTop + scrollDistance;
+            const targetScrollTop = startScrollTop + scrollDistance;
+
+            scrollableContent.scrollTop = Math.max(0, targetScrollTop);
         };
 
         const handleMouseUp = () => {
@@ -229,17 +251,38 @@ class CustomScrollbar {
             document.removeEventListener('mouseup', handleMouseUp);
         };
 
+        const handleTouchMove = (e) => {
+            if (!isDragging) return;
+
+            e.preventDefault(); // Prevent scrolling
+
+            const deltaY = e.touches[0].clientY - startY;
+            const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
+            const scrollRatio = deltaY / scrollbarTrackHeight;
+            const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+            const scrollDistance = scrollRatio * maxScrollDistance;
+            const targetScrollTop = startScrollTop + scrollDistance;
+
+            scrollableContent.scrollTop = Math.max(0, targetScrollTop);
+        };
+
+        const handleTouchEnd = () => {
+            isDragging = false;
+            document.removeEventListener('touchmove', handleTouchMove);
+            document.removeEventListener('touchend', handleTouchEnd);
+        };
+
         // Track click handling
         scrollbar.addEventListener('click', (e) => {
             if (e.target === thumb) return;
-            
+
             const rect = scrollbar.getBoundingClientRect();
             const clickY = e.clientY - rect.top;
             const scrollbarTrackHeight = scrollbar.offsetHeight - thumb.offsetHeight;
             const scrollRatio = Math.min(1, Math.max(0, clickY / scrollbarTrackHeight));
-            const maxScrollDistance = scrollableContent.scrollHeight - scrollableContent.clientHeight;
+            const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
             const scrollDistance = scrollRatio * maxScrollDistance;
-            
+
             scrollableContent.scrollTop = scrollDistance;
         });
 
@@ -266,11 +309,12 @@ class CustomScrollbar {
                     const scrollHeight = scrollableContent.scrollHeight;
                     const clientHeight = scrollableContent.clientHeight;
                     const currentScrollTop = scrollableContent.scrollTop;
-                    
+
                     const canScrollVertically = scrollHeight > clientHeight;
-                    
+
                     const atTop = currentScrollTop <= 0;
-                    const atBottom = currentScrollTop >= scrollHeight - clientHeight;
+                    const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+                    const atBottom = currentScrollTop >= maxScrollDistance;
                     const scrollingUp = deltaY < 0; // dragging up = scroll down
                     const canScrollInDirection = (scrollingUp && !atTop) || (!scrollingUp && !atBottom);
 
@@ -289,6 +333,8 @@ class CustomScrollbar {
 
         // Resize observer to update scrollbar when content or container changes
         const resizeObserver = new ResizeObserver(() => {
+            // Clear cache when size changes
+            this.maxScrollCache.delete(scrollableContent);
             // Update scrollbar on any resize event - content or container size changes
             this.updateScrollbar(element);
         });
@@ -298,6 +344,8 @@ class CustomScrollbar {
 
         // Mutation observer to watch for content changes that might affect scrollability
         const mutationObserver = new MutationObserver(() => {
+            // Clear cache when content changes
+            this.maxScrollCache.delete(scrollableContent);
             // Update scrollbar when content is added, removed, or modified
             this.updateScrollbar(element);
         });
@@ -309,6 +357,21 @@ class CustomScrollbar {
             characterData: true,
             attributes: true
         });
+    }
+
+    // Helper function to get max scroll distance
+    // This ensures we can scroll into all padding by using the actual scrollable area
+    getMaxScrollDistance(scrollableContent) {
+        // Get the actual scroll dimensions
+        const scrollHeight = scrollableContent.scrollHeight;
+        const clientHeight = scrollableContent.clientHeight;
+        let maxScroll = Math.max(0, scrollHeight - clientHeight);
+        const savedScrollTop = scrollableContent.scrollTop;
+        scrollableContent.scrollTop = 999999;
+        const actualMax = scrollableContent.scrollTop;
+        scrollableContent.scrollTop = savedScrollTop;
+
+        return Math.max(maxScroll, actualMax);
     }
 
     updateScrollbar(element) {
@@ -329,9 +392,15 @@ class CustomScrollbar {
             // Add scroll-ready class when content is scrollable
             element.classList.add('scroll-ready');
 
+            // Get max scroll distance (scrollHeight already includes padding)
+            const maxScrollDistance = this.getMaxScrollDistance(scrollableContent);
+
             // Check scroll position for top/bottom classes
+            // For atBottom, we need to check against the actual maximum the browser allows
+            // Use a small tolerance (1px) to account for rounding
             const atTop = scrollTop <= 0;
-            const atBottom = scrollTop >= scrollHeight - clientHeight;
+            const actualMaxScroll = scrollableContent.scrollHeight - scrollableContent.clientHeight;
+            const atBottom = scrollTop >= (actualMaxScroll - 1);
 
             if (atTop) {
                 element.classList.add('scroll-top');
@@ -346,14 +415,13 @@ class CustomScrollbar {
             }
 
             // Calculate thumb position for static height
-            const maxScrollDistance = scrollHeight - clientHeight;
             const thumbHeight = 80; // Height of the scrollbar thumb in pixels
             const scrollbarTrackHeight = scrollbar.offsetHeight;
             const maxThumbPosition = scrollbarTrackHeight - thumbHeight;
-            
+
             // Clamp scrollRatio between 0 and 1
-            const scrollRatio = maxScrollDistance > 0 
-                ? Math.max(0, Math.min(1, scrollTop / maxScrollDistance)) 
+            const scrollRatio = maxScrollDistance > 0
+                ? Math.max(0, Math.min(1, scrollTop / maxScrollDistance))
                 : 0;
 
             // Update thumb position
@@ -414,6 +482,10 @@ class CustomScrollbar {
             try {
                 // Restore original structure
                 const { scrollableContent } = data;
+
+                // Clear cache for this scrollable content
+                this.maxScrollCache.delete(scrollableContent);
+
                 while (scrollableContent.firstChild) {
                     element.appendChild(scrollableContent.firstChild);
                 }

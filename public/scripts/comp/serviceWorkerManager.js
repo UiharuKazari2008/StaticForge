@@ -11,6 +11,15 @@ class ServiceWorkerManager {
         this.timeoutToastId = null;
         this.swReadyTimeout = null;
         this.initialCheckDone = false;
+        this.downloadState = null;
+        this.stallDetectionTimeout = null;
+        this.stateCheckInterval = null;
+        this.lastProgressUpdate = null;
+        this.lastHeartbeatTime = null;
+        this.heartbeatCheckInterval = null;
+        this.lastPingResponseTime = null;
+        this.healthCheckInterval = null;
+        this.healthCheckStartTime = null;
 
         this.init();
     }
@@ -42,6 +51,9 @@ class ServiceWorkerManager {
                 navigator.serviceWorker.addEventListener('message', (event) => {
                     this.handleServiceWorkerMessage(event);
                 });
+
+                // Start health check for service worker
+                this.startHealthCheck();
 
                 // Check current state immediately after registration
                 console.log('Service Worker registration state:', {
@@ -266,6 +278,33 @@ class ServiceWorkerManager {
     
     async checkStaticFileUpdates(noToast = false) {
         try {
+            // First check if there's already a download in progress
+            const swState = await this.checkDownloadState();
+            if (swState && swState.isDownloading) {
+                console.log('Download already in progress, syncing with existing download');
+                // Sync with existing download
+                this.isUpdating = true;
+                const progress = swState.total > 0 
+                    ? Math.round((swState.completed / swState.total) * 100) 
+                    : 0;
+                this.updateProgress = progress;
+                
+                if (!noToast && !this.updateToastId) {
+                    this.showUpdateToast([{url: '...', hash: '...'}]);
+                    this.updateProgressToast(progress);
+                }
+                
+                // Check if stalled
+                if (swState.lastProgressTime) {
+                    const timeSinceProgress = Date.now() - swState.lastProgressTime;
+                    if (timeSinceProgress > 30000) {
+                        console.warn('Existing download appears stalled');
+                        this.handleStalledDownload();
+                    }
+                }
+                return; // Don't start a new check
+            }
+            
             // Make the actual request
             const response = await fetch('/', {
                 method: 'OPTIONS',
@@ -284,6 +323,39 @@ class ServiceWorkerManager {
         }
     }
     
+    async checkDownloadState() {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            return null;
+        }
+        
+        return new Promise((resolve) => {
+            const requestId = Date.now().toString();
+            
+            const handler = (event) => {
+                if (event.data.type === 'DOWNLOAD_STATE' && 
+                    event.data.requestId === requestId) {
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    this.downloadState = event.data;
+                    resolve(event.data);
+                }
+            };
+            
+            navigator.serviceWorker.addEventListener('message', handler);
+            
+            // Send request to service worker
+            this.swRegistration.active.postMessage({
+                type: 'GET_DOWNLOAD_STATE',
+                requestId: requestId
+            });
+            
+            // Timeout after 2 seconds
+            setTimeout(() => {
+                navigator.serviceWorker.removeEventListener('message', handler);
+                resolve(null);
+            }, 2000);
+        });
+    }
+
     async updateStaticCache(files, noToast = false) {
         if (!this.swRegistration || !this.swRegistration.active) {
             console.warn('Service Worker not ready');
@@ -292,6 +364,61 @@ class ServiceWorkerManager {
         }
 
         try {
+            // Check if service worker is already downloading
+            const swState = await this.checkDownloadState();
+            if (swState && swState.isDownloading) {
+                console.warn('Service worker is already downloading, syncing with current status');
+                // Immediately sync with current status
+                this.isUpdating = true;
+                const progress = swState.total > 0 
+                    ? Math.round((swState.completed / swState.total) * 100) 
+                    : 0;
+                this.updateProgress = progress;
+                
+                if (!noToast) {
+                    // Show or update the progress toast
+                    if (!this.updateToastId) {
+                        this.showCheckingForUpdatesToast();
+                        setTimeout(() => {
+                            if (typeof updateGlassToastComplete === 'function' && this.checkingToastId) {
+                                updateGlassToastComplete(this.checkingToastId, {
+                                    type: 'info',
+                                    title: 'Download in Progress',
+                                    message: `Downloading ${swState.completed}/${swState.total} files...`,
+                                    showProgress: true,
+                                    customIcon: '<i class="fas fa-download"></i>'
+                                });
+                                if (typeof updateGlassToastProgress === 'function') {
+                                    updateGlassToastProgress(this.checkingToastId, progress);
+                                }
+                                this.updateToastId = this.checkingToastId;
+                                this.checkingToastId = null;
+                            }
+                        }, 100);
+                    } else {
+                        // Update existing toast
+                        this.updateProgressToast(progress);
+                    }
+                }
+                
+                // Check if download appears stalled
+                if (swState.lastProgressTime) {
+                    const timeSinceProgress = Date.now() - swState.lastProgressTime;
+                    if (timeSinceProgress > 30000) {
+                        console.warn('Download appears stalled when checking state');
+                        this.handleStalledDownload();
+                    }
+                }
+                
+                return;
+            }
+
+            // Check if we're already updating
+            if (this.isUpdating) {
+                console.warn('Update already in progress, skipping new request');
+                return;
+            }
+
             console.log('Checking for static file updates...');
 
             // Show initial toast immediately to indicate checking is happening
@@ -304,6 +431,7 @@ class ServiceWorkerManager {
 
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
+                
                 // Update existing checking toast to show download progress
                 this.showUpdateToastFromChecking(filesToUpdate);
 
@@ -746,19 +874,145 @@ class ServiceWorkerManager {
         const { type, files, url, completed, total, currentFile } = event.data;
         
         switch (type) {
+            case 'STATIC_CACHE_STARTED':
+                this.isUpdating = true;
+                this.updateProgress = 0;
+                this.lastProgressUpdate = Date.now();
+                console.log('Service worker started downloading updates');
+                // Clear any stall detection timeout
+                if (this.stallDetectionTimeout) {
+                    clearTimeout(this.stallDetectionTimeout);
+                    this.stallDetectionTimeout = null;
+                }
+                // Start periodic state checking
+                this.startPeriodicStateCheck();
+                // Start heartbeat tracking
+                this.startHeartbeatTracking();
+                break;
+                
             case 'STATIC_CACHE_PROGRESS':
                 const progress = Math.round((completed / total) * 100);
+                this.updateProgress = progress;
+                this.lastProgressUpdate = Date.now();
                 this.updateProgressToast(progress);
+                
+                console.log(`Progress update: ${completed}/${total} (${progress}%)`);
+                
+                // Reset stall detection - we got progress
+                if (this.stallDetectionTimeout) {
+                    clearTimeout(this.stallDetectionTimeout);
+                }
+                // Set new stall detection timeout (35 seconds - slightly longer than service worker's 30s)
+                this.stallDetectionTimeout = setTimeout(() => {
+                    console.warn('Download appears stalled - no progress for 35 seconds');
+                    this.handleStalledDownload();
+                }, 35000);
+                
+                // If this is a heartbeat, log it for debugging and track it
+                if (event.data.heartbeat) {
+                    console.log(`Download heartbeat: ${completed}/${total} (${progress}%)`);
+                    this.lastHeartbeatTime = Date.now();
+                }
                 break;
                 
             case 'STATIC_CACHE_COMPLETE':
+                // Always clear isUpdating state, even if total is 0 (handles race condition with fast downloads)
                 this.isUpdating = false;
+                this.updateProgress = 100;
                 this.updateProgressToast(100);
                 
-                // Show completion message with restart button
-                setTimeout(() => {
-                    this.showUpdateCompleteToast();
-                }, 1000);
+                // Stop periodic state checking
+                this.stopPeriodicStateCheck();
+                
+                // Stop heartbeat tracking
+                this.stopHeartbeatTracking();
+                
+                // Clear stall detection
+                if (this.stallDetectionTimeout) {
+                    clearTimeout(this.stallDetectionTimeout);
+                    this.stallDetectionTimeout = null;
+                }
+                
+                // Clear heartbeat time
+                this.lastHeartbeatTime = null;
+                
+                console.log('Download completed:', event.data);
+                
+                // Only show completion toast if files were actually downloaded
+                // Use files.length as fallback if total is 0 (handles race condition)
+                const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
+                if (filesCount > 0) {
+                    // Show completion message with restart button
+                    setTimeout(() => {
+                        this.showUpdateCompleteToast();
+                    }, 1000);
+                } else {
+                    // No files downloaded - just clear the update state silently
+                    console.log('Download completed but no files were downloaded');
+                    this.hideUpdateToast();
+                }
+                break;
+                
+            case 'STATIC_CACHE_STALLED':
+                console.warn('Service worker reports download stalled:', event.data);
+                this.handleStalledDownload();
+                break;
+                
+            case 'STATIC_CACHE_ALREADY_IN_PROGRESS':
+                console.log('Service worker already downloading:', event.data.currentDownload);
+                // Update our state to match service worker
+                this.isUpdating = true;
+                if (event.data.currentDownload) {
+                    const progress = event.data.currentDownload.total > 0
+                        ? Math.round((event.data.currentDownload.completed / event.data.currentDownload.total) * 100)
+                        : 0;
+                    this.updateProgress = progress;
+                    this.updateProgressToast(progress);
+                    
+                    // Show update toast if not already shown
+                    if (!this.updateToastId) {
+                        this.showUpdateToast([{url: '...', hash: '...'}]);
+                    }
+                    
+                    // Start periodic state checking and heartbeat tracking
+                    this.startPeriodicStateCheck();
+                    this.startHeartbeatTracking();
+                    
+                    // If we have a last progress time, use it as the last heartbeat time
+                    if (event.data.currentDownload.lastProgressTime) {
+                        this.lastHeartbeatTime = event.data.currentDownload.lastProgressTime;
+                    }
+                    
+                    // Check if download appears stalled
+                    if (event.data.currentDownload.lastProgressTime) {
+                        const timeSinceProgress = Date.now() - event.data.currentDownload.lastProgressTime;
+                        if (timeSinceProgress > 30000) {
+                            console.warn('Download appears stalled based on last progress time');
+                            this.handleStalledDownload();
+                        }
+                    }
+                }
+                break;
+                
+            case 'STATIC_CACHE_CANCELLED':
+                console.log('Download cancelled');
+                this.isUpdating = false;
+                this.updateProgress = 0;
+                this.stopPeriodicStateCheck();
+                this.stopHeartbeatTracking();
+                this.lastHeartbeatTime = null;
+                if (this.stallDetectionTimeout) {
+                    clearTimeout(this.stallDetectionTimeout);
+                    this.stallDetectionTimeout = null;
+                }
+                break;
+                
+            case 'DOWNLOAD_STATE':
+                // Handle download state response
+                const stateHandler = this.messageHandlers.get(event.data.requestId);
+                if (stateHandler) {
+                    stateHandler(event);
+                }
                 break;
                 
             case 'INTERNAL_CACHE_COMPLETE':
@@ -779,10 +1033,326 @@ class ServiceWorkerManager {
                 break;
 
             case 'ping':
-                // Handle ping messages from service worker
-                console.log('Received ping from service worker:', event.data);
+                // Handle ping response from service worker (response to our health check)
+                this.lastPingResponseTime = Date.now();
                 break;
         }
+    }
+    
+    // Start periodic state checking to keep UI in sync
+    startPeriodicStateCheck() {
+        if (this.stateCheckInterval) {
+            clearInterval(this.stateCheckInterval);
+        }
+        
+        this.stateCheckInterval = setInterval(async () => {
+            if (!this.isUpdating) {
+                this.stopPeriodicStateCheck();
+                return;
+            }
+            
+            try {
+                const swState = await this.checkDownloadState();
+                if (swState && swState.isDownloading) {
+                    // Update UI with current state
+                    const progress = swState.total > 0 
+                        ? Math.round((swState.completed / swState.total) * 100) 
+                        : 0;
+                    
+                    // Only update if different from current progress
+                    if (progress !== this.updateProgress) {
+                        console.log(`Periodic state check: updating progress from ${this.updateProgress}% to ${progress}%`);
+                        this.updateProgress = progress;
+                        this.updateProgressToast(progress);
+                        this.lastProgressUpdate = Date.now();
+                    }
+                    
+                    // Check for stall
+                    if (swState.lastProgressTime) {
+                        const timeSinceProgress = Date.now() - swState.lastProgressTime;
+                        if (timeSinceProgress > 30000 && !this.stallDetectionTimeout) {
+                            console.warn('Periodic check detected stalled download');
+                            this.handleStalledDownload();
+                        }
+                    }
+                } else {
+                    // Service worker says download is not in progress
+                    console.warn('Periodic check: Service worker reports no download, but we think it is');
+                    if (this.isUpdating) {
+                        // Download might have completed without us receiving the message
+                        this.isUpdating = false;
+                        this.stopPeriodicStateCheck();
+                        // Try to check if it actually completed
+                        if (this.updateProgress >= 100) {
+                            this.showUpdateCompleteToast();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error in periodic state check:', error);
+            }
+        }, 5000); // Check every 5 seconds
+    }
+    
+    stopPeriodicStateCheck() {
+        if (this.stateCheckInterval) {
+            clearInterval(this.stateCheckInterval);
+            this.stateCheckInterval = null;
+        }
+    }
+
+    startHeartbeatTracking() {
+        // Stop any existing heartbeat check
+        this.stopHeartbeatTracking();
+        
+        // Initialize last heartbeat time
+        this.lastHeartbeatTime = Date.now();
+        
+        // Check for missed heartbeats every 5 seconds
+        this.heartbeatCheckInterval = setInterval(() => {
+            this.checkHeartbeatStatus();
+        }, 5000);
+    }
+
+    stopHeartbeatTracking() {
+        if (this.heartbeatCheckInterval) {
+            clearInterval(this.heartbeatCheckInterval);
+            this.heartbeatCheckInterval = null;
+        }
+    }
+
+    checkHeartbeatStatus() {
+        // Only check if we're in an update state and expecting heartbeats
+        if (!this.isUpdating) {
+            return;
+        }
+
+        // If we have a last heartbeat time, check if it's been too long
+        if (this.lastHeartbeatTime) {
+            const timeSinceLastHeartbeat = Date.now() - this.lastHeartbeatTime;
+            // Heartbeats should come every 10 seconds, so if we haven't received one in 20 seconds, it's likely missed
+            if (timeSinceLastHeartbeat > 20000) {
+                // Heartbeat is missing - this will be picked up by getServiceWorkerHeartbeatStatus
+                console.warn(`Service worker heartbeat missing for ${Math.round(timeSinceLastHeartbeat / 1000)}s`);
+            }
+        }
+    }
+
+    startHealthCheck() {
+        // Stop any existing health check
+        this.stopHealthCheck();
+        
+        // Record when health check started (for grace period)
+        this.healthCheckStartTime = Date.now();
+        
+        // Don't initialize lastPingResponseTime - wait for first actual response
+        // This way we can detect if service worker never responds
+        
+        // Send health check ping every 10 seconds
+        this.healthCheckInterval = setInterval(() => {
+            this.sendHealthCheckPing();
+        }, 10000);
+        
+        // Send initial ping immediately
+        this.sendHealthCheckPing();
+    }
+
+    stopHealthCheck() {
+        if (this.healthCheckInterval) {
+            clearInterval(this.healthCheckInterval);
+            this.healthCheckInterval = null;
+        }
+        this.healthCheckStartTime = null;
+    }
+
+    sendHealthCheckPing() {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            this.lastPingResponseTime = null;
+            return;
+        }
+
+        try {
+            // Send ping to service worker
+            this.swRegistration.active.postMessage({
+                type: 'ping',
+                timestamp: Date.now()
+            });
+            
+            // Check if service worker is responding (if we haven't received a response in 15 seconds, it's likely stopped)
+            if (this.lastPingResponseTime) {
+                const timeSinceLastResponse = Date.now() - this.lastPingResponseTime;
+                if (timeSinceLastResponse > 15000) {
+                    console.warn(`Service worker not responding - last response ${Math.round(timeSinceLastResponse / 1000)}s ago`);
+                }
+            }
+        } catch (error) {
+            console.error('Error sending health check ping:', error);
+            this.lastPingResponseTime = null;
+        }
+    }
+
+    // Public method to get service worker heartbeat status
+    getServiceWorkerHeartbeatStatus() {
+        if (!this.swRegistration) {
+            return {
+                available: false,
+                status: 'Not Registered',
+                hasActive: false,
+                isUpdating: false,
+                heartbeatMissed: false,
+                timeSinceLastHeartbeat: null,
+                isResponding: false,
+                timeSinceLastPingResponse: null
+            };
+        }
+
+        const hasActive = !!this.swRegistration.active;
+        const isReady = hasActive || !!navigator.serviceWorker.controller;
+
+        // Check if service worker is responding to pings
+        let isResponding = true;
+        let timeSinceLastPingResponse = null;
+        
+        if (this.lastPingResponseTime) {
+            timeSinceLastPingResponse = Date.now() - this.lastPingResponseTime;
+            // If we haven't received a ping response in 15 seconds, service worker is likely stopped
+            isResponding = timeSinceLastPingResponse < 15000;
+        } else if (hasActive && this.healthCheckInterval && this.healthCheckStartTime) {
+            // If we have an active service worker but no ping response time yet, check grace period
+            const timeSinceHealthCheckStart = Date.now() - this.healthCheckStartTime;
+            // Give 20 seconds grace period after starting health check before marking as not responding
+            // This accounts for initial delay and potential slow responses
+            if (timeSinceHealthCheckStart > 20000) {
+                // Grace period expired, service worker is not responding
+                isResponding = false;
+                timeSinceLastPingResponse = timeSinceHealthCheckStart;
+            }
+        }
+
+        // Check heartbeat status only if we're updating
+        let heartbeatMissed = false;
+        let timeSinceLastHeartbeat = null;
+
+        if (this.isUpdating && this.lastHeartbeatTime) {
+            timeSinceLastHeartbeat = Date.now() - this.lastHeartbeatTime;
+            // Heartbeats should come every 10 seconds, so if we haven't received one in 20 seconds, it's likely missed
+            heartbeatMissed = timeSinceLastHeartbeat > 20000;
+        } else if (this.isUpdating && !this.lastHeartbeatTime) {
+            // If we're updating but haven't received a heartbeat yet, wait a bit before flagging as missed
+            heartbeatMissed = false;
+        }
+
+        // Determine status
+        let status = 'Active';
+        if (!isResponding) {
+            status = 'Stopped';
+        } else if (this.isUpdating) {
+            status = 'Updating';
+            if (heartbeatMissed) {
+                status = 'Heartbeat Missed';
+            }
+        } else if (!isReady) {
+            status = 'Inactive';
+        }
+
+        return {
+            available: true,
+            status: status,
+            hasActive: hasActive,
+            isUpdating: this.isUpdating,
+            heartbeatMissed: heartbeatMissed,
+            timeSinceLastHeartbeat: timeSinceLastHeartbeat,
+            isResponding: isResponding,
+            timeSinceLastPingResponse: timeSinceLastPingResponse
+        };
+    }
+
+    async handleStalledDownload() {
+        console.warn('Handling stalled download');
+        
+        // Check current state from service worker
+        const swState = await this.checkDownloadState();
+        if (swState && swState.isDownloading) {
+            const timeSinceProgress = swState.lastProgressTime 
+                ? Date.now() - swState.lastProgressTime 
+                : 0;
+            
+            // Update UI with current state
+            const progress = swState.total > 0 
+                ? Math.round((swState.completed / swState.total) * 100) 
+                : 0;
+            this.updateProgress = progress;
+            this.updateProgressToast(progress);
+            
+            if (typeof showGlassToast === 'function') {
+                const message = timeSinceProgress > 0
+                    ? `Download stalled (no progress for ${Math.round(timeSinceProgress/1000)}s). Current: ${swState.completed}/${swState.total}. Click to retry.`
+                    : `Download appears stalled. Current: ${swState.completed}/${swState.total}. Click to retry.`;
+                    
+                const toastId = showGlassToast(
+                    'warning',
+                    'Download Stalled',
+                    message,
+                    false,
+                    20000,
+                    '<i class="fas fa-exclamation-triangle"></i>'
+                );
+                
+                // Add retry button after a moment
+                setTimeout(() => {
+                    if (typeof updateGlassToastButtons === 'function') {
+                        const retryButton = {
+                            text: 'Retry',
+                            type: 'primary',
+                            onClick: async () => {
+                                console.log('User requested retry after stall');
+                                await this.cancelDownload();
+                                // Wait a moment then retry
+                                setTimeout(() => {
+                                    this.checkStaticFileUpdates();
+                                }, 1000);
+                            },
+                            closeOnClick: true
+                        };
+                        updateGlassToastButtons(toastId, [retryButton]);
+                    }
+                }, 1000);
+            }
+            
+            // Optionally offer to cancel and retry
+            console.warn(`Stalled download state: ${swState.completed}/${swState.total}, last progress: ${swState.lastProgressTime ? new Date(swState.lastProgressTime).toISOString() : 'unknown'}`);
+        } else {
+            // Service worker says it's not downloading, but we think it is
+            // This might mean the download completed or crashed
+            console.warn('Service worker reports no download in progress, but we thought it was');
+            this.isUpdating = false;
+            this.stopPeriodicStateCheck();
+        }
+    }
+    
+    async cancelDownload() {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            return;
+        }
+        
+        this.swRegistration.active.postMessage({
+            type: 'CANCEL_DOWNLOAD'
+        });
+        
+        this.isUpdating = false;
+        this.updateProgress = 0;
+        this.lastProgressUpdate = null;
+        
+        this.stopPeriodicStateCheck();
+        this.stopHeartbeatTracking();
+        
+        if (this.stallDetectionTimeout) {
+            clearTimeout(this.stallDetectionTimeout);
+            this.stallDetectionTimeout = null;
+        }
+        
+        // Clear heartbeat time
+        this.lastHeartbeatTime = null;
     }
     
     async checkForWaiting() {
@@ -875,7 +1445,7 @@ class ServiceWorkerManager {
                     type: 'info',
                     title: 'Updating Service Worker',
                     message: 'Please wait while we update the service worker...',
-                    customIcon: '<i class="fas fa-spinner fa-spin"></i>'
+                    customIcon: '<i class="fas fa-spinner-third fa-spin"></i>'
                 });
             }
 
@@ -1062,7 +1632,6 @@ class ServiceWorkerManager {
             // Start downloading updates with integrated progress - AWAIT the result
             const downloadResult = await this.downloadUpdatesForInit(filesToUpdate);
             this.initialCheckDone = true;
-
             console.log('Update download process completed:', downloadResult);
 
             // If user chose to skip, the download result will indicate this
@@ -1078,10 +1647,46 @@ class ServiceWorkerManager {
 
     // Download updates with integrated progress for initialization
     async downloadUpdatesForInit(files) {
-        return new Promise((resolve) => {
+        return new Promise(async (resolve) => {
             if (!this.swRegistration || !this.swRegistration.active) {
                 console.warn('Service Worker not ready for updates');
                 resolve({ success: false, reason: 'Service Worker not ready' });
+                return;
+            }
+            
+            // Check if service worker is already downloading
+            const swState = await this.checkDownloadState();
+            if (swState && swState.isDownloading) {
+                console.warn('Service worker is already downloading, waiting for it to complete');
+                // Wait for the existing download to complete
+                const waitForCompletion = () => {
+                    return new Promise((waitResolve) => {
+                        const checkInterval = setInterval(async () => {
+                            const currentState = await this.checkDownloadState();
+                            if (!currentState || !currentState.isDownloading) {
+                                clearInterval(checkInterval);
+                                waitResolve();
+                            }
+                        }, 1000);
+                        
+                        // Timeout after 60 seconds
+                        setTimeout(() => {
+                            clearInterval(checkInterval);
+                            waitResolve();
+                        }, 60000);
+                    });
+                };
+                
+                await waitForCompletion();
+                // After waiting, check if we still need to download these files
+                resolve({ success: false, reason: 'Download was already in progress' });
+                return;
+            }
+            
+            // Check if we're already updating
+            if (this.isUpdating) {
+                console.warn('Update already in progress, skipping');
+                resolve({ success: false, reason: 'Update already in progress' });
                 return;
             }
 
@@ -1161,7 +1766,10 @@ class ServiceWorkerManager {
             const progressHandler = (event) => {
                 if (skipRequested || downloadCompleted) return; // Ignore if already handled
 
-                if (event.data.type === 'STATIC_CACHE_PROGRESS') {
+                if (event.data.type === 'STATIC_CACHE_STARTED') {
+                    // Download started
+                    console.log('Download started in service worker');
+                } else if (event.data.type === 'STATIC_CACHE_PROGRESS') {
                     const progress = Math.round((event.data.completed / event.data.total) * 100);
                     // Update progress notification
                     if (window.wsClient) {
@@ -1174,8 +1782,13 @@ class ServiceWorkerManager {
                         }
                     }
                 } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
-                    updatesDownloaded = event.data.total;
+                    // Use files.length as fallback if total is 0 (handles race condition with fast downloads)
+                    updatesDownloaded = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
                     navigator.serviceWorker.removeEventListener('message', progressHandler);
+                    
+                    // Clear isUpdating state immediately to prevent stuck UI
+                    this.isUpdating = false;
+                    this.updateProgress = 100;
 
                     if (window.wsClient) {
                         if (window.isDesktop) {
@@ -1191,7 +1804,13 @@ class ServiceWorkerManager {
                         console.log(`Update download completed with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
 
                         // Show Restart and Skip buttons if updates were downloaded successfully
-                        if (!hasErrors && updatesDownloaded > 0) {
+                        // Check files.length as fallback if total was 0 due to race condition
+                        const filesWereDownloaded = updatesDownloaded > 0 || (event.data.files && event.data.files.length > 0);
+                        if (!hasErrors && filesWereDownloaded) {
+                            // Use actual files count if we have it
+                            const actualFilesCount = event.data.files ? event.data.files.length : updatesDownloaded;
+                            updatesDownloaded = actualFilesCount;
+                            
                             if (window.isDesktop && window.wsClient) {
                                 // Desktop mode: show restart prompt in update modal
                                 // Update the Later callback to resolve with user choice
@@ -1214,6 +1833,7 @@ class ServiceWorkerManager {
                                 });
                             }
                         } else {
+                            // No files downloaded or had errors - resolve but don't show restart buttons
                             resolve({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
                         }
                     }

@@ -446,60 +446,23 @@ async function populateExpansionResolutionDropdown() {
         dropdown.appendChild(noOptions);
         return;
     }
-    
-    // Filter RESOLUTION_GROUPS based on image characteristics
+
+    const baseW = parseInt(dimsToUse.width, 10) || 0;
+    const baseH = parseInt(dimsToUse.height, 10) || 0;
+
+    // Filter RESOLUTION_GROUPS: hide small presets and any preset with the same aspect ratio as the image (exact rational match)
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
         const filteredOptions = group.options.filter(opt => {
-            // Skip custom resolution option
             if (opt.value === 'custom') return false;
 
-            // Always exclude small resolutions
             if (opt.value.startsWith('small_')) {
                 return false;
             }
 
-            // Get option characteristics
-            const optIsPortrait = opt.value.includes('_portrait');
-            const optIsLandscape = opt.value.includes('_landscape');
-            const optIsSquare = opt.value.includes('_square');
-            const optIsWallpaperLandscape = opt.value === 'wallpaper_landscape';
-            const optIsWallpaperPortrait = opt.value === 'wallpaper_portrait';
-
-            // Apply filtering rules based on current image characteristics
-            if (dimsToUse && dimsToUse.width && dimsToUse.height) {
-                const imageAR = dimsToUse.width / dimsToUse.height;
-                const isPortrait = dimsToUse.height > dimsToUse.width;
-                const isLandscape = dimsToUse.width > dimsToUse.height;
-                const isSquare = dimsToUse.width === dimsToUse.height;
-
-                // If image is portrait, exclude all portrait resolutions
-                if (isPortrait && optIsPortrait) {
-                    return false;
-                }
-
-                // If image is landscape, exclude all landscape resolutions
-                if (isLandscape && optIsLandscape) {
-                    return false;
-                }
-
-                // If image is square, exclude all square resolutions
-                if (isSquare && optIsSquare) {
-                    return false;
-                }
-
-                // Special wallpaper rules based on aspect ratio
-                // If image is 16:9 aspect ratio, exclude wallpaper landscape
-                if (Math.abs(imageAR - 16/9) < 0.1 && optIsWallpaperLandscape) {
-                    return false;
-                }
-
-                // If image is 9:16 aspect ratio, exclude wallpaper portrait
-                if (Math.abs(imageAR - 9/16) < 0.1 && optIsWallpaperPortrait) {
-                    return false;
-                }
+            if (samePixelAspectRatio(baseW, baseH, opt.width, opt.height)) {
+                return false;
             }
 
-            // Include all other resolutions
             return true;
         });
 
@@ -772,23 +735,16 @@ async function submitImageExpansionReroll() {
                 showProgress: false
             });
             progressToastId = null;
-            
-            const byteCharacters = atob(result.image);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'image/png' });
-            
+
             if (wsClient && wsClient.waitForStreamingStepsComplete) {
                 await wsClient.waitForStreamingStepsComplete('manual');
             }
-            
+
             if (manualForm) {
                 manualForm.classList.remove('streaming');
             }
-            
+
+            const imageSrc = `/images/${result.filename}`;
             const mockResponse = {
                 headers: {
                     get: (headerName) => {
@@ -798,8 +754,8 @@ async function submitImageExpansionReroll() {
                     }
                 }
             };
-            
-            await handleImageResult(blob, 'Image rerolled successfully!', undefined, undefined, mockResponse);
+
+            await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
             manualForm.classList.remove('generating');
             stopPreviewAnimation();
         }
@@ -1146,29 +1102,20 @@ async function submitImageExpansion() {
 
             // Clear the toast ID for future expansions
             progressToastId = null;
-            
-            // Handle the result similar to upscaling
-            const byteCharacters = atob(result.image);
-            const byteNumbers = new Array(byteCharacters.length);
-            for (let i = 0; i < byteCharacters.length; i++) {
-                byteNumbers[i] = byteCharacters.charCodeAt(i);
-            }
-            const byteArray = new Uint8Array(byteNumbers);
-            const blob = new Blob([byteArray], { type: 'image/png' });
-            
+
             // Wait for all queued streaming steps to be displayed before finalizing
             if (wsClient && wsClient.waitForStreamingStepsComplete) {
                 console.log('⏳ Waiting for streaming steps to complete...');
                 await wsClient.waitForStreamingStepsComplete('manual');
                 console.log('✅ All streaming steps displayed');
             }
-            
+
             // Remove streaming class before setting final image
             if (manualForm) {
                 manualForm.classList.remove('streaming');
             }
-            
-            // Create a response-like object with the expanded filename
+
+            const imageSrc = `/images/${result.filename}`;
             const mockResponse = {
                 headers: {
                     get: (headerName) => {
@@ -1182,9 +1129,18 @@ async function submitImageExpansion() {
                     }
                 }
             };
-            
-            // Use the universal handleImageResult function
-            await handleImageResult(blob, 'Image expanded successfully!', undefined, undefined, mockResponse);
+
+            // Update the current manual preview image object to include the expanded version
+            if (window.currentManualPreviewImage) {
+                window.currentManualPreviewImage.expanded = result.filename;
+                // Update dimensions if available in metadata
+                if (result.metadata) {
+                    window.currentManualPreviewImage.width = result.metadata.width || window.currentManualPreviewImage.width;
+                    window.currentManualPreviewImage.height = result.metadata.height || window.currentManualPreviewImage.height;
+                }
+            }
+
+            await handleImageResult(imageSrc, undefined, result.seed, mockResponse, result.metadata);
             
             manualForm.classList.remove('generating');
             stopPreviewAnimation();
@@ -1411,7 +1367,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (rescaleInput && rescaleOverlay) {
         rescaleInput.addEventListener('wheel', function(e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.05 : 0.05;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
             const currentValue = parseFloat(this.value) || 0;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -1428,7 +1384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (noiseInput && noiseOverlay) {
         noiseInput.addEventListener('wheel', function(e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0;
             const newValue = Math.max(0, Math.min(0.99, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -1456,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (guidanceInput) {
         guidanceInput.addEventListener('wheel', function(e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0, Math.min(10, currentValue + delta));
             this.value = newValue.toFixed(1);

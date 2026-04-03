@@ -1011,11 +1011,10 @@ function buildEnvironmentalContext(soilAnalysis, atmosphericMoistureAnalysis, cl
         if (!hasExistingStability && surfacePressureAnalysis.weatherImplications.length > 0) {
             // Create a subtle description of atmospheric stability
             if (surfacePressureAnalysis.atmosphericStability === 'very_stable') {
-                contextParts.push('very stable local atmosphere');
             } else if (surfacePressureAnalysis.atmosphericStability === 'moderately_unstable') {
-                contextParts.push('moderately variable local conditions');
+                contextParts.push('moderately variable weather conditions');
             } else if (surfacePressureAnalysis.atmosphericStability === 'unstable') {
-                contextParts.push('unstable local weather patterns');
+                contextParts.push('highly variable and potentially unstable weather conditions');
             }
         }
     }

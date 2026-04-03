@@ -889,7 +889,7 @@ class WikiDisplayBase {
             if (result) {
                 // Show loading before rendering
                 if (this.displayArea) {
-                    this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner fa-spin"></i> Loading wiki page...</div>';
+                    this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
                 }
                 
                 this.currentSelectedTag = { title: tagName, name: tagName };
@@ -969,7 +969,7 @@ class WikiDisplayBase {
         try {
             // Show loading state
             if (this.displayArea) {
-                this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner fa-spin"></i> Refreshing from online...</div>';
+                this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Refreshing from online...</div>';
             }
             
             // Send refresh request with force flag
@@ -2107,7 +2107,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         // Show loading state
         if (this.resultsList) {
-            this.resultsList.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner fa-spin"></i> Searching...</div>';
+            this.resultsList.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Searching...</div>';
         }
         
         try {
@@ -2301,7 +2301,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         // Show loading
         if (this.displayArea) {
-            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner fa-spin"></i> Loading wiki page...</div>';
+            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading wiki page...</div>';
         }
         
         try {

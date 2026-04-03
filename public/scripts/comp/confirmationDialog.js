@@ -9,7 +9,7 @@ let currentResolve = null;
 let escapeHandler = null;
 
 // Create and show confirmation dialog with multiple options
-function showConfirmationDialog(message, options = [], event = null) {
+function showConfirmationDialog(message, options = [], event = null, config = {}) {
     return new Promise((resolve, reject) => {
         // Handle legacy format: (message, confirmText, cancelText, event)
         if (typeof options === 'string') {
@@ -31,7 +31,7 @@ function showConfirmationDialog(message, options = [], event = null) {
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
-            confirmationDialog.className = 'modal hidden transient';
+            confirmationDialog.className = 'modal hidden transient tool-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">
                     <div class="modal-window-title-main">
@@ -63,14 +63,14 @@ function showConfirmationDialog(message, options = [], event = null) {
             });
         }
 
-        // Update title
+        // Update title and icon from config
         const titleEl = confirmationDialog.querySelector('#confirmationDialogTitle');
         const titleIcon = confirmationDialog.querySelector('.modal-window-title-main i');
         if (titleEl) {
-            titleEl.textContent = 'Confirm';
+            titleEl.textContent = config.title || 'Confirm';
         }
         if (titleIcon) {
-            titleIcon.className = 'fas fa-question-circle';
+            titleIcon.className = config.icon || 'fas fa-question-circle';
         }
 
         // Update dialog content
@@ -83,46 +83,95 @@ function showConfirmationDialog(message, options = [], event = null) {
         } else {
             messageEl.textContent = message;
         }
-        
-        // Clear and recreate controls
-        controlsEl.innerHTML = '';
-        
-        options.forEach((option, index) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `btn ${option.className || 'btn-secondary'}`;
 
-            // Clear any existing content
-            button.innerHTML = '';
+        // Check if there are any options to display
+        const hasOptions = options && options.length > 0;
 
-            // Add icon if provided
-            if (option.icon) {
-                const iconElement = document.createElement('i');
-                iconElement.className = option.icon;
-                button.appendChild(iconElement);
-                button.appendChild(document.createTextNode(' ')); // Add space between icon and text
+        // Check if there's a cancel button (typically the last button or one with value=null/false)
+        const hasCancelButton = hasOptions && options.some(option => option.value === null || option.value === false);
+
+        // Determine if we should show the close button
+        const showCloseButton = config.showCloseButton !== undefined ? config.showCloseButton : !hasCancelButton;
+
+        // Update close button visibility
+        const closeBtnElement = confirmationDialog.querySelector('.close-btn');
+        if (closeBtnElement) {
+            if (showCloseButton) {
+                closeBtnElement.style.display = '';
+            } else {
+                closeBtnElement.style.display = 'none';
             }
+        }
 
-            // Add text content
-            button.appendChild(document.createTextNode(option.text));
-            button.id = `confirmationBtn${index}`;
-            
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
+        // Clear and recreate controls (only if there are options)
+        controlsEl.style.display = hasOptions ? '' : 'none';
+        controlsEl.innerHTML = '';
+        if (hasOptions) {
+
+            options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `btn ${option.className || 'btn-secondary'}`;
+
+                // Clear any existing content
+                button.innerHTML = '';
+
+                // Add icon if provided
+                if (option.icon) {
+                    const iconElement = document.createElement('i');
+                    iconElement.className = option.icon;
+                    button.appendChild(iconElement);
+                    button.appendChild(document.createTextNode(' ')); // Add space between icon and text
+                }
+
+                // Add text content
+                button.appendChild(document.createTextNode(option.text));
+                button.id = `confirmationBtn${index}`;
+
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    hideConfirmationDialog();
+                    if (currentResolve) {
+                        currentResolve(option.value);
+                        currentResolve = null;
+                    }
+                });
+
+                controlsEl.appendChild(button);
+
+                // Focus the last button (usually cancel) by default
+                if (index === options.length - 1) {
+                    button.focus();
+                }
+            });
+        }
+
+        // Set up close button handler dynamically based on current options
+        if (closeBtnElement) {
+            // Remove existing listeners to avoid duplicates
+            const newCloseBtnElement = closeBtnElement.cloneNode(true);
+            closeBtnElement.parentNode.replaceChild(newCloseBtnElement, closeBtnElement);
+
+            newCloseBtnElement.addEventListener('click', () => {
                 hideConfirmationDialog();
                 if (currentResolve) {
-                    currentResolve(option.value);
+                    // Find the cancel button value (last button, or button with null/false value)
+                    let cancelValue = null;
+                    if (options && options.length > 0) {
+                        // Look for a button with null or false value
+                        const cancelButton = options.find(option => option.value === null || option.value === false);
+                        if (cancelButton) {
+                            cancelValue = cancelButton.value;
+                        } else {
+                            // If no explicit cancel button, use the last button's value
+                            cancelValue = options[options.length - 1].value;
+                        }
+                    }
+                    currentResolve(cancelValue);
                     currentResolve = null;
                 }
             });
-            
-            controlsEl.appendChild(button);
-            
-            // Focus the last button (usually cancel) by default
-            if (index === options.length - 1) {
-                button.focus();
-            }
-        });
+        }
 
         // Set up escape key handler
         if (escapeHandler) {
@@ -139,13 +188,35 @@ function showConfirmationDialog(message, options = [], event = null) {
         };
         document.addEventListener('keydown', escapeHandler);
 
+        // Apply custom width from config
+        if (config.width) {
+            confirmationDialog.style.width = `${config.width}px`;
+        } else {
+            confirmationDialog.style.width = '';
+        }
+        if (config.height) {
+            confirmationDialog.style.height = `${config.height}px`;
+        } else {
+            confirmationDialog.style.height = '';
+        }
+
         // Show dialog - modal system handles positioning
         openModal(confirmationDialog);
+
+        // Make it the active tool window (always on top)
+        if (typeof setActiveWindow === 'function') {
+            setActiveWindow(confirmationDialog);
+        } else {
+            confirmationDialog.classList.add('active-window');
+        }
+
         confirmationDialogActive = true;
 
-        // Position dialog near event if provided
+        // Position dialog near event if provided, or use custom positioning
         if (event) {
             positionConfirmationDialog(event);
+        } else if (config.position === 'bottom-right') {
+            positionConfirmationDialogBottomRight(config);
         }
     });
 }
@@ -159,9 +230,8 @@ function positionConfirmationDialog(event) {
     const isMobile = window.innerWidth < 768;
     if (isMobile) {
         // Reset to default centering for mobile
-        confirmationDialog.style.left = '';
-        confirmationDialog.style.top = '';
-        confirmationDialog.style.transform = '';
+        confirmationDialog.style.removeProperty('--modal-offset-x');
+        confirmationDialog.style.removeProperty('--modal-offset-y');
         return;
     }
 
@@ -184,44 +254,118 @@ function positionConfirmationDialog(event) {
         const dialogWidth = dialogRect.width || 400;
         const dialogHeight = dialogRect.height || 150;
 
-        // Calculate position to center on cursor/button
-        let left = x - dialogWidth / 2;
-        let top = y - dialogHeight / 2;
+        // Calculate desired center position (centered on cursor/button)
+        const desiredCenterX = x;
+        const desiredCenterY = y;
 
-        // Get safe area inset values
-        const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
+        // Get CSS variables that affect positioning
+        // --true-inset-top is a calc() expression, so we need to get the computed pixel value
+        const tempEl = document.createElement('div');
+        tempEl.style.position = 'absolute';
+        tempEl.style.top = 'var(--true-inset-top, 0px)';
+        tempEl.style.visibility = 'hidden';
+        tempEl.style.pointerEvents = 'none';
+        document.body.appendChild(tempEl);
+        const trueInsetTop = tempEl.offsetTop || 0;
+        document.body.removeChild(tempEl);
+
+        const containerWidth = window.innerWidth;
+        const containerHeight = window.innerHeight;
+
+        // Calculate required offsets using standard modal positioning formula
+        // CSS formula: centerX = window.innerWidth/2 + offsetX
+        //              centerY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
+        let offsetX = desiredCenterX - containerWidth / 2;
+        let offsetY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+
+        // Get safe area inset values for bounds checking
         const safeAreaLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-left')) || 0;
         const safeAreaRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
         const safeAreaBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
 
-        // Ensure dialog never goes outside viewport bounds, accounting for safe areas
+        // Calculate actual center position using the CSS formula
+        const actualCenterX = containerWidth / 2 + offsetX;
+        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - (window.isDesktop ? 17.5 : 0);
+
+        // Calculate window edges from center
+        const leftEdge = actualCenterX - dialogWidth / 2;
+        const rightEdge = actualCenterX + dialogWidth / 2;
+        const topEdge = actualCenterY - dialogHeight / 2;
+        const bottomEdge = actualCenterY + dialogHeight / 2;
+
+        // Ensure dialog stays within viewport bounds, accounting for safe areas
         const margin = 20;
-        const viewportWidth = window.innerWidth - safeAreaLeft - safeAreaRight;
-        const viewportHeight = window.innerHeight - trueInsetTop - safeAreaBottom;
+        let constrainedX = offsetX;
+        let constrainedY = offsetY;
 
         // Check horizontal bounds
-        if (left < margin + safeAreaLeft) {
-            left = margin + safeAreaLeft;
-        } else if (left + dialogWidth > viewportWidth - margin - safeAreaRight) {
-            left = viewportWidth - dialogWidth - margin - safeAreaRight;
+        if (leftEdge < margin + safeAreaLeft) {
+            const desiredLeftEdge = margin + safeAreaLeft;
+            const desiredCenterX = desiredLeftEdge + dialogWidth / 2;
+            constrainedX = desiredCenterX - containerWidth / 2;
+        } else if (rightEdge > containerWidth - margin - safeAreaRight) {
+            const desiredRightEdge = containerWidth - margin - safeAreaRight;
+            const desiredCenterX = desiredRightEdge - dialogWidth / 2;
+            constrainedX = desiredCenterX - containerWidth / 2;
         }
+
+        // Recalculate centerY with potentially constrained offsetX
+        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - (window.isDesktop ? 17.5 : 0);
+        const recalculatedTopEdge = recalculatedCenterY - dialogHeight / 2;
+        const recalculatedBottomEdge = recalculatedCenterY + dialogHeight / 2;
 
         // Check vertical bounds
-        if (top < margin + trueInsetTop) {
-            top = margin + trueInsetTop;
-        } else if (top + dialogHeight > viewportHeight - margin - safeAreaBottom) {
-            top = viewportHeight - dialogHeight - margin - safeAreaBottom;
+        if (recalculatedTopEdge < margin + trueInsetTop) {
+            const desiredTopEdge = margin + trueInsetTop;
+            const desiredCenterY = desiredTopEdge + dialogHeight / 2;
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+        } else if (recalculatedBottomEdge > containerHeight - margin - safeAreaBottom) {
+            const desiredBottomEdge = containerHeight - margin - safeAreaBottom;
+            const desiredCenterY = desiredBottomEdge - dialogHeight / 2;
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
         }
 
-        // Final validation - ensure dialog stays within viewport
-        left = Math.max(margin + safeAreaLeft, Math.min(left, window.innerWidth - dialogWidth - margin - safeAreaRight));
-        top = Math.max(margin + trueInsetTop, Math.min(top, window.innerHeight - dialogHeight - margin - safeAreaBottom));
-
-        // Apply position - override CSS centering
-        confirmationDialog.style.left = `${left}px`;
-        confirmationDialog.style.top = `${top}px`;
-        confirmationDialog.style.transform = 'translateZ(0) scale(1)';
+        // Apply position using standard CSS variables (rounded to whole numbers)
+        confirmationDialog.style.setProperty('--modal-offset-x', `${Math.round(constrainedX)}px`);
+        confirmationDialog.style.setProperty('--modal-offset-y', `${Math.round(constrainedY)}px`);
     });
+}
+
+// Position the dialog at bottom right with padding
+function positionConfirmationDialogBottomRight(config = {}) {
+    if (!confirmationDialog) return;
+
+    // Force dialog to be visible so we can measure it
+    confirmationDialog.style.display = 'block';
+    confirmationDialog.style.visibility = 'hidden';
+
+    const dialogRect = confirmationDialog.getBoundingClientRect();
+    const dialogWidth = dialogRect.width;
+    const dialogHeight = dialogRect.height;
+
+    // Get safe area insets (for devices with notches, etc.)
+    const safeAreaInsetBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
+    const safeAreaInsetRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
+
+    // Calculate padding from config or defaults
+    const leftPadding = config.leftPadding || 20;
+    const bottomPadding = config.bottomPadding || 20;
+
+    // Position at bottom right with padding, accounting for safe areas
+    const rightEdge = window.innerWidth - safeAreaInsetRight - leftPadding;
+    const bottomEdge = window.innerHeight - safeAreaInsetBottom - bottomPadding;
+
+    // Calculate offset from center (CSS uses center-based positioning)
+    const offsetX = rightEdge - dialogWidth / 2 - window.innerWidth / 2;
+    const offsetY = bottomEdge - dialogHeight / 2 - window.innerHeight / 2;
+
+    // Apply positioning
+    confirmationDialog.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
+    confirmationDialog.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
+
+    // Restore visibility
+    confirmationDialog.style.display = '';
+    confirmationDialog.style.visibility = '';
 }
 
 // Hide confirmation dialog
@@ -229,7 +373,11 @@ async function hideConfirmationDialog() {
     if (confirmationDialog) {
         await closeModal(confirmationDialog);
         confirmationDialogActive = false;
-        
+
+        // Reset custom width
+        confirmationDialog.style.width = '';
+        confirmationDialog.style.height = '';
+
         // Remove escape key handler
         if (escapeHandler) {
             document.removeEventListener('keydown', escapeHandler);
@@ -245,7 +393,7 @@ function isConfirmationDialogActive() {
 }
 
 // Show input dialog with text input field
-function showInputDialog(message, defaultValue = '', placeholder = '', options = null, event = null) {
+function showInputDialog(message, defaultValue = '', placeholder = '', options = null, event = null, config = {}) {
     return new Promise((resolve) => {
         // Default options if not provided
         if (!options) {
@@ -262,7 +410,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
-            confirmationDialog.className = 'modal hidden transient';
+            confirmationDialog.className = 'modal hidden transient tool-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">
                     <div class="modal-window-title-main">
@@ -282,26 +430,16 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
                 </div>
             `;
             document.body.appendChild(confirmationDialog);
-
-            // Close button handler
-            const closeBtn = confirmationDialog.querySelector('.close-btn');
-            closeBtn.addEventListener('click', () => {
-                hideConfirmationDialog();
-                if (currentResolve) {
-                    currentResolve(null);
-                    currentResolve = null;
-                }
-            });
         }
 
-        // Update title for input dialog
+        // Update title and icon from config for input dialog
         const titleEl = confirmationDialog.querySelector('#confirmationDialogTitle');
         const titleIcon = confirmationDialog.querySelector('.modal-window-title-main i');
         if (titleEl) {
-            titleEl.textContent = 'Input';
+            titleEl.textContent = config.title || 'Input';
         }
         if (titleIcon) {
-            titleIcon.className = 'fas fa-keyboard';
+            titleIcon.className = config.icon || 'fas fa-keyboard';
         }
 
         // Update dialog content
@@ -338,44 +476,93 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         inputWrapper.appendChild(input);
         messageEl.appendChild(inputWrapper);
         
-        // Clear and recreate controls
-        controlsEl.innerHTML = '';
-        
-        options.forEach((option, index) => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = `btn ${option.className || 'btn-secondary'}`;
-            button.innerHTML = '';
+        // Check if there are any options to display
+        const hasOptions = options && options.length > 0;
 
-            if (option.icon) {
-                const iconElement = document.createElement('i');
-                iconElement.className = option.icon;
-                button.appendChild(iconElement);
-                button.appendChild(document.createTextNode(' '));
+        // Check if there's a cancel button (typically the last button or one with value=null/false)
+        const hasCancelButton = hasOptions && options.some(option => option.value === null || option.value === false);
+
+        // Determine if we should show the close button
+        const showCloseButton = config.showCloseButton !== undefined ? config.showCloseButton : !hasCancelButton;
+
+        // Update close button visibility
+        const inputCloseBtnElement = confirmationDialog.querySelector('.close-btn');
+        if (inputCloseBtnElement) {
+            if (showCloseButton) {
+                inputCloseBtnElement.style.display = '';
+            } else {
+                inputCloseBtnElement.style.display = 'none';
             }
+        }
 
-            button.appendChild(document.createTextNode(option.text));
-            button.id = `confirmationBtn${index}`;
-            
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                const inputValue = input.value.trim();
+        // Clear and recreate controls (only if there are options)
+        controlsEl.style.display = hasOptions ? '' : 'none';
+        controlsEl.innerHTML = '';
+        if (hasOptions) {
+
+            options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `btn ${option.className || 'btn-secondary'}`;
+                button.innerHTML = '';
+
+                if (option.icon) {
+                    const iconElement = document.createElement('i');
+                    iconElement.className = option.icon;
+                    button.appendChild(iconElement);
+                    button.appendChild(document.createTextNode(' '));
+                }
+
+                button.appendChild(document.createTextNode(option.text));
+                button.id = `confirmationBtn${index}`;
+
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const inputValue = input.value.trim();
+                    hideConfirmationDialog();
+
+                    // Return input value if OK was clicked, null otherwise
+                    if (currentResolve) {
+                        currentResolve(option.value ? inputValue : null);
+                        currentResolve = null;
+                    }
+                });
+
+                controlsEl.appendChild(button);
+
+                // Focus the first button (OK) by default for input dialogs
+                if (index === 0) {
+                    setTimeout(() => button.focus(), 100);
+                }
+            });
+        }
+
+        // Set up close button handler dynamically based on current options
+        if (inputCloseBtnElement) {
+            // Remove existing listeners to avoid duplicates
+            const newInputCloseBtnElement = inputCloseBtnElement.cloneNode(true);
+            inputCloseBtnElement.parentNode.replaceChild(newInputCloseBtnElement, inputCloseBtnElement);
+
+            newInputCloseBtnElement.addEventListener('click', () => {
                 hideConfirmationDialog();
-                
-                // Return input value if OK was clicked, null otherwise
                 if (currentResolve) {
-                    currentResolve(option.value ? inputValue : null);
+                    // Find the cancel button value (last button, or button with null/false value)
+                    let cancelValue = null;
+                    if (options && options.length > 0) {
+                        // Look for a button with null or false value
+                        const cancelButton = options.find(option => option.value === null || option.value === false);
+                        if (cancelButton) {
+                            cancelValue = cancelButton.value;
+                        } else {
+                            // If no explicit cancel button, use the last button's value
+                            cancelValue = options[options.length - 1].value;
+                        }
+                    }
+                    currentResolve(cancelValue);
                     currentResolve = null;
                 }
             });
-            
-            controlsEl.appendChild(button);
-            
-            // Focus the first button (OK) by default for input dialogs
-            if (index === 0) {
-                setTimeout(() => button.focus(), 100);
-            }
-        });
+        }
         
         // Focus input field
         setTimeout(() => {
@@ -406,13 +593,35 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         };
         document.addEventListener('keydown', handleEnter);
 
+        // Apply custom width from config
+        if (config.width) {
+            confirmationDialog.style.width = `${config.width}px`;
+        } else {
+            confirmationDialog.style.width = '';
+        }
+        if (config.height) {
+            confirmationDialog.style.height = `${config.height}px`;
+        } else {
+            confirmationDialog.style.height = '';
+        }
+
         // Show dialog - modal system handles positioning
         openModal(confirmationDialog);
+
+        // Make it the active tool window (always on top)
+        if (typeof setActiveWindow === 'function') {
+            setActiveWindow(confirmationDialog);
+        } else {
+            confirmationDialog.classList.add('active-window');
+        }
+
         confirmationDialogActive = true;
 
-        // Position dialog near event if provided
+        // Position dialog near event if provided, or use custom positioning
         if (event) {
             positionConfirmationDialog(event);
+        } else if (config.position === 'bottom-right') {
+            positionConfirmationDialogBottomRight(config);
         }
     });
 }

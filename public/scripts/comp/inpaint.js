@@ -1231,8 +1231,9 @@ async function deleteMask() {
 }
 
 // Move to mask.js: Close mask editor
-function closeMaskEditor() {
-    document.getElementById('maskEditorDialog').classList.add('hidden');
+async function closeMaskEditor() {
+    const maskEditorDialog = document.getElementById('maskEditorDialog');
+    await closeModal(maskEditorDialog)
 
     // Reset drawing state
     isDrawing = false;
@@ -1464,7 +1465,7 @@ function openMaskEditor() {
     }
 
     // Show the dialog
-    maskEditorDialog.classList.remove('hidden');
+    openModal(maskEditorDialog);
 
     // Register event listeners when editor is opened and canvas is ready
     if (maskEditorCanvas && maskEditorCtx) {

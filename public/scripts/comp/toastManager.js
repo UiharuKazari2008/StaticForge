@@ -45,6 +45,132 @@ let nextButtonId = 1;
 const vibeEncodingProgressIntervals = new Map();
 
 // ============================================================================
+// ANDROID NOTIFICATION BRIDGE
+// ============================================================================
+
+/**
+ * True once initAndroidNotificationBridge() confirms the native bridge is
+ * present and ready. When true, toast functions skip DOM rendering entirely
+ * and operate purely through the bridge.
+ * @type {boolean}
+ */
+let _androidBridgeActive = false;
+
+/**
+ * Called once after the app has fully initialised. Checks whether the
+ * window.AndroidNotification bridge is present and reports itself ready via
+ * isReady(). If so, sets _androidBridgeActive = true and wires the onAction
+ * callback so native button taps route back into handleToastButtonClick.
+ *
+ * Must be called AFTER all scripts have loaded (i.e. from the final
+ * registerInitStep 'Finalizing' block in app.js).
+ */
+function initAndroidNotificationBridge() {
+    const bridge = window.AndroidNotification;
+    if (!bridge) return;
+
+    // isReady() is the authoritative way for the native host to signal that it
+    // can fully handle notifications and the in-app toast UI should be hidden.
+    if (typeof bridge.isReady !== 'function' || !bridge.isReady()) return;
+
+    // Drop any in-page toasts created before the bridge was ready; native owns UI from here.
+    const pendingIds = [...activeToasts.keys()];
+    for (const tid of pendingIds) {
+        removeGlassToast(tid);
+    }
+    const toastContainer = document.getElementById('toastContainer');
+    if (toastContainer) {
+        toastContainer.querySelectorAll('.glass-toast').forEach((el) => el.remove());
+    }
+
+    _androidBridgeActive = true;
+    console.log('📱 AndroidNotification bridge active – in-app toasts suppressed');
+
+    // Wire native button-tap callback exactly once.
+    if (!bridge._onActionRegistered) {
+        bridge.onAction = function (id, actionKey) {
+            handleToastButtonClick(Number(actionKey));
+        };
+        bridge._onActionRegistered = true;
+    }
+}
+
+/**
+ * Expose initAndroidNotificationBridge so app.js can call it after init.
+ */
+window.initAndroidNotificationBridge = initAndroidNotificationBridge;
+
+/**
+ * Fire-and-forget helper that calls a method on window.AndroidNotification.
+ *
+ * Only fires once the bridge has been fully initialised and confirmed ready
+ * via initAndroidNotificationBridge() (i.e. _androidBridgeActive is true).
+ * This ensures no bridge calls are made during early application init steps,
+ * before isReady() has been checked and the app has completely loaded.
+ *
+ * @param {string} method - Name of the AndroidNotification method to call
+ * @param {...*} args - Arguments forwarded verbatim to the native method
+ */
+function _androidNotify(method, ...args) {
+    // Do not forward any calls until the bridge has been confirmed ready
+    // (initAndroidNotificationBridge sets _androidBridgeActive only after
+    // the app is fully loaded AND window.AndroidNotification.isReady() returned true).
+    if (!_androidBridgeActive) return;
+
+    if (window.AndroidNotification && typeof window.AndroidNotification[method] === 'function') {
+        try {
+            window.AndroidNotification[method](...args);
+        } catch (e) {
+            console.warn(`📱 AndroidNotification.${method} failed:`, e);
+        }
+    }
+}
+
+/**
+ * Registers window.AndroidNotification.onAction exactly once.
+ * When the native side fires onAction(id, actionKey), we route it to
+ * handleToastButtonClick so the JS onClick callbacks and closeOnClick
+ * behaviour are honoured identically to a DOM button click.
+ * @deprecated Prefer initAndroidNotificationBridge() – kept for safety.
+ */
+function _androidSetupOnAction() {
+    if (!window.AndroidNotification || window.AndroidNotification._onActionRegistered) return;
+    window.AndroidNotification.onAction = function (id, actionKey) {
+        handleToastButtonClick(Number(actionKey));
+    };
+    window.AndroidNotification._onActionRegistered = true;
+}
+
+/**
+ * Serialise the action buttons currently registered for a toast into the
+ * JSON array format expected by the native bridge, or null if there are none.
+ *
+ * Native format: [{label: string, action: string}, ...]
+ * The action value is the numeric buttonId (stored as a string) so that
+ * onAction can look it up in buttonHandlers via handleToastButtonClick.
+ *
+ * @param {string} toastId - The toast whose buttons to serialise
+ * @returns {string|null} JSON string, or null when there are no buttons
+ */
+function _getAndroidActionsJson(toastId) {
+    const actions = [];
+    for (const [buttonId, handler] of buttonHandlers.entries()) {
+        if (handler.toastId === toastId) {
+            actions.push({ label: handler.text ?? '', action: String(buttonId) });
+        }
+    }
+    return actions.length ? JSON.stringify(actions) : null;
+}
+
+/**
+ * Numeric id for the Android bridge (showNotification/completeNotification and all
+ * update/dismiss methods must use the same id so the native side matches one notification).
+ */
+function _toastNumericId(toastId) {
+    return parseInt(String(toastId).replace(/^toast-/, ''), 10) || 0;
+}
+
+// ============================================================================
 // TOAST MANAGEMENT FUNCTIONS (READY FOR MANUAL IMPLEMENTATION)
 // ============================================================================
 
@@ -71,6 +197,33 @@ const vibeEncodingProgressIntervals = new Map();
  */
 function showGlassToast(type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null) {
     const toastId = `toast-${++toastCounter}`;
+
+    // Register in activeToasts first so bridge and update helpers can reference it.
+    activeToasts.set(toastId, { type, title, message, showProgress, customIcon, buttons, createdAt: Date.now() });
+
+    // ── Android bridge path ──────────────────────────────────────────────────
+    // When the native bridge is ready it owns notification display entirely.
+    // We still register buttons so the handler IDs are correct, then fire the
+    // bridge call and return without touching the DOM at all.
+    if (_androidBridgeActive) {
+        if (buttons) generateButtonsHtml(buttons, toastId); // registers buttonHandlers
+        const numericId = _toastNumericId(toastId);
+        _androidNotify('showNotification', numericId, type, title ?? '', message ?? '', showProgress, timeout === false ? -1 : (timeout ?? 5000));
+        if (buttons) _androidNotify('updateNotificationActions', numericId, _getAndroidActionsJson(toastId));
+
+        // Schedule auto-dismiss on the native side when a timeout is set
+        // (the DOM path normally calls removeGlassToast after the timeout, which
+        // would fire dismissNotification – we replicate that here).
+        if (timeout !== false && !showProgress) {
+            setTimeout(() => {
+                removeGlassToast(toastId);
+            }, timeout);
+        }
+
+        return toastId;
+    }
+
+    // ── DOM / in-browser path ────────────────────────────────────────────────
     const toastContainer = document.getElementById('toastContainer') || createToastContainer();
 
     const toast = document.createElement('div');
@@ -94,11 +247,11 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
             <div class="toast-content">
                 <div class="toast-title">${title}</div>
                 <div class="toast-message">${message}</div>
-                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
+                ${showProgress ? '<div class="toast-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progress"><div class="toast-progress-bar"></div></div>' : ''}
             </div>
             ${closeBtn}
         `;
-        
+
         // Add buttons as DOM elements to preserve event handlers
         if (buttonsElement) {
             const content = toast.querySelector('.toast-content');
@@ -115,11 +268,11 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
             <div class="toast-icon">${icon}</div>
             <div class="toast-content">
                 <div class="toast-message">${messageText}</div>
-                ${showProgress ? '<div class="toast-progress"><div class="toast-progress-bar"></div></div>' : ''}
+                ${showProgress ? '<div class="toast-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progress"><div class="toast-progress-bar"></div></div>' : ''}
             </div>
             ${closeBtn}
         `;
-        
+
         // Add buttons as DOM elements to preserve event handlers
         if (buttonsElement) {
             const content = toast.querySelector('.toast-content');
@@ -145,7 +298,6 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         }, timeout);
     }
 
-    activeToasts.set(toastId, { type, title, message, showProgress, customIcon, buttons });
     return toastId;
 }
 
@@ -162,7 +314,22 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
  * updateGlassToast(toastId, 'success', 'Complete!', 'Operation finished');
  */
 function updateGlassToast(toastId, type, title, message, customIcon = null) {
+    // Update stored data regardless of render path
+    const stored = activeToasts.get(toastId);
+    if (stored) {
+        stored.type = type;
+        stored.title = title;
+        stored.message = message;
+        stored.customIcon = customIcon;
+        activeToasts.set(toastId, stored);
+    }
+
+    // Mirror to native Android notification layer
+    _androidNotify('updateNotification', _toastNumericId(toastId), title ?? '', message ?? '', type);
+
     const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
     if (!toast) return;
 
     const icon = customIcon || getToastIcon(type);
@@ -170,21 +337,21 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
     const messageText = title || message;
 
     // Preserve existing classes and only update necessary ones
-    const existingClasses = toast.className.split(' ').filter(cls => 
-        cls !== 'glass-toast' && 
-        !cls.startsWith('glass-toast-') && 
-        cls !== 'simple' && 
+    const existingClasses = toast.className.split(' ').filter(cls =>
+        cls !== 'glass-toast' &&
+        !cls.startsWith('glass-toast-') &&
+        cls !== 'simple' &&
         cls !== 'upload-progress'
     );
-    
+
     // Build new class list
     const newClasses = ['glass-toast', `glass-toast-${type}`];
     if (isSimple) newClasses.push('simple');
     if (existingClasses.includes('upload-progress')) newClasses.push('upload-progress');
     if (existingClasses.includes('show')) newClasses.push('show');
-    
+
     toast.className = newClasses.join(' ');
-    
+
     // Update icon
     const iconElement = toast.querySelector('.toast-icon');
     if (iconElement) {
@@ -201,7 +368,7 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
         // Full toast - update both title and message
         const titleElement = toast.querySelector('.toast-title');
         const messageElement = toast.querySelector('.toast-message');
-        
+
         if (titleElement) {
             titleElement.textContent = title;
         }
@@ -209,18 +376,10 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
             messageElement.textContent = message;
         }
     }
-
-    // Update stored data
-    const stored = activeToasts.get(toastId);
-    if (stored) {
-        stored.type = type;
-        stored.title = title;
-        stored.message = message;
-        stored.customIcon = customIcon;
-        activeToasts.set(toastId, stored);
-    }
-
 }
+
+/** Minimum time (ms) a toast must exist before dismiss when on Android bridge, so the native notification can be shown. */
+const ANDROID_DISMISS_DEFER_MS = 400;
 
 /**
  * Remove a toast notification with animation
@@ -232,8 +391,20 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
  * removeGlassToast(toastId);
  */
 function removeGlassToast(toastId) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
+    const stored = activeToasts.get(toastId);
+    if (_androidBridgeActive && stored) {
+        const elapsed = Date.now() - (stored.createdAt || 0);
+        if (elapsed < ANDROID_DISMISS_DEFER_MS) {
+            setTimeout(() => removeGlassToast(toastId), ANDROID_DISMISS_DEFER_MS - elapsed);
+            return;
+        }
+    }
+
+    const vibeInterval = vibeEncodingProgressIntervals.get(toastId);
+    if (vibeInterval) {
+        clearInterval(vibeInterval);
+        vibeEncodingProgressIntervals.delete(toastId);
+    }
 
     // Clean up button handlers for this toast
     for (const [buttonId, handler] of buttonHandlers.entries()) {
@@ -242,8 +413,19 @@ function removeGlassToast(toastId) {
         }
     }
 
-    toast.classList.add('removing');
     activeToasts.delete(toastId);
+
+    // Mirror to native Android notification layer
+    _androidNotify('dismissNotification', _toastNumericId(toastId));
+
+    clearGlassToastImagePreview(toastId);
+
+    const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
+    if (!toast) return;
+
+    toast.classList.add('removing');
 
     setTimeout(() => {
         if (toast.parentNode) {
@@ -300,12 +482,27 @@ function createToastContainer() {
  * updateGlassToastProgress(toastId, 50); // 50% complete
  */
 function updateGlassToastProgress(toastId, progress) {
+    const clampedProgress = Math.min(progress, 100);
+    const stored = activeToasts.get(toastId);
+
+    // Mirror to native Android notification layer
+    _androidNotify('updateNotificationProgress', _toastNumericId(toastId), stored?.title ?? '', stored?.message ?? '', clampedProgress, 100, stored?.type);
+
     const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
     if (!toast) return;
 
     const progressBar = toast.querySelector('.toast-progress-bar');
+    const progressContainer = progressBar ? progressBar.parentElement : null;
+
     if (progressBar) {
-        progressBar.style.width = `${Math.min(progress, 100)}%`;
+        progressBar.style.width = `${clampedProgress}%`;
+
+        // Update ARIA attributes for accessibility
+        if (progressContainer && progressContainer.hasAttribute('role') && progressContainer.getAttribute('role') === 'progressbar') {
+            progressContainer.setAttribute('aria-valuenow', clampedProgress);
+        }
     }
 }
 
@@ -315,7 +512,20 @@ function updateGlassToastProgress(toastId, progress) {
  * @param {string} message - New message text
  */
 function updateGlassToastMessage(toastId, message) {
+    const stored = activeToasts.get(toastId);
+
+    // Persist the updated message so subsequent reads (e.g. _getAndroidActionsJson) are fresh
+    if (stored) {
+        stored.message = message;
+        activeToasts.set(toastId, stored);
+    }
+
+    // Mirror to native Android notification layer
+    _androidNotify('updateNotificationMessage', _toastNumericId(toastId), stored?.title ?? '', message, stored?.type);
+
     const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
     if (!toast) return;
 
     const messageElement = toast.querySelector('.toast-message');
@@ -360,6 +570,7 @@ function getToolActionText(toolName) {
  */
 function getToolDisplayName(toolName) {
     const displayNames = {
+        'start': 'Prepare Agent',
         'searchTagDatabase': 'Tag Database Search',
         'validateTextReplacement': 'Validate Prompt',
         'searchTagsBatch': 'Search Tags and Wiki',
@@ -389,7 +600,7 @@ function getToolDisplayName(toolName) {
  * @returns {Object} Object with icon and backgroundColor
  */
 function getToolIconAndBackground(toolName, toolState = 'completed') {
-    
+
     const toolConfig = {
         'searchTagDatabase': {
             icon: '<i class="fas fa-search"></i>',
@@ -477,7 +688,7 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
         backgroundColor: 'rgba(156, 163, 175, 0.1)', // Gray
     };
     if (toolState === 'executing' && toolName !== 'completeTooling') {
-        result.icon = '<i class="fas fa-spinner fa-spin"></i>';
+        result.icon = '<i class="fas fa-spinner-third fa-spin"></i>';
     }
     return result;
 }
@@ -490,7 +701,14 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
  * @param {string} phase - Current phase (optional, to detect tool execution)
  */
 function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = null) {
+    const toolState = window._lastToolState || 'completed';
+
+    // Mirror to native Android notification layer (Gap 3)
+    _androidNotify('updateNotificationReasoning', _toastNumericId(toastId), toolName ?? '', reasoning ?? '', toolState);
+
     const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
     if (!toast) return;
 
     // Find or create reasoning element
@@ -509,12 +727,12 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
         if (reasoning) {
             // Check if this is tool execution
             const isToolExecution = phase === 'tool_execution' || toolName;
-            
+
             if (isToolExecution && toolName) {
                 // Get tool-specific icon and background based on toolState from data
                 // This will be passed through from the websocket data
-                const toolStyle = getToolIconAndBackground(toolName, window._lastToolState || 'completed');
-                
+                const toolStyle = getToolIconAndBackground(toolName, toolState);
+
                 // Apply tool-specific styling
                 reasoningElement.style.cssText = `
                     font-size: 0.85em;
@@ -534,7 +752,7 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
                     gap: 8px;
                     transition: all 0.2s ease;
                 `;
-                
+
                 // Set content with icon
                 reasoningElement.innerHTML = `
                     <span style="
@@ -563,7 +781,7 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
                 `;
                 reasoningElement.textContent = reasoning;
             }
-            
+
             reasoningElement.title = reasoning; // Show full text on hover
         } else {
             reasoningElement.remove();
@@ -577,7 +795,14 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
  * @param {string} imageData - Base64 image data
  */
 function updateGlassToastImagePreview(toastId, imageData) {
+    // Mirror to native Android notification layer (Gap 5)
+    // Note: base64 payload can be large; the Android side may choose to ignore
+    // this call and instead display the final image from the gallery on completion.
+    _androidNotify('updateNotificationImagePreview', _toastNumericId(toastId), imageData ?? '');
+
     const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
     if (!toast) return;
 
     // Find or create image preview element
@@ -630,6 +855,27 @@ function updateGlassToastImagePreview(toastId, imageData) {
 }
 
 /**
+ * Drop intermediate generation preview pixels from the toast DOM (large data URLs).
+ * @param {string} toastId - Toast ID
+ */
+function clearGlassToastImagePreview(toastId) {
+    if (!toastId) return;
+    _androidNotify('updateNotificationImagePreview', _toastNumericId(toastId), '');
+
+    const toast = document.getElementById(toastId);
+    if (_androidBridgeActive && !toast) return;
+    if (!toast) return;
+
+    const imageElement = toast.querySelector('.toast-image-preview');
+    if (imageElement) {
+        imageElement.onload = null;
+        imageElement.onclick = null;
+        imageElement.removeAttribute('src');
+        imageElement.remove();
+    }
+}
+
+/**
  * Generate HTML element for toast buttons
  * @param {Array} buttons - Array of button configuration objects
  * @param {string} toastId - Unique toast ID
@@ -658,11 +904,12 @@ function generateButtonsHtml(buttons, toastId) {
             // Generate unique button ID
             const buttonId = nextButtonId++;
 
-            // Store the button handler
+            // Store the button handler (text is kept so _getAndroidActionsJson can serialise it)
             buttonHandlers.set(buttonId, {
                 onClick: button.onClick,
                 toastId: toastId,
-                closeOnClick: button.closeOnClick
+                closeOnClick: button.closeOnClick,
+                text: button.text ?? ''
             });
 
             // Set onclick attribute to call global handler
@@ -693,29 +940,51 @@ function generateButtonsHtml(buttons, toastId) {
  * ]);
  */
 function updateGlassToastButtons(toastId, buttons) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
-    // Remove existing buttons
-    const existingButtons = toast.querySelector('.toast-buttons');
-    if (existingButtons) {
-        existingButtons.remove();
-    }
-
-    // Add new buttons
-    if (buttons && Array.isArray(buttons)) {
-        const buttonsElement = generateButtonsHtml(buttons, toastId);
-        const content = toast.querySelector('.toast-content');
-        if (content && buttonsElement) {
-            content.appendChild(buttonsElement);
-        }
-    }
-
     // Update stored data
     const stored = activeToasts.get(toastId);
     if (stored) {
         stored.buttons = buttons;
         activeToasts.set(toastId, stored);
+    }
+
+    // Re-register button handlers first so _getAndroidActionsJson is up-to-date
+    if (buttons && Array.isArray(buttons)) {
+        // Clear old handlers for this toast before registering new ones
+        for (const [buttonId, handler] of buttonHandlers.entries()) {
+            if (handler.toastId === toastId) {
+                buttonHandlers.delete(buttonId);
+            }
+        }
+        // generateButtonsHtml registers the new handlers as a side effect
+        const buttonsElement = generateButtonsHtml(buttons, toastId);
+
+        // Mirror updated actions to native Android notification layer (Gap 4)
+        _androidNotify('updateNotificationActions', _toastNumericId(toastId), _getAndroidActionsJson(toastId));
+
+        const toast = document.getElementById(toastId);
+        // Skip DOM work when the bridge owns the display AND no DOM element exists
+        if (_androidBridgeActive && !toast) return;
+        if (!toast) return;
+
+        // Remove existing buttons from DOM
+        const existingButtons = toast.querySelector('.toast-buttons');
+        if (existingButtons) existingButtons.remove();
+
+        const content = toast.querySelector('.toast-content');
+        if (content && buttonsElement) {
+            content.appendChild(buttonsElement);
+        }
+    } else {
+        // Buttons cleared
+        _androidNotify('updateNotificationActions', _toastNumericId(toastId), null);
+
+        const toast = document.getElementById(toastId);
+        // Skip DOM work when the bridge owns the display AND no DOM element exists
+        if (_androidBridgeActive && !toast) return;
+        if (!toast) return;
+
+        const existingButtons = toast.querySelector('.toast-buttons');
+        if (existingButtons) existingButtons.remove();
     }
 }
 
@@ -741,9 +1010,6 @@ function updateGlassToastButtons(toastId, buttons) {
  * });
  */
 function updateGlassToastComplete(toastId, options = {}) {
-    const toast = document.getElementById(toastId);
-    if (!toast) return;
-
     const {
         type,
         title,
@@ -754,15 +1020,35 @@ function updateGlassToastComplete(toastId, options = {}) {
         timeout = null
     } = options;
 
-    // Update basic content if provided
+    // Update basic content (also fires updateNotification bridge call and updates activeToasts)
     if (type || title || message || customIcon) {
         updateGlassToast(toastId, type, title, message, customIcon);
     }
 
-    // Update buttons if provided
+    // Update buttons (also fires updateNotificationActions bridge call)
     if (buttons !== undefined) {
         updateGlassToastButtons(toastId, buttons);
     }
+
+    // Mirror completion to native Android notification layer.
+    _androidNotify('completeNotification', _toastNumericId(toastId), type ?? '', title ?? '', message ?? '');
+
+    // Schedule auto-dismiss on the bridge side if a timeout is set.
+    // Use removeGlassToast (not raw dismissNotification) so activeToasts is cleaned up too.
+    if (_androidBridgeActive) {
+        if (timeout !== null && timeout !== false) {
+            setTimeout(() => removeGlassToast(toastId), timeout);
+        } else if (showProgress === false) {
+            // Default 5 s dismiss for completed progress toasts
+            setTimeout(() => removeGlassToast(toastId), 5000);
+        }
+    }
+
+    // ── DOM path ─────────────────────────────────────────────────────────────
+    const toast = document.getElementById(toastId);
+    // Skip DOM work when the bridge owns the display AND no DOM element exists
+    if (_androidBridgeActive && !toast) return;
+    if (!toast) return;
 
     // Update progress state if provided
     if (showProgress !== null) {
@@ -778,14 +1064,14 @@ function updateGlassToastComplete(toastId, options = {}) {
             // Remove progress bar
             progressElement.remove();
             toast.classList.remove('upload-progress');
-            
+
             // When removing progress, add close button and set default timeout
             const existingCloseBtn = toast.querySelector('.toast-close');
             if (!existingCloseBtn) {
                 const closeBtn = '<button class="toast-close" onclick="removeGlassToast(\'' + toastId + '\')"><i class="fa-regular fa-xmark-large"></i></button>';
                 toast.insertAdjacentHTML('beforeend', closeBtn);
             }
-            
+
             // Set default timeout for completed progress toasts
             const stored = activeToasts.get(toastId);
             if (stored) {
@@ -800,18 +1086,22 @@ function updateGlassToastComplete(toastId, options = {}) {
         }
     }
 
+    if (showProgress === false) {
+        clearGlassToastImagePreview(toastId);
+    }
+
     // Update timeout if provided
     if (timeout !== null) {
         const stored = activeToasts.get(toastId);
         if (stored) {
             stored.timeout = timeout;
             activeToasts.set(toastId, stored);
-            
+
             // Clear existing timeout and set new one
             if (stored.timeoutId) {
                 clearTimeout(stored.timeoutId);
             }
-            
+
             if (timeout !== false) {
                 stored.timeoutId = setTimeout(() => {
                     removeGlassToast(toastId);
@@ -898,7 +1188,7 @@ function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed'
     }
 
     // Update the toast to show error
-        updateGlassToastComplete(toastId, {
+    updateGlassToastComplete(toastId, {
         type: 'error',
         title: 'Encoding Failed',
         message: errorMessage,

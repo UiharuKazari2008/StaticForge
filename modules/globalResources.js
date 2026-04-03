@@ -3121,94 +3121,10 @@ class GlobalResources {
         return this.pngMetadata;
     }
 
-    /**
-     * Sync thumbnails - verify all files in database have thumbnails and generate missing ones
-     * This is a separate function since thumbnails are database-based, not file-based
-     * Only generates thumbnails, not full preview sets
-     * Uses parallel processing with batch database writes for optimal performance
-     */
-    async syncThumbnails() {
-        const fs = require('fs');
-        const path = require('path');
-        const imagesDir = this.getPath('images');
-        const metadataDb = this.getMetadataDatabase();
-        const ParallelThumbnailGenerator = require('./parallelThumbnailGenerator');
-        
-        // Get all filenames from database
-        const dbFilenames = await metadataDb.getAllFilenames();
-        this.logger.bootSubStep(`Found ${dbFilenames.length} files in database`);
-        
-        // Verify files exist and check for missing thumbnails
-        let missingThumbnails = 0;
-        let missingFiles = 0;
-        const filesNeedingThumbnails = [];
-        const filesToDelete = []; // Files that don't exist on disk
-        
-        for (const filename of dbFilenames) {
-            const filePath = path.join(imagesDir, filename);
-            
-            // Check if file exists on disk
-            if (!fs.existsSync(filePath)) {
-                missingFiles++;
-                filesToDelete.push(filename);
-                continue;
-            }
-            
-            // Check if thumbnail exists in database
-            const metadata = await metadataDb.getCachedMetadata(filename);
-            if (!metadata || !metadata.tinyThumbnail) {
-                missingThumbnails++;
-                filesNeedingThumbnails.push({ filename, filePath });
-            }
-        }
-        
-        // Delete database entries for files that don't exist
-        if (filesToDelete.length > 0) {
-            this.logger.bootSubStep(`🗑️ Deleting ${filesToDelete.length} database entries for missing files...`);
-            try {
-                const deletedCount = await metadataDb.removeImageMetadata(filesToDelete);
-                this.logger.bootSubStep(`✅ Deleted ${deletedCount} database entries`);
-            } catch (error) {
-                this.logger.error(`❌ Error deleting database entries:`, error.message);
-            }
-        }
-        
-        if (missingThumbnails > 0) {
-            this.logger.bootSubStep(`Generating ${missingThumbnails} missing thumbnails using parallel processing`);
-            
-            // Use parallel thumbnail generator with batch database writes
-            const generator = new ParallelThumbnailGenerator(this, {
-                batchSize: Math.min(require('os').cpus().length, 6), // Max 6 workers
-                dbBatchSize: 250, // Write to database in batches of 250
-                onProgress: (processed, total, progress) => {
-                    this.logger.bootSubStep(`Thumbnail progress: ${processed}/${total} (${progress}%)`);
-                },
-                onComplete: (results) => {
-                    this.logger.bootSubStep(
-                        `✅ Generated ${results.processed} thumbnails` +
-                        (results.errors > 0 ? `, ${results.errors} failed` : '') +
-                        ` in ${results.duration.toFixed(2)}s (${results.imagesPerSecond} thumbnails/sec)`
-                    );
-                },
-                onError: (filename, error) => {
-                    this.logger.error(`Failed to generate thumbnail for ${filename}: ${error}`);
-                }
-            });
-            
-            try {
-                await generator.generateThumbnailsForFiles(filesNeedingThumbnails, imagesDir);
-            } catch (error) {
-                this.logger.error(`Error during parallel thumbnail generation:`, error.message);
-            }
-        } else {
-            this.logger.bootSubStep('All thumbnails are up to date');
-        }
-    }
 
     /**
      * Sync previews - ensure all images have preview files
      * Moved from web_server.js to centralize initialization
-     * Now also verifies database entries exist and have thumbnails
      */
     async syncPreviews() {
         const fs = require('fs');
@@ -3367,8 +3283,6 @@ class GlobalResources {
             this.logger.bootSubStep('All cache previews are up to date');
         }
         
-        // Sync thumbnails - verify all database entries have thumbnails
-        await this.syncThumbnails();
     }
 
     /**

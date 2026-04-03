@@ -114,7 +114,7 @@ function createDatasetTagToolbar() {
             <div class="dataset-tag-controls">
                 <input type="text" id="datasetTagSearchInput" class="dataset-tag-search-input hidden" placeholder="Find Tag"/>
                 <div class="dataset-tag-loading-spinner">
-                    <i class="fas fa-spinner fa-spin"></i>
+                    <i class="fas fa-spinner-third fa-spin"></i>
                 </div>
                 <button class="btn-secondary dataset-tag-reset-btn" title="Reset"><i class="nai-undo"></i></button>
                 <button class="btn-secondary dataset-tag-close" title="Close"><i class="fas fa-times"></i></button>
@@ -649,7 +649,7 @@ function createLoadingDropdown(container, level) {
     button.disabled = true;
     button.innerHTML = `
         <span class="dataset-button-text">
-            <i class="fas fa-spinner fa-spin"></i>
+            <i class="fas fa-spinner-third fa-spin"></i>
             <span class="dataset-tag-dropdown-text">Loading...</span>
         </span>
     `;

@@ -29,9 +29,6 @@ class DesktopShortcutsManager {
         // Collision offsets (temporary display adjustments for freeform icons only)
         this.collisionOffsets = new Map(); // shortcutId -> {x, y}
         
-        // Notes metadata cache (temporary, cleared after render)
-        this.notesMetadataCache = null;
-        
         // Shortcut type definitions
         this.shortcutTypes = {
             image: {
@@ -156,7 +153,27 @@ class DesktopShortcutsManager {
                         this.updatePositionsInDOM(data.positions);
                     }
                     break;
-                    
+
+                case 'note_updated':
+                    // Refresh note shortcuts if they exist on desktop
+                    if (data.noteId) {
+                        const noteShortcuts = this.shortcuts.filter(s => s.type === 'note' && s.data?.noteId === data.noteId);
+                        noteShortcuts.forEach(shortcut => {
+                            this.updateShortcutInDOM(shortcut.id, {});
+                        });
+                    }
+                    break;
+
+                case 'note_deleted':
+                    // Remove note shortcuts from desktop if the note was deleted
+                    if (data.noteId) {
+                        const noteShortcuts = this.shortcuts.filter(s => s.type === 'note' && s.data?.noteId === data.noteId);
+                        noteShortcuts.forEach(shortcut => {
+                            this.removeShortcut(shortcut.id);
+                        });
+                    }
+                    break;
+
                 case 'workspace_updated':
                     // Handle window positions updates (stored in same file as shortcuts, global not per-workspace)
                     if (data.action === 'window_positions_updated' && data.windowPositions) {
@@ -177,8 +194,9 @@ class DesktopShortcutsManager {
             }
             await this.saveToServer();
         }
-        
+
         this.currentWorkspace = workspaceId;
+
         await this.loadShortcuts(workspaceId);
         
         // Only render shortcuts if containers are initialized and not during initial load
@@ -212,31 +230,14 @@ class DesktopShortcutsManager {
         }
     }
 
-    // Fetch all notes metadata for current workspace (for caching during render)
+    // Fetch all notes metadata for current workspace (using notepadManager cache)
     async fetchNotesMetadataCache() {
-        if (!this.currentWorkspace || !wsClient || !wsClient.isConnected()) {
+        if (!this.currentWorkspace) {
             return null;
         }
 
-        try {
-            const response = await wsClient.getAllNotesMetadata();
-            if (response && response.notes) {
-                // Create a map of noteId -> {name, icon, color}
-                const cache = new Map();
-                response.notes.forEach(note => {
-                    cache.set(note.id, {
-                        name: note.name,
-                        icon: note.icon || 'fas fa-file-lines',
-                        color: note.color || '#ffc107'
-                    });
-                });
-                return cache;
-            }
-        } catch (error) {
-            console.warn('Failed to fetch notes metadata cache:', error);
-        }
-        
-        return null;
+        // Get metadata from notepadManager's centralized cache
+        return await window.notepadManager.getNotesMetadata(this.currentWorkspace);
     }
 
     // Render all shortcuts
@@ -500,11 +501,18 @@ class DesktopShortcutsManager {
         let noteColor = '#ffc107';
         
         if (shortcut.data && shortcut.data.noteId) {
-            // Try to use cache first (available during renderShortcuts)
+            // Try to use render cache first (available during renderShortcuts)
             if (this.notesMetadataCache && this.notesMetadataCache.has(shortcut.data.noteId)) {
                 const cached = this.notesMetadataCache.get(shortcut.data.noteId);
                 noteIcon = cached.icon;
                 noteColor = cached.color;
+            } else {
+                // Use notepadManager's global cache
+                const cached = await window.notepadManager?.getNoteMetadata(null, shortcut.data.noteId);
+                if (cached) {
+                    noteIcon = cached.icon;
+                    noteColor = cached.color;
+                }
             }
         }
         
@@ -576,14 +584,27 @@ class DesktopShortcutsManager {
                             text: 'Open in Notebook',
                             action: 'open-note-in-notebook'
                         },
+                        { separator: true },
                         {
                             icon: 'fas fa-pen',
                             text: 'Rename',
                             action: 'rename-shortcut'
                         },
                         {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
+                        },
+                        {
                             icon: 'fas fa-trash',
-                            text: 'Remove Shortcut',
+                            text: 'Remove',
                             action: 'remove-shortcut',
                             className: 'context-menu-item-danger'
                         }
@@ -747,6 +768,18 @@ class DesktopShortcutsManager {
                             action: 'rename-shortcut'
                         }
                     ]
+                },
+                {
+                    icon: 'fas fa-arrow-right',
+                    text: 'Move to...',
+                    optionsfn: (target) => {
+                        return this.getWorkspaceSubmenuItems();
+                    },
+                    loadfn: (item) => {
+                        // Disable if there are no other workspaces
+                        const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                        item.disabled = otherWorkspaces.length === 0;
+                    }
                 },
                 {
                     type: 'list',
@@ -965,7 +998,16 @@ class DesktopShortcutsManager {
                             action: 'rename-shortcut'
                         },
                         {
-                            separator: true
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
                         },
                         {
                             icon: 'fas fa-trash',
@@ -1038,6 +1080,18 @@ class DesktopShortcutsManager {
                             action: 'rename-shortcut'
                         },
                         {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
+                        },
+                        {
                             icon: 'fas fa-trash',
                             text: 'Remove',
                             action: 'remove-shortcut',
@@ -1075,19 +1129,19 @@ class DesktopShortcutsManager {
 
         try {
             // Check if wikiWindowManager is available
-            if (!window.wikiWindowManager) {
+            if (!wikiWindowManager) {
                 showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
 
             // Check if WebSocket is connected
-            if (!window.wsClient || !window.wsClient.isConnected()) {
+            if (!wsClient || !wsClient.isConnected()) {
                 showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
 
             // Fetch the wiki page
-            const result = await window.wsClient.sendMessage('get_tag_wiki_page', {
+            const result = await wsClient.sendMessage('get_tag_wiki_page', {
                 tagName: tagName,
                 source: 'both',
                 format: 'html'
@@ -1095,7 +1149,7 @@ class DesktopShortcutsManager {
 
             if (result) {
                 // Create a standalone window with the wiki page
-                window.wikiWindowManager.createWindow(result, { title: tagName, name: tagName });
+                wikiWindowManager.createWindow(result, { title: tagName, name: tagName });
             } else {
                 showGlassToast('error', 'Error', 'Failed to load wiki page', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }
@@ -1116,6 +1170,18 @@ class DesktopShortcutsManager {
                             icon: 'fas fa-pen',
                             text: 'Rename',
                             action: 'rename-shortcut'
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
                         },
                         {
                             icon: 'fas fa-trash',
@@ -1280,6 +1346,18 @@ class DesktopShortcutsManager {
                             action: 'rename-shortcut'
                         },
                         {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
+                        },
+                        {
                             icon: 'fas fa-trash',
                             text: 'Remove',
                             action: 'remove-shortcut',
@@ -1298,14 +1376,6 @@ class DesktopShortcutsManager {
                 {
                     type: 'list',
                     items: [
-                        {
-                            icon: 'fas fa-pen',
-                            text: 'Rename',
-                            action: 'rename-shortcut'
-                        },
-                        {
-                            separator: true
-                        },
                         {
                             icon: 'fas fa-compass-drafting',
                             text: 'Edit in Studio',
@@ -1328,6 +1398,23 @@ class DesktopShortcutsManager {
                         },
                         {
                             separator: true
+                        },
+                        {
+                            icon: 'fas fa-pen',
+                            text: 'Rename',
+                            action: 'rename-shortcut'
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: (target) => {
+                                return this.getWorkspaceSubmenuItems();
+                            },
+                            loadfn: (item) => {
+                                // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
                         },
                         {
                             icon: 'fas fa-trash',
@@ -1726,9 +1813,12 @@ class DesktopShortcutsManager {
                     if (!shortcut.id.startsWith('temp-')) {
                         try {
                             await wsClient.removeDesktopShortcut(this.currentWorkspace, shortcut.id);
+                            console.log(`✅ Removed shortcut: ${shortcut.name} (${shortcut.type}, id: ${shortcut.id})`);
                         } catch (error) {
-                            console.error('Failed to remove shortcut:', error);
+                            console.error(`❌ Failed to remove shortcut: ${shortcut.name} (${shortcut.type}, id: ${shortcut.id})`, error);
                         }
+                    } else {
+                        console.log(`⏭️ Skipping deletion of temp shortcut: ${shortcut.name} (${shortcut.type}, id: ${shortcut.id})`);
                     }
                 }
             }
@@ -2105,6 +2195,59 @@ class DesktopShortcutsManager {
             throw error;
         }
     }
+
+    // Get workspace submenu items for "Move to..." menu
+    getWorkspaceSubmenuItems() {
+        if (typeof workspaces === 'undefined' || !this.currentWorkspace) {
+            return [];
+        }
+
+        const workspaceList = Object.values(workspaces)
+            .filter(ws => ws.id !== this.currentWorkspace)
+            .sort((a, b) => (a.sort || 0) - (b.sort || 0))
+            .map(ws => {
+                const workspaceColor = ws.color || '#102040';
+                return {
+                    content: `<div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div><span>${ws.name || ws.id}</span>`,
+                    action: 'move-shortcut-to-workspace',
+                    data: { workspaceId: ws.id, workspaceName: ws.name || ws.id }
+                };
+            });
+
+        return workspaceList;
+    }
+
+    // Move a shortcut to another workspace
+    async moveShortcutToWorkspace(shortcutId, targetWorkspaceId) {
+        try {
+            const shortcut = this.shortcuts.find(s => s.id === shortcutId);
+            if (!shortcut) {
+                throw new Error('Shortcut not found');
+            }
+
+            if (!wsClient || !wsClient.isConnected()) {
+                throw new Error('WebSocket not connected');
+            }
+
+            // Create a copy of the shortcut without internal flags
+            const shortcutCopy = { ...shortcut };
+            delete shortcutCopy._isNew;
+            delete shortcutCopy._isModified;
+            delete shortcutCopy._isDeleted;
+
+            // Add shortcut to target workspace
+            await wsClient.addDesktopShortcut(targetWorkspaceId, shortcutCopy);
+
+            // Remove shortcut from current workspace using debounced save
+            await this.removeShortcut(shortcutId);
+
+            showGlassToast('success', null, `Shortcut moved to ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`, false, 3000, '<i class="fas fa-arrow-right"></i>');
+        } catch (error) {
+            console.error('Failed to move desktop shortcut:', error);
+            showGlassToast('error', 'Error', 'Failed to move shortcut', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            throw error;
+        }
+    }
 }
 
 // Initialize global desktop shortcuts manager
@@ -2112,14 +2255,17 @@ desktopShortcuts = new DesktopShortcutsManager();
 
 // Register initialization step (after wallpaper and taskbar are loaded)
 wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
-    desktopShortcuts.init();
-    
-    // Load and render shortcuts for current workspace if we're in desktop mode
-    // activeWorkspace is set in step 12 (Loading Workspaces)
-    if (window.isDesktop && typeof activeWorkspace !== 'undefined') {
-        desktopShortcuts.currentWorkspace = activeWorkspace;
-        await desktopShortcuts.loadShortcuts(activeWorkspace);
-        desktopShortcuts.renderShortcuts();
+    // Only initialize and load desktop shortcuts if in desktop mode
+    if (window.isDesktop) {
+        desktopShortcuts.init();
+        
+        // Load and render shortcuts for current workspace
+        // activeWorkspace is set in step 12 (Loading Workspaces)
+        if (typeof activeWorkspace !== 'undefined') {
+            desktopShortcuts.currentWorkspace = activeWorkspace;
+            await desktopShortcuts.loadShortcuts(activeWorkspace);
+            desktopShortcuts.renderShortcuts();
+        }
     }
 });
 
@@ -2175,6 +2321,16 @@ document.addEventListener('contextMenuAction', async (event) => {
             
             if (confirmed) {
                 await desktopShortcuts.removeShortcut(shortcutId);
+            }
+            break;
+            
+        case 'move-shortcut-to-workspace':
+            // Get workspace data from item
+            const { item } = event.detail;
+            if (item && item.data && item.data.workspaceId) {
+                const targetWorkspaceId = item.data.workspaceId;
+                const targetWorkspaceName = item.data.workspaceName || targetWorkspaceId;
+                await desktopShortcuts.moveShortcutToWorkspace(shortcutId, targetWorkspaceId);
             }
             break;
             
@@ -2284,7 +2440,7 @@ document.addEventListener('contextMenuAction', async (event) => {
                         }
                     }
                     
-                    // Jump to the image using loadGalleryFromIndex
+                    // Jump to the image using displayGalleryFromStartIndex
                     await displayGalleryFromStartIndex(targetIndex, true);
                 };
                 

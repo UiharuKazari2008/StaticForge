@@ -50,9 +50,6 @@ class ChatSystem {
         
         // Persona settings button
         document.getElementById('personaSettingsBtn')?.addEventListener('click', () => this.openPersonaSettingsModal());
-        
-        // All chats button
-        document.getElementById('allChatsBtn')?.addEventListener('click', () => this.showAllChats());
     }
 
     async initializeWithPersonaSettings() {
@@ -220,7 +217,7 @@ class ChatSystem {
         this.isLoading = true;
         const startBtn = document.getElementById('startChatBtn');
         startBtn.disabled = true;
-        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+        startBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i> Starting...';
         
         // Clear any pending chat ID
         this.pendingChatId = null;
@@ -852,7 +849,7 @@ class ChatSystem {
         this.isLoading = true;
         const sendBtn = document.getElementById('chatSendBtn');
         sendBtn.disabled = true;
-        sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        sendBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
         
         // Add user message to UI immediately
         this.addMessageToUI('user', message);

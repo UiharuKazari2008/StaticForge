@@ -5,7 +5,7 @@ class FileSearch {
     constructor() {
         this.searchInput = document.getElementById('fileSearchInput');
         this.clearSearchBtn = document.getElementById('clearSearchBtn');
-        
+
         this.currentQuery = '';
         window.currentSearchTerm = null;
         this.searchResults = [];
@@ -18,60 +18,60 @@ class FileSearch {
         this.cacheInitialized = false;
         this.cacheViewType = null;
         this.autofillVisible = false;
-        
+
         // Keyboard navigation state
         this.selectedIndex = -1;
         this.expandedResults = false;
         this.initialDisplayLimit = 5;
-        
+
         // Create autofill overlay
         this.createAutofillOverlay();
         this.init();
     }
-    
+
     init() {
         if (!this.searchInput) {
             console.error('File search input not found');
             return;
         }
-        
+
         this.setupEventListeners();
     }
-    
+
     createAutofillOverlay() {
         // Remove existing overlay if any
         const existingOverlay = document.getElementById('fileSearchAutofill');
         if (existingOverlay) {
             existingOverlay.remove();
         }
-        
+
         // Create new autofill overlay using the same structure as main autocomplete
         this.autofillOverlay = document.createElement('div');
         this.autofillOverlay.id = 'fileSearchAutofill';
         this.autofillOverlay.className = 'character-autocomplete-overlay hidden';
-        
+
         // Create the list container (same as main autocomplete)
         this.autofillList = document.createElement('div');
         this.autofillList.className = 'character-autocomplete-list';
         this.autofillList.id = 'fileSearchAutofillList';
-        
+
         this.autofillOverlay.appendChild(this.autofillList);
         document.body.appendChild(this.autofillOverlay);
     }
-    
+
     setupEventListeners() {
         // Search input events
         this.searchInput.addEventListener('input', (e) => {
             this.handleSearchInput(e.target.value);
         });
-        
+
         // Listen for when search input is manually cleared
         this.searchInput.addEventListener('change', (e) => {
             if (!e.target.value || e.target.value.trim().length === 0) {
                 this.clearSearch(true, false);
             }
         });
-        
+
         this.searchInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -95,7 +95,7 @@ class FileSearch {
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so down arrow goes down
                     this.navigateSuggestions(1);
@@ -106,7 +106,7 @@ class FileSearch {
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so up arrow goes up
                     this.navigateSuggestions(-1);
@@ -117,7 +117,7 @@ class FileSearch {
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so PageDown goes down
                     this.handlePageNavigation(1);
@@ -128,7 +128,7 @@ class FileSearch {
             } else if (e.key === 'PageUp') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so PageUp goes up
                     this.handlePageNavigation(-1);
@@ -139,7 +139,7 @@ class FileSearch {
             } else if (e.key === 'Home') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so Home goes to top
                     this.handleHomeEndNavigation(false);
@@ -150,7 +150,7 @@ class FileSearch {
             } else if (e.key === 'End') {
                 e.preventDefault();
                 // Handle navigation based on mobile vs desktop layout
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     // Mobile: overlay appears below, so End goes to bottom
                     this.handleHomeEndNavigation(true);
@@ -161,17 +161,17 @@ class FileSearch {
             }
             // Don't intercept left/right arrows - allow text navigation
         });
-        
+
         // Focus events
         this.searchInput.addEventListener('focus', () => {
             this.searchInput.parentElement.classList.add('focused');
             clearTimeout(this.clearTimeout);
             this.clearTimeout = null;
-            
+
             this.showAutofill();
             this.initializeSearchIfNeeded();
         });
-        
+
         this.clearTimeout = null;
         this.searchInput.addEventListener('blur', () => {
             this.searchInput.parentElement.classList.remove('focused');
@@ -183,7 +183,7 @@ class FileSearch {
                 }
             }, 15000);
         });
-        
+
         // Clear search button
         if (this.clearSearchBtn) {
             this.clearSearchBtn.addEventListener('click', () => {
@@ -192,7 +192,7 @@ class FileSearch {
                 closeSearchContainer();
             });
         }
-        
+
         // Handle view changes to reset cache
         if (window.galleryToggleGroup) {
             window.galleryToggleGroup.addEventListener('click', (e) => {
@@ -205,22 +205,22 @@ class FileSearch {
                 }
             });
         }
-        
+
         // Listen for workspace changes to reset cache
         document.addEventListener('workspaceChanged', () => {
             this.cacheInitialized = false;
             this.cacheViewType = null;
         });
-        
+
         // Listen for gallery data updates to refresh original data
         document.addEventListener('galleryDataUpdated', () => {
             if (this.searchResults && this.searchResults.length > 0) {
                 this.ensureOriginalGalleryData();
             }
         });
-        
+
         // Listen for gallery view changes to clear search system
-        
+
         // Handle window resize and orientation changes for mobile positioning
         window.addEventListener('resize', () => {
             if (this.autofillVisible) {
@@ -228,7 +228,7 @@ class FileSearch {
                 this.showAutofill();
             }
         });
-        
+
         // Handle orientation change specifically for mobile
         window.addEventListener('orientationchange', () => {
             // Small delay to allow orientation change to complete
@@ -238,15 +238,15 @@ class FileSearch {
                 }
             }, 100);
         });
-        
+
         // Ensure mobile expanded state is maintained
         this.ensureMobileExpandedState();
-        
+
         // Set up interval to maintain mobile expanded state
         setInterval(() => {
             this.ensureMobileExpandedState();
         }, 1000); // Check every second
-        
+
         if (window.galleryToggleGroup) {
             window.galleryToggleGroup.addEventListener('click', (e) => {
                 if (e.target.classList.contains('gallery-toggle-btn') && !e.target.classList.contains('active')) {
@@ -255,10 +255,10 @@ class FileSearch {
                 }
             });
         }
-        
+
 
     }
-    
+
     async initializeSearchIfNeeded() {
         if (this.cacheInitialized && this.cacheViewType === this.getCurrentViewType()) {
             // Already initialized - ensure input is enabled
@@ -267,18 +267,18 @@ class FileSearch {
             }
             return;
         }
-        
+
         try {
             // Show autofill overlay and initialization banner so user can see status
             this.showAutofill();
             this.showInitializationBanner();
-            
+
             await this.initializeSearchWithGalleryData(this.getCurrentViewType());
-            
+
             // Hide banner and show top results (wait for this to complete)
             this.hideInitializationBanner();
             await this.showTopResults();
-            
+
             // Enable search input after initialization AND top results are fully loaded
             if (this.searchInput) {
                 this.searchInput.disabled = false;
@@ -294,7 +294,7 @@ class FileSearch {
             throw error; // Re-throw so caller knows initialization failed
         }
     }
-    
+
     showInitializationBanner() {
         const banner = document.createElement('div');
         banner.id = 'fileSearchInitBanner';
@@ -306,24 +306,24 @@ class FileSearch {
             </div>
             <div class="search-service-indicators">
                 <div class="search-service-icon status-searching">
-                    <i class="fas fa-spinner fa-spin"></i>
+                    <i class="fas fa-spinner-third fa-spin"></i>
                 </div>
             </div>
         `;
-        
+
         // Insert at the top of the autocomplete list
         if (this.autofillList) {
             this.autofillList.insertBefore(banner, this.autofillList.firstChild);
         }
     }
-    
+
     hideInitializationBanner() {
         const banner = document.getElementById('fileSearchInitBanner');
         if (banner) {
             banner.remove();
         }
     }
-    
+
     // Please wait banner while fetching initial/top results or suggestions
     showPleaseWaitBanner() {
         if (!this.autofillList) return;
@@ -333,7 +333,7 @@ class FileSearch {
         banner.className = 'search-status-display';
         banner.innerHTML = `
             <div class="search-status-header">
-                <i class="fas fa-spinner fa-spin"></i>
+                <i class="fas fa-spinner-third fa-spin"></i>
                 <span class="search-status-text">Please wait...</span>
             </div>
         `;
@@ -365,38 +365,38 @@ class FileSearch {
         const banner = document.getElementById('fileSearchNoResults');
         if (banner) banner.remove();
     }
-    
+
     async showTopResults() {
         if (!this.cacheInitialized) {
             return;
         }
-        
+
         try {
             // Check if we have any tags in the current query
             const enteredTags = this.currentQuery.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
-            
+
             if (enteredTags.length > 0) {
                 // Use enhanced search when we have tags, even for blank query
                 await this.requestEnhancedSuggestions();
                 return;
             }
-            
+
             // Get top results (empty query with no tags returns top suggestions)
             this.showPleaseWaitBanner();
             this.hideNoResultsBanner();
             const result = await window.wsClient.getTagSuggestions('', this.getCurrentViewType());
             this.hidePleaseWaitBanner();
-            
+
             if (result && result.tagSuggestions) {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
-                
+
                 // Ensure mobile shows expanded results
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     this.expandedResults = true;
                 }
-                
+
                 this.displayTagSuggestions();
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
@@ -415,7 +415,7 @@ class FileSearch {
             throw error;
         }
     }
-    
+
     getCurrentViewType() {
         if (window.galleryToggleGroup) {
             const activeBtn = window.galleryToggleGroup.querySelector('.gallery-toggle-btn.active');
@@ -425,12 +425,12 @@ class FileSearch {
         }
         return 'images';
     }
-    
+
     handleSearchInput(query) {
         this.currentQuery = query.trim();
         // Expose current search term globally for title bar
         window.currentSearchTerm = this.currentQuery.length > 0 ? this.currentQuery : null;
-        
+
         // Clear previous timeouts
         if (this.suggestionsTimeout) {
             clearTimeout(this.suggestionsTimeout);
@@ -438,7 +438,7 @@ class FileSearch {
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
-        
+
         // Show suggestions for any input (including single letters)
         if (this.currentQuery.length === 0) {
             this.showTopResults();
@@ -451,32 +451,32 @@ class FileSearch {
                 this.updateTagSuggestions(this.currentQuery);
             }, this.debounceDelay);
         }
-        
+
         // Update title bar
         updateGalleryTitleBar();
     }
-    
+
     async updateTagSuggestions(query) {
         if (!this.cacheInitialized) {
             return;
         }
-        
+
         try {
             this.showPleaseWaitBanner();
             this.hideNoResultsBanner();
             const result = await window.wsClient.getTagSuggestions(query, this.getCurrentViewType());
             this.hidePleaseWaitBanner();
-            
+
             if (result && result.tagSuggestions) {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
-                
+
                 // Ensure mobile shows expanded results
-                const isMobile = window.innerWidth <= 577;
+                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                 if (isMobile) {
                     this.expandedResults = true;
                 }
-                
+
                 this.displayTagSuggestions();
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
@@ -492,7 +492,7 @@ class FileSearch {
             this.showNoResultsBanner();
         }
     }
-    
+
     getBaseName(filename) {
         return filename
             .replace(/_upscaled(?=\.)/, '')  // Remove _upscaled suffix
@@ -505,18 +505,18 @@ class FileSearch {
 
     displayTagSuggestions() {
         const suggestionsList = this.autofillList;
-        
+
         if (!suggestionsList) return;
-        
+
         // Remove existing suggestions (but keep preview section)
         const existingSuggestions = suggestionsList.querySelectorAll('.character-autocomplete-item, .more-indicator');
         existingSuggestions.forEach(item => item.remove());
-        
+
         // Determine how many to show based on expansion state
         const allResults = this.tagSuggestions || [];
         const displayCount = this.expandedResults ? allResults.length : Math.min(this.initialDisplayLimit, allResults.length);
         const displayResults = allResults.slice(0, displayCount);
-        
+
         const getCategoryBadgeClass = (type) => {
             switch (type) {
                 case 'tag': return 'general-badge';
@@ -527,23 +527,23 @@ class FileSearch {
                 default: return 'general-badge';
             }
         };
-        
+
         // Compute max weight once for dot intensity
         const maxWeight = Math.max(0, ...allResults.map(s => Math.abs(s.totalWeight || 0)));
-        
+
         // Add tag suggestions using the same structure as main autocomplete
         displayResults.forEach((suggestion, index) => {
             const suggestionElement = document.createElement('div');
             suggestionElement.className = 'character-autocomplete-item';
             suggestionElement.dataset.index = index;
             suggestionElement.dataset.type = suggestion.type;
-            
+
             // Determine display text based on suggestion type
             let displayText = suggestion.originalTag;
-            
+
             if (suggestion.type === 'full_text' && suggestion.fullText) {
                 const words = suggestion.fullText.split(/\s+/);
-                const wordIndex = words.findIndex(word => 
+                const wordIndex = words.findIndex(word =>
                     word.toLowerCase().includes((suggestion.tag || '').toLowerCase())
                 );
                 if (wordIndex >= 0) {
@@ -552,7 +552,7 @@ class FileSearch {
                     displayText = words.slice(start, end).join(' ');
                 }
             }
-            
+
             // Weight dot
             const weightOpacity = maxWeight > 0 ? Math.min(1, Math.abs(suggestion.totalWeight || 0) / maxWeight) : 0;
             const weightLightness = 15 + (weightOpacity * 75);
@@ -561,15 +561,15 @@ class FileSearch {
                     <div class="count-dot weight-dot" style="background: hsl(120, 100%, ${weightLightness}%, ${weightOpacity});"></div>
                 </div>
             ` : '';
-            
+
             // Category badge
             const categoryBadgeClass = getCategoryBadgeClass(suggestion.type);
             const categoryBadge = `<span class="tag-category-badge ${categoryBadgeClass}">${suggestion.type}</span>`;
-            
+
             // Right-side badge
             const badge = `${suggestion.occurrenceCount || 0}`;
             const label = suggestion.type === 'preset' ? 'Preset' : 'Prompt';
-            
+
             suggestionElement.innerHTML = `
                 <div class="character-info-row">
                     <span class="character-name">${displayText}
@@ -581,14 +581,14 @@ class FileSearch {
                     </span>
                 </div>
             `;
-            
+
             suggestionElement.addEventListener('click', () => {
                 this.insertSuggestion(suggestion);
             });
-            
+
             suggestionsList.appendChild(suggestionElement);
         });
-        
+
         // Add "show more" indicator if there are more results and not expanded
         if (!this.expandedResults && allResults.length > this.initialDisplayLimit) {
             const moreItem = document.createElement('div');
@@ -603,34 +603,34 @@ class FileSearch {
             });
             suggestionsList.appendChild(moreItem);
         }
-        
+
         // Update keyboard navigation state
         this.updateKeyboardNavigation();
     }
-    
+
     displayPreviewImages() {
         if (!this.autofillList) return;
-        
+
         // Remove existing preview section if any
         const existingPreviewSection = this.autofillList.querySelector('.preview-images-section');
         if (existingPreviewSection) {
             existingPreviewSection.remove();
         }
-        
+
         let previewImages = [];
         let headerText = '';
         let headerIcon = '';
-        
+
         if (this.currentQuery && this.currentQuery.trim().length > 0) {
             // For specific queries: show top 10 images from search results
             headerText = `Search Results`;
             headerIcon = 'fas fa-images';
-            
+
             for (const suggestion of this.tagSuggestions) {
                 if (suggestion.files && Array.isArray(suggestion.files)) {
                     for (const fileInfo of suggestion.files) {
                         if (previewImages.length >= 10) break;
-                        
+
                         const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
                         if (filename && !previewImages.find(img => img.filename === filename)) {
                             previewImages.push({
@@ -648,17 +648,17 @@ class FileSearch {
             // For blank queries: show top images from highest ranked tags
             headerText = 'Top Images';
             headerIcon = 'fas fa-star';
-            
+
             // Get images from the highest ranked tags (first 5 suggestions)
             const topSuggestions = this.tagSuggestions.slice(0, 5);
-            
+
             for (const suggestion of topSuggestions) {
                 if (suggestion.files && Array.isArray(suggestion.files)) {
                     // Get up to 2 images from each top suggestion
                     let imagesFromSuggestion = 0;
                     for (const fileInfo of suggestion.files) {
                         if (previewImages.length >= 10 || imagesFromSuggestion >= 2) break;
-                        
+
                         const filename = fileInfo.filename || fileInfo.original || fileInfo.upscaled;
                         if (filename && !previewImages.find(img => img.filename === filename)) {
                             previewImages.push({
@@ -674,7 +674,7 @@ class FileSearch {
                 if (previewImages.length >= 10) break;
             }
         }
-        
+
         // Only show preview section if we have images
         if (previewImages.length > 0) {
             // Create preview section (similar to spell check section)
@@ -700,10 +700,10 @@ class FileSearch {
                     `).join('')}
                 </div>
             `;
-            
+
             // Insert preview section at the top of the autocomplete list
             this.autofillList.insertBefore(previewSection, this.autofillList.firstChild);
-            
+
             // Add click events to preview images
             previewSection.querySelectorAll('.preview-image-item').forEach(item => {
                 item.addEventListener('click', () => {
@@ -713,17 +713,17 @@ class FileSearch {
             });
         }
     }
-    
+
     scrollToImageInGallery(filename) {
         // Find the image element in the current gallery
         const galleryItems = document.querySelectorAll('.gallery-item img, .gallery-item .gallery-image');
-        
+
         for (const img of galleryItems) {
             const imgSrc = img.src || img.getAttribute('data-src') || '';
             if (imgSrc.includes(encodeURIComponent(filename)) || imgSrc.includes(filename)) {
                 // Scroll to the image
                 img.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                
+
                 // Add a highlight effect
                 const galleryItem = img.closest('.gallery-item');
                 if (galleryItem) {
@@ -735,7 +735,7 @@ class FileSearch {
                 break;
             }
         }
-        
+
         // Fallback: try to find by filename in data attributes
         if (!document.querySelector('.gallery-item.highlighted')) {
             const galleryItemsByData = document.querySelectorAll('.gallery-item[data-filename]');
@@ -752,29 +752,29 @@ class FileSearch {
             }
         }
     }
-    
+
     showAutofill() {
         if (this.autofillVisible) return;
-        
+
         this.autofillOverlay.classList.remove('hidden');
         this.autofillVisible = true;
-        
+
         // Position the overlay based on screen size
         const rect = this.searchInput.getBoundingClientRect();
-        const isMobile = window.innerWidth <= 577;
-        
+        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
+
         this.autofillOverlay.style.left = rect.left + 'px';
         this.autofillOverlay.style.width = Math.max(rect.width, 300) + 'px';
-        
+
         if (isMobile) {
             // Mobile: position below the search input (drop down)
             this.autofillOverlay.style.top = (rect.bottom + 5) + 'px';
             this.autofillOverlay.style.bottom = 'auto';
-            
+
             // Mobile: always expanded for better usability
             this.expandedResults = true;
             this.autofillOverlay.classList.add('expanded');
-            
+
             // Use top-down for mobile layout
             this.autofillOverlay.classList.add('top-down');
             this.autofillOverlay.classList.remove('bottom-up');
@@ -782,50 +782,50 @@ class FileSearch {
             // Desktop: position above the search input (drop up)
             this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
             this.autofillOverlay.style.top = 'auto';
-            
+
             // Desktop: use default height (not expanded)
             this.expandedResults = false;
             this.autofillOverlay.classList.remove('expanded');
-            
+
             // Use bottom-up for desktop layout
             this.autofillOverlay.classList.add('bottom-up');
             this.autofillOverlay.classList.remove('top-down');
         }
-        
+
         // Refresh the display to show expanded/collapsed results based on new state
         if (this.tagSuggestions && this.tagSuggestions.length > 0) {
             this.displayTagSuggestions();
         }
     }
-    
+
     hideAutofill() {
         if (!this.autofillVisible) return;
-        
+
         this.autofillOverlay.classList.add('hidden');
         this.autofillOverlay.classList.remove('bottom-up', 'top-down');
-        
+
         // Preserve expanded class on mobile, remove on desktop
-        const isMobile = window.innerWidth <= 577;
+        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
         if (!isMobile) {
             this.autofillOverlay.classList.remove('expanded');
             this.expandedResults = false;
         }
-        
+
         this.autofillVisible = false;
-        
+
         this.selectedIndex = -1;
 
         // Clean any banners when hiding
         this.hidePleaseWaitBanner();
         this.hideNoResultsBanner();
     }
-    
+
     async performSearch(query) {
         if (!query || query.trim() === '') {
             this.clearSearch(false, false);
             return;
         }
-        
+
         if (!this.cacheInitialized) {
             try {
                 await this.initializeSearchWithGalleryData(this.getCurrentViewType());
@@ -835,29 +835,29 @@ class FileSearch {
                 return;
             }
         }
-        
+
         this.isSearching = true;
-        
+
         try {
             // Clear the gallery before sending the search request
             if (typeof clearGallery === 'function') {
                 clearGallery();
             }
-            
+
             // Use the full query for gallery search results
             const fullQuery = this.searchInput.value.trim();
             const result = await window.wsClient.searchFiles(fullQuery, this.getCurrentViewType());
-            
+
             if (result && result.status === 'complete') {
                 this.searchResults = result.results || [];
                 this.tagSuggestions = result.tagSuggestions || [];
-                
+
                 // Always filter gallery to handle both results and no-results cases
                 this.filterGallery();
-                
+
                 // Update title bar after search
                 updateGalleryTitleBar();
-                
+
                 if (this.searchResults.length === 0) {
                     // Also show no-results in overlay for consistency
                     this.showNoResultsBanner();
@@ -872,45 +872,64 @@ class FileSearch {
             this.isSearching = false;
         }
     }
-    
+
     showSearchError(message) {
         console.error('Search error:', message);
         // You can implement a more sophisticated error display here
     }
-    
+
     filterGallery() {
-        // Create a set of matching filenames for fast lookup
-        const matchingFilenames = new Set((this.searchResults || []).map(result => result.filename));
-        
-        // Get the original gallery data
-        const originalImages = window.originalAllImages || allImages || [];
-        
+        // Get the current gallery data that the user is seeing
+        const originalImages = allImages || [];
+
         if (this.searchResults && this.searchResults.length > 0) {
-            // Filter images based on search results
-            const filteredImages = originalImages.filter(img => {
+            // Create a map of normalized filename to search result for ordering
+            const normalizeFilename = (fname) => {
+                if (!fname) return '';
+                return fname.replace(/\.(png|jpg|jpeg)$/i, ''); // Remove extension for comparison
+            };
+
+            const searchResultMap = new Map();
+            this.searchResults.forEach((result, searchIndex) => {
+                const normalized = normalizeFilename(result.filename);
+                searchResultMap.set(normalized, { result, searchIndex });
+            });
+
+            // Find matching images in the order they appear in search results
+            const filteredImages = [];
+            const originalIndices = [];
+
+            // First pass: collect all matching images with their search order
+            const matchesWithOrder = [];
+
+            originalImages.forEach((img, index) => {
                 if (typeof img === 'object' && img !== null) {
-                    return (img.original && matchingFilenames.has(img.original)) ||
-                           (img.upscaled && matchingFilenames.has(img.upscaled)) ||
-                           (img.filename && matchingFilenames.has(img.filename));
+                    const imgFilename = normalizeFilename(img.filename || img.original || img.upscaled);
+                    const searchData = searchResultMap.get(imgFilename);
+                    if (imgFilename && searchData) {
+                        matchesWithOrder.push({
+                            image: img,
+                            originalIndex: index,
+                            searchOrder: searchData.searchIndex
+                        });
+                    }
                 }
-                return matchingFilenames.has(img);
             });
-            
-            // Create mapping of filtered images to their original indices
-            const originalIndices = filteredImages.map(img => {
-                const originalIndex = originalImages.findIndex(originalImg => 
-                    (originalImg.original && originalImg.original === img.original) ||
-                    (originalImg.upscaled && originalImg.upscaled === img.upscaled) ||
-                    (originalImg.filename && originalImg.filename === img.filename)
-                );
-                return originalIndex !== -1 ? originalIndex : 0;
+
+            // Sort matches by search result order (relevance order)
+            matchesWithOrder.sort((a, b) => a.searchOrder - b.searchOrder);
+
+            // Extract sorted arrays
+            matchesWithOrder.forEach(match => {
+                filteredImages.push(match.image);
+                originalIndices.push(match.originalIndex);
             });
-            
-            // Update the gallery with filtered results and original indices mapping
+
+            // Update the gallery with filtered results in search result order
             if (typeof window.applyFilteredImages === 'function') {
                 window.applyFilteredImages(filteredImages, originalIndices);
             } else if (typeof switchGalleryView === 'function') {
-                const currentView = window.currentGalleryView || 'images';
+                const currentView = currentGalleryView || 'images';
                 switchGalleryView(currentView, true);
             }
         } else {
@@ -918,12 +937,12 @@ class FileSearch {
             if (typeof window.applyFilteredImages === 'function') {
                 window.applyFilteredImages([], []);
             } else if (typeof switchGalleryView === 'function') {
-                const currentView = window.currentGalleryView || 'images';
+                const currentView = currentGalleryView || 'images';
                 switchGalleryView(currentView, true);
             }
         }
     }
-    
+
     async initializeSearchWithGalleryData(viewType) {
         // Execute cache initialization and gallery data request in parallel
         const [cacheResult, galleryResp] = await Promise.all([
@@ -933,27 +952,22 @@ class FileSearch {
                 return null;
             })
         ]);
-        
+
         // Normalize gallery response shape
         const galleryData = galleryResp && (galleryResp.gallery ? galleryResp : (galleryResp.data || {}));
         const galleryArray = galleryData.gallery || galleryData.images || null;
-        
+
         // Handle cache initialization result
         if (cacheResult && cacheResult.status === 'cache_ready') {
             this.cacheInitialized = true;
             this.cacheViewType = viewType;
-            if (Array.isArray(galleryArray)) {
-                window.originalAllImages = [...galleryArray];
-            } else if (allImages && allImages.length > 0) {
-                window.originalAllImages = [...allImages];
-            } else {
-                window.originalAllImages = [];
-            }
+            // Don't set window.originalAllImages here - we'll use the current allImages for filtering
+            // The search cache is initialized, but we filter against the actual displayed gallery
         } else {
             throw new Error('Cache initialization failed - unexpected response');
         }
     }
-    
+
     clearSearch(reload = false, closeAutofill = false) {
         // Clear search input
         if (this.searchInput) {
@@ -966,7 +980,7 @@ class FileSearch {
         this.searchResults = [];
         this.tagSuggestions = [];
         this.isSearching = false;
-        
+
         if (window.originalAllImages) {
             delete window.originalAllImages;
         }
@@ -981,36 +995,36 @@ class FileSearch {
         }
 
         if (reload) {
-            const currentView = window.currentGalleryView || 'images';
+            const currentView = currentGalleryView || 'images';
             switchGalleryView(currentView, true);
             // Clear filtered indices when reloading
             if (window.filteredImageIndices) {
                 delete window.filteredImageIndices;
             }
         }
-        
+
         // Clear search UI
         if (closeAutofill) {
             this.hideAutofill();
             this.unfocusInput();
         }
-        
+
         // Clean up search cache on server
         if (this.cacheInitialized && window.wsClient) {
             window.wsClient.cleanupSearchCache().catch(error => {
                 console.warn('Failed to cleanup search cache:', error);
             });
         }
-        
+
         // Clear filtered indices mapping
         if (window.filteredImageIndices) {
             delete window.filteredImageIndices;
         }
-        
+
         this.cacheInitialized = false;
         this.cacheViewType = null;
     }
-    
+
     ensureOriginalGalleryData() {
         if (!window.originalAllImages && allImages && allImages.length > 0) {
             window.originalAllImages = [...allImages];
@@ -1020,27 +1034,27 @@ class FileSearch {
             }
         }
     }
-    
+
     expandResults() {
         this.expandedResults = true;
         this.displayTagSuggestions();
-        
+
         // Add expanded CSS class for proper sizing
         if (this.autofillOverlay) {
             this.autofillOverlay.classList.add('expanded');
         }
     }
-    
+
     collapseResults() {
         this.expandedResults = false;
         this.displayTagSuggestions();
-        
+
         // Remove expanded CSS class
         if (this.autofillOverlay) {
             this.autofillOverlay.classList.remove('expanded');
         }
     }
-    
+
     updateKeyboardNavigation() {
         // Reset selection if out of bounds
         if (this.selectedIndex >= this.tagSuggestions.length) {
@@ -1049,11 +1063,11 @@ class FileSearch {
         if (this.selectedIndex < -1) {
             this.selectedIndex = -1;
         }
-        
+
         // Update visual selection
         this.updateSelectionHighlight();
     }
-    
+
     updateSelectionHighlight() {
         // Remove previous selection
         const items = this.autofillList.querySelectorAll('.character-autocomplete-item');
@@ -1065,21 +1079,21 @@ class FileSearch {
             }
         });
     }
-    
+
     scrollToSelectedItem(selectedItem) {
         if (!selectedItem || !this.autofillList) return;
-        
+
         // Center the selected item in the visible area
-        selectedItem.scrollIntoView({ 
-            block: 'center', 
+        selectedItem.scrollIntoView({
+            block: 'center',
             behavior: 'smooth',
             inline: 'nearest'
         });
     }
-    
+
     navigateSuggestions(direction) {
         const maxIndex = this.tagSuggestions.length - 1;
-        
+
         if (direction > 0) {
             // Down arrow
             if (this.selectedIndex === -1) {
@@ -1105,10 +1119,10 @@ class FileSearch {
                 this.selectedIndex--;
             }
         }
-        
+
         this.updateKeyboardNavigation();
     }
-    
+
     handlePageNavigation(direction) {
         if (direction > 0) {
             // PageDown
@@ -1127,10 +1141,10 @@ class FileSearch {
                 this.selectedIndex = Math.max(this.selectedIndex - 10, 0);
             }
         }
-        
+
         this.updateKeyboardNavigation();
     }
-    
+
     handleHomeEndNavigation(isHome) {
         if (isHome) {
             // Home key
@@ -1143,49 +1157,49 @@ class FileSearch {
             this.expandResults();
             this.selectedIndex = this.tagSuggestions.length - 1;
         }
-        
+
         this.updateKeyboardNavigation();
     }
-    
+
     async insertSuggestion(suggestion) {
         // Get current cursor position
         const cursorPos = this.searchInput.selectionStart;
         const currentValue = this.searchInput.value;
-        
+
         // Find the current tag being edited (text before cursor, stopping at comma)
         let currentTagStart = cursorPos;
         while (currentTagStart > 0 && currentValue[currentTagStart - 1] !== ',') {
             currentTagStart--;
         }
-        
+
         // Extract the part before the current tag
         const beforeTag = currentValue.substring(0, currentTagStart);
-        
+
         // Extract the part after the cursor
         const afterCursor = currentValue.substring(cursorPos);
-        
+
         // Build new value - always add comma and space after the tag
         let newValue = beforeTag + suggestion.originalTag + ', ';
-        
+
         // Add any content that was after the cursor
         if (afterCursor.trim()) {
             newValue += afterCursor;
         }
-        
+
         // Update input value
         this.searchInput.value = newValue;
         this.currentQuery = newValue;
-        
+
         // Set cursor position at the end of the text entry
         const newCursorPos = newValue.length;
         this.searchInput.setSelectionRange(newCursorPos, newCursorPos);
-        
+
         // Focus the input
         this.searchInput.focus();
-        
+
         // Perform the search for full results
         await this.performSearch(newValue);
-        
+
         // If there are fewer than 15 resulting items, unfocus and close autofill
         if ((this.searchResults || []).length < 15) {
             this.unfocusInput();
@@ -1194,41 +1208,41 @@ class FileSearch {
             // Otherwise, request enhanced suggestions based on entered tags
             this.requestEnhancedSuggestions();
         }
-        
+
         this.selectedIndex = -1;
         this.updateSelectionHighlight();
     }
-    
+
     unfocusInput() {
         if (this.searchInput) {
             this.searchInput.blur();
         }
     }
-    
+
     async requestEnhancedSuggestions() {
         if (!this.cacheInitialized) return;
-        
+
         try {
             // Get the current entered tags for context
             const enteredTags = this.currentQuery.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
-            
+
             if (enteredTags.length > 0) {
                 // Request suggestions with context from entered tags
                 this.showPleaseWaitBanner();
                 this.hideNoResultsBanner();
                 const result = await window.wsClient.getTagSuggestions('', this.getCurrentViewType(), enteredTags);
                 this.hidePleaseWaitBanner();
-                
+
                 if (result && result.tagSuggestions) {
                     this.tagSuggestions = result.tagSuggestions;
                     this.displayPreviewImages();
-                    
+
                     // Ensure mobile shows expanded results
-                    const isMobile = window.innerWidth <= 577;
+                    const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
                     if (isMobile) {
                         this.expandedResults = true;
                     }
-                    
+
                     this.displayTagSuggestions();
                     if (this.tagSuggestions.length === 0) {
                         this.showNoResultsBanner();
@@ -1247,33 +1261,33 @@ class FileSearch {
             this.showNoResultsBanner();
         }
     }
-    
+
     getCurrentTagText() {
         const cursorPos = this.searchInput.selectionStart;
         const currentValue = this.searchInput.value;
-        
+
         // If cursor is at the beginning or there's no text, return empty
         if (cursorPos === 0 || !currentValue.trim()) {
             return '';
         }
-        
+
         // Find the current tag being edited (text before cursor, stopping at comma)
         let currentTagStart = cursorPos;
         while (currentTagStart > 0 && currentValue[currentTagStart - 1] !== ',') {
             currentTagStart--;
         }
-        
+
         // Extract the current tag text
         const currentTag = currentValue.substring(currentTagStart, cursorPos).trim();
-        
+
         // If we're at the beginning of a tag (after comma), return empty
         if (currentTag === '' && currentValue[cursorPos - 1] === ',') {
             return '';
         }
-        
+
         return currentTag;
     }
-    
+
     handleSearchInput(query) {
         // Clear existing timeouts
         if (this.suggestionsTimeout) {
@@ -1282,18 +1296,18 @@ class FileSearch {
         if (this.searchTimeout) {
             clearTimeout(this.searchTimeout);
         }
-        
+
         this.currentQuery = query;
-        
+
         // For empty queries, show top results (which will use enhanced search if tags exist)
         if (!query || query.trim().length === 0) {
             this.showTopResults();
             return;
         }
-        
+
         // For non-empty queries, get current tag text and search
         const currentTagText = this.getCurrentTagText();
-        
+
         if (currentTagText.length > 0) {
             // Debounced search for current tag
             this.suggestionsTimeout = setTimeout(() => {
@@ -1304,10 +1318,10 @@ class FileSearch {
             this.showTopResults();
         }
     }
-    
+
     ensureMobileExpandedState() {
         // Ensure mobile devices always have expanded autofill
-        const isMobile = window.innerWidth <= 577;
+        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
         if (isMobile && this.autofillOverlay && !this.autofillOverlay.classList.contains('hidden')) {
             this.autofillOverlay.classList.add('expanded');
             this.expandedResults = true;

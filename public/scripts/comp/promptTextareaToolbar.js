@@ -251,9 +251,18 @@ class PromptTextareaToolbar {
         promptTextareas.push(...Array.from(characterPrompts));
         ucTextareas.push(...Array.from(characterUcs));
         
-        // Get token counts for each group (remove disabled text before tokenizing)
-        const promptTexts = promptTextareas.map(ta => (ta.value || '').replace(/!\/[^\/]*\/!/g, ''));
-        const ucTexts = ucTextareas.map(ta => (ta.value || '').replace(/!\/[^\/]*\/!/g, ''));
+        // Strip disabled text blocks (!/.../) so they are not counted (they are removed from the prompt when sent)
+        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
+        const promptPrefix = (typeof getEffectivePromptPrefixForTokenCount === 'function') ? getEffectivePromptPrefixForTokenCount() : '';
+        const ucPrefix = (typeof getEffectiveUcPrefixForTokenCount === 'function') ? getEffectiveUcPrefixForTokenCount() : '';
+        const promptTexts = promptTextareas.map((ta, i) => {
+            const base = stripDisabledBlocks(ta.value || '');
+            return (i === 0 && promptPrefix) ? promptPrefix + base : base;
+        });
+        const ucTexts = ucTextareas.map((ta, i) => {
+            const base = stripDisabledBlocks(ta.value || '');
+            return (i === 0 && ucPrefix) ? ucPrefix + base : base;
+        });
         
         const promptAnalysis = t5Tokenizer.analyzeTexts(promptTexts);
         const ucAnalysis = t5Tokenizer.analyzeTexts(ucTexts);
@@ -334,16 +343,15 @@ class PromptTextareaToolbar {
     }
 
     calculateTokenCount(text) {
-        // Use T5 tokenizer if available, fallback to estimation
+        // Strip disabled text blocks (!/.../) so they are not counted
+        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
+        const cleanedText = stripDisabledBlocks(text || '');
         if (t5Tokenizer) {
-            // Remove disabled text before tokenizing
-            const cleanedText = (text || '').replace(/!\/[^\/]*\/!/g, '');
             return t5Tokenizer.countTokens(cleanedText);
         }
         
         // Fallback estimation
-        if (!text || text.trim() === '') return 0;
-        const cleanedText = text.replace(/!\/[^\/]*\/!/g, '');
+        if (!cleanedText || cleanedText.trim() === '') return 0;
         const words = cleanedText.trim().split(/\s+/);
         return Math.max(1, Math.ceil(words.length * 1.3));
     }
@@ -1676,6 +1684,33 @@ class PromptTextareaToolbar {
         // Store the handler reference for cleanup
         toolbar.directEmphasisKeydownHandler = directEmphasisHandler;
         textarea.addEventListener('keydown', directEmphasisHandler);
+
+        // Android virtual keyboard often does not fire keydown for number keys; it fires beforeinput.
+        // Handle insertText of a single digit with selection the same as keydown (apply emphasis).
+        const directEmphasisBeforeinputHandler = (e) => {
+            if (e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
+            const char = e.data;
+            if (char < '0' || char > '9') return;
+            if (toolbar.classList.contains('emphasis-mode') || document.activeElement !== textarea) return;
+            if (textarea.selectionStart === textarea.selectionEnd) return;
+
+            e.preventDefault();
+            const numericValue = parseInt(char, 10);
+            const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
+            const result = applyEmphasisDirectly(textarea, numericValue, currentMode);
+
+            if (result && result.success) {
+                window.emphasisEditingValue = numericValue;
+                this.updateEmphasisDisplay(toolbar);
+                setTimeout(() => {
+                    if (result.start !== undefined && result.end !== undefined) {
+                        textarea.setSelectionRange(result.start, result.end);
+                    }
+                }, 10);
+            }
+        };
+        toolbar.directEmphasisBeforeinputHandler = directEmphasisBeforeinputHandler;
+        textarea.addEventListener('beforeinput', directEmphasisBeforeinputHandler);
     }
     
     detectEmphasisMode(textarea, selectionStart, selectionEnd) {

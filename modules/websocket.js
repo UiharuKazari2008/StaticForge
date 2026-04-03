@@ -86,14 +86,6 @@ class WebSocketServer {
             // Extract session from request
             const sessionResult = await this.extractSession(req);
             
-            if (!sessionResult || !sessionResult.session) {
-                console.error('❌ WebSocket connection rejected: No valid session');
-                ws.close(1008, 'Authentication required');
-                return;
-            }
-
-            const { session, sessionId, userType } = sessionResult;
-
             // Get client IP address
             const clientIP = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
                             req.headers['x-real-ip'] ||
@@ -102,17 +94,24 @@ class WebSocketServer {
                             req.ip ||
                             false;
 
-            // Store client information
-            this.clients.set(ws, {
-                sessionId,
-                authenticated: true,
-                userType: userType || 'admin',
+            // Allow connection even without authentication for critical messages
+            // Store client information (may be unauthenticated initially)
+            let clientInfo = {
+                sessionId: sessionResult?.sessionId || null,
+                authenticated: !!(sessionResult && sessionResult.session),
+                userType: sessionResult?.userType || null,
                 clientIP: clientIP,
                 connectedAt: new Date(),
                 lastActivity: new Date()
-            });
+            };
 
-            console.log(`✅ WebSocket connected: Session ${sessionId}`);
+            this.clients.set(ws, clientInfo);
+
+            if (clientInfo.authenticated) {
+                console.log(`✅ WebSocket connected (authenticated): Session ${clientInfo.sessionId}`);
+            } else {
+                console.log(`🔓 WebSocket connected (unauthenticated): Allowing critical messages only`);
+            }
 
             // Handle incoming messages
             ws.on('message', (data) => {
@@ -134,11 +133,14 @@ class WebSocketServer {
                 type: 'connection',
                 status: 'connected',
                 message: 'WebSocket connection established',
+                authenticated: clientInfo.authenticated,
                 timestamp: new Date().toISOString()
             });
 
-            // Restore session workspace for reconnection sync
-            this.restoreSessionWorkspace(sessionId, ws);
+            // Restore session workspace for reconnection sync (only if authenticated)
+            if (clientInfo.authenticated && clientInfo.sessionId) {
+                this.restoreSessionWorkspace(clientInfo.sessionId, ws);
+            }
 
             // Send current indexing state to newly connected client
             this.sendToClient(ws, {
@@ -163,6 +165,12 @@ class WebSocketServer {
                     // Clean up session workspace
                     this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
                     
+                    // Clean up metadata cache for this client
+                    const handlers = this.globalResources.getWebSocketMessageHandlers();
+                    if (handlers && handlers.cleanupClientCache) {
+                        handlers.cleanupClientCache(clientInfo.sessionId);
+                    }
+                    
                     this.clients.delete(ws);
                 }
             });
@@ -171,6 +179,15 @@ class WebSocketServer {
             ws.on('error', (error) => {
                 const clientInfo = this.clients.get(ws);
                 console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
+                
+                // Clean up metadata cache for this client if we have session info
+                if (clientInfo && clientInfo.sessionId) {
+                    const handlers = this.globalResources.getWebSocketMessageHandlers();
+                    if (handlers && handlers.cleanupClientCache) {
+                        handlers.cleanupClientCache(clientInfo.sessionId);
+                    }
+                }
+                
                 this.clients.delete(ws);
             });
         });
@@ -269,6 +286,16 @@ class WebSocketServer {
         }
     }
 
+    // Critical message types that don't require authentication
+    static CRITICAL_MESSAGE_TYPES = [
+        'ping',
+        'pong',
+        'server_status',
+        'check_updates',
+        'refresh_server_cache',
+        'version_check'
+    ];
+
     handleMessage(ws, message) {
         const clientInfo = this.clients.get(ws);
         if (!clientInfo) {
@@ -280,8 +307,12 @@ class WebSocketServer {
             return;
         }
 
-        // Check if client is authenticated
-        if (!clientInfo.authenticated) {
+        // Allow critical messages without authentication
+        const isCriticalMessage = message.type && 
+            WebSocketServer.CRITICAL_MESSAGE_TYPES.includes(message.type);
+
+        // Check if client is authenticated (unless it's a critical message)
+        if (!clientInfo.authenticated && !isCriticalMessage) {
             this.sendToClient(ws, {
                 type: 'auth_error',
                 message: 'Authentication required',
@@ -365,15 +396,6 @@ class WebSocketServer {
 
     getConnectionCount() {
         return this.wss.clients.size;
-    }
-
-    // Utility methods for broadcasting specific events
-    broadcastImageGenerated(imageData) {
-        this.broadcast({
-            type: 'image_generated',
-            data: imageData,
-            timestamp: new Date().toISOString()
-        });
     }
 
     broadcastQueueUpdate(queueStatus) {

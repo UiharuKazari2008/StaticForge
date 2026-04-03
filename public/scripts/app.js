@@ -130,6 +130,266 @@ function formatTimezoneInfo(timezone) {
 }
 
 /**
+ * Toggle weather units between metric and imperial
+ * Updates all weather measurements in the document when called
+ * @param {Event} event - The click event (optional)
+ */
+window.toggleWeatherUnits = function (event) {
+    // Read current preference from localStorage and toggle it
+    let currentUseMetric = localStorage.getItem('weather_units_metric') !== 'false';
+    const useMetric = !currentUseMetric;
+
+    // Find the weather display container - try to find from clicked element, then modal content, then document
+    let weatherContainer = null;
+    if (event && event.target) {
+        weatherContainer = event.target.closest('.weather-display');
+    }
+    // Try to find modal content dynamically
+    const modalContent = document.getElementById('compiledPromptContent');
+    if (!weatherContainer && modalContent) {
+        weatherContainer = modalContent.querySelector('.weather-display');
+    }
+    if (!weatherContainer) {
+        weatherContainer = document.querySelector('.weather-display');
+    }
+
+    // If still no container found, search entire document
+    const searchRoot = weatherContainer || document;
+
+    // Helper function to convert temperature
+    const formatTemp = (metric, imperial) => {
+        if (metric === null || metric === undefined) return '--';
+        if (useMetric) {
+            // Preserve decimal precision for metric (Celsius can have decimals)
+            // Use the same formatting as original display - preserve decimals if present
+            const hasDecimals = Math.abs(metric % 1) > 0.0001; // Account for floating point precision
+            if (hasDecimals) {
+                // Show up to 1 decimal place, removing trailing zeros
+                return parseFloat(metric.toFixed(1)).toString();
+            } else {
+                return Math.round(metric).toString();
+            }
+        } else {
+            // Imperial (Fahrenheit) typically shown as whole numbers
+            return Math.round(imperial).toString();
+        }
+    };
+
+    // Helper function to convert wind speed
+    const formatWind = (metric, imperial) => {
+        if (metric === null || metric === undefined) return 'N/A';
+        if (useMetric) {
+            // Preserve decimal precision for metric (m/s can have decimals)
+            const hasDecimals = Math.abs(metric % 1) > 0.0001; // Account for floating point precision
+            if (hasDecimals) {
+                // Show up to 1 decimal place, removing trailing zeros
+                return parseFloat(metric.toFixed(1)).toString();
+            } else {
+                return Math.round(metric).toString();
+            }
+        } else {
+            // Imperial (mph) typically shown as whole numbers
+            return Math.round(imperial).toString();
+        }
+    };
+
+    // Helper function to convert pressure
+    const formatPressure = (metric) => {
+        if (metric === null || metric === undefined) return 'N/A';
+        if (useMetric) {
+            return `${Math.round(metric)} hPa`;
+        } else {
+            return `${(metric / 33.8639).toFixed(2)} inHg`;
+        }
+    };
+
+    // Helper function to convert visibility
+    const formatVisibility = (metricKm) => {
+        if (metricKm === null || metricKm === undefined) return 'N/A';
+        if (useMetric) {
+            return `${metricKm.toFixed(1)} km`;
+        } else {
+            return `${(metricKm * 0.621371).toFixed(1)} mi`;
+        }
+    };
+
+    // Helper function to convert precipitation
+    const formatPrecip = (metric, unitType) => {
+        if (metric === null || metric === undefined) return '';
+        if (unitType === 'cm') {
+            // Snowfall: cm to in
+            if (useMetric) {
+                return `${metric.toFixed(1)} cm`;
+            } else {
+                return `${(metric * 0.393701).toFixed(2)} in`;
+            }
+        } else if (unitType === 'mm/hr') {
+            // Precipitation rate: mm/hr to in/hr
+            if (useMetric) {
+                return `${metric.toFixed(1)} mm/hr`;
+            } else {
+                return `${(metric * 0.0393701).toFixed(2)} in/hr`;
+            }
+        } else {
+            // Rain/showers: mm to in
+            if (useMetric) {
+                return `${metric.toFixed(1)} mm`;
+            } else {
+                return `${(metric * 0.0393701).toFixed(2)} in`;
+            }
+        }
+    };
+
+    // Update main card temperature
+    const mainTempNumber = searchRoot.querySelector('.weather-temp-number');
+    const mainTempUnit = searchRoot.querySelector('.weather-temp-unit');
+    const feelsLikeElement = searchRoot.querySelector('.weather-feels-like');
+
+    if (mainTempNumber && mainTempUnit) {
+        const metricTemp = parseFloat(mainTempNumber.dataset.metric);
+        const imperialTemp = parseFloat(mainTempNumber.dataset.imperial);
+        if (!isNaN(metricTemp) && !isNaN(imperialTemp)) {
+            mainTempNumber.textContent = formatTemp(metricTemp, imperialTemp);
+            mainTempUnit.textContent = useMetric ? '°C' : '°F';
+        }
+    }
+
+    // Update feels like temperature
+    if (feelsLikeElement) {
+        const metricFeels = parseFloat(feelsLikeElement.dataset.metric);
+        const imperialFeels = parseFloat(feelsLikeElement.dataset.imperial);
+        if (!isNaN(metricFeels) && !isNaN(imperialFeels)) {
+            feelsLikeElement.textContent = `Feels like ${formatTemp(metricFeels, imperialFeels)}°${useMetric ? 'C' : 'F'}`;
+        }
+    }
+
+    // Update wind speed in condition details
+    const windSpeedElement = searchRoot.querySelector('.weather-wind-speed');
+    if (windSpeedElement) {
+        const metricWind = parseFloat(windSpeedElement.dataset.metric);
+        const imperialWind = parseFloat(windSpeedElement.dataset.imperial);
+        if (!isNaN(metricWind) && !isNaN(imperialWind)) {
+            windSpeedElement.textContent = useMetric ? `${formatWind(metricWind, imperialWind)} m/s` : `${formatWind(metricWind, imperialWind)} mph`;
+        }
+    }
+
+    // Update visibility in quick indicators
+    const visibilityElements = searchRoot.querySelectorAll('.weather-visibility');
+    visibilityElements.forEach(visibilityElement => {
+        const metricVis = parseFloat(visibilityElement.dataset.metric);
+        if (!isNaN(metricVis)) {
+            visibilityElement.textContent = formatVisibility(metricVis);
+        }
+    });
+
+    // Update precipitation elements
+    const precipRateElement = searchRoot.querySelector('.weather-precip-rate');
+    if (precipRateElement) {
+        const metricPrecip = parseFloat(precipRateElement.dataset.metric);
+        const unitType = precipRateElement.dataset.unit;
+        if (!isNaN(metricPrecip)) {
+            precipRateElement.textContent = formatPrecip(metricPrecip, unitType);
+        }
+    }
+
+    const rainAmountElement = searchRoot.querySelector('.weather-rain-amount');
+    if (rainAmountElement) {
+        const metricRain = parseFloat(rainAmountElement.dataset.metric);
+        const unitType = rainAmountElement.dataset.unit;
+        if (!isNaN(metricRain)) {
+            rainAmountElement.textContent = formatPrecip(metricRain, unitType);
+        }
+    }
+
+    const showersAmountElement = searchRoot.querySelector('.weather-showers-amount');
+    if (showersAmountElement) {
+        const metricShowers = parseFloat(showersAmountElement.dataset.metric);
+        const unitType = showersAmountElement.dataset.unit;
+        if (!isNaN(metricShowers)) {
+            showersAmountElement.textContent = formatPrecip(metricShowers, unitType);
+        }
+    }
+
+    const snowAmountElement = searchRoot.querySelector('.weather-snow-amount');
+    if (snowAmountElement) {
+        const metricSnow = parseFloat(snowAmountElement.dataset.metric);
+        const unitType = snowAmountElement.dataset.unit;
+        if (!isNaN(metricSnow)) {
+            snowAmountElement.textContent = formatPrecip(metricSnow, unitType);
+        }
+    }
+
+    // Update weather detail cards
+    const detailValueElements = searchRoot.querySelectorAll('.weather-detail-value[data-metric][data-imperial]');
+    detailValueElements.forEach(el => {
+        const metricValue = parseFloat(el.dataset.metric);
+        const imperialValue = parseFloat(el.dataset.imperial);
+        const unitType = el.dataset.unitType;
+
+        if (!isNaN(metricValue) && !isNaN(imperialValue)) {
+            if (unitType === 'temperature') {
+                el.textContent = `${formatTemp(metricValue, imperialValue)}°${useMetric ? 'C' : 'F'}`;
+            } else if (unitType === 'wind') {
+                el.textContent = useMetric ? `${formatWind(metricValue, imperialValue)} m/s` : `${formatWind(metricValue, imperialValue)} mph`;
+            } else if (unitType === 'pressure') {
+                el.textContent = formatPressure(metricValue);
+            }
+        }
+    });
+
+    // Update hourly forecast temperatures
+    const hourTempElements = searchRoot.querySelectorAll('.weather-hour-temp[data-metric][data-imperial]');
+    hourTempElements.forEach(el => {
+        const metricTemp = parseFloat(el.dataset.metric);
+        const imperialTemp = parseFloat(el.dataset.imperial);
+        if (!isNaN(metricTemp) && !isNaN(imperialTemp)) {
+            el.textContent = `${formatTemp(metricTemp, imperialTemp)}°${useMetric ? 'C' : 'F'}`;
+        }
+    });
+
+    // Update hourly precipitation displays
+    const hourPrecipElements = searchRoot.querySelectorAll('.weather-hour-precip[data-metric]');
+    hourPrecipElements.forEach(el => {
+        const metricPrecip = parseFloat(el.dataset.metric);
+        const unitType = el.dataset.unit || 'mm';
+        if (!isNaN(metricPrecip)) {
+            if (useMetric) {
+                el.textContent = `${metricPrecip.toFixed(1)}${unitType}`;
+            } else {
+                const inches = metricPrecip * 0.0394;
+                el.textContent = `${inches.toFixed(1)}in`;
+            }
+        }
+    });
+
+    // Update old info-item format (for backward compatibility)
+    const modalContentForInfoItems = document.getElementById('compiledPromptContent');
+    if (modalContentForInfoItems) {
+        const oldInfoItems = modalContentForInfoItems.querySelectorAll('.info-item span:last-child');
+        oldInfoItems.forEach(el => {
+            const metricValue = parseFloat(el.dataset.metric);
+            const imperialValue = parseFloat(el.dataset.imperial);
+            const unitType = el.dataset.unitType;
+
+            if (!isNaN(metricValue) && !isNaN(imperialValue)) {
+                if (unitType === 'temperature') {
+                    el.textContent = `${formatTemp(metricValue, imperialValue)}°${useMetric ? 'C' : 'F'}`;
+                } else if (unitType === 'wind') {
+                    el.textContent = useMetric ? `${formatWind(metricValue, imperialValue)} m/s` : `${formatWind(metricValue, imperialValue)} mph`;
+                } else if (unitType === 'pressure') {
+                    el.textContent = formatPressure(metricValue);
+                } else if (unitType === 'visibility') {
+                    el.textContent = formatVisibility(metricValue);
+                }
+            }
+        });
+    }
+
+    // Save preference to localStorage
+    localStorage.setItem('weather_units_metric', useMetric.toString());
+};
+
+/**
  * Handles click events for toast notification buttons
  *
  * Looks up the button handler by ID, validates the handler object,
@@ -304,7 +564,7 @@ function isInSearchMode() {
 // This handles both normal mode and search mode with filtered results
 function findTrueImageIndexInGallery(filename) {
     if (!filename) return -1;
-    
+
     // If we have filtered results, use the original array
     if (window.originalAllImages && window.originalAllImages.length > 0) {
         return window.originalAllImages.findIndex(img => {
@@ -312,7 +572,7 @@ function findTrueImageIndexInGallery(filename) {
             return imgFilename === filename;
         });
     }
-    
+
     // Otherwise, use the current allImages array
     if (allImages && Array.isArray(allImages)) {
         return allImages.findIndex(img => {
@@ -320,7 +580,7 @@ function findTrueImageIndexInGallery(filename) {
             return imgFilename === filename;
         });
     }
-    
+
     return -1;
 }
 
@@ -361,7 +621,7 @@ async function generateFromPreset(presetName) {
     try {
         // Generate image using WebSocket
         const result = await window.wsClient.generatePreset(presetName);
-        
+
         // Extract data from the standard response format
         const filename = result.filename;
         const seed = result.seed;
@@ -379,9 +639,10 @@ async function generateFromPreset(presetName) {
         progressToastId = null;
 
         createConfetti();
-        await loadGallery(true);
-        
-        if (manualModal.classList.contains('hidden')) {
+
+        if (!isGalleryWindowHidden()) {
+            await loadGallery(true);
+
             // Find the generated image in the gallery
             const found = allImages.find(img => img.original === filename || img.upscaled === filename);
             if (found) {
@@ -409,7 +670,7 @@ async function generateFromPreset(presetName) {
     } finally {
         // Reset generating state
         isGenerating = false;
-        
+
         // Clear progress and loading states
         if (progressInterval) {
             clearInterval(progressInterval);
@@ -426,8 +687,8 @@ async function generateFromPreset(presetName) {
 // Handle preset updates (save/delete)
 async function handlePresetUpdate(data) {
     await loadOptions();
-    
-    
+
+
     // Show notification
     if (data.message) {
         showGlassToast('info', null, data.message);
@@ -462,14 +723,14 @@ async function deletePreset(presetName) {
         }
 
         const result = await window.wsClient.deletePreset(presetName);
-        
+
         // Show success message
         if (result && result.data && result.data.message) {
             showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         } else {
             showGlassToast('success', null, `Preset "${presetName}" deleted`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         }
-        
+
         // Clear the manual preset name input and hide delete button
         if (manualPresetName) {
             manualPresetName.value = '';
@@ -492,62 +753,62 @@ function convertPresetToMetadataFormat(presetData) {
     if (metadata.resolution) {
         metadata.resolution = metadata.resolution.toLowerCase();
     }
-    
+
     // Handle model case conversion
     if (metadata.model) {
         metadata.model = metadata.model.toUpperCase();
     }
-    
+
     // Convert image field to image_source for compatibility
     if (metadata.image && !metadata.image_source) {
         metadata.image_source = metadata.image;
     }
-    
+
     // Convert sampler values to expected format
     if (metadata.sampler) {
         metadata.sampler = SAMPLER_MAP.find(s => s.request === metadata.sampler)?.meta || metadata.sampler;
     }
-    
+
     // Convert noise scheduler values to expected format
     if (metadata.noiseScheduler) {
         metadata.noiseScheduler = NOISE_MAP.find(s => s.request === metadata.noiseScheduler)?.meta || metadata.noiseScheduler;
     }
-    
+
     return metadata;
 }
 
 // Function to load temp image preview (from blueprint uploads)
 async function loadTempImagePreview(previewUrl, imageData) {
-    try {        
+    try {
         // Get the preview image element
         const previewImage = document.getElementById('manualPreviewImage');
         if (!previewImage) {
             console.warn('Preview image element not found');
             return;
         }
-        
+
         // Get the preview container
         const previewContainer = document.getElementById('manualPreviewContainer');
         if (!previewContainer) {
             console.warn('Preview container element not found');
             return;
         }
-        
+
         // Hide the placeholder and show the image
         const previewPlaceholder = document.getElementById('manualPreviewPlaceholder');
         if (previewPlaceholder) {
             previewPlaceholder.classList.add('hidden');
         }
-        
+
         // Set the image source and make it visible
         previewImage.src = previewUrl;
         previewImage.classList.remove('hidden');
-        
+
         // Add error handling for image loading
         previewImage.onerror = () => {
             console.error(`Failed to load image from: ${previewUrl}`);
             previewImage.classList.add('hidden');
-            
+
             // Show placeholder instead
             if (previewPlaceholder) {
                 previewPlaceholder.classList.remove('hidden');
@@ -559,17 +820,17 @@ async function loadTempImagePreview(previewUrl, imageData) {
                 `;
             }
         };
-        
+
         // Show the preview section
         const previewSection = document.getElementById('manualPreviewSection');
         if (previewSection) {
             previewSection.classList.add('active');
             manualModal.classList.add('show-preview');
         }
-        
+
         // Use the consolidated preview visibility system
         showManualPreview();
-        
+
         // Ensure the image container has the proper classes for zoom functionality
         const imageContainer = previewContainer.querySelector('.manual-preview-image-container');
         if (imageContainer) {
@@ -577,12 +838,12 @@ async function loadTempImagePreview(previewUrl, imageData) {
             // Remove any existing zoom state
             imageContainer.classList.remove('zoomed');
         }
-        
+
         // Initialize lightbox functionality for the temp image preview
         setTimeout(() => {
             initializeManualPreviewLightbox();
         }, 1000);
-        
+
     } catch (error) {
         console.error('Error loading temp image preview:', error);
     }
@@ -680,13 +941,13 @@ function formatCarouselItems(data) {
         // Compute analog clock icon on client
         const hour = data.time.hour;
         const minute = data.time.minute;
-        
+
         // Format time if not already formatted (handle both formatted and raw time objects)
         let formattedTime = data.time.formatted;
         if (!formattedTime && hour !== undefined && minute !== undefined) {
             formattedTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
         }
-        
+
         if (formattedTime) {
             const analogIcon = getAnalogClockIcon(hour, minute);
 
@@ -697,7 +958,7 @@ function formatCarouselItems(data) {
             let timeText = timezoneInfo && timezoneInfo.offset !== 0
                 ? `${formattedTime} <span class="timezone-dimmed">${timezoneInfo.formatted}</span>`
                 : formattedTime;
-            
+
             // Add holiday and date next to time - only for compiled context or if explicitly set
             // Check if we're in compiled mode or if date was explicitly set in request
             const isCompiledContext = carouselMode === 'compiled';
@@ -740,7 +1001,7 @@ function formatCarouselItems(data) {
     // Handle both timeOfDay (from current context) and timePeriod (from compiled context)
     let timeOfDayData = null;
     let timePeriodData = null;
-    
+
     /**
      * Normalizes legacy period keys to new period key names (client-side)
      */
@@ -748,9 +1009,9 @@ function formatCarouselItems(data) {
         if (!periodKey || typeof periodKey !== 'string') {
             return periodKey;
         }
-        
+
         const normalized = periodKey.toLowerCase().trim();
-        
+
         const legacyMappings = {
             'earlymorning': 'morning',
             'early_morning': 'morning',
@@ -760,7 +1021,7 @@ function formatCarouselItems(data) {
             'lateevening': 'night',
             'late_evening': 'night'
         };
-        
+
         return legacyMappings[normalized] || normalized;
     }
 
@@ -768,7 +1029,7 @@ function formatCarouselItems(data) {
     function extractPeriodKeyFromPeriod(periodStr) {
         if (!periodStr) return null;
         const period = periodStr.toLowerCase();
-        
+
         // Try to match period string to periodKey
         if (period.includes('late morning') || period.includes('late-morning')) {
             return 'latemorning';
@@ -794,7 +1055,7 @@ function formatCarouselItems(data) {
         }
         return null;
     }
-    
+
     // Check for timeOfDay structure (from current context)
     if (data.timeOfDay && data.timeOfDay.name) {
         // timeOfDay exists and has a valid name - use it
@@ -808,17 +1069,17 @@ function formatCarouselItems(data) {
         if (typeof timePeriodData === 'object' && timePeriodData !== null) {
             // Extract periodKey or infer from period
             let periodKey = timePeriodData.periodKey;
-            
+
             // If periodKey is missing but period exists, try to extract periodKey from period
             if (!periodKey && timePeriodData.period) {
                 periodKey = extractPeriodKeyFromPeriod(timePeriodData.period);
             }
-            
+
             // Normalize legacy period keys
             if (periodKey) {
                 periodKey = normalizePeriodKey(periodKey);
             }
-            
+
             timeOfDayData = {
                 name: periodKey || timePeriodData.period || null,
                 description: timePeriodData.period || null
@@ -843,7 +1104,7 @@ function formatCarouselItems(data) {
             };
         }
     }
-    
+
     if (timeOfDayData || data.season) {
         let timeIcon = '';
         let timeText = '';
@@ -853,7 +1114,7 @@ function formatCarouselItems(data) {
         // Time of day - handle timeOfDayData structure
         if (timeOfDayData && timeOfDayData.name) {
             const periodName = timeOfDayData.name;
-            
+
             if (periodName) {
                 // Determine icon based on time period
                 let todIcon = 'fa-regular fa-sun';
@@ -903,8 +1164,8 @@ function formatCarouselItems(data) {
                     'latenight': 'Late Night',
                     'late_night': 'Late Night'
                 };
-                
-                periodDisplayName = periodKeyMap[periodName.toLowerCase()] || 
+
+                periodDisplayName = periodKeyMap[periodName.toLowerCase()] ||
                     periodName
                         .split('_')
                         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -947,7 +1208,7 @@ function formatCarouselItems(data) {
         // Build text with icons inline - period icon with period text, season icon with season text
         let displayText = '';
         let displayIcon = '';
-        
+
         if (timeText && seasonText) {
             // Both exist - period icon at start, season icon after separator
             displayText = `<i class="${timeIcon} carousel-inline-icon"></i> ${timeText} <span class="carousel-separator">•</span> <i class="${seasonIcon} carousel-inline-icon"></i> ${seasonText}`;
@@ -996,7 +1257,7 @@ function formatCarouselItems(data) {
 
         if (data.weather.condition) {
             const conditionLower = data.weather.condition.toLowerCase();
-            
+
             // Icons that don't change between day/night
             const timeNeutralIcons = {
                 'overcast': 'wi wi-cloudy',
@@ -1052,7 +1313,7 @@ function formatCarouselItems(data) {
         // Static locations have source: 'static'
         // Auto-detected locations have source: 'ipinfo', 'ipapi', or 'fallback'
         const isStaticLocation = data.location.source === 'static';
-        
+
         if (isStaticLocation) {
             const locationText = [data.location.city, data.location.country].filter(Boolean).join(', ');
             items.push({
@@ -1085,10 +1346,10 @@ function updateDynamicCarousel(data, mode = null) {
 
     // Use specified mode or current mode
     const targetMode = mode || carouselMode;
-    
+
     // Determine which data to display
     let displayData = targetMode === 'compiled' ? compiledContextData : currentContextData;
-    
+
     // If target mode is compiled but no compiled data, use current data
     if (targetMode === 'compiled' && !displayData) {
         displayData = currentContextData;
@@ -1097,7 +1358,7 @@ function updateDynamicCarousel(data, mode = null) {
     if (!displayData) return;
 
     carouselData = formatCarouselItems(displayData);
-    
+
     if (carouselData.length === 0) {
         carouselData = [{
             icon: 'fa-regular fa-circle-info',
@@ -1132,7 +1393,7 @@ function updateDynamicCarousel(data, mode = null) {
             // Handle icon container for items with separate icons
             const iconContainer = document.createElement('div');
             iconContainer.className = 'carousel-icon-container';
-            
+
             if (item.icon && item.icon.includes('|')) {
                 // Multiple icons
                 const icons = item.icon.split('|');
@@ -1157,7 +1418,7 @@ function updateDynamicCarousel(data, mode = null) {
             carouselItem.appendChild(iconContainer);
             carouselItem.appendChild(textEl);
         }
-        
+
         dynamicCarousel.insertBefore(carouselItem, indicators || null);
     });
 
@@ -1187,17 +1448,17 @@ function advanceCarousel() {
 
     // Move to next index
     carouselCurrentIndex = (carouselCurrentIndex + 1) % carouselData.length;
-    
+
     // Update active item - CSS handles the animation
     showCarouselItem(carouselCurrentIndex);
-    
+
     // Update indicators including cache expiration status
     updateCarouselIndicators();
 }
 
 function startCarousel() {
     stopCarousel();
-    
+
     if (carouselData.length > 1) {
         carouselInterval = setInterval(advanceCarousel, 4000);
     }
@@ -1224,24 +1485,24 @@ function updateCarouselIndicators() {
     const compiledIndicator = document.getElementById('compiledContextIndicator');
     const lockIcon = document.getElementById('carouselLockIcon');
     const fastIcon = document.getElementById('carouselFastIcon');
-	const cacheIcon = document.getElementById('carouselCacheIcon');
-    
+    const cacheIcon = document.getElementById('carouselCacheIcon');
+
     if (!dynamicCarousel || !indicators || !currentIndicator || !compiledIndicator) return;
-    
+
     // Show indicators only if compiled prompt context exists
     // Check both window.dynamicGenerationData and compiledContextData
     const hasCompiledPrompt = window.dynamicGenerationData?.compiled_prompt?.context || compiledContextData;
-    
+
     if (hasCompiledPrompt) {
         indicators.classList.remove('hidden');
         dynamicCarousel.classList.add('has-indicators');
-        
+
         // Show/hide lock icon based on freeze state
         // Priority: Freeze Changes (lock icon) > Freeze Context (icicles icon)
         if (lockIcon && dynamicCarousel) {
             const isChangesLocked = dynamicCarousel.dataset.state === 'on'; // Freeze Changes
             const isContextLocked = dynamicCarousel.dataset.contextLocked === 'true'; // Freeze Context
-            
+
             if (isChangesLocked) {
                 // Freeze Changes takes priority - show lock icon
                 lockIcon.classList.remove('hidden');
@@ -1257,7 +1518,7 @@ function updateCarouselIndicators() {
                 lockIcon.classList.add('hidden');
             }
         }
-        
+
         // Show/hide fast mode icon based on fast mode state
         if (fastIcon && dynamicCarousel) {
             const isFastMode = dynamicCarousel.dataset.fastMode === 'true';
@@ -1268,33 +1529,33 @@ function updateCarouselIndicators() {
             }
         }
 
-		// Show/hide cache icon when compiled prompt exists and use-cache is enabled
-		// Show triangle exclamation if cache is expired
-		if (cacheIcon && dynamicCarousel) {
-			const useCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
-			if (useCache) {
-				// Check if compiled prompt has expired
-				const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
-				const now = Date.now();
-				const isExpired = compiledPrompt?.expiresAt ? now >= compiledPrompt.expiresAt : false;
-				
-				if (isExpired) {
-					// Show triangle exclamation for expired cache
-					cacheIcon.className = 'carousel-fast-icon fa-solid fa-triangle-exclamation';
-					cacheIcon.title = 'Cache Expired - Will Regenerate on Next Use';
-					cacheIcon.classList.remove('hidden');
-				} else {
-					// Show check circle for valid cache
-					cacheIcon.className = 'carousel-fast-icon fa-regular fa-circle-check';
-					cacheIcon.title = 'Using Cache';
-					cacheIcon.classList.remove('hidden');
-				}
-			} else {
+        // Show/hide cache icon when compiled prompt exists and use-cache is enabled
+        // Show triangle exclamation if cache is expired
+        if (cacheIcon && dynamicCarousel) {
+            const useCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
+            if (useCache) {
+                // Check if compiled prompt has expired
+                const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
+                const now = Date.now();
+                const isExpired = compiledPrompt?.expiresAt ? now >= compiledPrompt.expiresAt : false;
+
+                if (isExpired) {
+                    // Show triangle exclamation for expired cache
+                    cacheIcon.className = 'carousel-fast-icon fa-solid fa-triangle-exclamation';
+                    cacheIcon.title = 'Cache Expired - Will Regenerate on Next Use';
+                    cacheIcon.classList.remove('hidden');
+                } else {
+                    // Show check circle for valid cache
+                    cacheIcon.className = 'carousel-fast-icon fa-regular fa-circle-check';
+                    cacheIcon.title = 'Using Cache';
+                    cacheIcon.classList.remove('hidden');
+                }
+            } else {
                 cacheIcon.className = 'carousel-fast-icon fa-solid fa-triangle-exclamation';
-				cacheIcon.classList.add('hidden');
-			}
-		}
-        
+                cacheIcon.classList.add('hidden');
+            }
+        }
+
         // Update active state
         if (carouselMode === 'current') {
             currentIndicator.classList.add('active');
@@ -1312,22 +1573,22 @@ function updateCarouselIndicators() {
         if (fastIcon) {
             fastIcon.classList.add('hidden');
         }
-		if (cacheIcon) {
-			cacheIcon.classList.add('hidden');
-		}
+        if (cacheIcon) {
+            cacheIcon.classList.add('hidden');
+        }
     }
 }
 
 function toggleCarouselMode() {
     // Check if compiled prompt context exists
     const hasCompiledPrompt = window.dynamicGenerationData?.compiled_prompt?.context || compiledContextData;
-    
+
     // Only toggle if compiled prompt exists
     if (!hasCompiledPrompt) return;
-    
+
     // Toggle mode
     carouselMode = carouselMode === 'current' ? 'compiled' : 'current';
-    
+
     // Update carousel with current mode's data
     // Use the mode parameter to ensure correct display
     if (carouselMode === 'compiled' && compiledContextData) {
@@ -1351,14 +1612,14 @@ function initDynamicCarousel() {
     // Add hover listeners for pause/resume
     dynamicCarousel.addEventListener('mouseenter', pauseCarousel);
     dynamicCarousel.addEventListener('mouseleave', resumeCarousel);
-    
+
     // Add click handler to toggle between modes (only left-click, not right-click for context menu)
     dynamicCarousel.addEventListener('click', (e) => {
         // Don't toggle on right-click (context menu)
         if (e.button === 2 || e.ctrlKey || e.metaKey) return;
         // Don't toggle if clicking on indicators (they have their own handlers if needed)
         if (e.target.closest('.carousel-indicators')) return;
-        
+
         toggleCarouselMode();
     });
 }
@@ -1396,7 +1657,7 @@ async function requestDynamicContextResolution() {
 
         // Check if any dynamic values are enabled
         const hasAnyEnabled = Object.values(dynamicConfig).some(v => v !== false && v !== null && v !== undefined && v !== '');
-        
+
         if (!hasAnyEnabled) {
             // Show empty state
             updateDynamicCarousel({});
@@ -1416,38 +1677,38 @@ async function requestDynamicContextResolution() {
 // Show loading state in carousel
 function showCarouselLoadingState() {
     if (!dynamicCarousel) return;
-    
+
     // Clear existing carousel items (but preserve indicators)
     const indicators = dynamicCarousel.querySelector('.carousel-indicators');
     dynamicCarousel.innerHTML = '';
     if (indicators) {
         dynamicCarousel.appendChild(indicators);
     }
-    
+
     // Create loading item
     const loadingItem = document.createElement('div');
     loadingItem.className = 'carousel-item active';
     loadingItem.dataset.index = 0;
-    
+
     const iconContainer = document.createElement('div');
     iconContainer.className = 'carousel-icon-container';
     const iconEl = document.createElement('i');
-    iconEl.className = 'carousel-icon fa-solid fa-spinner fa-spin';
+    iconEl.className = 'carousel-icon fa-solid fa-spinner-third fa-spin';
     iconContainer.appendChild(iconEl);
-    
+
     const textEl = document.createElement('span');
     textEl.className = 'carousel-text';
     textEl.textContent = 'Please Wait...';
-    
+
     loadingItem.appendChild(iconContainer);
     loadingItem.appendChild(textEl);
-    
+
     dynamicCarousel.insertBefore(loadingItem, indicators || null);
-    
+
     // Update carousel state
     carouselCurrentIndex = 0;
     carouselData = [{
-        icon: 'fa-solid fa-spinner fa-spin',
+        icon: 'fa-solid fa-spinner-third fa-spin',
         text: 'Please Wait...'
     }];
     updateCarouselIndicators();
@@ -1458,7 +1719,7 @@ let debouncedRequestDynamicContextResolution = null;
 function createDebouncedContextResolution() {
     // Show loading state immediately when function is called
     showCarouselLoadingState();
-    
+
     // Create debounced function if it doesn't exist
     if (!debouncedRequestDynamicContextResolution) {
         debouncedRequestDynamicContextResolution = debounce(() => {
@@ -1471,24 +1732,24 @@ function createDebouncedContextResolution() {
 
 // Holiday mapping from client values to server holiday names
 const CLIENT_HOLIDAY_MAP = {
-    'christmas': 'Christmas/Holiday Season',
-    'newyears': 'New Year\'s Celebration',
+    'christmas': 'Christmas',
+    'newyears': 'New Year\'s',
     'halloween': 'Halloween',
     'thanksgiving': 'Thanksgiving',
     'independenceday': 'Independence Day',
     'valentinesday': 'Valentine\'s Day',
-    'easter': 'Easter/Spring Holiday',
+    'easter': 'Easter',
     'chinesenewyear': 'Chinese New Year',
     'setsubun': 'Setsubun',
     'hinamatsuri': 'Hinamatsuri',
     'summerfestival': 'Summer Festival',
-    'japanesenewyear': 'Japanese New Year (Oshogatsu)',
-    'cherryblossom': 'Cherry Blossom Season (Hanami)',
-    'tanabatafestival': 'Star Festival (Tanabata)',
-    'goldenweek': 'Golden Week (Shukujitsu)',
-    'childrensday': 'Children\'s Day (Kodomo no Hi)',
-    'tsukimi': 'Mid-Autumn Festival (Tsukimi)',
-    'obonfestival': 'Obon Festival (Bon Odori)',
+    'japanesenewyear': 'Japanese New Year',
+    'cherryblossom': 'Cherry Blossom',
+    'tanabatafestival': 'Star Festival',
+    'goldenweek': 'Golden Week',
+    'childrensday': 'Children\'s Day',
+    'tsukimi': 'Mid-Autumn Festival',
+    'obonfestival': 'Obon Festival',
     'nearest': 'nearest' // Special case for nearest holiday
 };
 
@@ -1512,8 +1773,8 @@ function getHolidayDateClient(holidayValue) {
 
     // Simplified holiday date calculation (basic implementation)
     const holidayDates = {
-        'Christmas/Holiday Season': new Date(year, 11, 25), // Dec 25
-        'New Year\'s Celebration': new Date(year, 0, 1), // Jan 1
+        'Christmas': new Date(year, 11, 25), // Dec 25
+        'New Year\'s': new Date(year, 0, 1), // Jan 1
         'Halloween': new Date(year, 9, 31), // Oct 31
         'Thanksgiving': (() => {
             // Last Thursday in November (approximation)
@@ -1522,7 +1783,7 @@ function getHolidayDateClient(holidayValue) {
         })(),
         'Independence Day': new Date(year, 6, 4), // Jul 4
         'Valentine\'s Day': new Date(year, 1, 14), // Feb 14
-        'Easter/Spring Holiday': (() => {
+        'Easter': (() => {
             // Simplified - actual calculation varies
             return new Date(year, 3, 4); // Early April approximation
         })(),
@@ -1530,13 +1791,13 @@ function getHolidayDateClient(holidayValue) {
         'Setsubun': new Date(year, 1, 3), // Feb 3
         'Hinamatsuri': new Date(year, 2, 3), // Mar 3
         'Summer Festival': new Date(year, 6, 20), // Late July approximation
-        'Japanese New Year (Oshogatsu)': new Date(year, 0, 1),
+        'Japanese New Year': new Date(year, 0, 1),
         'Cherry Blossom Season (Hanami)': new Date(year, 3, 1), // April
-        'Star Festival (Tanabata)': new Date(year, 6, 7), // Jul 7
-        'Golden Week (Shukujitsu)': new Date(year, 4, 29), // May 29
-        'Children\'s Day (Kodomo no Hi)': new Date(year, 4, 5), // May 5
-        'Mid-Autumn Festival (Tsukimi)': new Date(year, 8, 15), // Mid-September
-        'Obon Festival (Bon Odori)': new Date(year, 7, 15) // Mid-August
+        'Star Festival': new Date(year, 6, 7), // Jul 7
+        'Golden Week': new Date(year, 4, 29), // May 29
+        'Children\'s Day': new Date(year, 4, 5), // May 5
+        'Mid-Autumn Festival': new Date(year, 8, 15), // Mid-September
+        'Obon Festival': new Date(year, 7, 15) // Mid-August
     };
 
     return holidayDates[holidayName] || null;
@@ -1828,7 +2089,7 @@ function setCurrentLocation() {
     function tryGPSLocation(options) {
         let timeoutId;
 
-        const successCallback = function(position) {
+        const successCallback = function (position) {
             clearTimeout(timeoutId);
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
@@ -1855,10 +2116,10 @@ function setCurrentLocation() {
             }
         };
 
-        const errorCallback = function(error) {
+        const errorCallback = function (error) {
             clearTimeout(timeoutId);
 
-            switch(error.code) {
+            switch (error.code) {
                 case error.PERMISSION_DENIED:
                     showGlassToast('error', null, 'Location access denied. Please allow location access in your browser settings.', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
                     break;
@@ -2114,7 +2375,7 @@ function renderApiKeyDropdownOptions(serviceId) {
         empty.className = 'custom-dropdown-option';
         empty.textContent = 'No keys configured';
         menu.appendChild(empty);
-        
+
         // Add "Add new Key" option even when no keys exist
         const addOption = document.createElement('div');
         addOption.className = 'custom-dropdown-option';
@@ -2251,7 +2512,7 @@ async function handleApiKeyModalClose() {
         const keyName = key?.name || `Key ${change.index + 1}`;
         const fingerprint = key?.fingerprint || '••••';
         const requiresRestart = service?.requiresRestart === true;
-        
+
         return {
             serviceLabel,
             keyName,
@@ -2620,11 +2881,11 @@ function extractBiasFromTextForDisplay(text) {
 // Get icon for dynamic replacement category (based on schema-defined categories)
 function getCategoryIcon(category) {
     const categoryLower = (category || '').toLowerCase();
-    
+
     // Schema-defined categories from dynamicGenerationHandlers.js:
     // 'Weather', 'Time of Day', 'Seasonal', 'Holiday', 'Spelling', 'Dialog', 
     // 'Conflict Resolution', 'Enhancement', 'Lighting', 'Atmosphere'
-    
+
     if (categoryLower.includes('weather')) {
         return '<i class="fas fa-cloud-rain"></i>';
     } else if (categoryLower.includes('time of day') || categoryLower.includes('time')) {
@@ -2650,7 +2911,7 @@ function getCategoryIcon(category) {
     } else if (categoryLower.includes('directive')) {
         return '<i class="fas fa-bullseye"></i>';
     }
-    
+
     return '<i class="fas fa-tag"></i>';
 }
 
@@ -2658,11 +2919,11 @@ function getCategoryIcon(category) {
 function toggleCompiledPromptsSection() {
     const toggleBtn = document.getElementById('toggleCompiledPromptsSectionBtn');
     const expandableSection = document.getElementById('compiledPromptExpandableSection');
-    
+
     if (!toggleBtn || !expandableSection) return;
-    
+
     const isHidden = expandableSection.classList.contains('hidden');
-    
+
     if (isHidden) {
         expandableSection.classList.remove('hidden');
         toggleBtn.innerHTML = '<i class="fas fa-subtitles"></i>';
@@ -2685,17 +2946,17 @@ function populateCompiledPromptsSection() {
     const baseUcOverlay = document.getElementById('compiledBaseUcOverlay');
     const baseUcContainer = document.getElementById('compiledBaseUcContainer');
     const characterPromptsContainer = document.getElementById('compiledCharacterPromptsContainer');
-    
+
     if (!expandableSection) return;
-    
+
     // Get metadata from the last generation or current preview image
     let metadata = window.currentManualPreviewImage?.metadata || window.lastGeneration?.metadata;
-    
+
     // Use compiled_prompt fields if available (the actual prompts sent to generation)
     const finalPrompt = metadata?.compiled_prompt || '';
     const finalUc = metadata?.compiled_uc || '';
     const finalCharacterPrompts = metadata?.compiled_characterPrompts || [];
-    
+
     if (!metadata || (!finalPrompt && !finalUc && (!finalCharacterPrompts || finalCharacterPrompts.length === 0))) {
         // No metadata available, show message
         if (noDataMessage) noDataMessage.classList.remove('hidden');
@@ -2704,100 +2965,100 @@ function populateCompiledPromptsSection() {
         if (characterPromptsContainer) characterPromptsContainer.innerHTML = '';
         return;
     }
-    
+
     // Hide no data message
     if (noDataMessage) noDataMessage.classList.add('hidden');
-    
+
     // Populate base prompt
     if (finalPrompt && finalPrompt.trim()) {
         basePromptContainer.classList.remove('hidden');
         basePromptDisplay.textContent = finalPrompt;
-        
+
         // Apply emphasis highlighting
         const highlightedHtml = highlightEmphasisInText(finalPrompt);
         basePromptOverlay.innerHTML = highlightedHtml;
     } else {
         basePromptContainer.classList.add('hidden');
     }
-    
+
     // Populate base UC
     if (finalUc && finalUc.trim()) {
         baseUcContainer.classList.remove('hidden');
         baseUcDisplay.textContent = finalUc;
-        
+
         // Apply emphasis highlighting
         const highlightedHtml = highlightEmphasisInText(finalUc);
         baseUcOverlay.innerHTML = highlightedHtml;
     } else {
         baseUcContainer.classList.add('hidden');
     }
-    
+
     // Populate character prompts
     if (characterPromptsContainer) {
         characterPromptsContainer.innerHTML = '';
-        
+
         if (finalCharacterPrompts && Array.isArray(finalCharacterPrompts)) {
             finalCharacterPrompts.forEach((char, index) => {
                 if (!char.prompt && !char.uc) return; // Skip if both are empty
-                
+
                 const charContainer = document.createElement('div');
                 charContainer.className = 'compiled-prompt-field-container';
-                
+
                 // Character name/label
                 const charName = char.chara_name || char.name || `Character ${index + 1}`;
-                
+
                 // Character input prompt
                 if (char.prompt && char.prompt.trim()) {
                     const charInputLabel = document.createElement('label');
                     charInputLabel.className = 'compiled-prompt-label';
                     charInputLabel.innerHTML = `<i class="ri-code-block"></i> Prompt - ${charName}`;
-                    
+
                     const charInputWrapper = document.createElement('div');
                     charInputWrapper.className = 'compiled-prompt-display-wrapper';
-                    
+
                     const charInputDisplay = document.createElement('div');
                     charInputDisplay.className = 'compiled-prompt-display';
                     charInputDisplay.textContent = char.prompt;
-                    
+
                     const charInputOverlay = document.createElement('div');
                     charInputOverlay.className = 'emphasis-highlight-overlay';
-                    
+
                     // Apply emphasis highlighting
                     charInputOverlay.innerHTML = highlightEmphasisInText(char.prompt);
-                    
+
                     charInputWrapper.appendChild(charInputDisplay);
                     charInputWrapper.appendChild(charInputOverlay);
-                    
+
                     charContainer.appendChild(charInputLabel);
                     charContainer.appendChild(charInputWrapper);
                 }
-                
+
                 // Character UC
                 if (char.uc && char.uc.trim()) {
                     const charUcLabel = document.createElement('label');
                     charUcLabel.className = 'compiled-prompt-label';
                     charUcLabel.innerHTML = `<i class="ri-eraser-fill"></i> Negative - ${charName}`;
-                    
+
                     const charUcWrapper = document.createElement('div');
                     charUcWrapper.className = 'compiled-prompt-display-wrapper';
-                    
+
                     const charUcDisplay = document.createElement('div');
                     charUcDisplay.className = 'compiled-prompt-display';
                     charUcDisplay.textContent = char.uc;
-                    
+
                     const charUcOverlay = document.createElement('div');
                     charUcOverlay.className = 'emphasis-highlight-overlay';
-                    
+
                     // Apply emphasis highlighting
                     charUcOverlay.innerHTML = highlightEmphasisInText(char.uc);
-                    
+
                     charUcWrapper.appendChild(charUcDisplay);
                     charUcWrapper.appendChild(charUcOverlay);
-                    
+
                     charContainer.appendChild(charUcLabel);
                     charContainer.appendChild(charUcWrapper);
                 }
-                
+
                 characterPromptsContainer.appendChild(charContainer);
             });
         }
@@ -2836,7 +3097,7 @@ function renderTextReplacementModal() {
 // Refresh the Genso lock modal if it's currently open
 function refreshTextReplacementLockModalIfOpen() {
     const modal = document.getElementById('textReplacementLockModal');
-    
+
     // Check if modal exists and is currently visible (not hidden)
     if (!modal || modal.classList.contains('hidden')) {
         return;
@@ -2861,10 +3122,10 @@ function selectAllTextReplacements() {
             currentTextReplacementSeeds[index].locked = true;
         }
     });
-    
+
     const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
     window.lockedTextReplacements = lockedSeeds;
-    
+
     updateLockStatusText();
 }
 
@@ -2884,9 +3145,9 @@ function deselectAllTextReplacements() {
             currentTextReplacementSeeds[index].locked = false;
         }
     });
-    
+
     window.lockedTextReplacements = [];
-    
+
     updateLockStatusText();
 }
 
@@ -2914,13 +3175,10 @@ function updateLockStatusText() {
 
 // Update the main lock button indicator state
 function updateMainLockButtonState() {
-    // Get the button elements directly
-    const textReplacementLockBtn = document.getElementById('textReplacementLockBtn');
-    
     if (!textReplacementLockBtn) return;
 
     const lockedCount = window.lockedTextReplacements ? window.lockedTextReplacements.length : 0;
-    
+
     // Count ALL Genso seeds (not just lockable)
     const allSeedsCount = window.lastGenerationTextReplacements ? window.lastGenerationTextReplacements.length : 0;
     const lockableSeedsCount = window.lastGenerationTextReplacements ?
@@ -2945,12 +3203,12 @@ function updateMainLockButtonState() {
 
     if (totalReplacementsAvailable === 0) {
         // No replacements available, hide button
-        textReplacementLockBtn.classList.add('hidden');
+        textReplacementLockBtn.setAttribute('disabled', '');
         textReplacementLockBtn.setAttribute('data-state', 'off');
         textReplacementLockBtn.title = 'No Genso Expanders Available';
     } else {
         // Replacements available, show button
-        textReplacementLockBtn.classList.remove('hidden');
+        textReplacementLockBtn.removeAttribute('disabled', '');
 
         if (lockedCount === 0) {
             // None locked, button is off
@@ -2991,7 +3249,7 @@ function initializeManualSelectionDropdown() {
             container,
             button,
             menu,
-            () => {}, // No render function needed as we populate manually
+            () => { }, // No render function needed as we populate manually
             () => document.getElementById('manualSelectionDropdownSelected').textContent,
             { preventFocusTransfer: true }
         );
@@ -3144,6 +3402,7 @@ function selectRandomTextReplacement(seed, index) {
             seed.index = randomOption.index;
             // Lock the replacement so it gets applied
             seed.locked = true;
+            seed.can_lock = true;
 
             // Update the UI in the lock modal
             updateTextReplacementLockItem(index, seed);
@@ -3264,7 +3523,7 @@ function renderTextReplacementLockList() {
     if (window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
         // Rentan: Tendai Modifications
         const tr = window.dynamicGenerationData.compiled_prompt.text_replacements;
-        hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) || 
+        hasDynamicReplacements = (tr.prompt?.length > 0) || (tr.uc?.length > 0) ||
             (tr.character_prompts?.some(char => char?.prompt?.length > 0 || char?.uc?.length > 0));
     }
 
@@ -3319,7 +3578,7 @@ function renderTextReplacementLockList() {
         const locationColor = getLocationColor(seed.source);
         const typeIcon = getReplacementTypeIcon(seed.type);
         const typeColor = getReplacementTypeColor(seed.type);
-        
+
         // Build character badge if it's a character prompt
         const characterBadge = characterIndex !== null ? `
             <span class="text-replacement-badge text-replacement-badge-character">
@@ -3327,7 +3586,7 @@ function renderTextReplacementLockList() {
                 <span style="font-size: 0.75em;">${characterIndex + 1}</span>
             </span>
         ` : '';
-        
+
         itemDiv.innerHTML = `
             <div class="text-replacement-lock-content">
                 <div class="text-replacement-lock-info">
@@ -3403,7 +3662,7 @@ function renderTextReplacementLockList() {
             const locationColor = getLocationColor(seed.source);
             const typeIcon = getReplacementTypeIcon(seed.type);
             const typeColor = getReplacementTypeColor(seed.type);
-            
+
             // Build character badge if it's a character prompt
             const characterBadge = characterIndex !== null ? `
                 <span class="text-replacement-badge text-replacement-badge-character">
@@ -3411,7 +3670,7 @@ function renderTextReplacementLockList() {
                     <span style="font-size: 0.75em; margin-left: 2px;">${characterIndex + 1}</span>
                 </span>
             ` : '';
-            
+
             itemDiv.innerHTML = `
                 <div class="text-replacement-lock-content">
                     <div class="text-replacement-lock-info">
@@ -3438,50 +3697,223 @@ function renderTextReplacementLockList() {
         // Add context menu to the item
         if (window.contextMenu) {
             window.contextMenu.attachToElement(itemDiv, {
-                sections: [{
-                    type: 'list',
-                    items: [
-                        {
-                            text: 'Copy',
-                            icon: 'nai-clipboard',
-                            action: 'copy-value'
-                        },
-                        {
-                            text: 'Apply',
-                            icon: 'fas fa-pen-field',
-                            action: 'apply-prompt'
-                        },
-                        { separator: true },
-                        {
-                            text: 'Select',
-                            icon: 'fas fa-list',
-                            action: 'manual-selection',
-                            hidden: !canLock
-                        },
-                        {
-                            text: 'Randomize',
-                            icon: 'fas fa-dice',
-                            action: 'random-selection',
-                            hidden: !canLock
-                        },
-                        {
-                            text: 'Lock',
-                            icon: 'fas fa-lock',
-                            action: 'lock',
-                            keepMenuOpen: true,
-                            hidden: !canLock,
-                            loadfn: (item, target) => {
-                                const idx = parseInt(target.dataset.index);
-                                item.checked = currentTextReplacementSeeds[idx]?.locked === true;
-                            }
-                        },
-                    ]
-                }],
+                sections: [
+                    {
+                        type: 'icons',
+                        position: 'outer',
+                        icons: [
+                            {
+                                tooltip: 'Toggle Lock Resolution',
+                                icon: 'fas fa-lock',
+                                action: 'lock',
+                                keepMenuOpen: true,
+                                hidden: !canLock,
+                                loadfn: (item, target) => {
+                                    const idx = parseInt(target.dataset.index);
+                                    item.checked = currentTextReplacementSeeds[idx]?.locked === true;
+                                }
+                            },
+                            {
+                                tooltip: 'Randomize Value',
+                                icon: 'fas fa-dice',
+                                action: 'random-selection',
+                                hidden: !canLock
+                            },
+                            {
+                                tooltip: 'Copy Value',
+                                icon: 'nai-clipboard',
+                                action: 'copy-value'
+                            },
+                            {
+                                tooltip: 'Apply to Prompt',
+                                icon: 'fas fa-pen-field',
+                                action: 'apply-prompt'
+                            },
+                        ]
+                    },
+                    {
+                        type: 'list',
+                        items: [
+                            {
+                                text: 'Resolve to...',
+                                icon: 'fas fa-book-font',
+                                optionsfn: (target) => {
+                                    const idx = parseInt(target.dataset.index);
+                                    const seed = currentTextReplacementSeeds[idx];
+                                    if (!seed) return [];
+
+                                    // Create cache key based on seed properties (not index, as it may change)
+                                    const cacheKey = `textReplacementOptions_${seed.key}_${seed.pattern || ''}_${seed.presetName || ''}_${window.currentModel || ''}_${window.currentPeriodKey || ''}`;
+
+                                    // Initialize cache if needed
+                                    if (!window.textReplacementOptionsCache) {
+                                        window.textReplacementOptionsCache = {};
+                                    }
+
+                                    // Check if we have cached options for this seed
+                                    if (window.textReplacementOptionsCache[cacheKey]) {
+                                        const cached = window.textReplacementOptionsCache[cacheKey];
+
+                                        // If already loading, return loading option
+                                        if (cached.loading) {
+                                            return [{
+                                                icon: 'fas fa-spinner-third fa-spin',
+                                                text: 'Please Wait...',
+                                                action: 'loading-placeholder',
+                                                disabled: true
+                                            }];
+                                        }
+
+                                        // If we have cached options, return them
+                                        if (cached.options && Array.isArray(cached.options) && cached.options.length > 0) {
+                                            return cached.options.map(opt => {
+                                                // Create placeholder key display (just the key, index will be shown as badge)
+                                                const placeholderKey = `!${opt.key}`;
+                                                return {
+                                                    icon: 'fas fa-bookmark',
+                                                    text: placeholderKey,
+                                                    subtext: opt.value,
+                                                    badge: opt.index !== null && opt.index !== undefined ? ('#' + String(opt.index)) : null,
+                                                    action: `select-option-${opt.value}`,
+                                                    data: { value: opt.value, key: opt.key, index: opt.index }
+                                                };
+                                            });
+                                        }
+
+                                        // If cached but no options (error or empty), return that
+                                        if (cached.options && Array.isArray(cached.options) && cached.options.length === 0) {
+                                            if (cached.error) {
+                                                return [{
+                                                    icon: 'fas fa-exclamation-triangle',
+                                                    text: 'Error loading options',
+                                                    action: 'error-loading',
+                                                    disabled: true
+                                                }];
+                                            } else {
+                                                return [{
+                                                    icon: 'fas fa-empty-set',
+                                                    text: 'No options available',
+                                                    action: 'no-options',
+                                                    disabled: true
+                                                }];
+                                            }
+                                        }
+                                    }
+
+                                    // Mark as loading (prevent duplicate requests)
+                                    window.textReplacementOptionsCache[cacheKey] = { loading: true };
+
+                                    // Fetch options asynchronously
+                                    window.wsClient.sendMessage('get_text_replacement_options', {
+                                        pattern: seed.pattern || `!${seed.key}`,
+                                        presetName: seed.presetName,
+                                        model: window.currentModel,
+                                        periodKey: window.currentPeriodKey
+                                    }).then(result => {
+                                        if (result && result.success && result.options && Array.isArray(result.options) && result.options.length > 0) {
+                                            // Cache the options
+                                            window.textReplacementOptionsCache[cacheKey] = {
+                                                loading: false,
+                                                options: result.options
+                                            };
+
+                                            // If submenu is still open, refresh it
+                                            if (window.contextMenu && window.contextMenu.currentSubmenuState) {
+                                                window.contextMenu.refreshSubmenu();
+                                            }
+                                        } else {
+                                            // No options available (empty array, null, undefined, or no success)
+                                            window.textReplacementOptionsCache[cacheKey] = {
+                                                loading: false,
+                                                options: [],
+                                                error: false
+                                            };
+                                            if (window.contextMenu && window.contextMenu.currentSubmenuState) {
+                                                window.contextMenu.refreshSubmenu();
+                                            }
+                                        }
+                                    }).catch(error => {
+                                        console.error('Error fetching text replacement options:', error);
+                                        window.textReplacementOptionsCache[cacheKey] = {
+                                            loading: false,
+                                            options: [],
+                                            error: true
+                                        };
+                                        if (window.contextMenu && window.contextMenu.currentSubmenuState) {
+                                            window.contextMenu.refreshSubmenu();
+                                        }
+                                    });
+
+                                    // Return loading option
+                                    return [{
+                                        icon: 'fas fa-spinner-third fa-spin',
+                                        text: 'Please Wait...',
+                                        action: 'loading-placeholder',
+                                        disabled: true
+                                    }];
+                                },
+                                handlerfn: (subItem, target) => {
+                                    const action = subItem.action;
+                                    if (action === 'loading-placeholder' || action === 'no-options' || action === 'error-loading') {
+                                        // Do nothing for placeholder/error states
+                                        return;
+                                    }
+
+                                    if (action && action.startsWith('select-option-')) {
+                                        const idx = parseInt(target.dataset.index);
+                                        const seed = currentTextReplacementSeeds[idx];
+                                        if (!seed) return;
+
+                                        // Get the selected option data
+                                        const optionData = subItem.data;
+                                        if (optionData) {
+                                            // Update the seed data
+                                            seed.value = optionData.value;
+                                            seed.key = optionData.key;
+                                            seed.index = optionData.index;
+                                            seed.locked = true;
+                                            seed.can_lock = true;
+
+                                            // Update the UI in the lock modal
+                                            updateTextReplacementLockItem(idx, seed);
+
+                                            // Also update the lock button state in the UI
+                                            const item = document.querySelector(`.text-replacement-lock-item[data-index="${idx}"]`);
+                                            if (item) {
+                                                // Mark as selected (locked)
+                                                item.classList.add('selected');
+                                                // Update the lock button state
+                                                const lockButton = item.querySelector('.text-replacement-lock-btn');
+                                                if (lockButton) {
+                                                    lockButton.setAttribute('data-state', 'on');
+                                                }
+                                            }
+
+                                            // Update the lock status text
+                                            updateLockStatusText();
+
+                                            // Update the locked replacements for immediate use in generation
+                                            const lockedSeeds = currentTextReplacementSeeds.filter(s => s.locked === true);
+                                            window.lockedTextReplacements = lockedSeeds;
+
+                                            // Update the main lock button indicator
+                                            updateMainLockButtonState();
+
+                                            // Close the context menu after selection
+                                            if (window.contextMenu) {
+                                                window.contextMenu.hideMenu();
+                                            }
+                                        }
+                                    }
+                                },
+                                openOnHover: false,
+                                hidden: !canLock
+                            },
+                        ]
+                    }],
                 onAction: (actionName, target) => {
                     if (actionName === 'apply-prompt') {
                         replacePlaceholderInPrompt(seed, index);
-                    } else if (actionName === 'manual-selection') {
-                        openTextReplacementManualSelectionModal(seed, index);
                     } else if (actionName === 'random-selection') {
                         selectRandomTextReplacement(seed, index);
                     } else if (actionName === 'copy-value') {
@@ -3573,14 +4005,14 @@ function renderTextReplacementLockList() {
             const minutesUntilExpiry = Math.round(msUntilExpiry / (60 * 1000));
             const hoursUntilExpiry = Math.round(minutesUntilExpiry / 60 * 10) / 10;
             const expiryDate = new Date(compiledPrompt.expiresAt);
-            
+
             const expirationBanner = document.createElement('div');
             if (isExpired) {
                 // Calculate days since expiration
                 const daysSinceExpiry = Math.floor(Math.abs(msUntilExpiry) / (1000 * 60 * 60 * 24));
                 const currentYear = new Date().getFullYear();
                 const expiryYear = expiryDate.getFullYear();
-                
+
                 let expiredTimeText;
                 if (daysSinceExpiry < 7) {
                     // Less than 7 days ago: "Expired X Days ago (HH:mm)"
@@ -3600,7 +4032,7 @@ function renderTextReplacementLockList() {
                     const timeStr = expiryDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     expiredTimeText = `Expired on ${month} ${day}${year} (${timeStr})`;
                 }
-                
+
                 expirationBanner.className = 'text-replacement-expiration-banner expired';
                 expirationBanner.innerHTML = `
                     <i class="fas fa-triangle-exclamation"></i>
@@ -3610,7 +4042,7 @@ function renderTextReplacementLockList() {
                     </div>
                 `;
             } else {
-                const timeText = hoursUntilExpiry >= 1 
+                const timeText = hoursUntilExpiry >= 1
                     ? `${hoursUntilExpiry}h ${minutesUntilExpiry % 60}m`
                     : `${minutesUntilExpiry}m`;
                 expirationBanner.className = 'text-replacement-expiration-banner valid';
@@ -3630,23 +4062,23 @@ function renderTextReplacementLockList() {
         if (compiled && compiled.context) {
             const contextCardsContainer = document.createElement('div');
             contextCardsContainer.className = 'dynamic-replacements-context-cards';
-            
+
             // Build context cards using the same logic from showCompiledPromptModal
             const context = compiled.context;
             const weather = context.weather || {};
             const time = context.time || {};
-            
+
             // Get unit preference
             let useMetric = localStorage.getItem('weather_units_metric') !== 'false';
-            
+
             // Helper functions (reuse from showCompiledPromptModal scope)
-            const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9/5) + 32);
+            const celsiusToFahrenheit = (celsius) => Math.round((celsius * 9 / 5) + 32);
             const mpsToMph = (mps) => Math.round(mps * 2.237);
             const getWeatherIcon = (condition, isNight = false) => {
                 if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
-                
+
                 const timePrefix = isNight ? 'night-alt' : 'day';
-                
+
                 // Icons that don't change between day/night
                 const timeNeutralIcons = {
                     'overcast': 'cloudy',
@@ -3686,7 +4118,7 @@ function renderTextReplacementLockList() {
                     'thunderstorm with slight hail': `${timePrefix}-thunderstorm`,
                     'thunderstorm with heavy hail': `${timePrefix}-thunderstorm`
                 };
-                
+
                 const iconClass = iconMap[condition] || (isNight ? 'night-clear' : 'day-sunny');
                 return `<i class="wi wi-${iconClass}"></i>`;
             };
@@ -3696,7 +4128,7 @@ function renderTextReplacementLockList() {
                 const index = Math.round(degrees / 22.5) % 16;
                 return directions[index];
             };
-            
+
             // Build weather content
             let weatherContent = '';
             if (weather.condition || weather.temperature !== undefined) {
@@ -3718,21 +4150,21 @@ function renderTextReplacementLockList() {
                 const windDisplay = useMetric ?
                     (windMps !== undefined ? `${windMps} m/s` : 'N/A') :
                     (windMph !== undefined ? `${windMph} mph` : 'N/A');
-                
+
                 const weatherCondition = weather.condition || 'Unknown';
                 const humidityValue = weather.humidity !== undefined ? `${weather.humidity}%` : null;
                 const windDirection = weather.windDirection !== undefined ? getWindDirection(weather.windDirection) : null;
-                
+
                 const displayTemp = useMetric ? tempC : tempF;
                 const displayFeels = useMetric ? feelsC : feelsF;
-                
+
                 // Determine card background
                 let cardBackgroundClass = '';
                 if (context.season && weather.pressure !== undefined) {
                     const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
                     const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
                     const pressure = weather.pressure;
-                    
+
                     if (season.includes('spring')) {
                         if (pressure < 1000) cardBackgroundClass = 'season-spring-stormy';
                         else if (pressure < 1013) cardBackgroundClass = 'season-spring-unstable';
@@ -3762,22 +4194,22 @@ function renderTextReplacementLockList() {
                     else if (season.includes('fall') || season.includes('autumn')) cardBackgroundClass = 'season-fall-normal';
                     else if (season.includes('winter')) cardBackgroundClass = 'season-winter-normal';
                 }
-                
+
                 const mainCardHtml = `
                     <div class="weather-main-card ${cardBackgroundClass}">
                         <div class="weather-current-temp">
                             <div class="weather-temp-value">
-                                <span class="weather-temp-number">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                                <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
                                 <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
                             </div>
-                            ${displayFeels !== undefined ? `<div class="weather-feels-like">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                            ${displayFeels !== undefined ? `<div class="weather-feels-like" data-metric="${feelsC !== undefined ? feelsC : ''}" data-imperial="${feelsF !== undefined ? feelsF : ''}">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
                         </div>
                         <div class="weather-condition-display">
                             <div class="weather-condition-icon">${weatherIcon}</div>
                             <div class="weather-condition-text">${weatherCondition}</div>
                             <div class="weather-condition-details">
                                 ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
-                                ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i>${windDisplay}${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                                ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
                             </div>
                         </div>
                         ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
@@ -3809,7 +4241,7 @@ function renderTextReplacementLockList() {
                                 <div class="weather-quick-indicator">
                                     <div class="weather-quick-indicator-label">
                                         <i class="fa-solid fa-eye"></i>
-                                        <span>${(weather.visibility / 1000).toFixed(1)} km</span>
+                                        <span class="weather-visibility" data-metric="${weather.visibility / 1000}" data-unit="km">${useMetric ? `${(weather.visibility / 1000).toFixed(1)} km` : `${(weather.visibility * 0.000621371).toFixed(1)} mi`}</span>
                                     </div>
                                     <div class="weather-quick-progress-bar">
                                         <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
@@ -3821,26 +4253,26 @@ function renderTextReplacementLockList() {
                         ` : ''}
                     </div>
                 `;
-                
+
                 weatherContent = `<div class="weather-display">${mainCardHtml}</div>`;
             }
-            
+
             // Build period card
             let periodCardHtml = '';
             const timePeriodInfo = context.timePeriod || {};
-            
+
             // Calculate season progress and template (needed for both period and holiday cards)
             const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
             const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
             const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
             const hasHoliday = context.season?.holiday?.primaryHoliday;
-            
+
             if (context.season && timePeriodInfo.period) {
                 let periodBgClass = 'period-default';
                 const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
                 const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
                 const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
-                
+
                 if (season.includes('spring')) {
                     if (period.includes('dawn') || period.includes('sunrise')) periodBgClass = 'period-spring-dawn';
                     else if (period.includes('morning')) periodBgClass = 'period-spring-morning';
@@ -3863,7 +4295,7 @@ function renderTextReplacementLockList() {
                     else if (period.includes('dusk') || period.includes('sunset') || period.includes('evening')) periodBgClass = 'period-winter-dusk';
                     else if (period.includes('night')) periodBgClass = 'period-winter-night';
                 }
-                
+
                 let shortTitle = 'Time';
                 if (timePeriodInfo.periodKey) {
                     const periodKeyMap = {
@@ -3881,20 +4313,20 @@ function renderTextReplacementLockList() {
                         'night': 'Night', 'midnight': 'Midnight',
                         'latenight': 'Late Night', 'late_night': 'Late Night'
                     };
-                    shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] || 
+                    shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] ||
                         timePeriodInfo.periodKey.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
                 }
-                
+
                 const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
-                const dateStr = time.dayOfWeekName && time.monthName ? 
-                    `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` : 
+                const dateStr = time.dayOfWeekName && time.monthName ?
+                    `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` :
                     (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
                         `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
                 const location = context.location || {};
                 const locationText = location.city && location.country ?
                     `${location.city}, ${location.country}` :
                     location.city || location.country || '';
-                
+
                 const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
                 const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
                 const sunPhase = timePeriodInfo.sunPhase || 'rising';
@@ -3902,13 +4334,13 @@ function renderTextReplacementLockList() {
                 if (sunPhase === 'rising') {
                     // Rising: sunProgressRaw 0-0.5 maps to 0-50% of total bar
                     sunPositionPercent = (sunProgressRaw / 0.5) * 50;
-            } else if (sunPhase === 'setting') {
-                // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
-                sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
+                } else if (sunPhase === 'setting') {
+                    // Setting: sunProgressRaw 0.5-1.0 maps to 50-100% of total bar
+                    sunPositionPercent = 50 + ((sunProgressRaw - 0.5) / 0.5) * 50;
                 } else {
                     sunPositionPercent = sunPhase === 'pre-dawn' ? 0 : (sunPhase === 'post-dusk' ? 100 : 50);
                 }
-                
+
                 periodCardHtml = `
                     <div class="period-info-card ${periodBgClass}">
                         <div class="period-info-content">
@@ -3963,21 +4395,21 @@ function renderTextReplacementLockList() {
                             </div>
                             <div class="period-details hidden">
                                 ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
-                                    const text = typeof el === 'object' ? el.text : el;
-                                    const bias = typeof el === 'object' ? el.bias : 1.0;
-                                    return `${text} (${bias.toFixed(2)})`;
-                                }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `${text} (${bias.toFixed(2)})`;
+                }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
                                 ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value selectable">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
-                                    const text = typeof el === 'object' ? el.text : el;
-                                    const bias = typeof el === 'object' ? el.bias : 1.0;
-                                    return `${text} (${bias.toFixed(2)})`;
-                                }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                    const text = typeof el === 'object' ? el.text : el;
+                    const bias = typeof el === 'object' ? el.bias : 1.0;
+                    return `${text} (${bias.toFixed(2)})`;
+                }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
                             </div>
                         </div>
                     </div>
                 `;
             }
-            
+
             // Build holiday card
             let holidayCardHtml = '';
             if (hasHoliday) {
@@ -3986,7 +4418,7 @@ function renderTextReplacementLockList() {
                 const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
                 const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
                 const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
-                
+
                 // Calculate holiday progress (0-100%)
                 let holidayProgress = 50; // Default
                 if (daysUntil !== undefined && daysUntil !== null) {
@@ -4001,14 +4433,14 @@ function renderTextReplacementLockList() {
                         holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
                     }
                 }
-                
+
                 // Get holiday data
                 const holidayData = holiday.primaryHoliday || {};
                 const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
                 const decorations = holidayData.decorations || holiday.decorations || '';
                 const colors = holidayData.colors || holiday.colors || '';
                 const activities = holidayData.activities || holiday.activities || '';
-                
+
                 // Get country flag icon and region name based on region
                 const getCountryFlagIcon = (region) => {
                     const flagMap = {
@@ -4055,7 +4487,7 @@ function renderTextReplacementLockList() {
                 const flagIconClass = getCountryFlagIcon(region);
                 const regionName = getRegionName(region);
                 const holidayClass = getHolidayClass(holidayName);
-                
+
                 holidayCardHtml = `
                     <div class="period-info-card holiday-info-card ${holidayClass}">
                         <div class="period-info-content">
@@ -4099,7 +4531,7 @@ function renderTextReplacementLockList() {
                     </div>
                 `;
             }
-            
+
             // Combine context cards
             const contextCardsHtml = periodCardHtml + holidayCardHtml + weatherContent;
             if (contextCardsHtml) {
@@ -4119,7 +4551,7 @@ function renderTextReplacementLockList() {
     try {
         const usageRoot =
             window.dynamicGenerationData?.compiled_prompt?.usage ||
-            window.lastGeneration?.dynamic_generation?.compiled_prompt?.usage ||
+            window.lastGeneration?.forge_data?.dynamic_generation?.compiled_prompt?.usage ||
             null;
         if (usageRoot && typeof usageRoot === 'object') {
             // Header
@@ -4155,7 +4587,7 @@ function renderTextReplacementLockList() {
                 const totalRaw = (u.total !== undefined && u.total !== null)
                     ? u.total
                     : (toNum(input) + toNum(output) + toNum(cache) + toNum(reasoning));
-                return `In: ${fmt(input)} • Out: ${fmt(output)} • Cache: ${fmt(cache)} • Reasoning: ${fmt(reasoning)} • Total: ${fmt(totalRaw)}`;
+                return `<i class="fas fa-up-right" title="Input"></i> ${fmt(input)} • <i class="fas fa-down-left" title="Output"></i> ${fmt(output)} • <i class="fas fa-cloud-check" title="Cache"></i> ${fmt(cache)} • <i class="fas fa-gears" title="Reasoning"></i> ${fmt(reasoning)} • <i class="fas fa-equals" title="Total"></i> ${fmt(totalRaw)}`;
             };
 
             // Check if we have both phase1 and phase2 (2 passes)
@@ -4167,31 +4599,65 @@ function renderTextReplacementLockList() {
                 if (!phaseData) return;
 
                 // Map phase keys to display names
-                const phaseDisplayName = phaseKey === 'phase1' ? 'Pass 1' : 
-                                        phaseKey === 'phase2' ? 'Pass 2' : 
-                                        phaseKey;
+                const phaseDisplayName = phaseKey === 'phase1' ? 'Pass 1' :
+                    phaseKey === 'phase2' ? 'Pass 2' :
+                        phaseKey;
 
                 // Phase header with totals
-                const phaseTotals = phaseData.total || {};
-                const phaseHeader = document.createElement('div');
-                phaseHeader.className = 'usage-phase-header';
-                // Only show phase header when there are 2 passes
-                if (hasTwoPasses && (phaseKey === 'phase1' || phaseKey === 'phase2')) {
-                    phaseHeader.innerHTML = `
-                        <div class="phase-title">
-                            <i class="fas fa-diagram-project"></i>
-                            <span>${phaseDisplayName}</span>
-                        </div>
-                        ${phaseTotals ? `<div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
-                    `;
-                } else if (phaseTotals) {
-                    phaseHeader.innerHTML = `
-                        ${phaseTotals ? `<div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>` : ''}
-                    `;
-                }
-                listContainer.appendChild(phaseHeader);
-
+                // Use the final call's usage for totals (stateful APIs return cumulative totals)
+                let phaseTotals = phaseData.total;
                 const calls = Array.isArray(phaseData.calls) ? phaseData.calls : [];
+
+                // Handle case where phaseData.total is an array (multiple usage snapshots)
+                if (Array.isArray(phaseTotals) && phaseTotals.length > 0) {
+                    // Use the last element (most recent/cumulative totals)
+                    phaseTotals = phaseTotals[phaseTotals.length - 1];
+                }
+
+                // Check if phaseTotals is missing or all zeros
+                const isTotalsEmpty = !phaseTotals || phaseTotals.total === 0;
+
+                // If total is missing or all zeros, use the last call's usage
+                if (isTotalsEmpty && calls.length > 0) {
+                    // Find the last call with usage data
+                    const lastCallWithUsage = [...calls].reverse().find(call => call && call.usage);
+                    if (lastCallWithUsage && lastCallWithUsage.usage) {
+                        phaseTotals = {
+                            total: lastCallWithUsage.usage.total || 0,
+                            input: lastCallWithUsage.usage.input || 0,
+                            output: lastCallWithUsage.usage.output || 0,
+                            cache: lastCallWithUsage.usage.cache || 0,
+                            reasoning: lastCallWithUsage.usage.reasoning || 0
+                        };
+                    } else {
+                        phaseTotals = null;
+                    }
+                }
+
+                // Only show totals if we have meaningful data
+                const hasValidTotals = phaseTotals && (phaseTotals.total > 0 || phaseTotals.input > 0 || phaseTotals.output > 0 || phaseTotals.cache > 0 || phaseTotals.reasoning > 0);
+
+                // Only create and append header if we have valid totals
+                if (hasValidTotals) {
+                    const phaseHeader = document.createElement('div');
+                    phaseHeader.className = 'usage-phase-header';
+                    // Show phase title when there are 2 passes
+                    if (hasTwoPasses && (phaseKey === 'phase1' || phaseKey === 'phase2')) {
+                        phaseHeader.innerHTML = `
+                            <div class="phase-title">
+                                <i class="fas fa-diagram-project"></i>
+                                <span>${phaseDisplayName}</span>
+                            </div>
+                            <div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>
+                        `;
+                    } else {
+                        // Single phase - just show totals
+                        phaseHeader.innerHTML = `
+                            <div style="color: var(--hover-show-colored-text); font-size: 12px;">${formatTokens(phaseTotals)}</div>
+                        `;
+                    }
+                    listContainer.appendChild(phaseHeader);
+                }
                 calls.forEach((call) => {
                     const callDiv = document.createElement('div');
                     callDiv.className = 'text-replacement-lock-item usage-call';
@@ -4211,149 +4677,279 @@ function renderTextReplacementLockList() {
                             const tagReasons = (toolName === 'searchTagsBatch' && Array.isArray(toolParams?.tags)) ? toolParams.tags : null;
 
                             // Special handling for publishAnalysisResults
-                            if (toolName === 'publishAnalysisResults' && toolParams.existing_context) {
-                                const existingContext = toolParams.existing_context;
-                                const contextFields = ['time', 'season', 'holiday', 'location', 'weather_condition', 'sky'];
-                                const detectedIcons = contextFields.map(fieldName => {
-                                    const field = existingContext[fieldName];
-                                    let isMuted = true;
-                                    let tooltipText = fieldName;
-                                    
-                                    if (field) {
-                                        if (fieldName === 'location') {
-                                            const sceneType = field.scene_type || 'unknown';
-                                            isMuted = sceneType === 'unknown';
-                                            tooltipText = `Location: ${sceneType}`;
-                                        } else if (field.found && field.value && field.value !== 'none') {
-                                            isMuted = false;
-                                            tooltipText = `${fieldName}: ${field.value}`;
+                            if (toolName === 'publishAnalysisResults') {
+                                const { prompt_breakdown, image_analysis, existing_context } = toolParams;
+
+                                // Build prompt breakdown section
+                                let promptBreakdownHtml = '';
+                                if (prompt_breakdown) {
+                                    const { main_subject, scene_environment, actions_poses, mood_atmosphere, style_elements } = prompt_breakdown;
+                                    promptBreakdownHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-file-alt"></i>
+                                                <span>Prompt Analysis</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${main_subject ? `<div class="usage-detail-row"><span class="usage-detail-label">Subject:</span><span class="usage-detail-value selectable">${main_subject}</span></div>` : ''}
+                                                ${scene_environment ? `<div class="usage-detail-row"><span class="usage-detail-label">Environment:</span><span class="usage-detail-value selectable">${scene_environment}</span></div>` : ''}
+                                                ${mood_atmosphere ? `<div class="usage-detail-row"><span class="usage-detail-label">Mood:</span><span class="usage-detail-value selectable">${mood_atmosphere}</span></div>` : ''}
+                                                ${actions_poses && actions_poses.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Actions:</span><span class="usage-detail-value selectable">${actions_poses.join(', ')}</span></div>` : ''}
+                                                ${style_elements && style_elements.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Style:</span><span class="usage-detail-value selectable">${style_elements.join(', ')}</span></div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build image analysis section
+                                let imageAnalysisHtml = '';
+                                if (image_analysis) {
+                                    const { visual_elements, time_visible, weather_visible, scene_type_visible, matches_prompt, differences } = image_analysis;
+                                    imageAnalysisHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-image"></i>
+                                                <span>Image Analysis</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${time_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Time:</span><span class="usage-detail-value selectable">${time_visible}</span></div>` : ''}
+                                                ${weather_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Weather:</span><span class="usage-detail-value selectable">${weather_visible}</span></div>` : ''}
+                                                ${scene_type_visible ? `<div class="usage-detail-row"><span class="usage-detail-label">Scene Type:</span><span class="usage-detail-value selectable">${scene_type_visible}</span></div>` : ''}
+                                                <div class="usage-detail-row"><span class="usage-detail-label">Matches Prompt:</span><span class="usage-detail-value ${matches_prompt ? 'match-yes' : 'match-no'}">${matches_prompt ? 'Yes' : 'No'}</span></div>
+                                                ${visual_elements && visual_elements.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Elements:</span><span class="usage-detail-value selectable">${visual_elements.join(', ')}</span></div>` : ''}
+                                                ${differences && differences.length > 0 ? `<div class="usage-detail-row"><span class="usage-detail-label">Differences:</span><span class="usage-detail-value selectable">${differences.join(', ')}</span></div>` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build context detection section (existing logic)
+                                let contextDetectionHtml = '';
+                                if (existing_context) {
+                                    const contextFields = ['time', 'season', 'holiday', 'location', 'weather_condition', 'sky'];
+                                    const detectedIcons = contextFields.map(fieldName => {
+                                        const field = existing_context[fieldName];
+                                        let isMuted = true;
+                                        let tooltipText = fieldName;
+
+                                        if (field) {
+                                            if (fieldName === 'location') {
+                                                const sceneType = field.scene_type || 'unknown';
+                                                isMuted = sceneType === 'unknown';
+                                                tooltipText = `Location: ${sceneType}`;
+                                            } else if (field.found && field.value && field.value !== 'none') {
+                                                isMuted = false;
+                                                tooltipText = `${fieldName}: ${field.value}`;
+                                            } else {
+                                                tooltipText = `${fieldName}: Not found`;
+                                            }
                                         } else {
                                             tooltipText = `${fieldName}: Not found`;
                                         }
-                                    } else {
-                                        tooltipText = `${fieldName}: Not found`;
-                                    }
-                                    
-                                    const iconClass = getContextFieldIcon(fieldName);
-                                    
-                                    return `
-                                        <span class="usage-context-icon ${isMuted ? 'muted' : ''}" title="${tooltipText}">
-                                            <i class="fas ${iconClass}"></i>
-                                        </span>
+
+                                        const iconClass = getContextFieldIcon(fieldName);
+
+                                        return `
+                                            <span class="usage-context-icon ${isMuted ? 'muted' : ''}" title="${tooltipText}">
+                                                <i class="fas ${iconClass}"></i>
+                                            </span>
+                                        `;
+                                    }).join('');
+
+                                    const sceneType = existing_context.location?.scene_type || 'unknown';
+
+                                    contextDetectionHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-search"></i>
+                                                <span>Context Detection</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                <div class="usage-context-row">
+                                                    <span class="usage-context-label">Detected:</span>
+                                                    <div class="usage-context-icons">
+                                                        ${detectedIcons}
+                                                    </div>
+                                                </div>
+                                                ${sceneType !== 'unknown' ? `
+                                                <div class="usage-context-row">
+                                                    <span class="usage-context-label">Scene:</span>
+                                                    <span class="usage-context-value selectable">${sceneType}</span>
+                                                </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
                                     `;
-                                }).join('');
-                                
-                                const sceneType = existingContext.location?.scene_type || 'unknown';
-                                
+                                }
+
                                 return `
-                                    <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                    <div class="usage-tool-block expanded" style="background: ${toolStyle.backgroundColor};">
                                         <div class="usage-tool-name-row">
                                             <div class="usage-tool-icon">${toolStyle.icon}</div>
                                             <div class="text-replacement-lock-pattern">
                                                 <span class="usage-tool-name selectable">${display}</span>
                                             </div>
                                         </div>
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Detected:</span>
-                                            <div class="usage-context-icons">
-                                                ${detectedIcons}
-                                            </div>
-                                        </div>
-                                        ${sceneType !== 'unknown' ? `
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Scene:</span>
-                                            <span class="usage-context-value selectable">${sceneType}</span>
-                                        </div>
-                                        ` : ''}
+                                        ${promptBreakdownHtml}
+                                        ${imageAnalysisHtml}
+                                        ${contextDetectionHtml}
                                     </div>
                                 `;
                             }
-                            
+
                             // Special handling for planTextReplacements
-                            if (toolName === 'planTextReplacements' && toolParams.planned_changes) {
-                                const plannedChanges = Array.isArray(toolParams.planned_changes) ? toolParams.planned_changes : [];
-                                const researchNeeded = Array.isArray(toolParams.research_needed) ? toolParams.research_needed : [];
-                                const conflictsToResolve = Array.isArray(toolParams.conflicts_to_resolve) ? toolParams.conflicts_to_resolve : [];
-                                
-                                // Group planned changes by category
-                                const changesByCategory = {};
-                                plannedChanges.forEach(change => {
-                                    const category = change.category || 'Other';
-                                    if (!changesByCategory[category]) {
-                                        changesByCategory[category] = [];
-                                    }
-                                    changesByCategory[category].push(change);
-                                });
-                                
-                                // Map category names to field names for icon lookup
-                                const categoryToFieldMap = {
-                                    'Weather': 'weather_condition',
-                                    'Time of Day': 'time',
-                                    'Seasonal': 'season',
-                                    'Holiday': 'holiday',
-                                    'Lighting': 'lighting',
-                                    'Atmosphere': 'sky',
-                                    'Spelling': 'fa-spell-check',
-                                    'Text Overlay': 'fa-font',
-                                    'Conflict Resolution': 'fa-exclamation-triangle',
-                                    'Enhancement': 'fa-magic',
-                                    'Action Verbs': 'character_actions',
-                                    'Directive': 'fa-bullseye'
-                                };
-                                
-                                const categoryIcons = Object.keys(changesByCategory).map(category => {
-                                    const count = changesByCategory[category].length;
-                                    const fieldName = categoryToFieldMap[category];
-                                    let iconClass = 'fa-tag'; // default
-                                    if (fieldName && fieldName.startsWith('fa-')) {
-                                        iconClass = fieldName; // direct icon class
-                                    } else if (fieldName) {
-                                        iconClass = getContextFieldIcon(fieldName) || 'fa-tag';
-                                    }
-                                    return `
-                                        <span class="usage-context-icon" title="${category}: ${count} change(s)">
-                                            <i class="fas ${iconClass}"></i>
-                                            ${count > 1 ? `<span class="usage-context-badge">${count}</span>` : ''}
-                                        </span>
+                            if (toolName === 'planTextReplacements') {
+                                const { planned_changes, research, conflicts_to_resolve } = toolParams;
+                                const plannedChanges = Array.isArray(planned_changes) ? planned_changes : [];
+                                const researchCompleted = research?.completed || [];
+                                const researchNeeded = research?.needed || [];
+                                const conflictsToResolve = Array.isArray(conflicts_to_resolve) ? conflicts_to_resolve : [];
+
+                                // Build planned changes section
+                                let plannedChangesHtml = '';
+                                if (plannedChanges.length > 0) {
+                                    const changesByCategory = {};
+                                    plannedChanges.forEach(change => {
+                                        const category = change.category || 'Other';
+                                        if (!changesByCategory[category]) {
+                                            changesByCategory[category] = [];
+                                        }
+                                        changesByCategory[category].push(change);
+                                    });
+
+                                    const categoryDetails = Object.keys(changesByCategory).map(category => {
+                                        const changes = changesByCategory[category];
+                                        const changeDetails = changes.map(change => `
+                                            <div class="usage-change-item">
+                                                <div class="usage-change-header">
+                                                    <span class="usage-change-action">${change.action || 'modify'}</span>
+                                                    <span class="usage-change-segments">Segments: ${change.target_segments?.join(', ') || 'N/A'}</span>
+                                                </div>
+                                                <div class="usage-change-reason">${change.reason || 'No reason provided'}</div>
+                                                ${change.planned_modifications && change.planned_modifications.length > 0 ?
+                                                `<div class="usage-change-tags">Tags: ${change.planned_modifications.join(', ')}</div>` : ''}
+                                                ${change.emphasis_value !== undefined ?
+                                                `<div class="usage-change-emphasis">Emphasis: ${change.emphasis_value}</div>` : ''}
+                                            </div>
+                                        `).join('');
+
+                                        return `
+                                            <div class="usage-category-section">
+                                                <div class="usage-category-header">
+                                                    <span class="usage-category-name">${category}</span>
+                                                    <span class="usage-category-count">${changes.length} change${changes.length !== 1 ? 's' : ''}</span>
+                                                </div>
+                                                <div class="usage-category-changes">
+                                                    ${changeDetails}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('');
+
+                                    plannedChangesHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-clipboard-list"></i>
+                                                <span>Planned Changes (${plannedChanges.length})</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${categoryDetails}
+                                            </div>
+                                        </div>
                                     `;
-                                }).join('');
-                                
+                                }
+
+                                // Build research section
+                                let researchHtml = '';
+                                if (researchCompleted.length > 0 || researchNeeded.length > 0) {
+                                    const completedItems = researchCompleted.map(item => `
+                                        <div class="usage-research-item completed">
+                                            <span class="usage-research-topic">${item.topic}</span>
+                                            <span class="usage-research-tool">Tool: ${item.tool_name} (#${item.call_number})</span>
+                                        </div>
+                                    `).join('');
+
+                                    const neededItems = researchNeeded.map(item => `
+                                        <div class="usage-research-item needed">
+                                            <span class="usage-research-topic">${item.topic}</span>
+                                            ${item.tool_name ? `<span class="usage-research-tool">Planned: ${item.tool_name}</span>` : ''}
+                                        </div>
+                                    `).join('');
+
+                                    researchHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-search"></i>
+                                                <span>Research Status</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                ${researchCompleted.length > 0 ? `
+                                                    <div class="usage-research-group">
+                                                        <div class="usage-research-group-header">
+                                                            <i class="fas fa-check-circle"></i>
+                                                            <span>Completed (${researchCompleted.length})</span>
+                                                        </div>
+                                                        <div class="usage-research-items">
+                                                            ${completedItems}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+                                                ${researchNeeded.length > 0 ? `
+                                                    <div class="usage-research-group">
+                                                        <div class="usage-research-group-header">
+                                                            <i class="fas fa-clock"></i>
+                                                            <span>Needed (${researchNeeded.length})</span>
+                                                        </div>
+                                                        <div class="usage-research-items">
+                                                            ${neededItems}
+                                                        </div>
+                                                    </div>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
+                                // Build conflicts section
+                                let conflictsHtml = '';
+                                if (conflictsToResolve.length > 0) {
+                                    const conflictItems = conflictsToResolve.map(conflict => `
+                                        <div class="usage-conflict-item">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            <span>${conflict}</span>
+                                        </div>
+                                    `).join('');
+
+                                    conflictsHtml = `
+                                        <div class="usage-tool-section">
+                                            <div class="usage-section-header">
+                                                <i class="fas fa-exclamation-triangle"></i>
+                                                <span>Conflicts to Resolve (${conflictsToResolve.length})</span>
+                                            </div>
+                                            <div class="usage-section-content">
+                                                <div class="usage-conflicts-list">
+                                                    ${conflictItems}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }
+
                                 return `
-                                    <div class="usage-tool-block" style="background: ${toolStyle.backgroundColor};">
+                                    <div class="usage-tool-block expanded" style="background: ${toolStyle.backgroundColor};">
                                         <div class="usage-tool-name-row">
                                             <div class="usage-tool-icon">${toolStyle.icon}</div>
                                             <div class="text-replacement-lock-pattern">
                                                 <span class="usage-tool-name selectable">${display}</span>
                                             </div>
                                         </div>
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Planned Changes:</span>
-                                            <div class="usage-context-icons">
-                                                ${categoryIcons || '<span class="usage-context-value">None</span>'}
-                                            </div>
-                                        </div>
-                                        ${plannedChanges.length > 0 ? `
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Total:</span>
-                                            <span class="usage-context-value selectable">${plannedChanges.length} change(s)</span>
-                                        </div>
-                                        ` : ''}
-                                        ${researchNeeded.length > 0 ? `
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Research Needed:</span>
-                                            <span class="usage-context-value selectable">${researchNeeded.length} item(s)</span>
-                                        </div>
-                                        ` : ''}
-                                        ${conflictsToResolve.length > 0 ? `
-                                        <div class="usage-context-row">
-                                            <span class="usage-context-label">Conflicts:</span>
-                                            <span class="usage-context-value selectable">${conflictsToResolve.length} conflict(s)</span>
-                                        </div>
-                                        ` : ''}
+                                        ${plannedChangesHtml}
+                                        ${researchHtml}
+                                        ${conflictsHtml}
                                     </div>
                                 `;
                             }
-                            
+
 
                             // Two stacked rows (name + reason), both with same background
                             return `
@@ -4366,10 +4962,10 @@ function renderTextReplacementLockList() {
                                     </div>
                                 ${Array.isArray(tagReasons) && tagReasons.length > 0 ? `
                                     ${tagReasons.map(tr => {
-                                        const tagName = tr?.name || '';
-                                        const tagReason = tr?.reason || '';
-                                        const showReason = Boolean(tagReason && tagReason.trim());
-                                        return `
+                                const tagName = tr?.name || '';
+                                const tagReason = tr?.reason || '';
+                                const showReason = Boolean(tagReason && tagReason.trim());
+                                return `
                                             <div class="usage-tag-row">
                                                 <div class="usage-tool-icon"><i class="fas fa-tag"></i></div>
                                                 <div class="usage-tag-line">
@@ -4378,7 +4974,7 @@ function renderTextReplacementLockList() {
                                                 </div>
                                             </div>
                                         `;
-                                    }).join('')}
+                            }).join('')}
                                 ` : (toolReason ? `
                                     <div class="usage-tool-reason-row">
                                         <div class="text-replacement-lock-pattern">
@@ -4484,7 +5080,7 @@ function getSeasonIcon(season) {
 function togglePeriodDetails(titleElement) {
     const periodDetails = titleElement.closest('.period-info-content').querySelector('.period-details');
     const icon = titleElement.querySelector('.period-expand-icon');
-    
+
     if (periodDetails) {
         periodDetails.classList.toggle('hidden');
         if (icon) {
@@ -4590,15 +5186,15 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
         // Check if this is a convertible unit (contains unit symbols)
         const isConvertible = typeof displayValue === 'string' && (
-                             displayValue.includes('°C') || displayValue.includes('°F') ||
-                             displayValue.includes('m/s') || displayValue.includes('mph') ||
-                             displayValue.includes('km') || displayValue.includes('mi') ||
-                             displayValue.includes('mm/hr') || displayValue.includes('in/hr') ||
-                             displayValue.includes(' mm') || displayValue.includes(' cm') || displayValue.includes(' in') ||
-                             displayValue.includes(' hPa') || displayValue.includes(' inHg'));
+            displayValue.includes('°C') || displayValue.includes('°F') ||
+            displayValue.includes('m/s') || displayValue.includes('mph') ||
+            displayValue.includes('km') || displayValue.includes('mi') ||
+            displayValue.includes('mm/hr') || displayValue.includes('in/hr') ||
+            displayValue.includes(' mm') || displayValue.includes(' cm') || displayValue.includes(' in') ||
+            displayValue.includes(' hPa') || displayValue.includes(' inHg'));
 
         const clickableClass = isConvertible ? 'clickable' : '';
-        const onclickAttr = isConvertible ? ' onclick="toggleWeatherUnits()"' : '';
+        const onclickAttr = isConvertible ? ' onclick="toggleWeatherUnits(event)"' : '';
 
         // Add progress bar for percentage values
         let progressBar = '';
@@ -4631,7 +5227,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
         if (!condition) return isNight ? '<i class="wi wi-night-clear"></i>' : '<i class="wi wi-day-sunny"></i>';
 
         const timePrefix = isNight ? 'night-alt' : 'day';
-        
+
         // Icons that don't change between day/night (no sun/moon influence)
         const timeNeutralIcons = {
             'overcast': 'cloudy',
@@ -4679,7 +5275,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
     // Unit conversion functions
     function celsiusToFahrenheit(celsius) {
-        return Math.round((celsius * 9/5) + 32);
+        return Math.round((celsius * 9 / 5) + 32);
     }
 
     function mpsToMph(mps) {
@@ -4700,195 +5296,6 @@ function showCompiledPromptModal(compiledPromptData = null) {
         const index = Math.round(degrees / 22.5) % 16;
         return directions[index];
     }
-
-
-    // Function to toggle weather units
-    window.toggleWeatherUnits = function() {
-        useMetric = !useMetric;
-
-        // Update main card temperature
-        const mainTempNumber = content.querySelector('.weather-temp-number');
-        const mainTempUnit = content.querySelector('.weather-temp-unit');
-        const feelsLikeElement = content.querySelector('.weather-feels-like');
-        if (mainTempNumber && mainTempUnit) {
-            const currentTemp = parseFloat(mainTempNumber.textContent);
-            if (!isNaN(currentTemp)) {
-                let newTemp, newFeelsTemp;
-                if (useMetric) {
-                    // Convert F to C
-                    newTemp = Math.round((currentTemp - 32) * 5/9);
-                    mainTempUnit.textContent = '°C';
-                } else {
-                    // Convert C to F
-                    newTemp = Math.round((currentTemp * 9/5) + 32);
-                    mainTempUnit.textContent = '°F';
-                }
-                mainTempNumber.textContent = newTemp;
-
-                // Update feels like temperature if present
-                if (feelsLikeElement) {
-                    const feelsText = feelsLikeElement.textContent;
-                    const feelsMatch = feelsText.match(/Feels like (\d+)°[CF]/);
-                    if (feelsMatch) {
-                        const feelsTemp = parseFloat(feelsMatch[1]);
-                        if (!isNaN(feelsTemp)) {
-                            if (useMetric) {
-                                newFeelsTemp = Math.round((feelsTemp - 32) * 5/9);
-                            } else {
-                                newFeelsTemp = Math.round((feelsTemp * 9/5) + 32);
-                            }
-                            feelsLikeElement.textContent = `Feels like ${newFeelsTemp}°${useMetric ? 'C' : 'F'}`;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Update all weather value displays (both old info-item format and new weather display)
-        const allValueElements = content.querySelectorAll('.info-item span:last-child, .weather-detail-value');
-        allValueElements.forEach(el => {
-            const currentText = el.textContent;
-            if (currentText.includes('°C') || currentText.includes('°F')) {
-                const tempValue = parseFloat(currentText.replace('°C', '').replace('°F', ''));
-                if (!isNaN(tempValue)) {
-                    if (useMetric) {
-                        // Convert F to C
-                        const celsius = Math.round((tempValue - 32) * 5/9);
-                        el.textContent = `${celsius}°C`;
-                    } else {
-                        // Convert C to F
-                        const fahrenheit = Math.round((tempValue * 9/5) + 32);
-                        el.textContent = `${fahrenheit}°F`;
-                    }
-                }
-            } else if (currentText.includes('m/s') || currentText.includes('mph')) {
-                const windValue = parseFloat(currentText.replace(' m/s', '').replace(' mph', ''));
-                if (!isNaN(windValue)) {
-                    if (useMetric) {
-                        // Convert mph to m/s
-                        const mps = Math.round(windValue / 2.237);
-                        el.textContent = `${mps} m/s`;
-                    } else {
-                        // Convert m/s to mph
-                        const mph = Math.round(windValue * 2.237);
-                        el.textContent = `${mph} mph`;
-                    }
-                }
-            } else if (currentText.includes('km') || currentText.includes('mi')) {
-                const visibilityValue = parseFloat(currentText.replace(' km', '').replace(' mi', ''));
-                if (!isNaN(visibilityValue)) {
-                    if (useMetric) {
-                        // Convert miles to km
-                        const km = (visibilityValue / 0.621371).toFixed(1);
-                        el.textContent = `${km} km`;
-                    } else {
-                        // Convert km to miles
-                        const mi = (visibilityValue * 0.621371).toFixed(1);
-                        el.textContent = `${mi} mi`;
-                    }
-                }
-            } else if (currentText.includes(' hPa') || currentText.includes(' inHg')) {
-                const pressureValue = parseFloat(currentText.replace(' hPa', '').replace(' inHg', ''));
-                if (!isNaN(pressureValue)) {
-                    if (useMetric) {
-                        // Convert inHg to hPa
-                        const hPa = Math.round(pressureValue * 33.8639);
-                        el.textContent = `${hPa} hPa`;
-                    } else {
-                        // Convert hPa to inHg
-                        const inHg = (pressureValue / 33.8639).toFixed(2);
-                        el.textContent = `${inHg} inHg`;
-                    }
-                }
-            } else if (currentText.includes('mm/hr') || currentText.includes('in/hr')) {
-                const precipValue = parseFloat(currentText.replace(' mm/hr', '').replace(' in/hr', ''));
-                if (!isNaN(precipValue)) {
-                    if (useMetric) {
-                        // Convert inches to mm
-                        const mm = precipValue / 0.0394;
-                        el.textContent = `${mm.toFixed(1)} mm/hr`;
-                    } else {
-                        // Convert mm to inches
-                        const inches = precipValue * 0.0394;
-                        el.textContent = `${inches.toFixed(2)} in/hr`;
-                    }
-                }
-            } else if (currentText.includes('mm') || currentText.includes('cm') || currentText.includes('in')) {
-                // Handle other precipitation units (rain, snowfall, etc.)
-                const precipValue = parseFloat(currentText.replace(' mm', '').replace(' cm', '').replace(' in', ''));
-                if (!isNaN(precipValue)) {
-                    const labelElement = el.closest('.weather-detail-card')?.querySelector('.weather-detail-label') ||
-                                       el.previousElementSibling;
-                    if (labelElement && labelElement.textContent.includes('Snowfall')) {
-                        // Snowfall uses cm/in
-                        if (useMetric) {
-                            // Convert inches to cm
-                            const cm = precipValue / 0.393701;
-                            el.textContent = `${cm.toFixed(1)} cm`;
-                        } else {
-                            // Convert cm to inches
-                            const inches = precipValue * 0.393701;
-                            el.textContent = `${inches.toFixed(2)} in`;
-                        }
-                    } else {
-                        // Rain/showers use mm/in
-                        if (useMetric) {
-                            // Convert inches to mm
-                            const mm = precipValue / 0.0394;
-                            el.textContent = `${mm.toFixed(1)} mm`;
-                        } else {
-                            // Convert mm to inches
-                            const inches = precipValue * 0.0394;
-                            el.textContent = `${inches.toFixed(2)} in`;
-                        }
-                    }
-                }
-            }
-        });
-
-        // Update hourly forecast temperatures
-        const hourTempElements = content.querySelectorAll('.hour-temp, .weather-hour-temp');
-        hourTempElements.forEach(el => {
-            const currentText = el.textContent;
-            if (currentText.includes('°C') || currentText.includes('°F')) {
-                const tempValue = parseFloat(currentText.replace('°C', '').replace('°F', ''));
-                if (!isNaN(tempValue)) {
-                    if (useMetric) {
-                        // Convert F to C
-                        const celsius = Math.round((tempValue - 32) * 5/9);
-                        el.textContent = `${celsius}°C`;
-                    } else {
-                        // Convert C to F
-                        const fahrenheit = Math.round((tempValue * 9/5) + 32);
-                        el.textContent = `${fahrenheit}°F`;
-                    }
-                }
-            }
-        });
-
-        // Update hourly precipitation displays
-        const hourPrecipElements = content.querySelectorAll('.hour-precip, .weather-hour-precip');
-        hourPrecipElements.forEach(el => {
-            const currentText = el.textContent;
-            if (currentText.includes('mm') || currentText.includes('in')) {
-                const precipValue = parseFloat(currentText.replace('mm', '').replace('in', ''));
-                if (!isNaN(precipValue)) {
-                    if (useMetric) {
-                        // Convert inches to mm
-                        const mm = Math.round(precipValue / 0.0394);
-                        el.textContent = `${mm}mm`;
-                    } else {
-                        // Convert mm to inches
-                        const inches = (precipValue * 0.0394).toFixed(2);
-                        el.textContent = `${inches}in`;
-                    }
-                }
-            }
-        });
-
-        // Save preference to localStorage
-        localStorage.setItem('weather_units_metric', useMetric.toString());
-    };
 
     // Build context section
     let contextContent = '';
@@ -5045,51 +5452,51 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 <div class="weather-main-card ${cardBackgroundClass}">
                     <div class="weather-current-temp">
                         <div class="weather-temp-value">
-                            <span class="weather-temp-number clickable" onclick="toggleWeatherUnits()">${displayTemp !== undefined ? displayTemp : '--'}</span>
+                            <span class="weather-temp-number clickable" onclick="toggleWeatherUnits(event)" data-metric="${tempC !== undefined ? tempC : ''}" data-imperial="${tempF !== undefined ? tempF : ''}">${displayTemp !== undefined ? displayTemp : '--'}</span>
                             <span class="weather-temp-unit">${useMetric ? '°C' : '°F'}</span>
                         </div>
-                        ${displayFeels !== undefined ? `<div class="weather-feels-like">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
+                        ${displayFeels !== undefined ? `<div class="weather-feels-like" data-metric="${feelsC !== undefined ? feelsC : ''}" data-imperial="${feelsF !== undefined ? feelsF : ''}">Feels like ${displayFeels}°${useMetric ? 'C' : 'F'}</div>` : ''}
                     </div>
                     <div class="weather-condition-display">
                         <div class="weather-condition-icon">${weatherIcon}</div>
                         <div class="weather-condition-text">${weatherCondition}</div>
                         <div class="weather-condition-details">
                             ${humidityValue ? `<div class="weather-condition-detail"><i class="fa-solid fa-droplet"></i>${humidityValue}</div>` : ''}
-                            ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i>${windDisplay}${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
+                            ${windDisplay !== 'N/A' ? `<div class="weather-condition-detail"><i class="fa-solid fa-wind"></i><span class="weather-wind-speed" data-metric="${windMps !== undefined ? windMps : ''}" data-imperial="${windMph !== undefined ? windMph : ''}">${windDisplay}</span>${windDirection ? ` (${windDirection})` : ''}</div>` : ''}
                             ${(() => {
-                                let precipElements = [];
+                    let precipElements = [];
 
-                                // Precipitation rate
-                                if (weather.precipitation !== undefined && weather.precipitation > 0) {
-                                    const precipRate = useMetric ? `${weather.precipitation} mm/hr` : `${(weather.precipitation * 0.0393701).toFixed(2)} in/hr`;
-                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${precipRate}</div>`);
-                                }
+                    // Precipitation rate
+                    if (weather.precipitation !== undefined && weather.precipitation > 0) {
+                        const precipRate = useMetric ? `${weather.precipitation} mm/hr` : `${(weather.precipitation * 0.0393701).toFixed(2)} in/hr`;
+                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i><span class="weather-precip-rate" data-metric="${weather.precipitation}" data-unit="mm/hr">${precipRate}</span></div>`);
+                    }
 
-                                // Rain amount
-                                if (weather.rain > 0) {
-                                    const rainAmount = useMetric ? `${weather.rain} mm` : `${(weather.rain * 0.0393701).toFixed(2)} in`;
-                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>Rain: ${rainAmount}</div>`);
-                                }
+                    // Rain amount
+                    if (weather.rain > 0) {
+                        const rainAmount = useMetric ? `${weather.rain} mm` : `${(weather.rain * 0.0393701).toFixed(2)} in`;
+                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>Rain: <span class="weather-rain-amount" data-metric="${weather.rain}" data-unit="mm">${rainAmount}</span></div>`);
+                    }
 
-                                // Showers amount
-                                if (weather.showers > 0) {
-                                    const showerAmount = useMetric ? `${weather.showers} mm` : `${(weather.showers * 0.0393701).toFixed(2)} in`;
-                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-showers-heavy"></i>Showers: ${showerAmount}</div>`);
-                                }
+                    // Showers amount
+                    if (weather.showers > 0) {
+                        const showerAmount = useMetric ? `${weather.showers} mm` : `${(weather.showers * 0.0393701).toFixed(2)} in`;
+                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-showers-heavy"></i>Showers: <span class="weather-showers-amount" data-metric="${weather.showers}" data-unit="mm">${showerAmount}</span></div>`);
+                    }
 
-                                // Snowfall amount
-                                if (weather.snowfall > 0) {
-                                    const snowAmount = useMetric ? `${weather.snowfall} cm` : `${(weather.snowfall * 0.393701).toFixed(2)} in`;
-                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-snowflake"></i>Snow: ${snowAmount}</div>`);
-                                }
+                    // Snowfall amount
+                    if (weather.snowfall > 0) {
+                        const snowAmount = useMetric ? `${weather.snowfall} cm` : `${(weather.snowfall * 0.393701).toFixed(2)} in`;
+                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-snowflake"></i>Snow: <span class="weather-snow-amount" data-metric="${weather.snowfall}" data-unit="cm">${snowAmount}</span></div>`);
+                    }
 
-                                // Precipitation type - only show if there's actual precipitation
-                                if (weather.precipitationType && (weather.precipitation > 0 || weather.rain > 0 || weather.showers > 0 || weather.snowfall > 0)) {
-                                    precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${weather.precipitationType.description || weather.precipitationType}</div>`);
-                                }
+                    // Precipitation type - only show if there's actual precipitation
+                    if (weather.precipitationType && (weather.precipitation > 0 || weather.rain > 0 || weather.showers > 0 || weather.snowfall > 0)) {
+                        precipElements.push(`<div class="weather-condition-detail"><i class="fa-solid fa-cloud-rain"></i>${weather.precipitationType.description || weather.precipitationType}</div>`);
+                    }
 
-                                return precipElements.join('');
-                            })()}
+                    return precipElements.join('');
+                })()}
                         </div>
                     </div>
                     ${weather.cloudCoverage !== undefined || weather.visibility !== undefined || weather.uvIndex !== undefined ? `
@@ -5121,7 +5528,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                             <div class="weather-quick-indicator">
                                 <div class="weather-quick-indicator-label">
                                     <i class="fa-solid fa-eye"></i>
-                                    <span>${(weather.visibility / 1000).toFixed(1)} km</span>
+                                    <span class="weather-visibility" data-metric="${weather.visibility / 1000}" data-unit="km">${useMetric ? `${(weather.visibility / 1000).toFixed(1)} km` : `${(weather.visibility * 0.000621371).toFixed(1)} mi`}</span>
                                 </div>
                                 <div class="weather-quick-progress-bar">
                                     <div class="weather-quick-progress-fill visibility" style="width: ${Math.min((weather.visibility / 10000) * 100, 100)}%"></div>
@@ -5135,11 +5542,13 @@ function showCompiledPromptModal(compiledPromptData = null) {
             `;
 
             // Helper function to create modern weather detail card
-            const createWeatherDetailCard = (label, value, icon, progressValue = null, isClickable = false) => {
+            const createWeatherDetailCard = (label, value, icon, progressValue = null, isClickable = false, metricValue = null, imperialValue = null, unitType = null) => {
                 if (!value) return '';
 
                 const clickableClass = isClickable ? 'clickable' : '';
-                const onclickAttr = isClickable ? ' onclick="toggleWeatherUnits()"' : '';
+                const onclickAttr = isClickable ? ' onclick="toggleWeatherUnits(event)"' : '';
+                const dataAttrs = (metricValue !== null && imperialValue !== null) ?
+                    ` data-metric="${metricValue}" data-imperial="${imperialValue}"${unitType ? ` data-unit-type="${unitType}"` : ''}` : '';
 
                 let progressBar = '';
                 if (progressValue !== null && progressValue >= 0 && progressValue <= 100) {
@@ -5151,7 +5560,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                         <div class="weather-detail-icon">${icon}</div>
                         <div class="weather-detail-content">
                             <div class="weather-detail-label">${label}</div>
-                            <div class="weather-detail-value ${clickableClass}"${onclickAttr}>${value}</div>
+                            <div class="weather-detail-value ${clickableClass}"${onclickAttr}${dataAttrs}>${value}</div>
                             ${progressBar}
                         </div>
                     </div>
@@ -5162,19 +5571,19 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const cloudCoveragePercent = weather.cloudCoverage !== undefined ? weather.cloudCoverage : null;
             const visibilityPercent = weather.visibility !== undefined ? Math.min((weather.visibility / 10000) * 100, 100) : null;
             const uvPercent = weather.uvIndex !== undefined ? Math.min((weather.uvIndex / 12) * 100, 100) : null;
-            
+
             // Only show heat index if it differs from actual temp by 2°C or more
             const showHeatIndex = heatIndex !== null && tempC !== undefined && Math.abs(heatIndex - tempC) >= 2;
-            
+
             const detailCards = [
-                createWeatherDetailCard('Pressure', pressureValue, '<i class="fa-solid fa-gauge"></i>'),
-                showHeatIndex ? createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>') : null,
-                createWeatherDetailCard('Wind Chill', windChillValue, '<i class="fa-solid fa-snowflake"></i>'),
+                createWeatherDetailCard('Pressure', pressureValue, '<i class="fa-solid fa-gauge"></i>', null, true, weather.pressure, weather.pressure ? weather.pressure / 33.8639 : null, 'pressure'),
+                showHeatIndex ? createWeatherDetailCard('Heat Index', heatIndexValue, '<i class="fa-solid fa-fire"></i>', null, true, heatIndex, heatIndex !== null ? celsiusToFahrenheit(heatIndex) : null, 'temperature') : null,
+                createWeatherDetailCard('Wind Chill', windChillValue, '<i class="fa-solid fa-snowflake"></i>', null, true, windChill, windChill !== null ? celsiusToFahrenheit(windChill) : null, 'temperature'),
             ].filter(card => card);
 
             // Add wind gust if available
             if (weather.windGust) {
-                detailCards.push(createWeatherDetailCard('Wind Gust', useMetric ? `${weather.windGust} m/s` : `${mpsToMph(weather.windGust)} mph`, '<i class="fa-solid fa-wind"></i>', null, true));
+                detailCards.push(createWeatherDetailCard('Wind Gust', useMetric ? `${weather.windGust} m/s` : `${mpsToMph(weather.windGust)} mph`, '<i class="fa-solid fa-wind"></i>', null, true, weather.windGust, mpsToMph(weather.windGust), 'wind'));
             }
 
             const detailsGridHtml = detailCards.length > 0 ? `<div class="weather-details-grid">${detailCards.join('')}</div>` : '';
@@ -5207,15 +5616,18 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const timePeriodInfo = context.timePeriod || {};
             const sunriseHour = timePeriodInfo.sunriseHour;
             const sunsetHour = timePeriodInfo.sunsetHour;
-            
+
             const hourlyItems = nextHours.map((hour, index) => {
                 const hourTime = new Date(hour.timestamp);
+                const hourTempC = hour.temperature !== undefined ? hour.temperature : null;
+                const hourTempF = hourTempC !== null ? celsiusToFahrenheit(hourTempC) : null;
                 const hourTemp = useMetric ?
-                    (hour.temperature !== undefined ? `${hour.temperature}°C` : 'N/A') :
-                    (hour.temperature !== undefined ? `${celsiusToFahrenheit(hour.temperature)}°F` : 'N/A');
+                    (hourTempC !== null ? `${hourTempC}°C` : 'N/A') :
+                    (hourTempF !== null ? `${hourTempF}°F` : 'N/A');
                 const timeLabel = index === 0 ? 'Now' : `${hourTime.getHours().toString().padStart(2, '0')}:00`;
-                const precipDisplay = hour.precipitation > 0 ?
-                    (useMetric ? `${hour.precipitation}mm` : `${(hour.precipitation * 0.0394).toFixed(1)}in`) : '';
+                const precipMetric = hour.precipitation > 0 ? hour.precipitation : null;
+                const precipDisplay = precipMetric !== null ?
+                    (useMetric ? `${precipMetric}mm` : `${(precipMetric * 0.0394).toFixed(1)}in`) : '';
 
                 // Determine if this hour is at night
                 const hourDecimal = hourTime.getHours() + hourTime.getMinutes() / 60;
@@ -5228,8 +5640,8 @@ function showCompiledPromptModal(compiledPromptData = null) {
                     <div class="weather-hour-item">
                         <div class="weather-hour-time">${timeLabel}</div>
                         <div class="weather-hour-icon">${getWeatherIcon(hour.condition, isNightHour)}</div>
-                        <div class="weather-hour-temp">${hourTemp}</div>
-                        ${precipDisplay ? `<div class="weather-hour-precip">${precipDisplay}</div>` : ''}
+                        <div class="weather-hour-temp"${hourTempC !== null ? ` data-metric="${hourTempC}" data-imperial="${hourTempF}"` : ''}>${hourTemp}</div>
+                        ${precipDisplay ? `<div class="weather-hour-precip"${precipMetric !== null ? ` data-metric="${precipMetric}" data-unit="mm"` : ''}>${precipDisplay}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -5355,8 +5767,8 @@ function showCompiledPromptModal(compiledPromptData = null) {
                     'latenight': 'Late Night',
                     'late_night': 'Late Night'
                 };
-                
-                shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] || 
+
+                shortTitle = periodKeyMap[timePeriodInfo.periodKey.toLowerCase()] ||
                     timePeriodInfo.periodKey
                         .split('_')
                         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -5365,12 +5777,12 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
             // Format time and date
             const clockTime = time.hour !== undefined ? `${time.hour}:${String(time.minute || 0).padStart(2, '0')}` : '';
-            const dateStr = time.dayOfWeekName && time.monthName ? 
-                `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` : 
+            const dateStr = time.dayOfWeekName && time.monthName ?
+                `${time.dayOfWeekName}, ${time.monthName} ${time.dayOfMonth}, ${time.year}` :
                 (time.month !== undefined && time.dayOfMonth !== undefined && time.year !== undefined ?
                     `${time.month + 1}/${time.dayOfMonth}/${time.year}` : '');
             const timezoneStr = time.timezone || '';
-            
+
             // Location text for period card
             const location = context.location || {};
             const locationText = location.city && location.country ?
@@ -5380,7 +5792,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
             // Progress bar data
             const sunProgressRaw = timePeriodInfo.sunProgressRaw !== undefined ? timePeriodInfo.sunProgressRaw : 0;
             const lightLevelRaw = timePeriodInfo.lightLevelRaw !== undefined ? timePeriodInfo.lightLevelRaw : 0;
-            
+
             // Calculate sun position for display
             const sunPhase = timePeriodInfo.sunPhase || 'rising';
             let sunPositionPercent;
@@ -5399,7 +5811,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
             const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
             const hasHoliday = context.season?.holiday?.primaryHoliday;
-            
+
             periodCardHtml = `
                 <div class="period-info-card ${periodBgClass}">
                     <div class="period-info-content">
@@ -5454,15 +5866,15 @@ function showCompiledPromptModal(compiledPromptData = null) {
                         </div>
                         <div class="period-details hidden">
                             ${timePeriodInfo.lighting ? `<div class="period-detail"><i class="fa-solid fa-lightbulb"></i><div class="detail-content"><div class="detail-label">Lighting</div><div class="detail-value">${Array.isArray(timePeriodInfo.lighting) ? timePeriodInfo.lighting.map(el => {
-                                const text = typeof el === 'object' ? el.text : el;
-                                const bias = typeof el === 'object' ? el.bias : 1.0;
-                                return `${text} (${bias.toFixed(2)})`;
-                            }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
+                const text = typeof el === 'object' ? el.text : el;
+                const bias = typeof el === 'object' ? el.bias : 1.0;
+                return `${text} (${bias.toFixed(2)})`;
+            }).join(', ') : timePeriodInfo.lighting}</div></div></div>` : ''}
                             ${timePeriodInfo.atmosphere ? `<div class="period-detail"><i class="fa-solid fa-smog"></i><div class="detail-content"><div class="detail-label">Atmosphere</div><div class="detail-value">${Array.isArray(timePeriodInfo.atmosphere) ? timePeriodInfo.atmosphere.map(el => {
-                                const text = typeof el === 'object' ? el.text : el;
-                                const bias = typeof el === 'object' ? el.bias : 1.0;
-                                return `${text} (${bias.toFixed(2)})`;
-                            }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
+                const text = typeof el === 'object' ? el.text : el;
+                const bias = typeof el === 'object' ? el.bias : 1.0;
+                return `${text} (${bias.toFixed(2)})`;
+            }).join(', ') : timePeriodInfo.atmosphere}</div></div></div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -5477,7 +5889,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const daysUntil = holiday.primaryHoliday?.daysUntil ?? holiday.progressiveElements?.daysUntil;
             const daysUntilText = daysUntil !== undefined && daysUntil !== null ? daysUntil : '?';
             const daysUntilLabel = daysUntil === 0 ? 'TODAY' : daysUntil === 1 ? 'day' : 'days';
-            
+
             // Calculate holiday progress (0-100%)
             let holidayProgress = 50; // Default
             if (daysUntil !== undefined && daysUntil !== null) {
@@ -5489,14 +5901,14 @@ function showCompiledPromptModal(compiledPromptData = null) {
                     holidayProgress = Math.max(0, Math.min(100, ((bufferDays - daysPast) / bufferDays) * 100));
                 }
             }
-            
+
             // Get holiday data
             const holidayData = holiday.primaryHoliday || {};
             const atmosphere = holidayData.atmosphere || holiday.atmosphere || '';
             const decorations = holidayData.decorations || holiday.decorations || '';
             const colors = holidayData.colors || holiday.colors || '';
             const activities = holidayData.activities || holiday.activities || '';
-            
+
             // Get country flag icon and region name based on region
             const getCountryFlagIcon = (region) => {
                 const flagMap = {
@@ -5543,7 +5955,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const flagIconClass = getCountryFlagIcon(region);
             const regionName = getRegionName(region);
             const holidayClass = getHolidayClass(holidayName);
-            
+
             holidayCardHtmlModal = `
                 <div class="period-info-card holiday-info-card ${holidayClass}">
                     <div class="period-info-content">
@@ -5587,7 +5999,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
                 </div>
             `;
         }
-        
+
         // Combine weather and time content
         if (weatherContent) {
             contextContent = periodCardHtml + holidayCardHtmlModal + weatherContent + (hourlyHtml ? hourlyHtml : '');
@@ -5682,7 +6094,7 @@ async function clearCompiledPrompt() {
 
     // Update UI
     updateDynamicGenerationToggleBtn();
-	updateCarouselIndicators();
+    updateCarouselIndicators();
 }
 
 // Director Feedback Modal Functions
@@ -5692,17 +6104,17 @@ function showDirectorFeedbackModal(selectText, replaceText, action, reason) {
         console.error('Director feedback modal not found');
         return;
     }
-    
+
     // Populate the form
     document.getElementById('feedbackSelectText').value = selectText || '';
     document.getElementById('feedbackReplaceText').value = replaceText || '';
     document.getElementById('feedbackAction').value = action || 'replace';
     document.getElementById('feedbackReason').value = reason || '';
     document.getElementById('feedbackDescription').value = '';
-    
+
     // Show the modal
     openModal(modal);
-    
+
     // Focus on the description textarea
     setTimeout(() => {
         document.getElementById('feedbackDescription').focus();
@@ -5715,19 +6127,19 @@ async function saveDirectorFeedback() {
     const action = document.getElementById('feedbackAction').value;
     const reason = document.getElementById('feedbackReason').value;
     const description = document.getElementById('feedbackDescription').value.trim();
-    
+
     // Validate description
     if (!description) {
         showGlassToast('error', null, 'Please describe what went wrong with this replacement.', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
         return;
     }
-    
+
     // Send via WebSocket
     try {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.sendMessage('director_save_feedback', {
             select_text: selectText,
             replace_text: replaceText,
@@ -5736,7 +6148,7 @@ async function saveDirectorFeedback() {
             user_feedback: description,
             timestamp: new Date().toISOString()
         });
-        
+
         if (result && result.data && result.data.success) {
             showGlassToast('success', null, 'Feedback saved successfully. The AI will learn from this.', false, undefined, '<i class="fas fa-check"></i>');
             closeDirectorFeedbackModal();
@@ -5769,27 +6181,27 @@ async function showDirectorRulesManager() {
         console.error('Director rules modal not found');
         return;
     }
-    
+
     // Reset to rules view
     currentDirectorView = 'rules';
-    
+
     // Load rules and feedback
     await loadDirectorRules();
     await loadDirectorFeedback();
-    
+
     // Setup dropdown if not already setup
     setupDirectorViewDropdown();
-    
+
     // Update UI based on current view
     updateDirectorViewUI();
-    
+
     // Render the list based on current view
     if (currentDirectorView === 'rules') {
         renderDirectorRulesList();
     } else {
         renderDirectorFeedbackList();
     }
-    
+
     // Show modal
     openModal(modal);
 }
@@ -5799,9 +6211,9 @@ async function loadDirectorRules() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.sendMessage('director_load_rules', {});
-        
+
         if (result && result.data && result.data.success) {
             directorRules = result.data.rules || [];
         } else {
@@ -5817,7 +6229,7 @@ async function loadDirectorRules() {
 function renderDirectorRulesList() {
     const list = document.getElementById('directorRulesList');
     if (!list) return;
-    
+
     if (directorRules.length === 0) {
         list.innerHTML = `
             <div class="empty-state">
@@ -5828,7 +6240,7 @@ function renderDirectorRulesList() {
         `;
         return;
     }
-    
+
     list.innerHTML = directorRules.map((rule, index) => `
         <div class="director-rule-item" data-rule-id="${rule.id}">
             <div class="director-rule-content">
@@ -5841,7 +6253,7 @@ function renderDirectorRulesList() {
             </div>
         </div>
     `).join('');
-    
+
     // Add event listeners for inline editing
     list.querySelectorAll('.director-rule-text').forEach(element => {
         element.addEventListener('blur', handleDirectorRuleEdit);
@@ -5852,7 +6264,7 @@ function renderDirectorRulesList() {
             }
         });
     });
-    
+
     // Add event listeners for delete buttons
     list.querySelectorAll('.delete-rule-btn').forEach(btn => {
         btn.addEventListener('click', () => deleteDirectorRule(btn.dataset.ruleId));
@@ -5863,16 +6275,16 @@ async function handleDirectorRuleEdit(e) {
     const element = e.target;
     const index = parseInt(element.dataset.ruleIndex);
     const newText = element.textContent.trim();
-    
+
     if (!newText) {
         showGlassToast('error', null, 'Rule text cannot be empty.', false, undefined, '<i class="fas fa-exclamation-triangle"></i>');
         renderDirectorRulesList();
         return;
     }
-    
+
     // Update local array
     directorRules[index].text = newText;
-    
+
     // Save to backend
     await saveDirectorRules();
 }
@@ -5883,10 +6295,10 @@ async function addDirectorRule() {
         text: 'New rule - click to edit',
         created: new Date().toISOString()
     };
-    
+
     directorRules.push(newRule);
     renderDirectorRulesList();
-    
+
     // Focus on the new rule
     setTimeout(() => {
         const newElement = document.querySelector(`[data-rule-id="${newRule.id}"] .director-rule-text`);
@@ -5900,7 +6312,7 @@ async function addDirectorRule() {
             selection.addRange(range);
         }
     }, 100);
-    
+
     // Save to backend
     await saveDirectorRules();
 }
@@ -5922,18 +6334,18 @@ async function deleteDirectorRule(ruleId) {
             }
         ]
     );
-    
+
     if (!confirmed) return;
-    
+
     // Remove from array
     directorRules = directorRules.filter(rule => rule.id !== ruleId);
-    
+
     // Re-render list
     renderDirectorRulesList();
-    
+
     // Save to backend
     await saveDirectorRules();
-    
+
     showGlassToast('success', null, 'Rule deleted successfully.', false, undefined, '<i class="fas fa-check"></i>');
 }
 
@@ -5942,11 +6354,11 @@ async function saveDirectorRules() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.sendMessage('director_save_rules', {
             rules: directorRules
         });
-        
+
         if (result && result.data && result.data.success) {
             console.log('✅ Director rules saved successfully');
         } else {
@@ -5964,9 +6376,9 @@ async function loadDirectorFeedback() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.sendMessage('director_load_feedback', {});
-        
+
         if (result && result.data && result.data.success) {
             directorFeedback = result.data.feedback || [];
             console.log('Director feedback loaded successfully:', directorFeedback.length, 'entries');
@@ -5988,9 +6400,9 @@ function renderDirectorFeedbackList() {
         console.error('directorRulesList element not found');
         return;
     }
-    
+
     console.log('Rendering feedback list, count:', directorFeedback.length);
-    
+
     if (!directorFeedback || directorFeedback.length === 0) {
         list.innerHTML = `
             <div class="empty-state">
@@ -6001,21 +6413,21 @@ function renderDirectorFeedbackList() {
         `;
         return;
     }
-    
+
     try {
         list.innerHTML = directorFeedback.map((feedback) => {
             if (!feedback || !feedback.id) {
                 console.warn('Invalid feedback entry:', feedback);
                 return '';
             }
-            
+
             const date = feedback.timestamp ? new Date(feedback.timestamp).toLocaleDateString() : 'Unknown date';
             const selectText = feedback?.select_text || '';
             const replaceText = feedback.replace_text || '';
             const action = feedback.action || 'replace';
             const aiReason = feedback.ai_reason || '(no reason provided)';
             const userFeedback = feedback.user_feedback || '(no feedback provided)';
-            
+
             return `<div class="director-rule-item director-feedback-item" data-feedback-id="${feedback.id}">
 <div class="director-rule-content">
 <div class="director-feedback-main">
@@ -6040,12 +6452,12 @@ ${replaceText ? `<div class="director-feedback-detail-row"><span class="detail-l
 </div>
 </div>`;
         }).filter(html => html).join('');
-        
+
         // Add event listeners for delete buttons
         list.querySelectorAll('.delete-feedback-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteDirectorFeedback(btn.dataset.feedbackId));
         });
-        
+
         // Add event listeners for editable feedback text
         list.querySelectorAll('.director-rule-text[data-feedback-id]').forEach(element => {
             element.addEventListener('blur', handleDirectorFeedbackEdit);
@@ -6073,7 +6485,7 @@ async function handleDirectorFeedbackEdit(e) {
     const element = e.target;
     const feedbackId = element.dataset.feedbackId;
     const newText = element.textContent.trim();
-    
+
     if (!feedbackId || !newText) {
         // Restore original text if empty
         const feedback = directorFeedback.find(fb => fb.id === feedbackId);
@@ -6082,7 +6494,7 @@ async function handleDirectorFeedbackEdit(e) {
         }
         return;
     }
-    
+
     // Update local array
     const feedback = directorFeedback.find(fb => fb.id === feedbackId);
     if (feedback) {
@@ -6111,25 +6523,25 @@ async function deleteDirectorFeedback(feedbackId) {
             }
         ]
     );
-    
+
     if (!confirmed) return;
-    
+
     try {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.sendMessage('director_delete_feedback', {
             feedbackId: feedbackId
         });
-        
+
         if (result && result.data && result.data.success) {
             // Remove from local array
             directorFeedback = directorFeedback.filter(fb => fb.id !== feedbackId);
-            
+
             // Re-render list
             renderDirectorFeedbackList();
-            
+
             showGlassToast('success', null, 'Feedback deleted successfully.', false, undefined, '<i class="fas fa-check"></i>');
         } else {
             throw new Error(result?.data?.message || 'Failed to delete feedback');
@@ -6146,14 +6558,14 @@ function setupDirectorViewDropdown() {
     const button = document.getElementById('directorRulesViewDropdownBtn');
     const menu = document.getElementById('directorRulesViewDropdownMenu');
     const selected = document.getElementById('directorRulesViewDropdownSelected');
-    
+
     if (!dropdown || !button || !menu || !selected) return;
-    
+
     const viewOptions = [
         { value: 'rules', name: 'Global' },
         { value: 'feedback', name: 'Feedback' }
     ];
-    
+
     function renderViewDropdown(selectedValue) {
         renderSimpleDropdown(
             menu,
@@ -6166,15 +6578,15 @@ function setupDirectorViewDropdown() {
             { preventFocusTransfer: true }
         );
     }
-    
+
     async function selectDirectorView(value) {
         currentDirectorView = value;
         const option = viewOptions.find(opt => opt.value === value);
         selected.textContent = option ? option.name : 'Global';
-        
+
         // Update UI and render appropriate list
         updateDirectorViewUI();
-        
+
         if (currentDirectorView === 'rules') {
             await loadDirectorRules();
             renderDirectorRulesList();
@@ -6183,15 +6595,15 @@ function setupDirectorViewDropdown() {
             renderDirectorFeedbackList();
         }
     }
-    
+
     function closeDirectorViewDropdown() {
         closeDropdown(menu, button);
     }
-    
+
     function getSelectedView() {
         return currentDirectorView;
     }
-    
+
     // Setup dropdown
     setupDropdown(dropdown, button, menu, renderViewDropdown, getSelectedView, { preventFocusTransfer: true });
 }
@@ -6200,7 +6612,7 @@ function setupDirectorViewDropdown() {
 function updateDirectorViewUI() {
     const addBtn = document.getElementById('addDirectorRuleBtn');
     const infoSection = document.querySelector('#directorRulesModal .info-section');
-    
+
     if (currentDirectorView === 'rules') {
         // Show add button and info section for rules
         if (addBtn) addBtn.style.display = '';
@@ -6389,23 +6801,23 @@ function hasDateOverride() {
     if (!todBtn) return false;
     const currentOverride = todBtn.getAttribute('data-override');
     if (!currentOverride || todBtn.dataset.state === 'off') return false;
-    
+
     if (currentOverride.includes('_')) {
         const parts = currentOverride.split('_');
         const datePart = parts[1];
         return !!datePart;
     }
-    
+
     // Check if it's a date-only value (not a time-only value)
     const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'evening', 'sunset', 'dusk', 'night', 'midnight'];
     const isTimeOnly = timeNames.includes(currentOverride);
     if (isTimeOnly) return false;
-    
+
     // Check if it's a holiday, date value, or numeric date
     if (typeof CLIENT_HOLIDAY_MAP !== 'undefined' && CLIENT_HOLIDAY_MAP[currentOverride]) return true;
     if (currentOverride === 'today' || currentOverride === 'tomorrow') return true;
     if (currentOverride.length === 4 && /^\d{4}$/.test(currentOverride)) return true;
-    
+
     return false;
 }
 
@@ -6414,17 +6826,17 @@ function hasTimeOverride() {
     if (!todBtn) return false;
     const currentOverride = todBtn.getAttribute('data-override');
     if (!currentOverride || todBtn.dataset.state === 'off') return false;
-    
+
     if (currentOverride.includes('_')) {
         const parts = currentOverride.split('_');
         const timePart = parts[0];
         return !!timePart;
     }
-    
+
     // Check if it's a time-only value
     const timeNames = ['dawn', 'sunrise', 'morning', 'latemorning', 'daytime', 'afternoon', 'lateafternoon', 'goldenhour', 'evening', 'sunset', 'dusk', 'night', 'midnight'];
     if (timeNames.includes(currentOverride)) return true;
-    
+
     // Check if it's HHmm format
     if (currentOverride.length === 4 && /^\d{4}$/.test(currentOverride)) {
         // Could be time or date, but if no underscore, assume it could be time
@@ -6432,7 +6844,7 @@ function hasTimeOverride() {
         const hour = parseInt(currentOverride.substring(0, 2));
         if (hour >= 0 && hour <= 23) return true;
     }
-    
+
     return false;
 }
 
@@ -6453,7 +6865,7 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Use Current Time',
                         icon: 'fas fa-clock',
                         action: 'clearTodTimeOverride',
-                        initfn: function(item) {
+                        initfn: function (item) {
                             item.hidden = !hasTimeOverride();
                         }
                     },
@@ -6467,7 +6879,7 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Use Current Date',
                         icon: 'fas fa-calendar-check',
                         action: 'clearTodDateOverride',
-                        initfn: function(item) {
+                        initfn: function (item) {
                             item.hidden = !hasDateOverride();
                         }
                     },
@@ -6530,7 +6942,7 @@ function setupDynamicGenerationContextMenus() {
         sections: [
             {
                 type: 'list',
-                title: function() {
+                title: function () {
                     const weatherBtn = document.getElementById('weatherBtn');
                     const locationDisplay = weatherBtn?.dataset?.locationDisplay;
                     return locationDisplay ? `Weather (${locationDisplay})` : 'Weather';
@@ -6541,7 +6953,7 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-calendar',
                         action: 'toggleWeatherForecast',
                         keepMenuOpen: true,
-                        loadfn: function(item, target) {
+                        loadfn: function (item, target) {
                             const weatherBtn = document.getElementById('weatherBtn');
                             const useForecast = weatherBtn?.getAttribute('data-override') === 'forecast';
                             item.checked = useForecast;
@@ -6601,7 +7013,7 @@ function setupDynamicGenerationContextMenus() {
                         text: 'Static Location (Server)',
                         icon: 'fas fa-times',
                         action: 'clearWeatherLocation',
-                        loadfn: function(item) {
+                        loadfn: function (item) {
                             const weatherBtn = document.getElementById('weatherBtn');
                             item.disabled = !weatherBtn || !weatherBtn.getAttribute('data-location');
                         }
@@ -6623,19 +7035,19 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-calendar-star',
                         action: 'toggleObserveHoliday',
                         keepMenuOpen: true,
-                        loadfn: function(item, target) {
+                        loadfn: function (item, target) {
                             const observeHolidayEnabled = target.dataset.toggleHoliday === 'true';
                             item.checked = observeHolidayEnabled;
                             item.className = observeHolidayEnabled ? 'text-success' : '';
                         }
                     },
                     { separator: true },
-                    { 
-                        text: 'Use Date', 
-                        icon: 'fas fa-times', 
-                        action: 'setSeasonOverride', 
+                    {
+                        text: 'Use Date',
+                        icon: 'fas fa-times',
+                        action: 'setSeasonOverride',
                         value: false,
-                        initfn: function(item) {
+                        initfn: function (item) {
                             item.hidden = !seasonBtn?.hasAttribute('data-override');
                         }
                     },
@@ -6686,40 +7098,40 @@ function setupDynamicGenerationContextMenus() {
         sections: [
             {
                 type: 'custom',
-                initfn: function(section, target) {
+                initfn: function (section, target) {
                     const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
                     const previewHash = compiledPrompt?.preview_image_hash;
-                    
+
                     // Hide section if no preview exists
                     section.hidden = !previewHash;
                 },
-                content: function(target) {
+                content: function (target) {
                     const compiledPrompt = window.dynamicGenerationData?.compiled_prompt;
                     const previewHash = compiledPrompt?.preview_image_hash;
-                    
+
                     if (!previewHash) {
                         return '';
                     }
-                    
+
                     const container = document.createElement('div');
                     container.className = 'dyn-gen-preview-container';
                     container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 175px; flex-shrink: 0;';
-                    
+
                     const img = document.createElement('img');
                     img.src = `/cache/dynGenPreview/${previewHash}.png`;
                     img.alt = 'Enshutsuka Preview';
                     img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
                     img.loading = 'lazy';
-                    
+
                     // Add click handler to open in PhotoSwipe lightbox
-                    img.addEventListener('click', async function(e) {
+                    img.addEventListener('click', async function (e) {
                         e.stopPropagation();
-                        
+
                         // Close the context menu first
                         if (window.contextMenu) {
                             window.contextMenu.hideMenu();
                         }
-                        
+
                         // Open in standalone PhotoSwipe
                         const standaloneData = [{
                             src: img.src,
@@ -6733,524 +7145,524 @@ function setupDynamicGenerationContextMenus() {
                                 isStandalone: true
                             }
                         }];
-                        
+
                         await openStandalonePhotoSwipe(standaloneData);
                     });
-                    
+
                     // Add error handler
-                    img.onerror = function() {
+                    img.onerror = function () {
                         container.style.minHeight = 'auto';
                         container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text-muted);">Preview not available</div>';
                     };
-                    
+
                     container.appendChild(img);
                     return container;
                 }
             },
             {
-            type: 'list',
-            title: 'Enshutsuka Data',
-            items: [
-                {
-                    text: 'Inspector',
-                    action: 'showInspector',
-                    icon: 'fas fa-glasses-round',
-                    loadfn: function(item) {
-                        item.disabled = !Boolean(window.dynamicGenerationData?.compiled_prompt);
-                    }
-                },
-                {
-                    text: 'Refresh',
-                    action: 'toggleForceRefresh',
-                    icon: 'fas fa-rotate',
-                    keepMenuOpen: true,
-                    loadfn: function(item, target) {
-                        const forceRefreshEnabled = dynamicCarousel?.dataset.forceRefresh === 'true';
-                        const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
-                        const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
-
-                        // Only enable if chain updates are on and we have previous response
-                        item.disabled = !hasPreviousResponse;
-                        item.checked = forceRefreshEnabled;
-                        item.className = forceRefreshEnabled ? 'text-warning' : '';
-                    }
-                },
-                {
-                    text: 'Fast Mode',
-                    action: 'toggleFastMode',
-                    icon: 'fas fa-bolt',
-                    keepMenuOpen: true,
-                    loadfn: function(item, target) {
-                        const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
-                        item.checked = fastModeEnabled;
-                        item.className = fastModeEnabled ? 'text-success' : '';
-                    }
-                },
-                {
-                    text: 'Optimization',
-                    icon: 'fas fa-merge',
-                    submenu: [
-                        {
-                            text: 'Enable',
-                            icon: 'fas fa-cog',
-                            action: 'toggleOptimize',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                const optimizeEnabled = dynamicCarousel?.dataset.optimizeEnabled === 'true';
-                                item.checked = optimizeEnabled;
-                                item.className = optimizeEnabled ? 'text-success' : '';
-                            }
-                        },
-                        {
-                            text: 'Token Optimization',
-                            icon: 'fas fa-cash-register',
-                            action: 'toggleTokenCount',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
-                                item.checked = tokenCountEnabled;
-                                item.className = tokenCountEnabled ? 'text-success' : '';
-                            }
-                        },
-                        {
-                            text: 'Two-Pass',
-                            icon: 'fas fa-layer-group',
-                            action: 'toggleTwoStage',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
-                                const twoStageEnabled = dynamicCarousel?.dataset.twoStage === 'true';
-                                const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
-                                
-                                item.checked = twoStageEnabled;
-                                item.className = twoStageEnabled ? 'text-success' : '';
-                                // Disable when optimize is off or fast mode is enabled
-                                item.disabled = !tokenCountEnabled || fastModeEnabled;
-                            }
-                        },
-                        {
-                            text: 'Chain Updates',
-                            action: 'toggleChainUpdates',
-                            icon: 'fas fa-link-horizontal',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                // Default to false (disabled) if not set
-                                const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
-                                const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
-
-                                item.disabled = !hasPreviousResponse;
-                                item.checked = chainUpdatesEnabled;
-                                item.className = chainUpdatesEnabled ? 'text-info' : '';
-                            }
-                        },
-                        { 
-                            text: 'Visual Awareness',
-                            separator: true
-                        },
-                        {
-                            text: 'Prompt Preview',
-                            icon: 'fas fa-image-polaroid',
-                            action: 'toggleInitialPromptAware',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                const initialPromptAwareEnabled = dynamicCarousel?.dataset.initialPromptAware === 'true';
-                                item.checked = initialPromptAwareEnabled;
-                                item.className = initialPromptAwareEnabled ? 'text-success' : '';
-                            }
-                        },
-                        {
-                            text: 'Stage Results',
-                            icon: 'fas fa-arrow-down-triangle-square',
-                            action: 'togglePipelineAware',
-                            keepMenuOpen: true,
-                            loadfn: function(item, target) {
-                                const pipelineAwareEnabled = dynamicCarousel?.dataset.pipelineAware === 'true';
-                                item.checked = pipelineAwareEnabled;
-                                item.className = pipelineAwareEnabled ? 'text-success' : '';
-                                item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
-                            }
+                type: 'list',
+                title: 'Enshutsuka Data',
+                items: [
+                    {
+                        text: 'Inspector',
+                        action: 'showInspector',
+                        icon: 'fas fa-glasses-round',
+                        loadfn: function (item) {
+                            item.disabled = !Boolean(window.dynamicGenerationData?.compiled_prompt);
                         }
-                    ]
-                },
-                {
-                    text: 'Strategy',
-                    icon: 'fas fa-route',
-                    valueDisplay: function(target) {
-                        const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                        return currentValue?.toUpperCase() || 'Auto';
                     },
-                    submenu: [
-                        {
-                            text: 'Auto',
-                            action: 'setCreativeDirectiveStrategy',
-                            value: null,
-                            loadfn: function(item, target) {
-                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                item.checked = currentValue === '' || currentValue === null;
-                            }
-                        },
-                        {
-                            text: 'Tags Only',
-                            action: 'setCreativeDirectiveStrategy',
-                            value: 'A',
-                            loadfn: function(item, target) {
-                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                item.checked = currentValue === 'A';
-                            }
-                        },
-                        {
-                            text: 'Tags + Modifiers',
-                            action: 'setCreativeDirectiveStrategy',
-                            value: 'B',
-                            loadfn: function(item, target) {
-                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                item.checked = currentValue === 'B';
-                            }
-                        },
-                        {
-                            text: 'Descriptive Tags',
-                            action: 'setCreativeDirectiveStrategy',
-                            value: 'C',
-                            loadfn: function(item, target) {
-                                const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
-                                item.checked = currentValue === 'C';
-                            }
-                        }
-                    ]
-                },
-                {
-                    text: 'Tool Calls',
-                    icon: 'fas fa-hammer',
-                    valueDisplay: function(target) {
-                        const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                        return currentValue.toString();
-                    },
-                    submenu: [
-                        {
-                            text: '4',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 4,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 4;
-                            }
-                        },
-                        {
-                            text: '6',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 6,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 6;
-                            }
-                        },
-                        {
-                            text: '8',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 8,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 8;
-                            }
-                        },
-                        {
-                            text: '10',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 10,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 10;
-                            }
-                        },
-                        {
-                            text: '12',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 12,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 12;
-                            }
-                        },
-                        {
-                            text: '16',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 16,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 16;
-                            }
-                        },
-                        {
-                            text: '20',
-                            action: 'setCreativeDirectiveToolPasses',
-                            value: 20,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
-                                item.checked = currentValue === 20;
-                            }
-                        }
-                    ]
-                },
-                {
-                    text: 'Dialogs',
-                    icon: 'fas fa-comments',
-                    valueDisplay: function(target) {
-                        const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
-                        if (dialogsValue === '0') {
-                            return 'Off';
-                        }
-                        const currentValue = parseInt(dialogsValue || '6');
-                        return currentValue.toString();
-                    },
-                    submenu: [
-                        {
-                            text: 'Disable',
-                            icon: 'fas fa-times-circle',
-                            action: 'disableCreativeDirectiveDialogs',
-                            loadfn: function(item, target) {
-                                const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
-                                const isDisabled = dialogsValue === '0';
-                                item.checked = isDisabled;
-                            }
-                        },
-                        { separator: true },
-                        {
-                            text: '4',
-                            action: 'setCreativeDirectiveDialogs',
-                            value: 4,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                item.checked = currentValue === 4;
-                            }
-                        },
-                        {
-                            text: '6',
-                            action: 'setCreativeDirectiveDialogs',
-                            value: 6,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                item.checked = currentValue === 6;
-                            }
-                        },
-                        {
-                            text: '8',
-                            action: 'setCreativeDirectiveDialogs',
-                            value: 8,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                item.checked = currentValue === 8;
-                            }
-                        },
-                        {
-                            text: '10',
-                            action: 'setCreativeDirectiveDialogs',
-                            value: 10,
-                            loadfn: function(item, target) {
-                                const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
-                                item.checked = currentValue === 10;
-                            }
-                        }
-                    ]
-                },
-                {
-                    text: 'Temperature',
-                    icon: 'fas fa-thermometer-three-quarters',
-                    valueDisplay: function(target) {
-                        const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                        if (aiTemp) {
-                            return aiTemp;
-                        }
-                        return '';
-                    },
-                    submenu: [
-                        {
-                            text: 'Default',
-                            icon: 'fas fa-times',
-                            action: 'clearAiTemperature',
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.hidden = !aiTemp;
-                            }
-                        },
-                        { separator: true },
-                        {
-                            text: 'Deterministic (0.0)',
-                            icon: 'fas fa-lock',
-                            action: 'setAiTemperature',
-                            value: 0.0,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.0';
-                            }
-                        },
-                        {
-                            text: 'Very Low (0.1)',
-                            icon: 'fas fa-snowflake',
-                            action: 'setAiTemperature',
-                            value: 0.1,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.1';
-                            }
-                        },
-                        { 
-                            text: 'Low (0.3)', 
-                            icon: 'fas fa-thermometer-quarter', 
-                            action: 'setAiTemperature', 
-                            value: 0.3,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.3';
-                            }
-                        },
-                        { 
-                            text: 'Medium-Low (0.5)', 
-                            icon: 'fas fa-thermometer-half', 
-                            action: 'setAiTemperature', 
-                            value: 0.5,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.5';
-                            }
-                        },
-                        { 
-                            text: 'Medium (0.7)', 
-                            icon: 'fas fa-thermometer-half', 
-                            action: 'setAiTemperature', 
-                            value: 0.7,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.7';
-                            }
-                        },
-                        { 
-                            text: 'Default (0.8)', 
-                            icon: 'fas fa-thermometer-three-quarters', 
-                            action: 'setAiTemperature', 
-                            value: 0.8,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '0.8' || !aiTemp;
-                            }
-                        },
-                        { separator: true },
-                        { 
-                            text: 'Medium-High (1.0)', 
-                            icon: 'fas fa-thermometer-three-quarters', 
-                            action: 'setAiTemperature', 
-                            value: 1.0,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '1.0';
-                            }
-                        },
-                        { 
-                            text: 'High (1.2)', 
-                            icon: 'fas fa-thermometer-full', 
-                            action: 'setAiTemperature', 
-                            value: 1.2,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '1.2';
-                            }
-                        },
-                        { 
-                            text: 'Very High (1.5)', 
-                            icon: 'fas fa-fire', 
-                            action: 'setAiTemperature', 
-                            value: 1.5,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '1.5';
-                            }
-                        },
-                        { 
-                            text: 'Maximum (2.0)', 
-                            icon: 'fas fa-fire-flame-curved', 
-                            action: 'setAiTemperature', 
-                            value: 2.0,
-                            loadfn: function(item, target) {
-                                const aiTemp = dynamicCarousel?.dataset.aiTemperature;
-                                item.checked = aiTemp === '2.0';
-                            }
-                        }
-                    ]
-                },
-                { 
-                    text: 'Freeze Data',
-                    separator: true
-                },
-                {
-                    text: 'Freeze Context',
-                    action: 'toggleLockContext',
-                    icon: 'fas fa-icicles',
-                    keepMenuOpen: true,
-                    loadfn: function(item, target) {
-                        const isContextLocked = dynamicCarousel?.dataset.contextLocked === 'true';
-                        const hasContext = Boolean(window.dynamicGenerationData?.compiled_prompt) && 
-                                            Boolean(window.dynamicGenerationData?.compiled_prompt?.context);
-                        const isLocked = dynamicCarousel?.dataset.state === 'on';
+                    {
+                        text: 'Refresh',
+                        action: 'toggleForceRefresh',
+                        icon: 'fas fa-rotate',
+                        keepMenuOpen: true,
+                        loadfn: function (item, target) {
+                            const forceRefreshEnabled = dynamicCarousel?.dataset.forceRefresh === 'true';
+                            const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
+                            const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
 
-                        item.disabled = !hasContext || isLocked;
-                        item.checked = isContextLocked || isLocked;
-                    }
-                },
-                {
-                    text: 'Freeze Changes',
-                    action: 'toggleLockResults',
-                    icon: 'fas fa-lock',
-                    keepMenuOpen: true,
-                    loadfn: function(item, target) {
-                        const isResultsLocked = dynamicCarousel?.dataset.state === 'on';
-                        const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
-
-                        item.disabled = !hasCache;
-                        item.checked = isResultsLocked;
-                    }
-                },
-                { 
-                    text: 'Cache Controls',
-                    separator: true
-                },
-                {
-                    text: 'Change Cache',
-                    action: 'toggleUseCache',
-                    icon: 'fas fa-floppy-disk',
-                    keepMenuOpen: true,
-                    loadfn: function(item, target) {
-                        const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
-                        const useCache = dynamicCarousel?.getAttribute('data-use-cache') === 'true';
-
-                        item.disabled = !hasCache;
-                        item.checked = useCache;
+                            // Only enable if chain updates are on and we have previous response
+                            item.disabled = !hasPreviousResponse;
+                            item.checked = forceRefreshEnabled;
+                            item.className = forceRefreshEnabled ? 'text-warning' : '';
+                        }
                     },
-                },
-                {
-                    text: 'Preview Cache',
-                    action: 'toggleExpirePreview',
-                    keepMenuOpen: true,
-                    icon: 'fas fa-image',
-                    loadfn: function(item, target) {
-                        const expirePreview = dynamicCarousel?.dataset.expirePreview === 'true';
-                        const hasPreview = Boolean(window.dynamicGenerationData?.compiled_prompt?.preview_image_hash || 
-                                                   window.dynamicGenerationData?.compiled_prompt?.preview_image);
-                        
-                        item.disabled = !hasPreview;
-                        item.checked = !expirePreview;
+                    {
+                        text: 'Fast Mode',
+                        action: 'toggleFastMode',
+                        icon: 'fas fa-bolt',
+                        keepMenuOpen: true,
+                        loadfn: function (item, target) {
+                            const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
+                            item.checked = fastModeEnabled;
+                            item.className = fastModeEnabled ? 'text-success' : '';
+                        }
+                    },
+                    {
+                        text: 'Optimization',
+                        icon: 'fas fa-merge',
+                        submenu: [
+                            {
+                                text: 'Enable',
+                                icon: 'fas fa-cog',
+                                action: 'toggleOptimize',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    const optimizeEnabled = dynamicCarousel?.dataset.optimizeEnabled === 'true';
+                                    item.checked = optimizeEnabled;
+                                    item.className = optimizeEnabled ? 'text-success' : '';
+                                }
+                            },
+                            {
+                                text: 'Token Optimization',
+                                icon: 'fas fa-cash-register',
+                                action: 'toggleTokenCount',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
+                                    item.checked = tokenCountEnabled;
+                                    item.className = tokenCountEnabled ? 'text-success' : '';
+                                }
+                            },
+                            {
+                                text: 'Two-Pass',
+                                icon: 'fas fa-layer-group',
+                                action: 'toggleTwoStage',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
+                                    const twoStageEnabled = dynamicCarousel?.dataset.twoStage === 'true';
+                                    const tokenCountEnabled = dynamicCarousel?.dataset.tokenCount === 'true';
+
+                                    item.checked = twoStageEnabled;
+                                    item.className = twoStageEnabled ? 'text-success' : '';
+                                    // Disable when optimize is off or fast mode is enabled
+                                    item.disabled = !tokenCountEnabled || fastModeEnabled;
+                                }
+                            },
+                            {
+                                text: 'Chain Updates',
+                                action: 'toggleChainUpdates',
+                                icon: 'fas fa-link-horizontal',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    // Default to false (disabled) if not set
+                                    const chainUpdatesEnabled = dynamicCarousel?.dataset.chainUpdates === 'true';
+                                    const hasPreviousResponse = Boolean(window.dynamicGenerationData?.compiled_prompt?.previousResponseId);
+
+                                    item.disabled = !hasPreviousResponse;
+                                    item.checked = chainUpdatesEnabled;
+                                    item.className = chainUpdatesEnabled ? 'text-info' : '';
+                                }
+                            },
+                            {
+                                text: 'Visual Awareness',
+                                separator: true
+                            },
+                            {
+                                text: 'Prompt Preview',
+                                icon: 'fas fa-image-polaroid',
+                                action: 'toggleInitialPromptAware',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    const initialPromptAwareEnabled = dynamicCarousel?.dataset.initialPromptAware === 'true';
+                                    item.checked = initialPromptAwareEnabled;
+                                    item.className = initialPromptAwareEnabled ? 'text-success' : '';
+                                }
+                            },
+                            {
+                                text: 'Stage Results',
+                                icon: 'fas fa-arrow-down-triangle-square',
+                                action: 'togglePipelineAware',
+                                keepMenuOpen: true,
+                                loadfn: function (item, target) {
+                                    const pipelineAwareEnabled = dynamicCarousel?.dataset.pipelineAware === 'true';
+                                    item.checked = pipelineAwareEnabled;
+                                    item.className = pipelineAwareEnabled ? 'text-success' : '';
+                                    item.disabled = !(document.getElementById('pipelineStagesContainer')?.children?.length > 0);
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        text: 'Strategy',
+                        icon: 'fas fa-route',
+                        valueDisplay: function (target) {
+                            const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                            return currentValue?.toUpperCase() || 'Auto';
+                        },
+                        submenu: [
+                            {
+                                text: 'Auto',
+                                action: 'setCreativeDirectiveStrategy',
+                                value: null,
+                                loadfn: function (item, target) {
+                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                    item.checked = currentValue === '' || currentValue === null;
+                                }
+                            },
+                            {
+                                text: 'Tags Only',
+                                action: 'setCreativeDirectiveStrategy',
+                                value: 'A',
+                                loadfn: function (item, target) {
+                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                    item.checked = currentValue === 'A';
+                                }
+                            },
+                            {
+                                text: 'Tags + Modifiers',
+                                action: 'setCreativeDirectiveStrategy',
+                                value: 'B',
+                                loadfn: function (item, target) {
+                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                    item.checked = currentValue === 'B';
+                                }
+                            },
+                            {
+                                text: 'Descriptive Tags',
+                                action: 'setCreativeDirectiveStrategy',
+                                value: 'C',
+                                loadfn: function (item, target) {
+                                    const currentValue = dynamicCarousel?.dataset.creativeDirectiveStrategy || '';
+                                    item.checked = currentValue === 'C';
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        text: 'Tool Calls',
+                        icon: 'fas fa-hammer',
+                        valueDisplay: function (target) {
+                            const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                            return currentValue.toString();
+                        },
+                        submenu: [
+                            {
+                                text: '4',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 4,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 4;
+                                }
+                            },
+                            {
+                                text: '6',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 6,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 6;
+                                }
+                            },
+                            {
+                                text: '8',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 8,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 8;
+                                }
+                            },
+                            {
+                                text: '10',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 10,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 10;
+                                }
+                            },
+                            {
+                                text: '12',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 12,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 12;
+                                }
+                            },
+                            {
+                                text: '16',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 16,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 16;
+                                }
+                            },
+                            {
+                                text: '20',
+                                action: 'setCreativeDirectiveToolPasses',
+                                value: 20,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveToolPasses || '8');
+                                    item.checked = currentValue === 20;
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        text: 'Dialogs',
+                        icon: 'fas fa-comments',
+                        valueDisplay: function (target) {
+                            const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+                            if (dialogsValue === '0') {
+                                return 'Off';
+                            }
+                            const currentValue = parseInt(dialogsValue || '6');
+                            return currentValue.toString();
+                        },
+                        submenu: [
+                            {
+                                text: 'Disable',
+                                icon: 'fas fa-times-circle',
+                                action: 'disableCreativeDirectiveDialogs',
+                                loadfn: function (item, target) {
+                                    const dialogsValue = dynamicCarousel?.dataset.creativeDirectiveDialogs;
+                                    const isDisabled = dialogsValue === '0';
+                                    item.checked = isDisabled;
+                                }
+                            },
+                            { separator: true },
+                            {
+                                text: '4',
+                                action: 'setCreativeDirectiveDialogs',
+                                value: 4,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                    item.checked = currentValue === 4;
+                                }
+                            },
+                            {
+                                text: '6',
+                                action: 'setCreativeDirectiveDialogs',
+                                value: 6,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                    item.checked = currentValue === 6;
+                                }
+                            },
+                            {
+                                text: '8',
+                                action: 'setCreativeDirectiveDialogs',
+                                value: 8,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                    item.checked = currentValue === 8;
+                                }
+                            },
+                            {
+                                text: '10',
+                                action: 'setCreativeDirectiveDialogs',
+                                value: 10,
+                                loadfn: function (item, target) {
+                                    const currentValue = parseInt(dynamicCarousel?.dataset.creativeDirectiveDialogs || '6');
+                                    item.checked = currentValue === 10;
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        text: 'Temperature',
+                        icon: 'fas fa-thermometer-three-quarters',
+                        valueDisplay: function (target) {
+                            const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                            if (aiTemp) {
+                                return aiTemp;
+                            }
+                            return '';
+                        },
+                        submenu: [
+                            {
+                                text: 'Default',
+                                icon: 'fas fa-times',
+                                action: 'clearAiTemperature',
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.hidden = !aiTemp;
+                                }
+                            },
+                            { separator: true },
+                            {
+                                text: 'Deterministic (0.0)',
+                                icon: 'fas fa-lock',
+                                action: 'setAiTemperature',
+                                value: 0.0,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.0';
+                                }
+                            },
+                            {
+                                text: 'Very Low (0.1)',
+                                icon: 'fas fa-snowflake',
+                                action: 'setAiTemperature',
+                                value: 0.1,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.1';
+                                }
+                            },
+                            {
+                                text: 'Low (0.3)',
+                                icon: 'fas fa-thermometer-quarter',
+                                action: 'setAiTemperature',
+                                value: 0.3,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.3';
+                                }
+                            },
+                            {
+                                text: 'Medium-Low (0.5)',
+                                icon: 'fas fa-thermometer-half',
+                                action: 'setAiTemperature',
+                                value: 0.5,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.5';
+                                }
+                            },
+                            {
+                                text: 'Medium (0.7)',
+                                icon: 'fas fa-thermometer-half',
+                                action: 'setAiTemperature',
+                                value: 0.7,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.7';
+                                }
+                            },
+                            {
+                                text: 'Default (0.8)',
+                                icon: 'fas fa-thermometer-three-quarters',
+                                action: 'setAiTemperature',
+                                value: 0.8,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '0.8' || !aiTemp;
+                                }
+                            },
+                            { separator: true },
+                            {
+                                text: 'Medium-High (1.0)',
+                                icon: 'fas fa-thermometer-three-quarters',
+                                action: 'setAiTemperature',
+                                value: 1.0,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '1.0';
+                                }
+                            },
+                            {
+                                text: 'High (1.2)',
+                                icon: 'fas fa-thermometer-full',
+                                action: 'setAiTemperature',
+                                value: 1.2,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '1.2';
+                                }
+                            },
+                            {
+                                text: 'Very High (1.5)',
+                                icon: 'fas fa-fire',
+                                action: 'setAiTemperature',
+                                value: 1.5,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '1.5';
+                                }
+                            },
+                            {
+                                text: 'Maximum (2.0)',
+                                icon: 'fas fa-fire-flame-curved',
+                                action: 'setAiTemperature',
+                                value: 2.0,
+                                loadfn: function (item, target) {
+                                    const aiTemp = dynamicCarousel?.dataset.aiTemperature;
+                                    item.checked = aiTemp === '2.0';
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        text: 'Freeze Data',
+                        separator: true
+                    },
+                    {
+                        text: 'Freeze Context',
+                        action: 'toggleLockContext',
+                        icon: 'fas fa-icicles',
+                        keepMenuOpen: true,
+                        loadfn: function (item, target) {
+                            const isContextLocked = dynamicCarousel?.dataset.contextLocked === 'true';
+                            const hasContext = Boolean(window.dynamicGenerationData?.compiled_prompt) &&
+                                Boolean(window.dynamicGenerationData?.compiled_prompt?.context);
+                            const isLocked = dynamicCarousel?.dataset.state === 'on';
+
+                            item.disabled = !hasContext || isLocked;
+                            item.checked = isContextLocked || isLocked;
+                        }
+                    },
+                    {
+                        text: 'Freeze Changes',
+                        action: 'toggleLockResults',
+                        icon: 'fas fa-lock',
+                        keepMenuOpen: true,
+                        loadfn: function (item, target) {
+                            const isResultsLocked = dynamicCarousel?.dataset.state === 'on';
+                            const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
+
+                            item.disabled = !hasCache;
+                            item.checked = isResultsLocked;
+                        }
+                    },
+                    {
+                        text: 'Cache Controls',
+                        separator: true
+                    },
+                    {
+                        text: 'Change Cache',
+                        action: 'toggleUseCache',
+                        icon: 'fas fa-floppy-disk',
+                        keepMenuOpen: true,
+                        loadfn: function (item, target) {
+                            const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
+                            const useCache = dynamicCarousel?.getAttribute('data-use-cache') === 'true';
+
+                            item.disabled = !hasCache;
+                            item.checked = useCache;
+                        },
+                    },
+                    {
+                        text: 'Preview Cache',
+                        action: 'toggleExpirePreview',
+                        keepMenuOpen: true,
+                        icon: 'fas fa-image',
+                        loadfn: function (item, target) {
+                            const expirePreview = dynamicCarousel?.dataset.expirePreview === 'true';
+                            const hasPreview = Boolean(window.dynamicGenerationData?.compiled_prompt?.preview_image_hash ||
+                                window.dynamicGenerationData?.compiled_prompt?.preview_image);
+
+                            item.disabled = !hasPreview;
+                            item.checked = !expirePreview;
+                        }
+                    },
+                    {
+                        text: 'Erase Cache',
+                        action: 'clearCompiledPrompt',
+                        className: 'text-danger',
+                        icon: 'fas fa-fire',
+                        loadfn: function (item) {
+                            const compiledPrompt = Boolean(window.dynamicGenerationData?.compiled_prompt);
+                            item.disabled = !compiledPrompt;
+                        }
                     }
-                },
-                {
-                    text: 'Erase Cache',
-                    action: 'clearCompiledPrompt',
-                    className: 'text-danger',
-                    icon: 'fas fa-fire',
-                    loadfn: function(item) {
-                        const compiledPrompt = Boolean(window.dynamicGenerationData?.compiled_prompt);
-                        item.disabled = !compiledPrompt;
-                    }
-                }
-            ]
-        }]
+                ]
+            }]
     };
 
     // Optimize button options
@@ -7264,7 +7676,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-hashtag',
                     action: 'toggleTokenCount',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const tokenCountEnabled = target.dataset.tokenCount === 'true';
                         item.checked = tokenCountEnabled;
                         item.className = tokenCountEnabled ? 'text-success' : '';
@@ -7275,7 +7687,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-layer-group',
                     action: 'toggleTwoStage',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const fastModeEnabled = dynamicCarousel?.dataset.fastMode === 'true';
                         const twoStageEnabled = target.dataset.twoStage === 'true';
                         item.checked = twoStageEnabled;
@@ -7293,7 +7705,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-layer-group',
                     keepMenuOpen: true,
                     action: 'togglePipelineAware',
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const pipelineAwareEnabled = target.dataset.pipelineAware === 'true';
                         item.checked = pipelineAwareEnabled;
                         item.className = pipelineAwareEnabled ? 'text-success' : '';
@@ -7305,7 +7717,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-image-polaroid',
                     keepMenuOpen: true,
                     action: 'toggleInitialPromptAware',
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const initialPromptAwareEnabled = target.dataset.initialPromptAware === 'true';
                         item.checked = initialPromptAwareEnabled;
                         item.className = initialPromptAwareEnabled ? 'text-success' : '';
@@ -7326,7 +7738,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-lock',
                     action: 'toggleLockSubject',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const lockSubjectEnabled = dynamicCarousel?.dataset.lockSubject === 'true';
                         item.checked = lockSubjectEnabled;
                         item.className = lockSubjectEnabled ? 'text-success' : '';
@@ -7337,7 +7749,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-shirt',
                     action: 'toggleClothing',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const toggleClothingEnabled = target.dataset.toggleClothing === 'true';
                         item.checked = toggleClothingEnabled;
                         item.className = toggleClothingEnabled ? 'text-success' : '';
@@ -7348,7 +7760,7 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fa-regular fa-person-running',
                     action: 'toggleAction',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const toggleActionEnabled = target.dataset.toggleAction === 'true';
                         item.checked = toggleActionEnabled;
                         item.className = toggleActionEnabled ? 'text-success' : '';
@@ -7359,11 +7771,11 @@ function setupDynamicGenerationContextMenus() {
                     icon: 'fas fa-snowflake',
                     action: 'toggleGuidance',
                     keepMenuOpen: true,
-                    loadfn: function(item, target) {
+                    loadfn: function (item, target) {
                         const seasonBtn = document.getElementById('seasonBtn');
                         const seasonEnabled = seasonBtn?.dataset.state === 'on';
                         const guidanceEnabled = seasonBtn?.dataset.toggleGuidance === 'true';
-                        
+
                         // Disable if season is off
                         item.disabled = !seasonEnabled;
                         item.checked = guidanceEnabled;
@@ -7487,7 +7899,7 @@ document.addEventListener('contextMenuAction', (e) => {
     } else if (action === 'clearTodDateOverride') {
         const todBtn = document.getElementById('todBtn');
         const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
-        
+
         if (currentOverride && currentOverride.includes('_')) {
             const parts = currentOverride.split('_');
             const timePart = parts[0];
@@ -7506,7 +7918,7 @@ document.addEventListener('contextMenuAction', (e) => {
     } else if (action === 'clearTodTimeOverride') {
         const todBtn = document.getElementById('todBtn');
         const currentOverride = todBtn ? todBtn.getAttribute('data-override') : null;
-        
+
         if (currentOverride && currentOverride.includes('_')) {
             const parts = currentOverride.split('_');
             const datePart = parts[1];
@@ -7534,7 +7946,7 @@ document.addEventListener('contextMenuAction', (e) => {
         const currentUseCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
         const newUseCache = !currentUseCache;
         dynamicCarousel.setAttribute('data-use-cache', newUseCache.toString());
-		updateCarouselIndicators();
+        updateCarouselIndicators();
     } else if (action === 'toggleOptimize') {
         const optimizeEnabled = dynamicCarousel.dataset.optimizeEnabled === 'true';
         const newState = optimizeEnabled ? 'false' : 'true';
@@ -7544,12 +7956,12 @@ document.addEventListener('contextMenuAction', (e) => {
         dynamicCarousel.dataset.tokenCount = tokenCountEnabled ? 'false' : 'true';
     } else if (action === 'toggleTwoStage') {
         const fastModeEnabled = dynamicCarousel.dataset.fastMode === 'true';
-        
+
         // Prevent enabling 2 stage mode when fast mode is enabled
         if (fastModeEnabled) {
             return; // Do nothing if fast mode is enabled
         }
-        
+
         const twoStageEnabled = dynamicCarousel.dataset.twoStage === 'true';
         dynamicCarousel.dataset.twoStage = twoStageEnabled ? 'false' : 'true';
     } else if (action === 'toggleLockSubject') {
@@ -7699,9 +8111,9 @@ async function moveToScraps(image) {
                 throw new Error('Failed to move to scraps');
             }
         } else {
-                console.error('Move to scraps failed:', error);
-                showError(`Failed to move to scraps: ${error.error}`);
-                return;
+            console.error('Move to scraps failed:', error);
+            showError(`Failed to move to scraps: ${error.error}`);
+            return;
         }
 
         showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
@@ -7752,8 +8164,18 @@ async function moveImageToScrapsDirect(filename, event = null) {
 
         showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
-        // If currently viewing scraps, reload them
-        switchGalleryView(currentGalleryView, true);
+        // Remove image from current gallery view locally (only if not viewing scraps)
+        if (currentGalleryView !== 'scraps' && typeof removeImageFromGallery === 'function') {
+            // Find the image object using the helper function from galleryView.js
+            const imageToRemove = findImageByFilename(filename);
+
+            if (imageToRemove) {
+                removeImageFromGallery(imageToRemove);
+            }
+        } else if (currentGalleryView === 'scraps') {
+            // If viewing scraps, we need to reload to show the new scrap
+            switchGalleryView(currentGalleryView, true);
+        }
     } catch (error) {
         console.error('Error moving image to scraps:', error);
         showError('Failed to move image to scraps');
@@ -7770,7 +8192,7 @@ async function moveManualPreviewToScraps() {
     try {
         // Show navigation loading overlay
         showManualPreviewNavigationLoading(true);
-        
+
         const filename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
         if (!filename) {
             showError('No filename available for this image');
@@ -7782,7 +8204,7 @@ async function moveManualPreviewToScraps() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         await window.wsClient.addScrap(activeWorkspace, filename);
 
         // Get the current index and view type
@@ -7792,7 +8214,7 @@ async function moveManualPreviewToScraps() {
         // Request the same image at the current index (which will now be a different image)
         try {
             const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
-            
+
             if (newImage) {
                 // Update the preview with the new image at the same index
                 await updateManualPreview(currentIndex, null, newImage.metadata);
@@ -7843,13 +8265,18 @@ async function removeFromScraps(image) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         await window.wsClient.removeScrap(activeWorkspace, filename);
 
         showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
 
-        // If currently viewing scraps, reload them
-        switchGalleryView(currentGalleryView, true);
+        // Remove image from current gallery view locally (only if viewing scraps)
+        if (currentGalleryView === 'scraps' && typeof removeImageFromGallery === 'function') {
+            removeImageFromGallery(image);
+        } else if (currentGalleryView !== 'scraps') {
+            // If not viewing scraps, we might need to reload to show it in the main view
+            switchGalleryView(currentGalleryView, true);
+        }
     } catch (error) {
         console.error('Error removing from scraps:', error);
         showError('Failed to remove image from scraps');
@@ -7865,15 +8292,19 @@ async function togglePinImage(image, pinBtn = null) {
             return;
         }
 
-        // Check if image is currently pinned
-        const isPinned = await checkIfImageIsPinned(filename);
-        
+        // Get pin status from local data, not API
+        const imageIndex = findTrueImageIndexInGallery(filename);
+        let isPinned = false;
+        if (imageIndex !== -1 && allImages[imageIndex].isPinned !== undefined) {
+            isPinned = allImages[imageIndex].isPinned;
+        }
+
         if (isPinned) {
             // Remove from pinned
             if (!window.wsClient || !window.wsClient.isConnected()) {
                 throw new Error('WebSocket not connected');
             }
-            
+
             await window.wsClient.removePinned(activeWorkspace, filename);
             showGlassToast('success', null, 'Image unpinned', undefined, undefined, '<i class="fa-regular fa-star"></i>');
         } else {
@@ -7881,31 +8312,24 @@ async function togglePinImage(image, pinBtn = null) {
             if (!window.wsClient || !window.wsClient.isConnected()) {
                 throw new Error('WebSocket not connected');
             }
-            
+
             await window.wsClient.addPinned(activeWorkspace, filename);
             showGlassToast('success', null, 'Image pinned', undefined, undefined, '<i class="fa-solid fa-star"></i>');
         }
 
-        // Update the specific pin button that was clicked
+        // Update the local gallery data FIRST before updating UI
+        if (imageIndex !== -1) {
+            allImages[imageIndex].isPinned = !isPinned;
+        }
+
+        // Update UI based on local data (no API calls)
         if (pinBtn) {
-            await updatePinButtonAppearance(pinBtn, filename);
+            pinBtn.innerHTML = isPinned ? '<i class="fa-regular fa-star"></i>' : '<i class="fa-solid fa-star"></i>';
+            pinBtn.title = isPinned ? 'Pin image' : 'Unpin image';
         } else {
-            await updateSpecificPinButton(filename);
+            updateSpecificPinButton(filename);
         }
-        
-        // Update lightbox pin button if lightbox is open
-        if (window.lightboxPinBtn && !window.lightboxPinBtn.classList.contains('hidden')) {
-            await updateLightboxPinButtonAppearance(filename);
-        }
-        
-        // Update the local gallery data to reflect the pin status change
-        if (allImages && Array.isArray(allImages)) {
-            const imageIndex = findTrueImageIndexInGallery(filename);
-            if (imageIndex !== -1) {
-                allImages[imageIndex].isPinned = !isPinned;
-            }
-        }
-        
+
         // Update all pin buttons in the gallery for this image
         updateGalleryPinButtons(filename, !isPinned);
     } catch (error) {
@@ -7914,43 +8338,38 @@ async function togglePinImage(image, pinBtn = null) {
     }
 }
 
-// Check if an image is pinned
-async function checkIfImageIsPinned(filename) {
-    try {
-        // First try to get pin status from current gallery data if available
-        if (allImages && Array.isArray(allImages)) {
-            const image = allImages.find(img => {
-                const imgFilename = img.filename || img.original || img.upscaled;
-                return imgFilename === filename;
-            });
-            if (image && image.isPinned !== undefined) {
-                return image.isPinned;
-            }
+// Check if an image is pinned (only checks local data, never makes API calls)
+function checkIfImageIsPinned(filename) {
+    // Only check local gallery data - server should always provide isPinned
+    if (allImages && Array.isArray(allImages)) {
+        const image = allImages.find(img => {
+            const imgFilename = img.filename || img.original || img.upscaled;
+            return imgFilename === filename;
+        });
+        if (image && image.isPinned !== undefined) {
+            return image.isPinned;
         }
-        
-        // Use WebSocket API
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-        
-        const pinnedData = await window.wsClient.getWorkspacePinned(activeWorkspace);
-        return pinnedData.pinned && pinnedData.pinned.includes(filename);
-    } catch (error) {
-        console.error('Error checking pin status:', error);
-        return false;
     }
+
+    // Default to false if not found (newly generated images can't be pinned)
+    return false;
 }
 
 // Get image metadata via WebSocket with fallback to HTTP
 async function getImageMetadata(filename) {
     try {
+        // Check if we have cached metadata for this filename (e.g., from recent generation)
+        if (window.lastGeneration && window.lastGeneration.filename === filename) {
+            return window.lastGeneration;
+        }
+
         // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
-                const metadata = await window.wsClient.requestImageMetadata(filename);
-                return metadata;
+
+        const metadata = await window.wsClient.requestImageMetadata(filename);
+        return metadata;
     } catch (error) {
         console.error('Error getting image metadata:', error);
         showGlassToast('error', 'Image metadata request error', error.message, false);
@@ -7958,51 +8377,45 @@ async function getImageMetadata(filename) {
     }
 }
 
-// Update pin button appearance based on pin status
-async function updatePinButtonAppearance(pinBtn, filename) {
-    try {
-        const isPinned = await checkIfImageIsPinned(filename);
-        if (isPinned) {
-            pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
-            pinBtn.title = 'Unpin image';
-        } else {
-            pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
-            pinBtn.title = 'Pin image';
-        }
-    } catch (error) {
-        console.error('Error updating pin button appearance:', error);
+// Update pin button appearance based on pin status (uses local data only)
+function updatePinButtonAppearance(pinBtn, filename) {
+    // Get pin status from local data only
+    const isPinned = checkIfImageIsPinned(filename);
+    if (isPinned) {
+        pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
+        pinBtn.title = 'Unpin image';
+    } else {
+        pinBtn.innerHTML = '<i class="fa-regular fa-star"></i>';
+        pinBtn.title = 'Pin image';
     }
 }
 
 // Update specific pin button for an image
-async function updateSpecificPinButton(filename) {
-    try {
-        const galleryItems = document.querySelectorAll('.gallery-item');
-        for (const item of galleryItems) {
-            const img = item.querySelector('img');
-            const pinBtn = item.querySelector('.btn-secondary[title*="Pin"]');
-            
-            if (img && pinBtn) {
-                const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
-                if (itemFilename === filename) {
-                    await updatePinButtonAppearance(pinBtn, filename);
-                    break; // Found the specific item, no need to continue
-                }
+function updateSpecificPinButton(filename) {
+    const galleryItems = document.querySelectorAll('.gallery-item');
+    for (const item of galleryItems) {
+        const img = item.querySelector('img');
+        const pinBtn = item.querySelector('.btn-secondary[title*="Pin"]');
+
+        if (img && pinBtn) {
+            const itemFilename = img.getAttribute('data-filename') || img.src.split('/').pop();
+            if (itemFilename === filename) {
+                updatePinButtonAppearance(pinBtn, filename);
+                break; // Found the specific item, no need to continue
             }
         }
-    } catch (error) {
-        console.error('Error updating specific pin button:', error);
     }
 }
 
 // Update all pin buttons in the gallery for a specific image
 function updateGalleryPinButtons(filename, isPinned) {
     try {
-        // Find all gallery items with this filename
-        const galleryItems = document.querySelectorAll(`.gallery-item[data-filename="${filename}"]`);
-        
+        // Find all gallery items with this filename (including placeholders)
+        const galleryItems = document.querySelectorAll(`.gallery-item[data-filename="${filename}"], .gallery-placeholder[data-filename="${filename}"]`);
+
         galleryItems.forEach(item => {
-            const pinBtn = item.querySelector('.btn-secondary[title*="Pin"], .btn-secondary[title*="Unpin"]');
+            // The pin button has class 'btn-primary round-button', not 'btn-secondary'
+            const pinBtn = item.querySelector('.btn-primary.round-button[title*="Pin"], .btn-primary.round-button[title*="Unpin"], button[title*="Pin"], button[title*="Unpin"]');
             if (pinBtn) {
                 if (isPinned) {
                     pinBtn.innerHTML = '<i class="fa-solid fa-star"></i>';
@@ -8029,19 +8442,19 @@ function isAppDataReady() {
 // Load options from server with retry logic
 async function loadOptions(maxRetries = 5, retryDelay = 500) {
     let lastError = null;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             // Ensure WebSocket is connected and ready
             if (!window.wsClient) {
                 throw new Error('WebSocket client not initialized');
             }
-            
+
             // Additional validation that the connection is stable
             if (window.wsClient.getConnectionState() !== 'connected') {
                 throw new Error('WebSocket connection not in stable state');
             }
-            
+
             // Add server readiness check before making the request
             if (!window.wsClient || !window.wsClient.isConnected()) {
                 throw new Error('WebSocket not connected - server not ready');
@@ -8049,7 +8462,7 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
             // If health check passes, proceed with get_app_options
             const options = await window.wsClient.getAppOptions();
-            
+
             if (!options || !options.ok) {
                 const errorMsg = options?.error || 'Unknown error';
                 console.error('❌ Application configuration load failed:', {
@@ -8061,7 +8474,7 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 });
                 throw new Error("Failed to load application configuration: " + errorMsg);
             }
-            
+
             window.optionsData = options;
 
             // Initialize datasetBias dynamically from config with default values
@@ -8082,7 +8495,7 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             }
 
             // Update subscription notifications
-            updateSubscriptionNotifications().catch(error => {});
+            updateSubscriptionNotifications().catch(error => { });
             updateSubscriptionRenewalIndicator();
             updateFixedCreditsIndicator();
 
@@ -8092,12 +8505,12 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 showGlassToast('info', 'Read-Only Mode', 'You are logged in as a read-only user. Some features are restricted.', false, 8000, '<i class="fas fa-eye"></i>');
                 disableReadOnlyFeatures();
             }
-            
+
             // Mark app data as loaded
             appDataLoaded = true;
-            
+
             return; // Success, exit the retry loop
-            
+
         } catch (error) {
             lastError = error;
             if (attempt >= maxRetries) {
@@ -8107,20 +8520,20 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             if (attempt < maxRetries) {
                 // Wait before retry
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
-                
+
                 // Increase delay for exponential backoff
                 retryDelay = Math.min(retryDelay * 1.5, 10000);
             }
         }
     }
-    
+
     // All retries failed
     const errorMessage = `Failed to load application configuration after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`;
     console.error(errorMessage);
-    
+
     // Show critical error to user
     showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, 0, '<i class="fas fa-exclamation-triangle"></i>');
-    
+
     // Throw the error to be handled by the caller
     throw new Error(errorMessage);
 }
@@ -8132,26 +8545,30 @@ async function handleWorkspaceDataFromOptions(workspaceInfo) {
             console.warn('⚠️ No valid workspace data in app options');
             return;
         }
-        
+
         // Set the current workspace
         window.currentWorkspace = workspaceInfo.id;
-        
+
         // Update workspace UI if the function exists
         if (window.updateWorkspaceUI) {
             window.updateWorkspaceUI(workspaceInfo.id);
         }
-        
+
         // Update workspace selector if it exists
         const workspaceSelector = document.getElementById('workspace-selector');
         if (workspaceSelector) {
             workspaceSelector.value = workspaceInfo.id;
         }
-        
+
         // Update workspace name display
         const workspaceNameElement = document.getElementById('workspace-name');
         if (workspaceNameElement && workspaceInfo.data.name) {
             workspaceNameElement.textContent = workspaceInfo.data.name;
         }
+
+        // Keep Android persistent notification in sync with current workspace
+        updateAndroidNotificationBody();
+        clearAndroidNotificationImage();
     } catch (error) {
         console.error('❌ Error handling workspace data from options:', error);
     }
@@ -8168,32 +8585,26 @@ function setupEventListeners() {
         button.addEventListener('mouseleave', (e) => hideGenerateButtonPopoverFor(e.target));
         //button.addEventListener('click', handleManualGeneration);
     });
-
-    // MANUAL MODAL SYSTEM - Core modal show/hide events
-    openGenEditorBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        openManualModalWithContent();
-    });
     closeManualBtn.addEventListener('click', (e) => {
         e.preventDefault();
         hideManualModal(e);
     });
-    
+
     // Manual modal restore/maximize button (in title bar)
     const restoreManualBtn = document.getElementById('restoreManualBtn');
     const unmaximizeManualBtn = document.getElementById('unmaximizeManualBtn');
-    
+
     function toggleManualModalWindowed() {
         const manualModal = document.getElementById('manualModal');
         if (!manualModal) return;
-        
+
         if (manualModal.classList.contains('windowed')) {
             // Restore to maximized (full screen)
             manualModal.classList.remove('windowed');
-            
+
             // Add editor-open class for full screen takeover
             document.body.classList.add('editor-open');
-            
+
             // Clear inline styles to let CSS take over
             manualModal.style.removeProperty('width');
             manualModal.style.removeProperty('height');
@@ -8201,43 +8612,42 @@ function setupEventListeners() {
             manualModal.style.removeProperty('--modal-offset-x');
             manualModal.style.removeProperty('--modal-offset-y');
             manualModal.removeAttribute('data-modal-moved');
-            
+
             // In desktop-mode, keep modal in stack even when maximized
             // Only remove from stack if not in desktop-mode
-            const isDesktopMode = document.body.classList.contains('desktop-mode');
-            if (!isDesktopMode && typeof modalStack !== 'undefined') {
+            if (!window.isDesktop && typeof modalStack !== 'undefined') {
                 const modalIndex = modalStack.indexOf(manualModal);
                 if (modalIndex !== -1) {
                     modalStack.splice(modalIndex, 1);
                     updateModalStackZIndexes();
                 }
-            } else if (isDesktopMode && typeof modalStack !== 'undefined') {
+            } else if (window.isDesktop && typeof modalStack !== 'undefined') {
                 // Keep in stack but update z-indexes
                 updateModalStackZIndexes();
             }
-            
+
             // Update taskbar
             updateTaskbarWindows();
         } else {
             // Switch to windowed mode
             manualModal.classList.add('windowed');
-            
+
             // Remove editor-open class for windowed mode
             document.body.classList.remove('editor-open');
-            
+
             // Add to modal stack for z-index management
             assignModalZIndex(manualModal);
             updateTaskbarWindows();
         }
     }
-    
+
     if (restoreManualBtn) {
         restoreManualBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleManualModalWindowed();
         });
     }
-    
+
     // Unmaximize button (in manual preview section)
     if (unmaximizeManualBtn) {
         unmaximizeManualBtn.addEventListener('click', (e) => {
@@ -8245,7 +8655,7 @@ function setupEventListeners() {
             toggleManualModalWindowed();
         });
     }
-    
+
     // Close button in title bar
     const closeManualModalBtn = document.getElementById('closeManualModalBtn');
     if (closeManualModalBtn) {
@@ -8347,13 +8757,13 @@ function setupEventListeners() {
                     type: 'list',
                     title: 'Renkin System',
                     items: [], // Initialize as empty array
-                    initfn: function(section, target) {
+                    initfn: function (section, target) {
                         // Clear and repopulate items dynamically
                         section.items.length = 0;
-                        
+
                         // Get all Genso Expanders (excluding Rentan modifications)
                         const textReplacements = window.lastGenerationTextReplacements || [];
-                        
+
                         if (textReplacements.length === 0) {
                             section.items.push({
                                 text: 'No Expanders',
@@ -8365,7 +8775,7 @@ function setupEventListeners() {
                                 const isLocked = seed.locked === true;
                                 const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
                                 const displayKey = seed.key ? `!${seed.key}` : 'Unknown';
-                                
+
                                 section.items.push({
                                     text: displayKey,
                                     icon: isLocked ? 'fas fa-lock' : 'fas fa-unlock',
@@ -8373,7 +8783,7 @@ function setupEventListeners() {
                                     disabled: !canLock,
                                     keepMenuOpen: true,
                                     action: canLock ? `toggleTextReplacementLock_${index}` : null,
-                                    loadfn: function(item, target) {
+                                    loadfn: function (item, target) {
                                         // Update icon and className based on current lock state
                                         const allReplacements = window.lastGenerationTextReplacements || [];
                                         const currentSeed = allReplacements[index];
@@ -8414,11 +8824,11 @@ function setupEventListeners() {
     if (closeTextReplacementLockModalBtn) {
         closeTextReplacementLockModalBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            
+
             // Ensure locked replacements are synced when closing
             const lockedSeeds = currentTextReplacementSeeds.filter(seed => seed.locked === true);
             window.lockedTextReplacements = lockedSeeds;
-            
+
             closeModal(textReplacementLockModal);
         });
     }
@@ -8591,8 +9001,13 @@ function setupEventListeners() {
     }
     manualPreviewCloseBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        
-        if (window.innerWidth >= 1300) {
+
+        // In desktop mode with windowed modal, just close preview, not the whole modal
+        const isWindowed = manualModal && manualModal.classList.contains('windowed');
+
+        if (window.isDesktop && isWindowed) {
+            hideManualPreviewResponsive();
+        } else if (window.innerWidth >= 1100) {
             hideManualModal(e);
         } else {
             hideManualPreviewResponsive();
@@ -8628,7 +9043,7 @@ function setupEventListeners() {
 
     // MANUAL FORM SYSTEM - Form submission handling
     manualForm.addEventListener('submit', (e) => {
-            e.preventDefault();
+        e.preventDefault();
         // Prevent form submission if it was triggered by Enter key in preset name input
         if (document.activeElement === manualPresetName) {
             return;
@@ -8659,14 +9074,14 @@ function setupEventListeners() {
                 // Fetch the image as a blob
                 const response = await fetch(previewImage.dataset.blobUrl);
                 const blob = await response.blob();
-                
+
                 // Copy to clipboard
                 await navigator.clipboard.write([
                     new ClipboardItem({
                         [blob.type]: blob
                     })
                 ]);
-                
+
                 // Calculate and format file size
                 const sizeInBytes = blob.size;
                 let sizeText;
@@ -8675,7 +9090,7 @@ function setupEventListeners() {
                 } else {
                     sizeText = `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
                 }
-                
+
                 // Show success notification with size
                 if (showGlassToast) {
                     showGlassToast('success', 'Image copied to clipboard!', `(${sizeText})`, false, 3000, '<i class="fa-regular fa-clipboard-check"></i>');
@@ -8736,7 +9151,7 @@ function setupEventListeners() {
                 tempImg.onload = () => {
                     window.uploadedImageData.width = tempImg.width;
                     window.uploadedImageData.height = tempImg.height;
-                    
+
                     // Update image bias orientation after setting image dimensions
                     updateImageBiasOrientation();
                 };
@@ -8744,7 +9159,7 @@ function setupEventListeners() {
                     console.warn('Failed to load image dimensions, using defaults');
                     window.uploadedImageData.width = 512;
                     window.uploadedImageData.height = 512;
-                    
+
                     // Update image bias orientation after setting image dimensions
                     updateImageBiasOrientation();
                 };
@@ -8753,12 +9168,12 @@ function setupEventListeners() {
                 // Set the variation image
                 variationImage.src = previewUrl;
                 variationImage.classList.remove('hidden');
-        
+
 
                 // Set strength to 0.8 and noise to 0.1 for variation
                 if (manualStrengthValue) manualStrengthValue.value = '0.8';
                 if (manualNoiseValue) manualNoiseValue.value = '0.1';
-                
+
                 // Update percentage overlays after setting default values
                 updatePercentageOverlays();
 
@@ -8771,7 +9186,7 @@ function setupEventListeners() {
                 // Update inpaint button state
                 updateInpaintButtonState();
                 renderImageBiasDropdown('2');
-                
+
                 updateUploadDeleteButtonVisibility();
                 hideManualPreviewResponsive();
 
@@ -8798,16 +9213,23 @@ function setupEventListeners() {
             if (savedState !== null) {
                 btn.dataset.state = savedState;
             }
-            
+
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 const currentState = btn.dataset.state;
                 const newState = currentState === 'on' ? 'off' : 'on';
                 btn.dataset.state = newState;
-                
+
+                // Sync the other button's state
+                if (btn === manualPreviewToggleDialogsBtn && windowManualPreviewToggleDialogsBtn) {
+                    windowManualPreviewToggleDialogsBtn.dataset.state = newState;
+                } else if (btn === windowManualPreviewToggleDialogsBtn && manualPreviewToggleDialogsBtn) {
+                    manualPreviewToggleDialogsBtn.dataset.state = newState;
+                }
+
                 // Save to localStorage
                 localStorage.setItem('dialogsVisible', newState);
-                
+
                 // Update dialog visibility
                 const dialogContainer = document.getElementById('manualPreviewDialogs');
                 if (dialogContainer) {
@@ -8818,11 +9240,11 @@ function setupEventListeners() {
                         if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
                             // Collect dialogs from metadata (same logic as updateManualPreview)
                             let allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage.metadata);
-                            
+
                             if (allDialogs.length > 0) {
                                 // Process dialog positions
                                 allDialogs = processDialogPositions(allDialogs);
-                                
+
                                 // Render the dialogs (using 'navigating' animation since this is a toggle, not generation)
                                 renderManualPreviewDialogs(allDialogs, false);
                             } else {
@@ -8898,7 +9320,7 @@ function setupEventListeners() {
     });
 
     manualSeed.addEventListener('blur', (e) => {
-       clearSeedBtn?.classList.toggle('hidden', !e.target.value);
+        clearSeedBtn?.classList.toggle('hidden', !e.target.value);
     });
 
     // SEED MANAGEMENT SYSTEM - Clear and edit seed button events
@@ -9022,7 +9444,7 @@ function setupEventListeners() {
                 model: values.model.toLowerCase(),
                 ...requestBody
             };
-            
+
             // Remove skip_pipeline_stages from preset - this is a runtime flag only
             delete generationParams.skip_pipeline_stages;
 
@@ -9058,7 +9480,7 @@ function setupEventListeners() {
                     // Create 256x256 center crop preview
                     const img = new Image();
                     img.crossOrigin = 'anonymous';
-                    
+
                     await new Promise((resolve, reject) => {
                         img.onload = resolve;
                         img.onerror = reject;
@@ -9076,10 +9498,10 @@ function setupEventListeners() {
                     const sourceY = (img.height - sourceSize) / 2;
 
                     ctx.drawImage(img, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 256, 256);
-                    
+
                     // Convert to data URL
                     previewDataUrl = canvas.toDataURL('image/png');
-                    
+
                     // Convert to base64 for embedding
                     embeddedPreview = previewDataUrl.split(',')[1];
                 } catch (error) {
@@ -9121,7 +9543,7 @@ function setupEventListeners() {
             manualControlsToggle.querySelector('i').classList.add('fa-down-to-dotted-line');
         } else {
             manualControlsToggle.querySelector('i').classList.add('fa-square-sliders');
-        }   
+        }
     });
 
     vibeNormalizeToggle.addEventListener('click', (e) => {
@@ -9141,7 +9563,7 @@ function setupEventListeners() {
         autoResizeTextarea(manualPrompt);
         stopEmphasisHighlighting();
     }, 'blur');
-    
+
     addSafeEventListener(manualUc, 'input', handleCharacterAutocompleteInput, 'autocomplete');
     addSafeEventListener(manualUc, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
     addSafeEventListener(manualUc, 'focus', () => startEmphasisHighlighting(manualUc), 'focus');
@@ -9168,11 +9590,11 @@ function setupEventListeners() {
     let scrollTimeout;
     let lastScrollTop = 0;
     let isScrolling = false;
-    
+
     const updateTitleBarVisibility = (scrollTop) => {
         const shouldShow = scrollTop > 100;
         const isCurrentlyScrolled = document.documentElement.classList.contains('scrolled');
-        
+
         // Only update if state actually changed
         if (shouldShow !== isCurrentlyScrolled) {
             if (shouldShow) {
@@ -9190,22 +9612,22 @@ function setupEventListeners() {
         const starField = document.getElementById('star-field');
         const titleBar = document.getElementById('title-bar');
         if (!starField || !titleBar) return;
-        
+
         // Clear existing stars
         starField.innerHTML = '';
-        
+
         // Generate more stars (40-60) with higher density in top-left
         const numStars = Math.floor(Math.random() * 21) + 40;
         const starSizes = ['small', 'medium', 'large'];
-        
+
         for (let i = 0; i < numStars; i++) {
             const star = document.createElement('div');
             star.className = 'star';
-            
+
             // Random size
             const sizeClass = starSizes[Math.floor(Math.random() * starSizes.length)];
             star.classList.add(sizeClass);
-            
+
             // Position with higher density in top-left area
             let x, y;
             if (Math.random() < 0.6) {
@@ -9217,18 +9639,18 @@ function setupEventListeners() {
                 x = Math.random() * 100;
                 y = Math.random() * 100;
             }
-            
+
             star.style.left = `${x}%`;
             star.style.top = `${y}%`;
-            
+
             // Random animation delay
             const delay = Math.random() * 2;
             star.style.animationDelay = `${delay}s`;
-            
+
             // Random animation duration (1.5s to 3s)
             const duration = 1.5 + Math.random() * 1.5;
             star.style.animationDuration = `${duration}s`;
-            
+
             starField.appendChild(star);
         }
     };
@@ -9286,23 +9708,23 @@ function setupEventListeners() {
             focusStarField.innerHTML = '';
         }
     };
-    
+
     const handleScroll = () => {
         if (!isScrolling) {
             isScrolling = true;
             requestAnimationFrame(() => {
                 const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                
+
                 // Only process if scroll position actually changed significantly
                 if (Math.abs(scrollTop - lastScrollTop) > 5) {
                     updateTitleBarVisibility(scrollTop);
                     lastScrollTop = scrollTop;
                 }
-                
+
                 isScrolling = false;
             });
         }
-        
+
         // Clear existing timeout and set new one for scroll end detection
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
@@ -9311,10 +9733,10 @@ function setupEventListeners() {
             updateTitleBarVisibility(scrollTop);
         }, 16); // ~60fps timing
     };
-    
+
     // UI SCROLL MANAGEMENT SYSTEM - Title bar visibility and star field generation
     window.addEventListener('scroll', handleScroll, { passive: true });
-    
+
     // UI SCROLL MANAGEMENT SYSTEM - Initialize title bar state
     const initialScrollTop = window.pageYOffset || document.documentElement.scrollTop;
     updateTitleBarVisibility(initialScrollTop);
@@ -9323,7 +9745,7 @@ function setupEventListeners() {
     // FOCUS OVERLAY SYSTEM - Prevent accidental interactions when window loses focus
     if (focusOverlay) {
         let focusTimeout;
-        
+
         const showFocusOverlay = () => {
             // Check if focus cover is enabled via toggle button
             if (!focusCoverEnabled) {
@@ -9334,8 +9756,11 @@ function setupEventListeners() {
             focusOverlay.classList.add('active');
             generateFocusStarField(); // Generate focus stars when overlay appears
         };
-        
+
         const hideFocusOverlay = () => {
+            if (androidFocusLockActive) {
+                return; // Android biometric lock keeps overlay active until explicitly unlocked
+            }
             focusOverlay.classList.remove('active');
             clearFocusStarField(); // Clear focus stars when overlay disappears
             // Delay releasing pointer events to prevent accidental interactions during fade-out
@@ -9343,18 +9768,18 @@ function setupEventListeners() {
                 focusOverlay.style.pointerEvents = 'none';
             }, 300); // Match the CSS transition duration
         };
-        
+
         // FOCUS OVERLAY SYSTEM - Window blur/focus events
         window.addEventListener('blur', () => {
             // Small delay to prevent flickering during quick focus changes
             focusTimeout = setTimeout(showFocusOverlay, 100);
         });
-        
+
         window.addEventListener('focus', () => {
             clearTimeout(focusTimeout);
             hideFocusOverlay();
         });
-        
+
         // FOCUS OVERLAY SYSTEM - Document visibility change (tab switching)
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -9363,18 +9788,22 @@ function setupEventListeners() {
                 hideFocusOverlay();
             }
         });
-        
+
         // FOCUS OVERLAY SYSTEM - Click and keyboard events to return focus
         focusOverlay.addEventListener('click', () => {
             window.focus();
-            hideFocusOverlay();
+            if (!androidFocusLockActive) {
+                hideFocusOverlay();
+            }
         });
-        
+
         document.addEventListener('keydown', (e) => {
-            if (focusOverlay.classList.contains('active') && 
+            if (focusOverlay.classList.contains('active') &&
                 (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape')) {
                 window.focus();
-                hideFocusOverlay();
+                if (!androidFocusLockActive) {
+                    hideFocusOverlay();
+                }
             }
         });
     }
@@ -9417,20 +9846,20 @@ function setupEventListeners() {
     // Page Up/Down navigation for gallery (only in desktop mode when gallery is active)
     document.addEventListener('keydown', (e) => {
         // Only handle Page Up/Down when in desktop mode and gallery window is active
-        if ((e.key === 'PageUp' || e.key === 'PageDown') && 
+        if ((e.key === 'PageUp' || e.key === 'PageDown') &&
             document.body.classList.contains('desktop-mode')) {
-            
+
             // Check if we're in an input field
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
                 return;
             }
-            
+
             // Check if gallery window is the active window (top of modal stack)
             const galleryWindow = document.querySelector('#galleryWindow');
             if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
                 return;
             }
-            
+
             // Check if gallery window is the top modal (active window)
             if (typeof window.isModalActive === 'function') {
                 if (!window.isModalActive(galleryWindow)) {
@@ -9445,16 +9874,16 @@ function setupEventListeners() {
             }
             e.preventDefault();
             e.stopPropagation();
-            
+
             // Get effective length (filtered or full)
             const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
             if (effectiveLength === 0) return;
-            
+
             // Get current first visible row index
             const currentFirstVisibleIndex = getFirstVisibleRowIndex();
             const cols = realGalleryColumns || 5;
             const currentRow = Math.floor(currentFirstVisibleIndex / cols);
-            
+
             let targetRow;
             if (e.key === 'PageDown') {
                 // Jump down 50 items (approximately 10 rows with 5 columns)
@@ -9463,16 +9892,16 @@ function setupEventListeners() {
                 // Jump up 50 items
                 targetRow = Math.max(0, currentRow - 10);
             }
-            
+
             // Calculate target index
             const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
             const finalTargetIndex = Math.max(0, targetIndex);
             displayGalleryFromStartIndex(finalTargetIndex, false);
-            
+
             return;
         }
     });
-    
+
     // ESC key to close lightbox and modals
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -9499,7 +9928,7 @@ function setupEventListeners() {
                         const range = selection.getRangeAt(0);
                         const endOffset = range.endOffset;
                         selection.removeAllRanges();
-                        
+
                         // Place cursor at the end of the previous selection
                         if (activeElement.setSelectionRange) {
                             activeElement.setSelectionRange(endOffset, endOffset);
@@ -9516,7 +9945,7 @@ function setupEventListeners() {
             if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 const autocompleteList = document.querySelector('.character-autocomplete-list');
                 if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    
+
                     handleCharacterDetailArrowKeys(e.key);
                 }
             }
@@ -9525,7 +9954,7 @@ function setupEventListeners() {
             if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                 const autocompleteList = document.querySelector('.character-autocomplete-list');
                 if (autocompleteList && autocompleteList.querySelector('.character-detail-content')) {
-                    
+
                     handleCharacterDetailEnter();
                 }
             }
@@ -9546,7 +9975,7 @@ function setupEventListeners() {
             closeSubMenu();
         });
     }
-    
+
     if (imageUploadInput) {
         imageUploadInput.addEventListener('change', handleImageUpload);
     }
@@ -9577,13 +10006,13 @@ function setupEventListeners() {
                 // Try to find a matching preset resolution based on current custom dimensions
                 const currentWidth = parseInt(manualWidth.value) || 1024;
                 const currentHeight = parseInt(manualHeight.value) || 1024;
-                
+
                 // Look for an exact match in RESOLUTIONS
                 const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
-                
+
                 if (matchingResolution) {
                     // Found a matching preset, select it
-                    const matchingGroup = RESOLUTION_GROUPS.find(g => 
+                    const matchingGroup = RESOLUTION_GROUPS.find(g =>
                         g.options.some(opt => opt.value === matchingResolution.value)
                     );
                     selectManualResolution(matchingResolution.value, matchingGroup?.group || 'Normal');
@@ -9597,6 +10026,100 @@ function setupEventListeners() {
 
     // CUSTOM RESOLUTION SYSTEM - Update hidden resolution value when custom dimensions change
 
+    // Blur events for validating dimensions with timeout and maintaining aspect ratio
+    let manualBlurTimeout;
+    const validateManualDimensionsWithTimeout = () => {
+        if (manualSelectedResolution !== 'custom') return;
+
+        // Clear any existing timeout
+        if (manualBlurTimeout) clearTimeout(manualBlurTimeout);
+
+        // Set a 100ms timeout
+        manualBlurTimeout = setTimeout(() => {
+            // Check that neither input is currently the active element
+            if (document.activeElement === manualWidth || document.activeElement === manualHeight) {
+                return; // One of the inputs is still active, don't validate yet
+            }
+
+            // Get current values
+            const originalWidth = parseInt(manualWidth.value) || 1024;
+            const originalHeight = parseInt(manualHeight.value) || 1024;
+            let width = originalWidth;
+            let height = originalHeight;
+            let currentArea = width * height;
+
+            // First, ensure both dimensions are multiples of 64
+            const widthRemainder = width % 64;
+            const heightRemainder = height % 64;
+            let widthChanged = false;
+            let heightChanged = false;
+
+            if (widthRemainder !== 0) {
+                width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
+                width = Math.max(64, width);
+                widthChanged = true;
+            }
+            if (heightRemainder !== 0) {
+                height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
+                height = Math.max(64, height);
+                heightChanged = true;
+            }
+
+            // Recalculate area after stepping
+            currentArea = width * height;
+
+            // If area exceeds max, scale both dimensions down while maintaining aspect ratio
+            if (currentArea > currentMaxArea) {
+                const scaleFactor = Math.sqrt(currentMaxArea / currentArea);
+
+                // Calculate new dimensions
+                width = Math.round(width * scaleFactor);
+                height = Math.round(height * scaleFactor);
+
+                // Ensure they're still multiples of 64
+                width = Math.floor(width / 64) * 64;
+                height = Math.floor(height / 64) * 64;
+
+                // Ensure minimum size
+                width = Math.max(64, width);
+                height = Math.max(64, height);
+
+                widthChanged = true;
+                heightChanged = true;
+            }
+
+            // Update inputs only if values changed
+            if (widthChanged || heightChanged) {
+                if (width !== originalWidth) {
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
+                }
+                if (height !== originalHeight) {
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
+                }
+
+                // Update hidden resolution value
+                const manualResolutionHidden = document.getElementById('manualResolution');
+                if (manualResolutionHidden) {
+                    manualResolutionHidden.value = `custom_${width}x${height}`;
+                }
+
+                // Update price display and other dependent functions
+                updateManualPriceDisplay();
+                updateManualUpscaleToggleState();
+
+                // Use debounced cropping for custom dimension changes
+                debouncedCropImageToResolution();
+
+                // Show feedback about the adjustment
+                if (currentArea > currentMaxArea) {
+                    showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
+                } else if (widthChanged || heightChanged) {
+                    showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
+                }
+            }
+        }, 100);
+    };
+
     if (manualWidth) {
         manualWidth.addEventListener('input', () => {
             // Update the hidden resolution value immediately when input changes
@@ -9604,148 +10127,55 @@ function setupEventListeners() {
             updateManualPriceDisplay();
             updateManualUpscaleToggleState();
         });
-        // Blur events for validating dimensions with timeout and maintaining aspect ratio
-        let manualBlurTimeout;
-        const validateManualDimensionsWithTimeout = () => {
-            if (manualSelectedResolution !== 'custom') return;
-
-            // Clear any existing timeout
-            if (manualBlurTimeout) clearTimeout(manualBlurTimeout);
-
-            // Set a 100ms timeout
-            manualBlurTimeout = setTimeout(() => {
-                // Check that neither input is currently the active element
-                if (document.activeElement === manualWidth || document.activeElement === manualHeight) {
-                    return; // One of the inputs is still active, don't validate yet
-                }
-
-                // Get current values
-                const originalWidth = parseInt(manualWidth.value) || 1024;
-                const originalHeight = parseInt(manualHeight.value) || 1024;
-                let width = originalWidth;
-                let height = originalHeight;
-                let currentArea = width * height;
-
-                // First, ensure both dimensions are multiples of 64
-                const widthRemainder = width % 64;
-                const heightRemainder = height % 64;
-                let widthChanged = false;
-                let heightChanged = false;
-
-                if (widthRemainder !== 0) {
-                    width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
-                    width = Math.max(64, width);
-                    widthChanged = true;
-                }
-                if (heightRemainder !== 0) {
-                    height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
-                    height = Math.max(64, height);
-                    heightChanged = true;
-                }
-
-                // Recalculate area after stepping
-                currentArea = width * height;
-
-                // If area exceeds max, scale both dimensions down while maintaining aspect ratio
-                if (currentArea > currentMaxArea) {
-                    const scaleFactor = Math.sqrt(currentMaxArea / currentArea);
-
-                    // Calculate new dimensions
-                    width = Math.round(width * scaleFactor);
-                    height = Math.round(height * scaleFactor);
-
-                    // Ensure they're still multiples of 64
-                    width = Math.floor(width / 64) * 64;
-                    height = Math.floor(height / 64) * 64;
-
-                    // Ensure minimum size
-                    width = Math.max(64, width);
-                    height = Math.max(64, height);
-
-                    widthChanged = true;
-                    heightChanged = true;
-                }
-
-                // Update inputs only if values changed
-                if (widthChanged || heightChanged) {
-                    if (width !== originalWidth) {
-                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, width);
-                    }
-                    if (height !== originalHeight) {
-                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, height);
-                    }
-
-                    // Update hidden resolution value
-                    const manualResolutionHidden = document.getElementById('manualResolution');
-                    if (manualResolutionHidden) {
-                        manualResolutionHidden.value = `custom_${width}x${height}`;
-                    }
-
-                    // Update price display and other dependent functions
-                    updateManualPriceDisplay();
-                    updateManualUpscaleToggleState();
-
-                    // Use debounced cropping for custom dimension changes
-                    debouncedCropImageToResolution();
-
-                    // Show feedback about the adjustment
-                    if (currentArea > currentMaxArea) {
-                        showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
-                    } else if (widthChanged || heightChanged) {
-                        showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
-                    }
-                }
-            }, 100);
-        };
 
         manualWidth.addEventListener('blur', () => {
             validateManualDimensionsWithTimeout();
         });
-        
+
         // Add scroll wheel functionality for width input (maintains area, adjusts ratio)
         // Use a flag to prevent input event handlers from firing during wheel updates
         let isWheelUpdating = false;
-        manualWidth.addEventListener('wheel', function(e) {
+        manualWidth.addEventListener('wheel', function (e) {
             e.preventDefault();
             if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
-            
+
             isWheelUpdating = true;
-            
+
             const currentWidth = parseInt(this.value) || 1024;
             const currentHeight = parseInt(manualHeight.value) || 1024;
             const currentArea = currentWidth * currentHeight;
-            
+
             // Adjust width by 64 pixels (step size) based on scroll direction
             const delta = e.deltaY > 0 ? -64 : 64;
             const newWidth = currentWidth + delta;
-            
+
             // Calculate new height to maintain area
             const newHeight = Math.round(currentArea / newWidth);
-            
+
             // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
             const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
-            
+
             // Update inputs without triggering input events (set directly)
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.width);
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualHeight, result.height);
-            
+
             // Directly update hidden resolution value to avoid re-sanitization
             const manualResolutionHidden = document.getElementById('manualResolution');
             if (manualResolutionHidden) {
                 manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
             }
-            
+
             // Update price display
             updateManualPriceDisplay();
-            
+
             // Use debounced cropping for custom dimension changes
             debouncedCropImageToResolution();
-            
+
             isWheelUpdating = false;
         });
 
         // Add keyboard support for width input (maintains area, adjusts ratio)
-        manualWidth.addEventListener('keydown', function(e) {
+        manualWidth.addEventListener('keydown', function (e) {
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
@@ -9796,51 +10226,51 @@ function setupEventListeners() {
         manualHeight.addEventListener('blur', () => {
             validateManualDimensionsWithTimeout();
         });
-        
+
         // Add scroll wheel functionality for height input (maintains area, adjusts ratio)
         // Use a flag to prevent input event handlers from firing during wheel updates
         let isWheelUpdating = false;
-        manualHeight.addEventListener('wheel', function(e) {
+        manualHeight.addEventListener('wheel', function (e) {
             e.preventDefault();
             if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
-            
+
             isWheelUpdating = true;
-            
+
             const currentWidth = parseInt(manualWidth.value) || 1024;
             const currentHeight = parseInt(this.value) || 1024;
             const currentArea = currentWidth * currentHeight;
-            
+
             // Adjust height by 64 pixels (step size) based on scroll direction
             const delta = e.deltaY > 0 ? -64 : 64;
             const newHeight = currentHeight + delta;
-            
+
             // Calculate new width to maintain area
             const newWidth = Math.round(currentArea / newHeight);
-            
+
             // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
             const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: currentMaxArea });
-            
+
             // Update inputs without triggering input events (set directly)
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(manualWidth, result.width);
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, result.height);
-            
+
             // Directly update hidden resolution value to avoid re-sanitization
             const manualResolutionHidden = document.getElementById('manualResolution');
             if (manualResolutionHidden) {
                 manualResolutionHidden.value = `custom_${result.width}x${result.height}`;
             }
-            
+
             // Update price display
             updateManualPriceDisplay();
-            
+
             // Use debounced cropping for custom dimension changes
             debouncedCropImageToResolution();
-            
+
             isWheelUpdating = false;
         });
 
         // Add keyboard support for height input (maintains area, adjusts ratio)
-        manualHeight.addEventListener('keydown', function(e) {
+        manualHeight.addEventListener('keydown', function (e) {
             if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
@@ -9939,9 +10369,9 @@ function setupEventListeners() {
     }
 
     if (directorReferenceFidelityInput) {
-        directorReferenceFidelityInput.addEventListener('wheel', function(e) {
+        directorReferenceFidelityInput.addEventListener('wheel', function (e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.05 : 0.05;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
             const currentValue = parseFloat(this.value) || 1.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -9978,23 +10408,23 @@ function setupEventListeners() {
     // CACHE BROWSER SYSTEM - Cache browser tab event listeners
     const cacheBrowserTabButtons = document.querySelectorAll('.cache-browser-tabs .gallery-toggle-btn');
     cacheBrowserTabButtons.forEach(button => {
-        button.addEventListener('click', function(e) {
+        button.addEventListener('click', function (e) {
             e.preventDefault();
             const targetTab = this.getAttribute('data-tab');
             const toggleGroup = this.closest('.gallery-toggle-group');
             const tabTitle = this.getAttribute('data-title');
-            
+
             // Update the data-active attribute
             toggleGroup.setAttribute('data-active', targetTab);
-            
+
             // Remove active class from all buttons
             toggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
                 btn.classList.remove('active');
             });
-            
+
             // Add active class to clicked button
             this.classList.add('active');
-            
+
             switchCacheBrowserTab(targetTab, tabTitle);
         });
     });
@@ -10012,11 +10442,11 @@ function setupEventListeners() {
 
     if (manualStrengthValue) {
         manualStrengthValue.addEventListener('input', updateManualPriceDisplay);
-        
+
         // Add scroll wheel functionality for strength input
-        manualStrengthValue.addEventListener('wheel', function(e) {
+        manualStrengthValue.addEventListener('wheel', function (e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.00;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -10033,11 +10463,11 @@ function setupEventListeners() {
 
     if (manualNoiseValue) {
         manualNoiseValue.addEventListener('input', updateManualPriceDisplay);
-        
+
         // Add scroll wheel functionality for noise input
-        manualNoiseValue.addEventListener('wheel', function(e) {
+        manualNoiseValue.addEventListener('wheel', function (e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.00;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -10109,7 +10539,7 @@ function setupEventListeners() {
             const newState = enableStageGenerationBtn.dataset.state === 'on' ? 'off' : 'on';
             enableStageGenerationBtn.dataset.state = newState;
             windowEnableStageGenerationBtn.dataset.state = newState;
-            
+
             // Update buttons next to manual resolution based on new state
             updateSaveStage0BtnVisibility();
         });
@@ -10121,7 +10551,7 @@ function setupEventListeners() {
             const newState = windowEnableStageGenerationBtn.dataset.state === 'on' ? 'off' : 'on';
             windowEnableStageGenerationBtn.dataset.state = newState;
             enableStageGenerationBtn.dataset.state = newState;
-            
+
             // Update buttons next to manual resolution based on new state
             updateSaveStage0BtnVisibility();
         });
@@ -10130,7 +10560,7 @@ function setupEventListeners() {
     // Auto position toggle event listener
     const autoPositionBtn = document.getElementById('autoPositionBtn');
     if (autoPositionBtn) {
-        autoPositionBtn.addEventListener('click', function(e) {
+        autoPositionBtn.addEventListener('click', function (e) {
             e.preventDefault();
             const currentState = this.getAttribute('data-state');
             const newState = currentState === 'on' ? 'off' : 'on';
@@ -10160,7 +10590,7 @@ function setupEventListeners() {
     // Mouse wheel functionality for numeric inputs
     let manualStepsWheelTimeout = false;
     if (manualSteps) {
-        manualSteps.addEventListener('wheel', function(e) {
+        manualSteps.addEventListener('wheel', function (e) {
             const currentValue = parseInt(this.value) || 25;
             const delta = e.deltaY > 0 ? -1 : 1;
 
@@ -10201,11 +10631,11 @@ function setupEventListeners() {
     }
 
     if (manualGuidance) {
-        manualGuidance.addEventListener('wheel', function(e) {
-            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        manualGuidance.addEventListener('wheel', function (e) {
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             const currentValue = parseFloat(this.value) || 5.0;
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
-            this.value = newValue.toFixed(1);
+            this.value = newValue.toFixed(2);
             updateAllStagesInheritedValues();
         });
         manualGuidance.addEventListener('input', () => {
@@ -10214,8 +10644,8 @@ function setupEventListeners() {
     }
 
     if (manualRescale) {
-        manualRescale.addEventListener('wheel', function(e) {
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+        manualRescale.addEventListener('wheel', function (e) {
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.0;
             const newValue = Math.max(0.0, Math.min(1.0, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -10240,7 +10670,7 @@ function setupEventListeners() {
     const timeDateMonth = document.getElementById('timeDateMonth');
 
     if (timeDateHour) {
-        timeDateHour.addEventListener('wheel', function(e) {
+        timeDateHour.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 12;
             const newValue = Math.max(0, Math.min(23, currentValue + delta));
@@ -10249,7 +10679,7 @@ function setupEventListeners() {
     }
 
     if (timeDateMinute) {
-        timeDateMinute.addEventListener('wheel', function(e) {
+        timeDateMinute.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 0;
             const newValue = Math.max(0, Math.min(59, currentValue + delta));
@@ -10258,7 +10688,7 @@ function setupEventListeners() {
     }
 
     if (timeDateDay) {
-        timeDateDay.addEventListener('wheel', function(e) {
+        timeDateDay.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 15;
             const newValue = Math.max(1, Math.min(31, currentValue + delta));
@@ -10267,7 +10697,7 @@ function setupEventListeners() {
     }
 
     if (timeDateMonth) {
-        timeDateMonth.addEventListener('wheel', function(e) {
+        timeDateMonth.addEventListener('wheel', function (e) {
             const delta = e.deltaY > 0 ? -1 : 1;
             const currentValue = parseInt(this.value) || 6;
             const newValue = Math.max(1, Math.min(12, currentValue + delta));
@@ -10281,14 +10711,14 @@ function setupEventListeners() {
 
     // Track the last focused textarea globally
     let lastFocusedTextarea = null;
-    
+
     // Add focus event listeners to all textareas to track the last focused one
     document.addEventListener('focusin', (e) => {
         if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
             lastFocusedTextarea = e.target;
         }
     });
-    
+
     manualTabButtons.forEach(button => {
         button.addEventListener('click', (e) => {
             e.preventDefault();
@@ -10304,10 +10734,10 @@ function setupEventListeners() {
             toggleManualShowBoth();
         });
     }
-    
+
     // Creative tab toolbar buttons - sync with main buttons
     const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
-    
+
     if (creativeTabShowBothBtn) {
         creativeTabShowBothBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -10335,16 +10765,22 @@ function setupEventListeners() {
         transferRandomPrompt();
     });
 
-    document.getElementById('manualPreviewHandle').addEventListener('click', (e) => {
-        e.preventDefault();
-        
-        e.stopPropagation();
-        if (!manualModal.classList.contains('show-preview')) {
-            showManualPreview();
-        } else {
-            hideManualPreviewResponsive();
-        }
-    });
+    const manualPreviewHandle = document.getElementById('manualPreviewHandle');
+    if (manualPreviewHandle) {
+        manualPreviewHandle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const modal = document.getElementById('manualModal');
+            if (!modal) return;
+
+            if (!modal.classList.contains('show-preview')) {
+                showManualPreview();
+            } else {
+                hideManualPreviewResponsive();
+            }
+        });
+    }
     // Preset toggle button click handler to show/hide preset group
     manualPresetToggleBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -10357,22 +10793,11 @@ function setupEventListeners() {
         updateManualPresetToggleBtn();
         updateManualPresetPlaceholder();
     });
-    
+
     // Tag Wiki Search button click handler
     const tagWikiSearchBtn = document.getElementById('tagWikiSearchBtn');
     if (tagWikiSearchBtn) {
         tagWikiSearchBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
-            if (tagWikiSearchModal) {
-                openModal(tagWikiSearchModal);
-            }
-        });
-    }
-
-    const openWikiBtn = document.getElementById('openWikiBtn');
-    if (openWikiBtn) {
-        openWikiBtn.addEventListener('click', (e) => {
             e.preventDefault();
             const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
             if (tagWikiSearchModal) {
@@ -10421,7 +10846,7 @@ function setupEventListeners() {
 
             // Update status icons to reflect the button state change
             updatePromptStatusIcons();
-            
+
             // Only reload context for buttons that affect the carousel
             const carouselButtons = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn'];
             if (carouselButtons.includes(btn.id)) {
@@ -10517,7 +10942,7 @@ function setupEventListeners() {
 
     const decreaseColumnsBtn = document.getElementById('decreaseColumnsBtn');
     const increaseColumnsBtn = document.getElementById('increaseColumnsBtn');
-    
+
     if (decreaseColumnsBtn) {
         decreaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -10528,7 +10953,7 @@ function setupEventListeners() {
             adjustGalleryColumnSize(-1); // Decrease
         });
     }
-    
+
     if (increaseColumnsBtn) {
         increaseColumnsBtn.addEventListener('click', (e) => {
             e.preventDefault();
@@ -10574,31 +10999,20 @@ function setupEventListeners() {
         });
     }
 
-    // Handle window resize to update infinite scroll configuration
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        if (resizeTimeout) clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(resizeHandler, 250);
-    });
-
-    // Handle orientation change for mobile devices
-    window.addEventListener('orientationchange', () => {
-        if (resizeTimeout) clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(resizeHandler, 500);
-    });
+    // [MODIFICATION]: Moved resize listeners to activateMainResizeListeners() to prevent premature execution
 
 
 
     // Set up preset generation handlers
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
     window.contextMenu.attachToElement(document.getElementById('sproutSeedBtn'), getSproutSeedContextMenuConfig());
-    
+
     initializeManualPreviewImageContextMenu();
-    
+
     loadSeedBtn.addEventListener('click', loadSeedFromPreview);
     updateSproutSeedButton();
     if (varietyBtn) {
-        varietyBtn.addEventListener('click', function(e) {
+        varietyBtn.addEventListener('click', function (e) {
             e.preventDefault();
             varietyEnabled = !varietyEnabled;
             if (varietyEnabled) {
@@ -10606,12 +11020,12 @@ function setupEventListeners() {
             } else {
                 this.setAttribute('data-state', 'off');
             }
-            
+
             // Update pipeline stages inherited values
             updateAllStagesInheritedValues();
         });
     }
-    
+
     setupDropdown(
         manualResolutionDropdown,
         manualResolutionDropdownBtn,
@@ -10620,9 +11034,9 @@ function setupEventListeners() {
         () => manualSelectedResolution,
         { preventFocusTransfer: true }
     );
-    
+
     setupDropdown(manualSamplerDropdown, manualSamplerDropdownBtn, manualSamplerDropdownMenu, renderManualSamplerDropdown, () => manualSelectedSampler, { preventFocusTransfer: true });
-    
+
     setupDropdown(manualModelDropdown, manualModelDropdownBtn, manualModelDropdownMenu, renderManualModelDropdown, () => manualSelectedModel, { preventFocusTransfer: true });
 
     setupDropdown(datasetDropdown, datasetDropdownBtn, datasetDropdownMenu, renderDatasetDropdown, () => selectedDatasets, { preventFocusTransfer: true });
@@ -10651,30 +11065,30 @@ function setupEventListeners() {
     // Function to show exit confirmation
     async function showExitConfirmation(event, action = 'leave') {
         if (isExiting) return;
-        
+
         const messages = {
             leave: 'Are you sure you want to leave the application?',
             refresh: 'Are you sure you want to restart the application?',
             close: 'Are you sure you want to close the application?'
         };
-        
+
         const message = messages[action] || messages.leave;
-        
+
         try {
             const confirmed = await showConfirmationDialog(message, [
                 { text: 'Yes, Leave', value: true, className: 'btn-danger' },
                 { text: 'Stay', value: false, className: 'btn-secondary' }
             ], event);
-            
+
             if (confirmed) {
                 isExiting = true;
-                
+
                 // For refresh actions, we need to actually refresh the page
                 if (action === 'refresh') {
                     window.location.reload();
                     return;
                 }
-                
+
                 // For close actions, we can't programmatically close tabs/windows due to security restrictions
                 // But we can allow navigation to proceed
                 if (action === 'close') {
@@ -10686,7 +11100,7 @@ function setupEventListeners() {
                     }
                     return;
                 }
-                
+
                 // For navigation actions, allow them to proceed
                 if (event && event.target) {
                     // Remove preventDefault and allow the action
@@ -10712,7 +11126,7 @@ function setupEventListeners() {
 
         }
     }
-    
+
     // Expose to window for external access (if needed)
     window.showExitConfirmation = showExitConfirmation;
 
@@ -10734,7 +11148,7 @@ function setupEventListeners() {
             // Page is now hidden (user switched tabs)
         }
     });
-    
+
     // Intercept browser back/forward buttons
     window.addEventListener('popstate', (event) => {
         event.preventDefault();
@@ -10750,10 +11164,10 @@ function setupEventListeners() {
             if (link.classList.contains('tag-wiki-link')) {
                 return;
             }
-            
+
             const href = link.href;
             const currentOrigin = window.location.origin;
-            
+
             // Check if link navigates away from current page
             if (href.startsWith(currentOrigin) && href !== window.location.href) {
                 event.preventDefault();
@@ -10766,7 +11180,7 @@ function setupEventListeners() {
     window.forceRefresh = () => {
         window.location.reload();
     };
-    
+
     // Function to force close the tab (used when user confirms close)
     window.forceClose = () => {
         try {
@@ -10860,7 +11274,7 @@ function switchManualTab(targetTab, previouslyFocused = null) {
 
     if (targetButton) targetButton.classList.add('active');
     if (targetPane) targetPane.classList.add('active');
-    
+
     // Update the data-active attribute for the slider
     if (toggleGroup) {
         toggleGroup.setAttribute('data-active', targetTab);
@@ -10920,7 +11334,7 @@ function switchManualTab(targetTab, previouslyFocused = null) {
 // New function to sync main window tab selection to all character prompts
 function syncCharacterPromptTabs(mainTab) {
     const characterItems = document.querySelectorAll('.character-prompt-item');
-    
+
     characterItems.forEach(characterItem => {
         const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
         const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
@@ -10938,12 +11352,12 @@ function syncCharacterPromptTabs(mainTab) {
 
         if (targetButton) targetButton.classList.add('active');
         if (targetPane) targetPane.classList.add('active');
-        
+
         // Remove show-both class when switching to single tab mode
         if (characterPromptTabs) {
             characterPromptTabs.classList.remove('show-both');
         }
-        
+
         // Update the data-active attribute for the character's slider
         if (toggleGroup) {
             toggleGroup.setAttribute('data-active', mainTab);
@@ -10960,7 +11374,7 @@ function syncCharacterPromptTabs(mainTab) {
 // New function to sync character prompts to show both tabs
 function syncCharacterPromptTabsShowBoth() {
     const characterItems = document.querySelectorAll('.character-prompt-item');
-    
+
     characterItems.forEach(characterItem => {
         const characterTabButtons = characterItem.querySelectorAll('.gallery-toggle-btn');
         const characterTabPanes = characterItem.querySelectorAll('.tab-pane');
@@ -10971,12 +11385,12 @@ function syncCharacterPromptTabsShowBoth() {
         // Show both character tab buttons and panes
         characterTabButtons.forEach(btn => btn.classList.add('active'));
         characterTabPanes.forEach(pane => pane.classList.add('active'));
-        
+
         // Add show-both class to character-prompt-tabs for visual separation
         if (characterPromptTabs) {
             characterPromptTabs.classList.add('show-both');
         }
-        
+
         // Update the data-active attribute for the character's slider (keep current state)
         if (toggleGroup) {
             const currentActive = toggleGroup.getAttribute('data-active') || 'prompt';
@@ -10986,7 +11400,7 @@ function syncCharacterPromptTabsShowBoth() {
         // Update emphasis highlighting for both prompt and UC textareas
         const promptTextarea = characterItem.querySelector(`#${characterId}_prompt`);
         const ucTextarea = characterItem.querySelector(`#${characterId}_uc`);
-        
+
         if (promptTextarea) {
             updateEmphasisHighlighting(promptTextarea);
             autoResizeTextarea(promptTextarea);
@@ -11002,7 +11416,7 @@ function toggleManualShowBoth() {
     const showBothBtn = document.getElementById('showBothBtn');
     const creativeTabShowBothBtn = document.getElementById('creativeTabShowBothBtn');
     const promptTabs = document.querySelector('#manualModal .prompt-tabs');
-    
+
     const isShowingBoth = promptTabs.classList.contains('show-both');
 
     if (isShowingBoth) {
@@ -11010,7 +11424,7 @@ function toggleManualShowBoth() {
         promptTabs.classList.remove('show-both');
         showBothBtn.dataset.state = 'off';
         showBothBtn.classList.remove('active');
-        
+
         // Sync creative tab button
         if (creativeTabShowBothBtn) {
             creativeTabShowBothBtn.dataset.state = 'off';
@@ -11024,7 +11438,7 @@ function toggleManualShowBoth() {
         promptTabs.classList.add('show-both');
         showBothBtn.dataset.state = 'on';
         showBothBtn.classList.add('active');
-        
+
         // Sync creative tab button
         if (creativeTabShowBothBtn) {
             creativeTabShowBothBtn.dataset.state = 'on';
@@ -11034,7 +11448,7 @@ function toggleManualShowBoth() {
         // Sync character prompts to show both tabs
         syncCharacterPromptTabsShowBoth();
     }
-    
+
     // Update prompt status icons after toggling show both
     updatePromptStatusIcons();
     createDebouncedContextResolution();
@@ -11062,10 +11476,10 @@ function toggleSearchContainer() {
     const searchContainer = document.querySelector('#main-menu-bar .file-search-container');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
     const mainMenuContents = document.querySelector('#main-menu-bar .main-menu-contents');
-    
+
     if (searchContainer) {
         const isClosed = searchContainer.classList.contains('closed');
-        
+
         if (isClosed) {
             // Opening search - close submenu and open search
             closeSubMenu();
@@ -11117,7 +11531,7 @@ function closeSearchContainer() {
     const clearSearchBtn = document.getElementById('clearSearchBtn');
     const searchInput = document.getElementById('fileSearchInput');
     const mainMenuContents = document.querySelector('.main-menu-contents');
-    
+
     if (searchContainer) {
         searchContainer.classList.add('closed');
         if (clearSearchBtn) {
@@ -11139,21 +11553,24 @@ function closeSearchContainer() {
         if (window.fileSearch) {
             window.fileSearch.clearSearch(true, true);
         }
-        
+
         // Clear gallery and reload from index 0
         clearGallery();
         displayGalleryFromStartIndex(0);
     }
 }
 
+// Store previous balance to detect changes
+let previousBalance = null;
+
 // Update balance display
 function updateBalanceDisplay(balance) {
     const balanceDisplay = document.querySelectorAll('.balanceDisplay');
     const balanceAmount = document.querySelectorAll('.balanceAmount');
-    
+
     const balanceFixed = document.querySelectorAll('.balanceFixed');
     const balancePaid = document.querySelectorAll('.balancePaid');
-    
+
     if (!balanceDisplay || !balanceAmount) return;
 
     const balanceIcon = balanceDisplay[0].querySelector('i');
@@ -11162,6 +11579,51 @@ function updateBalanceDisplay(balance) {
     const totalCredits = balance?.totalCredits || 0;
     const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
     const purchasedCredits = balance?.purchasedTrainingSteps || 0;
+
+    // Check for balance changes
+    if (previousBalance !== null && PopoverManager) {
+        const oldFixed = previousBalance.fixedTrainingStepsLeft || 0;
+        const oldPaid = previousBalance.purchasedTrainingSteps || 0;
+        const oldTotal = previousBalance.totalCredits || 0;
+
+        // Detect balance change (increase or decrease)
+        if (fixedCredits !== oldFixed || purchasedCredits !== oldPaid || totalCredits !== oldTotal) {
+            const fixedChange = fixedCredits - oldFixed;
+            const paidChange = purchasedCredits - oldPaid;
+
+            const changes = [];
+            if (fixedChange !== 0 || paidChange !== 0) {
+                if (fixedChange > 0) changes.push(`+${fixedChange} free`);
+                else if (fixedChange < 0) changes.push(`${fixedChange} free`);
+                if (paidChange > 0) changes.push(`+${paidChange} paid`);
+                else if (paidChange < 0) changes.push(`${paidChange} paid`);
+            }
+
+            const message = changes.length > 0
+                ? `<i class="nai-anla"></i> ${changes.join(', ')}`
+                : '';
+
+            if (message) {
+                const indicator = document.getElementById('fixedCreditsIndicator');
+                if (window.isDesktop && indicator && PopoverManager) {
+                    showPopover(indicator, 'info', 'Balance Updated', message, false, false, '<i class="fas fa-sync-alt"></i>', null, {
+                        position: 'top',
+                        arrowPosition: 'bottom-right'
+                    });
+                    startPopoverAutoHideTimer(indicator);
+                } else {
+                    showGlassToast('info', 'Balance Updated', message, false, 10000, '<i class="fas fa-sync-alt"></i>');
+                }
+            }
+        }
+    }
+
+    // Update previous balance
+    previousBalance = {
+        fixedTrainingStepsLeft: fixedCredits,
+        purchasedTrainingSteps: purchasedCredits,
+        totalCredits: totalCredits
+    };
 
     // Update amount
     balanceAmount.forEach(amount => {
@@ -11217,7 +11679,7 @@ function updateBalanceDisplay(balance) {
         // Normal credits - show coin icon
         balanceIcon.className = 'nai-anla';
     }
-    
+
     // Update fixed credits indicator
     updateFixedCreditsIndicator();
 }
@@ -11225,7 +11687,7 @@ function updateBalanceDisplay(balance) {
 async function rerollImage(image, event = null) {
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
-    
+
     let toastId;
     let progressInterval;
 
@@ -11262,7 +11724,7 @@ async function rerollImage(image, event = null) {
         if (filenameForMetadata.includes('large_') || filenameForMetadata.includes('wallpaper_')) {
             isLargeOrWallpaper = true;
         }
-        
+
         // If upscaled and user hasn't already allowed paid requests, show confirmation
         if (isUpscaled && !forcePaidRequest) {
             const cost = 7; // Upscaling cost (same as upscaleImage function)
@@ -11300,7 +11762,7 @@ async function rerollImage(image, event = null) {
             // Set the paid flag for this request
             forcePaidRequest = true;
         }
-    
+
         if (!isInModal) {
             // Use glass toast with progress when not in modal (global pattern)
             if (!progressToastId) {
@@ -11322,21 +11784,9 @@ async function rerollImage(image, event = null) {
         if (window.wsClient && window.wsClient.isConnected()) {
             try {
                 const result = await window.wsClient.rerollImage(filenameForMetadata, workspace, null, forcePaidRequest || false);
-                
-                // Handle successful reroll
-                if (result && result.image) {
-                    // Convert base64 to blob
-                    const byteCharacters = atob(result.image);
-                    const byteNumbers = new Array(byteCharacters.length);
-                    for (let i = 0; i < byteCharacters.length; i++) {
-                        byteNumbers[i] = byteCharacters.charCodeAt(i);
-                    }
-                    const byteArray = new Uint8Array(byteNumbers);
-                    const blob = new Blob([byteArray], { type: 'image/png' });
-                    
-                    // Create image URL
-                    const imageUrl = URL.createObjectURL(blob);
-                    
+
+                // Handle successful reroll (image is on disk; use gallery refresh + lightbox)
+                if (result && result.filename) {
                     // Extract seed from result
                     if (result.seed) {
                         window.lastGeneratedSeed = parseInt(result.seed);
@@ -11344,7 +11794,7 @@ async function rerollImage(image, event = null) {
                         if (sproutSeedBtn) sproutSeedBtn.classList.add('available');
                         updateSproutSeedButtonFromPreviewSeed();
                     }
-                    
+
                     // Show success message
                     if (!isInModal) {
                         clearInterval(progressInterval);
@@ -11363,11 +11813,11 @@ async function rerollImage(image, event = null) {
                         showGlassToast('success', 'Reroll Complete', 'Image generated successfully!');
                         hideManualLoading();
                     }
-                    
+
                     // Refresh gallery and show new image
                     setTimeout(async () => {
                         await loadGallery(true);
-                        
+
                         if (!isInModal) {
                             // Find the newly generated image and show in lightbox
                             if (allImages.length > 0) {
@@ -11376,7 +11826,7 @@ async function rerollImage(image, event = null) {
                                 if (newImage.upscaled) {
                                     filenameToShow = newImage.upscaled;
                                 }
-                                
+
                                 const imageToShow = {
                                     filename: filenameToShow,
                                     base: newImage.base,
@@ -11385,13 +11835,13 @@ async function rerollImage(image, event = null) {
                                 showLightbox(imageToShow);
                             }
                         }
-                        
+
                         // Clean up modal state
                         document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(element => {
                             element.classList.remove('swapped');
                         });
                     }, 1000);
-                    
+
                     return;
                 }
             } catch (wsError) {
@@ -11427,29 +11877,28 @@ async function rerollImage(image, event = null) {
 // Check if manual modal is open and show confirmation dialog before loading new data
 async function checkManualModalBeforeLoad(event = null) {
     const manualModal = document.getElementById('manualModal');
-    const isDesktopMode = document.body.classList.contains('desktop-mode');
-    
+
     // Check if modal is open (multiple ways to detect)
     let isManualModalOpen = false;
     let hasFormContent = false;
-    
+
     if (manualModal) {
         isManualModalOpen = !manualModal.classList.contains('hidden');
-        
+
         // Also check if modal is in the modal stack (alternative way to detect if open)
         const isInModalStack = typeof modalStack !== 'undefined' && modalStack.indexOf(manualModal) !== -1;
         isManualModalOpen = isManualModalOpen || isInModalStack;
-        
+
         // Check if form has content (prompt field, current edit metadata, or uploaded image)
         const manualPrompt = document.getElementById('manualPrompt');
-        hasFormContent = (manualPrompt && manualPrompt.value.trim()) || 
-                       window.currentEditMetadata || 
-                       window.uploadedImageData ||
-                       (window.currentEditImage !== null && window.currentEditImage !== undefined);
+        hasFormContent = (manualPrompt && manualPrompt.value.trim()) ||
+            window.currentEditMetadata ||
+            window.uploadedImageData ||
+            (window.currentEditImage !== null && window.currentEditImage !== undefined);
     }
-    
+
     // Show confirmation dialog if manual modal is open in desktop mode and has content
-    if (isManualModalOpen && isDesktopMode && hasFormContent) {
+    if (isManualModalOpen && window.isDesktop && hasFormContent) {
         const confirmed = await showConfirmationDialog(
             'Are you sure you want to overwrite the current request? Any unsaved changes will be lost if not used in a generated image.',
             [
@@ -11459,22 +11908,22 @@ async function checkManualModalBeforeLoad(event = null) {
             ],
             event
         );
-        
+
         // If user cancelled, return false
         if (!confirmed || confirmed === 'cancel') {
             return false;
         }
-        
+
         // If user chose to save, save the request first
         if (confirmed === 'save') {
             await saveRequestAsDesktopShortcut();
             // Continue with loading after saving
         }
-        
+
         // User confirmed (either 'load' or 'save'), return true
         return true;
     }
-    
+
     // Modal not open or not desktop mode, proceed without confirmation
     return true;
 }
@@ -11485,7 +11934,7 @@ async function upscaleImage(image, event = null) {
     const width = image.width || 1024;
     const height = image.height || 1024;
     const upscaleInfo = calculateUpscaleInfo(width, height);
-    
+
     // Show upscale options dialog (always show for upscaling)
     // Even if NovelAI is not available, ESRGAN options will be shown
     const isFreeUpscaling = upscaleInfo.available && upscaleInfo.cost === 0;
@@ -11498,13 +11947,13 @@ async function upscaleImage(image, event = null) {
     // Extract upscaler and scale from confirmation result
     const upscaler = confirmed.upscaler || 'novelai';
     const scale = confirmed.scale || 4;
-    
+
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
-    
+
     let toastId;
     let progressInterval;
-    
+
     if (!isInModal) {
         // Use glass toast with progress when not in modal (global pattern)
         if (!progressToastId) {
@@ -11528,7 +11977,7 @@ async function upscaleImage(image, event = null) {
         if (!filename) {
             throw new Error('No valid filename found in image object');
         }
-        
+
         const upscaleParams = {
             filename: filename,
             workspace: activeWorkspace || null,
@@ -11539,9 +11988,9 @@ async function upscaleImage(image, event = null) {
         // Upscale image via WebSocket
         try {
             const result = await window.wsClient.upscaleImage(upscaleParams);
-            
+
             if (result) {
-                const { image: upscaledImage, filename } = result;
+                const { filename, metadata } = result;
 
                 // Show success message
                 if (!isInModal) {
@@ -11561,33 +12010,28 @@ async function upscaleImage(image, event = null) {
                     showGlassToast('success', 'Upscale Complete', 'Image upscaled successfully!');
                 }
 
-                // Use the universal image handling function
-                const byteCharacters = atob(upscaledImage);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], { type: 'image/png' });
-
-                // Create a response-like object with the upscaled filename for proper preview update
+                const imageUrl = `/images/${filename}`;
                 const mockResponse = {
                     headers: {
                         get: (headerName) => {
                             if (headerName === 'X-Generated-Filename') {
-                                return filename; // This is the upscaled filename from the result
+                                return filename;
                             }
                             return null;
                         }
                     }
                 };
 
-                // Use the universal handleImageResult function with the mock response
-                await handleImageResult(blob, 'Image upscaled successfully!', undefined, undefined, mockResponse);
+                // Update the current manual preview image object to include the upscaled version
+                if (window.currentManualPreviewImage) {
+                    window.currentManualPreviewImage.upscaled = filename;
+                }
+
+                await handleImageResult(imageUrl, undefined, undefined, mockResponse, metadata);
             } else {
                 throw new Error('Invalid response from WebSocket');
             }
-            
+
         } catch (error) {
             console.error('Upscaling error:', error);
             if (!isInModal) {
@@ -11709,11 +12153,11 @@ function forceBackgroundUpdate(imageUrl) {
         // We can't cancel the promise, but we can mark it as no longer needed
         backgroundUpdateState.pendingRequest = null;
     }
-    
+
     // Clear any pending requests and force immediate execution
     backgroundUpdateState.pendingRequest = null;
     backgroundUpdateState.isAnimating = false;
-    
+
     // Call the function directly for immediate update
     return updateManualPreviewBlurredBackground(imageUrl);
 }
@@ -11762,12 +12206,12 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
 
         // Get the blurred preview URL - encode the baseName to handle spaces and special characters
         const blurPreviewUrl = `/previews/${encodeURIComponent(baseName)}@blur.webp`;
-        
+
         // Check if the blurred preview exists
         try {
-            const response = await fetch(blurPreviewUrl, { 
+            const response = await fetch(blurPreviewUrl, {
                 method: 'HEAD',
-                cache: 'no-store' 
+                cache: 'no-store'
             });
             if (!response.ok) {
                 // Blurred preview doesn't exist, hide backgrounds
@@ -11785,44 +12229,44 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
             if (bg2) bg2.style.opacity = '0';
             return;
         }
-        
+
         // Get the two background containers
         const bg1 = document.getElementById('manualPreviewBlurBackground1');
         const bg2 = document.getElementById('manualPreviewBlurBackground2');
-        
+
         if (!bg1 || !bg2) return;
-        
+
         // Preload the image before applying it to prevent flashing
         const preloadImage = new Image();
         preloadImage.crossOrigin = 'anonymous';
-        
+
         // Wait for the image to load completely
         await new Promise((resolve, reject) => {
             preloadImage.onload = resolve;
             preloadImage.onerror = reject;
             preloadImage.src = blurPreviewUrl;
         });
-        
+
         // Determine which background is currently active
         // Check if either background has opacity > 0 (is visible)
         const bg1Opacity = parseFloat(bg1.style.opacity) || 0;
         const bg2Opacity = parseFloat(bg2.style.opacity) || 0;
         const activeBg = bg1Opacity > 0 ? bg1 : bg2;
         const inactiveBg = bg1Opacity > 0 ? bg2 : bg1;
-        
+
         const bgUrl = `url("${blurPreviewUrl}")`;
         inactiveBg.setAttribute('style', `background-image: ${bgUrl}; opacity: 0;`);
-        
+
         // Force a reflow to ensure the background image is applied before transition
         inactiveBg.offsetHeight;
-        
+
         // Start the CSS transition by changing opacity values
         // The CSS transition: opacity 0.5s ease-in-out will handle the animation
         activeBg.style.opacity = '0';
         inactiveBg.style.opacity = '0.45';
-        
 
-        
+
+
         // Return a promise that resolves when the CSS transition completes
         return new Promise((resolve) => {
             // Wait for the CSS transition duration (500ms) plus a small buffer
@@ -11830,12 +12274,12 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
                 // Clean up the old background image
                 if (parseFloat(activeBg.style.opacity) === 0) {
                     activeBg.style.backgroundImage = 'none';
-    
+
                 }
                 resolve();
             }, 550); // 500ms transition + 50ms buffer
         });
-        
+
     } catch (error) {
         console.warn('Failed to update blurred background:', error);
         // On error, hide backgrounds to prevent showing broken images
@@ -11851,22 +12295,22 @@ async function updateManualPreviewBlurredBackground(imageUrl) {
 function renderManualPreviewDialogs(dialogs, isGenerating = false) {
     const dialogContainer = document.getElementById('manualPreviewDialogs');
     if (!dialogContainer) return;
-    
+
     // Clear existing dialogs
     dialogContainer.innerHTML = '';
-    
+
     // If no dialogs, hide container and return
     if (!dialogs || dialogs.length === 0) {
         console.log('💬 No dialogs to render, hiding container');
         dialogContainer.classList.add('hidden');
         return;
     }
-    
+
     console.log(`💬 Rendering ${dialogs.length} dialogs (${isGenerating ? 'generating' : 'navigating'} animation)`);
-    
+
     // Show container
     dialogContainer.classList.remove('hidden');
-    
+
     // Create dialog bubbles
     dialogs.forEach((dialog, index) => {
         const bubble = document.createElement('div');
@@ -11874,9 +12318,9 @@ function renderManualPreviewDialogs(dialogs, isGenerating = false) {
         bubble.style.setProperty('--dialog-top', `${dialog.top}%`);
         bubble.style.setProperty('--dialog-left', `${dialog.left}%`);
         bubble.textContent = dialog.text;
-        
+
         console.log(`💬 Dialog ${index + 1}: "${dialog.text}" at (${dialog.top}%, ${dialog.left}%) - ${dialog.type}`);
-        
+
         // Add animation class based on context
         if (isGenerating) {
             bubble.classList.add('generating');
@@ -11887,10 +12331,10 @@ function renderManualPreviewDialogs(dialogs, isGenerating = false) {
             // Faster stagger for navigation
             bubble.style.animationDelay = `${index * 0.1}s`;
         }
-        
+
         dialogContainer.appendChild(bubble);
     });
-    
+
     console.log(`💬 Successfully rendered ${dialogs.length} dialog bubbles`);
 }
 
@@ -11906,10 +12350,10 @@ function clearManualPreviewDialogs() {
 // Collect dialogs from metadata (main + pipeline stages)
 function collectDialogsFromMetadata(metadata) {
     if (!metadata) return [];
-    
+
     const allDialogs = [];
     const seenTimestamps = new Set();
-    
+
     // Collect from main compiled_prompt
     const mainDialogs = metadata?.dynamic_generation?.compiled_prompt?.dialogs;
     const mainTimestamp = metadata?.dynamic_generation?.compiled_prompt?.timestamp;
@@ -11917,14 +12361,14 @@ function collectDialogsFromMetadata(metadata) {
         allDialogs.push(...mainDialogs);
         seenTimestamps.add(mainTimestamp);
     }
-    
+
     // Collect from pipeline stage seeds
     const stageSeeds = metadata?.forge_data?.stage_seeds;
     if (stageSeeds && Array.isArray(stageSeeds)) {
         stageSeeds.forEach((stageSeed) => {
             const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
             const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
-            
+
             if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
                 if (!seenTimestamps.has(stageTimestamp)) {
                     allDialogs.push(...stageDialogs);
@@ -11933,28 +12377,28 @@ function collectDialogsFromMetadata(metadata) {
             }
         });
     }
-    
+
     return allDialogs;
 }
 
 // Process dialog positions: force strict left/right columns with vertical stacking
 function processDialogPositions(dialogs) {
     if (!dialogs || dialogs.length === 0) return [];
-    
+
     // Simple column-based layout - no clustering allowed
     // Left column: 18%, Right column: 82%
     const leftColumn = 18;
     const rightColumn = 82;
-    
+
     // Vertical spacing - account for bubble height (~8% per bubble with padding)
     const bubbleHeight = 8; // Approximate height percentage including padding
     const minVerticalGap = 2; // Minimum gap between bubbles
     const totalSlotHeight = bubbleHeight + minVerticalGap;
-    
+
     // Split dialogs into two columns
     const leftDialogs = [];
     const rightDialogs = [];
-    
+
     dialogs.forEach((dialog, index) => {
         if (index % 2 === 0) {
             leftDialogs.push(dialog);
@@ -11962,12 +12406,12 @@ function processDialogPositions(dialogs) {
             rightDialogs.push(dialog);
         }
     });
-    
+
     // Process left column
     const processedLeft = leftDialogs.map((dialog, index) => {
         // Stack vertically with proper spacing
         const verticalPosition = 10 + (index * totalSlotHeight);
-        
+
         return {
             ...dialog,
             top: Math.min(90 - bubbleHeight, verticalPosition), // Don't exceed 90%
@@ -11975,12 +12419,12 @@ function processDialogPositions(dialogs) {
             alignment: 'left'
         };
     });
-    
+
     // Process right column
     const processedRight = rightDialogs.map((dialog, index) => {
         // Stack vertically with proper spacing
         const verticalPosition = 10 + (index * totalSlotHeight);
-        
+
         return {
             ...dialog,
             top: Math.min(90 - bubbleHeight, verticalPosition), // Don't exceed 90%
@@ -11988,7 +12432,7 @@ function processDialogPositions(dialogs) {
             alignment: 'right'
         };
     });
-    
+
     // Interleave back together to maintain original order
     const result = [];
     const maxLength = Math.max(processedLeft.length, processedRight.length);
@@ -11996,7 +12440,7 @@ function processDialogPositions(dialogs) {
         if (i < processedLeft.length) result.push(processedLeft[i]);
         if (i < processedRight.length) result.push(processedRight[i]);
     }
-    
+
     return result;
 }
 
@@ -12011,7 +12455,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
     const rerollBtn = document.getElementById('manualPreviewRerollBtn');
     const variationBtn = document.getElementById('manualPreviewVariationBtn');
     const deleteBtn = document.getElementById('manualPreviewDeleteBtn');
-    
+
 
     try {
         if (previewImage && previewPlaceholder) {
@@ -12019,9 +12463,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Get the image at the specified index
             let imageData = null;
             let imageUrl = null;
-            
+
             if (response && response.headers) {
-                // For newly generated images, use the response data
+                // Server-saved image: always load via same-origin URL (service worker caches /images/)
                 const generatedFilename = response.headers.get('X-Generated-Filename');
                 if (generatedFilename) {
                     imageUrl = `/images/${generatedFilename}`;
@@ -12044,45 +12488,58 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     return;
                 }
             }
-            
+
             if (!imageData || !imageUrl) {
                 console.warn('No image data available for index:', index);
                 return;
             }
-            
-            // Wait for the manual preview preload to complete before applying the image
+
+            // Single load on preview element (avoids duplicate decode; SW handles /images/ cache)
             let imageWidth, imageHeight;
             await new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    // Store image dimensions for container sizing
-                    imageWidth = img.naturalWidth;
-                    imageHeight = img.naturalHeight;
-                    // Preload completed successfully
+                let timeoutId;
+                const cleanup = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    previewImage.onload = null;
+                    previewImage.onerror = null;
+                    if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
+                        stopPreviewAnimation();
+                    }
+                };
+                const finish = () => {
+                    imageWidth = previewImage.naturalWidth;
+                    imageHeight = previewImage.naturalHeight;
+                    cleanup();
                     resolve();
                 };
-                img.onerror = () => {
-                    reject(new Error('Failed to preload image'));
+                previewImage.onerror = () => {
+                    cleanup();
+                    reject(new Error('Failed to load image into DOM'));
                 };
-                img.src = imageUrl;
+                timeoutId = setTimeout(() => {
+                    cleanup();
+                    resolve();
+                    console.error(new Error('Image load timeout - failed to load within 10 seconds'));
+                }, 10000);
+                if (previewImage.src && previewImage.src.startsWith('data:')) {
+                    previewImage.removeAttribute('src');
+                }
+                previewImage.src = imageUrl;
+                if (previewImage.decode) {
+                    previewImage.decode().then(finish).catch(() => {
+                        previewImage.onload = finish;
+                    });
+                } else {
+                    previewImage.onload = finish;
+                }
             });
-            
-            // Now apply the image after preload is complete
-            previewImage.src = imageUrl;
+
             previewImage.classList.remove('hidden');
             previewPlaceholder.classList.add('hidden');
 
-            // Store the blob URL for download functionality
+            // Preview URL for download/copy (same-origin /images/)
             previewImage.dataset.blobUrl = imageUrl;
-            
-            // Stop generation animation when image is actually loaded
-            // BUT NOT during active generation (let the generation code handle this)
-            previewImage.onload = () => {
-                if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
-                    stopPreviewAnimation();
-                }
-            };
-            
+
             // Apply dynamic container sizing based on image aspect ratio
             if (imageWidth && imageHeight) {
                 sizeManualPreviewContainer(imageWidth, imageHeight);
@@ -12099,12 +12556,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     const originalImageUrl = `/images/${window.initialEdit.image.original || window.initialEdit.image.filename}`;
                     originalImage.src = originalImageUrl;
                     originalImage.classList.remove('hidden');
-                    
+
                     // Add click handler to load original image into main preview
-                    originalImage.onclick = function() {
+                    originalImage.onclick = function () {
                         swapManualPreviewImages();
                     };
-                    
+
                     // Enable dual mode
                     imageContainers.forEach(container => {
                         container.classList.add('dual-mode');
@@ -12120,17 +12577,17 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     // If no lastGeneration, use the first image (index 0) as the "last generation"
                     lastGenImage = allImages[0];
                 }
-                
+
                 if (lastGenImage && originalImage) {
                     const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                     if (lastGenFilename) {
                         originalImage.src = `/images/${lastGenFilename}`;
                         originalImage.classList.remove('hidden');
-                        originalImage.onclick = function() {
+                        originalImage.onclick = function () {
                             // When clicked, restore the original image
                             restoreOriginalImage();
                         };
-                        
+
                         // Enable dual mode
                         imageContainers.forEach(container => {
                             container.classList.add('dual-mode');
@@ -12146,16 +12603,16 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     // Use the first image as the "last generation"
                     lastGenImage = allImages[0];
                 }
-                
+
                 if (lastGenImage && originalImage) {
                     const lastGenFilename = lastGenImage.original || lastGenImage.filename || lastGenImage.upscaled;
                     if (lastGenFilename) {
                         originalImage.src = `/images/${lastGenFilename}`;
                         originalImage.classList.remove('hidden');
-                        originalImage.onclick = function() {
+                        originalImage.onclick = function () {
                             swapManualPreviewImages();
                         };
-                        
+
                         // Enable dual mode
                         imageContainers.forEach(container => {
                             container.classList.add('dual-mode');
@@ -12179,8 +12636,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // Director new session functionality is always available
             window.currentManualPreviewIndex = index;
 
+            // Keep Android persistent notification image in sync with the last preview
+            updateAndroidNotificationImageFromCurrentPreview();
+
             // Use passed metadata if available, otherwise use metadata from imageData
-                if (metadata) {
+            if (metadata) {
                 imageData.metadata = metadata;
             } else if (imageData.metadata) {
                 // Metadata already included from server
@@ -12189,24 +12649,24 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 try {
                     const loadedMetadata = await getImageMetadata(imageData.original);
                     imageData.metadata = loadedMetadata;
-                    } catch (error) {
-                        console.warn('Failed to load metadata for image:', error);
-                    }
+                } catch (error) {
+                    console.warn('Failed to load metadata for image:', error);
+                }
             }
 
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            
+
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
             }
-            
+
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
-            
+
             // Show and update pin button
             if (manualPreviewPinBtn) {
                 manualPreviewPinBtn.classList.remove('hidden');
@@ -12217,7 +12677,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     }
                 }
             }
-            
+
             const scrapBtn = document.getElementById('manualPreviewScrapBtn');
             if (scrapBtn) {
                 scrapBtn.classList.remove('hidden');
@@ -12231,7 +12691,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
             }
             if (deleteBtn) deleteBtn.classList.remove('hidden');
-            
+
             // Show toggle dialogs button if image has dialogs
             if (manualPreviewToggleDialogsBtn) {
                 const hasDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage?.metadata).length > 0;
@@ -12249,7 +12709,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             let allDialogs = [];
             const dialogSources = [];
             const seenTimestamps = new Set(); // Track timestamps to deduplicate
-            
+
             // Collect from main compiled_prompt
             const mainDialogs = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
             const mainTimestamp = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
@@ -12258,7 +12718,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 seenTimestamps.add(mainTimestamp);
                 dialogSources.push(`main(${mainDialogs.length})`);
             }
-            
+
             // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
             // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
             const stageSeeds = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
@@ -12267,7 +12727,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 stageSeeds.forEach((stageSeed, i) => {
                     const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
                     const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
-                    
+
                     if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
                         // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
                         if (!seenTimestamps.has(stageTimestamp)) {
@@ -12278,10 +12738,10 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     }
                 });
             }
-            
+
             // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
             allDialogs = processDialogPositions(allDialogs);
-            
+
             console.log('💬 Checking for dialogs in updateManualPreview:', {
                 hasImage: !!window.currentManualPreviewImage,
                 hasMetadata: !!window.currentManualPreviewImage?.metadata,
@@ -12293,11 +12753,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 dialogSources: dialogSources.join(', '),
                 isResponse: !!response
             });
-            
+
             if (allDialogs.length > 0) {
                 // Check if dialogs should be visible (from toggle button state)
-                const dialogsVisible = manualPreviewToggleDialogsBtn.dataset.state === 'on';
-                
+                const dialogsVisible = localStorage.getItem('dialogsVisible') !== 'off';
+
                 if (dialogsVisible) {
                     // Check if this is a fresh generation (response parameter indicates new generation)
                     const isGenerating = !!response;
@@ -12321,7 +12781,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             manualPreviewImage.title = ''; // Clear streaming title
             manualPreviewImage.style.width = '';
             manualPreviewImage.style.height = '';
-            
+
             // Update seed display and add to history
             if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata && window.currentManualPreviewImage.metadata.seed !== undefined) {
                 const seed = window.currentManualPreviewImage.metadata.seed;
@@ -12350,7 +12810,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
             // Update Rentan overlay
             const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
-            
+
             // Update carousel with compiled prompt context if available
             if (context) {
                 // Update compiled context data and switch to compiled mode
@@ -12384,40 +12844,48 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
         if (previewImage && previewPlaceholder) {
             // Construct image URL from the image object
             const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
-            
-            // Wait for the manual preview preload to complete before applying the image
+
             let imageWidth, imageHeight;
             await new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    // Store image dimensions for container sizing
-                    imageWidth = img.naturalWidth;
-                    imageHeight = img.naturalHeight;
-                    // Preload completed successfully
+                let timeoutId;
+                const cleanup = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
+                    previewImage.onload = null;
+                    previewImage.onerror = null;
+                    if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
+                        stopPreviewAnimation();
+                    }
+                };
+                const finish = () => {
+                    imageWidth = previewImage.naturalWidth;
+                    imageHeight = previewImage.naturalHeight;
+                    cleanup();
                     resolve();
                 };
-                img.onerror = () => {
-                    reject(new Error('Failed to preload image'));
+                previewImage.onerror = () => {
+                    cleanup();
+                    reject(new Error('Failed to load image into DOM'));
                 };
-                img.src = imageUrl;
+                timeoutId = setTimeout(() => {
+                    cleanup();
+                    resolve();
+                    console.error(new Error('Image load timeout - failed to load within 10 seconds'));
+                }, 10000);
+                previewImage.src = imageUrl;
+                if (previewImage.decode) {
+                    previewImage.decode().then(finish).catch(() => {
+                        previewImage.onload = finish;
+                    });
+                } else {
+                    previewImage.onload = finish;
+                }
             });
-            
-            // Now apply the image after preload is complete
-            previewImage.src = imageUrl;
+
             previewImage.classList.remove('hidden');
             previewPlaceholder.classList.add('hidden');
 
-            // Store the blob URL for download functionality
             previewImage.dataset.blobUrl = imageUrl;
-            
-            // Stop generation animation when image is actually loaded
-            // BUT NOT during active generation (let the generation code handle this)
-            previewImage.onload = () => {
-                if (generationAnimationActive && !manualForm?.classList.contains('generating')) {
-                    stopPreviewAnimation();
-                }
-            };
-            
+
             // Apply dynamic container sizing based on image aspect ratio
             if (imageWidth && imageHeight) {
                 sizeManualPreviewContainer(imageWidth, imageHeight);
@@ -12437,29 +12905,30 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             if (window.currentManualPreviewImage.filename) {
                 window.lastGeneration.filename = window.currentManualPreviewImage.filename;
             }
+            updateAndroidNotificationImageFromCurrentPreview();
             // Director new session functionality is always available
-            
+
             // Try to find the index of this image in the gallery
             let imageIndex = -1;
             if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
                 // Search mode - use filtered results
                 imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === imageObj.upscaled || 
+                    return img.upscaled === imageObj.upscaled ||
                         img.original === imageObj.original ||
                         img.filename === imageObj.filename;
                 });
             } else if (allImages && allImages.length > 0) {
                 // Normal mode - use current allImages
                 imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === imageObj.upscaled || 
+                    return img.upscaled === imageObj.upscaled ||
                         img.original === imageObj.original ||
                         img.filename === imageObj.filename;
                 });
             }
-            
+
             // Update the current index (use found index or keep as -1 if not found)
             window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
-            
+
             // Use passed metadata if available
             if (metadata) {
                 imageObj.metadata = metadata;
@@ -12468,16 +12937,16 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
-            
+
             // Show upscale button only if upscaling is available for this resolution
             if (upscaleBtn) {
                 upscaleBtn.classList.remove('hidden');
             }
-            
+
             if (rerollBtn) rerollBtn.classList.remove('hidden');
             if (variationBtn) variationBtn.classList.remove('hidden');
             if (manualPreviewLoadBtn) manualPreviewLoadBtn.classList.remove('hidden');
-            
+
             // Show and update pin button
             if (manualPreviewPinBtn) {
                 manualPreviewPinBtn.classList.remove('hidden');
@@ -12488,7 +12957,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     }
                 }
             }
-            
+
             const scrapBtn = document.getElementById('manualPreviewScrapBtn');
             if (scrapBtn) {
                 scrapBtn.classList.remove('hidden');
@@ -12507,7 +12976,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // Collect dialogs from BOTH main and all pipeline stages (they add up!)
             let allDialogsDirect = [];
             const seenTimestampsDirect = new Set(); // Track timestamps to deduplicate
-            
+
             // Collect from main compiled_prompt
             const mainDialogsDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
             const mainTimestampDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
@@ -12515,7 +12984,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 allDialogsDirect = allDialogsDirect.concat(mainDialogsDirect);
                 seenTimestampsDirect.add(mainTimestampDirect);
             }
-            
+
             // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
             // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
             const stageSeedsDirect = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
@@ -12524,7 +12993,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                 stageSeedsDirect.forEach((stageSeed, i) => {
                     const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
                     const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
-                    
+
                     if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
                         // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
                         if (!seenTimestampsDirect.has(stageTimestamp)) {
@@ -12534,15 +13003,15 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     }
                 });
             }
-            
+
             // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
             // Reuse the same processDialogPositions function
             allDialogsDirect = processDialogPositions(allDialogsDirect);
-            
+
             if (allDialogsDirect.length > 0) {
                 // Check if dialogs should be visible (from toggle button state)
-                const dialogsVisibleDirect = manualPreviewToggleDialogsBtn.dataset.state === 'on';
-                
+                const dialogsVisibleDirect = localStorage.getItem('dialogsVisible') !== 'off';
+
                 if (dialogsVisibleDirect) {
                     // Use navigating animation for direct updates (not fresh generation)
                     renderManualPreviewDialogs(allDialogsDirect, false);
@@ -12595,9 +13064,9 @@ function swapManualPreviewImages() {
     const previewImage = document.getElementById('manualPreviewImage');
     const originalImage = document.getElementById('manualPreviewOriginalImage');
     const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-    
+
     if (!previewImage || !originalImage || !imageContainers || !window.lastGeneration || !window.initialEdit) return;
-    
+
     // Check if we're currently showing the original image
     if (Array.from(imageContainers).some(container => container.classList.contains('swapped'))) {
         // Switch back to generated image
@@ -12605,10 +13074,10 @@ function swapManualPreviewImages() {
             const generatedImageUrl = `/images/${window.lastGeneration.filename}`;
             previewImage.src = generatedImageUrl;
             updateSproutSeedButtonFromPreviewSeed();
-            
+
             // Update blurred background
             updateBlurredBackground(generatedImageUrl);
-            
+
             // Update global variables to reflect the generated image
             window.currentManualPreviewImage = window.lastGeneration;
             // Director new session functionality is always available
@@ -12616,13 +13085,13 @@ function swapManualPreviewImages() {
             let imageIndex = -1;
             if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
                 imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === window.lastGeneration.filename || 
-                           img.original === window.lastGeneration.filename;
+                    return img.upscaled === window.lastGeneration.filename ||
+                        img.original === window.lastGeneration.filename;
                 });
             } else if (allImages && allImages.length > 0) {
                 imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === window.lastGeneration.filename || 
-                           img.original === window.lastGeneration.filename;
+                    return img.upscaled === window.lastGeneration.filename ||
+                        img.original === window.lastGeneration.filename;
                 });
             }
             window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
@@ -12636,10 +13105,10 @@ function swapManualPreviewImages() {
             const originalImageUrl = `/images/${window.initialEdit.image.upscaled || window.initialEdit.image.original}`;
             previewImage.src = originalImageUrl;
             updateSproutSeedButtonFromPreviewSeed();
-            
+
             // Update blurred background
             updateBlurredBackground(originalImageUrl);
-            
+
             // Update global variables to reflect the original image
             window.currentManualPreviewImage = window.initialEdit.image;
             // Director new session functionality is always available
@@ -12647,13 +13116,13 @@ function swapManualPreviewImages() {
             let imageIndex = -1;
             if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
                 imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === window.initialEdit.image.upscaled || 
-                           img.original === window.initialEdit.image.original;
+                    return img.upscaled === window.initialEdit.image.upscaled ||
+                        img.original === window.initialEdit.image.original;
                 });
             } else if (allImages && allImages.length > 0) {
                 imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === window.initialEdit.image.upscaled || 
-                           img.original === window.initialEdit.image.original;
+                    return img.upscaled === window.initialEdit.image.upscaled ||
+                        img.original === window.initialEdit.image.original;
                 });
             }
             window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
@@ -12718,10 +13187,10 @@ function resetManualPreview() {
         window.currentManualPreviewImage = null;
         window.currentManualPreviewIndex = null;
         // Director new session functionality is always available
-        
+
         // Clear generated image name display
         updateGeneratedImageNameDisplay(null);
-        
+
         // Reset blurred backgrounds
         const bg1 = document.getElementById('manualPreviewBlurBackground1');
         const bg2 = document.getElementById('manualPreviewBlurBackground2');
@@ -12801,40 +13270,40 @@ async function navigateManualPreview(event) {
     try {
         // Show navigation loading overlay
         showManualPreviewNavigationLoading(true);
-        
+
         // Get current view type based on current gallery view
         const viewType = currentGalleryView || 'images';
-        
+
         // Determine navigation approach based on search mode
         let newImage, newIndex;
-        
+
         if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
             // We're in search mode - navigate through filtered results (same logic as lightbox)
             const currentFilename = window.currentManualPreviewImage.original || window.currentManualPreviewImage.filename;
-            
+
             // Use the filtered allImages array for navigation (this contains the filtered results)
             const navigationArray = allImages;
             const currentImageIndex = navigationArray.findIndex(img => {
                 const imgFilename = img.filename || img.original || img.upscaled;
                 return imgFilename === currentFilename;
             });
-            
+
             if (currentImageIndex === -1) {
                 console.warn('Current image not found in filtered results');
                 showManualPreviewNavigationLoading(false);
                 return;
             }
-            
+
             // Calculate new index within the filtered results
             let newIndex = currentImageIndex + direction;
-            
+
             // Handle wrapping within filtered results
             if (newIndex < 0) {
                 newIndex = navigationArray.length - 1;
             } else if (newIndex >= navigationArray.length) {
                 newIndex = 0;
             }
-            
+
             // Get the new image from the filtered results
             const newImageObj = navigationArray[newIndex];
             if (!newImageObj) {
@@ -12842,23 +13311,23 @@ async function navigateManualPreview(event) {
                 showManualPreviewNavigationLoading(false);
                 return;
             }
-            
+
             // Construct the image object for the preview (same as lightbox)
             let filenameToShow = newImageObj.original;
             if (newImageObj.upscaled) {
                 filenameToShow = newImageObj.upscaled;
             }
-            
+
             const imageToShow = {
                 filename: filenameToShow,
                 base: newImageObj.base,
                 upscaled: newImageObj.upscaled,
                 metadata: newImageObj.metadata
             };
-            
+
             // Update the preview with the new image directly (like lightbox does)
             await updateManualPreviewDirectly(imageToShow, newImageObj.metadata);
-            
+
         } else {
             // Normal mode - use WebSocket API with global indices
             const currentIndex = window.currentManualPreviewIndex ?? 0;
@@ -12870,10 +13339,10 @@ async function navigateManualPreview(event) {
                 showManualPreviewNavigationLoading(false);
                 return;
             }
-            
+
             // Request the image at the new index from the server
             newImage = await window.wsClient.requestImageByIndex(newIndex, viewType);
-            
+
             if (!newImage) {
                 console.warn('No image found at index:', newIndex);
                 showManualPreviewNavigationLoading(false);
@@ -12888,14 +13357,14 @@ async function navigateManualPreview(event) {
             // Update the preview with the new image and metadata
             await updateManualPreview(newIndex, null, newImage.metadata);
         }
-        
+
         // Check if we're navigating to index 0 (last generation) or a different image
         // Note: In search mode, index 0 refers to the first filtered result, not necessarily the global first image
         if (newIndex === 0 && !window.originalAllImages) {
             // For global index 0 in normal mode, switch preview to the right side (last generation is always on the right)
             // Clear any stored navigation original image since we're back to the main image
             window.navigationOriginalImage = null;
-            
+
             // Remove swapped state to show the main image on the right
             document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(container => {
                 container.classList.remove('swapped');
@@ -12909,13 +13378,13 @@ async function navigateManualPreview(event) {
                     seed: window.currentManualPreviewImage.metadata?.seed
                 };
             }
-            
+
             // Mark as swapped to show the new image on the left
             document.querySelectorAll('.manual-preview-image-container, #manualPanelSection').forEach(container => {
                 container.classList.add('swapped');
             });
         }
-        
+
     } catch (error) {
         console.error('Failed to navigate manual preview:', error);
         showError('Failed to navigate to next image: ' + error.message);
@@ -12931,15 +13400,15 @@ async function restoreOriginalImage() {
         const previewImage = document.getElementById('manualPreviewImage');
         const originalImage = document.getElementById('manualPreviewOriginalImage');
         const imageContainers = document.querySelectorAll('.manual-preview-image-container, #manualPanelSection');
-        
+
         if (previewImage && originalImage) {
             // Restore the original image to the main preview
             const imageUrl = `/images/${window.navigationOriginalImage.image.original || window.navigationOriginalImage.image.filename}`;
             previewImage.src = imageUrl;
-            
+
             // Update blurred background
             updateBlurredBackground(imageUrl);
-            
+
             // Update the seed display to show the original image's seed
             if (window.navigationOriginalImage.seed) {
                 window.lastGeneratedSeed = window.navigationOriginalImage.seed;
@@ -12955,12 +13424,12 @@ async function restoreOriginalImage() {
                 window.lastGeneration = metadata;
                 window.lastGeneration.filename = window.navigationOriginalImage.image.filename;
             }
-            
+
             // Remove swapped state to show original image on the right
             imageContainers.forEach(container => {
                 container.classList.remove('swapped');
             });
-            
+
             // Update global variables to reflect the restored original image
             window.currentManualPreviewImage = window.navigationOriginalImage.image;
             // Director new session functionality is always available
@@ -12968,19 +13437,19 @@ async function restoreOriginalImage() {
             let imageIndex = -1;
             if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
                 imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === window.navigationOriginalImage.image.upscaled || 
-                           img.original === window.navigationOriginalImage.image.original ||
-                           img.filename === window.navigationOriginalImage.image.filename;
+                    return img.upscaled === window.navigationOriginalImage.image.upscaled ||
+                        img.original === window.navigationOriginalImage.image.original ||
+                        img.filename === window.navigationOriginalImage.image.filename;
                 });
             } else if (allImages && allImages.length > 0) {
                 imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === window.navigationOriginalImage.image.upscaled || 
-                           img.original === window.navigationOriginalImage.image.original ||
-                           img.filename === window.navigationOriginalImage.image.filename;
+                    return img.upscaled === window.navigationOriginalImage.image.upscaled ||
+                        img.original === window.navigationOriginalImage.image.original ||
+                        img.filename === window.navigationOriginalImage.image.filename;
                 });
             }
             window.currentManualPreviewIndex = imageIndex !== -1 ? imageIndex : null;
-            
+
             // Clear the stored navigation original image
             window.navigationOriginalImage = null;
         }
@@ -12996,7 +13465,7 @@ async function saveManualPreset(presetName, config) {
         }
 
         const result = await window.wsClient.savePreset(presetName, config);
-        
+
         // Handle the response properly
         if (result && result.data && result.data.message) {
             showGlassToast('success', null, result.data.message, false, undefined, '<i class="fas fa-book-sparkles"></i>');
@@ -13102,7 +13571,7 @@ async function handleManualSave() {
         model: values.model.toLowerCase(),
         ...requestBody
     };
-    
+
     // Remove skip_pipeline_stages from preset - this is a runtime flag only
     delete generationParams.skip_pipeline_stages;
 
@@ -13164,17 +13633,17 @@ function handlePresetAutocompleteKeydown(e) {
 
         switch (e.key) {
             case 'ArrowDown':
-                
+
                 selectedPresetAutocompleteIndex = Math.min(selectedPresetAutocompleteIndex + 1, items.length - 1);
                 updatePresetAutocompleteSelection();
                 break;
             case 'ArrowUp':
-                
+
                 selectedPresetAutocompleteIndex = Math.max(selectedPresetAutocompleteIndex - 1, -1);
                 updatePresetAutocompleteSelection();
                 break;
             case 'Enter':
-                
+
                 if (selectedPresetAutocompleteIndex >= 0 && items[selectedPresetAutocompleteIndex]) {
                     selectPresetItem(items[selectedPresetAutocompleteIndex].dataset.name);
                 }
@@ -13189,7 +13658,7 @@ function handlePresetAutocompleteKeydown(e) {
 async function searchPresets(query, target) {
     try {
         let presetResults = [];
-        
+
         // Use WebSocket for preset search
         if (window.wsClient && window.wsClient.isConnected()) {
             try {
@@ -13303,17 +13772,17 @@ function updatePresetAutocompleteSelection() {
 // Generate image
 async function generateImage(event = null) {
     closeSubMenu();
-    
+
     // Check if queue is blocked
     if (isQueueStopped || isQueueProcessing) {
         showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait for the queue to clear.', false, 5000);
         return;
     }
-    
+
     // Set generating state
     isGenerating = true;
     updateManualGenerateBtnState();
-    
+
     const selectedValue = presetSelect.value;
     if (!selectedValue) {
         showError('Please select a preset');
@@ -13327,7 +13796,7 @@ async function generateImage(event = null) {
 
     // Check if this preset requires paid credits and show confirmation dialog
     const presetName = selectedValue.replace('preset:', '');
-    
+
     // For now, we'll check if the preset requires paid credits by looking at the preset data
     // This is a simplified approach - in a real implementation, you'd want to check the actual preset configuration
     const requiresPaid = false; // This would be determined by the preset configuration
@@ -13335,7 +13804,7 @@ async function generateImage(event = null) {
     const cost = parseInt(document.getElementById('manualPriceList').textContent); // Default cost for preset generation
     if (requiresPaid && !forcePaidRequest) {
         const confirmed = await showCreditCostDialog(cost, event);
-        
+
         if (!confirmed) {
             return;
         }
@@ -13343,10 +13812,10 @@ async function generateImage(event = null) {
 
     // Check if we're in a modal context
     const isInModal = !document.getElementById('manualModal').classList.contains('hidden');
-    
+
     let toastId;
     let progressInterval;
-    
+
     if (!isInModal) {
         // Use glass toast with progress when not in modal (global pattern)
         if (!progressToastId) {
@@ -13367,7 +13836,7 @@ async function generateImage(event = null) {
     try {
         // Generate image using WebSocket
         const result = await window.wsClient.generatePreset(presetName, window.currentWorkspace || null);
-        
+
         // Extract data from the standard response format
         const filename = result.filename;
 
@@ -13379,13 +13848,13 @@ async function generateImage(event = null) {
             customIcon: '<i class="nai-check"></i>',
             showProgress: false
         });
-        
+
         createConfetti();
-        
-        // Refresh gallery to show the new image
-        await loadGallery(true);
-        
-        if (manualModal.classList.contains('hidden')) {
+
+        if (!isGalleryWindowHidden()) {
+            // Refresh gallery to show the new image
+            await loadGallery(true);
+
             // Find the generated image in the gallery
             const found = allImages.find(img => img.original === filename || img.upscaled === filename);
             if (found) {
@@ -13414,7 +13883,7 @@ async function generateImage(event = null) {
         // Reset generating state
         isGenerating = false;
         updateManualGenerateBtnState();
-        
+
         // Clear progress and loading states
         if (progressInterval) {
             clearInterval(progressInterval);
@@ -13430,7 +13899,7 @@ function initializeManualPreviewLightbox() {
     const image = document.getElementById('manualPreviewImage');
 
     if (!imageContainer || !image) return;
-    
+
     // Only register event listeners if there's actually an image to preview
     if (window.currentManualPreviewImage && !image.classList.contains('hidden')) {
         registerManualPreviewEventListeners();
@@ -13445,28 +13914,28 @@ let isOpeningLightbox = false;
 
 function handleManualPreviewClick(e) {
     e.preventDefault();
-    
+
     // Prevent multiple rapid calls
     if (isOpeningLightbox) {
         return;
     }
-    
+
     // Check if we have a current manual preview image
     if (!window.currentManualPreviewImage) {
         console.warn('No current manual preview image to open in lightbox');
         return;
     }
-    
+
     // Check if the image is actually visible
     const image = document.getElementById('manualPreviewImage');
     if (!image || image.classList.contains('hidden')) {
         console.warn('Preview image is not visible');
         return;
     }
-    
+
     // Use the current manual preview index that was set by the update functions
     let imageIndex = window.currentManualPreviewIndex;
-    
+
     // If we have a valid index, use it directly (trust the update functions)
     if (imageIndex !== null && imageIndex !== undefined && imageIndex >= 0) {
         // Open lightbox with the index set by the update functions
@@ -13486,23 +13955,23 @@ function handleManualPreviewClick(e) {
     } else {
         // If no valid index, try to find the image by filename in the gallery
         let foundIndex = -1;
-        
+
         if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
             // Search mode - use filtered results
             foundIndex = window.originalAllImages.findIndex(img => {
-                return img.upscaled === window.currentManualPreviewImage.upscaled || 
-                       img.original === window.currentManualPreviewImage.original ||
-                       img.filename === window.currentManualPreviewImage.filename;
+                return img.upscaled === window.currentManualPreviewImage.upscaled ||
+                    img.original === window.currentManualPreviewImage.original ||
+                    img.filename === window.currentManualPreviewImage.filename;
             });
         } else if (allImages && allImages.length > 0) {
             // Normal mode - use current allImages
             foundIndex = allImages.findIndex(img => {
-                return img.upscaled === window.currentManualPreviewImage.upscaled || 
-                       img.original === window.currentManualPreviewImage.original ||
-                       img.filename === window.currentManualPreviewImage.filename;
+                return img.upscaled === window.currentManualPreviewImage.upscaled ||
+                    img.original === window.currentManualPreviewImage.original ||
+                    img.filename === window.currentManualPreviewImage.filename;
             });
         }
-        
+
         if (foundIndex !== -1) {
             // Found the image in the gallery, open lightbox at that index
             if (window.showLightbox) {
@@ -13521,9 +13990,9 @@ function handleManualPreviewClick(e) {
         } else {
             // Image not found in gallery, open as standalone image
             if (window.showLightbox) {
-                const imageUrl = window.currentManualPreviewImage.upscaled || 
-                               window.currentManualPreviewImage.original || 
-                               window.currentManualPreviewImage.filename;
+                const imageUrl = window.currentManualPreviewImage.upscaled ||
+                    window.currentManualPreviewImage.original ||
+                    window.currentManualPreviewImage.filename;
                 isOpeningLightbox = true;
                 try {
                     window.showLightbox({ url: `/images/${imageUrl}` });
@@ -13548,14 +14017,14 @@ function handleManualPreviewScroll(e) {
     // Only trigger on scroll up (negative deltaY)
     if (e.deltaY < 0) {
         e.preventDefault();
-        
+
         // Throttle scroll events to prevent rapid calls
         const now = Date.now();
         if (now - lastOpenLightboxScrollTime < SCROLL_THROTTLE_MS) {
             return; // Skip if called too recently
         }
         lastOpenLightboxScrollTime = now;
-        
+
         // Use a small delay to ensure scroll event has settled
         setTimeout(() => {
             handleManualPreviewClick(e);
@@ -13660,7 +14129,7 @@ async function deleteImage(image, event = null) {
         ],
         event
     );
-    
+
     if (!confirmed) {
         return;
     }
@@ -13685,7 +14154,7 @@ async function deleteImage(image, event = null) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
         if (result.successful > 0) {
@@ -13696,6 +14165,9 @@ async function deleteImage(image, event = null) {
 
             // Remove image from gallery and add placeholder
             removeImageFromGallery(image);
+
+            // Skip the next gallery reload event since we've already updated locally
+            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
         } else {
             throw new Error('Delete failed');
         }
@@ -13715,7 +14187,7 @@ async function deleteManualPreviewImage() {
     try {
         // Show navigation loading overlay
         showManualPreviewNavigationLoading(true);
-        
+
         // Determine which filename to use for deletion
         let filenameToDelete = null;
 
@@ -13734,7 +14206,7 @@ async function deleteManualPreviewImage() {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
 
         if (result.successful > 0) {
@@ -13745,7 +14217,7 @@ async function deleteManualPreviewImage() {
             // Request the same image at the current index (which will now be a different image)
             try {
                 const newImage = await window.wsClient.requestImageByIndex(currentIndex, viewType);
-                
+
                 if (newImage) {
                     // Update the preview with the new image at the same index
                     await updateManualPreview(currentIndex, null, newImage.metadata);
@@ -13872,7 +14344,7 @@ async function loadImageIntoManualPreview(imageIndex) {
         }
 
         // Use the existing updateManualPreview function with index (loading overlay handled internally)
-        await updateManualPreview(imageIndex);        
+        await updateManualPreview(imageIndex);
     } catch (error) {
         console.error('Error loading image into preview:', error);
         showGlassToast('error', 'Load Failed', 'Failed to load image into preview', false, undefined, '<i class="fas fa-image-slash"></i>');
@@ -13896,9 +14368,9 @@ function showErrorSubHeader(message, type = 'error', duration = 0) {
     const errorIcon = errorSubHeader.querySelector('.error-sub-header-icon');
     const errorText = errorSubHeader.querySelector('.error-sub-header-text');
     const closeBtn = errorSubHeader.querySelector('.error-sub-header-close');
-    
+
     if (!errorSubHeader || !errorIcon || !errorText) return;
-    
+
     // Set icon based on type
     switch (type) {
         case 'login':
@@ -13916,27 +14388,27 @@ function showErrorSubHeader(message, type = 'error', duration = 0) {
         default:
             errorIcon.className = 'fas fa-exclamation-circle';
     }
-    
+
     // Set message
     errorText.textContent = message;
-    
+
     // Show the sub-header
     errorSubHeader.classList.remove('hidden');
     errorSubHeader.classList.add('show');
     document.body.classList.add('error-sub-header-active');
-    
+
     // Clear existing timeout
     if (errorSubHeaderTimeout) {
         clearTimeout(errorSubHeaderTimeout);
     }
-    
+
     // Auto-hide after duration (unless it's 0 for permanent)
     if (duration > 0) {
         errorSubHeaderTimeout = setTimeout(() => {
             hideErrorSubHeader();
         }, duration);
     }
-    
+
     // Setup close button event listener
     closeBtn.onclick = hideErrorSubHeader;
 }
@@ -13944,15 +14416,15 @@ function showErrorSubHeader(message, type = 'error', duration = 0) {
 function hideErrorSubHeader() {
     const errorSubHeader = document.getElementById('errorSubHeader');
     if (!errorSubHeader) return;
-    
+
     errorSubHeader.classList.remove('show');
     document.body.classList.remove('error-sub-header-active');
-    
+
     // Hide after animation completes
     setTimeout(() => {
         errorSubHeader.classList.add('hidden');
     }, 300);
-    
+
     // Clear timeout
     if (errorSubHeaderTimeout) {
         clearTimeout(errorSubHeaderTimeout);
@@ -13963,10 +14435,10 @@ function hideErrorSubHeader() {
 // Enhanced error handling for authentication issues
 function handleAuthError(error, context = '') {
     console.error(`Authentication error in ${context}:`, error);
-    
+
     let message = 'Authentication error occurred';
     let type = 'auth';
-    
+
     if (error.message) {
         if (error.message.includes('login') || error.message.includes('PIN')) {
             message = 'Login failed. Please check your credentials.';
@@ -13981,7 +14453,7 @@ function handleAuthError(error, context = '') {
             message = error.message;
         }
     }
-    
+
     showErrorSubHeader(message, type, 15000);
 }
 
@@ -14224,13 +14696,13 @@ function clearSeed() {
     if (manualSeed && manualSeed.value) {
         manualSeed.value = '';
         manualSeed.focus();
-        
+
         // Reset sprout seed button state if it was active
         if (sproutSeedBtn && sproutSeedBtn.getAttribute('data-state') === 'on') {
             sproutSeedBtn.setAttribute('data-state', 'off');
             manualSeed.disabled = false;
         }
-        
+
         // Update placeholder to show the seed value if available, or "Random" if not
         if (window.lastLoadedSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
@@ -14355,11 +14827,11 @@ function toggleSproutSeed() {
             if (metadata.text_replacements_seed && Array.isArray(metadata.text_replacements_seed)) {
                 // Load the replacements and lock ALL of them when seed is locked
                 const replacementsWithLockStatus = metadata.text_replacements_seed
-                .filter(r => r.can_lock !== undefined ? r.can_lock !== false : true)
-                .map(replacement => ({
-                    ...replacement,
-                    locked: true // Lock ALL replacements when seed is locked
-                }));
+                    .filter(r => r.can_lock !== undefined ? r.can_lock !== false : true)
+                    .map(replacement => ({
+                        ...replacement,
+                        locked: true // Lock ALL replacements when seed is locked
+                    }));
 
                 window.lastGenerationTextReplacements = replacementsWithLockStatus;
                 window.lockedTextReplacements = replacementsWithLockStatus; // All are locked
@@ -14421,12 +14893,12 @@ async function handleClipboardPaste(event) {
         activeElement.tagName === 'TEXTAREA' ||
         activeElement.isContentEditable
     );
-    
+
     // If user is typing, let the default paste behavior happen
     if (isTypingInField) {
         return;
     }
-    
+
     const items = event.clipboardData?.items;
     if (!items) return;
 
@@ -14438,7 +14910,7 @@ async function handleClipboardPaste(event) {
                 try {
                     // Try to parse as JSON
                     const data = JSON.parse(text);
-                    
+
                     // Check if it's NovelAI metadata (blueprint)
                     // Multiple ways to detect NovelAI data:
                     // 1. Has explicit source field
@@ -14452,25 +14924,25 @@ async function handleClipboardPaste(event) {
                         data.request_type === 'PromptGenerateRequest' ||
                         data.request_type === 'Img2ImgRequest'
                     );
-                    
+
                     if (isNovelAI) {
                         const toastId = showGlassToast('info', 'Loading Blueprint', 'Loading blueprint from clipboard...', true, false, '<i class="nai-import"></i>');
-                        
+
                         try {
                             // Add source field if missing for compatibility
                             if (!data.source) {
                                 data.source = 'NovelAI';
                             }
-                            
+
                             // Transform metadata to the format expected by the manual form
                             const transformedMetadata = window.transformMetadataForEditor(data);
-                            
+
                             // Use unified function to open modal and load NovelAI metadata
                             await openManualModalWithContent({
                                 type: 'metadata',
                                 data: transformedMetadata
                             });
-                            
+
                             updateGlassToastComplete(toastId, {
                                 type: 'success',
                                 title: 'Blueprint Loaded',
@@ -14545,10 +15017,10 @@ async function checkFixedTrainingSteps() {
     const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
     const now = new Date();
     const daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
-    const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));    
+    const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));
     if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
         if (!showFixedTrainingStepsToast) {
-            showGlassToast('info', 'Account Fixed Anlas Expiring', 
+            showGlassToast('info', 'Account Fixed Anlas Expiring',
                 `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining.<br/>
                 Consider using <i class="nai-anla"></i> ${usePerDay} Anlas per day in the next ${daysUntilRenewal} days.`, false, 60000, '<i class="nai-anla"></i>');
             showFixedTrainingStepsToast = true;
@@ -14559,7 +15031,7 @@ async function checkFixedTrainingSteps() {
 async function updateSubscriptionNotifications() {
     await checkSubscriptionExpiration();
     await checkFixedTrainingSteps();
-    
+
     // Update subscription renewal indicator
     updateSubscriptionRenewalIndicator();
 }
@@ -14571,41 +15043,295 @@ function initializeSystemTrayIcons() {
     updateWorkspaceTrayIcon();
     updateImageGenerationIndicator();
     updateSearchIndexingIndicator();
-    
+
     // Update subscription indicator periodically
     setInterval(updateSubscriptionRenewalIndicator, 3600000); // Every hour
-    
+
     // Update fixed credits indicator periodically
     setInterval(updateFixedCreditsIndicator, 60000); // Every minute
-    
+
     // Update image generation indicator more frequently
     setInterval(updateImageGenerationIndicator, 500); // Every 500ms
+}
+
+function setupTrayIconPopovers() {
+    if (!window.PopoverManager) return;
+
+    const trayIcons = [
+        'subscriptionRenewalIndicator',
+        'fixedCreditsIndicator',
+        'imageGenerationIndicator',
+        'searchIndexingIndicator',
+        'workspaceTrayIcon',
+        'pingWarningIndicator',
+        'taskbarWebsocketIndicator'
+    ];
+
+    trayIcons.forEach(iconId => {
+        const icon = document.getElementById(iconId);
+        if (!icon) return;
+
+        // Attach popover with hover-only mode
+        window.PopoverManager.attach(icon, {
+            content: icon.title || '',
+            hoverOnly: true,
+            position: 'top',
+            arrowPosition: 'bottom-right',
+            onShow: (popover, element) => {
+                // Update content from title attribute
+                const title = element.title || '';
+                if (title) {
+                    window.PopoverManager.updateContent(element, title);
+                }
+            }
+        });
+
+        // Watch for title changes and update popover
+        const observer = new MutationObserver(() => {
+            if (icon.title) {
+                window.PopoverManager.updateContent(icon, icon.title);
+            }
+        });
+
+        observer.observe(icon, {
+            attributes: true,
+            attributeFilter: ['title']
+        });
+    });
+}
+
+
+// Track active popover timers
+let activePopoverTimer = null;
+let popoverInteractionListeners = null;
+
+/**
+ * Start the auto-hide timer for the popover, but only when window is focused and user has interacted
+ * @param {HTMLElement} indicator - The indicator element
+ */
+function startPopoverAutoHideTimer(indicator) {
+    // Clear any existing timer
+    if (activePopoverTimer) {
+        clearTimeout(activePopoverTimer);
+        activePopoverTimer = null;
+    }
+
+    // Remove any existing interaction listeners
+    if (popoverInteractionListeners) {
+        popoverInteractionListeners.cleanup();
+        popoverInteractionListeners = null;
+    }
+
+    // Check if window is currently in focus
+    const isFocused = document.hasFocus() && !document.hidden;
+    let hasInteracted = false;
+
+    // Function to start the timer
+    const startTimer = () => {
+        if (activePopoverTimer) {
+            clearTimeout(activePopoverTimer);
+        }
+
+        activePopoverTimer = setTimeout(() => {
+            if (PopoverManager) {
+                PopoverManager.hide(indicator);
+            }
+            activePopoverTimer = null;
+
+            // Clean up listeners
+            if (popoverInteractionListeners) {
+                popoverInteractionListeners.cleanup();
+                popoverInteractionListeners = null;
+            }
+        }, 15000);
+    };
+
+    // If already focused, set up interaction listeners
+    if (isFocused) {
+        const onMouseMove = () => {
+            hasInteracted = true;
+            startTimer();
+            cleanupListeners();
+        };
+
+        const onTouchStart = () => {
+            hasInteracted = true;
+            startTimer();
+            cleanupListeners();
+        };
+
+        const onFocus = () => {
+            if (hasInteracted) {
+                startTimer();
+            }
+        };
+
+        const onVisibilityChange = () => {
+            if (!document.hidden && hasInteracted) {
+                startTimer();
+            } else if (document.hidden) {
+                // Pause timer if window loses focus
+                if (activePopoverTimer) {
+                    clearTimeout(activePopoverTimer);
+                    activePopoverTimer = null;
+                }
+            }
+        };
+
+        const cleanupListeners = () => {
+            document.removeEventListener('mousemove', onMouseMove, { passive: true });
+            document.removeEventListener('touchstart', onTouchStart, { passive: true });
+            window.removeEventListener('focus', onFocus);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+
+        // Store cleanup function
+        popoverInteractionListeners = {
+            cleanup: cleanupListeners
+        };
+
+        // Listen for mouse movement or touch
+        document.addEventListener('mousemove', onMouseMove, { passive: true, once: true });
+        document.addEventListener('touchstart', onTouchStart, { passive: true, once: true });
+
+        // Also listen for window focus/visibility changes
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+    } else {
+        // Window not focused - wait for focus and interaction
+        const onFocus = () => {
+            // Set up interaction listeners when window gains focus
+            const onMouseMove = () => {
+                hasInteracted = true;
+                startTimer();
+                cleanupListeners();
+            };
+
+            const onTouchStart = () => {
+                hasInteracted = true;
+                startTimer();
+                cleanupListeners();
+            };
+
+            const onVisibilityChange = () => {
+                if (document.hidden) {
+                    // Pause timer if window loses focus
+                    if (activePopoverTimer) {
+                        clearTimeout(activePopoverTimer);
+                        activePopoverTimer = null;
+                    }
+                } else if (hasInteracted) {
+                    startTimer();
+                }
+            };
+
+            const cleanupListeners = () => {
+                document.removeEventListener('mousemove', onMouseMove, { passive: true });
+                document.removeEventListener('touchstart', onTouchStart, { passive: true });
+                window.removeEventListener('focus', onFocus);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            };
+
+            // Store cleanup function
+            popoverInteractionListeners = {
+                cleanup: cleanupListeners
+            };
+
+            // Listen for mouse movement or touch
+            document.addEventListener('mousemove', onMouseMove, { passive: true, once: true });
+            document.addEventListener('touchstart', onTouchStart, { passive: true, once: true });
+            document.addEventListener('visibilitychange', onVisibilityChange);
+
+            window.removeEventListener('focus', onFocus);
+        };
+
+        window.addEventListener('focus', onFocus);
+
+        // Also listen for visibility changes
+        const onVisibilityChange = () => {
+            if (!document.hidden) {
+                onFocus();
+            }
+        };
+
+        document.addEventListener('visibilitychange', onVisibilityChange);
+
+        // Store cleanup function
+        popoverInteractionListeners = {
+            cleanup: () => {
+                window.removeEventListener('focus', onFocus);
+                document.removeEventListener('visibilitychange', onVisibilityChange);
+            }
+        };
+    }
+}
+
+/**
+ * Test function to show a popover on the fixedCreditsIndicator
+ * Call this from the browser console: testCreditsIndicatorPopover()
+ */
+function testCreditsIndicatorPopover() {
+    if (!window.PopoverManager) {
+        console.error('PopoverManager not available');
+        return;
+    }
+
+    const indicator = document.getElementById('fixedCreditsIndicator');
+    if (!indicator) {
+        console.error('fixedCreditsIndicator not found');
+        return;
+    }
+
+    // Test with mock generation receipt
+    const balance = window.optionsData?.balance;
+    const fixedCredits = balance?.fixedTrainingStepsLeft || 250;
+    const totalCredits = balance?.totalCredits || 350;
+
+    console.log('Testing credits indicator popover with generation receipt');
+    const popoverMessage1 = `<i class="nai-anla"></i> -5 fixed<br>Free: ${fixedCredits}<br>Total: ${totalCredits}`;
+    showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, '<i class="fas fa-sparkles"></i>', null, {
+        position: 'top',
+        arrowPosition: 'bottom-right'
+    });
+    startPopoverAutoHideTimer(indicator);
+
+    // Also test balance change after a delay
+    setTimeout(() => {
+        console.log('Testing credits indicator popover with balance change');
+        const messageParts = ['-5 free', `Free: 250`, `Paid: 100`, `Total: 350`];
+        const popoverMessage2 = `<i class="nai-anla"></i> -5 free<br>Free: 250<br>Paid: 100<br>Total: 350`;
+        showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, '<i class="fas fa-sync-alt"></i>', null, {
+            position: 'top',
+            arrowPosition: 'bottom-right'
+        });
+        startPopoverAutoHideTimer(indicator);
+    }, 4000);
 }
 
 function updateSubscriptionRenewalIndicator() {
     const indicator = document.getElementById('subscriptionRenewalIndicator');
     if (!indicator) return;
-    
+
     if (!window.optionsData?.user?.subscription?.expiresAt) {
         indicator.classList.add('hidden');
         return;
     }
-    
+
     const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
     const now = new Date();
     const msUntilRenewal = expiresAt - now;
     const daysUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60 * 24));
     const hoursUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60));
-    
+
     const subTier = window.optionsData.user.subscription.tier;
     const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
     const renewalDateStr = expiresAt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-    
+
     // Show indicator if renewal is within 7 days (including today/less than 1 day)
     // Use hours for more accurate display when less than 1 day remains
     if (daysUntilRenewal <= 7 && msUntilRenewal > 0) {
         indicator.classList.remove('hidden');
-        
+
         // Format time remaining message
         let timeRemaining;
         if (hoursUntilRenewal < 24) {
@@ -14613,9 +15339,9 @@ function updateSubscriptionRenewalIndicator() {
         } else {
             timeRemaining = `${daysUntilRenewal} day${daysUntilRenewal !== 1 ? 's' : ''}`;
         }
-        
+
         indicator.title = `Subscription renews in ${timeRemaining} (${renewalDateStr})`;
-        
+
         // Update warning level
         indicator.classList.remove('warning', 'critical');
         if (daysUntilRenewal <= 1 || hoursUntilRenewal <= 24) {
@@ -14631,27 +15357,27 @@ function updateSubscriptionRenewalIndicator() {
 function updateFixedCreditsIndicator() {
     const indicator = document.getElementById('fixedCreditsIndicator');
     if (!indicator) return;
-    
+
     // Always show the indicator
     indicator.classList.remove('hidden');
-    
+
     // Ensure icon is always nai-anla
     const iconElement = indicator.querySelector('i');
     if (iconElement) {
         iconElement.className = 'nai-anla';
     }
-    
+
     if (!window.optionsData?.balance) {
         // No balance data - remove all state classes
         indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
         indicator.title = 'Loading balance...';
         return;
     }
-    
+
     // Get fixed credits
     const fixedCredits = window.optionsData.balance.fixedTrainingStepsLeft || 0;
     const totalCredits = window.optionsData.balance.totalCredits || 0;
-    
+
     // Get subscription expiration info
     let daysUntilRenewal = null;
     if (window.optionsData?.user?.subscription?.expiresAt) {
@@ -14659,10 +15385,10 @@ function updateFixedCreditsIndicator() {
         const now = new Date();
         daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
     }
-    
+
     // Remove all state classes
     indicator.classList.remove('low-credits', 'no-credits', 'expiring-credits');
-    
+
     // Determine state and set classes
     if (fixedCredits === 0) {
         // 0 credits - all requests are paid
@@ -14682,12 +15408,12 @@ function updateFixedCreditsIndicator() {
         // Normal state - no special classes
         indicator.title = `Free credits: ${fixedCredits} (Total: ${totalCredits})`;
     }
-    
+
     // Attach context menu if not already attached
     if (window.contextMenu && !indicator.dataset.contextMenu) {
         const contextMenuId = 'fixedCreditsContextMenu';
         indicator.dataset.contextMenu = contextMenuId;
-        
+
         window.contextMenu.attachToElement(indicator, {
             sections: [
                 {
@@ -14731,7 +15457,7 @@ function updateFixedCreditsIndicator() {
                             // Update context menu balance elements
                             const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixedTray');
                             const contextBalancePaid = document.getElementById('contextAnlasBalancePaidTray');
-                            
+
                             if (contextBalanceFixed) {
                                 contextBalanceFixed.textContent = fixedCredits;
                             }
@@ -14739,7 +15465,7 @@ function updateFixedCreditsIndicator() {
                                 contextBalancePaid.textContent = purchasedCredits;
                             }
                         }
-                        
+
                         // Update subscription values
                         try {
                             const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTierTray');
@@ -14747,18 +15473,18 @@ function updateFixedCreditsIndicator() {
                             const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDividerTray');
                             const warningIcon = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-warning-icon');
                             const daysText = document.querySelector('#contextAnlasDaysTillExpireTray .anlas-days-text');
-                            
+
                             if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
                                 const accountData = window.optionsData;
-                                
+
                                 if (accountData?.user?.subscription?.tier !== undefined) {
                                     // Update subscription tier
                                     const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
-                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' : 
-                                                                              subscriptionTier === 2 ? 'Scroll' :
-                                                                              subscriptionTier === 1 ? 'Tablet' : 
-                                                                              subscriptionTier === 0 ? 'Free' : 'Unknown';
-                                    
+                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' :
+                                        subscriptionTier === 2 ? 'Scroll' :
+                                            subscriptionTier === 1 ? 'Tablet' :
+                                                subscriptionTier === 0 ? 'Free' : 'Unknown';
+
                                     if (subscriptionDivider) {
                                         subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
                                     }
@@ -14772,9 +15498,9 @@ function updateFixedCreditsIndicator() {
                                         const diffTime = expireDate.getTime() - now.getTime();
                                         daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                                     }
-                                    
+
                                     daysText.textContent = `${daysTillExpire} days`;
-                                    
+
                                     // Show warning icon if expiring in a week or less
                                     if (daysTillExpire <= 7 && daysTillExpire > 0) {
                                         warningIcon.classList.remove('hidden');
@@ -14808,17 +15534,17 @@ function updateFixedCreditsIndicator() {
 function updateWorkspaceTrayIcon() {
     const icon = document.getElementById('workspaceTrayIcon');
     if (!icon) return;
-    
+
     const activeWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
     const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
     const activeWorkspaceData = workspacesData[activeWorkspaceId];
-    
+
     if (activeWorkspaceData?.color) {
         icon.title = `Workspace: ${activeWorkspaceData.name || 'Unknown'}`;
     } else {
         icon.title = 'Workspace';
     }
-    
+
     // Attach context menu
     if (window.contextMenu) {
         window.contextMenu.attachToElement(icon, {
@@ -14835,12 +15561,12 @@ function updateWorkspaceTrayIcon() {
                     items: [
                         {
                             icon: 'fas fa-solar-system',
-                            text: 'Manage Solar System',
+                            text: 'Solar System',
                             action: 'workspace-manage'
                         },
                         {
-                            icon: 'fas fa-desktop',
-                            text: 'Desktop Settings',
+                            icon: 'fas fa-paint-roller',
+                            text: 'Personalize',
                             action: 'open-desktop-settings'
                         },
                         { separator: true },
@@ -14961,7 +15687,7 @@ function updateSearchIndexingIndicator() {
 
         // Attach the menu
         window.contextMenu.attachToElement(indicator, getMenuConfig());
-        
+
         // Store the config function so we can update it when pause state changes
         indicator._menuConfigFn = getMenuConfig;
     }
@@ -14970,12 +15696,12 @@ function updateSearchIndexingIndicator() {
 function updateImageGenerationIndicator() {
     const indicator = document.getElementById('imageGenerationIndicator');
     if (!indicator) return;
-    
+
     // Check if generation is active
     const isManualGenerating = typeof isGenerating !== 'undefined' && isGenerating;
     const isSpellbookGenerating = window.spellbookModalManager?.isGenerating || false;
     const isAnyGenerating = isManualGenerating || isSpellbookGenerating;
-    
+
     if (isAnyGenerating) {
         indicator.classList.remove('hidden');
         indicator.classList.add('active');
@@ -14995,6 +15721,8 @@ if (document.readyState === 'loading') {
 // Update workspace icon when workspace changes
 document.addEventListener('workspaceUpdated', () => {
     updateWorkspaceTrayIcon();
+    updateAndroidNotificationBody();
+    clearAndroidNotificationImage();
 });
 
 // Upload multiple images to server
@@ -15014,7 +15742,7 @@ async function uploadImages(files) {
         });
 
         const results = await Promise.all(uploadPromises);
-        
+
         const successCount = results.filter(r => r.success).length;
         const errorCount = results.length - successCount;
 
@@ -15053,18 +15781,37 @@ async function uploadImages(files) {
     }
 }
 
+/**
+ * Activates main application layout resize and orientation listeners.
+ * These are deferred until after initialization to prevent layout jumps.
+ */
+let mainResizeTimeout;
+function activateMainResizeListeners() {
+    console.log('🚀 Activating main resize listeners');
+
+    window.addEventListener('resize', () => {
+        if (mainResizeTimeout) clearTimeout(mainResizeTimeout);
+        mainResizeTimeout = setTimeout(resizeHandler, 250);
+    });
+
+    window.addEventListener('orientationchange', () => {
+        if (mainResizeTimeout) clearTimeout(mainResizeTimeout);
+        mainResizeTimeout = setTimeout(resizeHandler, 500);
+    });
+
+    // Initial check for current resolution
+    resizeHandler();
+}
+
 function resizeHandler() {
     // Update batch size and trigger distances for new viewport
     imagesPerPage = calculateDynamicBatchSize();
-    
-    // Recalculate infinite scrolling layout if needed
-    if (isGalleryWindowHidden()) {
-        updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
-    }
     updateMenuBarHeight();
-    
-    // Recalculate previewRatio if manual modal is open
-    if (manualModal && !manualModal.classList.contains('hidden')) {            
+
+    if (!isGalleryWindowHidden()) {
+        // Recalculate infinite scrolling layout if needed
+        updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
+
         // Update preview container sizing if there's a loaded image
         sizeManualPreviewContainer();
     }
@@ -15130,10 +15877,10 @@ async function handleManualImageUploadInternal(file) {
         // Crop and update preview
         await cropImageToResolution();
         updateImageBiasOrientation();
-        
+
         if (imageBiasHidden != null) imageBiasHidden.value = biasToUse.toString();
         await renderImageBiasDropdown(biasToUse.toString());
-    
+
         // Show transformation section content
         if (transformationRow) {
             transformationRow.classList.add('display-image');
@@ -15171,7 +15918,7 @@ function handleDeleteBaseImage() {
 
     // Hide image bias dropdown
     hideImageBiasDropdown();
-    
+
     // Update image bias orientation after clearing image data
     updateImageBiasOrientation();
 
@@ -15187,7 +15934,7 @@ function handleDeleteBaseImage() {
 
     // Update mask preview
     updateInpaintButtonState();
-    
+
     updateMaskPreview();
 }
 
@@ -15202,7 +15949,7 @@ function updateUploadDeleteButtonVisibility() {
             deleteImageBaseBtn.classList.add('hidden');
         }
     }
-    
+
     if (previewBaseImageBtn) {
         if (window.uploadedImageData && !window.uploadedImageData.isPlaceholder) {
             // Image is uploaded (not a placeholder), show preview button
@@ -15252,31 +15999,31 @@ async function handleBulkUnpin(event = null) {
         }
 
         let responseData = null;
-        
+
         // Unpin all files at once using WebSocket
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.removePinnedBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { removedCount, failed } = responseData;
             let toastMessage = `Unpinned ${removedCount} image(s)`;
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
         } else {
             showGlassToast('success', null, `Unpinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
         }
-        
+
         // Update pin buttons for the affected images
         for (const filename of validFilenames) {
-            await updateSpecificPinButton(filename);
+            updateSpecificPinButton(filename);
         }
 
     } catch (error) {
@@ -15331,31 +16078,35 @@ async function handleBulkPin(event = null) {
         }
 
         let responseData = null;
-        
+
         // Pin all files at once using WebSocket
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.addPinnedBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { addedCount, failed } = responseData;
             let toastMessage = `Pinned ${addedCount} image(s)`;
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
         } else {
             showGlassToast('success', null, `Pinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
         }
-        
-        // Update pin buttons for the affected images (images stay in gallery)
+
+        // Update local gallery data and pin buttons for the affected images
         for (const filename of validFilenames) {
-            await updateSpecificPinButton(filename);
+            const imageIndex = findTrueImageIndexInGallery(filename);
+            if (imageIndex !== -1) {
+                allImages[imageIndex].isPinned = true; // Pinned
+            }
+            updateSpecificPinButton(filename);
         }
 
     } catch (error) {
@@ -15423,29 +16174,29 @@ async function handleBulkChangePresetConfirm() {
         }
 
         let responseData = null;
-        
+
         // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.updateImagePresetBulk(validFilenames, newPresetName || null);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { updatedCount, failed, message } = responseData;
             let toastMessage = message || `Updated ${updatedCount} image(s)`;
-            
+
             if (newPresetName) {
                 toastMessage += ` with preset "${newPresetName}"`;
             } else {
                 toastMessage += ' (preset cleared)';
             }
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-edit"></i>');
         } else {
             const action = newPresetName ? `with preset "${newPresetName}"` : '(preset cleared)';
@@ -15509,7 +16260,7 @@ async function executeRandomPrompt() {
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
         }
-        
+
         const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
 
         savedRandomPromptState = {
@@ -15564,7 +16315,7 @@ function transferRandomPrompt() {
     lastPromptState = null;
 
     // Show success message
-            showGlassToast('success', null, 'Transferred to editor', false, 5000, '<i class="fas fa-edit"></i>');
+    showGlassToast('success', null, 'Transferred to editor', false, 5000, '<i class="fas fa-edit"></i>');
 }
 
 /**
@@ -15804,42 +16555,42 @@ function addCharacterPrompt() {
     const promptField = document.getElementById(`${characterId}_prompt`);
     const ucField = document.getElementById(`${characterId}_uc`);
 
-            if (promptField) {
-            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
-            addSafeEventListener(promptField, 'blur', () => {
-                applyFormattedText(promptField, true);
-                updateEmphasisHighlighting(promptField);
-                autoResizeTextarea(promptField);
-                stopEmphasisHighlighting();
-            }, 'blur');
-            
-            // Add auto-resize functionality
-            const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
-            addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
-            
-            // Initialize emphasis highlighting overlay
-            initializeEmphasisOverlay(promptField);
-        }
+    if (promptField) {
+        addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
+        addSafeEventListener(promptField, 'blur', () => {
+            applyFormattedText(promptField, true);
+            updateEmphasisHighlighting(promptField);
+            autoResizeTextarea(promptField);
+            stopEmphasisHighlighting();
+        }, 'blur');
 
-            if (ucField) {
-            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
-            addSafeEventListener(ucField, 'blur', () => {
-                applyFormattedText(ucField, true);
-                updateEmphasisHighlighting(ucField);
-                autoResizeTextarea(ucField);
-                stopEmphasisHighlighting();
-            }, 'blur');
-            
-            // Add auto-resize functionality
-            const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
-            addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
-            
-            initializeEmphasisOverlay(ucField);
-        }
+        // Add auto-resize functionality
+        const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
+        addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
+
+        // Initialize emphasis highlighting overlay
+        initializeEmphasisOverlay(promptField);
+    }
+
+    if (ucField) {
+        addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
+        addSafeEventListener(ucField, 'blur', () => {
+            applyFormattedText(ucField, true);
+            updateEmphasisHighlighting(ucField);
+            autoResizeTextarea(ucField);
+            stopEmphasisHighlighting();
+        }, 'blur');
+
+        // Add auto-resize functionality
+        const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
+        addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
+
+        initializeEmphasisOverlay(ucField);
+    }
 
     // Add preview textarea click handler
     const previewTextarea = document.getElementById(`${characterId}_preview`);
@@ -15852,7 +16603,7 @@ function addCharacterPrompt() {
     // Add character name input event listeners
     const nameInput = characterItem.querySelector('.character-name-input');
     if (nameInput) {
-        nameInput.addEventListener('blur', function() {
+        nameInput.addEventListener('blur', function () {
             const newName = this.value.trim();
             if (newName) {
                 characterItem.dataset.charaName = newName;
@@ -15864,7 +16615,7 @@ function addCharacterPrompt() {
             }
         });
 
-        nameInput.addEventListener('keydown', function(e) {
+        nameInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 this.blur();
             }
@@ -15896,10 +16647,10 @@ function addCharacterPrompt() {
 
     // Initialize dropdowns for the newly created character
     promptTextareaToolbar.initializeCharacterDropdowns(characterId);
-    
+
     // Update text overlay target dropdowns
     updateAllTextOverlayTargetDropdowns();
-    
+
     // Initialize drag and drop functionality
     initializeCharacterPromptDragAndDrop();
 }
@@ -15910,20 +16661,20 @@ function deleteCharacterPrompt(characterId) {
         // Clean up event listeners before removing the element
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
-        
+
         if (promptField) {
             cleanupSafeEventListeners(promptField);
         }
         if (ucField) {
             cleanupSafeEventListeners(ucField);
         }
-        
+
         characterItem.remove();
         updateAutoPositionToggle();
-        
+
         // Update text overlay target dropdowns
         updateAllTextOverlayTargetDropdowns();
-        
+
         // Reinitialize drag and drop functionality
         initializeCharacterPromptDragAndDrop();
     }
@@ -15964,8 +16715,9 @@ function moveCharacterPrompt(characterId, direction) {
 }
 
 // Initialize drag and drop functionality for character prompt reordering
+// Initialize drag and drop functionality for character prompt reordering
 function initializeCharacterPromptDragAndDrop() {
-    const list = characterPromptsContainer;
+    const list = document.getElementById('characterPromptsContainer');
     if (!list) {
         return;
     }
@@ -15974,20 +16726,34 @@ function initializeCharacterPromptDragAndDrop() {
     let draggedIndex = null;
 
     // Add event listeners to drag handles
-    const dragHandles = list.querySelectorAll('.workspace-drag-handle');
-    
-    dragHandles.forEach((handle, index) => {
+    // Only attach to handles that haven't been initialized yet
+    const dragHandles = list.querySelectorAll('.workspace-drag-handle:not([data-drag-initialized="true"])');
+
+    dragHandles.forEach((handle) => {
         handle.addEventListener('mousedown', startDrag);
         handle.addEventListener('touchstart', startDrag, { passive: false });
         handle.addEventListener('touchmove', onDrag, { passive: false });
         handle.addEventListener('touchend', endDrag);
+
+        // Mark as initialized
+        handle.dataset.dragInitialized = 'true';
     });
 
     function startDrag(e) {
-        e.preventDefault();
+        // Prevent default on touchstart to avoid scrolling immediately
+        if (e.type === 'touchstart') {
+            e.preventDefault();
+        } else {
+            e.preventDefault(); // Mouse prevent default
+        }
+
+        if (e.type === 'mousedown' && e.button !== 0) return;
+
         e.stopPropagation();
 
-        const item = e.target.closest('.character-prompt-item');
+        const handle = e.target.closest('.workspace-drag-handle');
+        const item = handle ? handle.closest('.character-prompt-item') : e.target.closest('.character-prompt-item');
+
         if (!item) {
             return;
         }
@@ -15999,11 +16765,17 @@ function initializeCharacterPromptDragAndDrop() {
         draggedItem.classList.add('dragging');
 
         // Add event listeners for drag movement - only mouse events on document
-        document.addEventListener('mousemove', onDrag);
-        document.addEventListener('mouseup', endDrag);
+        if (e.type === 'mousedown') {
+            document.addEventListener('mousemove', onDrag);
+            document.addEventListener('mouseup', endDrag);
+        }
 
-        // Prevent text selection during drag
         document.body.style.userSelect = 'none';
+
+        // Haptic feedback
+        if (window.navigator && window.navigator.vibrate && e.type === 'touchstart') {
+            window.navigator.vibrate(50);
+        }
     }
 
     function onDrag(e) {
@@ -16034,7 +16806,7 @@ function initializeCharacterPromptDragAndDrop() {
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             if (item === draggedItem) continue;
-            
+
             const itemRect = item.getBoundingClientRect();
             const itemTop = itemRect.top - rect.top;
             const itemBottom = itemTop + itemRect.height;
@@ -16052,7 +16824,7 @@ function initializeCharacterPromptDragAndDrop() {
             const lastItem = items[items.length - 1];
             const lastItemRect = lastItem.getBoundingClientRect();
             const lastItemBottom = lastItemRect.top - rect.top + lastItemRect.height;
-            
+
             if (mouseY > lastItemBottom) {
                 targetIndex = items.length - 1;
                 insertAfter = true;
@@ -16063,17 +16835,17 @@ function initializeCharacterPromptDragAndDrop() {
         if (targetIndex !== null) {
             const currentIndex = Array.from(list.children).indexOf(draggedItem);
             let finalTargetIndex = targetIndex;
-            
+
             // Adjust target index if we're moving down and should insert after
             if (insertAfter) {
                 finalTargetIndex = targetIndex + 1;
             }
-            
+
             // Only move if the position actually changes
             if (finalTargetIndex !== currentIndex) {
                 // Remove drag-over class from all items
                 items.forEach(item => item.classList.remove('drag-over'));
-                
+
                 // Actually move the item in the DOM
                 const targetItem = items[targetIndex];
                 if (insertAfter && targetItem) {
@@ -16090,12 +16862,17 @@ function initializeCharacterPromptDragAndDrop() {
                     // Append to end if no target
                     list.appendChild(draggedItem);
                 }
-                
+
                 // Add drag-over class to new position
                 draggedItem.classList.add('drag-over');
-                
+
                 // Update draggedIndex
                 draggedIndex = Array.from(list.children).indexOf(draggedItem);
+
+                // Haptic feedback
+                if (window.navigator && window.navigator.vibrate && e.type === 'touchmove') {
+                    window.navigator.vibrate(10);
+                }
             }
         }
     }
@@ -16105,7 +16882,9 @@ function initializeCharacterPromptDragAndDrop() {
             return;
         }
 
-        e.preventDefault();
+        if (e.type === 'touchend' || e.type === 'touchcancel') {
+            e.preventDefault();
+        }
 
         // Remove document event listeners
         document.removeEventListener('mousemove', onDrag);
@@ -16220,7 +16999,7 @@ function showPositionDialog(characterId) {
 
     // Add event listeners to position cells
     document.querySelectorAll('.position-cell').forEach(cell => {
-        cell.addEventListener('click', function(e) {
+        cell.addEventListener('click', function (e) {
             e.preventDefault();
             document.querySelectorAll('.position-cell').forEach(c => c.classList.remove('selected'));
             this.classList.add('selected');
@@ -16270,7 +17049,7 @@ function getCharacterPrompts() {
 
         let center = null;
 
-        if (!isAutoPosition)  {
+        if (!isAutoPosition) {
             // Manual position: use stored position or default
             const storedX = item.dataset.positionX;
             const storedY = item.dataset.positionY;
@@ -16299,7 +17078,7 @@ function clearCharacterPrompts() {
         const characterId = item.id;
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
-        
+
         if (promptField) {
             cleanupSafeEventListeners(promptField);
         }
@@ -16344,7 +17123,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         // Determine position button text and visibility
         let positionBtnText = '<i class="fas fa-crosshairs"></i>';
         let positionBtnHidden = true; // Default to hidden
-        
+
         if (character.center && character.center.x !== null && character.center.y !== null && useCoords) {
             // Character has valid coordinates and auto mode is disabled
             const x = character.center.x;
@@ -16521,11 +17300,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
             }, 'blur');
-            
+
             // Add auto-resize functionality
             const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
             addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
-            
+
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(promptField);
             // Apply initial resizing and highlighting after content is set
@@ -16543,11 +17322,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 autoResizeTextarea(ucField);
                 stopEmphasisHighlighting();
             }, 'blur');
-            
+
             // Add auto-resize functionality
             const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
             addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
-            
+
             // Initialize emphasis highlighting overlay
             initializeEmphasisOverlay(ucField);
             // Apply initial resizing and highlighting after content is set
@@ -16566,7 +17345,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         // Add character name input event listeners
         const nameInput = characterItem.querySelector('.character-name-input');
         if (nameInput) {
-            nameInput.addEventListener('blur', function() {
+            nameInput.addEventListener('blur', function () {
                 const newName = this.value.trim();
                 if (newName) {
                     characterItem.dataset.charaName = newName;
@@ -16578,7 +17357,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 }
             });
 
-            nameInput.addEventListener('keydown', function(e) {
+            nameInput.addEventListener('keydown', function (e) {
                 if (e.key === 'Enter') {
                     this.blur();
                 }
@@ -16624,16 +17403,16 @@ function updateCharacterPromptItemNames(characterNames) {
             const characterItem = characterItems[index];
             const nameInput = characterItem.querySelector('.character-name-input');
             const placeholderElement = characterItem.querySelector('.character-name-input-placeholder');
-            
+
             if (nameInput) {
                 nameInput.value = name;
                 characterItem.dataset.charaName = name;
             }
-            
+
             if (placeholderElement) {
                 placeholderElement.textContent = name;
             }
-            
+
             console.log(`✨ Updated character prompt item ${index + 1} name: "${name}"`);
         }
     });
@@ -16645,14 +17424,14 @@ function updateCharacterPromptItemNames(characterNames) {
 
 function addTextOverlay() {
     const textOverlayId = `text_overlay_${textOverlayCounter++}`;
-    
+
     const textOverlayItem = document.createElement('div');
     textOverlayItem.className = 'text-overlay-item';
     textOverlayItem.id = textOverlayId;
     textOverlayItem.dataset.stages = '00'; // Initialize with base stage
     textOverlayItem.dataset.targetIndex = '0';
     textOverlayItem.dataset.textType = 'speech';
-    
+
     textOverlayItem.innerHTML = `
         <div class="prompt-textarea-container text-overlay-prompt">
             <div class="prompt-textarea-background"></div>
@@ -16702,21 +17481,21 @@ function addTextOverlay() {
             </div>
         </div>
     `;
-    
+
     textOverlaysContainer.appendChild(textOverlayItem);
     textOverlaysContainer.classList.remove('hidden');
-    
+
     // Setup dropdowns
     setupTextOverlayDropdowns(textOverlayId);
-    
+
     // Setup click handlers for toolbar displays
     setupTextOverlayToolbarHandlers(textOverlayId);
-    
+
     // Update all text overlay target dropdowns to reflect current characters
     updateAllTextOverlayTargetDropdowns();
     // Ensure stage dropdown visibility reflects current pipeline
     updateTextOverlayStageVisibility();
-    
+
     // Update placeholder based on current creative mode state
     updateTextOverlayPlaceholder(textOverlayId);
 }
@@ -16726,7 +17505,7 @@ function setupTextOverlayDropdowns(textOverlayId) {
     const targetDropdown = document.getElementById(`${textOverlayId}_target_dropdown`);
     const targetBtn = document.getElementById(`${textOverlayId}_target_btn`);
     const targetMenu = document.getElementById(`${textOverlayId}_target_menu`);
-    
+
     if (targetDropdown && targetBtn && targetMenu) {
         setupDropdown(
             targetDropdown,
@@ -16740,12 +17519,12 @@ function setupTextOverlayDropdowns(textOverlayId) {
             { preventFocusTransfer: true }
         );
     }
-    
+
     // Stage dropdown
     const stageDropdown = document.getElementById(`${textOverlayId}_stage_dropdown`);
     const stageBtn = document.getElementById(`${textOverlayId}_stage_btn`);
     const stageMenu = document.getElementById(`${textOverlayId}_stage_menu`);
-    
+
     if (stageDropdown && stageBtn && stageMenu) {
         setupDropdown(
             stageDropdown,
@@ -16760,12 +17539,12 @@ function setupTextOverlayDropdowns(textOverlayId) {
             { preventFocusTransfer: true, multiSelect: true }
         );
     }
-    
+
     // Text type dropdown
     const typeDropdown = document.getElementById(`${textOverlayId}_type_dropdown`);
     const typeBtn = document.getElementById(`${textOverlayId}_type_btn`);
     const typeMenu = document.getElementById(`${textOverlayId}_type_menu`);
-    
+
     if (typeDropdown && typeBtn && typeMenu) {
         setupDropdown(
             typeDropdown,
@@ -16785,10 +17564,10 @@ function renderTextOverlayTargetDropdown(textOverlayId) {
     const menu = document.getElementById(`${textOverlayId}_target_menu`);
     const item = document.getElementById(textOverlayId);
     if (!menu || !item) return;
-    
+
     const selectedValue = item.dataset.targetIndex || '0';
     menu.innerHTML = '';
-    
+
     // Base option
     const baseOption = document.createElement('div');
     baseOption.className = 'custom-dropdown-option' + (selectedValue === '0' ? ' selected' : '');
@@ -16799,13 +17578,13 @@ function renderTextOverlayTargetDropdown(textOverlayId) {
         closeDropdown(menu, document.getElementById(`${textOverlayId}_target_btn`));
     });
     menu.appendChild(baseOption);
-    
+
     // Character options
     const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
     characterItems.forEach((charItem, index) => {
         const charName = charItem.dataset.charaName || `Character ${index + 1}`;
         const targetIndex = (index + 1).toString();
-        
+
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option' + (selectedValue === targetIndex ? ' selected' : '');
         option.dataset.value = targetIndex;
@@ -16822,10 +17601,10 @@ function renderTextOverlayStageDropdown(textOverlayId) {
     const menu = document.getElementById(`${textOverlayId}_stage_menu`);
     const item = document.getElementById(textOverlayId);
     if (!menu || !item) return;
-    
+
     const selectedStages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
     menu.innerHTML = '';
-    
+
     // All Stages option
     const allStagesOption = document.createElement('div');
     allStagesOption.className = 'custom-dropdown-option' + (selectedStages.includes('all') ? ' active' : '');
@@ -16838,7 +17617,7 @@ function renderTextOverlayStageDropdown(textOverlayId) {
         renderTextOverlayStageDropdown(textOverlayId);
     });
     menu.appendChild(allStagesOption);
-    
+
     // Base option (00)
     const baseOption = document.createElement('div');
     baseOption.className = 'custom-dropdown-option' + (selectedStages.includes('00') ? ' active' : '');
@@ -16851,7 +17630,7 @@ function renderTextOverlayStageDropdown(textOverlayId) {
         renderTextOverlayStageDropdown(textOverlayId);
     });
     menu.appendChild(baseOption);
-    
+
     // Pipeline stage options - include all stages with hex IDs
     const allStageElements = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
     if (allStageElements) {
@@ -16859,7 +17638,7 @@ function renderTextOverlayStageDropdown(textOverlayId) {
             const hexId = calculateStageHexId(stageElement);
             const stageType = stageElement.dataset.stageType;
             const stageIcon = stageType === STAGE_TYPES.EXPAND_CANVAS ? 'mdi mdi-1-25 mdi-relative-scale' : 'fas fa-diagram-venn';
-            
+
             const option = document.createElement('div');
             option.className = 'custom-dropdown-option' + (selectedStages.includes(hexId) ? ' active' : '');
             option.dataset.value = hexId;
@@ -16879,17 +17658,17 @@ function renderTextOverlayTypeDropdown(textOverlayId) {
     const menu = document.getElementById(`${textOverlayId}_type_menu`);
     const item = document.getElementById(textOverlayId);
     if (!menu || !item) return;
-    
+
     const selectedValue = item.dataset.textType || 'speech';
     menu.innerHTML = '';
-    
+
     // Get text tags from config (fallback if not loaded)
     const textTags = {
         'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
         'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
         'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
     };
-    
+
     Object.keys(textTags).forEach(key => {
         const type = textTags[key];
         const option = document.createElement('div');
@@ -16930,12 +17709,12 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
         textarea.addEventListener('input', () => {
             autoResizeTextarea(textarea, 10);
         });
-        
+
         // Store original value with actual newlines before any conversion
         if (!textarea.dataset.originalValue) {
             textarea.dataset.originalValue = textarea.value;
         }
-        
+
         // Convert newlines to display character when losing focus
         textarea.addEventListener('blur', () => {
             const currentValue = textarea.value;
@@ -16947,7 +17726,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
                 textarea.value = displayValue;
             }
         });
-        
+
         // Convert display character back to newlines when gaining focus
         textarea.addEventListener('focus', () => {
             const currentValue = textarea.value;
@@ -16969,7 +17748,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
             // Update stored original value
             textarea.dataset.originalValue = originalValue;
         });
-        
+
         // Initialize: convert newlines to display character if not focused
         if (document.activeElement !== textarea) {
             const currentValue = textarea.value;
@@ -16985,7 +17764,7 @@ function setupTextOverlayToolbarHandlers(textOverlayId) {
 function selectTextOverlayTarget(textOverlayId, targetIndex, targetName) {
     const item = document.getElementById(textOverlayId);
     const targetDisplay = document.getElementById(`${textOverlayId}_target_display`);
-    
+
     if (item && targetDisplay) {
         item.dataset.targetIndex = targetIndex;
         targetDisplay.textContent = targetName;
@@ -16994,11 +17773,11 @@ function selectTextOverlayTarget(textOverlayId, targetIndex, targetName) {
 
 function toggleTextOverlayStage(textOverlayId, stageId) {
     const item = document.getElementById(textOverlayId);
-    
+
     if (item) {
         // Get current stages as array
         const currentStages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
-        
+
         let newStages;
         if (stageId === 'all') {
             // All Stages - if selecting all, clear everything else and set to *
@@ -17006,7 +17785,7 @@ function toggleTextOverlayStage(textOverlayId, stageId) {
         } else {
             // Remove "All Stages" if it exists and we're selecting specific stages
             newStages = currentStages.filter(s => s !== 'all');
-            
+
             // Toggle the selected stage
             if (newStages.includes(stageId)) {
                 newStages = newStages.filter(s => s !== stageId);
@@ -17018,10 +17797,10 @@ function toggleTextOverlayStage(textOverlayId, stageId) {
                 newStages.push(stageId);
             }
         }
-        
+
         // Store as comma-separated string
         item.dataset.stages = newStages.join(',');
-        
+
         // Update display text
         updateTextOverlayStageDisplay(textOverlayId);
     }
@@ -17030,10 +17809,10 @@ function toggleTextOverlayStage(textOverlayId, stageId) {
 function updateTextOverlayStageDisplay(textOverlayId) {
     const item = document.getElementById(textOverlayId);
     const stageDisplay = document.getElementById(`${textOverlayId}_stage_display`);
-    
+
     if (item && stageDisplay) {
         const stages = item.dataset.stages ? item.dataset.stages.split(',').map(s => s.trim()) : ['00'];
-        
+
         let displayText;
         if (stages.length === 1 && stages[0] === 'all') {
             displayText = 'All Stages';
@@ -17043,7 +17822,7 @@ function updateTextOverlayStageDisplay(textOverlayId) {
             // Group sequential stages into ranges
             displayText = groupSequentialStages(stages);
         }
-        
+
         stageDisplay.textContent = displayText;
     }
 }
@@ -17056,31 +17835,31 @@ function updateTextOverlayStageDisplay(textOverlayId) {
 function groupSequentialStages(stages) {
     if (stages.length === 0) return '';
     if (stages.length === 1) return stages[0];
-    
+
     // Sort stages by their hex value
     const sorted = stages.slice().sort((a, b) => {
         // Handle special cases
         if (a === 'all') return -1;
         if (b === 'all') return 1;
-        
+
         // Convert hex to number for comparison
         const aVal = parseInt(a, 16);
         const bVal = parseInt(b, 16);
         return aVal - bVal;
     });
-    
+
     const ranges = [];
     let rangeStart = sorted[0];
     let rangeEnd = sorted[0];
-    
+
     for (let i = 1; i < sorted.length; i++) {
         const current = sorted[i];
         const prev = sorted[i - 1];
-        
+
         // Check if current is sequential to previous
         const currentVal = parseInt(current, 16);
         const prevVal = parseInt(prev, 16);
-        
+
         if (currentVal === prevVal + 1) {
             // Continue the range
             rangeEnd = current;
@@ -17095,14 +17874,14 @@ function groupSequentialStages(stages) {
             rangeEnd = current;
         }
     }
-    
+
     // Add the last range
     if (rangeStart === rangeEnd) {
         ranges.push(rangeStart);
     } else {
         ranges.push(`${rangeStart}-${rangeEnd}`);
     }
-    
+
     return ranges.join(', ');
 }
 
@@ -17116,8 +17895,8 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
 
         // Determine icon class based on type
         const typeIconClass = typeKey === 'thought' ? 'fas fa-thought-bubble' :
-                              typeKey === 'caption' ? 'fas fa-closed-captioning' :
-                              'fas fa-comment-lines';
+            typeKey === 'caption' ? 'fas fa-closed-captioning' :
+                'fas fa-comment-lines';
 
         // Update toolbar button icon
         const icon = typeBtn.querySelector('i');
@@ -17164,12 +17943,12 @@ function updateAllTextOverlayPlaceholders() {
 function toggleTextOverlayEnabled(textOverlayId) {
     const enabledBtn = document.getElementById(`${textOverlayId}_enabled`);
     const item = document.getElementById(textOverlayId);
-    
+
     if (enabledBtn && item) {
         const currentState = enabledBtn.getAttribute('data-state');
         const newState = currentState === 'on' ? 'off' : 'on';
         enabledBtn.setAttribute('data-state', newState);
-        
+
         if (newState === 'off') {
             item.classList.add('text-overlay-disabled');
         } else {
@@ -17182,7 +17961,7 @@ function deleteTextOverlay(textOverlayId) {
     const item = document.getElementById(textOverlayId);
     if (item) {
         item.remove();
-        
+
         // Hide container if no more text overlays
         const remainingItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
         if (remainingItems.length === 0) {
@@ -17264,12 +18043,12 @@ function updateTextOverlayStageVisibility() {
 function getTextOverlayData() {
     const textOverlayItems = textOverlaysContainer.querySelectorAll('.text-overlay-item');
     const textOverlays = [];
-    
+
     textOverlayItems.forEach(item => {
         const textOverlayId = item.id;
         const textArea = document.getElementById(`${textOverlayId}_text`);
         if (!textArea) return;
-        
+
         // Get the original text with actual newlines
         // Use stored original value if available, otherwise convert display version back
         let text = '';
@@ -17284,19 +18063,19 @@ function getTextOverlayData() {
                 text = currentValue.trim();
             }
         }
-        
+
         const enabled = document.getElementById(`${textOverlayId}_enabled`).getAttribute('data-state') === 'on';
-        
+
         // If text is empty, use the placeholder
         if (!text) {
             text = textArea.placeholder;
         }
-        
+
         // Skip empty overlays unless both the overlay AND Rentan are enabled
         if (!text) {
             const dynamicGenerationToggleBtn = document.getElementById('dynamicGenerationToggleBtn');
-            const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'on';
-            
+            const isDynamicGenerationEnabled = dynamicGenerationToggleBtn?.getAttribute('data-state') === 'open';
+
             // Only include empty text if both overlay is enabled AND Rentan is enabled
             if (!isDynamicGenerationEnabled) {
                 return; // Skip this empty overlay
@@ -17307,7 +18086,7 @@ function getTextOverlayData() {
         // Keep '00' (base stage) in the array - server explicitly handles it
         const stages = stagesRaw.includes('all') ? ['all'] : stagesRaw;
         const textType = item.dataset.textType || 'speech';
-        
+
         textOverlays.push({
             text: text,
             target: targetIndex,
@@ -17316,20 +18095,20 @@ function getTextOverlayData() {
             disabled: !enabled
         });
     });
-    
+
     return textOverlays;
 }
 
 function loadTextOverlays(textOverlays) {
     clearTextOverlays();
-    
+
     if (!textOverlays || !Array.isArray(textOverlays) || textOverlays.length === 0) {
         return;
     }
-    
+
     textOverlays.forEach(overlayData => {
         const textOverlayId = `text_overlay_${textOverlayCounter++}`;
-        
+
         const textOverlayItem = document.createElement('div');
         textOverlayItem.className = 'text-overlay-item';
         if (overlayData.disabled) {
@@ -17342,16 +18121,16 @@ function loadTextOverlays(textOverlays) {
         const stagesArray = overlayData.stages || (stageValue === 0 ? [] : [stageValue.toString()]);
         textOverlayItem.dataset.stages = stagesArray.length === 0 ? '00' : stagesArray.join(',');
         textOverlayItem.dataset.textType = overlayData.type || 'speech';
-        
+
         const textTags = {
             'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
             'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
             'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
         };
-        
+
         const typeName = textTags[overlayData.type]?.name || 'Speech Bubble';
         const targetIndex = overlayData.target || 0;
-        
+
         // Get target name
         let targetName = 'Base';
         if (targetIndex > 0) {
@@ -17361,11 +18140,11 @@ function loadTextOverlays(textOverlays) {
                 targetName = charItem.dataset.charaName || `Character ${targetIndex}`;
             }
         }
-        
+
         // Determine icon based on text type
         const typeIcon = overlayData.type === 'thought' ? 'fas fa-thought-bubble' :
-                        overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
-                        'fas fa-comment-lines';
+            overlayData.type === 'caption' ? 'fas fa-closed-captioning' :
+                'fas fa-comment-lines';
 
         // Determine stage display text
         const stages = stagesArray.length === 0 ? ['00'] : stagesArray;
@@ -17427,17 +18206,17 @@ function loadTextOverlays(textOverlays) {
                 </div>
             </div>
         `;
-        
+
         textOverlaysContainer.appendChild(textOverlayItem);
         setupTextOverlayDropdowns(textOverlayId);
         setupTextOverlayToolbarHandlers(textOverlayId);
         updateTextOverlayStageDisplay(textOverlayId);
     });
-    
+
     if (textOverlays.length > 0) {
         textOverlaysContainer.classList.remove('hidden');
     }
-    
+
     // Update visibility of target and stage dropdowns
     updateAllTextOverlayTargetDropdowns();
     updateTextOverlayStageVisibility();
@@ -17446,15 +18225,15 @@ function loadTextOverlays(textOverlays) {
 
 function extractTextFromPrompt(prompt) {
     if (!prompt) return null;
-    
+
     // Look for ", Text: " pattern at the end of the prompt
     const textPattern = /,\s*(?:speech bubble|thought bubble|caption|subtitle)?,?\s*Text:\s*(.+?)$/i;
     const match = prompt.match(textPattern);
-    
+
     if (match && match[1]) {
         return match[1].trim();
     }
-    
+
     return null;
 }
 
@@ -17575,18 +18354,18 @@ function renderAddItemDropdown() {
         { value: STAGE_TYPES.VARIATION, name: 'Enhance', icon: 'fas fa-diagram-venn', presetUseBaseImage: true },
         { value: STAGE_TYPES.VARIATION, name: 'Variation', icon: 'ri-image-ai-fill', presetUseBaseImage: false },
     ];
-    
+
     stageTypes.forEach(type => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option';
         option.dataset.value = type.value;
         option.innerHTML = `<i class="${type.icon}"></i> ${type.name}`;
-        
+
         option.addEventListener('click', () => {
             addPipelineStage(type.value, { useBaseImage: !!type.presetUseBaseImage });
             closeDropdown(addItemDropdownMenu, addItemDropdownBtn);
         });
-        
+
         menu.appendChild(option);
     });
 }
@@ -17605,24 +18384,24 @@ function renderAddItemDropdown() {
  */
 function calculateStageHexId(stageElement) {
     if (!pipelineStagesContainer) return '00';
-    
+
     const allStages = Array.from(pipelineStagesContainer.querySelectorAll('.pipeline-stage-item'));
     const stageIndex = allStages.indexOf(stageElement);
-    
+
     if (stageIndex === -1) return '00';
-    
+
     let mainStageCounter = 0; // Counter for main pipeline (0 chain)
     let currentChain = '0'; // Current chain identifier
     let currentChainCounter = 0; // Counter within current chain
     const branchChains = ['A', 'B', 'C', 'D', 'E', 'F'];
     let nextBranchIndex = 0; // Index for next branch chain letter
     let inBranch = false; // Track if we're currently in a branch
-    
+
     for (let i = 0; i <= stageIndex; i++) {
         const stage = allStages[i];
         const branchToggle = document.getElementById(`${stage.id}_branchToggle`);
         const isBranch = branchToggle?.dataset.state === 'on';
-        
+
         if (i === stageIndex) {
             // This is the stage we're calculating for
             if (isBranch) {
@@ -17651,7 +18430,7 @@ function calculateStageHexId(stageElement) {
                     currentChainCounter = mainStageCounter;
                 }
             }
-            
+
             // Format the hex ID
             const stageNum = currentChainCounter.toString(16).toUpperCase();
             return currentChain + stageNum;
@@ -17682,7 +18461,7 @@ function calculateStageHexId(stageElement) {
             }
         }
     }
-    
+
     return '00'; // Fallback
 }
 
@@ -17691,7 +18470,7 @@ function calculateStageHexId(stageElement) {
  */
 function updateAllStageHexIds() {
     if (!pipelineStagesContainer) return;
-    
+
     const allStages = pipelineStagesContainer.querySelectorAll('.pipeline-stage-item');
     allStages.forEach(stage => {
         const hexId = calculateStageHexId(stage);
@@ -17710,17 +18489,17 @@ function updateAllStageHexIds() {
  */
 function calculateStageHexIdsFromData(stagesData) {
     if (!stagesData || !Array.isArray(stagesData)) return [];
-    
+
     let mainStageCounter = 0;
     const branchChains = ['A', 'B', 'C', 'D', 'E', 'F'];
     let nextBranchIndex = 0;
     let inBranch = false;
     let currentChain = '0';
     let currentChainCounter = 0;
-    
+
     return stagesData.map((stageData, index) => {
         const isBranch = stageData.branch === true;
-        
+
         if (isBranch) {
             if (!inBranch) {
                 // Entering a new branch
@@ -17745,7 +18524,7 @@ function calculateStageHexIdsFromData(stagesData) {
                 currentChainCounter = mainStageCounter;
             }
         }
-        
+
         const stageNum = currentChainCounter.toString(16).toUpperCase();
         return currentChain + stageNum;
     });
@@ -17754,7 +18533,7 @@ function calculateStageHexIdsFromData(stagesData) {
 // Add pipeline stage
 function addPipelineStage(type, options = {}) {
     if (!type || !pipelineStagesContainer) return;
-    
+
     const stageId = `stage_${pipelineStageCounter++}`;
     const stageItem = document.createElement('div');
     stageItem.className = 'pipeline-stage-item';
@@ -17763,17 +18542,17 @@ function addPipelineStage(type, options = {}) {
 
     const stageHolder = document.createElement('div');
     stageHolder.className = 'pipeline-stage-holder';
-    
+
     // Create stage header
     const stageHeader = document.createElement('div');
     stageHeader.className = 'stage-header';
-    
+
     // Drag handle
     const dragHandle = document.createElement('div');
     dragHandle.className = 'workspace-drag-handle';
     dragHandle.title = 'Drag to reorder';
     dragHandle.innerHTML = '<i class="fas fa-grip-dots-vertical"></i>';
-    
+
     // Stage type label
     const stageTypeLabel = document.createElement('div');
     stageTypeLabel.className = 'stage-type-label';
@@ -17794,11 +18573,11 @@ function addPipelineStage(type, options = {}) {
         }
     }
     stageTypeLabel.innerHTML = `<i class="${typeIcon}"></i> ${typeName} <span class="stage-hex-id" title="Stage ID: "></span>`;
-    
+
     // Stage controls
     const stageControls = document.createElement('div');
     stageControls.className = 'stage-controls';
-    
+
     // Delete button
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
@@ -17806,7 +18585,7 @@ function addPipelineStage(type, options = {}) {
     deleteBtn.title = 'Delete stage';
     deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
     deleteBtn.addEventListener('click', () => deletePipelineStage(stageId));
-    
+
     // Advanced toggle and reset buttons (for all stage types)
     const resetAdvancedBtn = document.createElement('button');
     resetAdvancedBtn.type = 'button';
@@ -17815,7 +18594,7 @@ function addPipelineStage(type, options = {}) {
     resetAdvancedBtn.title = 'Reset to Inherited Values';
     resetAdvancedBtn.innerHTML = '<i class="nai-dot-reset"></i>';
     stageControls.appendChild(resetAdvancedBtn);
-    
+
     const advancedToggleBtn = document.createElement('button');
     advancedToggleBtn.type = 'button';
     advancedToggleBtn.id = `${stageId}_advancedToggle`;
@@ -17828,12 +18607,12 @@ function addPipelineStage(type, options = {}) {
             const isHidden = advancedControls.classList.contains('hidden');
             advancedControls.classList.toggle('hidden');
             advancedToggleBtn.classList.toggle('active', !isHidden);
-            
+
             // Update creative directive visibility when advanced toggles
             updateStageCreativeDirectiveVisibility(stageId);
         }
     });
-    
+
     // Upscale toggle button
     const upscaleBtn = document.createElement('button');
     upscaleBtn.type = 'button';
@@ -17845,11 +18624,11 @@ function addPipelineStage(type, options = {}) {
     upscaleBtn.addEventListener('click', () => {
         const newState = upscaleBtn.dataset.state === 'on' ? 'off' : 'on';
         upscaleBtn.dataset.state = newState;
-        
+
         // Get save results button
         const saveResultsBtn = document.getElementById(`${stageId}_saveResultsToggle`);
         if (!saveResultsBtn) return;
-        
+
         if (newState === 'on') {
             // Upscale turned ON → always turn on save
             saveResultsBtn.dataset.state = 'on';
@@ -17859,13 +18638,13 @@ function addPipelineStage(type, options = {}) {
             const stageItem = document.getElementById(stageId);
             const stageIndex = allStages.indexOf(stageItem);
             const isLastStage = stageIndex === allStages.length - 1;
-            
+
             if (isLastStage) {
                 saveResultsBtn.dataset.state = 'off';
             }
         }
     });
-    
+
     // Save results toggle button
     const saveResultsBtn = document.createElement('button');
     saveResultsBtn.type = 'button';
@@ -17877,11 +18656,11 @@ function addPipelineStage(type, options = {}) {
     saveResultsBtn.addEventListener('click', () => {
         const newState = saveResultsBtn.dataset.state === 'on' ? 'off' : 'on';
         saveResultsBtn.dataset.state = newState;
-        
+
         // Update button states to properly handle upscale visibility based on resolution
         updateStageButtonStates();
     });
-    
+
     // Branch toggle button
     const branchBtn = document.createElement('button');
     branchBtn.type = 'button';
@@ -17893,7 +18672,7 @@ function addPipelineStage(type, options = {}) {
     branchBtn.addEventListener('click', () => {
         const newState = branchBtn.dataset.state === 'on' ? 'off' : 'on';
         branchBtn.dataset.state = newState;
-        
+
         // Update visual indicator - add/remove branch class
         const stageItem = document.getElementById(stageId);
         if (stageItem) {
@@ -17903,20 +18682,20 @@ function addPipelineStage(type, options = {}) {
                 stageItem.classList.remove('stage-branch');
             }
         }
-        
+
         // Update inheritance display for all subsequent stages
         const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
         const currentStageIndex = allStages.findIndex(s => s.id === stageId);
-        
+
         // Update current stage and all stages after it
         for (let i = currentStageIndex; i < allStages.length; i++) {
             updateStageInheritedDisplay(allStages[i].id);
         }
-        
+
         // Update all stage hex IDs since branching affects the IDs
         updateAllStageHexIds();
     });
-    
+
     // Stop toggle button
     const stopBtn = document.createElement('button');
     stopBtn.type = 'button';
@@ -17928,7 +18707,7 @@ function addPipelineStage(type, options = {}) {
     stopBtn.addEventListener('click', () => {
         const newState = stopBtn.dataset.state === 'on' ? 'off' : 'on';
         stopBtn.dataset.state = newState;
-        
+
         // If turning on, turn off all other stop toggles
         if (newState === 'on') {
             const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
@@ -17942,7 +18721,7 @@ function addPipelineStage(type, options = {}) {
             });
         }
     });
-    
+
     // Lock prompt toggle button
     const lockPromptBtn = document.createElement('button');
     lockPromptBtn.type = 'button';
@@ -17963,22 +18742,22 @@ function addPipelineStage(type, options = {}) {
     stageControls.appendChild(branchBtn);
     stageControls.appendChild(stopBtn);
     stageControls.appendChild(deleteBtn);
-    
+
     stageHeader.appendChild(dragHandle);
     stageHeader.appendChild(stageTypeLabel);
     stageHeader.appendChild(stageControls);
     stageHolder.appendChild(stageHeader);
-    
+
     // Create stage body
     const stageBody = document.createElement('div');
     stageBody.className = 'stage-body';
     stageBody.id = `${stageId}_body`;
     stageHolder.appendChild(stageBody);
-    
+
     // Append to container
     stageItem.appendChild(stageHolder);
     pipelineStagesContainer.appendChild(stageItem);
-    
+
     // Render stage-specific content
     if (type === STAGE_TYPES.EXPAND_CANVAS) {
         renderExpandCanvasStage(stageId);
@@ -17987,22 +18766,22 @@ function addPipelineStage(type, options = {}) {
     } else if (type === STAGE_TYPES.VARIATION) {
         renderEnhanceStage(stageId, options);
     }
-    
+
     // Update saveStage0Btn visibility
     updateSaveStage0BtnVisibility();
-    
+
     // Update pipeline stages header visibility
     updatePipelineStagesHeaderVisibility();
-    
+
     // Update button states for all stages
     updateStageButtonStates();
-    
+
     // Update text overlay stage visibility
     updateTextOverlayStageVisibility();
-    
+
     // Update all stage hex IDs
     updateAllStageHexIds();
-    
+
     // Initialize drag and drop functionality
     initializePipelineStageDragAndDrop();
 }
@@ -18036,7 +18815,7 @@ function deletePipelineStage(stageId) {
 function movePipelineStageUp(stageId) {
     const stageItem = document.getElementById(stageId);
     if (!stageItem) return;
-    
+
     const previousStage = stageItem.previousElementSibling;
     if (previousStage) {
         pipelineStagesContainer.insertBefore(stageItem, previousStage);
@@ -18051,7 +18830,7 @@ function movePipelineStageUp(stageId) {
 function movePipelineStageDown(stageId) {
     const stageItem = document.getElementById(stageId);
     if (!stageItem) return;
-    
+
     const nextStage = stageItem.nextElementSibling;
     if (nextStage) {
         pipelineStagesContainer.insertBefore(nextStage, stageItem);
@@ -18074,7 +18853,7 @@ function initializePipelineStageDragAndDrop() {
 
     // Add event listeners to drag handles
     const dragHandles = list.querySelectorAll('.workspace-drag-handle');
-    
+
     dragHandles.forEach((handle, index) => {
         handle.addEventListener('mousedown', startDrag);
         handle.addEventListener('touchstart', startDrag, { passive: false });
@@ -18133,7 +18912,7 @@ function initializePipelineStageDragAndDrop() {
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             if (item === draggedItem) continue;
-            
+
             const itemRect = item.getBoundingClientRect();
             const itemTop = itemRect.top - rect.top;
             const itemBottom = itemTop + itemRect.height;
@@ -18151,7 +18930,7 @@ function initializePipelineStageDragAndDrop() {
             const lastItem = items[items.length - 1];
             const lastItemRect = lastItem.getBoundingClientRect();
             const lastItemBottom = lastItemRect.top - rect.top + lastItemRect.height;
-            
+
             if (mouseY > lastItemBottom) {
                 targetIndex = items.length - 1;
                 insertAfter = true;
@@ -18162,17 +18941,17 @@ function initializePipelineStageDragAndDrop() {
         if (targetIndex !== null) {
             const currentIndex = Array.from(list.children).indexOf(draggedItem);
             let finalTargetIndex = targetIndex;
-            
+
             // Adjust target index if we're moving down and should insert after
             if (insertAfter) {
                 finalTargetIndex = targetIndex + 1;
             }
-            
+
             // Only move if the position actually changes
             if (finalTargetIndex !== currentIndex) {
                 // Remove drag-over class from all items
                 items.forEach(item => item.classList.remove('drag-over'));
-                
+
                 // Actually move the item in the DOM
                 const targetItem = items[targetIndex];
                 if (insertAfter && targetItem) {
@@ -18189,10 +18968,10 @@ function initializePipelineStageDragAndDrop() {
                     // Append to end if no target
                     list.appendChild(draggedItem);
                 }
-                
+
                 // Add drag-over class to new position
                 draggedItem.classList.add('drag-over');
-                
+
                 // Update draggedIndex
                 draggedIndex = Array.from(list.children).indexOf(draggedItem);
             }
@@ -18220,7 +18999,7 @@ function initializePipelineStageDragAndDrop() {
 
         // Update all stages after reordering
         updatePipelineStages();
-        
+
         // Update all stage hex IDs
         updateAllStageHexIds();
 
@@ -18244,9 +19023,9 @@ function initializePipelineStageDragAndDrop() {
 function updatePipelineStages(startFromStageId = null) {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     if (allStages.length === 0) return;
-    
+
     const fromManual = !startFromStageId || startFromStageId === 'manual';
-        
+
     // Step 1: Re-render all expand canvas stage dropdowns to update available options
     allStages.forEach(stage => {
         if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
@@ -18257,7 +19036,7 @@ function updatePipelineStages(startFromStageId = null) {
             }
         }
     });
-    
+
     // Step 2: Cascade resolution changes
     if (fromManual) {
         // Starting from manual: cascade to ALL stages
@@ -18275,7 +19054,7 @@ function updatePipelineStages(startFromStageId = null) {
             }
         }
     }
-    
+
     // Step 3: Update bias orientation for all expand canvas stages
     allStages.forEach(stage => {
         if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
@@ -18286,12 +19065,12 @@ function updatePipelineStages(startFromStageId = null) {
             }
         }
     });
-    
+
     // Step 4: Update inherited value displays for all stages
     allStages.forEach(stage => {
         updateStageInheritedDisplay(stage.id);
     });
-    
+
     // Step 5: Update button states (up/down/upscale) for all stages
     updateStageButtonStates();
 }
@@ -18304,30 +19083,30 @@ function updatePipelineStages(startFromStageId = null) {
 function getStageDimensions(stageId) {
     const stage = document.getElementById(stageId);
     if (!stage) return null;
-    
+
     const stageType = stage.dataset.stageType;
-    
+
     // Get dimensions helper - used by all stage types
     const getInputDimensions = () => {
         const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
         const currentIndex = allStages.findIndex(s => s.id === stageId);
-        
+
         if (currentIndex > 0) {
             const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
             const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
-            
+
             for (let i = currentIndex - 1; i >= 0; i--) {
                 const prevStage = allStages[i];
                 const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
                 const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
-                
+
                 if (!isCurrentBranch && isPrevBranch) continue;
-                
+
                 const prevDimensions = getStageDimensions(prevStage.id);
                 if (prevDimensions) return prevDimensions;
             }
         }
-        
+
         if (manualSelectedResolution === 'custom') {
             const manualWidth = document.getElementById('manualWidth');
             const manualHeight = document.getElementById('manualHeight');
@@ -18342,12 +19121,12 @@ function getStageDimensions(stageId) {
         }
         return null;
     };
-    
+
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     if (!resolutionInput || !resolutionInput.value) {
         return getInputDimensions();
     }
-    
+
     // Check if area-based resolution (normal/large/xlarge without underscore)
     if (!resolutionInput.value.includes('_') && resolutionInput.value !== 'custom') {
         // Area-based: calculate from input dimensions
@@ -18361,7 +19140,7 @@ function getStageDimensions(stageId) {
         }
         return inputDimensions;
     }
-    
+
     // Full preset or custom: same for all types
     if (resolutionInput.value === 'custom') {
         const widthInput = document.getElementById(`${stageId}_width`);
@@ -18373,7 +19152,7 @@ function getStageDimensions(stageId) {
             };
         }
     }
-    
+
     return getDimensionsFromResolution(resolutionInput.value);
 }
 
@@ -18381,14 +19160,14 @@ function getStageDimensions(stageId) {
 function updateStageButtonStates() {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     const stageCount = allStages.length;
-    
+
     allStages.forEach((stage, index) => {
         const stageId = stage.id;
         const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
         const stopToggle = document.getElementById(`${stageId}_stopToggle`);
-        
+
         const isLastStage = index === stageCount - 1;
-        
+
         // Handle stop toggle - disable/hide for last stage
         if (stopToggle) {
             if (isLastStage) {
@@ -18401,7 +19180,7 @@ function updateStageButtonStates() {
                 stopToggle.disabled = false;
             }
         }
-        
+
         // Handle upscale toggle visibility and disabled state
         const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
         if (isLastStage) {
@@ -18467,15 +19246,15 @@ function updateAllStagesInheritedValues() {
     if (updateStagesInheritedTimeout) {
         clearTimeout(updateStagesInheritedTimeout);
     }
-    
+
     updateStagesInheritedTimeout = setTimeout(() => {
         const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
-        
+
         // Update all stages (both expand canvas and enhance have advanced controls)
         allStages.forEach(stage => {
             updateStageInheritedDisplay(stage.id);
         });
-        
+
         updateStagesInheritedTimeout = null;
     }, 100);
 }
@@ -18487,19 +19266,19 @@ function updateDownstreamStagesInheritedValues(stageId) {
     if (updateDownstreamInheritedTimeout) {
         clearTimeout(updateDownstreamInheritedTimeout);
     }
-    
+
     updateDownstreamInheritedTimeout = setTimeout(() => {
         const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
         const currentIndex = allStages.findIndex(s => s.id === stageId);
-        
+
         if (currentIndex === -1) return;
-        
+
         // Update all downstream stages (both expand canvas and enhance have advanced controls)
         for (let i = currentIndex + 1; i < allStages.length; i++) {
             const stage = allStages[i];
             updateStageInheritedDisplay(stage.id);
         }
-        
+
         updateDownstreamInheritedTimeout = null;
     }, 100);
 }
@@ -18509,16 +19288,16 @@ function updateStageSeedDisplay(stageId, inheritedValues = null) {
     const seedInput = document.getElementById(`${stageId}_seed`);
     const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
     const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
-    
+
     if (!seedInput) return;
-    
+
     const isInheritMode = inheritSeedToggle?.dataset.state === 'on';
     const isAutoMode = autoSeedToggle?.dataset.state === 'on';
     const loadedSeed = seedInput.dataset.loadedSeed;
-    
+
     // Priority: loadedSeed from generation > inherited value from previous stage
     let seedToDisplay = loadedSeed;
-    
+
     // Only calculate inherited value if no loadedSeed AND in inherit mode
     if (!seedToDisplay && isInheritMode) {
         if (!inheritedValues) {
@@ -18526,7 +19305,7 @@ function updateStageSeedDisplay(stageId, inheritedValues = null) {
         }
         seedToDisplay = inheritedValues.seed;
     }
-        
+
     if (isInheritMode) {
         // INHERIT MODE: Show seed in placeholder, keep input disabled and empty
         seedInput.disabled = true;
@@ -18570,13 +19349,13 @@ function updateStageSeedDisplay(stageId, inheritedValues = null) {
 // Update inherited display for a specific stage
 function updateStageInheritedDisplay(stageId) {
     const inheritedValues = getStageInheritedValues(stageId);
-    
+
     // Update placeholders
     const stepsInput = document.getElementById(`${stageId}_steps`);
     const guidanceInput = document.getElementById(`${stageId}_guidance`);
     const rescaleInput = document.getElementById(`${stageId}_rescale`);
     const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
-    
+
     if (stepsInput && stepsInput.value === '') {
         stepsInput.placeholder = inheritedValues.steps.toString();
     }
@@ -18588,15 +19367,15 @@ function updateStageInheritedDisplay(stageId) {
         const rescaleContainer = rescaleInput.parentElement;
         if (rescaleContainer) rescaleContainer.classList.add('inherited');
     }
-    
+
     // Update variety button if not custom
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-    
+
     // Only update variety if using inherited values
     if (varietyBtn) {
         varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
     }
-    
+
     // Update background focus inherited state
     const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
     if (bgFocusToggle) {
@@ -18612,13 +19391,13 @@ function updateStageInheritedDisplay(stageId) {
             updateStageBackgroundFocusVisuals(stageId, false, false);
         }
     }
-    
+
     // Update seed input display - consolidated function
     updateStageSeedDisplay(stageId, inheritedValues);
-    
+
     // Update dropdown inherited state
     updateStageDropdownInheritedState(stageId);
-    
+
     // Update reset button visibility
     updateStageResetButtonVisibility(stageId);
 }
@@ -18627,94 +19406,94 @@ function updateStageInheritedDisplay(stageId) {
 function getStageInheritedValues(stageId) {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     const currentIndex = allStages.findIndex(s => s.id === stageId);
-    
+
     if (currentIndex === -1) {
         // Fallback to manual modal values
         return getManualModalValues();
     }
-    
+
     // First stage inherits from manual modal
     if (currentIndex === 0) {
         const manualValues = getManualModalValues();
-        
+
         // Check if this stage has its own loaded seed (from generation) - override manual modal seed
         const currentSeedInput = document.getElementById(`${stageId}_seed`);
         if (currentSeedInput?.dataset.loadedSeed) {
             manualValues.seed = parseInt(currentSeedInput.dataset.loadedSeed);
         }
-        
+
         // Ensure isFirstStage is set (getManualModalValues already sets it, but make it explicit)
         manualValues.isFirstStage = true;
-        
+
         return manualValues;
     }
-    
+
     // Check if current stage is a branch
     const currentStage = allStages[currentIndex];
     const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
     const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
-    
+
     // Find previous stage with advanced controls (expand canvas or enhance)
     // If current stage is NOT a branch, skip over any branch stages to find the last non-branch stage
     for (let i = currentIndex - 1; i >= 0; i--) {
         const prevStage = allStages[i];
         const prevStageType = prevStage.dataset.stageType;
-        
+
         // Check if previous stage is a branch
         const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
         const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
-        
+
         // If current stage is NOT a branch, skip branch stages when looking for inheritance
         if (!isCurrentBranch && isPrevBranch) {
             continue; // Skip this branch stage
         }
-        
+
         // Both expand canvas and enhance can provide advanced values
         if (prevStageType === STAGE_TYPES.EXPAND_CANVAS || prevStageType === STAGE_TYPES.ENHANCE || prevStageType === STAGE_TYPES.VARIATION) {
             const prevStageId = prevStage.id;
-            
+
             // Get effective values from previous stage (custom or its inherited)
             const prevInherited = getStageInheritedValues(prevStageId);
-            
+
             // Helper to get value or inherited (handles 0 properly)
             const getValueOrInherited = (element, parser, inheritedValue) => {
                 if (!element || element.value === '') return inheritedValue;
                 return parser ? parser(element.value) : element.value;
             };
-            
+
             // Extract resolution size from full resolution string (e.g., "normal_square" -> "normal")
             const extractResolutionSize = (resolutionString, widthInput, heightInput) => {
                 if (!resolutionString) return 'normal';
-                
+
                 // Handle custom resolution by calculating area
                 if (resolutionString === 'custom' && widthInput && heightInput) {
                     const width = parseInt(widthInput.value) || 1024;
                     const height = parseInt(heightInput.value) || 1024;
                     const area = width * height;
-                    
+
                     // Map area to resolution size based on actual preset maximums
                     if (area <= 1048576) return 'normal';      // ≤ 1MP (normal_square: 1024×1024)
                     if (area <= 2166784) return 'large';       // ≤ 2.16MP (large_square: 1472×1472)
                     return 'xlarge';                           // > 2.16MP
                 }
-                
+
                 const parts = resolutionString.toLowerCase().split('_');
                 return parts[0] || 'normal'; // Return prefix (normal, large, xlarge, wallpaper, etc.)
             };
-            
+
             // Get resolution from previous stage
             let inheritedResolution = prevInherited.resolution;
-            
+
             // Read unified resolution value
             const resolutionInput = document.getElementById(`${prevStageId}_resolution`);
             const prevStageType = prevStage.dataset.stageType;
             const isPrevEnhanceStage = (prevStageType === STAGE_TYPES.ENHANCE || prevStageType === STAGE_TYPES.VARIATION);
-            
+
             // Check if previous stage is in enhance mode (using area-based resolution)
             if (isPrevEnhanceStage) {
                 const prevUseBaseToggle = document.getElementById(`${prevStageId}_useBaseImageToggle`);
                 const isPrevEnhanceMode = prevUseBaseToggle && prevUseBaseToggle.dataset.state === 'on';
-                
+
                 if (isPrevEnhanceMode) {
                     let areaName;
                     if (resolutionInput && resolutionInput.value !== '' && resolutionInput.value !== 'custom') {
@@ -18732,7 +19511,7 @@ function getStageInheritedValues(stageId) {
                             areaName = 'normal'; // Default fallback
                         }
                     }
-                    
+
                     // Get the actual dimensions that the previous stage produced
                     const prevDimensions = getStageDimensions(prevStageId);
                     if (prevDimensions) {
@@ -18778,12 +19557,12 @@ function getStageInheritedValues(stageId) {
                 }
                 // If no value at all, inheritedResolution stays as prevInherited.resolution
             }
-            
+
             // Get seed value from previous stage
             const prevSeedInput = document.getElementById(`${prevStageId}_seed`);
             const prevInheritSeedToggle = document.getElementById(`${prevStageId}_inheritSeedToggle`);
             let inheritedSeed = null;
-            
+
             // Priority order: explicit value > loaded seed > inherited seed
             if (prevSeedInput) {
                 if (prevSeedInput.value) {
@@ -18800,11 +19579,11 @@ function getStageInheritedValues(stageId) {
                     inheritedSeed = parseInt(prevSeedInput.placeholder);
                 }
             }
-            
+
             // Get background focus from previous stage
             const prevBgFocusToggle = document.getElementById(`${prevStageId}_bgFocusToggle`);
             const inheritedBackgroundFocus = prevBgFocusToggle?.dataset.state === 'on' || prevInherited.backgroundFocus || false;
-            
+
             return {
                 model: getValueOrInherited(document.getElementById(`${prevStageId}_model`), null, prevInherited.model),
                 steps: getValueOrInherited(document.getElementById(`${prevStageId}_steps`), parseInt, prevInherited.steps),
@@ -18820,7 +19599,7 @@ function getStageInheritedValues(stageId) {
             };
         }
     }
-    
+
     // Fallback to manual modal values
     return getManualModalValues();
 }
@@ -18830,23 +19609,23 @@ function getManualModalValues() {
     // Extract resolution size from full resolution string (e.g., "normal_square" -> "normal")
     const extractResolutionSize = (resolutionString) => {
         if (!resolutionString) return 'normal';
-        
+
         // Handle custom resolution by calculating area
         if (resolutionString === 'custom' && manualWidth && manualHeight) {
             const width = parseInt(manualWidth.value) || 1024;
             const height = parseInt(manualHeight.value) || 1024;
             const area = width * height;
-            
+
             // Map area to resolution size based on actual preset maximums
             if (area <= 1048576) return 'normal';      // ≤ 1MP (normal_square: 1024×1024)
             if (area <= 2166784) return 'large';       // ≤ 2.16MP (large_square: 1472×1472)
             return 'xlarge';                           // > 2.16MP
         }
-        
+
         const parts = resolutionString.toLowerCase().split('_');
         return parts[0] || 'normal'; // Return prefix (normal, large, xlarge, wallpaper, etc.)
     };
-    
+
     // Get seed value from manual modal
     let manualSeedValue = null;
     if (manualSeed) {
@@ -18858,7 +19637,7 @@ function getManualModalValues() {
             manualSeedValue = parseInt(manualSeed.placeholder);
         }
     }
-    
+
     return {
         model: manualSelectedModel || 'v4_5',
         steps: parseInt(manualSteps?.value) || 25,
@@ -18880,7 +19659,7 @@ function clearPipelineStages() {
         pipelineStagesContainer.innerHTML = '';
     }
     pipelineStageCounter = 0;
-    
+
     // Hide and reset saveStage0Btn
     if (saveStage0Btn) {
         saveStage0Btn.classList.add('hidden');
@@ -18891,10 +19670,10 @@ function clearPipelineStages() {
 // Update saveStage0Btn visibility based on whether there are stages
 function updateSaveStage0BtnVisibility() {
     if (!saveStage0Btn) return;
-    
+
     const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
     const stageGenerationEnabled = enableStageGenerationBtn?.dataset.state !== 'off';
-    
+
     // Treat as no stages if stage generation is disabled
     if (hasStages && stageGenerationEnabled) {
         saveStage0Btn.classList.remove('hidden');
@@ -18913,9 +19692,9 @@ function updateSaveStage0BtnVisibility() {
 // Update pipeline stages header visibility
 function updatePipelineStagesHeaderVisibility() {
     if (!pipelineStagesHeader) return;
-    
+
     const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
-    
+
     if (hasStages) {
         pipelineStagesHeader.classList.remove('hidden');
         enableStageGenerationBtn.classList.remove('hidden');
@@ -18933,15 +19712,15 @@ function updatePipelineStagesHeaderVisibility() {
 function updateManualUpscaleVisibility() {
     const manualUpscale = document.getElementById('manualUpscale');
     if (!manualUpscale || !saveStage0Btn) return;
-    
+
     const hasStages = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item').length > 0;
     const stageGenerationEnabled = enableStageGenerationBtn?.dataset.state !== 'off';
-    
+
     // Get current dimensions for upscale availability check
     let width = 1024;
     let height = 1024;
     const selectedRes = manualSelectedResolution;
-    
+
     if (selectedRes === 'custom') {
         const manualWidth = document.getElementById('manualWidth');
         const manualHeight = document.getElementById('manualHeight');
@@ -18957,7 +19736,7 @@ function updateManualUpscaleVisibility() {
 
     // Check upscale availability
     const upscaleInfo = calculateUpscaleInfo(width, height);
-    
+
     // Treat as no stages if stage generation is disabled
     if (hasStages && stageGenerationEnabled) {
         // Has stages - show upscale only if saveStage0Btn is on AND upscaling is available
@@ -18980,13 +19759,13 @@ function updateManualUpscaleVisibility() {
 function getPipelineStages() {
     const stages = [];
     const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
-    
+
     if (!stageItems) return stages;
-    
+
     stageItems.forEach(stageItem => {
         const stageId = stageItem.id;
         const stageType = stageItem.dataset.stageType;
-        
+
         if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
             stages.push(getExpandCanvasStageData(stageId));
         } else if (stageType === STAGE_TYPES.ENHANCE) {
@@ -19001,21 +19780,21 @@ function getPipelineStages() {
             stages.push(getEnhanceStageData(stageId));
         }
     });
-    
+
     return stages;
 }
 
 // Load pipeline stages from data
 function loadPipelineStages(stagesArray, stageSeeds = null) {
     clearPipelineStages();
-    
+
     if (!stagesArray || !Array.isArray(stagesArray)) return;
-    
+
     stagesArray.forEach((stageData, index) => {
         if (stageData.type === STAGE_TYPES.EXPAND_CANVAS) {
             addPipelineStage(STAGE_TYPES.EXPAND_CANVAS);
             const stageId = `stage_${pipelineStageCounter - 1}`; // Calculate after adding stage
-            
+
             // Pass the seed from stage_seeds array
             const stageSeed = stageSeeds && stageSeeds[index] ? stageSeeds[index] : null;
             loadExpandCanvasStageData(stageId, stageData, stageSeed);
@@ -19024,13 +19803,13 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
             const useBaseImage = stageData.type === STAGE_TYPES.ENHANCE ? true : (stageData.useBaseImage !== false);
             addPipelineStage(STAGE_TYPES.VARIATION, { useBaseImage });
             const stageId = `stage_${pipelineStageCounter - 1}`; // Calculate after adding stage
-            
+
             // Pass the seed from stage_seeds array
             const stageSeed = stageSeeds && stageSeeds[index] ? stageSeeds[index] : null;
             loadEnhanceStageData(stageId, { ...stageData, type: STAGE_TYPES.VARIATION, useBaseImage }, stageSeed);
         }
     });
-    
+
     // Ensure only one stage has stopAtStage enabled (keep the last one that was marked)
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     let lastStopStageId = null;
@@ -19040,7 +19819,7 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
             lastStopStageId = stage.id;
         }
     });
-    
+
     // Turn off all stop toggles except the last one found
     if (lastStopStageId) {
         allStages.forEach(stage => {
@@ -19050,7 +19829,7 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
             }
         });
     }
-    
+
     // Update button states after loading all stages
     updateStageButtonStates();
 }
@@ -19061,20 +19840,20 @@ function updateStagesWithSeeds(stageSeeds) {
         console.log('⚠️ No stage seeds provided');
         return;
     }
-    
+
     const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
     if (!stageItems || stageItems.length === 0) {
         console.log('⚠️ No pipeline stages found in UI');
         return;
     }
-    
+
     // First pass: Load all seeds into dataset and update non-inherited stages
     stageItems.forEach((stageItem, index) => {
         const stageId = stageItem.id;
         // stageSeeds array contains ONLY pipeline stage seeds (NO base generation)
         // stageSeeds[0] = first pipeline stage, stageSeeds[1] = second pipeline stage, etc.
         const stageSeed = stageSeeds[index];
-        
+
         if (stageSeed && stageSeed.seed !== undefined) {
             const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
             const seedInput = document.getElementById(`${stageId}_seed`);
@@ -19086,14 +19865,14 @@ function updateStagesWithSeeds(stageSeeds) {
                 // Check if we're in inherit mode
                 const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
                 const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
-                
+
                 if (!isInheritMode) {
                     // Only update seed controls if not in inherit mode
                     autoSeedToggle.classList.remove('hidden');
-                    
+
                     // Check current auto seed toggle state to maintain consistency with manual seed behavior
                     const currentAutoSeedState = autoSeedToggle.dataset.state;
-                    
+
                     if (currentAutoSeedState === 'off') {
                         // Locked mode: set value, keep disabled, update placeholder
                         seedInput.value = stageSeed.seed.toString();
@@ -19119,7 +19898,7 @@ function updateStagesWithSeeds(stageSeeds) {
             console.log(`🌱 ⚠️ No seed data for ${stageId} at index ${index}`);
         }
     });
-    
+
     stageItems.forEach((stageItem) => {
         const stageId = stageItem.id;
         updateStageInheritedDisplay(stageId);
@@ -19130,7 +19909,7 @@ function updateStagesWithSeeds(stageSeeds) {
 function renderExpandCanvasStage(stageId) {
     const stageBody = document.getElementById(`${stageId}_body`);
     if (!stageBody) return;
-    
+
     stageBody.innerHTML = `
         <div class="stage-controls-section stage-expand">
             <div class="form-row justify-spaced">
@@ -19243,7 +20022,7 @@ function renderExpandCanvasStage(stageId) {
             </div>
         </div>
     `;
-    
+
     // Setup dropdowns and event listeners
     setupExpandCanvasStageEvents(stageId);
 }
@@ -19253,14 +20032,14 @@ function setupExpandCanvasStageEvents(stageId) {
     const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
     const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
     const seedInput = document.getElementById(`${stageId}_seed`);
-    
+
     // Inherit seed toggle
     if (inheritSeedToggle && seedInput && autoSeedToggle) {
         inheritSeedToggle.addEventListener('click', () => {
             const currentState = inheritSeedToggle.dataset.state;
             const newState = currentState === 'on' ? 'off' : 'on';
             inheritSeedToggle.dataset.state = newState;
-            
+
             if (newState === 'on') {
                 // Inherit mode: hide auto seed toggle
                 autoSeedToggle.classList.add('hidden');
@@ -19270,24 +20049,24 @@ function setupExpandCanvasStageEvents(stageId) {
                     autoSeedToggle.classList.remove('hidden');
                 }
             }
-            
+
             // Use consolidated function to update seed display
             updateStageSeedDisplay(stageId);
         });
     }
-    
+
     // Auto seed toggle (match manual modal pattern)
     if (autoSeedToggle && seedInput) {
         autoSeedToggle.addEventListener('click', () => {
             const currentState = autoSeedToggle.dataset.state;
             const newState = currentState === 'on' ? 'off' : 'on';
             autoSeedToggle.dataset.state = newState;
-            
+
             // Use consolidated function to update seed display
             updateStageSeedDisplay(stageId);
         });
     }
-    
+
     // Setup resolution dropdown
     const resolutionDropdown = document.getElementById(`${stageId}_resolutionDropdown`);
     const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
@@ -19302,44 +20081,30 @@ function setupExpandCanvasStageEvents(stageId) {
             () => resolutionInput.value || '',
             { preventFocusTransfer: true }
         );
-        
+
         // Add scroll wheel support for resolution cycling (skip custom)
         resolutionBtn.addEventListener('wheel', (e) => {
             e.preventDefault();
-            
-            // Get all available resolutions (filter like the dropdown does)
+
+            const useBaseWheel = document.getElementById(`${stageId}_useBaseImageToggle`);
+            const isVariationWheel = useBaseWheel && useBaseWheel.dataset.state === 'off';
+            const { width: baseWidth, height: baseHeight } = getExpandCanvasStageBasePixelDimensions(stageId);
             const baseResolutionValue = getStageBaseResolution(stageId);
             const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
-            const isLastStage = isLastExpandCanvasStage(stageId);
-            
-            let isPortrait = false, isLandscape = false, isSquare = false;
-            if (currentResolution) {
-                isPortrait = currentResolution.height > currentResolution.width;
-                isLandscape = currentResolution.width > currentResolution.height;
-                isSquare = currentResolution.width === currentResolution.height;
-            }
-            
-            // Build filtered list of resolutions
+
+            // Build filtered list of resolutions (match dropdown: variation shows all; else hide small + exact same size)
             const availableResolutions = [];
             RESOLUTION_GROUPS.forEach(group => {
                 group.options.forEach(opt => {
-                    if (opt.value === 'custom') return; // Skip custom
-                    if (opt.value.startsWith('small_')) return; // Skip small
-                    
-                    const optIsPortrait = opt.value.includes('_portrait');
-                    const optIsLandscape = opt.value.includes('_landscape');
-                    const optIsSquare = opt.value.includes('_square');
-                    
-                    if (isPortrait && optIsPortrait) return;
-                    if (isLandscape && optIsLandscape) return;
-                    if (isSquare && optIsSquare) return;
-                    
+                    if (opt.value === 'custom') return;
+                    if (!isVariationWheel && opt.value.startsWith('small_')) return;
+                    if (!isVariationWheel && samePixelAspectRatio(baseWidth, baseHeight, opt.width, opt.height)) return;
                     availableResolutions.push({ value: opt.value, name: opt.name, group: group.group });
                 });
             });
-            
+
             if (availableResolutions.length === 0) return;
-            
+
             // Find current index - use inherited value if input is empty
             let currentValue = resolutionInput.value;
             if (!currentValue) {
@@ -19357,21 +20122,21 @@ function setupExpandCanvasStageEvents(stageId) {
                 }
             }
             const currentIndex = availableResolutions.findIndex(r => r.value === currentValue);
-            
+
             // Calculate new index
             const delta = e.deltaY > 0 ? 1 : -1;
             let newIndex = currentIndex + delta;
-            
+
             // Wrap around
             if (newIndex < 0) newIndex = availableResolutions.length - 1;
             if (newIndex >= availableResolutions.length) newIndex = 0;
-            
+
             // Select new resolution
             const newResolution = availableResolutions[newIndex];
-            
+
             // Update the input value
             resolutionInput.value = newResolution.value;
-            
+
             // Update button display
             const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
             if (resolutionSelected) {
@@ -19379,16 +20144,16 @@ function setupExpandCanvasStageEvents(stageId) {
                 const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
                 resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
             }
-            
+
             // Update bias orientation and cascade downstream
             updateStageBiasOrientation(stageId, newResolution.value);
             updateDownstreamStageResolutions(stageId);
         });
     }
-    
+
     // Setup custom resolution controls (shared function)
     setupStageCustomResolutionControls(stageId, resolutionDropdown, resolutionInput);
-    
+
     // Setup bias dropdown
     const biasDropdown = document.getElementById(`${stageId}_biasDropdown`);
     const biasBtn = document.getElementById(`${stageId}_biasDropdownBtn`);
@@ -19403,33 +20168,33 @@ function setupExpandCanvasStageEvents(stageId) {
             () => biasInput.value !== '' ? biasInput.value : '2',
             { preventFocusTransfer: true }
         );
-        
+
         // Add scroll wheel support for bias/position cycling
         biasBtn.addEventListener('wheel', (e) => {
             e.preventDefault();
-            
+
             // Bias has 5 positions: 0, 1, 2, 3, 4
             const currentValue = biasInput.value !== '' ? parseInt(biasInput.value) : 2;
             const delta = e.deltaY > 0 ? 1 : -1;
             let newValue = currentValue + delta;
-            
+
             // Wrap around
             if (newValue < 0) newValue = 4;
             if (newValue > 4) newValue = 0;
-            
+
             // Get current resolution to determine orientation
             const resolutionInput = document.getElementById(`${stageId}_resolution`);
             const resolution = resolutionInput ? RESOLUTIONS.find(r => r.value === resolutionInput.value) : null;
             const isPortrait = resolution ? resolution.height > resolution.width : false;
-            
+
             // Get bias name for the new value
             const biasName = getBiasName(newValue.toString(), isPortrait);
-            
+
             // Select new bias with all required parameters
             selectStageBias(stageId, newValue.toString(), biasName, isPortrait);
         });
     }
-    
+
     // Setup advanced controls (shared function)
     setupStageAdvancedControls(stageId);
 }
@@ -19444,254 +20209,254 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             toggleStageResolutionAreaLimit(stageId);
         });
     }
-    
+
     // Setup custom resolution controls
     const customResolutionBtn = document.getElementById(`${stageId}_customResolutionBtn`);
     const customResolution = document.getElementById(`${stageId}_customResolution`);
     const widthInput = document.getElementById(`${stageId}_width`);
     const heightInput = document.getElementById(`${stageId}_height`);
-    
+
     if (!customResolutionBtn || !customResolution || !widthInput || !heightInput) return;
-    
-        // Custom resolution button toggle
-        customResolutionBtn.addEventListener('click', () => {
-            const currentState = customResolutionBtn.dataset.state;
-            
-            if (currentState === 'on') {
-                // Switch back to dropdown
-                customResolution.classList.add('hidden');
-                resolutionDropdown.classList.remove('hidden');
-                customResolutionBtn.setAttribute('data-state', 'off');
+
+    // Custom resolution button toggle
+    customResolutionBtn.addEventListener('click', () => {
+        const currentState = customResolutionBtn.dataset.state;
+
+        if (currentState === 'on') {
+            // Switch back to dropdown
+            customResolution.classList.add('hidden');
+            resolutionDropdown.classList.remove('hidden');
+            customResolutionBtn.setAttribute('data-state', 'off');
             if (areaToggle) areaToggle.classList.add('hidden');
-                
-                // Try to find a matching preset resolution based on current custom dimensions
-                const currentWidth = parseInt(widthInput.value) || 1024;
-                const currentHeight = parseInt(heightInput.value) || 1024;
-                
-                // Look for an exact match in RESOLUTIONS
-                const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
-                
-                if (matchingResolution) {
-                    // Found a matching preset, select it
-                    const matchingGroup = RESOLUTION_GROUPS.find(g => 
-                        g.options.some(opt => opt.value === matchingResolution.value)
-                    );
-                    selectStageResolution(stageId, matchingResolution.value, matchingGroup?.group || 'Normal');
-                } else {
-                    // No match found, default to normal square
-                    selectStageResolution(stageId, 'normal_square', 'Normal');
-                }
+
+            // Try to find a matching preset resolution based on current custom dimensions
+            const currentWidth = parseInt(widthInput.value) || 1024;
+            const currentHeight = parseInt(heightInput.value) || 1024;
+
+            // Look for an exact match in RESOLUTIONS
+            const matchingResolution = RESOLUTIONS.find(r => r.width === currentWidth && r.height === currentHeight);
+
+            if (matchingResolution) {
+                // Found a matching preset, select it
+                const matchingGroup = RESOLUTION_GROUPS.find(g =>
+                    g.options.some(opt => opt.value === matchingResolution.value)
+                );
+                selectStageResolution(stageId, matchingResolution.value, matchingGroup?.group || 'Normal');
+            } else {
+                // No match found, default to normal square
+                selectStageResolution(stageId, 'normal_square', 'Normal');
             }
-        });
-        
-        // Dimension input change handlers
-        let blurTimeout;
-        const validateDimensionsWithTimeout = () => {
-            if (resolutionInput.value !== 'custom') return;
+        }
+    });
 
-            // Clear any existing timeout
-            if (blurTimeout) clearTimeout(blurTimeout);
+    // Dimension input change handlers
+    let blurTimeout;
+    const validateDimensionsWithTimeout = () => {
+        if (resolutionInput.value !== 'custom') return;
 
-            // Set a 100ms timeout
-            blurTimeout = setTimeout(() => {
-                // Check that neither input is currently the active element
-                if (document.activeElement === widthInput || document.activeElement === heightInput) {
-                    return; // One of the inputs is still active, don't validate yet
-                }
+        // Clear any existing timeout
+        if (blurTimeout) clearTimeout(blurTimeout);
 
-                // Get current values
-                const originalWidth = parseInt(widthInput.value) || 1024;
-                const originalHeight = parseInt(heightInput.value) || 1024;
-                let width = originalWidth;
-                let height = originalHeight;
-                let currentArea = width * height;
+        // Set a 100ms timeout
+        blurTimeout = setTimeout(() => {
+            // Check that neither input is currently the active element
+            if (document.activeElement === widthInput || document.activeElement === heightInput) {
+                return; // One of the inputs is still active, don't validate yet
+            }
 
-                // Get max area for validation
+            // Get current values
+            const originalWidth = parseInt(widthInput.value) || 1024;
+            const originalHeight = parseInt(heightInput.value) || 1024;
+            let width = originalWidth;
+            let height = originalHeight;
+            let currentArea = width * height;
+
+            // Get max area for validation
             const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
             const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
 
-                // First, ensure both dimensions are multiples of 64
-                const widthRemainder = width % 64;
-                const heightRemainder = height % 64;
-                let widthChanged = false;
-                let heightChanged = false;
+            // First, ensure both dimensions are multiples of 64
+            const widthRemainder = width % 64;
+            const heightRemainder = height % 64;
+            let widthChanged = false;
+            let heightChanged = false;
 
-                if (widthRemainder !== 0) {
-                    width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
-                    width = Math.max(64, width);
-                    widthChanged = true;
+            if (widthRemainder !== 0) {
+                width = widthRemainder >= 32 ? width + (64 - widthRemainder) : width - widthRemainder;
+                width = Math.max(64, width);
+                widthChanged = true;
+            }
+            if (heightRemainder !== 0) {
+                height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
+                height = Math.max(64, height);
+                heightChanged = true;
+            }
+
+            // Recalculate area after stepping
+            currentArea = width * height;
+
+            // If area exceeds max, scale both dimensions down while maintaining aspect ratio
+            if (currentArea > maxArea) {
+                const scaleFactor = Math.sqrt(maxArea / currentArea);
+
+                // Calculate new dimensions
+                width = Math.round(width * scaleFactor);
+                height = Math.round(height * scaleFactor);
+
+                // Ensure they're still multiples of 64
+                width = Math.floor(width / 64) * 64;
+                height = Math.floor(height / 64) * 64;
+
+                // Ensure minimum size
+                width = Math.max(64, width);
+                height = Math.max(64, height);
+
+                widthChanged = true;
+                heightChanged = true;
+            }
+
+            // Update inputs only if values changed
+            if (widthChanged || heightChanged) {
+                if (width !== originalWidth) {
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, width);
                 }
-                if (heightRemainder !== 0) {
-                    height = heightRemainder >= 32 ? height + (64 - heightRemainder) : height - heightRemainder;
-                    height = Math.max(64, height);
-                    heightChanged = true;
+                if (height !== originalHeight) {
+                    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, height);
                 }
 
-                // Recalculate area after stepping
-                currentArea = width * height;
-
-                // If area exceeds max, scale both dimensions down while maintaining aspect ratio
-                if (currentArea > maxArea) {
-                    const scaleFactor = Math.sqrt(maxArea / currentArea);
-
-                    // Calculate new dimensions
-                    width = Math.round(width * scaleFactor);
-                    height = Math.round(height * scaleFactor);
-
-                    // Ensure they're still multiples of 64
-                    width = Math.floor(width / 64) * 64;
-                    height = Math.floor(height / 64) * 64;
-
-                    // Ensure minimum size
-                    width = Math.max(64, width);
-                    height = Math.max(64, height);
-
-                    widthChanged = true;
-                    heightChanged = true;
-                }
-
-                // Update inputs only if values changed
-                if (widthChanged || heightChanged) {
-                    if (width !== originalWidth) {
-                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, width);
-                    }
-                    if (height !== originalHeight) {
-                        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, height);
-                    }
-
-                    // Update bias orientation and cascade
-                    updateStageBiasOrientation(stageId, 'custom');
-                    updatePipelineStages(stageId);
-                }
-            }, 100);
-        };
-        
-        const handleDimensionInput = () => {
-            if (resolutionInput.value === 'custom') {
+                // Update bias orientation and cascade
                 updateStageBiasOrientation(stageId, 'custom');
+                updatePipelineStages(stageId);
             }
-        };
-        
-        // Input events for immediate feedback
-        widthInput.addEventListener('input', handleDimensionInput);
-        heightInput.addEventListener('input', handleDimensionInput);
-        
-        // Blur events for validating dimensions with timeout
-        widthInput.addEventListener('blur', () => {
-            validateDimensionsWithTimeout();
-        });
-        heightInput.addEventListener('blur', () => {
-            validateDimensionsWithTimeout();
-        });
-        
-        // Mouse wheel and keyboard support for width - maintains area while adjusting ratio
-        let isWheelUpdating = false;
+        }, 100);
+    };
 
-        const updateWidthDimension = (delta) => {
-            if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
-
-            isWheelUpdating = true;
-
-            const currentWidth = parseInt(widthInput.value) || 1024;
-            const currentHeight = parseInt(heightInput.value) || 1024;
-            const currentArea = currentWidth * currentHeight;
-
-            // Adjust width by 64 pixels (step size) based on scroll direction
-            const newWidth = currentWidth + delta;
-
-            // Calculate new height to maintain area
-            const newHeight = Math.round(currentArea / newWidth);
-
-            // Get max area for validation
-            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
-            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
-
-            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
-            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
-
-            // Update inputs without triggering input events (set directly)
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
-
-            // Update bias orientation
+    const handleDimensionInput = () => {
+        if (resolutionInput.value === 'custom') {
             updateStageBiasOrientation(stageId, 'custom');
+        }
+    };
 
-            // Update downstream stages
-            updatePipelineStages(stageId);
+    // Input events for immediate feedback
+    widthInput.addEventListener('input', handleDimensionInput);
+    heightInput.addEventListener('input', handleDimensionInput);
 
-            isWheelUpdating = false;
-        };
+    // Blur events for validating dimensions with timeout
+    widthInput.addEventListener('blur', () => {
+        validateDimensionsWithTimeout();
+    });
+    heightInput.addEventListener('blur', () => {
+        validateDimensionsWithTimeout();
+    });
 
-        widthInput.addEventListener('wheel', function(e) {
+    // Mouse wheel and keyboard support for width - maintains area while adjusting ratio
+    let isWheelUpdating = false;
+
+    const updateWidthDimension = (delta) => {
+        if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+
+        isWheelUpdating = true;
+
+        const currentWidth = parseInt(widthInput.value) || 1024;
+        const currentHeight = parseInt(heightInput.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
+
+        // Adjust width by 64 pixels (step size) based on scroll direction
+        const newWidth = currentWidth + delta;
+
+        // Calculate new height to maintain area
+        const newHeight = Math.round(currentArea / newWidth);
+
+        // Get max area for validation
+        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+
+        // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+
+        // Update inputs without triggering input events (set directly)
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+
+        // Update bias orientation
+        updateStageBiasOrientation(stageId, 'custom');
+
+        // Update downstream stages
+        updatePipelineStages(stageId);
+
+        isWheelUpdating = false;
+    };
+
+    widthInput.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -64 : 64;
+        updateWidthDimension(delta);
+    });
+
+    widthInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -64 : 64;
+            const delta = e.key === 'ArrowUp' ? 64 : -64;
             updateWidthDimension(delta);
-        });
+        }
+    });
 
-        widthInput.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                const delta = e.key === 'ArrowUp' ? 64 : -64;
-                updateWidthDimension(delta);
-            }
-        });
-        
-        // Mouse wheel and keyboard support for height - maintains area while adjusting ratio
-        const updateHeightDimension = (delta) => {
-            if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
+    // Mouse wheel and keyboard support for height - maintains area while adjusting ratio
+    const updateHeightDimension = (delta) => {
+        if (resolutionInput.value !== 'custom' || isWheelUpdating) return;
 
-            isWheelUpdating = true;
+        isWheelUpdating = true;
 
-            const currentWidth = parseInt(widthInput.value) || 1024;
-            const currentHeight = parseInt(heightInput.value) || 1024;
-            const currentArea = currentWidth * currentHeight;
+        const currentWidth = parseInt(widthInput.value) || 1024;
+        const currentHeight = parseInt(heightInput.value) || 1024;
+        const currentArea = currentWidth * currentHeight;
 
-            // Adjust height by 64 pixels (step size) based on scroll direction
-            const newHeight = currentHeight + delta;
+        // Adjust height by 64 pixels (step size) based on scroll direction
+        const newHeight = currentHeight + delta;
 
-            // Calculate new width to maintain area
-            const newWidth = Math.round(currentArea / newHeight);
+        // Calculate new width to maintain area
+        const newWidth = Math.round(currentArea / newHeight);
 
-            // Get max area for validation
-            const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
-            const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
+        // Get max area for validation
+        const areaToggleEl = document.getElementById(`${stageId}_resolutionAreaToggle`);
+        const maxArea = areaToggleEl && areaToggleEl.dataset.maxArea ? parseInt(areaToggleEl.dataset.maxArea) : 1048576;
 
-            // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
-            const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
+        // Use correctDimensions with step 64 and current max area to ensure valid dimensions with clamping
+        const result = correctDimensions(newWidth, newHeight, { step: 64, maxArea: maxArea });
 
-            // Update inputs without triggering input events (set directly)
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
+        // Update inputs without triggering input events (set directly)
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
 
-            // Update bias orientation
-            updateStageBiasOrientation(stageId, 'custom');
+        // Update bias orientation
+        updateStageBiasOrientation(stageId, 'custom');
 
-            // Update downstream stages
-            updatePipelineStages(stageId);
+        // Update downstream stages
+        updatePipelineStages(stageId);
 
-            isWheelUpdating = false;
-        };
+        isWheelUpdating = false;
+    };
 
-        heightInput.addEventListener('wheel', function(e) {
+    heightInput.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -64 : 64;
+        updateHeightDimension(delta);
+    });
+
+    heightInput.addEventListener('keydown', function (e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -64 : 64;
+            const delta = e.key === 'ArrowUp' ? 64 : -64;
             updateHeightDimension(delta);
-        });
-
-        heightInput.addEventListener('keydown', function(e) {
-            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                const delta = e.key === 'ArrowUp' ? 64 : -64;
-                updateHeightDimension(delta);
-            }
-        });
+        }
+    });
 }
 
 // Check if stage has any custom advanced values and update reset button visibility
 function updateStageResetButtonVisibility(stageId) {
     const resetBtn = document.getElementById(`${stageId}_resetAdvanced`);
     if (!resetBtn) return;
-    
+
     const inheritedValues = getStageInheritedValues(stageId);
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
 
@@ -19701,22 +20466,22 @@ function updateStageResetButtonVisibility(stageId) {
     const isStageWithResolution = stageType === STAGE_TYPES.EXPAND_CANVAS || stageType === STAGE_TYPES.VARIATION;
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     const hasResolutionCustom = isStageWithResolution && resolutionInput && resolutionInput.value !== '';
-    
+
     // Check for background focus override
     const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
     const bgFocusState = bgFocusToggle?.dataset.state || '';
     // Only consider it custom if there's an explicit state that differs from inherited
     // Convert string state to boolean for comparison
     const bgFocusExplicitValue = bgFocusState === 'on';
-    
+
     // Only show reset if:
     // - Has explicit state AND differs from inherited
     // - AND (not first stage OR inherited value is true - meaning a previous stage had it enabled)
-    const hasBgFocusCustom = bgFocusState !== '' && 
-                             (bgFocusExplicitValue !== inheritedValues.backgroundFocus) &&
-                             (!inheritedValues.isFirstStage || inheritedValues.backgroundFocus === true);
+    const hasBgFocusCustom = bgFocusState !== '' &&
+        (bgFocusExplicitValue !== inheritedValues.backgroundFocus) &&
+        (!inheritedValues.isFirstStage || inheritedValues.backgroundFocus === true);
 
-    const hasCustomValues = 
+    const hasCustomValues =
         document.getElementById(`${stageId}_model`)?.value !== '' ||
         document.getElementById(`${stageId}_sampler`)?.value !== '' ||
         document.getElementById(`${stageId}_steps`)?.value !== '' ||
@@ -19725,7 +20490,7 @@ function updateStageResetButtonVisibility(stageId) {
         hasResolutionCustom ||
         hasBgFocusCustom ||
         (varietyBtn && ((varietyBtn.dataset.state === 'on') !== inheritedValues.variety));
-        
+
     if (hasCustomValues) {
         resetBtn.classList.remove('hidden');
     } else {
@@ -19736,13 +20501,13 @@ function updateStageResetButtonVisibility(stageId) {
     const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
     if (stageDirective) {
         autoResizeTextarea(stageDirective, 23);
-        
+
         // Add input event listener for continuous auto-resizing
         stageDirective.addEventListener('input', () => {
             autoResizeTextarea(stageDirective, 23);
         });
     }
-    
+
     // Set initial visibility based on creative mode
     updateStageCreativeDirectiveVisibility(stageId);
 }
@@ -19751,10 +20516,10 @@ function updateStageResetButtonVisibility(stageId) {
 function updateStageCreativeDirectiveVisibility(stageId) {
     const creativeDirectiveGroup = document.querySelector(`#${stageId}_advancedControls .group-creative-directive`);
     if (!creativeDirectiveGroup) return;
-    
+
     const creativeBtn = document.getElementById('creativeBtn');
     const isCreativeOn = creativeBtn && creativeBtn.dataset.state === 'on';
-    
+
     if (isCreativeOn) {
         creativeDirectiveGroup.classList.remove('hidden');
     } else {
@@ -19765,12 +20530,12 @@ function updateStageCreativeDirectiveVisibility(stageId) {
 // Update inherited state for dropdowns
 function updateStageDropdownInheritedState(stageId) {
     const inheritedValues = getStageInheritedValues(stageId);
-    
+
     const modelInput = document.getElementById(`${stageId}_model`);
     const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
     const samplerInput = document.getElementById(`${stageId}_sampler`);
     const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
-    
+
     // Update model dropdown
     if (modelInput && modelBtn) {
         if (modelInput.value === '') {
@@ -19782,23 +20547,23 @@ function updateStageDropdownInheritedState(stageId) {
             modelBtn.classList.remove('inherited');
         }
     }
-    
+
     // Update sampler dropdown
     if (samplerInput && samplerBtn) {
         const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
-        
+
         if (samplerInput.value === '') {
             // Using inherited value - add inherited class and show inherited value
             samplerBtn.classList.add('inherited');
-            
+
             // Temporarily set values to display inherited, then clear
             const tempSampler = inheritedValues.sampler;
             const tempNoise = inheritedValues.noiseScheduler;
             samplerInput.value = tempSampler;
             if (noiseSchedulerInput) noiseSchedulerInput.value = tempNoise;
-            
+
             updateStageSamplerDisplay(stageId);
-            
+
             // Clear the actual values to maintain inherited state
             samplerInput.value = '';
             if (noiseSchedulerInput) noiseSchedulerInput.value = '';
@@ -19807,24 +20572,24 @@ function updateStageDropdownInheritedState(stageId) {
             samplerBtn.classList.remove('inherited');
         }
     }
-    
+
     // Update resolution dropdown (works generically for all stage types)
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
 
     if (resolutionInput && resolutionBtn && inheritedValues.resolution) {
         const currentValue = resolutionInput.value || '';
-        
+
         // Use inherited if input is empty (never set for inherited items)
         if (currentValue === '') {
             // Using inherited value - determine if it's area-based or full preset
             resolutionBtn.classList.add('inherited');
-            
+
             // Check if resolution is area name (no underscore) or full preset
-            const isAreaName = !inheritedValues.resolution.includes('_') && 
-                              inheritedValues.resolution !== 'custom' &&
-                              ['normal', 'large', 'xlarge'].includes(inheritedValues.resolution);
-            
+            const isAreaName = !inheritedValues.resolution.includes('_') &&
+                inheritedValues.resolution !== 'custom' &&
+                ['normal', 'large', 'xlarge'].includes(inheritedValues.resolution);
+
             if (isAreaName) {
                 // Area-based: show area name
                 selectStageEnhanceResolution(stageId, inheritedValues.resolution, true);
@@ -19837,7 +20602,7 @@ function updateStageDropdownInheritedState(stageId) {
             resolutionBtn.classList.remove('inherited');
         }
     }
-    
+
     updateStageResetButtonVisibility(stageId);
 }
 
@@ -19846,7 +20611,7 @@ function renderEnhanceStage(stageId, options = {}) {
     const stageBody = document.getElementById(`${stageId}_body`);
     if (!stageBody) return;
     const initialUseBaseImage = options.useBaseImage === true;
-    
+
     stageBody.innerHTML = `
         <div class="stage-controls-section enhance-stage">
             <div class="form-row justify-spaced">
@@ -19969,7 +20734,7 @@ function renderEnhanceStage(stageId, options = {}) {
             </div>
         </div>
     `;
-    
+
     // Setup event listeners
     setupEnhanceStageEvents(stageId, initialUseBaseImage);
 }
@@ -19988,14 +20753,14 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
     const groupMagnitude = document.querySelector(`#${stageId}_body .group-magnitude`);
     const groupStrength = document.querySelector(`#${stageId}_body .group-strength`);
     const groupNoise = document.querySelector(`#${stageId}_body .group-noise`);
-    
+
     // Inherit seed toggle
     if (inheritSeedToggle && seedInput && autoSeedToggle) {
         inheritSeedToggle.addEventListener('click', () => {
             const currentState = inheritSeedToggle.dataset.state;
             const newState = currentState === 'on' ? 'off' : 'on';
             inheritSeedToggle.dataset.state = newState;
-            
+
             if (newState === 'on') {
                 // Inherit mode: hide auto seed toggle
                 autoSeedToggle.classList.add('hidden');
@@ -20005,7 +20770,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                     autoSeedToggle.classList.remove('hidden');
                 }
             }
-            
+
             // Use consolidated function to update seed display
             updateStageSeedDisplay(stageId);
         });
@@ -20015,52 +20780,52 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
     const stageDirective = document.getElementById(`${stageId}_creativeDirective`);
     if (stageDirective) {
         autoResizeTextarea(stageDirective, 23);
-        
+
         // Add input event listener for continuous auto-resizing
         stageDirective.addEventListener('input', () => {
             autoResizeTextarea(stageDirective, 23);
         });
     }
-    
+
     // Set initial visibility based on creative mode
     updateStageCreativeDirectiveVisibility(stageId);
-    
+
     // Magnitude change handler
     if (magnitudeInput) {
         magnitudeInput.addEventListener('input', () => {
             const magnitude = parseFloat(magnitudeInput.value);
             if (magnitude && MAGNITUDE_PRESETS[magnitude]) {
                 const preset = MAGNITUDE_PRESETS[magnitude];
-                
+
                 // Clear strength and noise values (using magnitude preset - like rescale)
                 strengthInput.value = '';
                 noiseInput.value = '';
-                
+
                 // Update overlays to show preset values
                 strengthOverlay.textContent = `${(preset.strength * 100).toFixed(0)}%`;
                 noiseOverlay.textContent = `${(preset.noise * 100).toFixed(0)}%`;
-                
+
                 // Add inherited class to show it's using magnitude preset
                 const strengthContainer = strengthInput.parentElement;
                 const noiseContainer = noiseInput.parentElement;
                 if (strengthContainer) strengthContainer.classList.add('inherited');
                 if (noiseContainer) noiseContainer.classList.add('inherited');
-                
+
                 // Clear magnitude placeholder (it's now active)
                 magnitudeInput.placeholder = '';
             }
         });
-        
+
         magnitudeInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.5 : 0.5;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.5 : 0.1) : (e.shiftKey ? 0.5 : 0.1);
             const currentVal = magnitudeInput.value !== '' ? parseFloat(magnitudeInput.value) : 3.0;
             const newValue = Math.max(1.0, Math.min(5.5, currentVal + delta));
             magnitudeInput.value = newValue.toFixed(1);
             magnitudeInput.dispatchEvent(new Event('input'));
         });
     }
-    
+
     // Strength input handlers (same pattern as rescale)
     if (strengthInput && strengthOverlay) {
         strengthInput.addEventListener('input', () => {
@@ -20068,13 +20833,13 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             if (strengthInput.value !== '') {
                 const value = parseFloat(strengthInput.value);
                 strengthOverlay.textContent = `${(value * 100).toFixed(0)}%`;
-                
+
                 // Remove inherited class from both strength and noise
                 const strengthContainer = strengthInput.parentElement;
                 const noiseContainer = noiseInput.parentElement;
                 if (strengthContainer) strengthContainer.classList.remove('inherited');
                 if (noiseContainer) noiseContainer.classList.remove('inherited');
-                
+
                 // Set magnitude to placeholder if it has a value
                 if (magnitudeInput && magnitudeInput.value !== '') {
                     magnitudeInput.placeholder = magnitudeInput.value;
@@ -20088,10 +20853,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                 }
             }
         });
-        
+
         strengthInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise parse from overlay or use default
             let currentVal;
             if (strengthInput.value !== '') {
@@ -20104,13 +20869,13 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             const newValue = Math.max(0, Math.min(1, currentVal + delta));
             strengthInput.value = newValue.toFixed(2);
             strengthOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
-            
+
             // Remove inherited class from both strength and noise
             const strengthContainer = strengthInput.parentElement;
             const noiseContainer = noiseInput.parentElement;
             if (strengthContainer) strengthContainer.classList.remove('inherited');
             if (noiseContainer) noiseContainer.classList.remove('inherited');
-            
+
             // Set magnitude to placeholder if it has a value
             if (magnitudeInput && magnitudeInput.value !== '') {
                 magnitudeInput.placeholder = magnitudeInput.value;
@@ -20118,7 +20883,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
         });
     }
-    
+
     // Noise input handlers (same pattern as rescale)
     if (noiseInput && noiseOverlay) {
         noiseInput.addEventListener('input', () => {
@@ -20126,13 +20891,13 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             if (noiseInput.value !== '') {
                 const value = parseFloat(noiseInput.value);
                 noiseOverlay.textContent = `${(value * 100).toFixed(0)}%`;
-                
+
                 // Remove inherited class from both strength and noise
                 const strengthContainer = strengthInput.parentElement;
                 const noiseContainer = noiseInput.parentElement;
                 if (strengthContainer) strengthContainer.classList.remove('inherited');
                 if (noiseContainer) noiseContainer.classList.remove('inherited');
-                
+
                 // Set magnitude to placeholder if it has a value
                 if (magnitudeInput && magnitudeInput.value !== '') {
                     magnitudeInput.placeholder = magnitudeInput.value;
@@ -20146,10 +20911,10 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                 }
             }
         });
-        
+
         noiseInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise parse from overlay or use default
             let currentVal;
             if (noiseInput.value !== '') {
@@ -20162,13 +20927,13 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             const newValue = Math.max(0, Math.min(1, currentVal + delta));
             noiseInput.value = newValue.toFixed(2);
             noiseOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
-            
+
             // Remove inherited class from both strength and noise
             const strengthContainer = strengthInput.parentElement;
             const noiseContainer = noiseInput.parentElement;
             if (strengthContainer) strengthContainer.classList.remove('inherited');
             if (noiseContainer) noiseContainer.classList.remove('inherited');
-            
+
             // Set magnitude to placeholder if it has a value
             if (magnitudeInput && magnitudeInput.value !== '') {
                 magnitudeInput.placeholder = magnitudeInput.value;
@@ -20176,25 +20941,25 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
         });
     }
-    
+
     // Auto seed toggle (match manual modal pattern)
     if (autoSeedToggle && seedInput) {
         autoSeedToggle.addEventListener('click', () => {
             const currentState = autoSeedToggle.dataset.state;
             const newState = currentState === 'on' ? 'off' : 'on';
             autoSeedToggle.dataset.state = newState;
-            
+
             // Use consolidated function to update seed display
             updateStageSeedDisplay(stageId);
         });
     }
-    
+
     // Initialize with default magnitude (3.0)
     if (magnitudeInput && magnitudeInput.value === '') {
         magnitudeInput.value = '3.0';
         magnitudeInput.dispatchEvent(new Event('input'));
     }
-    
+
     // Setup expand-style resolution dropdown
     const resolutionDropdown = document.getElementById(`${stageId}_resolutionDropdown`);
     const resolutionBtn = document.getElementById(`${stageId}_resolutionDropdownBtn`);
@@ -20209,14 +20974,14 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             () => resolutionInput.value || '',
             { preventFocusTransfer: true }
         );
-        
+
         // Add scroll wheel support for resolution cycling (skip custom)
         resolutionBtn.addEventListener('wheel', (e) => {
             e.preventDefault();
-            
+
             const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
             const isEnhanceMode = useBaseToggle?.dataset.state === 'on';
-            
+
             if (isEnhanceMode) {
                 // Enhance mode: cycle through area options
                 const areas = ['normal', 'large', 'xlarge'];
@@ -20227,48 +20992,48 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                 }
                 const currentIndex = areas.findIndex(a => a === currentValue);
                 if (currentIndex === -1) return;
-                
+
                 const delta = e.deltaY > 0 ? 1 : -1;
                 let newIndex = currentIndex + delta;
                 if (newIndex < 0) newIndex = areas.length - 1;
                 if (newIndex >= areas.length) newIndex = 0;
-                
+
                 selectStageEnhanceResolution(stageId, areas[newIndex]);
                 return;
             }
-            
+
             // Variation mode: use same logic as expand canvas
             const baseResolutionValue = getStageBaseResolution(stageId);
             const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
-            
+
             let isPortrait = false, isLandscape = false, isSquare = false;
             if (currentResolution) {
                 isPortrait = currentResolution.height > currentResolution.width;
                 isLandscape = currentResolution.width > currentResolution.height;
                 isSquare = currentResolution.width === currentResolution.height;
             }
-            
+
             // Build filtered list of resolutions
             const availableResolutions = [];
             RESOLUTION_GROUPS.forEach(group => {
                 group.options.forEach(opt => {
                     if (opt.value === 'custom') return; // Skip custom
                     if (opt.value.startsWith('small_')) return; // Skip small
-                    
+
                     const optIsPortrait = opt.value.includes('_portrait');
                     const optIsLandscape = opt.value.includes('_landscape');
                     const optIsSquare = opt.value.includes('_square');
-                    
+
                     if (isPortrait && optIsPortrait) return;
                     if (isLandscape && optIsLandscape) return;
                     if (isSquare && optIsSquare) return;
-                    
+
                     availableResolutions.push({ value: opt.value, name: opt.name, group: group.group });
                 });
             });
-            
+
             if (availableResolutions.length === 0) return;
-            
+
             // Find current index - use inherited value if input is empty
             let currentValue = resolutionInput.value;
             if (!currentValue) {
@@ -20286,21 +21051,21 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                 }
             }
             const currentIndex = availableResolutions.findIndex(r => r.value === currentValue);
-            
+
             // Calculate new index
             const delta = e.deltaY > 0 ? 1 : -1;
             let newIndex = currentIndex + delta;
-            
+
             // Wrap around
             if (newIndex < 0) newIndex = availableResolutions.length - 1;
             if (newIndex >= availableResolutions.length) newIndex = 0;
-            
+
             // Select new resolution
             const newResolution = availableResolutions[newIndex];
-            
+
             // Update the input value
             resolutionInput.value = newResolution.value;
-            
+
             // Update button display
             const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
             if (resolutionSelected) {
@@ -20308,13 +21073,13 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                 const badge = groupObj && groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
                 resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${newResolution.name}</span>${badge}`;
             }
-            
+
             // Update bias orientation and cascade downstream
             updateStageBiasOrientation(stageId, newResolution.value);
             updateDownstreamStageResolutions(stageId);
         });
     }
-    
+
     // Setup custom resolution controls (shared function)
     setupStageCustomResolutionControls(stageId, resolutionDropdown, resolutionInput);
 
@@ -20394,7 +21159,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
     const switchToStageResolution = () => {
         const resolutionInput = document.getElementById(`${stageId}_resolution`);
         const hasCustom = resolutionInput && resolutionInput.value !== '';
-        
+
         let target;
         if (hasCustom) {
             // Has custom value - process it (might be area name from enhance mode, convert to full preset)
@@ -20420,7 +21185,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             }
             selectStageResolution(stageId, target, null, true);
         }
-        
+
         // Re-render dropdown menu for variation mode (full resolution options)
         const currentValue = resolutionInput?.value || target;
         renderStageResolutionDropdown(stageId, currentValue);
@@ -20432,7 +21197,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
         useBaseImageToggle.addEventListener('click', () => {
             const newState = useBaseImageToggle.dataset.state === 'on' ? 'off' : 'on';
             useBaseImageToggle.dataset.state = newState;
-            
+
             // Update header name and icon
             const typeLabel = document.getElementById(`${stageId}_typeLabel`);
             if (typeLabel) {
@@ -20444,11 +21209,11 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
                     typeLabel.innerHTML = `<i class="ri-image-ai-fill"></i> Variation ${hexIdHtml}`;
                 }
             }
-            
+
             if (newState === 'on') switchToEnhance(); else switchToStageResolution();
         });
     }
-    
+
     // Setup advanced controls (same as expand canvas)
     setupStageAdvancedControls(stageId);
 }
@@ -20456,17 +21221,17 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
 // Setup advanced controls for any stage type (shared by expand canvas and enhance)
 function setupStageAdvancedControls(stageId) {
     const inheritedValues = getStageInheritedValues(stageId);
-    
+
     const stepsInput = document.getElementById(`${stageId}_steps`);
     const guidanceInput = document.getElementById(`${stageId}_guidance`);
     const rescaleInput = document.getElementById(`${stageId}_rescale`);
     const rescaleOverlay = document.getElementById(`${stageId}_rescaleOverlay`);
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-    
+
     // Set placeholders for advanced controls
     if (stepsInput) stepsInput.placeholder = inheritedValues.steps.toString();
     if (guidanceInput) guidanceInput.placeholder = inheritedValues.guidance >= 10 ? 10 : inheritedValues.guidance.toFixed(1);
-    
+
     // Variety toggle
     if (varietyBtn) {
         varietyBtn.addEventListener('click', () => {
@@ -20477,19 +21242,19 @@ function setupStageAdvancedControls(stageId) {
         // Set initial state from inherited
         varietyBtn.dataset.state = inheritedValues.variety ? 'on' : 'off';
     }
-    
+
     // Rescale percentage overlay
     if (rescaleInput && rescaleOverlay) {
         const rescaleContainer = rescaleInput.parentElement;
-        
+
         // Set initial overlay from inherited value
         rescaleOverlay.textContent = `${(inheritedValues.rescale * 100).toFixed(0)}%`;
-        
+
         // Update inherited state (check for empty string, not falsy value)
         if (rescaleInput.value === '') {
             if (rescaleContainer) rescaleContainer.classList.add('inherited');
         }
-        
+
         // Add blur validation for rescale
         rescaleInput.addEventListener('blur', () => {
             let value = parseFloat(rescaleInput.value);
@@ -20500,7 +21265,7 @@ function setupStageAdvancedControls(stageId) {
                 rescaleOverlay.textContent = `${(value * 100).toFixed(0)}%`;
             }
         });
-        
+
         rescaleInput.addEventListener('input', () => {
             // Check if there's an actual value (including 0)
             if (rescaleInput.value !== '') {
@@ -20518,7 +21283,7 @@ function setupStageAdvancedControls(stageId) {
         });
         rescaleInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             // Use custom value if set (including 0), otherwise use inherited
             const currentVal = rescaleInput.value !== '' ? parseFloat(rescaleInput.value) : inheritedValues.rescale;
             const newValue = Math.max(0, Math.min(1, currentVal + delta));
@@ -20529,7 +21294,7 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
     }
-    
+
     // Setup model dropdown
     const modelDropdown = document.getElementById(`${stageId}_modelDropdown`);
     const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
@@ -20544,7 +21309,7 @@ function setupStageAdvancedControls(stageId) {
             { preventFocusTransfer: true }
         );
     }
-    
+
     // Setup sampler dropdown
     const samplerDropdown = document.getElementById(`${stageId}_samplerDropdown`);
     const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
@@ -20558,14 +21323,14 @@ function setupStageAdvancedControls(stageId) {
             () => document.getElementById(`${stageId}_sampler`)?.value || '',
             { preventFocusTransfer: true }
         );
-        
+
         // Initialize with inherited state
         updateStageDropdownInheritedState(stageId);
-        
+
         // Initial reset button visibility check
         updateStageResetButtonVisibility(stageId);
     }
-    
+
     // Special handling for steps input with 28-step block
     let stepsWheelTimeout = false;
     if (stepsInput) {
@@ -20578,7 +21343,7 @@ function setupStageAdvancedControls(stageId) {
                 stepsInput.value = value;
             }
         });
-        
+
         stepsInput.addEventListener('input', () => {
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
@@ -20588,7 +21353,7 @@ function setupStageAdvancedControls(stageId) {
             // Use inherited value if no custom value set
             const currentValue = stepsInput.value ? parseInt(stepsInput.value) : parseInt(stepsInput.placeholder || 25);
             const delta = e.deltaY > 0 ? -1 : 1;
-            
+
             if (currentValue < 28) {
                 if (!stepsWheelTimeout) {
                     const nextValue = currentValue + delta;
@@ -20620,7 +21385,7 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
     }
-    
+
     // Guidance input
     if (guidanceInput) {
         // Add blur validation for guidance
@@ -20632,15 +21397,14 @@ function setupStageAdvancedControls(stageId) {
                 guidanceInput.value = value >= 10 ? value.toString() : value.toFixed(1);
             }
         });
-        
+
         guidanceInput.addEventListener('input', () => {
             updateStageResetButtonVisibility(stageId);
             updateDownstreamStagesInheritedValues(stageId);
         });
         guidanceInput.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const step = 0.1; // Use consistent step for guidance
-            const delta = e.deltaY > 0 ? -step : step;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.01 : 0.1) : (e.shiftKey ? 0.01 : 0.1);
             // Use inherited value if no custom value set (handle 0 properly)
             const currentVal = guidanceInput.value !== '' ? parseFloat(guidanceInput.value) : parseFloat(guidanceInput.placeholder || 5.0);
             const newValue = Math.max(0.0, Math.min(10.0, currentVal + delta));
@@ -20649,14 +21413,14 @@ function setupStageAdvancedControls(stageId) {
             updateDownstreamStagesInheritedValues(stageId);
         });
     }
-    
+
     // Reset button handler
     const resetBtn = document.getElementById(`${stageId}_resetAdvanced`);
     if (resetBtn) {
         resetBtn.addEventListener('click', () => {
             // Get current inherited values
             const currentInherited = getStageInheritedValues(stageId);
-            
+
             // Clear all custom values
             const modelInput = document.getElementById(`${stageId}_model`);
             const samplerInput = document.getElementById(`${stageId}_sampler`);
@@ -20665,7 +21429,7 @@ function setupStageAdvancedControls(stageId) {
             const guidanceInput = document.getElementById(`${stageId}_guidance`);
             const rescaleInput = document.getElementById(`${stageId}_rescale`);
             const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-            
+
             if (modelInput) modelInput.value = '';
             if (samplerInput) samplerInput.value = '';
             if (noiseSchedulerInput) noiseSchedulerInput.value = '';
@@ -20685,26 +21449,26 @@ function setupStageAdvancedControls(stageId) {
             if (varietyBtn) {
                 varietyBtn.dataset.state = currentInherited.variety ? 'on' : 'off';
             }
-            
+
             // Reset resolution if it has a custom value
             const resolutionInput = document.getElementById(`${stageId}_resolution`);
             if (resolutionInput && resolutionInput.value !== '') {
                 resolutionInput.value = '';
             }
-            
+
             // Reset background focus to inherited state
             const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
             if (bgFocusToggle) {
                 bgFocusToggle.dataset.state = ''; // Clear to inherit
                 updateStageBackgroundFocusVisuals(stageId, currentInherited.backgroundFocus, true);
             }
-            
+
             // Update inherited state for dropdowns
             updateStageDropdownInheritedState(stageId);
-            
+
             // Update reset button visibility
             updateStageResetButtonVisibility(stageId);
-            
+
             // Update downstream stages
             updateDownstreamStagesInheritedValues(stageId);
         });
@@ -20715,32 +21479,32 @@ function setupStageAdvancedControls(stageId) {
 function getStageBaseResolution(stageId) {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     const currentIndex = allStages.findIndex(s => s.id === stageId);
-    
+
     if (currentIndex === -1) return manualSelectedResolution || 'normal_square';
-    
+
     // First expand canvas stage uses manual resolution
     if (currentIndex === 0) {
         return manualSelectedResolution || 'normal_square';
     }
-    
+
     // Check if current stage is a branch
     const currentStage = allStages[currentIndex];
     const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
     const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
-    
+
     // Find previous expand canvas stage
     for (let i = currentIndex - 1; i >= 0; i--) {
         const prevStage = allStages[i];
-        
+
         // Check if previous stage is a branch
         const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
         const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
-        
+
         // If current stage is NOT a branch, skip branch stages
         if (!isCurrentBranch && isPrevBranch) {
             continue;
         }
-        
+
         if (prevStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
             const prevResolutionInput = document.getElementById(`${prevStage.id}_resolution`);
             if (prevResolutionInput && prevResolutionInput.value) {
@@ -20748,7 +21512,7 @@ function getStageBaseResolution(stageId) {
             }
         }
     }
-    
+
     // Fallback to manual resolution
     return manualSelectedResolution || 'normal_square';
 }
@@ -20757,37 +21521,92 @@ function getStageBaseResolution(stageId) {
 function isLastExpandCanvasStage(stageId) {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     const currentIndex = allStages.findIndex(s => s.id === stageId);
-    
+
     if (currentIndex === -1) return true;
-    
+
     // Check if current stage is a branch
     const currentBranchToggle = document.getElementById(`${stageId}_branchToggle`);
     const isCurrentBranch = currentBranchToggle?.dataset.state === 'on';
-    
+
     // Check if there are any expand canvas stages after this one (in the same chain)
     for (let i = currentIndex + 1; i < allStages.length; i++) {
         const stage = allStages[i];
-        
+
         // Check if this stage is a branch
         const stageBranchToggle = document.getElementById(`${stage.id}_branchToggle`);
         const isStageBranch = stageBranchToggle?.dataset.state === 'on';
-        
+
         // If current is branch, only look for more branches
         if (isCurrentBranch && !isStageBranch) {
             break; // Exited branch chain, stop looking
         }
-        
+
         // If current is not branch, skip branches
         if (!isCurrentBranch && isStageBranch) {
             continue;
         }
-        
+
         if (stage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
             return false; // Found another expand canvas stage after this one in the same chain
         }
     }
-    
+
     return true; // This is the last expand canvas stage in its chain
+}
+
+/** Pixel size of the image entering this expand-canvas stage (preset or custom); used to hide targets with the same aspect ratio. */
+function getExpandCanvasStageBasePixelDimensions(stageId) {
+    const baseResolutionValue = getStageBaseResolution(stageId);
+    const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
+
+    if (baseResolutionValue === 'custom') {
+        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+        const currentIndex = allStages.findIndex(s => s.id === stageId);
+        const isFirstStage = currentIndex === 0 || !allStages.slice(0, currentIndex).some(s => s.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS);
+
+        if (isFirstStage) {
+            const manualWidth = document.getElementById('manualWidth');
+            const manualHeight = document.getElementById('manualHeight');
+            if (manualWidth && manualHeight) {
+                return {
+                    width: parseInt(manualWidth.value, 10) || 1024,
+                    height: parseInt(manualHeight.value, 10) || 1024
+                };
+            }
+            return { width: 0, height: 0 };
+        }
+
+        const currentStageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
+        const isCurrentStageBranch = currentStageBranchToggle?.dataset.state === 'on';
+
+        for (let i = currentIndex - 1; i >= 0; i--) {
+            const prevStage = allStages[i];
+            const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
+            const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
+            if (!isCurrentStageBranch && isPrevBranch) continue;
+
+            if (prevStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
+                const prevResolutionInput = document.getElementById(`${prevStage.id}_resolution`);
+                if (prevResolutionInput && prevResolutionInput.value === 'custom') {
+                    const widthInput = document.getElementById(`${prevStage.id}_width`);
+                    const heightInput = document.getElementById(`${prevStage.id}_height`);
+                    if (widthInput && heightInput) {
+                        return {
+                            width: parseInt(widthInput.value, 10) || 1024,
+                            height: parseInt(heightInput.value, 10) || 1024
+                        };
+                    }
+                }
+            }
+        }
+        return { width: 0, height: 0 };
+    }
+
+    if (currentResolution) {
+        return { width: currentResolution.width, height: currentResolution.height };
+    }
+
+    return { width: 0, height: 0 };
 }
 
 // Stage dropdown render functions
@@ -20822,156 +21641,35 @@ function renderStageResolutionDropdown(stageId, selectedValue) {
     // Check if this is a variation stage (not enhance mode) - should show all resolutions
     const isVariationMode = useBaseToggle && useBaseToggle.dataset.state === 'off';
 
-    // Get base resolution for this stage
-    const baseResolutionValue = getStageBaseResolution(stageId);
-    const currentResolution = RESOLUTIONS.find(r => r.value === baseResolutionValue);
+    const { width: baseWidth, height: baseHeight } = getExpandCanvasStageBasePixelDimensions(stageId);
 
-    // Check if this is the last expand canvas stage
-    const isLastStage = isLastExpandCanvasStage(stageId);
-
-    // Determine current image characteristics and base dimensions
-    let isPortrait = false;
-    let isLandscape = false;
-    let isSquare = false;
-    let baseWidth = 0;
-    let baseHeight = 0;
-
-    // Handle custom resolution from previous stage or manual modal
-    if (baseResolutionValue === 'custom') {
-        const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
-        const currentIndex = allStages.findIndex(s => s.id === stageId);
-
-        // Check if this is the first expand canvas stage
-        const isFirstStage = currentIndex === 0 || !allStages.slice(0, currentIndex).some(s => s.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS);
-
-        if (isFirstStage) {
-            // Get custom dimensions from manual modal
-            const manualWidth = document.getElementById('manualWidth');
-            const manualHeight = document.getElementById('manualHeight');
-            if (manualWidth && manualHeight) {
-                baseWidth = parseInt(manualWidth.value) || 1024;
-                baseHeight = parseInt(manualHeight.value) || 1024;
-            }
-        } else {
-            // Check if current stage is a branch
-            const currentStageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
-            const isCurrentStageBranch = currentStageBranchToggle?.dataset.state === 'on';
-            
-            // Look for previous expand canvas stage with custom resolution
-            for (let i = currentIndex - 1; i >= 0; i--) {
-                const prevStage = allStages[i];
-                
-                // Check if previous stage is a branch
-                const prevBranchToggle = document.getElementById(`${prevStage.id}_branchToggle`);
-                const isPrevBranch = prevBranchToggle?.dataset.state === 'on';
-                
-                // If current stage is NOT a branch, skip branch stages
-                if (!isCurrentStageBranch && isPrevBranch) {
-                    continue;
-                }
-                
-                if (prevStage.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS) {
-                    const prevResolutionInput = document.getElementById(`${prevStage.id}_resolution`);
-                    if (prevResolutionInput && prevResolutionInput.value === 'custom') {
-                        const widthInput = document.getElementById(`${prevStage.id}_width`);
-                        const heightInput = document.getElementById(`${prevStage.id}_height`);
-                        if (widthInput && heightInput) {
-                            baseWidth = parseInt(widthInput.value) || 1024;
-                            baseHeight = parseInt(heightInput.value) || 1024;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        isPortrait = baseHeight > baseWidth;
-        isLandscape = baseWidth > baseHeight;
-        isSquare = baseWidth === baseHeight;
-    } else if (currentResolution) {
-        isPortrait = currentResolution.height > currentResolution.width;
-        isLandscape = currentResolution.width > currentResolution.height;
-        isSquare = currentResolution.width === currentResolution.height;
-        baseWidth = currentResolution.width;
-        baseHeight = currentResolution.height;
-    }
-
-    // Helper function to check if resolution is too close to base dimensions
-    const isTooClose = (width, height) => {
-        if (!baseWidth || !baseHeight) return false;
-
-        // Calculate aspect ratios
-        const baseAspect = baseWidth / baseHeight;
-        const optAspect = width / height;
-
-        // Calculate aspect ratio difference (percentage)
-        const aspectDiff = Math.abs(baseAspect - optAspect) / baseAspect;
-
-        // Calculate dimension differences (percentage)
-        const widthDiff = Math.abs(width - baseWidth) / baseWidth;
-        const heightDiff = Math.abs(height - baseHeight) / baseHeight;
-
-        // Consider resolution too close if:
-        // 1. Aspect ratio is within 5% AND
-        // 2. Both dimensions are within 15% of base dimensions
-        return aspectDiff < 0.05 && widthDiff < 0.15 && heightDiff < 0.15;
-    };
-    
-    // Filter RESOLUTION_GROUPS based on current resolution (same logic as expand canvas modal)
+    // Filter RESOLUTION_GROUPS: hide presets with the same aspect ratio as the base (exact rational match)
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
         const filteredOptions = group.options.filter(opt => {
             // Keep custom resolution option
             if (opt.value === 'custom') return true;
-            
+
             // Variation mode: no filtering, show all resolutions
             if (isVariationMode) return true;
-            
+
             // Always exclude small resolutions
             if (opt.value.startsWith('small_')) {
                 return false;
             }
-            
-            // Only allow large and wallpaper resolutions on the last expand canvas stage
-            // if (!isLastStage && (opt.value.startsWith('large_') || opt.value.startsWith('xlarge_') || opt.value.startsWith('wallpaper_'))) {
-            //     return false;
-            // }
-            
-            // Get option characteristics
-            const optIsPortrait = opt.value.includes('_portrait');
-            const optIsLandscape = opt.value.includes('_landscape');
-            const optIsSquare = opt.value.includes('_square');
-            
-            // If current image is portrait, exclude all portrait resolutions
-            if (isPortrait && optIsPortrait) {
-                return false;
-            }
-            
-            // If current image is landscape, exclude all landscape resolutions
-            if (isLandscape && optIsLandscape) {
-                return false;
-            }
-            
-            // If current image is square, exclude all square resolutions
-            if (isSquare && optIsSquare) {
-                return false;
-            }
 
-            // Exclude resolutions that are too close to the base resolution
-            if (baseWidth && baseHeight && opt.width && opt.height) {
-                if (isTooClose(opt.width, opt.height)) {
-                    return false;
-                }
+            if (samePixelAspectRatio(baseWidth, baseHeight, opt.width, opt.height)) {
+                return false;
             }
 
             return true;
         });
-        
+
         return {
             ...group,
             options: filteredOptions
         };
     }).filter(group => group.options.length > 0); // Remove empty groups
-    
+
     renderGroupedDropdown(
         menu,
         filteredGroups,
@@ -20992,7 +21690,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
     const widthInput = document.getElementById(`${stageId}_width`);
     const heightInput = document.getElementById(`${stageId}_height`);
     const areaToggle = document.getElementById(`${stageId}_resolutionAreaToggle`);
-    
+
     if (!resolutionInput || !resolutionSelected) return;
 
     // Check if this is a variation stage in enhance mode (enhance mode shows area names)
@@ -21004,7 +21702,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
     // For inherited display, do NOT set value, just mark as inherited
     if (isInheritedDisplay) {
         if (resolutionBtn) resolutionBtn.classList.add('inherited');
-        
+
         // Enhance mode should show area name (only variation stages in enhance mode)
         if (isEnhanceMode && value.includes('_') && value !== 'custom') {
             const areaName = value.split('_')[0];
@@ -21012,7 +21710,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
             resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[areaName] || 'Normal'}</span>`;
             return;
         }
-        
+
         // Find group and option for display
         if (!group) {
             for (const g of RESOLUTION_GROUPS) {
@@ -21034,19 +21732,19 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
         }
         return;
     }
-    
+
     // Handle custom resolution mode
     if (value === 'custom') {
         resolutionDropdown.classList.add('hidden');
         customResolution.classList.remove('hidden');
         customResolutionBtn.setAttribute('data-state', 'on');
         if (areaToggle) areaToggle.classList.remove('hidden');
-        
+
         // Initialize stage max area if not set (using dataset)
         if (!areaToggle.dataset.maxArea) {
             areaToggle.dataset.maxArea = '1048576'; // Default to Normal (1MP)
         }
-        
+
         // Update toggle display
         if (areaToggle) {
             const maxArea = parseInt(areaToggle.dataset.maxArea);
@@ -21058,11 +21756,11 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
                 areaToggle.textContent = 'Normal';
             }
         }
-        
+
         // Only convert from previous resolution if width/height are not already set
         // This preserves loaded values when loading from saved pipeline stages
         const hasExistingValues = widthInput.value && heightInput.value;
-        
+
         if (!hasExistingValues) {
             // Get current stage dimensions (handles inherited values too)
             const currentDimensions = getStageDimensions(stageId);
@@ -21071,36 +21769,36 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
                 heightInput.value = currentDimensions.height;
             } else {
                 // Fallback: try to get from current resolution value
-            const currentResolution = resolutionInput.value;
+                const currentResolution = resolutionInput.value;
                 if (currentResolution && currentResolution !== 'custom') {
                     const dimensions = getDimensionsFromResolution(currentResolution);
-            if (dimensions) {
-                widthInput.value = dimensions.width;
-                heightInput.value = dimensions.height;
+                    if (dimensions) {
+                        widthInput.value = dimensions.width;
+                        heightInput.value = dimensions.height;
                     }
                 }
-                
+
                 // Final fallback to 1024x1024
                 if (!widthInput.value || !heightInput.value) {
-                widthInput.value = '1024';
-                heightInput.value = '1024';
+                    widthInput.value = '1024';
+                    heightInput.value = '1024';
                 }
             }
         }
-        
+
         resolutionInput.value = 'custom';
         if (resolutionBtn) resolutionBtn.classList.remove('inherited');
-        
+
         // Update functions
         updateStageResetButtonVisibility(stageId);
         updateStageDropdownInheritedState(stageId);
         updateStageBiasOrientation(stageId, value);
-        
+
         // Update this stage and all downstream stages
         updatePipelineStages(stageId);
         return;
     }
-    
+
     // Find group if not provided
     if (!group) {
         for (const g of RESOLUTION_GROUPS) {
@@ -21111,7 +21809,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
             }
         }
     }
-    
+
     // Update button display
     // Enhance mode should show area name (only variation stages in enhance mode)
     if (isEnhanceMode && value.includes('_') && value !== 'custom') {
@@ -21120,26 +21818,26 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
         resolutionInput.value = value.toLowerCase();
         resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${displayMap[areaName] || 'Normal'}</span>`;
     } else {
-    const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
-    const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
-    
-    // ALWAYS set the value - critical for updateStageResetButtonVisibility to detect custom value
-    resolutionInput.value = value.toLowerCase();
-    
-    if (optObj) {
+        const groupObj = RESOLUTION_GROUPS.find(g => g.group === group);
+        const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
+
+        // ALWAYS set the value - critical for updateStageResetButtonVisibility to detect custom value
+        resolutionInput.value = value.toLowerCase();
+
+        if (optObj) {
             const badge = groupObj.badge ? `<span class="custom-dropdown-badge${groupObj.free ? ' free-badge' : ''}">${groupObj.badge}</span>` : '';
             resolutionSelected.innerHTML = `<span class="custom-dropdown-text">${optObj.name}</span>${badge}`;
-    } else {
-        resolutionSelected.textContent = '---';
+        } else {
+            resolutionSelected.textContent = '---';
         }
     }
-    
+
     // Remove inherited class since we're setting a custom value
     if (resolutionBtn) resolutionBtn.classList.remove('inherited');
-    
+
     updateStageDropdownInheritedState(stageId);
     updateStageBiasOrientation(stageId, value);
-    
+
     // Update this stage and all downstream stages
     updatePipelineStages(stageId);
 }
@@ -21150,26 +21848,26 @@ function toggleStageResolutionAreaLimit(stageId) {
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     const widthInput = document.getElementById(`${stageId}_width`);
     const heightInput = document.getElementById(`${stageId}_height`);
-    
+
     if (!areaToggle || !resolutionInput || resolutionInput.value !== 'custom') return;
-    
+
     // Initialize stage max area if not set (using dataset)
     if (!areaToggle.dataset.maxArea) {
         areaToggle.dataset.maxArea = '1048576'; // Default to Normal (1MP)
     }
-    
+
     const currentMaxArea = parseInt(areaToggle.dataset.maxArea);
-    
+
     // Only recalculate if custom resolution is selected and has valid dimensions
     if (widthInput && heightInput && widthInput.value && heightInput.value) {
         const currentWidth = parseInt(widthInput.value) || 1024;
         const currentHeight = parseInt(heightInput.value) || 1024;
         const currentArea = currentWidth * currentHeight;
         const aspectRatio = currentWidth / currentHeight;
-        
+
         let newMaxArea;
         let newAreaName;
-        
+
         // Toggle between Normal (1MP) → Large (2MP) → Max (3MP)
         if (currentMaxArea === 1048576) {
             newMaxArea = 2166784; // Large (2MP)
@@ -21181,32 +21879,32 @@ function toggleStageResolutionAreaLimit(stageId) {
             newMaxArea = 1048576; // Normal (1MP)
             newAreaName = 'Normal';
         }
-        
+
         // Calculate new dimensions proportionally based on area ratio
         const areaRatio = Math.sqrt(newMaxArea / currentArea);
         let newWidth = Math.round(currentWidth * areaRatio);
         let newHeight = Math.round(currentHeight * areaRatio);
-        
+
         // Apply step 64 snapping and area constraints
         const result = correctDimensions(newWidth, newHeight, {
             step: 64,
             maxArea: newMaxArea
         });
-        
+
         // Update the max area in dataset AFTER calculation but BEFORE updating inputs
         areaToggle.dataset.maxArea = newMaxArea.toString();
         areaToggle.textContent = newAreaName;
-        
+
         // Update inputs without triggering input events
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, result.width);
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, result.height);
-        
+
         // Update bias orientation based on new dimensions
         updateStageBiasOrientation(stageId, 'custom');
-        
+
         // Update downstream stages to reflect new custom dimensions
         updatePipelineStages(stageId);
-        
+
         // Show feedback about the change
         showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
     } else {
@@ -21228,25 +21926,25 @@ function toggleStageResolutionAreaLimit(stageId) {
 function updateDownstreamStageResolutions(changedStageId, newResolution, fromManual = false) {
     const allStages = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
     let changedIndex = allStages.findIndex(s => s.id === changedStageId);
-    
+
     // Special case: if cascading from manual resolution, treat all stages as downstream
     if (fromManual) {
         changedIndex = -1; // Start before the first stage
     } else if (changedIndex === -1) {
         return; // Stage not found and not from manual
     }
-    
+
     // Get aspect ratio and orientation for a resolution (handles both custom and preset)
     const getResolutionInfo = (stageId, resValue) => {
         if (resValue === 'custom') {
             // Check if this is from manual (use manual inputs) or from a stage
-            const widthInput = fromManual ? 
-                document.getElementById('manualWidth') : 
+            const widthInput = fromManual ?
+                document.getElementById('manualWidth') :
                 document.getElementById(`${stageId}_width`);
-            const heightInput = fromManual ? 
-                document.getElementById('manualHeight') : 
+            const heightInput = fromManual ?
+                document.getElementById('manualHeight') :
                 document.getElementById(`${stageId}_height`);
-                
+
             if (widthInput && heightInput && widthInput.value && heightInput.value) {
                 const width = parseInt(widthInput.value);
                 const height = parseInt(heightInput.value);
@@ -21267,7 +21965,7 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
             return { width: res.width, height: res.height, aspectRatio, orientation, isCustom: false };
         }
     };
-    
+
     // Determine next orientation based on current (flip logic)
     const getNextOrientation = (currentOrientation) => {
         if (currentOrientation === 'portrait') return 'square';
@@ -21275,51 +21973,51 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         if (currentOrientation === 'landscape') return 'square';
         return null;
     };
-    
+
     // Find a resolution with the target orientation (prefer same group, then normal, then any)
     const findResolutionByOrientation = (targetOrientation, preferredGroup = 'Normal') => {
-        const suffix = targetOrientation === 'portrait' ? '_portrait' : 
-                      targetOrientation === 'landscape' ? '_landscape' : '_square';
-        
+        const suffix = targetOrientation === 'portrait' ? '_portrait' :
+            targetOrientation === 'landscape' ? '_landscape' : '_square';
+
         // Try preferred group first
         let found = RESOLUTIONS.find(r => r.value.startsWith(preferredGroup.toLowerCase() + suffix));
         if (found) return found.value;
-        
+
         // Try normal group
         found = RESOLUTIONS.find(r => r.value.startsWith('normal' + suffix));
         if (found) return found.value;
-        
+
         // Try any group
         found = RESOLUTIONS.find(r => r.value.endsWith(suffix) && !r.value.startsWith('small_'));
         if (found) return found.value;
-        
+
         return null;
     };
-    
+
     // Get info for the changed stage's resolution
     let previousInfo = getResolutionInfo(changedStageId, newResolution);
     if (!previousInfo) return;
-    
+
     let previousOrientation = previousInfo.orientation;
     let previousAspectRatio = previousInfo.aspectRatio;
-    
+
     // Check if the changed stage is a branch (or if we're cascading from manual)
     const changedBranchToggle = changedStageId ? document.getElementById(`${changedStageId}_branchToggle`) : null;
     const isChangedBranch = changedBranchToggle?.dataset.state === 'on';
-    
+
     // Process each downstream expand canvas stage
     for (let i = changedIndex + 1; i < allStages.length; i++) {
         const stage = allStages[i];
-        
+
         // Only update expand canvas stages
         if (stage.dataset.stageType !== STAGE_TYPES.EXPAND_CANVAS) continue;
-        
+
         const stageId = stage.id;
-        
+
         // Check if this downstream stage is a branch
         const stageBranchToggle = document.getElementById(`${stageId}_branchToggle`);
         const isStageBranch = stageBranchToggle?.dataset.state === 'on';
-        
+
         // Skip branch cascade rules:
         // - If changed stage is a branch, only affect other branch stages
         // - If changed stage is NOT a branch (or manual), skip branch stages
@@ -21335,14 +22033,14 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         }
         const resolutionInput = document.getElementById(`${stageId}_resolution`);
         const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
-        
+
         if (!resolutionInput || !resolutionSelected || !previousOrientation) {
             // Conflict: clear this and all downstream resolutions
             clearStageResolution(stageId);
             previousOrientation = null;
             continue;
         }
-        
+
         // Calculate next orientation
         const nextOrientation = getNextOrientation(previousOrientation);
         if (!nextOrientation) {
@@ -21350,33 +22048,33 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
             previousOrientation = null;
             continue;
         }
-        
+
         // Check if current downstream stage is custom
         const isDownstreamCustom = resolutionInput.value === 'custom';
-        
+
         if (isDownstreamCustom) {
             // Swap width and height for custom resolution (rotate aspect ratio)
             const widthInput = document.getElementById(`${stageId}_width`);
             const heightInput = document.getElementById(`${stageId}_height`);
-            
+
             if (widthInput && heightInput && widthInput.value && heightInput.value) {
                 const currentWidth = parseInt(widthInput.value);
                 const currentHeight = parseInt(heightInput.value);
                 const currentAspectRatio = currentWidth / currentHeight;
-                
+
                 // Check if aspect ratio difference is at least 5%
                 const aspectRatioDiff = Math.abs(currentAspectRatio - previousAspectRatio) / previousAspectRatio;
-                
+
                 if (aspectRatioDiff < 0.05) {
                     // Not enough separation, swap width and height
                     const temp = currentWidth;
                     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(widthInput, currentHeight);
                     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(heightInput, temp);
-                    
+
                     // Update previous info for next iteration
                     previousAspectRatio = currentHeight / temp; // Swapped
                     previousOrientation = nextOrientation;
-                    
+
                     // Update bias orientation
                     updateStageBiasOrientation(stageId, 'custom');
                 } else {
@@ -21388,7 +22086,7 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
         } else {
             // Check current resolution orientation
             const currentRes = RESOLUTIONS.find(r => r.value === resolutionInput.value);
-            
+
             if (currentRes) {
                 // Determine current resolution's orientation
                 let currentOrientation = 'square';
@@ -21397,7 +22095,7 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                 } else if (currentRes.width > currentRes.height) {
                     currentOrientation = 'landscape';
                 }
-                
+
                 // Check if current resolution already matches the required orientation
                 if (currentOrientation === nextOrientation) {
                     // Current resolution is valid - keep it!
@@ -21406,18 +22104,18 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                     continue; // Don't change this stage's resolution
                 }
             }
-            
+
             // Current resolution doesn't match - find a suitable one
             const preferredGroup = currentRes ? currentRes.value.split('_')[0] : 'normal';
             const newValue = findResolutionByOrientation(nextOrientation, preferredGroup);
-            
+
             if (!newValue) {
                 // No suitable resolution found - clear this and downstream
                 clearStageResolution(stageId);
                 previousOrientation = null;
                 continue;
             }
-            
+
             // Update this stage's resolution
             resolutionInput.value = newValue;
             const newRes = RESOLUTIONS.find(r => r.value === newValue);
@@ -21430,19 +22128,19 @@ function updateDownstreamStageResolutions(changedStageId, newResolution, fromMan
                         break;
                     }
                 }
-                
+
                 const opt = displayGroup?.options.find(o => o.value === newValue);
                 if (opt && displayGroup) {
                     resolutionSelected.innerHTML = `${opt.name}${displayGroup.badge ? '<span class="custom-dropdown-badge' + (displayGroup.free ? ' free-badge' : '') + '">' + displayGroup.badge + '</span>' : ''}`;
                 }
-                
+
                 // Update bias orientation
                 updateStageBiasOrientation(stageId, newValue);
-                
+
                 // Update previous info for next iteration
                 previousAspectRatio = newRes.width / newRes.height;
             }
-            
+
             previousOrientation = nextOrientation;
         }
     }
@@ -21456,17 +22154,17 @@ function refreshStageResolutionDisplay(stageId) {
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
     const currentValue = resolutionInput?.value;
-    
+
     if (!currentValue || !resolutionSelected) {
         return;
     }
-    
+
     // Check if this is a variation stage in enhance mode (enhance mode shows area name)
     const stageItem = document.getElementById(stageId);
     const isVariationStage = stageItem?.dataset.stageType === STAGE_TYPES.VARIATION;
     const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
     const isEnhanceMode = isVariationStage && useBaseToggle && useBaseToggle.dataset.state === 'on';
-    
+
     if (currentValue === 'custom') {
         resolutionSelected.innerHTML = '<span class="custom-dropdown-text">Custom</span>';
     } else if (isEnhanceMode && currentValue.includes('_') && currentValue !== 'custom') {
@@ -21483,7 +22181,7 @@ function refreshStageResolutionDisplay(stageId) {
                 break;
             }
         }
-        
+
         const opt = displayGroup?.options.find(o => o.value === currentValue);
         if (opt && displayGroup) {
             const badge = displayGroup.badge ? `<span class="custom-dropdown-badge${displayGroup.free ? ' free-badge' : ''}">${displayGroup.badge}</span>` : '';
@@ -21496,7 +22194,7 @@ function refreshStageResolutionDisplay(stageId) {
 function clearStageResolution(stageId) {
     const resolutionInput = document.getElementById(`${stageId}_resolution`);
     const resolutionSelected = document.getElementById(`${stageId}_resolutionSelected`);
-    
+
     if (resolutionInput) resolutionInput.value = '';
     if (resolutionSelected) resolutionSelected.textContent = '---';
 }
@@ -21532,19 +22230,19 @@ function renderStageBiasDropdown(stageId, selectedValue) {
     // Get current background focus state
     const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
     const currentState = bgFocusToggle?.dataset.state || '';
-    
+
     // Check if inherited
     const inheritedValues = getStageInheritedValues(stageId);
     const isInheriting = currentState === '';
     const isExplicitlyEnabled = currentState === 'on';
     const actualState = isInheriting ? inheritedValues.backgroundFocus : isExplicitlyEnabled;
-    
+
     // Determine label based on state
     let label = 'Background Focus';
     if (isInheriting && inheritedValues.backgroundFocus) {
         label += '*'; // Inherited ON
     }
-    
+
     // Add background focus toggle at the top
     const bgFocusOption = document.createElement('div');
     bgFocusOption.className = 'custom-dropdown-option' + (actualState ? ' active' : '');
@@ -21554,16 +22252,16 @@ function renderStageBiasDropdown(stageId, selectedValue) {
     `;
     bgFocusOption.style.display = 'flex';
     bgFocusOption.style.alignItems = 'center';
-    
+
     bgFocusOption.addEventListener('click', (e) => {
         e.stopPropagation();
         toggleStageBackgroundFocus(stageId);
         // Re-render to update the active state
         renderStageBiasDropdown(stageId, selectedValue);
     });
-    
+
     menu.appendChild(bgFocusOption);
-    
+
     // Add separator
     const separator = document.createElement('div');
     separator.className = 'custom-dropdown-separator';
@@ -21571,7 +22269,7 @@ function renderStageBiasDropdown(stageId, selectedValue) {
 
     // Determine orientation based on resolution
     const isPortrait = getStageOrientation(stageId);
-    
+
     // Create 5 bias options based on resolution orientation (like image bias dropdown)
     const biasOptions = [
         { value: '0', name: isPortrait ? 'Top' : 'Left' },
@@ -21580,18 +22278,18 @@ function renderStageBiasDropdown(stageId, selectedValue) {
         { value: '3', name: '⅘' + (isPortrait ? ' Bottom' : ' Right') },
         { value: '4', name: isPortrait ? 'Bottom' : 'Right' }
     ];
-    
+
     biasOptions.forEach(opt => {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option' + (selectedValue === opt.value ? ' selected' : '');
         option.dataset.value = opt.value;
         option.textContent = opt.name;
-        
+
         option.addEventListener('click', () => {
             selectStageBias(stageId, opt.value, opt.name, isPortrait);
             closeDropdown(menu, document.getElementById(`${stageId}_biasDropdownBtn`));
         });
-        
+
         menu.appendChild(option);
     });
 }
@@ -21600,10 +22298,10 @@ function renderStageBiasDropdown(stageId, selectedValue) {
 function toggleStageBackgroundFocus(stageId) {
     const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
     if (!bgFocusToggle) return;
-    
+
     const currentState = bgFocusToggle.dataset.state;
     const inheritedValues = getStageInheritedValues(stageId);
-    
+
     let newState;
     if (currentState === '') {
         // Currently inheriting → check inherited value and toggle opposite
@@ -21617,26 +22315,26 @@ function toggleStageBackgroundFocus(stageId) {
     } else {
         // Has explicit state → toggle it
         newState = currentState === 'on' ? 'off' : 'on';
-        
+
         // If toggling back to match inherited value, clear explicit state
-        if ((newState === 'on' && inheritedValues.backgroundFocus) || 
+        if ((newState === 'on' && inheritedValues.backgroundFocus) ||
             (newState === 'off' && !inheritedValues.backgroundFocus)) {
             newState = ''; // Clear to inherit
         }
     }
-    
+
     bgFocusToggle.dataset.state = newState;
-    
+
     // Determine actual state for visuals
     const actualState = newState === '' ? inheritedValues.backgroundFocus : (newState === 'on');
     const isInherited = newState === '';
-    
+
     // Update visual indicators
     updateStageBackgroundFocusVisuals(stageId, actualState, isInherited);
-    
+
     // Update reset button visibility
     updateStageResetButtonVisibility(stageId);
-    
+
     // Update downstream stages to reflect the change
     updateDownstreamStagesInheritedValues(stageId);
 }
@@ -21645,7 +22343,7 @@ function toggleStageBackgroundFocus(stageId) {
 function updateStageBackgroundFocusVisuals(stageId, isOn, isInherited = false) {
     const bgFocusIcon = document.getElementById(`${stageId}_bgFocusIcon`);
     const biasGrid = document.getElementById(`${stageId}_biasGrid`);
-    
+
     if (bgFocusIcon) {
         // Toggle icon visibility
         if (isOn) {
@@ -21661,7 +22359,7 @@ function updateStageBackgroundFocusVisuals(stageId, isOn, isInherited = false) {
             bgFocusIcon.classList.remove('inherited');
         }
     }
-    
+
     if (biasGrid) {
         // Set theme to green when on
         if (isOn) {
@@ -21712,7 +22410,7 @@ function updateStageBiasOrientation(stageId, resolutionValue) {
 function renderStageModelDropdown(stageId, selectedValue) {
     const menu = document.getElementById(`${stageId}_modelDropdownMenu`);
     if (!menu) return;
-    
+
     renderGroupedDropdown(
         menu,
         modelGroups,
@@ -21728,9 +22426,9 @@ function selectStageModel(stageId, value, group, isInheritedDisplay = false) {
     const modelInput = document.getElementById(`${stageId}_model`);
     const modelSelected = document.getElementById(`${stageId}_modelSelected`);
     const modelBtn = document.getElementById(`${stageId}_modelDropdownBtn`);
-    
+
     if (!modelInput || !modelSelected) return;
-    
+
     // If group is not provided, find it automatically
     if (!group) {
         for (const g of modelGroups) {
@@ -21741,7 +22439,7 @@ function selectStageModel(stageId, value, group, isInheritedDisplay = false) {
             }
         }
     }
-    
+
     // Update button display (exact same as manual modal)
     const groupObj = modelGroups.find(g => g.group === group);
     const optObj = groupObj ? groupObj.options.find(o => o.value === value.toLowerCase()) : null;
@@ -21756,7 +22454,7 @@ function selectStageModel(stageId, value, group, isInheritedDisplay = false) {
             // Update downstream stages
             updateDownstreamStagesInheritedValues(stageId);
         }
-        
+
         modelSelected.innerHTML = [
             `<span class="custom-dropdown-text">${optObj.display}</span>`,
             (optObj.badge_full || optObj.badge) ? `<span class="custom-dropdown-badge ${optObj.badge_class}">${optObj.badge_full || optObj.badge}</span>` : ''
@@ -21770,17 +22468,17 @@ function renderStageSamplerDropdown(stageId, selectedValue) {
     const menu = document.getElementById(`${stageId}_samplerDropdownMenu`);
     const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
     if (!menu) return;
-    
+
     const selectedNoiseScheduler = noiseSchedulerInput?.value || 'karras';
-    
+
     menu.innerHTML = '';
-    
+
     // Add sampler section header
     const samplerHeader = document.createElement('div');
     samplerHeader.className = 'custom-dropdown-group';
     samplerHeader.textContent = 'Sampler';
     menu.appendChild(samplerHeader);
-    
+
     // Add sampler options
     SAMPLER_MAP.forEach(sampler => {
         const option = document.createElement('div');
@@ -21788,21 +22486,21 @@ function renderStageSamplerDropdown(stageId, selectedValue) {
         option.tabIndex = 0;
         option.dataset.value = sampler.meta;
         option.innerHTML = `<span>${sampler.display}</span>`;
-        
+
         option.addEventListener('click', () => {
             selectStageSampler(stageId, sampler.meta);
             closeDropdown(menu, document.getElementById(`${stageId}_samplerDropdownBtn`));
         });
-        
+
         menu.appendChild(option);
     });
-    
+
     // Add noise scheduler section header
     const noiseHeader = document.createElement('div');
     noiseHeader.className = 'custom-dropdown-group';
     noiseHeader.textContent = 'Noise Scheduler';
     menu.appendChild(noiseHeader);
-    
+
     // Add noise scheduler options
     NOISE_MAP.forEach(noise => {
         const option = document.createElement('div');
@@ -21811,12 +22509,12 @@ function renderStageSamplerDropdown(stageId, selectedValue) {
         option.dataset.value = noise.meta;
         option.dataset.group = 'noise';
         option.innerHTML = `<span>${noise.display}</span>`;
-        
+
         option.addEventListener('click', () => {
             selectStageNoiseScheduler(stageId, noise.meta);
             closeDropdown(menu, document.getElementById(`${stageId}_samplerDropdownBtn`));
         });
-        
+
         menu.appendChild(option);
     });
 }
@@ -21825,23 +22523,23 @@ function selectStageSampler(stageId, value) {
     const samplerInput = document.getElementById(`${stageId}_sampler`);
     const samplerSelected = document.getElementById(`${stageId}_samplerSelected`);
     const samplerBtn = document.getElementById(`${stageId}_samplerDropdownBtn`);
-    
+
     if (!samplerInput || !samplerSelected) return;
-    
+
     samplerInput.value = value;
-    
+
     // Remove inherited class when custom value set
     if (samplerBtn) samplerBtn.classList.remove('inherited');
-    
+
     // Auto-set noise scheduler based on sampler selection (same rules as manual modal)
     if (value === 'k_dpmpp_2m') {
         selectStageNoiseScheduler(stageId, 'exponential');
     } else {
         selectStageNoiseScheduler(stageId, 'karras');
     }
-    
+
     updateStageSamplerDisplay(stageId);
-    
+
     updateStageDropdownInheritedState(stageId);
     updateDownstreamStagesInheritedValues(stageId);
 }
@@ -21849,7 +22547,7 @@ function selectStageSampler(stageId, value) {
 function selectStageNoiseScheduler(stageId, value) {
     const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
     if (!noiseSchedulerInput) return;
-    
+
     noiseSchedulerInput.value = value;
     updateStageSamplerDisplay(stageId);
     updateStageResetButtonVisibility(stageId);
@@ -21860,15 +22558,15 @@ function updateStageSamplerDisplay(stageId) {
     const samplerInput = document.getElementById(`${stageId}_sampler`);
     const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
     const samplerSelected = document.getElementById(`${stageId}_samplerSelected`);
-    
+
     if (!samplerInput || !samplerSelected) return;
-    
+
     const samplerValue = samplerInput.value || 'k_euler_ancestral';
     const noiseValue = noiseSchedulerInput?.value || 'karras';
-    
+
     const s = SAMPLER_MAP.find(s => s.meta.toLowerCase() === samplerValue.toLowerCase());
     const n = NOISE_MAP.find(n => n.meta.toLowerCase() === noiseValue.toLowerCase());
-    
+
     if (s) {
         // Map full noise scheduler names to short versions (exact same as manual modal)
         const noiseShortMap = {
@@ -21877,12 +22575,12 @@ function updateStageSamplerDisplay(stageId) {
             'polyexponential': 'PolyEx'
         };
         const noiseShort = noiseShortMap[n?.meta] || n?.display || '';
-        
+
         // Determine if noise scheduler badge should be shown (exact same as manual modal)
         // Show badge if: (sampler is dpmpp_2m AND noise is NOT exponential) OR (sampler is NOT dpmpp_2m AND noise is NOT karras)
         const showNoiseBadge = (samplerValue === 'k_dpmpp_2m' && noiseValue !== 'exponential') ||
-                              (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras');
-        
+            (samplerValue !== 'k_dpmpp_2m' && noiseValue !== 'karras');
+
         // Build display exactly like manual modal
         samplerSelected.innerHTML = [
             `<span class="custom-dropdown-text small-viewport">${s.display_short || s.display}</span>`,
@@ -21927,11 +22625,11 @@ function getExpandCanvasStageData(stageId) {
     const stopToggle = document.getElementById(`${stageId}_stopToggle`);
     const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
     const resolutionValue = document.getElementById(`${stageId}_resolution`)?.value || null;
-    
+
     // Get background focus - handle three states: '' (inherit), 'on' (explicit), 'off' (explicit)
     const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
     const currentState = bgFocusToggle?.dataset.state || '';
-    
+
     let backgroundFocus;
     if (currentState === '') {
         // Inheriting - get inherited value
@@ -21941,9 +22639,9 @@ function getExpandCanvasStageData(stageId) {
         // Explicit state set
         backgroundFocus = currentState === 'on';
     }
-    
+
     const branchToggle = document.getElementById(`${stageId}_branchToggle`);
-    
+
     const data = {
         type: STAGE_TYPES.EXPAND_CANVAS,
         resolution: resolutionValue,
@@ -21955,7 +22653,7 @@ function getExpandCanvasStageData(stageId) {
         backgroundFocus: backgroundFocus,
         branch: branchToggle?.dataset.state === 'on'
     };
-    
+
     // Save custom resolution dimensions if resolution is custom
     if (resolutionValue === 'custom') {
         const widthInput = document.getElementById(`${stageId}_width`);
@@ -21965,7 +22663,7 @@ function getExpandCanvasStageData(stageId) {
             data.height = parseInt(heightInput.value) || 1024;
         }
     }
-    
+
     // Check seed inheritance toggle (always collect, not just when advanced is visible)
     const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
     const seedInput = document.getElementById(`${stageId}_seed`);
@@ -21978,7 +22676,7 @@ function getExpandCanvasStageData(stageId) {
             data.advanced.seed = parseInt(seedInput.value);
         }
     }
-    
+
     // Check if advanced controls are visible and have values
     const advancedControls = document.getElementById(`${stageId}_advancedControls`);
     const directiveVal = document.getElementById(`${stageId}_creativeDirective`)?.value || '';
@@ -21989,9 +22687,9 @@ function getExpandCanvasStageData(stageId) {
     const sampler = document.getElementById(`${stageId}_sampler`)?.value;
     const noiseScheduler = document.getElementById(`${stageId}_noiseScheduler`)?.value;
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-    
+
     if (!data.advanced) data.advanced = {};
-    
+
     if (directiveVal !== '') data.advanced.directive = directiveVal;
     if (model !== '') data.advanced.model = model;
     if (steps !== '') data.advanced.steps = parseInt(steps);
@@ -22000,7 +22698,7 @@ function getExpandCanvasStageData(stageId) {
     if (sampler !== '') data.advanced.sampler = sampler;
     if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
     if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
-    
+
     return data;
 }
 
@@ -22020,11 +22718,11 @@ function getEnhanceStageData(stageId) {
     const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
     const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
     const resInput = document.getElementById(`${stageId}_resolution`);
-    
+
     const branchToggle = document.getElementById(`${stageId}_branchToggle`);
-    
+
     const useBaseImage = useBaseToggle?.dataset.state === 'on';
-    
+
     const data = {
         type: STAGE_TYPES.VARIATION,
         useBaseImage,
@@ -22036,22 +22734,22 @@ function getEnhanceStageData(stageId) {
     };
 
     if (useBaseImage) {
-    // Get values - check if using magnitude preset or custom values
-    if (magnitudeInput?.value !== '') {
-        const magnitude = parseFloat(magnitudeInput.value);
-        const preset = MAGNITUDE_PRESETS[magnitude];
-        if (preset) {
-            data.strength = preset.strength;
-            data.noise = preset.noise;
+        // Get values - check if using magnitude preset or custom values
+        if (magnitudeInput?.value !== '') {
+            const magnitude = parseFloat(magnitudeInput.value);
+            const preset = MAGNITUDE_PRESETS[magnitude];
+            if (preset) {
+                data.strength = preset.strength;
+                data.noise = preset.noise;
+            } else {
+                data.strength = 0.5;
+                data.noise = 0.0;
+            }
         } else {
-            data.strength = 0.5;
-            data.noise = 0.0;
+            data.strength = strengthInput?.value !== '' ? parseFloat(strengthInput.value) : 0.5;
+            data.noise = noiseInput?.value !== '' ? parseFloat(noiseInput.value) : 0.0;
         }
-    } else {
-        data.strength = strengthInput?.value !== '' ? parseFloat(strengthInput.value) : 0.5;
-        data.noise = noiseInput?.value !== '' ? parseFloat(noiseInput.value) : 0.0;
-    }
-    
+
         const areaValue = resInput?.value || '';
         if (areaValue !== '') {
             data.resolution = areaValue;
@@ -22069,7 +22767,7 @@ function getEnhanceStageData(stageId) {
             }
         }
     }
-    
+
     // Check seed inheritance toggle (always collect, not just when advanced is visible)
     if (inheritSeedToggle?.dataset.state === 'on' || (seedInput && seedInput.value !== '')) {
         if (!data.advanced) data.advanced = {};
@@ -22079,7 +22777,7 @@ function getEnhanceStageData(stageId) {
             data.advanced.seed = parseInt(seedInput.value);
         }
     }
-    
+
     // Check if advanced controls are visible and have values (same as expand canvas)
     const advancedControls = document.getElementById(`${stageId}_advancedControls`);
     const directiveVal = document.getElementById(`${stageId}_creativeDirective`)?.value || '';
@@ -22090,9 +22788,9 @@ function getEnhanceStageData(stageId) {
     const sampler = document.getElementById(`${stageId}_sampler`)?.value;
     const noiseScheduler = document.getElementById(`${stageId}_noiseScheduler`)?.value;
     const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
-    
+
     if (!data.advanced) data.advanced = {};
-    
+
     if (directiveVal !== '') data.advanced.directive = directiveVal;
     if (model !== '') data.advanced.model = model;
     if (steps !== '') data.advanced.steps = parseInt(steps);
@@ -22101,14 +22799,14 @@ function getEnhanceStageData(stageId) {
     if (sampler !== '') data.advanced.sampler = sampler;
     if (noiseScheduler !== '') data.advanced.noiseScheduler = noiseScheduler;
     if (varietyBtn?.dataset.state === 'on') data.advanced.variety = true;
-    
+
     return data;
 }
 
 // Load expand canvas stage data
 function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
     if (!stageData) return;
-    
+
     // Load basic data
     if (stageData.resolution) {
         // Handle custom resolution
@@ -22116,17 +22814,17 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             // First, load custom dimensions before calling selectStageResolution
             const widthInput = document.getElementById(`${stageId}_width`);
             const heightInput = document.getElementById(`${stageId}_height`);
-            
+
             if (widthInput && stageData.width) {
                 widthInput.value = stageData.width;
             }
             if (heightInput && stageData.height) {
                 heightInput.value = stageData.height;
             }
-            
+
             // Now call the selection function which will handle the UI updates
             selectStageResolution(stageId, 'custom', null);
-            
+
             // Update bias grid orientation
             if (widthInput && heightInput) {
                 const width = parseInt(widthInput.value) || 1024;
@@ -22157,14 +22855,14 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             selectStageResolution(stageId, stageData.resolution, group);
         }
     }
-    
+
     if (stageData.bias !== undefined) {
         // Determine orientation from loaded resolution for correct bias name
         const loadedResolution = stageData.resolution ? RESOLUTIONS.find(r => r.value === stageData.resolution) : null;
         const isPortrait = loadedResolution ? loadedResolution.height > loadedResolution.width : false;
         selectStageBias(stageId, stageData.bias, getBiasName(stageData.bias, isPortrait), isPortrait);
     }
-    
+
     // Load background focus toggle state
     if (stageData.backgroundFocus !== undefined) {
         const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
@@ -22182,7 +22880,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
-    
+
     // Load advanced controls if present
     if (stageData.advanced) {
         const advancedToggle = document.getElementById(`${stageId}_advancedToggle`);
@@ -22199,7 +22897,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
                     autoResizeTextarea(dir);
                 }
             }
-            
+
             if (adv.model) {
                 selectStageModel(stageId, adv.model);
             }
@@ -22218,20 +22916,20 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
                 const noiseSchedulerInput = document.getElementById(`${stageId}_noiseScheduler`);
                 if (samplerInput) samplerInput.value = adv.sampler;
                 if (noiseSchedulerInput && adv.noiseScheduler) noiseSchedulerInput.value = adv.noiseScheduler;
-                
+
                 // Update display
                 updateStageSamplerDisplay(stageId);
             }
-            
+
             const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
             if (varietyBtn && adv.variety) {
                 varietyBtn.dataset.state = 'on';
             }
-            
+
             const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
             const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
             const seedInput = document.getElementById(`${stageId}_seed`);
-            
+
             // Handle inherit seed toggle
             if (inheritSeedToggle) {
                 const isInheriting = adv.inheritSeed === true;
@@ -22246,7 +22944,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
                     seedInput.placeholder = 'Random';
                 }
             }
-            
+
             if (autoSeedToggle && seedInput) {
                 // Store loaded seed in dataset (check stageData.seed first, then adv.seed)
                 if (stageData.seed) {
@@ -22285,7 +22983,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
-    
+
     // Load save results toggle
     if (stageData.saveResults !== undefined) {
         const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
@@ -22293,7 +22991,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             saveResultsToggle.dataset.state = stageData.saveResults ? 'on' : 'off';
         }
     }
-    
+
     // Load upscale toggle
     const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
     if (upscaleToggle) {
@@ -22310,7 +23008,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             upscaleToggle.title = 'Upscaling not available';
         }
     }
-    
+
     // Load stop toggle
     if (stageData.stopAtStage !== undefined) {
         const stopToggle = document.getElementById(`${stageId}_stopToggle`);
@@ -22318,7 +23016,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             stopToggle.dataset.state = stageData.stopAtStage ? 'on' : 'off';
         }
     }
-    
+
     // Load lock prompt toggle
     if (stageData.lockPrompt !== undefined) {
         const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
@@ -22326,13 +23024,13 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             lockPromptToggle.dataset.state = stageData.lockPrompt ? 'on' : 'off';
         }
     }
-    
+
     // Load branch toggle
     if (stageData.branch !== undefined) {
         const branchToggle = document.getElementById(`${stageId}_branchToggle`);
         if (branchToggle) {
             branchToggle.dataset.state = stageData.branch ? 'on' : 'off';
-            
+
             // Update visual indicator
             const stageItem = document.getElementById(stageId);
             if (stageItem) {
@@ -22357,11 +23055,11 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             // Check if we're in inherit mode
             const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
             const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
-            
+
             if (!isInheritMode) {
                 // Only update UI if not in inherit mode
                 autoSeedToggle.classList.remove('hidden');
-                
+
                 // Check if there's already a value set (from advanced config)
                 if (!seedInput.value) {
                     // No explicit value - update placeholder based on current auto seed state
@@ -22380,7 +23078,7 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
 // Load enhance stage data
 function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
     if (!stageData) return;
-    
+
     // Setup toggle state (default true for legacy enhance, respect useBaseImage for variation)
     const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
     const useBase = stageData.useBaseImage === undefined ? (stageData.type === STAGE_TYPES.ENHANCE) : !!stageData.useBaseImage;
@@ -22394,27 +23092,27 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
         if (groupStrength) groupStrength.classList.toggle('hidden', !useBase);
         if (groupNoise) groupNoise.classList.toggle('hidden', !useBase);
     }
-    
+
     const strengthInput = document.getElementById(`${stageId}_strength`);
     const noiseInput = document.getElementById(`${stageId}_noise`);
     const strengthOverlay = document.getElementById(`${stageId}_strengthOverlay`);
     const noiseOverlay = document.getElementById(`${stageId}_noiseOverlay`);
     const magnitudeInput = document.getElementById(`${stageId}_magnitude`);
-    
+
     // Provide default values if missing
     const strength = stageData.strength !== undefined ? stageData.strength : 0.5;
     const noise = stageData.noise !== undefined ? stageData.noise : 0.0;
-    
+
     // Check if values match a magnitude preset
     let matchedMagnitude = null;
     for (const [mag, preset] of Object.entries(MAGNITUDE_PRESETS)) {
-        if (Math.abs(strength - preset.strength) < 0.01 && 
+        if (Math.abs(strength - preset.strength) < 0.01 &&
             Math.abs(noise - preset.noise) < 0.01) {
             matchedMagnitude = parseFloat(mag);
             break;
         }
     }
-    
+
     if (matchedMagnitude) {
         // Set magnitude and clear strength/noise (inherited state - like rescale)
         if (magnitudeInput) {
@@ -22426,7 +23124,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
         if (noiseInput) noiseInput.value = '';
         if (strengthOverlay) strengthOverlay.textContent = `${(strength * 100).toFixed(0)}%`;
         if (noiseOverlay) noiseOverlay.textContent = `${(noise * 100).toFixed(0)}%`;
-        
+
         // Add inherited class (dimmed appearance)
         const strengthContainer = strengthInput?.parentElement;
         const noiseContainer = noiseInput?.parentElement;
@@ -22442,21 +23140,21 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
         if (noiseInput) noiseInput.value = noise.toFixed(2);
         if (strengthOverlay) strengthOverlay.textContent = `${(strength * 100).toFixed(0)}%`;
         if (noiseOverlay) noiseOverlay.textContent = `${(noise * 100).toFixed(0)}%`;
-        
+
         // Remove inherited class (custom values)
         const strengthContainer = strengthInput?.parentElement;
         const noiseContainer = noiseInput?.parentElement;
         if (strengthContainer) strengthContainer.classList.remove('inherited');
         if (noiseContainer) noiseContainer.classList.remove('inherited');
     }
-    
+
     // Load resolution based on mode
     if (useBase) {
-    if (stageData.resolution && stageData.resolution !== 'custom' && !stageData.resolution.includes('_')) {
-        // Area value directly into unified resolution input
-        const resolutionInput = document.getElementById(`${stageId}_resolution`);
-        if (resolutionInput) resolutionInput.value = stageData.resolution;
-        selectStageEnhanceResolution(stageId, stageData.resolution);
+        if (stageData.resolution && stageData.resolution !== 'custom' && !stageData.resolution.includes('_')) {
+            // Area value directly into unified resolution input
+            const resolutionInput = document.getElementById(`${stageId}_resolution`);
+            if (resolutionInput) resolutionInput.value = stageData.resolution;
+            selectStageEnhanceResolution(stageId, stageData.resolution);
         }
     } else if (stageData.resolution) {
         if (stageData.resolution === 'custom') {
@@ -22474,7 +23172,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             selectStageResolution(stageId, stageData.resolution, group);
         }
     }
-    
+
     // Load advanced controls if present (same as expand canvas)
     if (stageData.advanced) {
         const adv = stageData.advanced;
@@ -22489,19 +23187,19 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
                 selectStageModel(stageId, adv.model);
             }
         }
-        
+
         // Set steps
         const stepsInput = document.getElementById(`${stageId}_steps`);
         if (stepsInput && adv.steps !== null && adv.steps !== undefined) {
             stepsInput.value = adv.steps;
         }
-        
+
         // Set guidance
         const guidanceInput = document.getElementById(`${stageId}_guidance`);
         if (guidanceInput && adv.guidance !== null && adv.guidance !== undefined) {
             guidanceInput.value = adv.guidance >= 10 ? 10 : adv.guidance.toFixed(1);
         }
-        
+
         // Set rescale
         const rescaleInput = document.getElementById(`${stageId}_rescale`);
         const rescaleOverlay2 = document.getElementById(`${stageId}_rescaleOverlay`);
@@ -22513,7 +23211,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             const rescaleContainer = rescaleInput.parentElement;
             if (rescaleContainer) rescaleContainer.classList.remove('inherited');
         }
-        
+
         // Set sampler
         if (adv.sampler) {
             const samplerInput = document.getElementById(`${stageId}_sampler`);
@@ -22522,18 +23220,18 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
                 selectStageSampler(stageId, adv.sampler, adv.noiseScheduler || 'native');
             }
         }
-        
+
         // Set variety
         const varietyBtn = document.getElementById(`${stageId}_varietyBtn`);
         if (varietyBtn && adv.variety !== undefined) {
             varietyBtn.dataset.state = adv.variety ? 'on' : 'off';
         }
-        
+
         // Set seed toggle and value
         const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
         const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
         const seedInputAdv = document.getElementById(`${stageId}_seed`);
-        
+
         // Handle inherit seed toggle
         if (inheritSeedToggle) {
             const isInheriting = adv.inheritSeed === true;
@@ -22548,7 +23246,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
                 seedInputAdv.placeholder = 'Random';
             }
         }
-        
+
         if (autoSeedToggle && seedInputAdv) {
             // Store loaded seed in dataset (check stageData.seed first, then adv.seed)
             if (stageData.seed) {
@@ -22561,7 +23259,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
                     autoSeedToggle.classList.remove('hidden');
                 }
 
-            if (adv.autoSeed !== undefined) {
+                if (adv.autoSeed !== undefined) {
                     autoSeedToggle.dataset.state = adv.autoSeed ? 'on' : 'off';
 
                     if (!adv.autoSeed) {
@@ -22588,7 +23286,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
-    
+
     // Load save results toggle
     if (stageData.saveResults !== undefined) {
         const saveResultsToggle = document.getElementById(`${stageId}_saveResultsToggle`);
@@ -22596,7 +23294,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             saveResultsToggle.dataset.state = stageData.saveResults ? 'on' : 'off';
         }
     }
-    
+
     // Load upscale toggle
     const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
     if (upscaleToggle) {
@@ -22612,7 +23310,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             upscaleToggle.title = 'Upscaling not available';
         }
     }
-    
+
     // Load stop toggle
     if (stageData.stopAtStage !== undefined) {
         const stopToggle = document.getElementById(`${stageId}_stopToggle`);
@@ -22620,13 +23318,13 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             stopToggle.dataset.state = stageData.stopAtStage ? 'on' : 'off';
         }
     }
-    
+
     // Load branch toggle
     if (stageData.branch !== undefined) {
         const branchToggle = document.getElementById(`${stageId}_branchToggle`);
         if (branchToggle) {
             branchToggle.dataset.state = stageData.branch ? 'on' : 'off';
-            
+
             // Update visual indicator
             const stageItem = document.getElementById(stageId);
             if (stageItem) {
@@ -22638,7 +23336,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
-    
+
     // Populate seed from stage_seeds if provided (updates dataset.loadedSeed for display)
     if (stageSeed && stageSeed.seed !== undefined) {
         const autoSeedToggle = document.getElementById(`${stageId}_autoSeedToggle`);
@@ -22651,11 +23349,11 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             // Check if we're in inherit mode
             const inheritSeedToggle = document.getElementById(`${stageId}_inheritSeedToggle`);
             const isInheritMode = inheritSeedToggle && inheritSeedToggle.dataset.state === 'on';
-            
+
             if (!isInheritMode) {
                 // Only update UI if not in inherit mode
                 autoSeedToggle.classList.remove('hidden');
-                
+
                 // Check if there's already a value set (from advanced config)
                 if (!seedInput.value) {
                     // No explicit value - update placeholder based on current auto seed state
@@ -22669,7 +23367,7 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
-    
+
     // Initialize inherited states
     updateStageDropdownInheritedState(stageId);
     updateStageResetButtonVisibility(stageId);
@@ -22680,10 +23378,10 @@ function getBiasName(value, isPortrait = false) {
     // Map to the 5-position system names based on orientation
     const portraitNames = ['Top', '⅖ Top', 'Center', '⅘ Bottom', 'Bottom'];
     const landscapeNames = ['Left', '⅖ Left', 'Center', '⅘ Right', 'Right'];
-    
+
     const names = isPortrait ? portraitNames : landscapeNames;
     const numValue = parseInt(value);
-    
+
     // Handle both 0-4 range and legacy 0-8 range by mapping to 0-4
     if (numValue >= 0 && numValue <= 4) {
         return names[numValue] || 'Center';
@@ -22771,50 +23469,50 @@ function showGenerateButtonPopoverFor(button) {
 }
 
 function showGenerateButtonPopoverForButton(button, popover) {
-    
+
     // Add to DOM first to get dimensions
     document.body.appendChild(popover);
-    
+
     // Get viewport dimensions
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    
+
     // Position the popover above the button
     const buttonRect = button.getBoundingClientRect();
     popover.style.position = 'fixed';
-    
+
     // Calculate initial position (above the button)
     let top = buttonRect.top - popover.offsetHeight - 10;
     let left = buttonRect.left + (buttonRect.width / 2) - (popover.offsetWidth / 2);
-    
+
     // Check if popover goes above viewport
     if (top < 10) {
         // Position below the button instead
         top = buttonRect.bottom + 10;
         popover.classList.add('below');
     }
-    
+
     // Check if popover goes below viewport
     if (top + popover.offsetHeight > viewportHeight - 10) {
         // Position above the button (original position)
         top = buttonRect.top - popover.offsetHeight - 10;
         popover.classList.remove('below');
     }
-    
+
     // Check if popover goes left of viewport
     if (left < 10) {
         left = 10;
     }
-    
+
     // Check if popover goes right of viewport
     if (left + popover.offsetWidth > viewportWidth - 10) {
         left = viewportWidth - popover.offsetWidth - 10;
     }
-    
+
     // Apply final position
     popover.style.top = `${top}px`;
     popover.style.left = `${left}px`;
-    
+
     // Store reference for cleanup
     button.popoverElement = popover;
 }
@@ -22864,7 +23562,7 @@ function loadBlurPreference() {
                 document.documentElement.classList.remove('disable-blur');
             }
         }
-        
+
         const savedFocusCoverState = localStorage.getItem('focusCoverEnabled');
         if (savedFocusCoverState !== null) {
             focusCoverEnabled = savedFocusCoverState === 'true';
@@ -22885,9 +23583,161 @@ let connectionToastId = null;
 let imageCount = 0;
 // websocketToastId is now global (window.websocketToastId)
 
+let _androidBiometricLockHandlersAttached = false;
+let androidFocusLockActive = false;
+
+/**
+ * Set up Android biometric lock callbacks so the app shows/hides the privacy cover.
+ * When the Android bridge is present, this overrides normal privacy cover logic:
+ * onLockRequested shows the cover; it is only removed on onUnlocked.
+ */
+function setupAndroidBiometricLockHandlers() {
+    if (typeof window.AndroidPersistentNotification === 'undefined') return;
+    if (_androidBiometricLockHandlersAttached) return;
+    const el = document.getElementById('focus-overlay');
+    if (!el) return;
+    _androidBiometricLockHandlersAttached = true;
+    const bridge = window.AndroidPersistentNotification;
+    bridge.onLockRequested = function () {
+        androidFocusLockActive = true;
+        el.style.pointerEvents = 'auto';
+        el.classList.add('active');
+    };
+    bridge.onUnlocked = function () {
+        androidFocusLockActive = false;
+        el.classList.remove('active');
+        setTimeout(() => {
+            el.style.pointerEvents = 'none';
+        }, 300);
+    };
+}
+
+/**
+ * Update Android persistent notification body (if bridge is available).
+ * Body format (JSON array of strings, joined with " · " on Android side):
+ *  - Current workspace name OR "Editor Open" if manual editor is open
+ *  - Current 24H generation count
+ *  - Free credits
+ *  - Paid credits
+ */
+function updateAndroidNotificationBody() {
+    setupAndroidBiometricLockHandlers();
+    // Only run if the Android bridge is available
+    if (typeof window.AndroidPersistentNotification === 'undefined') {
+        return;
+    }
+
+    // Determine if the manual editor is open
+    const manualModalEl = document.getElementById('manualModal');
+    const isManualOpen = manualModalEl && !manualModalEl.classList.contains('hidden');
+
+    let firstPart;
+    if (isManualOpen) {
+        firstPart = 'Editor Open';
+    } else {
+        firstPart = window.optionsData.activeWorkspace.data.name || 'Default';
+    }
+
+    // 24H rolling image generation count (from server ping)
+    const genCount = typeof imageCount === 'number' ? imageCount : 0;
+    const genPart = `${genCount}`;
+
+    // Free / paid credits from latest balance (optionsData or previousBalance fallback)
+    let fixedCredits = 0;
+    let paidCredits = 0;
+
+    if (window.optionsData && window.optionsData.balance) {
+        fixedCredits = window.optionsData.balance.fixedTrainingStepsLeft || 0;
+        paidCredits = window.optionsData.balance.purchasedTrainingSteps || 0;
+    } else if (previousBalance) {
+        fixedCredits = previousBalance.fixedTrainingStepsLeft || 0;
+        paidCredits = previousBalance.purchasedTrainingSteps || 0;
+    }
+
+    const creditsLeftPart = `${fixedCredits ? fixedCredits + ' + ' : ''}${paidCredits} anlas`;
+
+    const parts = [firstPart, genPart, creditsLeftPart];
+
+    try {
+        window.AndroidPersistentNotification.setBody(JSON.stringify(parts));
+    } catch (error) {
+        console.warn('Failed to update Android persistent notification body:', error);
+    }
+}
+
+/**
+ * Build an absolute image URL for the Android notification (native side cannot resolve relative paths).
+ * @param {string} imagePath - Filename, or path like /images/xxx, or full http(s) URL
+ * @returns {string} Absolute URL
+ */
+function buildAbsoluteImageUrl(imagePath) {
+    if (!imagePath) return '';
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath;
+    const path = imagePath.startsWith('/') ? imagePath : `/images/${imagePath}`;
+    return (typeof location !== 'undefined' && location.origin) ? (location.origin + path) : path;
+}
+
+/**
+ * Update Android persistent notification image using the current manual preview image.
+ * Uses the last generated/previewed image's URL when available.
+ */
+function updateAndroidNotificationImageFromCurrentPreview() {
+    if (typeof window.AndroidPersistentNotification === 'undefined') {
+        return;
+    }
+
+    if (!window.currentManualPreviewImage) {
+        return;
+    }
+
+    const image = window.currentManualPreviewImage;
+    const imagePath = image.upscaled || image.original || image.filename;
+
+    if (!imagePath) {
+        return;
+    }
+
+    const url = buildAbsoluteImageUrl(imagePath);
+
+    try {
+        window.AndroidPersistentNotification.setImageUrl(url);
+    } catch (error) {
+        console.warn('Failed to update Android persistent notification image:', error);
+    }
+}
+
+/**
+ * Set the Android persistent notification image from an arbitrary image object (e.g. first gallery image).
+ * @param {Object} imageObj - Image object with upscaled, original, and/or filename
+ */
+function setAndroidNotificationImageFromImage(imageObj) {
+    if (typeof window.AndroidPersistentNotification === 'undefined') return;
+    if (!imageObj) return;
+    const imagePath = imageObj.upscaled || imageObj.original || imageObj.filename;
+    if (!imagePath) return;
+    const url = buildAbsoluteImageUrl(imagePath);
+    try {
+        window.AndroidPersistentNotification.setImageUrl(url);
+    } catch (error) {
+        console.warn('Failed to set Android persistent notification image:', error);
+    }
+}
+
+/**
+ * Clear the Android persistent notification large icon (e.g. when changing workspace).
+ */
+function clearAndroidNotificationImage() {
+    if (typeof window.AndroidPersistentNotification === 'undefined') return;
+    try {
+        window.AndroidPersistentNotification.clearImage();
+    } catch (error) {
+        console.warn('Failed to clear Android persistent notification image:', error);
+    }
+}
+
 function handleServerPing(data) {
     lastPingTime = Date.now();
-    
+
     // Update UI with server data
     if (data.image_count !== undefined) {
         imageCount = data.image_count;
@@ -22898,12 +23748,12 @@ function handleServerPing(data) {
         if (window.optionsData) {
             window.optionsData.balance = data.balance;
         }
-        
+
         // Check for subscription notifications when balance updates
         updateSubscriptionNotifications().catch(error => {
         });
     }
-    
+
     // Handle queue status
     if (data.queue_status !== undefined) {
         if (data.queue_status === 2) {
@@ -22918,24 +23768,27 @@ function handleServerPing(data) {
         }
         updateManualGenerateBtnState();
     }
-    
+
+    // Update Android persistent notification with latest status
+    updateAndroidNotificationBody();
+
     // Clear connection warning toast if it exists
     if (connectionToastId) {
         removeGlassToast(connectionToastId);
         connectionToastId = null;
     }
-    
+
     // Clear WebSocket connection toast if it exists
     if (window.websocketToastId) {
         removeGlassToast(window.websocketToastId);
         window.websocketToastId = null;
     }
-    
+
     // Reset ping timeout
     if (pingTimeoutId) {
         clearTimeout(pingTimeoutId);
     }
-    
+
     // Set timeout for next ping (15 seconds)
     pingTimeoutId = setTimeout(() => {
         if (!connectionToastId) {
@@ -22954,7 +23807,7 @@ function handleServerPing(data) {
                 },
                 closeOnClick: false
             };
-            
+
             connectionToastId = showGlassToast('warning', 'Connection Status', 'Waiting for server response...', false, false, '<i class="fas fa-phone-arrow-up-right fa-fade"></i>', [reconnectButton]);
         }
     }, 15000);
@@ -22966,7 +23819,7 @@ async function ensureSessionValid() {
         if (window.wsClient && window.wsClient.isConnected()) {
             try {
                 await window.wsClient.pingWithAuth();
-            return true;
+                return true;
             } catch (wsError) {
                 // Check if this is a timeout error (not authentication failure)
                 if (wsError.code === 'PING_TIMEOUT') {
@@ -22975,23 +23828,23 @@ async function ensureSessionValid() {
                     return false;
                 }
                 console.warn('WebSocket ping failed, authentication required:', wsError);
+            }
         }
-        }
-        
+
         // Show PIN modal for re-authentication
         if (pinModalPromise) return pinModalPromise;
         pinModalPromise = await window.showPinModal();
-        
+
         // After re-authentication, try WebSocket first, then HTTP
         if (window.wsClient) {
             try {
                 // Wait for WebSocket to reconnect after authentication
                 await window.wsClient.waitForConnection(10000);
-                
+
                 // Verify authentication with WebSocket ping
                 await window.wsClient.pingWithAuth();
-            pinModalPromise = null;
-            return true;
+                pinModalPromise = null;
+                return true;
             } catch (wsError) {
                 console.warn('WebSocket authentication after re-auth failed:', wsError);
                 // Fall through to HTTP fallback
@@ -23016,9 +23869,9 @@ async function initializeSessionValidation() {
             console.warn('WebSocket not available, proceeding with HTTP authentication');
         }
     }
-    
+
     await ensureSessionValid();
-    
+
     // Set up periodic session validation
     pingTimeoutId = setTimeout(() => {
         ensureSessionValid();
@@ -23048,7 +23901,7 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         const isPinnedView = currentGalleryView === 'pinned';
 
         // Filter out any null/undefined values from selected images
-        const validFilenames  = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
+        const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
             throw new Error('No valid filenames to move');
@@ -23058,15 +23911,15 @@ async function moveBulkImagesToWorkspace(workspaceId) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         // Determine the type based on current gallery view
         let moveType = 'files'; // default
-            if (isScrapsView) {
+        if (isScrapsView) {
             moveType = 'scraps';
-            } else if (isPinnedView) {
+        } else if (isPinnedView) {
             moveType = 'pinned';
         }
-        
+
         await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId, null, moveType);
 
         const workspace = workspaces[workspaceId];
@@ -23108,7 +23961,7 @@ async function handleBulkDelete(event = null) {
         ],
         event
     );
-    
+
     if (!confirmed) {
         return;
     }
@@ -23122,26 +23975,39 @@ async function handleBulkDelete(event = null) {
         }
 
         let responseData = null;
-        
+
         // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.deleteImagesBulk(validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { successful, failed, message } = responseData;
             let toastMessage = message || `Successfully removed ${successful} image(s)`;
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
         } else {
             showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
+        }
+
+        // Apply local removal without a full reload
+        const imagesToRemove = validFilenames
+            .map(fn => findImageByFilename(fn))
+            .filter(Boolean);
+        if (imagesToRemove.length > 0) {
+            removeMultipleImagesFromGallery(imagesToRemove);
+            // Skip the next gallery reload event since we've already updated locally
+            window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
+        } else {
+            // Fallback to reload if we couldn't map filenames
+            switchGalleryView(currentGalleryView, true);
         }
     } catch (error) {
         console.error('Bulk delete error:', error);
@@ -23149,10 +24015,8 @@ async function handleBulkDelete(event = null) {
         clearSelection();
     } finally {
         showManualLoading(false);
-
-        // Clear selection and remove images from gallery
+        // Clear selection
         clearSelection();
-        switchGalleryView(currentGalleryView, true);
     }
 }
 
@@ -23188,23 +24052,23 @@ async function handleBulkSequenzia(event = null) {
         }
 
         let responseData = null;
-        
+
         // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.sendToSequenziaBulk(validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { successful, failed, message } = responseData;
             let toastMessage = message || `Successfully sent ${successful} image(s) to Sequenzia`;
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-share"></i>');
         } else {
             showGlassToast('success', null, `Successfully sent ${validFilenames.length} image(s) to Sequenzia`, false, 5000, '<i class="fas fa-share"></i>');
@@ -23237,7 +24101,7 @@ async function handleBulkMoveToScraps(event = null) {
         ],
         event
     );
-    
+
     if (!confirmed) {
         return;
     }
@@ -23253,23 +24117,23 @@ async function handleBulkMoveToScraps(event = null) {
         }
 
         let responseData = null;
-        
+
         // Use WebSocket API
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
-        
+
         responseData = await window.wsClient.addScrapBulk(activeWorkspace, validFilenames);
 
         // Use server response data for accurate toast message
         if (responseData) {
             const { addedCount, failed } = responseData;
             let toastMessage = `Successfully moved ${addedCount} image(s) to scraps`;
-            
+
             if (failed > 0) {
                 toastMessage += ` (${failed} failed)`;
             }
-            
+
             showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-fire"></i>');
         } else {
             showGlassToast('success', null, `Successfully moved ${validFilenames.length} image(s) to scraps`, false, 5000, '<i class="fas fa-fire"></i>');
@@ -23295,7 +24159,7 @@ function disableReadOnlyFeatures() {
         'manualPreviewDeleteBtn',
         'bulkSelectAllBtn'
     ];
-    
+
     destructiveButtons.forEach(btnId => {
         const btn = document.getElementById(btnId);
         if (btn) {
@@ -23304,7 +24168,7 @@ function disableReadOnlyFeatures() {
             btn.style.opacity = '0.5';
         }
     });
-    
+
     // Disable workspace management buttons if they exist
     const workspaceButtons = document.querySelectorAll('[data-action="workspace-delete"], [data-action="workspace-rename"], [data-action="workspace-create"]');
     workspaceButtons.forEach(btn => {
@@ -23312,14 +24176,14 @@ function disableReadOnlyFeatures() {
         btn.title = 'Not available in read-only mode';
         btn.style.opacity = '0.5';
     });
-    
+
     // Disable upload functionality
     const uploadInputs = document.querySelectorAll('input[type="file"]');
     uploadInputs.forEach(input => {
         input.disabled = true;
         input.title = 'Not available in read-only mode';
     });
-    
+
     // Disable Genso management
     const textReplacementBtns = document.querySelectorAll('[data-action="save-text-replacements"], [data-action="delete-text-replacement"]');
     textReplacementBtns.forEach(btn => {
@@ -23327,7 +24191,7 @@ function disableReadOnlyFeatures() {
         btn.title = 'Not available in read-only mode';
         btn.style.opacity = '0.5';
     });
-    
+
     console.log('🔒 Read-only mode: Destructive features disabled');
 }
 
@@ -23364,12 +24228,12 @@ async function handleRefreshMetadataCache() {
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
             ]
         );
-        
+
         if (!confirmed) return;
 
         // Show loading toast with progress
         let progressToastId = null;
-        
+
         // Send websocket message
         const requestId = Date.now().toString();
         wsClient.send({
@@ -23384,7 +24248,7 @@ async function handleRefreshMetadataCache() {
                 if (message.type === 'rebuild_metadata_cache_progress') {
                     // Show progress updates
                     const percentage = message.data.percentage || 0;
-                    
+
                     // Update toast if percentage changed
                     if (Math.floor(percentage) !== Math.floor(lastPercentage)) {
                         if (progressToastId) {
@@ -23394,7 +24258,7 @@ async function handleRefreshMetadataCache() {
                                 title: 'Metadata Cache',
                                 message: `Rebuilding: ${message.data.current}/${message.data.total} files processed`
                             });
-                            
+
                             // Update progress bar
                             updateGlassToastProgress(progressToastId, percentage);
                         } else {
@@ -23413,7 +24277,7 @@ async function handleRefreshMetadataCache() {
                 } else if (message.type === 'rebuild_metadata_cache_response') {
                     // Remove handler
                     wsClient.off('message', handleResponse);
-                    
+
                     // Close progress toast
                     if (progressToastId) {
                         removeGlassToast(progressToastId);
@@ -23460,14 +24324,14 @@ async function handleRefreshMetadataCache() {
 // Main Menu Bar Context Menu Configuration
 function setupMainMenuContextMenus() {
     if (!window.contextMenu) return;
-    
+
     // Create workspace submenu options function
     function getWorkspaceOptions(target) {
         const workspaceOptions = [];
-        
+
         // Sort workspaces by their sort order - same as main dropdown
         const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-        
+
         // Generate workspace options
         sortedWorkspaces.forEach((workspace, index) => {
             const workspaceId = workspace.id || workspace;
@@ -23475,7 +24339,7 @@ function setupMainMenuContextMenus() {
             const workspaceColor = workspace.color || '#6366f1';
             // Use the same activeWorkspace variable as the main dropdown
             const isActive = workspaceId === activeWorkspace;
-            
+
             workspaceOptions.push({
                 content: `
                     <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
@@ -23489,34 +24353,34 @@ function setupMainMenuContextMenus() {
                 workspaceId: workspaceId
             });
         });
-        
+
         return workspaceOptions;
     }
-    
+
     // Create workspace submenu handler function
     function handleWorkspaceAction(subItem, target) {
         const action = subItem.action;
         if (action && action.startsWith('switch-workspace-')) {
             const workspaceId = action.replace('switch-workspace-', '');
-            
+
             // Try to switch workspace using available methods
             if (wsClient && wsClient.isConnected()) {
                 // Use WebSocket to switch workspace
                 setActiveWorkspace(workspaceId)
-                .catch(error => {
-                    console.error('Error switching workspace:', error);
-                    showGlassToast('error', 'Workspace Switch Failed', 'Failed to switch workspace: ' + error.message, false, 5000, '<i class="fas fa-plane-slash"></i>');
-                });
+                    .catch(error => {
+                        console.error('Error switching workspace:', error);
+                        showGlassToast('error', 'Workspace Switch Failed', 'Failed to switch workspace: ' + error.message, false, 5000, '<i class="fas fa-plane-slash"></i>');
+                    });
             }
         }
     }
-    
+
     // Create jump points submenu options function
     function getJumpPointsOptions(target) {
         // Get current array length (filtered or all)
         const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
         if (effectiveLength === 0) return [];
-        
+
         // Only return options if cache is ready and length matches
         if (cachedJumpPoints && cachedJumpPointsLength === effectiveLength) {
             return cachedJumpPoints.map(point => ({
@@ -23525,11 +24389,11 @@ function setupMainMenuContextMenus() {
                 action: `jump-to-index-${point.index}`
             }));
         }
-        
+
         // Cache not ready - return empty array (submenu will be disabled)
         return [];
     }
-    
+
     // Create jump points submenu handler function
     function handleJumpPointsAction(subItem, target) {
         const action = subItem.action;
@@ -23540,7 +24404,7 @@ function setupMainMenuContextMenus() {
             }
         }
     }
-    
+
     // Pagination state for date jump options (stored in closure to persist across menu opens)
     let dateJumpPaginationState = {
         currentBatch: 0,
@@ -23548,29 +24412,29 @@ function setupMainMenuContextMenus() {
         totalItems: 0,
         pendingAction: null // Tracks pending pagination action (load-more-dates-top/bottom)
     };
-    
+
     // Create date-based submenu options function
     function getDateJumpOptions(target) {
         const dateOptions = [];
-        
+
         try {
             // Get current array (filtered or all)
             const sourceImages = window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0
                 ? window.originalAllImages
                 : (allImages || []);
-            
+
             if (sourceImages.length === 0) return [];
-            
+
             // Get all date groups (from cache or build on the fly)
             let allDateGroups = [];
-            
+
             // Only use cached date groups - no fallback
             if (cachedDateGroups && cachedDateGroups.length > 0) {
                 // Map cached indices to filtered indices if in search mode
                 cachedDateGroups.forEach((week, weekIndex) => {
                     const startDate = week.startDate;
                     const endDate = week.endDate;
-                    
+
                     // Get first index, mapping to filtered index if needed
                     let firstIndex = Math.min(...week.indices);
                     if (window.filteredImageIndices) {
@@ -23579,7 +24443,7 @@ function setupMainMenuContextMenus() {
                         if (filteredPos === -1) return; // Skip if not in filtered results
                         firstIndex = filteredPos;
                     }
-                    
+
                     let label;
                     if (week.dates.length === 1) {
                         // Single day
@@ -23590,17 +24454,17 @@ function setupMainMenuContextMenus() {
                         const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                         label = `${startStr} - ${endStr}`;
                     }
-                    
+
                     allDateGroups.push({
                         label: label,
                         index: firstIndex
                     });
                 });
             }
-            
+
             // If no date groups available, return empty (submenu will be disabled)
             if (allDateGroups.length === 0) return [];
-            
+
             // Check if we need to handle pagination (check pendingAction in state)
             const pendingAction = dateJumpPaginationState.pendingAction;
             if (pendingAction === 'load-more-dates-top') {
@@ -23613,14 +24477,14 @@ function setupMainMenuContextMenus() {
                 // Reset to first batch when opening fresh (no pending action)
                 dateJumpPaginationState.currentBatch = 0;
             }
-            
+
             dateJumpPaginationState.totalItems = allDateGroups.length;
             const itemsPerBatch = dateJumpPaginationState.itemsPerBatch;
             const startIndex = dateJumpPaginationState.currentBatch * itemsPerBatch;
             const endIndex = Math.min(startIndex + itemsPerBatch, allDateGroups.length);
             const hasMoreTop = dateJumpPaginationState.currentBatch > 0;
             const hasMoreBottom = endIndex < allDateGroups.length;
-            
+
             // Add "Load more" at top if applicable
             if (hasMoreTop) {
                 dateOptions.push({
@@ -23631,7 +24495,7 @@ function setupMainMenuContextMenus() {
                     noIndicator: true // Don't show indicator dot
                 });
             }
-            
+
             // Add current batch of date options
             for (let i = startIndex; i < endIndex; i++) {
                 const group = allDateGroups[i];
@@ -23641,7 +24505,7 @@ function setupMainMenuContextMenus() {
                     action: `jump-to-date-${group.index}`
                 });
             }
-            
+
             // Add "Load more" at bottom if applicable
             if (hasMoreBottom) {
                 dateOptions.push({
@@ -23652,14 +24516,14 @@ function setupMainMenuContextMenus() {
                     noIndicator: true // Don't show indicator dot
                 });
             }
-            
+
         } catch (error) {
             console.error('Error generating date jump options:', error);
         }
-        
+
         return dateOptions;
     }
-    
+
     // Create date-based submenu handler function
     function handleDateJumpAction(subItem, target) {
         const action = subItem.action;
@@ -23673,194 +24537,228 @@ function setupMainMenuContextMenus() {
             }
         }
     }
-    
+
     // Create the shared context menu configuration
     const contextMenuConfig = {
-            sections: [
-                {
-                    type: 'icons',
-                    icons: [
-                        {
-                            icon: 'fa-light fa-chevron-double-up',
-                            text: 'Jump to Top',
-                            action: 'jump-to-top'
+        sections: [
+            {
+                type: 'icons',
+                icons: [
+                    {
+                        icon: 'fa-regular fa-chevron-double-up',
+                        text: 'Jump to Top',
+                        action: 'jump-to-top'
+                    },
+                    {
+                        icon: (target) => {
+                            const sortBtn = document.getElementById('sortOrderToggleBtn');
+                            const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
+                            return isDesc ? 'fa-regular fa-sort-amount-down' : 'fa-regular fa-sort-amount-up';
                         },
-                        {
-                            icon: (target) => {
-                                const sortBtn = document.getElementById('sortOrderToggleBtn');
-                                const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
-                                return isDesc ? 'fa-light fa-sort-amount-down' : 'fa-light fa-sort-amount-up';
-                            },
-                            tooltip: (target) => {
-                                const sortBtn = document.getElementById('sortOrderToggleBtn');
-                                const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
-                                return isDesc ? 'Sort: Newest First (Click to change)' : 'Sort: Oldest First (Click to change)';
-                            },
-                            action: 'invert-sort'
+                        tooltip: (target) => {
+                            const sortBtn = document.getElementById('sortOrderToggleBtn');
+                            const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
+                            return isDesc ? 'Sort: Newest First (Click to change)' : 'Sort: Oldest First (Click to change)';
                         },
-                        {
-                            icon: 'fas fa-minus',
-                            tooltip: 'Decrease Gallery Column Size',
-                            action: 'gallery-size-decrease'
+                        action: 'invert-sort'
+                    },
+                    {
+                        icon: 'fas fa-minus',
+                        tooltip: 'Decrease Gallery Column Size',
+                        action: 'gallery-size-decrease'
+                    },
+                    {
+                        icon: 'fas fa-plus',
+                        tooltip: 'Increase Gallery Column Size',
+                        action: 'gallery-size-increase'
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fa-regular fa-location-dot',
+                        text: 'Jog to Position',
+                        optionsfn: getJumpPointsOptions,
+                        handlerfn: handleJumpPointsAction,
+                        openOnHover: false,
+                        disabled: () => {
+                            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                            if (effectiveLength === 0) return true;
+                            // Disable if cache is not ready
+                            return !cachedJumpPoints || cachedJumpPointsLength !== effectiveLength;
                         },
-                        {
-                            icon: 'fas fa-plus',
-                            tooltip: 'Increase Gallery Column Size',
-                            action: 'gallery-size-increase'
+                        hidden: () => {
+                            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                            return effectiveLength === 0;
                         }
-                    ]
-                },
-                {
-                    type: 'list',
-                    items: [
-                        {
-                            icon: 'fa-light fa-location-dot',
-                            text: 'Jog to Position',
-                            optionsfn: getJumpPointsOptions,
-                            handlerfn: handleJumpPointsAction,
-                            openOnHover: false,
-                            disabled: () => {
-                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-                                if (effectiveLength === 0) return true;
-                                // Disable if cache is not ready
-                                return !cachedJumpPoints || cachedJumpPointsLength !== effectiveLength;
-                            },
-                            hidden: () => {
-                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-                                return effectiveLength === 0;
-                            }
+                    },
+                    {
+                        icon: 'fa-regular fa-calendar-days',
+                        text: 'Jog to Date',
+                        optionsfn: getDateJumpOptions,
+                        handlerfn: handleDateJumpAction,
+                        openOnHover: false,
+                        disabled: () => {
+                            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                            if (effectiveLength === 0) return true;
+                            // Disable if cache is not ready
+                            return !cachedDateGroups || cachedDateGroups.length === 0;
                         },
-                        {
-                            icon: 'fa-light fa-calendar-days',
-                            text: 'Jog to Date',
-                            optionsfn: getDateJumpOptions,
-                            handlerfn: handleDateJumpAction,
-                            openOnHover: false,
-                            disabled: () => {
-                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-                                if (effectiveLength === 0) return true;
-                                // Disable if cache is not ready
-                                return !cachedDateGroups || cachedDateGroups.length === 0;
-                            },
-                            hidden: () => {
-                                const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-                                return effectiveLength === 0;
-                            }
-                        },
-                        {
-                            content: (target) => {
-                                // Get current workspace from workspaces object using activeWorkspace variable
-                                let workspaceName = 'Workspace';
-                                let workspaceColor = '#6366f1';
-                                
-                                // Use the same activeWorkspace variable as the main dropdown
-                                if (typeof workspaces !== 'undefined' && workspaces && typeof workspaces === 'object' && activeWorkspace) {
-                                    const currentWorkspace = workspaces[activeWorkspace];
-                                    if (currentWorkspace) {
-                                        workspaceName = currentWorkspace.name || activeWorkspace;
-                                        workspaceColor = currentWorkspace.color || '#6366f1';
-                                    }
+                        hidden: () => {
+                            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                            return effectiveLength === 0;
+                        }
+                    },
+                    {
+                        content: (target) => {
+                            // Get current workspace from workspaces object using activeWorkspace variable
+                            let workspaceName = 'Workspace';
+                            let workspaceColor = '#6366f1';
+
+                            // Use the same activeWorkspace variable as the main dropdown
+                            if (typeof workspaces !== 'undefined' && workspaces && typeof workspaces === 'object' && activeWorkspace) {
+                                const currentWorkspace = workspaces[activeWorkspace];
+                                if (currentWorkspace) {
+                                    workspaceName = currentWorkspace.name || activeWorkspace;
+                                    workspaceColor = currentWorkspace.color || '#6366f1';
                                 }
-                                
-                                return `
+                            }
+
+                            return `
                                     <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
-                                        <i class="fa-regular fa-planet-ringed" style="color: ${workspaceColor};"></i>
+                                        <div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
                                         <span class="context-menu-item-text">${workspaceName}</span>
                                     </div>
                                 `;
-                            },
-                            optionsfn: getWorkspaceOptions,
-                            handlerfn: handleWorkspaceAction,
-                            openOnHover: false,
-                            hidden: () => {
-                                // Hide in desktop mode (when gallery is windowed)
-                                const galleryWindow = document.getElementById('galleryWindow');
-                                return galleryWindow && galleryWindow.classList.contains('windowed');
-                            },
-                        }
-                    ]
-                },
-                {
-                    type: 'list',
-                    hidden: () => {
-                        // Hide in desktop mode (when gallery is windowed)
-                        const galleryWindow = document.getElementById('galleryWindow');
-                        return galleryWindow && galleryWindow.classList.contains('windowed');
+                        },
+                        optionsfn: getWorkspaceOptions,
+                        handlerfn: handleWorkspaceAction,
+                        openOnHover: false
                     },
-                    items: [
-                        {
-                            icon: 'fa-light fa-solar-system',
-                            text: 'Planets',
-                            action: 'workspace-manage'
-                        },
-                        {
-                            icon: 'fa-light fa-book-copy',
-                            text: 'Spellbook',
-                            action: 'preset-manager'
-                        },
-                        {
-                            icon: 'fa-light fa-swatchbook',
-                            text: 'References',
-                            action: 'cache-manager'
-                        },
-                        {
-                            icon: 'nai-import',
-                            text: 'Import',
-                            action: 'upload',
-                            hidden: () => {
-                                // Hide in desktop mode
-                                return document.body.classList.contains('desktop-mode');
-                            }
-                        },
-                        {
-                            icon: 'fa-light fa-book-font',
-                            text: 'Expanders',
-                            action: 'text-replacement-manager'
-                        },
-                        {
-                            icon: 'fa-light fa-user-doctor-message',
-                            text: 'Chat Persona',
-                            action: 'chat-manager'
-                        },
-                        {
-                            icon: 'fa-light fa-box-open-full',
-                            text: 'Memories',
-                            action: 'knowledge-memories'
-                        },
-                        {
-                            icon: 'fa-light fa-key-skeleton-left-right',
-                            text: 'Service Keychain',
-                            action: 'api-key-manager',
-                            desktopOnly: true,
-                            hidden: localStorage.getItem('userType') !== 'admin'
-                        },/*
-                        {
-                            icon: 'fa-light fa-rotate',
-                            text: 'Refresh Metadata',
-                            action: 'refresh-metadata-cache'
-                        },
-                        {
-                            icon: 'fa-light fa-ban',
-                            text: 'Blocked Clients',
-                            action: 'ip-manager',
-                            desktopOnly: true,
-                        } */
-                        {
-                            icon: 'fas fa-arrow-pointer',
-                            text: 'Melatonin',
-                            action: 'toggle-gallery-window',
-                            hidden: () => document.body.classList.contains('desktop-mode')
-                        }
-                    ]
+                ]
+            },
+            {
+                type: 'list',
+                hidden: () => {
+                    // Hide in desktop mode (when gallery is windowed)
+                    const galleryWindow = document.getElementById('galleryWindow');
+                    return galleryWindow && galleryWindow.classList.contains('windowed');
                 },
-                {
-                    type: 'custom',
-                    hidden: () => {
-                        // Hide in desktop mode (when gallery is windowed)
-                        const galleryWindow = document.getElementById('galleryWindow');
-                        return galleryWindow && galleryWindow.classList.contains('windowed');
+                items: [
+                    {
+                        icon: 'fa-regular fa-compass-drafting',
+                        text: 'Studio',
+                        action: 'creator-model',
+                        hideOnBreakpoint: "small-mobile"
                     },
-                    content: `
+                    {
+                        icon: 'fa-regular fa-book-spells',
+                        text: 'Spellbook',
+                        action: 'cast-spell'
+                    },
+                    {
+                        icon: 'fa-regular fa-notebook',
+                        text: 'Notebook',
+                        action: 'open-notebook'
+                    },
+                    {
+                        icon: 'fa-regular fa-books',
+                        text: 'Encyclopedia',
+                        action: 'open-encyclopedia',
+                        hideOnBreakpoint: "small-mobile"
+                    },
+                    {
+                        icon: 'fa-regular fa-messages',
+                        text: 'Chat',
+                        action: 'open-chat'
+                    },
+                    {
+                        icon: 'fas fa-toolbox',
+                        text: 'Toolbox',
+                        openOnHover: false,
+                        submenu: [
+                            {
+                                icon: 'fa-regular fa-solar-system',
+                                text: 'Solar System',
+                                action: 'workspace-manage',
+                                hideOnBreakpoint: "small-mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-book-copy',
+                                text: 'Spellbook',
+                                action: 'preset-manager'
+                            },
+                            {
+                                icon: 'nai-import',
+                                text: 'Import',
+                                action: 'upload',
+                                hidden: () => {
+                                    // Hide in desktop mode
+                                    return document.body.classList.contains('desktop-mode');
+                                }
+                            },
+                            {
+                                icon: 'fa-regular fa-swatchbook',
+                                text: 'References',
+                                action: 'cache-manager',
+                                hideOnBreakpoint: "small-mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-book-font',
+                                text: 'Text Expanders',
+                                action: 'text-replacement-manager',
+                                hideOnBreakpoint: "small-mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-user-doctor-message',
+                                text: 'Chat Persona',
+                                action: 'chat-manager'
+                            },
+                            {
+                                icon: 'fa-regular fa-box-open-full',
+                                text: 'Memories',
+                                action: 'knowledge-memories',
+                                hideOnBreakpoint: "small-mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-key-skeleton-left-right',
+                                text: 'Service Keychain',
+                                action: 'api-key-manager',
+                                desktopOnly: true,
+                                hidden: localStorage.getItem('userType') !== 'admin',
+                                hideOnBreakpoint: "mobile"
+                            },
+                            /*{
+                                icon: 'fa-regular fa-rotate',
+                                text: 'Refresh Metadata',
+                                action: 'refresh-metadata-cache'
+                            },*/
+                            {
+                                icon: 'fa-regular fa-ban',
+                                text: 'Blocked Clients',
+                                action: 'ip-manager',
+                                desktopOnly: true,
+                                hideOnBreakpoint: "mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-laptop-arrow-down',
+                                text: 'Reinstall',
+                                action: 'clear-cache'
+                            },
+                        ]
+                    }
+                ]
+            },
+            {
+                type: 'custom',
+                hidden: () => {
+                    // Hide in desktop mode (when gallery is windowed)
+                    const galleryWindow = document.getElementById('galleryWindow');
+                    return galleryWindow && galleryWindow.classList.contains('windowed');
+                },
+                content: `
                         <div class="anlas-subscription-section" style="padding: 0 10px; gap: var(--spacing-xs);">
                             <div class="menu-item-row balance-list">
                                 <i class="nai-anla"></i>
@@ -23889,270 +24787,296 @@ function setupMainMenuContextMenus() {
                             </div>
                         </div>
                     `,
-                    loadfn: (section, target) => {
-                        // Update balance values directly (copied from updateBalanceDisplay)
-                        if (window.optionsData?.balance) {
-                            const balance = window.optionsData.balance;
-                            const totalCredits = balance?.totalCredits || 0;
-                            const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
-                            const purchasedCredits = balance?.purchasedTrainingSteps || 0;
+                loadfn: (section, target) => {
+                    // Update balance values directly (copied from updateBalanceDisplay)
+                    if (window.optionsData?.balance) {
+                        const balance = window.optionsData.balance;
+                        const totalCredits = balance?.totalCredits || 0;
+                        const fixedCredits = balance?.fixedTrainingStepsLeft || 0;
+                        const purchasedCredits = balance?.purchasedTrainingSteps || 0;
 
-                            // Update context menu balance elements
-                            const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixed');
-                            const contextBalancePaid = document.getElementById('contextAnlasBalancePaid');
-                            
-                            if (contextBalanceFixed) {
-                                contextBalanceFixed.textContent = fixedCredits;
-                            }
-                            if (contextBalancePaid) {
-                                contextBalancePaid.textContent = purchasedCredits;
-                            }
+                        // Update context menu balance elements
+                        const contextBalanceFixed = document.getElementById('contextAnlasBalanceFixed');
+                        const contextBalancePaid = document.getElementById('contextAnlasBalancePaid');
 
-                            // Update main balance display elements
-                            const balanceDisplay = document.querySelectorAll('.balanceDisplay');
-                            const balanceAmount = document.querySelectorAll('.balanceAmount');
-                            const balanceFixed = document.querySelectorAll('.balanceFixed');
-                            const balancePaid = document.querySelectorAll('.balancePaid');
-                            
-                            if (balanceDisplay && balanceAmount) {
-                                const balanceIcon = balanceDisplay[0].querySelector('i');
-
-                                // Update amount
-                                balanceAmount.forEach(amount => {
-                                    amount.textContent = totalCredits;
-                                });
-
-                                if (balanceFixed) {
-                                    balanceFixed.forEach(fixed => {
-                                        fixed.textContent = fixedCredits;
-                                    });
-                                }
-                                if (balancePaid) {
-                                    balancePaid.forEach(paid => {
-                                        paid.textContent = purchasedCredits;
-                                    });
-                                }
-
-                                // Update tooltip with detailed breakdown
-                                const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
-                                balanceDisplay.forEach(display => {
-                                    display.title = tooltip;
-                                    display.classList.remove('low-credits');
-                                });
-
-                                if (totalCredits !== -1) {
-                                    currentBalance = totalCredits;
-                                }
-
-                                if (totalCredits === -1) {
-                                    balanceIcon.className = 'nai-anla';
-                                    balanceAmount.forEach(amount => {
-                                        amount.textContent = 'Error';
-                                    });
-                                    balanceDisplay.forEach(display => {
-                                        display.classList.add('low-credits');
-                                    });
-                                } else if (totalCredits === 0) {
-                                    // No credits - show dollar sign and warning styling
-                                    balanceIcon.className = 'nai-anla';
-                                    balanceDisplay.forEach(display => {
-                                        display.classList.add('low-credits');
-                                    });
-                                } else if (fixedCredits === 0) {
-                                    // No free credits - show dollar sign
-                                    balanceIcon.className = 'nai-anla';
-                                } else if (totalCredits < 5000) {
-                                    // Low credits - show warning triangle and orange styling
-                                    balanceIcon.className = 'fas fa-exclamation-triangle';
-                                    balanceDisplay.forEach(display => {
-                                        display.classList.add('low-credits');
-                                    });
-                                } else {
-                                    // Normal credits - show coin icon
-                                    balanceIcon.className = 'nai-anla';
-                                }
-                            }
+                        if (contextBalanceFixed) {
+                            contextBalanceFixed.textContent = fixedCredits;
                         }
-                        
-                        // Update subscription values directly (copied from updateAnlasSubscriptionInfo)
-                        try {
-                            const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTier');
-                            const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpire');
-                            const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDivider');
-                            const warningIcon = document.querySelector('#contextAnlasDaysTillExpire .anlas-warning-icon');
-                            const daysText = document.querySelector('#contextAnlasDaysTillExpire .anlas-days-text');
-                            
-                            if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
-                                const accountData = window.optionsData;
-                                
-                                if (accountData?.user?.subscription?.tier !== undefined) {
-                                    // Update subscription tier
-                                    const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
-                                    subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' : 
-                                                                          subscriptionTier === 2 ? 'Scroll' :
-                                                                          subscriptionTier === 1 ? 'Tablet' : 
-                                                                          subscriptionTier === 0 ? 'Free' : 'Unknown';
-                                    
-                                    if (subscriptionDivider) {
-                                        subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
-                                    }
-                                    daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+                        if (contextBalancePaid) {
+                            contextBalancePaid.textContent = purchasedCredits;
+                        }
 
-                                    // Calculate days till expire
-                                    let daysTillExpire = 0;
-                                    if (accountData.user.subscription.expiresAt) {
-                                        const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
-                                        const now = new Date();
-                                        const diffTime = expireDate.getTime() - now.getTime();
-                                        daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                    }
-                                    
-                                    daysText.textContent = `${daysTillExpire} days`;
-                                    
-                                    // Show warning icon if expiring in a week or less
-                                    if (daysTillExpire <= 7 && daysTillExpire > 0) {
-                                        warningIcon.classList.remove('hidden');
-                                    } else {
-                                        warningIcon.classList.add('hidden');
-                                    }
+                        // Update main balance display elements
+                        const balanceDisplay = document.querySelectorAll('.balanceDisplay');
+                        const balanceAmount = document.querySelectorAll('.balanceAmount');
+                        const balanceFixed = document.querySelectorAll('.balanceFixed');
+                        const balancePaid = document.querySelectorAll('.balancePaid');
 
-                                    // Add color coding for urgency
-                                    if (daysTillExpire <= 3) {
-                                        daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
-                                    } else if (daysTillExpire <= 7) {
-                                        daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
-                                    } else {
-                                        daysTillExpireElement.style.color = '';
-                                    }
-                                } else {
-                                    subscriptionTierElement.textContent = 'No data';
-                                    daysText.textContent = 'No data';
-                                }
+                        if (balanceDisplay && balanceAmount) {
+                            const balanceIcon = balanceDisplay[0].querySelector('i');
+
+                            // Update amount
+                            balanceAmount.forEach(amount => {
+                                amount.textContent = totalCredits;
+                            });
+
+                            if (balanceFixed) {
+                                balanceFixed.forEach(fixed => {
+                                    fixed.textContent = fixedCredits;
+                                });
                             }
-                        } catch (error) {
-                            console.error('Error updating subscription info in context menu:', error);
+                            if (balancePaid) {
+                                balancePaid.forEach(paid => {
+                                    paid.textContent = purchasedCredits;
+                                });
+                            }
+
+                            // Update tooltip with detailed breakdown
+                            const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
+                            balanceDisplay.forEach(display => {
+                                display.title = tooltip;
+                                display.classList.remove('low-credits');
+                            });
+
+                            if (totalCredits !== -1) {
+                                currentBalance = totalCredits;
+                            }
+
+                            if (totalCredits === -1) {
+                                balanceIcon.className = 'nai-anla';
+                                balanceAmount.forEach(amount => {
+                                    amount.textContent = 'Error';
+                                });
+                                balanceDisplay.forEach(display => {
+                                    display.classList.add('low-credits');
+                                });
+                            } else if (totalCredits === 0) {
+                                // No credits - show dollar sign and warning styling
+                                balanceIcon.className = 'nai-anla';
+                                balanceDisplay.forEach(display => {
+                                    display.classList.add('low-credits');
+                                });
+                            } else if (fixedCredits === 0) {
+                                // No free credits - show dollar sign
+                                balanceIcon.className = 'nai-anla';
+                            } else if (totalCredits < 5000) {
+                                // Low credits - show warning triangle and orange styling
+                                balanceIcon.className = 'fas fa-exclamation-triangle';
+                                balanceDisplay.forEach(display => {
+                                    display.classList.add('low-credits');
+                                });
+                            } else {
+                                // Normal credits - show coin icon
+                                balanceIcon.className = 'nai-anla';
+                            }
                         }
                     }
-                },
-                {
-                    type: 'icons',
-                    hidden: () => {
-                        // Hide in desktop mode (when gallery is windowed)
-                        const galleryWindow = document.getElementById('galleryWindow');
-                        return galleryWindow && galleryWindow.classList.contains('windowed');
-                    },
-                    icons: [
-                        {
-                            icon: 'fa-light fa-droplet',
-                            tooltip: 'Liquid Glass',
-                            action: 'toggle-glass',
-                            keepMenuOpen: true,
-                            loadfn: (icon, target) => {
-                                const isOn = document.documentElement.classList.contains('disable-blur');
-                                icon.dataState = !isOn ? 'on' : 'off';
+
+                    // Update subscription values directly (copied from updateAnlasSubscriptionInfo)
+                    try {
+                        const subscriptionTierElement = document.getElementById('contextAnlasSubscriptionTier');
+                        const daysTillExpireElement = document.getElementById('contextAnlasDaysTillExpire');
+                        const subscriptionDivider = document.getElementById('contextAnlasSubscriptionDivider');
+                        const warningIcon = document.querySelector('#contextAnlasDaysTillExpire .anlas-warning-icon');
+                        const daysText = document.querySelector('#contextAnlasDaysTillExpire .anlas-days-text');
+
+                        if (subscriptionTierElement && daysTillExpireElement && warningIcon && daysText) {
+                            const accountData = window.optionsData;
+
+                            if (accountData?.user?.subscription?.tier !== undefined) {
+                                // Update subscription tier
+                                const subscriptionTier = accountData.user.subscription.tier || 'Unknown';
+                                subscriptionTierElement.textContent = subscriptionTier === 3 ? 'Opus' :
+                                    subscriptionTier === 2 ? 'Scroll' :
+                                        subscriptionTier === 1 ? 'Tablet' :
+                                            subscriptionTier === 0 ? 'Free' : 'Unknown';
+
+                                if (subscriptionDivider) {
+                                    subscriptionDivider.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+                                }
+                                daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
+
+                                // Calculate days till expire
+                                let daysTillExpire = 0;
+                                if (accountData.user.subscription.expiresAt) {
+                                    const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
+                                    const now = new Date();
+                                    const diffTime = expireDate.getTime() - now.getTime();
+                                    daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                }
+
+                                daysText.textContent = `${daysTillExpire} days`;
+
+                                // Show warning icon if expiring in a week or less
+                                if (daysTillExpire <= 7 && daysTillExpire > 0) {
+                                    warningIcon.classList.remove('hidden');
+                                } else {
+                                    warningIcon.classList.add('hidden');
+                                }
+
+                                // Add color coding for urgency
+                                if (daysTillExpire <= 3) {
+                                    daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
+                                } else if (daysTillExpire <= 7) {
+                                    daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
+                                } else {
+                                    daysTillExpireElement.style.color = '';
+                                }
+                            } else {
+                                subscriptionTierElement.textContent = 'No data';
+                                daysText.textContent = 'No data';
                             }
-                        },
-                        {
-                            icon: 'fa-light fa-blinds',
-                            tooltip: 'Focus Cover',
-                            action: 'toggle-privacy-mode',
-                            keepMenuOpen: true,
-                            loadfn: (icon, target) => {
-                                icon.dataState = focusCoverEnabled ? 'on' : 'off';
-                            },
-                            desktopOnly: true,
-                        },
-                        {
-                            icon: 'fa-light fa-sync',
-                            tooltip: 'Update',
-                            action: 'refresh-cache'
-                        },
-                        {
-                            icon: 'fa-light fa-laptop-arrow-down',
-                            tooltip: 'Reinstall',
-                            action: 'clear-cache'
-                        },
-                        {
-                            icon: 'fa-light fa-power-off',
-                            tooltip: 'Logout',
-                            action: 'logout'
                         }
-                    ]
+                    } catch (error) {
+                        console.error('Error updating subscription info in context menu:', error);
+                    }
                 }
-            ],
-            maxHeight: true
-        };
-    
+            },
+            {
+                type: 'icons',
+                hidden: () => {
+                    // Hide in desktop mode (when gallery is windowed)
+                    const galleryWindow = document.getElementById('galleryWindow');
+                    return galleryWindow && galleryWindow.classList.contains('windowed');
+                },
+                icons: [
+                    {
+                        icon: 'fa-regular fa-droplet',
+                        tooltip: 'Liquid Glass',
+                        action: 'toggle-glass',
+                        keepMenuOpen: true,
+                        loadfn: (icon, target) => {
+                            const isOn = document.documentElement.classList.contains('disable-blur');
+                            icon.dataState = !isOn ? 'on' : 'off';
+                        }
+                    },
+                    {
+                        icon: 'fa-regular fa-blinds',
+                        tooltip: 'Focus Cover',
+                        action: 'toggle-privacy-mode',
+                        keepMenuOpen: true,
+                        loadfn: (icon, target) => {
+                            icon.dataState = focusCoverEnabled ? 'on' : 'off';
+                        },
+                        desktopOnly: true,
+                    },
+                    {
+                        icon: 'fa-regular fa-sync',
+                        tooltip: 'Software Update',
+                        action: 'refresh-cache'
+                    },
+                    {
+                        icon: 'fa-regular fa-window-alt',
+                        tooltop: 'Melaton Desktop',
+                        action: 'toggle-gallery-window',
+                        hidden: () => document.body.classList.contains('desktop-mode'),
+                        hideOnBreakpoint: "mobile"
+                    },
+                    {
+                        icon: 'fa-regular fa-lock',
+                        tooltip: 'Lock App',
+                        hidden: () => !(window.AndroidPersistentNotification && window.AndroidPersistentNotification.canLock()),
+                        action: 'lock-app'
+                    },
+                    {
+                        icon: 'fa-regular fa-power-off',
+                        tooltip: 'Logout',
+                        action: 'logout'
+                    }
+                ]
+            }
+        ],
+        maxHeight: true
+    };
+
     // Attach the same configuration to multiple elements
     window.contextMenu.attachToElements('#main-menu-bar, #galleryToggleGroup', contextMenuConfig);
-    
+
     // Add wheel support to main menu bar for adjusting gallery column size
     const mainMenuBar = document.getElementById('main-menu-bar');
     if (mainMenuBar && typeof adjustGalleryColumnSize === 'function') {
         let wheelTimeout = null;
         let lastWheelTime = 0;
         const wheelThrottle = 500; // ms between wheel adjustments
-        
-        mainMenuBar.addEventListener('wheel', function(e) {
+
+        mainMenuBar.addEventListener('wheel', function (e) {
             // Only handle vertical scrolling
             if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
-            
+
             // Throttle wheel events
             const now = Date.now();
             if (now - lastWheelTime < wheelThrottle) {
                 e.preventDefault();
                 return;
             }
-            
+
             e.preventDefault();
             lastWheelTime = now;
-            
+
             // deltaY > 0 is scroll down (decrease), deltaY < 0 is scroll up (increase)
             const direction = e.deltaY > 0 ? -1 : 1;
             adjustGalleryColumnSize(direction);
         }, { passive: false });
     }
-    
+
     // Handle context menu actions
-    document.addEventListener('contextMenuAction', async function(event) {
+    document.addEventListener('contextMenuAction', async function (event) {
         const { action, target, item } = event.detail;
 
         switch (action) {
             case 'jump-to-top':
                 displayGalleryFromStartIndex(0);
-                window.scrollTo(0, {behavior: 'instant'});
+                window.scrollTo(0, { behavior: 'instant' });
                 break;
-                
+
             case 'invert-sort':
                 // Toggle sort order directly
                 toggleGallerySortOrder();
                 break;
-                
+
             case 'workspace-manage':
                 // Open workspace management modal directly
                 showWorkspaceManagementModal();
                 break;
-                
+
             case 'preset-manager':
                 // Open preset manager modal directly
                 showPresetManager();
                 break;
-                
+
             case 'cast-spell':
                 // Open spellbook modal directly
                 window.spellbookModalManager.openModal();
                 break;
-                
+
             case 'creator-model':
                 // Open creator model modal directly
                 openManualModalWithContent();
                 break;
-                
+
+            case 'open-notebook':
+                // Open notebook modal directly
+                window.notepadManager.openNotebook();
+                break;
+
+            case 'open-encyclopedia':
+                // Open encyclopedia modal directly
+                const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
+                if (tagWikiSearchModal) {
+                    openModal(tagWikiSearchModal);
+                }
+                break;
+
+            case 'open-chat':
+                // Open chat modal directly
+                window.chatSystem.showAllChats();
+                break;
+
             case 'cache-manager':
                 // Open cache manager modal directly
                 showCacheManagerModal();
                 break;
-            
+
             case 'knowledge-memories':
                 // Open knowledge memories modal
                 openKnowledgeMemoriesModal();
@@ -24165,7 +25089,7 @@ function setupMainMenuContextMenus() {
                     showGlassToast('warning', null, 'Admin access required to manage API keys.', false, 5000, '<i class="fas fa-key-skeleton-left-right"></i>');
                 }
                 break;
-                
+
             case 'chat-manager':
                 // Open chat manager modal directly
                 window.chatSystem.openPersonaSettingsModal();
@@ -24199,33 +25123,33 @@ function setupMainMenuContextMenus() {
                 // Open Genso manager modal directly
                 showTextReplacementManager();
                 break;
-                
+
             case 'refresh-metadata-cache':
                 // Rebuild metadata cache
                 await handleRefreshMetadataCache();
                 break;
-                
+
             case 'upload':
                 // Open upload modal directly
                 unifiedUploadModalManager.show();
                 closeSubMenu();
                 break;
-                
+
             case 'toggle-gallery-window':
                 // Toggle gallery window mode
                 toggleGalleryWindowMode();
                 break;
-                
+
             case 'gallery-size-increase':
                 // Increase gallery column size
                 adjustGalleryColumnSize(1);
                 break;
-                
+
             case 'gallery-size-decrease':
                 // Decrease gallery column size
-                adjustGalleryColumnSize(-1);                
+                adjustGalleryColumnSize(-1);
                 break;
-                
+
             case 'toggle-glass':
                 // Toggle blur effect directly            
                 const isBlurDisabled = document.documentElement.classList.contains('disable-blur');
@@ -24239,18 +25163,25 @@ function setupMainMenuContextMenus() {
                     saveBlurPreference(true);
                 }
                 break;
-                
+
+            case 'lock-app':
+                // Lock app directly
+                if (window.AndroidPersistentNotification && window.AndroidPersistentNotification.canLock()) {
+                    window.AndroidPersistentNotification.lockApp();
+                }
+                break;
+
             case 'toggle-privacy-mode':
                 // Toggle focus cover directly
                 focusCoverEnabled = !focusCoverEnabled;
                 localStorage.setItem('focusCoverEnabled', focusCoverEnabled.toString());
                 break;
-                
+
             case 'refresh-cache':
                 // Refresh cache directly
                 await serviceWorkerManager.refreshServerCacheAndCheck();
                 break;
-                
+
             case 'clear-cache':
                 // Clear cache directly
                 const confirmedClear = await showConfirmationDialog(
@@ -24266,12 +25197,12 @@ function setupMainMenuContextMenus() {
                     await clearAllCachesAndReload();
                 }
                 break;
-                
+
             case 'search-index-prepare-cache':
                 // Prepare search cache for current session
                 if (window.wsClient && window.wsClient.isConnected()) {
                     try {
-                        const viewType = window.currentGalleryView || 'images';
+                        const viewType = currentGalleryView || 'images';
                         await window.wsClient.sendMessage('search_index_prepare_cache', { viewType });
                         showGlassToast('success', null, 'Search cache prepared', false, 3000, '<i class="fas fa-check"></i>');
                     } catch (error) {
@@ -24355,7 +25286,7 @@ function setupMainMenuContextMenus() {
                     showGlassToast('error', null, 'WebSocket not connected', false, 3000, '<i class="fas fa-exclamation-circle"></i>');
                 }
                 break;
-                
+
             case 'logout':
                 // Logout directly
                 const confirmed = await showConfirmationDialog(
@@ -24377,15 +25308,15 @@ function setupMainMenuContextMenus() {
                 if (action.startsWith('toggleTextReplacementLock_')) {
                     const index = parseInt(action.replace('toggleTextReplacementLock_', ''), 10);
                     const allReplacements = window.lastGenerationTextReplacements || [];
-                    
+
                     if (!isNaN(index) && allReplacements[index]) {
                         const seed = allReplacements[index];
                         const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
-                        
+
                         if (canLock) {
                             // Toggle the locked state
                             seed.locked = !seed.locked;
-                            
+
                             // Update the global lock state
                             const lockedSeeds = allReplacements.filter(s => s.locked === true);
                             window.lockedTextReplacements = lockedSeeds;
@@ -24549,7 +25480,7 @@ function updateStageIndicators(progressData) {
     }
 
     const { phase, currentStage, totalStages, currentStep, totalSteps } = progressData;
-    
+
     if (!totalStages || !currentStage) {
         return;
     }
@@ -24563,7 +25494,7 @@ function updateStageIndicators(progressData) {
 
     dots.forEach((dot, index) => {
         const dotStage = index + 1;
-        
+
         // Remove all state classes
         dot.classList.remove('completed', 'active', 'delay', 'generating');
         dot.style.removeProperty('--stage-progress');
@@ -24624,11 +25555,11 @@ if (window.wsClient) {
     function isUpdateRelatedMessage(message) {
         if (!message) return false;
         const lowerMessage = message.toLowerCase();
-        return lowerMessage.includes('update') || 
-               lowerMessage.includes('available') || 
-               lowerMessage.includes('download') ||
-               lowerMessage.includes('install') ||
-               lowerMessage.includes('upgrade');
+        return lowerMessage.includes('update') ||
+            lowerMessage.includes('available') ||
+            lowerMessage.includes('download') ||
+            lowerMessage.includes('install') ||
+            lowerMessage.includes('upgrade');
     }
 
     // Handle system messages
@@ -24636,7 +25567,7 @@ if (window.wsClient) {
         console.log('📢 System message received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-            
+
             // Desktop mode: use Windows Update Modal for update-related messages
             if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
                 window.wsClient.showWindowsUpdateModal('System Update', 0);
@@ -24658,7 +25589,7 @@ if (window.wsClient) {
         console.log('🔔 Notification received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-            
+
             // Desktop mode: use Windows Update Modal for update-related messages
             if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
                 window.wsClient.showWindowsUpdateModal('Update Notification', 0);
@@ -24678,7 +25609,7 @@ if (window.wsClient) {
     wsClient.on('receipt', (data) => {
         if (data.data && data.data.message) {
             const message = data.data.message;
-            
+
             // Desktop mode: use Windows Update Modal for update-related messages
             if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
                 window.wsClient.showWindowsUpdateModal('Update Receipt', 0);
@@ -24694,33 +25625,188 @@ if (window.wsClient) {
         }
     });
 
-    // Handle gallery responses
-    wsClient.on('galleryResponse', (data) => {
-        if (data.data && (data.data.gallery || Array.isArray(data.data))) {
-            if (window.workspaceLoadingCompleteCallback) {
-                window.workspaceLoadingCompleteCallback();
-            }
-        }
-    });
+    // Local flag to skip next gallery refresh when we've already applied changes locally
+    if (typeof window.skipNextGalleryRefresh === 'undefined') {
+        window.skipNextGalleryRefresh = 0;
+    }
 
     // Handle gallery updates
     wsClient.on('galleryUpdated', (data) => {
-        // Refresh the current gallery view if it matches the updated view type
-        if (data.data && data.data.viewType) {
-            allImages = data.data.gallery;
-            
-            // Apply current sort order to the updated gallery data
-            if (window.sortGalleryData) {
-                window.sortGalleryData();
+        if (isGalleryWindowHidden()) {
+            if (data.gallery) {
+                allImages = data.gallery;
             }
-            
-            const currentView = window.currentGalleryView || 'images';
-            if (data.data.viewType === currentView) {
-                // Refresh the current gallery view
-                switchGalleryView(currentView, true);
+            return;
+        };
+
+        // Skip a refresh if we already applied the change locally (e.g., local delete/move)
+        if (window.skipNextGalleryRefresh && window.skipNextGalleryRefresh > 0) {
+            window.skipNextGalleryRefresh--;
+            return;
+        }
+        // Update gallery data and refresh the view if it matches the updated view type
+        if (data.viewType && data.gallery) {
+            const oldImages = [...allImages];
+            const newImages = data.gallery;
+            const currentView = currentGalleryView || 'images';
+
+            if (data.viewType !== currentView) {
+                console.warn('Gallery updated event received but view type does not match');
+                return;
             }
+
+            // Detect changes and apply minimal updates
+            const changes = detectGalleryChanges(oldImages, newImages);
+
+            if (changes.type === 'full_reload') {
+                // Complete reload needed
+                allImages = newImages;
+                if (window.sortGalleryData) {
+                    window.sortGalleryData();
+                }
+                clearSelection();
+                resetInfiniteScroll();
+                displayCurrentPageOptimized();
+                console.log('Gallery: Full reload performed');
+            } else if (changes.type === 'append_top') {
+                // New items added to top - append them
+                allImages = newImages;
+                if (window.sortGalleryData) {
+                    window.sortGalleryData();
+                }
+                appendNewGalleryItems(changes.newItems);
+                console.log(`Gallery: Appended ${changes.newItems.length} new items to top`);
+            } else if (changes.type === 'shift_indexes') {
+                // Gallery shifted - adjust indexes and add placeholders
+                allImages = newImages;
+                if (window.sortGalleryData) {
+                    window.sortGalleryData();
+                }
+                shiftGalleryIndexes(changes.shiftAmount);
+                console.log(`Gallery: Shifted indexes by ${changes.shiftAmount}`);
+            } else {
+                // No significant changes
+                console.log('Gallery: No changes detected');
+            }
+        } else {
+            console.warn('Gallery updated event received but data is missing or invalid:', data);
         }
     });
+
+    // Gallery change detection and optimization functions
+    function detectGalleryChanges(oldImages, newImages) {
+        if (!oldImages || !newImages) {
+            return { type: 'full_reload' };
+        }
+
+        // Check if lengths are very different (major change)
+        if (Math.abs(oldImages.length - newImages.length) > 10) {
+            return { type: 'full_reload' };
+        }
+
+        // Check if the first item changed (gallery shifted)
+        if (oldImages.length > 0 && newImages.length > 0) {
+            const oldFirst = oldImages[0];
+            const newFirst = newImages[0];
+
+            // If the first item is different, check if it's a shift
+            if (oldFirst.original !== newFirst.original) {
+                // Look for the old first item in the new array
+                const oldFirstIndex = newImages.findIndex(img => img.original === oldFirst.original);
+                if (oldFirstIndex > 0) {
+                    // Found old first item at a new position - it's a shift
+                    return {
+                        type: 'shift_indexes',
+                        shiftAmount: oldFirstIndex
+                    };
+                }
+            }
+        }
+
+        // Check if new items were added to the top
+        if (newImages.length > oldImages.length) {
+            const addedCount = newImages.length - oldImages.length;
+            const addedItems = newImages.slice(0, addedCount);
+
+            // Verify these are actually new items (not just reordered)
+            const existingOriginals = new Set(oldImages.map(img => img.original));
+            const allAddedAreNew = addedItems.every(img => !existingOriginals.has(img.original));
+
+            if (allAddedAreNew) {
+                return {
+                    type: 'append_top',
+                    newItems: addedItems
+                };
+            }
+        }
+
+        // Check for other changes (deletions, reordering, etc.)
+        if (oldImages.length !== newImages.length) {
+            return { type: 'full_reload' };
+        }
+
+        // Check if items are in different order or different items
+        for (let i = 0; i < oldImages.length; i++) {
+            if (oldImages[i].original !== newImages[i].original) {
+                return { type: 'full_reload' };
+            }
+        }
+
+        // No changes detected
+        return { type: 'no_change' };
+    }
+
+    function appendNewGalleryItems(newItems) {
+        if (!newItems || newItems.length === 0) return;
+
+        // Don't add new gallery items if manual modal is open and maximized
+        if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+
+        // Don't add new gallery items if gallery is hidden in desktop mode
+        if (isGalleryWindowHidden()) return;
+
+        // Add each new item to the top of the gallery
+        for (let i = newItems.length - 1; i >= 0; i--) {
+            const newItem = createGalleryItem(newItems[i], i);
+            newItem.classList.add('gallery-placeholder', 'fade-in');
+            gallery.insertBefore(newItem, gallery.children[0]);
+
+            // Wait for fade-in animation to finish
+            newItem.addEventListener('animationend', function handler() {
+                newItem.classList.remove('fade-in');
+                newItem.classList.remove('gallery-placeholder');
+                newItem.classList.add('slide-in');
+                newItem.addEventListener('animationend', function slideHandler() {
+                    newItem.classList.remove('slide-in');
+                    newItem.removeEventListener('animationend', slideHandler);
+                });
+                newItem.removeEventListener('animationend', handler);
+            });
+        }
+
+        // Reindex the gallery after adding new items
+        reindexGallery();
+    }
+
+    function shiftGalleryIndexes(shiftAmount) {
+        if (!shiftAmount || shiftAmount <= 0) return;
+
+        // Add placeholder items at the top for the shifted positions
+        for (let i = 0; i < shiftAmount; i++) {
+            const placeholderItem = document.createElement('div');
+            placeholderItem.className = 'gallery-item gallery-placeholder';
+            placeholderItem.dataset.index = i.toString();
+            placeholderItem.dataset.filename = 'placeholder';
+            gallery.insertBefore(placeholderItem, gallery.children[0]);
+        }
+
+        // Reindex the entire gallery to update all positions
+        reindexGallery();
+
+        // Reset infinite scroll since the gallery structure changed
+        resetInfiniteScroll();
+        displayCurrentPageOptimized();
+    }
 
     // Handle receipt notifications
     wsClient.on('receipt_notification', (data) => {
@@ -24729,7 +25815,7 @@ if (window.wsClient) {
             let message = '';
             let type = 'info';
             let header = '';
-            
+
             switch (receipt.type) {
                 case 'generation':
                     header = 'Generation Receipt';
@@ -24756,9 +25842,28 @@ if (window.wsClient) {
                     message = `<i class="nai-anla"></i> ${receipt.cost || 0} (using ${receipt.creditType || 'unknown'})`;
                     type = 'info';
             }
-            
+
             if (message) {
-                showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
+                const indicator = document.getElementById('fixedCreditsIndicator');
+                if (window.isDesktop && indicator && PopoverManager) {
+                    // Choose icon based on receipt type
+                    let icon = '<i class="fas fa-file-invoice-dollar"></i>';
+                    if (receipt.type === 'generation') {
+                        icon = '<i class="fas fa-sparkles"></i>';
+                    } else if (receipt.type === 'upscaling') {
+                        icon = '<i class="fas fa-expand"></i>';
+                    } else if (receipt.type === 'deposit') {
+                        icon = '<i class="fas fa-plus-circle"></i>';
+                    }
+
+                    showPopover(indicator, type, header, message, false, false, icon, null, {
+                        position: 'top',
+                        arrowPosition: 'bottom-right'
+                    });
+                    startPopoverAutoHideTimer(indicator);
+                } else {
+                    showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
+                }
             }
         }
     });
@@ -24784,18 +25889,18 @@ if (window.wsClient) {
         if (!isAppDataReady()) {
             return;
         }
-        
+
         if (data.data) {
             // Update the current workspace display
             if (window.currentWorkspace !== data.data.id) {
                 window.currentWorkspace = data.data.id;
-                
+
                 // Update workspace selector if it exists
                 const workspaceSelector = document.getElementById('workspace-selector');
                 if (workspaceSelector) {
                     workspaceSelector.value = data.data.id;
                 }
-                
+
                 // Update workspace name display
                 const workspaceNameElement = document.getElementById('workspace-name');
                 if (workspaceNameElement) {
@@ -24803,18 +25908,18 @@ if (window.wsClient) {
                 }
             }
         }
-    });        
-    
+    });
+
     window.wsClient.on('presetUpdated', (message) => {
         handlePresetUpdate(message.data);
     });
 
-    window.wsClient.on('queue_update', (data) => {        
+    window.wsClient.on('queue_update', (data) => {
         // Update global queue status
         if (window.optionsData) {
             window.optionsData.queue_status = data.value;
         }
-        
+
         // Update queue state variables
         if (data.value === 2) {
             isQueueStopped = true;
@@ -24826,10 +25931,10 @@ if (window.wsClient) {
             isQueueStopped = false;
             isQueueProcessing = false;
         }
-        
+
         // Update generation button state
         updateManualGenerateBtnState();
-        
+
         // Show notification if queue is blocked
         if (data.value === 2) {
             showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait.', false, 5000);
@@ -24847,39 +25952,39 @@ if (window.wsClient) {
             isQueueProcessing,
             value: isQueueStopped ? 2 : (isQueueProcessing ? 1 : 0)
         };
-        
+
         // Dispatch response event
         const responseEvent = new CustomEvent('queueStatusResponse', {
             detail: queueStatus
         });
         document.dispatchEvent(responseEvent);
     });
-    
+
     // Server readiness polling system for when server restarts
     let serverReadinessInterval = null;
     let lastServerReadinessCheck = 0;
-    
+
     async function checkServerReadiness() {
         try {
             const response = await fetch('/status', {
                 method: 'OPTIONS',
                 cache: 'no-cache'
             });
-            
+
             if (response.ok) {
                 const data = await response.json();
                 lastServerReadinessCheck = Date.now();
-                
+
                 if (!data.isReady) {
                     // Server is initializing, show status
                     console.log(`📊 Server status: ${data.stageMessage}`);
-                    
+
                     // Show banner notification if WebSocket is disconnected
                     if (window.wsClient && !window.wsClient.isConnected()) {
                         window.wsClient.bannerManager.showWebSocketTicker(
                             'warning',
                             `Server Booting: ${data.stageMessage}`,
-                            'fa-spinner fa-spin',
+                            'fa-spinner-third fa-spin',
                             false // Don't auto-hide
                         );
                     }
@@ -24889,7 +25994,7 @@ if (window.wsClient) {
                         window.wsClient.bannerManager.hideWebSocketTicker();
                     }
                 }
-                
+
                 return data;
             }
         } catch (error) {
@@ -24897,16 +26002,6 @@ if (window.wsClient) {
         }
         return null;
     }
-    
-    // Removed continuous polling - /status is now only called during connection process
-    // Status checks are handled by websocket.js pingHost() during connection
-
-    // Priority 0: Check for and download updates (before loading options)
-    window.wsClient.registerInitStep(0, 'Checking for Updates', async () => {
-        if (window.serviceWorkerManager) {
-            await window.serviceWorkerManager.checkAndDownloadUpdatesForInit();
-        }
-    });
 
     // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
     if (window.isDesktop) {
@@ -24914,27 +26009,27 @@ if (window.wsClient) {
             try {
                 if (window.wsClient && window.wsClient.isConnected()) {
                     const settings = await window.wsClient.getDesktopSettings();
-                    
+
                     if (settings) {
                         const { wallpaper, wallpaperPosition, color, backgroundColor } = settings;
-                        
+
                         // Apply colors
                         if (color) {
                             document.documentElement.style.setProperty('--workspace-color', color);
                         }
-                        
+
                         // Set background color to workspace color if no background is set
                         const bgColor = backgroundColor || color;
                         if (bgColor) {
                             document.documentElement.style.setProperty('--workspace-background-color', bgColor);
                         }
-                        
+
                         // Apply wallpaper if present
                         if (wallpaper && window.isDesktop) {
                             let wallpaperUrl = null;
                             const [type, ...idParts] = wallpaper.split(':');
                             const id = idParts.join(':');
-                            
+
                             switch (type) {
                                 case 'file':
                                     wallpaperUrl = `/images/${id}`;
@@ -24955,12 +26050,12 @@ if (window.wsClient) {
                                     wallpaperUrl = id;
                                     break;
                             }
-                            
+
                             if (wallpaperUrl) {
                                 const position = wallpaperPosition || 'center';
                                 document.documentElement.style.setProperty('--desktop-wallpaper', `url('${wallpaperUrl}')`);
                                 document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
-                                
+
                                 // Preload the wallpaper image
                                 const img = new Image();
                                 img.src = wallpaperUrl;
@@ -24981,7 +26076,7 @@ if (window.wsClient) {
             await loadOptions();
         } catch (error) {
             console.error('❌ Critical: Failed to load application data:', error);
-            
+
             const confirmed = await showConfirmationDialog(
                 'Failed to load application data. This may be due to a server issue or connection problem.',
                 [
@@ -24990,7 +26085,7 @@ if (window.wsClient) {
                 ],
                 'Critical Error'
             );
-            
+
             if (confirmed === 'retry') {
                 // Retry loading options
                 await loadOptions();
@@ -25005,12 +26100,12 @@ if (window.wsClient) {
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         try {
             t5Tokenizer = new T5Tokenizer();
-            
+
             // Load tokenizer configuration from protected folder
             const response = await fetch('/protected/t5_tokenizer.json');
             const config = await response.json();
             await t5Tokenizer.loadFromJSON(config);
-            
+
             console.log('✅ T5 Tokenizer loaded successfully');
             return true;
         } catch (error) {
@@ -25031,7 +26126,7 @@ if (window.wsClient) {
             isQueueStopped = false;
             isQueueProcessing = false;
         }
-        
+
         updateManualGenerateBtnState();
         generateSamplerOptions();
         generateResolutionOptions();
@@ -25047,7 +26142,7 @@ if (window.wsClient) {
         selectManualResolution('normal_square', 'Normal');
         selectManualNoiseScheduler('karras');
         selectManualModel('v4_5', '', true);
-        
+
         updateDatasetDisplay();
         updateSubTogglesButtonState();
         renderUcPresetsDropdown();
@@ -25071,7 +26166,7 @@ if (window.wsClient) {
                 } else {
                     galleryWindow.classList.remove('hidden');
                 }
-                
+
                 // Add loading spinner
                 const spinner = document.getElementById('galleryLoadingSpinner');
                 const galleryContainer = galleryWindow.querySelector('.gallery-container');
@@ -25084,10 +26179,23 @@ if (window.wsClient) {
             }
         }
     }, true);
-    
+
     // Priority 7: Load gallery and finalize UI
     window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
-        await loadGallery();
+        await loadGallery(false, (state) => {
+            const currentStep = window.wsClient.currentInitStep;
+            const totalSteps = window.wsClient.totalInitSteps;
+
+            // Base progress for current step
+            const baseProgress = window.wsClient.constructor.PROGRESS_INIT_BASE +
+                (((currentStep - 1) / totalSteps) * window.wsClient.constructor.PROGRESS_INIT_STEPS);
+
+            // Reserve remaining progress (from current step to 100%) for gallery loading
+            const reservedProgress = 100 - baseProgress;
+            const totalProgress = baseProgress + (state.progress * reservedProgress);
+
+            window.wsClient.updateProgressNotification('Loading Gallery', Math.min(totalProgress, 100));
+        });
         await updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
         await updateMenuBarHeight();
     }, true);
@@ -25099,20 +26207,146 @@ if (window.wsClient) {
 
         setupMainMenuContextMenus();
         setupDynamicGenerationContextMenus();
-        
+
         initializeSessionValidation();
-        
+
         // Initialize emphasis highlighting for manual fields
         await initializeEmphasisOverlay(manualPrompt);
         await initializeEmphasisOverlay(manualUc);
+
+        // Activate the Android notification bridge now that all scripts have loaded.
+        // This must run last so that window.AndroidNotification (injected by the host)
+        // and all toast functions are fully available before we check isReady().
+        if (typeof window.initAndroidNotificationBridge === 'function') {
+            window.initAndroidNotificationBridge();
+        }
     });
 }
 
 // Window Controls Overlay API - OS Detection and class addition
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // Function to update window controls overlay classes
-    function updateWindowControlsOverlayClasses() {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Initialize websocket client (update check will happen after connection, before authentication)
+    if (window.wsClient && !window.wsClient.initializationStarted) {
+        window.wsClient.init();
+    }
+
+    // Helper: read --caption-bar-* CSS variables and return a synthetic rect (or null)
+    function getCaptionBarRect() {
+        const style = getComputedStyle(document.documentElement);
+        const heightRaw = style.getPropertyValue('--caption-bar-height').trim();
+        const leftRaw = style.getPropertyValue('--caption-bar-left').trim();
+        const rightRaw = style.getPropertyValue('--caption-bar-right').trim();
+
+        const height = parseFloat(heightRaw) || 0;
+        if (height <= 0) return null;
+
+        const left = parseFloat(leftRaw) || 0;
+        const right = parseFloat(rightRaw) || 0;
+        const width = window.innerWidth - left - right;
+
+        // x: the content area starts after the left buttons (Mac style when left > 0)
+        return { x: left, y: 0, width: Math.max(0, width), height };
+    }
+
+    let captionBarOverlayClassTimer = null;
+    const CAPTION_BAR_OVERLAY_DEBOUNCE_MS = 160;
+
+    // Android WebView: host updates insets after resize/layout; sync via bridge then apply --caption-bar-* on :root.
+    function syncCaptionBarInsetsFromBridge() {
+        const ac = window.AndroidCaption;
+        if (!ac || typeof ac.setCaptionBarInsets !== 'function' || typeof ac.getCaptionBarInsetsJson !== 'function') {
+            return false;
+        }
+        try {
+            ac.setCaptionBarInsets();
+            const raw = ac.getCaptionBarInsetsJson();
+            if (raw == null || raw === '') return false;
+            const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            const inset = data.insets || data;
+            const left = Number(inset.left ?? data.left ?? data.leftInset ?? data.captionBarLeft ?? 0) || 0;
+            const right = Number(inset.right ?? data.right ?? data.rightInset ?? data.captionBarRight ?? 0) || 0;
+            const height = Number(
+                data.height ?? data.captionBarHeight ?? inset.top ?? data.top ?? inset.height ?? 0
+            ) || 0;
+            if (height <= 0 && left <= 0 && right <= 0) return false;
+            const root = document.documentElement;
+            root.style.setProperty('--caption-bar-left', `${left}px`);
+            root.style.setProperty('--caption-bar-right', `${right}px`);
+            if (height > 0) {
+                root.style.setProperty('--caption-bar-height', `${height}px`);
+            }
+            return true;
+        } catch (e) {
+            console.warn('📱 Caption bar inset bridge sync failed:', e);
+            return false;
+        }
+    }
+
+    // Notify the Android host of the current draggable titlebar region.
+    // Uses the rendered bounding rect of #menu-bar-handle for precise x/width,
+    // and caption-bar-height (or the titlebar-area-height CSS var) for height.
+    function updateAndroidCaptionDragRegion() {
+        if (!window.AndroidCaption) return;
+
+        const handle = document.getElementById('menu-bar-handle');
+        if (!handle) return;
+
+        const rect = handle.getBoundingClientRect();
+        const w = window.innerWidth;
+        const h = parseFloat(
+            getComputedStyle(document.documentElement).getPropertyValue('--caption-bar-height').trim()
+        ) || rect.height || 0;
+
+        if (h <= 0) return;
+
+        // left / right are the widths of the native button zones on each side
+        const left = Math.round(rect.left);
+        const right = Math.round(w - rect.right);
+
+        try {
+            window.AndroidCaption.setDragRegion(JSON.stringify([
+                { x: left, y: 0, width: Math.max(0, w - left - right), height: h }
+            ]));
+        } catch (e) {
+            console.warn('📱 AndroidCaption.setDragRegion failed:', e);
+        }
+    }
+
+    // Notify the Android host of the correct caption-bar button colors based on current UI state.
+    // Rules:
+    //   - Desktop mode: always both transparent
+    //   - manualModal open + width > 1101: both transparent
+    //   - manualModal open + width ≤ 1101: left transparent, right black
+    //   - Default (navbar visible): black (single arg = both sides)
+    function updateAndroidCaptionControlsOverlay() {
+        if (!window.AndroidCaption || typeof window.AndroidCaption.setControlsOverlay !== 'function') return;
+
+        try {
+            if (window.isDesktop) {
+                // Desktop mode: always transparent on both sides
+                window.AndroidCaption.setControlsOverlay('#00000000', '#00000000');
+                return;
+            }
+
+            const modal = document.getElementById('manualModal');
+            const isModalOpen = modal && !modal.classList.contains('hidden');
+
+            if (isModalOpen) {
+                window.AndroidCaption.setControlsOverlay('#00000000', '#00000000');
+            } else {
+                // Default: navbar is visible, send black for both sides (single arg)
+                window.AndroidCaption.setControlsOverlay('#000000FF');
+            }
+        } catch (e) {
+            console.warn('📱 AndroidCaption.setControlsOverlay failed:', e);
+        }
+    }
+
+    // Expose globally so manualModalManager.js can call it on open/close
+    window.updateAndroidCaptionControlsOverlay = updateAndroidCaptionControlsOverlay;
+
+    // Core WCO / caption-bar class and CSS application (runs after debounce + optional bridge sync).
+    function applyWindowControlsOverlayClasses() {
         const titlebarX = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-x');
         const titlebarY = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-y');
         const titlebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-width');
@@ -25133,37 +26367,136 @@ document.addEventListener('DOMContentLoaded', () => {
         // If WCO API gives us a valid rect, use that as the authoritative source
         const wcoHasValidRect = wcoRect && wcoRect.width > 0 && wcoRect.height > 0;
 
+        // Check caption-bar CSS variables as an alternative activation mechanism
+        const captionBarRect = getCaptionBarRect();
+        const captionBarEnabled = captionBarRect !== null;
+
         // Fallback to CSS properties only if WCO API is not available or gives invalid data
         const widthValid = titlebarWidth && titlebarWidth !== '0px' && titlebarWidth !== '';
         const heightValid = titlebarHeight && titlebarHeight !== '0px' && titlebarHeight !== '';
         const cssHasValidDimensions = widthValid && heightValid;
 
-        // Prioritize WCO API, fallback to CSS
-        const isOverlayEnabled = wcoHasValidRect || (!apiAvailable && cssHasValidDimensions);
+        // Prioritize WCO API, then caption-bar vars, then legacy CSS vars
+        const isOverlayEnabled = wcoHasValidRect || captionBarEnabled || (!apiAvailable && cssHasValidDimensions);
 
         if (isOverlayEnabled) {
             // Overlay is enabled - add classes and hide original elements
             document.documentElement.classList.add('window-controls-overlay');
-            const xValue = parseInt(titlebarX) || 0;
-            if (xValue > 0) {
-                document.documentElement.classList.add('titlebar-mac');
+
+            // If caption-bar vars are the source (and the native API isn't providing values),
+            // copy the synthetic geometry into --titlebar-area-* so CSS consumers get correct values.
+            if (!wcoHasValidRect && captionBarEnabled) {
+                document.documentElement.classList.add('titlebar-android');
+                const root = document.documentElement;
+                root.style.setProperty('--titlebar-area-x', `${captionBarRect.x}px`);
+                root.style.setProperty('--titlebar-area-y', `${captionBarRect.y}px`);
+                // Use calc() so width auto-updates on resize without needing JS refresh
+                root.style.setProperty('--titlebar-area-width', 'calc(100vw - var(--caption-bar-left, 0px) - var(--caption-bar-right, 0px))');
+                root.style.setProperty('--titlebar-area-height', `${captionBarRect.height}px`);
             } else {
-                // Titlebar starts at 0 = Windows (controls on right)
-                document.documentElement.classList.add('titlebar-windows');
+                // Native WCO is active — ensure android class is not set
+                document.documentElement.classList.remove('titlebar-android');
             }
 
-            // Hide original elements in overlay (menubar elements handled by CSS)
-            toggleOverlayElements(false);
+            // Determine x position: prefer WCO rect, then caption-bar, then CSS var
+            let xValue = 0;
+            if (wcoHasValidRect) {
+                xValue = wcoRect.x || 0;
+            } else if (captionBarEnabled) {
+                xValue = captionBarRect.x || 0;
+            } else {
+                xValue = parseInt(titlebarX) || 0;
+            }
+
+            // Only apply mac/windows positioning classes when not in Android mode
+            // (titlebar-android uses top-margin layout instead of left-margin)
+            if (!captionBarEnabled) {
+                if (xValue > 0) {
+                    document.documentElement.classList.add('titlebar-mac');
+                    document.documentElement.classList.remove('titlebar-windows');
+                } else {
+                    document.documentElement.classList.add('titlebar-windows');
+                    document.documentElement.classList.remove('titlebar-mac');
+                }
+            } else {
+                document.documentElement.classList.remove('titlebar-mac', 'titlebar-windows');
+            }
         } else {
             // Overlay is disabled - remove classes and show original elements in overlay
-            document.documentElement.classList.remove('window-controls-overlay', 'titlebar-mac', 'titlebar-windows');
-            toggleOverlayElements(true);
+            document.documentElement.classList.remove('window-controls-overlay', 'titlebar-mac', 'titlebar-windows', 'titlebar-android');
+
+            // Clear drag region on Android when overlay is disabled
+            if (window.AndroidCaption) {
+                try { window.AndroidCaption.setDragRegion(JSON.stringify([])); } catch (_) { }
+            }
+
+            // If caption-bar vars were previously driving the titlebar-area-* properties, clear them
+            // so they don't leave stale values behind when the overlay is deactivated.
+            const root = document.documentElement;
+            if (root.style.getPropertyValue('--titlebar-area-height') &&
+                !('windowControlsOverlay' in navigator)) {
+                root.style.removeProperty('--titlebar-area-x');
+                root.style.removeProperty('--titlebar-area-y');
+                root.style.removeProperty('--titlebar-area-width');
+                root.style.removeProperty('--titlebar-area-height');
+            }
         }
+
+        // Update the Android drag region whenever overlay state changes
+        updateAndroidCaptionDragRegion();
     }
 
-    // Check if Window Controls Overlay API is supported and has valid titlebar area
+    // Caption-bar-driven layout often receives --caption-bar-* from the host one frame after resize;
+    // when the Android inset bridge exists, refresh insets there first. Debounce so we read after layout settles.
+    function updateWindowControlsOverlayClasses() {
+        const apiAvailable = 'windowControlsOverlay' in navigator;
+        let wcoRect = null;
+        if (apiAvailable) {
+            try {
+                wcoRect = navigator.windowControlsOverlay.getTitlebarAreaRect();
+            } catch (error) {
+                console.error('🎛️ WCO: Error getting rect:', error.message);
+            }
+        }
+        const wcoHasValidRect = wcoRect && wcoRect.width > 0 && wcoRect.height > 0;
+
+        const bridgeInsets =
+            window.AndroidCaption &&
+            typeof window.AndroidCaption.setCaptionBarInsets === 'function' &&
+            typeof window.AndroidCaption.getCaptionBarInsetsJson === 'function';
+
+        const captionBarEnabledNow = getCaptionBarRect() !== null;
+        const needsCaptionDebounce = !wcoHasValidRect && (captionBarEnabledNow || bridgeInsets);
+
+        if (needsCaptionDebounce) {
+            clearTimeout(captionBarOverlayClassTimer);
+            captionBarOverlayClassTimer = setTimeout(() => {
+                captionBarOverlayClassTimer = null;
+                if (bridgeInsets) {
+                    syncCaptionBarInsetsFromBridge();
+                }
+                applyWindowControlsOverlayClasses();
+            }, CAPTION_BAR_OVERLAY_DEBOUNCE_MS);
+            return;
+        }
+
+        clearTimeout(captionBarOverlayClassTimer);
+        captionBarOverlayClassTimer = null;
+        applyWindowControlsOverlayClasses();
+    }
+
+    window.updateWindowControlsOverlayClasses = updateWindowControlsOverlayClasses;
+
+    // Check if Window Controls Overlay API is supported and has valid titlebar area,
+    // OR if --caption-bar-height CSS variable is set to a positive value.
     function isWindowControlsOverlayAvailable() {
-        // First check if the API exists
+        // Check caption-bar CSS variables first as an alternative activation path
+        const captionBarRect = getCaptionBarRect();
+        if (captionBarRect !== null) {
+            return true;
+        }
+
+        // Then check if the native WCO API exists
         if (!('windowControlsOverlay' in navigator)) {
             return false;
         }
@@ -25192,107 +26525,136 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    if (isWindowControlsOverlayAvailable()) {
-        // Initial setup
-        updateWindowControlsOverlayClasses();
+    window.isWindowControlsOverlayAvailable = isWindowControlsOverlayAvailable;
 
-        // Listen for geometry changes (when window controls overlay updates)
-        if (navigator.windowControlsOverlay.ongeometrychange !== undefined) {
-            navigator.windowControlsOverlay.ongeometrychange = () => {
-                updateWindowControlsOverlayClasses();
-            };
+    // Run an initial pass in case values are already present at DOMContentLoaded
+    updateWindowControlsOverlayClasses();
+    updateAndroidCaptionControlsOverlay();
+    setupAndroidBiometricLockHandlers();
+
+    // Wire up native WCO geometry change event if the API is available
+    if ('windowControlsOverlay' in navigator &&
+        navigator.windowControlsOverlay.ongeometrychange !== undefined) {
+        navigator.windowControlsOverlay.ongeometrychange = () => {
+            updateWindowControlsOverlayClasses();
+        };
+    }
+
+    // [MODIFICATION]: Moved WCO resize listener to activateTitlebarResizeListeners() to prevent premature execution
+
+    // Always observe style changes on :root so that --caption-bar-* (and --titlebar-area-*)
+    // values injected by an external app after DOMContentLoaded are picked up immediately.
+    const observer = new MutationObserver((mutations) => {
+        let shouldUpdate = false;
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const target = mutation.target;
+                const style = getComputedStyle(target);
+                const currentX = style.getPropertyValue('--titlebar-area-x');
+                const currentHeight = style.getPropertyValue('--titlebar-area-height');
+                const currentCaptionHeight = style.getPropertyValue('--caption-bar-height');
+                const currentCaptionLeft = style.getPropertyValue('--caption-bar-left');
+                const currentCaptionRight = style.getPropertyValue('--caption-bar-right');
+
+                // Check if the values have actually changed
+                if (target._lastTitlebarX !== currentX ||
+                    target._lastTitlebarHeight !== currentHeight ||
+                    target._lastCaptionBarHeight !== currentCaptionHeight ||
+                    target._lastCaptionBarLeft !== currentCaptionLeft ||
+                    target._lastCaptionBarRight !== currentCaptionRight) {
+                    target._lastTitlebarX = currentX;
+                    target._lastTitlebarHeight = currentHeight;
+                    target._lastCaptionBarHeight = currentCaptionHeight;
+                    target._lastCaptionBarLeft = currentCaptionLeft;
+                    target._lastCaptionBarRight = currentCaptionRight;
+                    shouldUpdate = true;
+                }
+            }
+        });
+
+        if (shouldUpdate) {
+            updateWindowControlsOverlayClasses();
+            updateAndroidCaptionControlsOverlay();
+        }
+    });
+
+    // Observe the document element for style changes
+    observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['style']
+    });
+
+    // Watch the drag handle for size/position changes caused by sibling controls
+    // expanding or collapsing (e.g. WebSocket ticker, balance display).
+    const handleEl = document.getElementById('menu-bar-handle');
+    if (handleEl) {
+        new ResizeObserver(() => {
+            updateAndroidCaptionDragRegion();
+        }).observe(handleEl);
+    }
+
+    // Expose utility function for external access (always available)
+    window.getWindowControlsOverlayState = () => {
+        const apiAvailable = 'windowControlsOverlay' in navigator;
+        const style = getComputedStyle(document.documentElement);
+        const titlebarX = style.getPropertyValue('--titlebar-area-x');
+        const titlebarY = style.getPropertyValue('--titlebar-area-y');
+        const titlebarWidth = style.getPropertyValue('--titlebar-area-width');
+        const titlebarHeight = style.getPropertyValue('--titlebar-area-height');
+        const captionBarHeight = style.getPropertyValue('--caption-bar-height').trim();
+        const captionBarLeft = style.getPropertyValue('--caption-bar-left').trim();
+        const captionBarRight = style.getPropertyValue('--caption-bar-right').trim();
+        const captionBarRect = getCaptionBarRect();
+
+        let rect = null;
+        if (apiAvailable) {
+            try {
+                rect = navigator.windowControlsOverlay.getTitlebarAreaRect();
+            } catch (error) {
+                rect = { error: error.message };
+            }
         }
 
-        // Also listen for window resize events as a fallback
+        return {
+            apiAvailable,
+            titlebarArea: { x: titlebarX, y: titlebarY, width: titlebarWidth, height: titlebarHeight },
+            captionBar: { height: captionBarHeight, left: captionBarLeft, right: captionBarRight, rect: captionBarRect },
+            rect,
+            classes: {
+                hasOverlay: document.documentElement.classList.contains('window-controls-overlay'),
+                isMac: document.documentElement.classList.contains('titlebar-mac'),
+                isWindows: document.documentElement.classList.contains('titlebar-windows')
+            },
+            isEnabled: (rect && rect.width > 0 && rect.height > 0) || captionBarRect !== null
+        };
+    };
+});
+
+/**
+ * Activates Window Controls Overlay resize listeners.
+ * Deferred until after initialization.
+ */
+function activateTitlebarResizeListeners() {
+    if (typeof isWindowControlsOverlayAvailable === 'function' && isWindowControlsOverlayAvailable()) {
+        console.log('🚀 Activating titlebar resize listeners');
         window.addEventListener('resize', () => {
-            // Debounce the update to avoid excessive calls
             clearTimeout(window._wcoResizeTimeout);
             window._wcoResizeTimeout = setTimeout(() => {
+                // Always re-check on resize: caption-bar width is derived from window.innerWidth
                 if (isWindowControlsOverlayAvailable()) {
                     updateWindowControlsOverlayClasses();
+                }
+                // Keep caption button colors in sync with new width
+                if (window.updateAndroidCaptionControlsOverlay) {
+                    window.updateAndroidCaptionControlsOverlay();
                 }
             }, 100);
         });
 
-        // Listen for CSS custom property changes (titlebar-area-x, titlebar-area-height)
-        const observer = new MutationObserver((mutations) => {
-            let shouldUpdate = false;
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
-                    const target = mutation.target;
-                    const style = getComputedStyle(target);
-                    const currentX = style.getPropertyValue('--titlebar-area-x');
-                    const currentHeight = style.getPropertyValue('--titlebar-area-height');
-
-                    // Check if the values have actually changed
-                    if (target._lastTitlebarX !== currentX || target._lastTitlebarHeight !== currentHeight) {
-                        target._lastTitlebarX = currentX;
-                        target._lastTitlebarHeight = currentHeight;
-                        shouldUpdate = true;
-                    }
-                }
-            });
-
-            if (shouldUpdate) {
-                updateWindowControlsOverlayClasses();
-            }
-        });
-
-        // Observe the document element for style changes
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ['style']
-        });
-
-        // Expose utility function for external access
-        window.getWindowControlsOverlayState = () => {
-            const apiAvailable = 'windowControlsOverlay' in navigator;
-            const titlebarX = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-x');
-            const titlebarY = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-y');
-            const titlebarWidth = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-width');
-            const titlebarHeight = getComputedStyle(document.documentElement).getPropertyValue('--titlebar-area-height');
-
-            let rect = null;
-            if (apiAvailable) {
-                try {
-                    rect = navigator.windowControlsOverlay.getTitlebarAreaRect();
-                } catch (error) {
-                    rect = { error: error.message };
-                }
-            }
-
-            return {
-                apiAvailable,
-                titlebarArea: { x: titlebarX, y: titlebarY, width: titlebarWidth, height: titlebarHeight },
-                rect,
-                classes: {
-                    hasOverlay: document.documentElement.classList.contains('window-controls-overlay'),
-                    isMac: document.documentElement.classList.contains('titlebar-mac'),
-                    isWindows: document.documentElement.classList.contains('titlebar-windows')
-                },
-                isEnabled: rect && rect.width > 0 && rect.height > 0
-            };
-        };
+        // Initial setup for current state
+        updateWindowControlsOverlayClasses();
+        if (window.updateAndroidCaptionControlsOverlay) {
+            window.updateAndroidCaptionControlsOverlay();
+        }
     }
-    
-    // Hide original balanceDisplay and pendingRequestsSpinner in main-menu-bar-overlay
-    // when menubar is enabled (elements are now shown in menu-bar-controls-right)
-    function toggleOverlayElements(show) {
-        const selectors = [
-            '#main-controls-bar .main-menu-bar-overlay #pendingRequestsSpinner',
-            '#main-controls-bar .main-menu-bar-overlay .balanceDisplay',
-            '#main-controls-bar .main-menu-bar-overlay #websocketIndicatorOverlay',
-            '#manualPendingRequestsSpinner',
-            '#manualBalanceDisplay'
-        ];
-
-        const displayValue = show ? '' : 'none';
-
-        selectors.forEach(selector => {
-            const element = document.querySelector(selector);
-            if (element) {
-                element.style.display = displayValue;
-            }
-        });
-    }
-});
+}

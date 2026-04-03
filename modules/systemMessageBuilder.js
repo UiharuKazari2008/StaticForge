@@ -2395,7 +2395,7 @@ function buildCreativeModeSection(isLightMode, nsfw_level) {
             '* Consistency: Maintain creative direction from base generation',
             '* Refinement: Polish existing creative elements',
             '* Integration: Ensure new areas blend with existing vision',
-            '* Subtle Enhancement: Add complementary supporting details',
+            '* Enhancement: Add complementary supporting details',
             ''
         );
     } else {

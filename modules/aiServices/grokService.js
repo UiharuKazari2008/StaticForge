@@ -6625,15 +6625,19 @@ class GrokService {
             console.log(`  [REASON] ${reason}`);
         }
 
+        // Strip disabled text blocks (!/.../) so they are not counted in token analysis
+        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
+
         try {
             const t5TokenizerService = this.globalResources.getT5Tokenizer();
             const results = [];
 
             for (let i = 0; i < texts.length; i++) {
-                const text = texts[i];
+                const rawText = texts[i];
+                const text = stripDisabledBlocks(rawText);
                 console.log(`   📊 Analyzing text ${i + 1}/${texts.length}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
-                // Get token data for this text
+                // Get token data for this text (using stripped text so disabled blocks are excluded)
                 const tokenData = t5TokenizerService.getTokenData(text);
                 const tokenCount = tokenData.length;
 

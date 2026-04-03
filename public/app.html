@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en" class="disable-blur">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport"
@@ -14,33 +15,16 @@
 
         galleryWindowPreference = localStorage.getItem('galleryWindowMode');
         const isWideScreen = window.innerWidth >= 1200;
-        window.isDesktop = isWideScreen && (galleryWindowPreference !== 'maximized');
-        
+        window.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
+
         // Detect Shift key on startup for step-by-step mode (desktop mode only)
         window.shiftKeyOnStartup = false;
     </script>
 
-    <!-- Master Window Client (loads early, before body)
-        <script>
-            // Check if development mode is enabled via localStorage
-            if (localStorage.getItem('staticforge_dev_mode') === 'true') {
-                const masterScript = document.createElement('script');
-                masterScript.src = '/scripts/masterWindowClient.js';
-                masterScript.async = false; // Load synchronously for early initialization
-                document.head.appendChild(masterScript);
-                
-                // Also load the regular dev bridge client
-                const devScript = document.createElement('script');
-                devScript.src = '/scripts/devBridgeClient.js';
-                devScript.async = true;
-                document.head.appendChild(devScript);
-            }
-        </script> -->
-
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="transparent">
     <meta name="apple-mobile-web-app-title" content="Dreamscape">
     <meta name="msapplication-TileColor" content="#6366f1">
     <meta name="msapplication-config" content="/browserconfig.xml">
@@ -148,14 +132,14 @@
         href="/static_images/apple-splash-2048x1536.png">
 
     <link rel="stylesheet" href="/css/fonts.css">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/css/app.css">
     <link rel="stylesheet" href="/css/7.scoped.css">
     <link rel="stylesheet" href="/css/developer-tools.css">
     <link rel="stylesheet" href="/css/pin-modal.css">
     <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
     <link rel="stylesheet" href="/css/blockContainer.css">
     <script src="/scripts/comp/tagSets.js"></script>
-    <script src="/scripts/blockContainer.js"></script>
+    <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
     <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
@@ -163,6 +147,7 @@
     <link rel="stylesheet" href="/dist/fonts/weather-icons.min.css">
     <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
 </head>
+
 <body class="initializing">
     <script>
         if (window.isDesktop) {
@@ -275,7 +260,7 @@
             </div>
         </div>
     </div>
-    
+
     <div id="main-controls-bar" class="floating-bar-right">
         <div class="main-menu-bar-overlay">
             <div class="websocket-ticker">
@@ -296,15 +281,6 @@
                 <i class="nai-anla"></i>
                 <span class="balanceAmount">---</span>
             </div>
-        </div>
-        <div class="main-menu-row floating-controls" id="generationControls">
-            <button type="button" id="openSpellbookModalBtn" class="btn-secondary round-button"
-                title="Open Spellbook Generation">
-                <i class="fa-light fa-book-spells"></i>
-            </button>
-            <button type="button" id="openGenEditorBtn" class="btn-primary round-button" title="Create a masterpiece!">
-                <i class="fa-light fa-compass-drafting"></i>
-            </button>
         </div>
     </div>
 
@@ -334,7 +310,8 @@
                 <div role="progressbar" class="animate">
                     <div id="windowsStartupProgressBar"></div>
                 </div>
-                <button type="button" id="windowsStartupAdvanceStepBtn" class="btn-secondary hidden" style="margin-top: 10px; width: 100%;">
+                <button type="button" id="windowsStartupAdvanceStepBtn" class="btn-secondary hidden"
+                    style="margin-top: 10px; width: 100%;">
                     <i class="fa-light fa-forward"></i> Advance Step
                 </button>
             </div>
@@ -361,12 +338,14 @@
                     <div role="progressbar" class="animate">
                         <div id="windowsUpdateProgressBar"></div>
                     </div>
-                    <button type="button" class="btn-standard windows-update-skip-btn" id="windowsUpdateSkipBtn" style="margin-left: 8px;">
+                    <button type="button" class="btn-standard windows-update-skip-btn" id="windowsUpdateSkipBtn"
+                        style="margin-left: 8px;">
                         Skip
                     </button>
                 </div>
                 <div class="windows-update-restart-actions hidden" id="windowsUpdateRestartActions">
-                    <button type="button" class="btn-standard windows-update-restart-btn" id="windowsUpdateRestartBtn" style="margin-right: 8px;">
+                    <button type="button" class="btn-standard windows-update-restart-btn" id="windowsUpdateRestartBtn"
+                        style="margin-right: 8px;">
                         Restart Now
                     </button>
                     <button type="button" class="btn-standard windows-update-later-btn" id="windowsUpdateLaterBtn">
@@ -406,10 +385,10 @@
         <div class="gallery-container-wrapper">
             <!-- Melaton backdrop (desktop mode only) -->
             <div class="gallery-melatonin-backdrop">
-                <i class="fa-light fa-cube"></i>
+                <i class="ri-contrast-2-fill"></i>
                 <span class="start-menu-brand-text">Melaton</span>
             </div>
-            
+
             <!-- Gallery controls (main-menu-bar) -->
             <div id="main-menu-bar" class="floating-bar-left">
                 <div class="main-menu-bar-overlay" id="mainMenuBarOverlay">
@@ -443,7 +422,7 @@
                                 <button type="button" id="searchToggleBtn" class="btn-secondary">
                                     <i class="fa-light fa-search"></i>
                                 </button>
-                                <div id="workspaceDropdown" class="custom-dropdown dropup dark">
+                                <div id="workspaceDropdown" class="custom-dropdown dropup dark hidden">
                                     <button type="button" id="workspaceDropdownBtn" class="btn-secondary">
                                         <i class="fa-light fa-planet-ringed"></i>
                                     </button>
@@ -452,15 +431,6 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" id="allChatsBtn" class="btn-secondary" title="All Chats">
-                                <i class="fa-light fa-messages"></i>
-                            </button>
-                            <button type="button" id="openWikiBtn" class="btn-secondary" title="Open Dream Wiki">
-                                <i class="fa-light fa-book"></i>
-                            </button>
-                            <button type="button" id="openNotebookBtn" class="btn-secondary" title="Notebook">
-                                <i class="fa-light fa-notebook"></i>
-                            </button>
                             <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator hidden"
                                 data-state="desc" title="Sort Order: Newest First">
                                 <i class="fa-light fa-sort-amount-down"></i>
@@ -483,7 +453,7 @@
             <div class="gallery-container">
                 <!-- Gallery Loading Spinner (reusable for search system too) -->
                 <div id="galleryLoadingSpinner" class="gallery-loading-spinner hidden">
-                    <i class="fas fa-spinner fa-spin"></i>
+                    <i class="fas fa-spinner-third fa-spin"></i>
                 </div>
 
                 <div id="gallery" class="gallery">
@@ -515,7 +485,7 @@
     </div>
 
     <!-- Manual Generation Modal -->
-    <div id="manualModal" class="modal hidden resizeable-window">
+    <div id="manualModal" class="modal hidden resizeable-window" data-window-min-width="650">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title manual-modal-title">
             <div class="modal-window-title-main">
@@ -526,13 +496,16 @@
         </div>
         <div class="modal-window-menu" id="manualModalMenuBar"></div>
         <div class="modal-window-controls">
-            <button type="button" id="windowPaidRequestToggle" class="btn-secondary indicator" data-state="off" title="Allow Charge">
+            <button type="button" id="windowPaidRequestToggle" class="btn-secondary indicator" data-state="off"
+                title="Allow Charge">
                 <i class="fas fa-dollar-sign"></i>
             </button>
-            <button type="button" id="windowEnableStageGenerationBtn" class="btn-secondary indicator hidden" data-state="on" title="Pipeline Stage(s)">
+            <button type="button" id="windowEnableStageGenerationBtn" class="btn-secondary indicator hidden"
+                data-state="on" title="Pipeline Stage(s)">
                 <i class="fas fa-arrow-down-square-triangle"></i>
             </button>
-            <button type="button" id="windowManualPreviewToggleDialogsBtn" class="btn-secondary hidden indicator" data-state="on" title="Toggle Dialogs">
+            <button type="button" id="windowManualPreviewToggleDialogsBtn" class="btn-secondary hidden indicator"
+                data-state="on" title="Toggle Dialogs">
                 <i class="mdi mdi-message-text"></i>
             </button>
             <button type="button" id="minimizeManualBtn" class="btn-secondary minimize-btn" title="Minimize">
@@ -551,7 +524,7 @@
                     <div class="prompt-options-container">
                         <!-- Spinner overlay for initializing state -->
                         <div class="spinner-overlay hidden">
-                            <i class="fas fa-spinner fa-spin"></i>
+                            <i class="fas fa-spinner-third fa-spin"></i>
                         </div>
                         <div class="form-section form-section-scroll">
 
@@ -727,8 +700,7 @@
                                     <i class="fas fa-arrow-down-left"></i>
                                 </button>
                                 <input type="text" id="manualPresetName" class="form-control hover-show colored"
-                                    placeholder="Preset or Shortcut Name" autocorrect="false"
-                                    autocapitalize="false">
+                                    placeholder="Preset or Shortcut Name" autocorrect="false" autocapitalize="false">
                                 <button type="button" id="manualLoadBtn" class="btn-secondary" disabled>
                                     <i class="fas fa-arrow-up-from-square"></i>
                                 </button>
@@ -1274,8 +1246,9 @@
                                         data-state="on" title="Auto Position">
                                         <i class="fa-regular fa-arrows-up-down-left-right"></i> Auto
                                     </button>
-                                    <button type="button" id="vibeNormalizeToggle" class="btn-secondary indicator"
-                                        data-state="on" title="Normalize vibe strengths">
+                                    <button type="button" id="vibeNormalizeToggle"
+                                        class="btn-secondary indicator hidden" data-state="on"
+                                        title="Normalize vibe strengths">
                                         <i class="fa-regular fa-equals"></i>
                                     </button>
                                     <button type="button" id="paidRequestToggle"
@@ -1504,7 +1477,7 @@
                         <!-- Blurred Background Previews -->
                         <div id="manualPreviewBlurBackground1" class="manual-preview-blur-background"></div>
                         <div id="manualPreviewBlurBackground2" class="manual-preview-blur-background"></div>
-                        
+
                         <!-- Manual Preview Navigation Loading Overlay -->
                         <div id="manualPreviewNavigationLoading" class="manual-preview-navigation-loading hidden">
                             <div class="manual-preview-navigation-loading-content">
@@ -1516,37 +1489,6 @@
                             <!-- Rentan Progress Overlay -->
                             <div id="dynamicGenerationProgressOverlay"
                                 class="dynamic-generation-progress-overlay hidden">
-                                <!-- Left Top: Time and Season Data -->
-                                <div class="progress-time-section">
-                                    <div class="progress-time-info" id="progressTimeInfo">
-                                        <span class="progress-time" id="progressTime">--:--</span>
-                                        <span class="progress-date" id="progressDate">--/--</span>
-                                    </div>
-                                    <div class="progress-season-info">
-                                        <span class="progress-holiday" id="progressHoliday"></span>
-                                        <span class="progress-season" id="progressSeason">Season</span>
-                                    </div>
-                                </div>
-
-                                <!-- Right Top: Weather -->
-                                <div class="progress-weather-section">
-                                    <div class="overlay-weather-section">
-                                        <div class="overlay-weather-info">
-                                            <div class="overlay-weather-feels-like" id="progressWeatherFeelsLike">
-                                                <span class="temp-number">--</span>
-                                                <span class="temp-unit">°C</span>
-                                            </div>
-                                            <div class="overlay-weather-condition" id="progressWeatherCondition">Unknown
-                                            </div>
-                                            <div class="overlay-weather-condition" id="progressWeatherLocation"
-                                                class="hidden">Unknown</div>
-                                        </div>
-                                        <div class="overlay-weather-icon" id="progressWeatherIcon">
-                                            <span class="weather-fallback-icon">🌤️</span>
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <!-- Inner Container for Reasoning Items -->
                                 <div class="progress-reasoning-container" id="progressReasoningContainer"></div>
                             </div>
@@ -1614,7 +1556,7 @@
                                     </button>
                                     <div class="round-button-row">
                                         <button type="button" id="enableStageGenerationBtn"
-                                            class="btn-secondary round-button indicator" data-state="on"
+                                            class="btn-secondary round-button indicator hidden" data-state="on"
                                             title="Enable Stage Generations">
                                             <i class="fas fa-arrow-down-square-triangle"></i>
                                         </button>
@@ -1791,7 +1733,7 @@
                             <label for="manualGuidance">Guidance</label>
                             <div class="guidance-group" style="display: flex; align-items: center; gap: 6px;">
                                 <input type="number" id="manualGuidance" class="form-control hover-show colored"
-                                    min="0.0" max="10.0" step="0.01" value="5.0" placeholder="5.0">
+                                    min="0.0" max="10.0" step="0.01" value="5.00" placeholder="5.0">
                                 <button type="button" id="varietyBtn" class="btn-secondary toggle-btn"
                                     title="Enable Variety+">
                                     <i class="fas fa-sparkle"></i>
@@ -1850,7 +1792,7 @@
                             </div>
                         </div>
                     </div>
-                    <div id="manualImg2ImgGroup" class="form-row control-row-img2imgctrl">
+                    <div id="manualImg2ImgGroup" class="form-row control-row-img2imgctrl hidden">
                         <div class="form-group">
                             <label for="manualStrength"><i class="nai-img2img"></i><span
                                     class="full-viewport">Strength</span><span class="small-viewport">Str</span></label>
@@ -1911,8 +1853,8 @@
                                     data-state="off" title="Lock Seed">
                                     <i class="fas fa-seedling"></i>
                                 </button>
-                                <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator hidden"
-                                    data-state="off" title="Manage Genso and Rentan">
+                                <button type="button" id="textReplacementLockBtn" class="btn-secondary indicator"
+                                    data-state="off" title="Manage Genso and Rentan" disabled>
                                     <i class="fas fa-lambda"></i>
                                 </button>
                             </div>
@@ -1924,10 +1866,10 @@
                             <div class="seed-input-group">
                                 <input type="number" id="manualSeed" class="form-control hover-show right colored"
                                     placeholder="Random" style="width: 120px;">
-                                <button type="button" id="loadSeedBtn" class="btn-primary" title="Paste seed">
+                                <button type="button" id="loadSeedBtn" class="btn-primary hidden" title="Paste seed">
                                     <i class="fas fa-arrow-turn-down-right"></i>
                                 </button>
-                                <button type="button" id="clearSeedBtn" class="btn-secondary" title="Clear seed">
+                                <button type="button" id="clearSeedBtn" class="btn-secondary hidden" title="Clear seed">
                                     <i class="fa-regular fa-xmark-large"></i>
                                 </button>
                             </div>
@@ -2034,7 +1976,9 @@
     </div>
 
     <!-- Genso Lock Modal -->
-    <div id="textReplacementLockModal" class="modal hidden resizeable-window tool-window" data-parent-modal-id="manualModal">
+    <div id="textReplacementLockModal" class="modal hidden resizeable-window tool-window"
+        data-parent-modal-id="manualModal">
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-glasses-round icon-fa"></i>
@@ -2058,7 +2002,8 @@
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeTextReplacementLockModalBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeTextReplacementLockModalBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -2076,7 +2021,8 @@
                             <div id="compiledBasePromptContainer" class="compiled-prompt-field-container">
                                 <label class="compiled-prompt-label"><i class="ri-code-block"></i> Base Prompt</label>
                                 <div class="compiled-prompt-display-wrapper">
-                                    <div id="compiledBasePromptDisplay" class="compiled-prompt-display selectable"></div>
+                                    <div id="compiledBasePromptDisplay" class="compiled-prompt-display selectable">
+                                    </div>
                                     <div class="emphasis-highlight-overlay" id="compiledBasePromptOverlay"></div>
                                 </div>
                             </div>
@@ -2104,7 +2050,8 @@
     </div>
 
     <!-- Genso Manual Selection Modal -->
-    <div id="textReplacementManualSelectionModal" class="modal hidden tool-window on-top" data-parent-modal-id="textReplacementLockModal">
+    <div id="textReplacementManualSelectionModal" class="modal hidden tool-window on-top"
+        data-parent-modal-id="textReplacementLockModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-list icon-fa"></i>
@@ -2174,7 +2121,8 @@
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeKnowledgeMemoriesModalBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeKnowledgeMemoriesModalBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -2191,7 +2139,7 @@
                         </div>
                     </div>
                     <div id="knowledgeMemoriesLoading" class="knowledge-memories-loading">
-                        <i class="fas fa-spinner fa-spin"></i> Loading Enshutsuka memories...
+                        <i class="fas fa-spinner-third fa-spin"></i> Loading Enshutsuka memories...
                     </div>
                     <div id="knowledgeMemoriesList" class="knowledge-memories-list hidden">
                         <!-- Memory items will be populated here -->
@@ -2208,7 +2156,8 @@
                             <i class="fas fa-arrow-left"></i>
                         </button>
                         <h3 id="memoryDetailsNameDisplay" class="memory-detail-value">Memory Details</h3>
-                        <input type="text" id="memoryDetailsNameInput" class="form-control hidden" placeholder="Memory Name">
+                        <input type="text" id="memoryDetailsNameInput" class="form-control hidden"
+                            placeholder="Memory Name">
                         <div class="knowledge-memory-header-actions">
                             <button type="button" id="editMemoryBtn" class="btn-secondary">
                                 <i class="fas fa-edit"></i>
@@ -2229,25 +2178,29 @@
                         <div class="form-group">
                             <label>Name</label>
                             <div id="memoryDetailsName" class="memory-detail-value selectable"></div>
-                            <input type="text" id="memoryDetailsNameEdit" class="form-control hidden" placeholder="Memory Name">
+                            <input type="text" id="memoryDetailsNameEdit" class="form-control hidden"
+                                placeholder="Memory Name">
                         </div>
 
                         <div class="form-group">
                             <label>Description</label>
                             <div id="memoryDetailsDescription" class="memory-detail-value selectable"></div>
-                            <textarea id="memoryDetailsDescriptionEdit" class="form-control hidden" placeholder="Description" style="resize: none; overflow: hidden;"></textarea>
+                            <textarea id="memoryDetailsDescriptionEdit" class="form-control hidden"
+                                placeholder="Description" style="resize: none; overflow: hidden;"></textarea>
                         </div>
 
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Category</label>
                                 <div id="memoryDetailsCategory" class="memory-detail-value selectable"></div>
-                                <input type="text" id="memoryDetailsCategoryEdit" class="form-control hidden" placeholder="Category">
+                                <input type="text" id="memoryDetailsCategoryEdit" class="form-control hidden"
+                                    placeholder="Category">
                             </div>
                             <div class="form-group">
                                 <label>Confidence</label>
                                 <div id="memoryDetailsConfidence" class="memory-detail-value selectable"></div>
-                                <input type="number" id="memoryDetailsConfidenceEdit" class="form-control hidden" min="0" max="1" step="0.01" placeholder="0.0 - 1.0">
+                                <input type="number" id="memoryDetailsConfidenceEdit" class="form-control hidden"
+                                    min="0" max="1" step="0.01" placeholder="0.0 - 1.0">
                             </div>
                         </div>
 
@@ -2589,7 +2542,8 @@
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="closeWeatherLocationModalBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeWeatherLocationModalBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -2754,6 +2708,7 @@
 
     <!-- Image Bias Adjustment Modal -->
     <div id="imageBiasAdjustmentModal" class="modal resizeable-window hidden">
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-ruler-combined icon-fa"></i>
@@ -2841,7 +2796,8 @@
     </div>
 
     <!-- Image Bias Adjustment Confirmation Dialog -->
-    <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme tool-window on-top" data-parent-modal-id="imageBiasAdjustmentModal">
+    <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme tool-window on-top"
+        data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-ruler-combined icon-fa"></i>
@@ -2880,7 +2836,8 @@
     </div>
 
     <!-- Character Data Confirmation Modal -->
-    <div id="characterDataConfirmModal" class="modal hidden alert-theme tool-window on-top" data-parent-modal-id="manualModal">
+    <div id="characterDataConfirmModal" class="modal hidden alert-theme tool-window on-top"
+        data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-exclamation-triangle icon-fa"></i>
@@ -2909,7 +2866,8 @@
     </div>
 
     <!-- Base Image Change Alert Modal -->
-    <div id="baseImageChangeAlertModal" class="modal hidden alert-theme tool-window on-top" data-parent-modal-id="imageBiasAdjustmentModal">
+    <div id="baseImageChangeAlertModal" class="modal hidden alert-theme tool-window on-top"
+        data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-exclamation-triangle icon-fa"></i>
@@ -2918,7 +2876,8 @@
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="closeBaseImageChangeAlertBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeBaseImageChangeAlertBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -2939,7 +2898,8 @@
     </div>
 
     <!-- Image Bias Mask Alert Modal -->
-    <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme tool-window on-top" data-parent-modal-id="imageBiasAdjustmentModal">
+    <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme tool-window on-top"
+        data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-exclamation-triangle icon-fa"></i>
@@ -3099,7 +3059,8 @@
     </div>
 
     <!-- Compiled Prompt Modal -->
-    <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top" data-parent-modal-id="manualModal">
+    <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top"
+        data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-magic"></i>
@@ -3122,7 +3083,8 @@
     </div>
 
     <!-- Director Feedback Modal -->
-    <div id="directorFeedbackModal" class="modal resizeable-window hidden tool-window on-top" data-parent-modal-id="textReplacementLockModal">
+    <div id="directorFeedbackModal" class="modal resizeable-window hidden tool-window on-top"
+        data-parent-modal-id="textReplacementLockModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-flag"></i>
@@ -3235,7 +3197,8 @@ Examples:
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeTextReplacementManagerBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeTextReplacementManagerBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -3246,7 +3209,8 @@ Examples:
                         placeholder="Search expanders...">
                     <i class="fas fa-search"></i>
                 </div>
-                <div id="textReplacementListContainer" class="text-replacement-list-container" data-custom-scrollbar data-scrollable-wrapper-class="text-replacement-list">
+                <div id="textReplacementListContainer" class="text-replacement-list-container scrollbar-padding"
+                    data-custom-scrollbar data-scrollable-wrapper-class="text-replacement-list">
                     <div id="textReplacementList" class="text-replacement-list-items">
                         <!-- Text replacement items will be populated here -->
                     </div>
@@ -3269,7 +3233,8 @@ Examples:
     </div>
 
     <!-- Create Text Replacement Modal -->
-    <div id="createTextReplacementModal" class="modal hidden tool-window on-top" data-parent-modal-id="textReplacementManagerModal">
+    <div id="createTextReplacementModal" class="modal hidden tool-window on-top"
+        data-parent-modal-id="textReplacementManagerModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-lambda icon-fa"></i>
@@ -3323,7 +3288,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-star icon-fa"></i>
                 <img src="/static_images/app_icons/heart.png" alt="" class="icon-image" />
-                <span>Manage Favorites</span>
+                <span>Favorites</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -3340,8 +3305,9 @@ Examples:
                     <input type="text" id="favoritesSearch" class="form-control" placeholder="Search favorites...">
                     <i class="fas fa-search"></i>
                 </div>
-                <div id="favoritesListContainer" class="text-replacement-list-container">
-                    <div id="favoritesList" class="text-replacement-list">
+                <div id="favoritesListContainer" class="text-replacement-list-container scrollbar-padding"
+                    data-custom-scrollbar data-scrollable-wrapper-class="text-replacement-list">
+                    <div id="favoritesList" class="text-replacement-list-items">
                         <!-- Favorites will be populated here -->
                     </div>
                 </div>
@@ -3368,7 +3334,8 @@ Examples:
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeRequestBodyReplacementsBtn" class="btn-danger close-btn btn-small" title="Close">
+            <button type="button" id="closeRequestBodyReplacementsBtn" class="btn-danger close-btn btn-small"
+                title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
@@ -3384,7 +3351,8 @@ Examples:
     </div>
 
     <!-- Create Request Body Replacement Modal -->
-    <div id="createRequestBodyReplacementModal" class="modal hidden tool-window on-top" data-parent-modal-id="requestBodyReplacementsModal">
+    <div id="createRequestBodyReplacementModal" class="modal hidden tool-window on-top"
+        data-parent-modal-id="requestBodyReplacementsModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-lambda icon-fa"></i>
@@ -3393,9 +3361,8 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="requestBodyReplacementExtendBtn"
-                class="btn-secondary btn-small indicator" data-state="off"
-                title="Extend Mode">
+            <button type="button" id="requestBodyReplacementExtendBtn" class="btn-secondary btn-small indicator"
+                data-state="off" title="Extend Mode">
                 <span>Extend</span>
                 <i class="fas fa-plus"></i>
             </button>
@@ -3502,8 +3469,8 @@ Examples:
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closePresetManagerBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="closePresetManagerBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding text-replacement-manager-content dark">
             <div class="modal-body">
@@ -3511,8 +3478,9 @@ Examples:
                     <input type="text" id="presetSearch" class="form-control" placeholder="Search presets...">
                     <i class="fas fa-search"></i>
                 </div>
-                <div id="presetListContainer" class="text-replacement-list-container">
-                    <div id="presetList" class="text-replacement-list">
+                <div id="presetListContainer" class="text-replacement-list-container scrollbar-padding"
+                    data-custom-scrollbar data-scrollable-wrapper-class="text-replacement-list">
+                    <div id="presetList" class="text-replacement-list-items">
                         <!-- Preset items will be populated here -->
                     </div>
                 </div>
@@ -3520,10 +3488,12 @@ Examples:
             <div class="modal-footer">
                 <div class="text-replacement-pagination">
                     <span id="presetPageInfo" class="page-info">Page 1 of 1</span>
-                    <button type="button" id="presetPrevBtn" class="btn-secondary pagination-btn btn-small" title="Previous Page">
+                    <button type="button" id="presetPrevBtn" class="btn-secondary pagination-btn btn-small"
+                        title="Previous Page">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button type="button" id="presetNextBtn" class="btn-secondary pagination-btn btn-small" title="Next Page">
+                    <button type="button" id="presetNextBtn" class="btn-secondary pagination-btn btn-small"
+                        title="Next Page">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -3541,8 +3511,8 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="updatePresetCancelBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="updatePresetCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content dark">
             <div class="modal-body">
@@ -3713,10 +3683,12 @@ Examples:
             <div class="modal-footer">
                 <div class="ip-management-pagination">
                     <span id="ipPageInfo" class="page-info">Page 1 of 1</span>
-                    <button type="button" id="ipPrevBtn" class="btn-secondary pagination-btn btn-small" title="Previous Page">
+                    <button type="button" id="ipPrevBtn" class="btn-secondary pagination-btn btn-small"
+                        title="Previous Page">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button type="button" id="ipNextBtn" class="btn-secondary pagination-btn btn-small" title="Next Page">
+                    <button type="button" id="ipNextBtn" class="btn-secondary pagination-btn btn-small"
+                        title="Next Page">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
@@ -3831,8 +3803,8 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="workspaceDumpCancelBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="workspaceDumpCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
             <div class="modal-body">
@@ -3856,6 +3828,7 @@ Examples:
     <!-- Reference Manager Modal -->
     <div id="cacheManagerModal" class="modal resizeable-window hidden" data-window-min-height="400"
         data-window-max-width="2500" data-window-max-height="2500">
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-swatchbook icon-fa"></i>
@@ -3864,6 +3837,9 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
+            <button type="button" id="cacheManagerUploadBtn" class="btn-secondary">
+                <i class="nai-import"></i>
+            </button>
             <div id="cacheManagerWorkspaceDropdown" class="custom-dropdown">
                 <button type="button" id="cacheManagerWorkspaceDropdownBtn" class="btn-secondary">
                     <span id="cacheManagerWorkspaceSelected">Default</span>
@@ -3877,13 +3853,23 @@ Examples:
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeCacheManagerBtn" class="btn-danger close-btn btn-small" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="closeCacheManagerBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
         </div>
-        <div class="modal-content modal-padding cache-manager-content dark">
+        <div class="modal-content cache-manager-content dark">
             <div class="modal-body">
-                <div class="cache-manager-controls">
-                    <div class="cache-manager-header">
+                <div class="cache-manager-body">
+                    <div class="cache-manager-gallery-container scrollbar-padding" data-custom-scrollbar>
+                        <div id="cacheManagerGallery" class="cache-manager-gallery">
+                            <!-- Reference images will be loaded here -->
+                        </div>
+                        <div class="cache-manager-loading hidden" id="cacheManagerLoading">
+                            <img class="loading" src="/static_images/azuspin.gif"></img>
+                            <p class="loading">Loading cache images...</p>
+                        </div>
+                    </div>
+                    <div class="cache-manager-controls">
                         <div class="cache-manager-workspace-selector">
                             <div id="cacheManagerModeSelector"
                                 class="cache-browser-mode-selector mode-slider-container">
@@ -3902,22 +3888,6 @@ Examples:
                                 <div class="mode-slider-track"></div>
                             </div>
                         </div>
-                        <div class="cache-manager-actions">
-                            <button type="button" id="cacheManagerUploadBtn" class="btn-primary">
-                                Upload <i class="nai-import"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div class="cache-manager-body">
-                    <div class="cache-manager-gallery-container">
-                        <div id="cacheManagerGallery" class="cache-manager-gallery">
-                            <!-- Reference images will be loaded here -->
-                        </div>
-                        <div class="cache-manager-loading hidden" id="cacheManagerLoading">
-                            <img class="loading" src="/static_images/azuspin.gif"></img>
-                            <p class="loading">Loading cache images...</p>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -3925,10 +3895,10 @@ Examples:
     </div>
 
     <!-- Unified Upload Modal -->
-    <div id="unifiedUploadModal" class="modal hidden tool-window">
+    <div id="unifiedUploadModal" class="modal hidden tool-window on-top">
         <div class="modal-window-controls">
-            <button id="closeUnifiedUploadBtn" class="btn-danger btn-small close-btn" type="button"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button id="closeUnifiedUploadBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
@@ -3950,7 +3920,7 @@ Examples:
             <div class="gallery-move-right-panel">
                 <!-- Upload Processing Cover Overlay -->
                 <div id="galleryMoveRightPanelCover" class="gallery-move-right-panel-cover">
-                    <div class="cover-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+                    <div class="cover-spinner"><i class="fas fa-spinner-third fa-spin"></i></div>
                     <div class="cover-text">Processing upload...</div>
                 </div>
                 <div class="modal-header gallery-move-header">
@@ -4129,8 +4099,8 @@ Examples:
     <!-- Reference Manager Move Modal -->
     <div id="cacheManagerMoveModal" class="modal resizeable-window hidden tool-window on-top">
         <div class="modal-window-controls">
-            <button id="closeCacheManagerMoveBtn" class="btn-danger btn-small close-btn" type="button"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button id="closeCacheManagerMoveBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
@@ -4174,7 +4144,7 @@ Examples:
     </div>
 
     <!-- Chat Modal -->
-    <div id="chatModal" class="modal hidden tool-window">
+    <div id="chatModal" class="modal hidden tool-window on-top">
         <div class="modal-window-controls">
             <button id="closeChatBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
@@ -4299,7 +4269,8 @@ Examples:
     </div>
 
     <!-- Notebook Modal -->
-    <div id="notebookModal" class="modal resizeable-window hidden" data-window-min-width="600" data-window-min-height="400">
+    <div id="notebookModal" class="modal resizeable-window hidden" data-window-min-width="600"
+        data-window-min-height="400">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-notebook icon-fa"></i>
@@ -4307,6 +4278,7 @@ Examples:
                 <span id="notebookCurrentNoteTitle">Notebook</span>
             </div>
         </div>
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
             <button type="button" id="notebookNewNoteBtn" class="btn-secondary btn-small" title="New Note">
                 <i class="fas fa-plus"></i>
@@ -4334,7 +4306,7 @@ Examples:
 
                 <!-- Note Editor Panel -->
                 <div class="notebook-editor-panel">
-                    <textarea id="notebookTextarea" class="notepad-textarea" 
+                    <textarea id="notebookTextarea" class="notepad-textarea"
                         placeholder="Select a note or create a new one..."></textarea>
                 </div>
             </div>
@@ -4351,8 +4323,8 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="closePersonaSettingsBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="closePersonaSettingsBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
             <div class="modal-body">
@@ -4402,10 +4374,10 @@ Examples:
     </div>
 
     <!-- Combined Vibe Encoding Modal -->
-    <div id="vibeEncodingModal" class="modal hidden tool-window">
+    <div id="vibeEncodingModal" class="modal hidden tool-window on-top">
         <div class="modal-window-controls">
-            <button id="closeVibeEncodingBtn" class="btn-danger btn-small close-btn" type="button"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button id="closeVibeEncodingBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content gallery-move-modal-content dark">
             <div class="gallery-move-left-panel">
@@ -4488,8 +4460,8 @@ Examples:
     <!-- Vibe Manager Delete Modal -->
     <div id="vibeManagerDeleteModal" class="modal hidden tool-window on-top">
         <div class="modal-window-controls">
-            <button type="button" id="closeVibeManagerDeleteBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="closeVibeManagerDeleteBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
             <div class="modal-header">
@@ -4514,8 +4486,8 @@ Examples:
     <!-- Vibe Manager Move Modal -->
     <div id="vibeManagerMoveModal" class="modal hidden tool-window on-top">
         <div class="modal-window-controls">
-            <button type="button" id="vibeManagerMoveCancelBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="vibeManagerMoveCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content dark">
             <div class="modal-header">
@@ -4549,8 +4521,8 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="bulkChangePresetCancelBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="bulkChangePresetCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
             <div class="modal-body">
@@ -4893,11 +4865,12 @@ Examples:
     </div>
 
     <!-- Measurements Modal -->
-    <div id="measurementsModal" class="modal resizeable-window transient hidden tool-window" data-parent-modal-id="manualModal">
+    <div id="measurementsModal" class="modal resizeable-window transient hidden tool-window"
+        data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-ruler-combined icon-fa"></i>
-                <img src="/static_images/app_icons/ruler.png" alt="" class="icon-image" />
+                <img src="/static_images/app_icons/rulers.png" alt="" class="icon-image" />
                 <span>Character Measurements</span>
             </div>
         </div>
@@ -4927,12 +4900,13 @@ Examples:
                 <span>Spellcaster</span>
             </div>
         </div>
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" id="closeSpellbookModalBtn" class="btn-danger close-btn btn-small"
-                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            <button type="button" id="closeSpellbookModalBtn" class="btn-danger close-btn btn-small" title="Close"><i
+                    class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
             <div class="modal-body">
@@ -5207,14 +5181,16 @@ Examples:
                     <div class="form-row">
                         <div class="form-group">
                             <label for="noteUpdateName">Name</label>
-                            <input type="text" id="noteUpdateName" class="form-control hover-show colored" placeholder="Note name...">
+                            <input type="text" id="noteUpdateName" class="form-control hover-show colored"
+                                placeholder="Note name...">
                         </div>
                     </div>
                     <div class="form-row">
                         <div class="form-group">
                             <label for="noteUpdateColor">Color</label>
                             <div id="noteUpdateColorDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateColorDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <button type="button" id="noteUpdateColorDropdownBtn"
+                                    class="custom-dropdown-btn hover-show colored">
                                     <span id="noteUpdateColorSelected">Select color...</span>
                                 </button>
                                 <div id="noteUpdateColorDropdownMenu" class="custom-dropdown-menu hidden">
@@ -5225,7 +5201,8 @@ Examples:
                         <div class="form-group">
                             <label for="noteUpdateIcon">Icon</label>
                             <div id="noteUpdateIconDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateIconDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <button type="button" id="noteUpdateIconDropdownBtn"
+                                    class="custom-dropdown-btn hover-show colored">
                                     <span id="noteUpdateIconSelected">Select icon...</span>
                                 </button>
                                 <div id="noteUpdateIconDropdownMenu" class="custom-dropdown-menu hidden">
@@ -5236,7 +5213,8 @@ Examples:
                         <div class="form-group">
                             <label for="noteUpdateWorkspace">Workspace</label>
                             <div id="noteUpdateWorkspaceDropdown" class="custom-dropdown">
-                                <button type="button" id="noteUpdateWorkspaceDropdownBtn" class="custom-dropdown-btn hover-show colored">
+                                <button type="button" id="noteUpdateWorkspaceDropdownBtn"
+                                    class="custom-dropdown-btn hover-show colored">
                                     <span id="noteUpdateWorkspaceSelected">Select workspace...</span>
                                 </button>
                                 <div id="noteUpdateWorkspaceDropdownMenu" class="custom-dropdown-menu hidden">
@@ -5382,8 +5360,9 @@ Examples:
     </div>
 
     <!-- Tag Wiki Window Template (will be cloned for multiple instances) -->
-    <div id="tagWikiWindowTemplate" class="modal hidden transient resizeable-window wiki-page-viewer-modal" data-window-max-width="1800"
-        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+    <div id="tagWikiWindowTemplate" class="modal hidden transient resizeable-window wiki-page-viewer-modal"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-file-doc icon-fa"></i>
@@ -5435,6 +5414,7 @@ Examples:
                 <span>Encyclopedia</span>
             </div>
         </div>
+        <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
             <button type="button" class="btn-secondary btn-small" id="tagWikiSearchBackBtn" title="Back">
                 <i class="fas fa-chevron-left"></i>
@@ -5498,13 +5478,88 @@ Examples:
         </div>
     </div>
 
+    <!-- WebSocket Requests Modal -->
+    <div id="websocketRequestsModal" class="modal hidden resizeable-window tool-window on-top"
+        data-window-max-width="300" data-window-max-height="800" data-window-min-width="300"
+        data-window-min-height="400">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-bars-progress"></i>
+                <span>Connection Status</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeWebsocketRequestsModalBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark">
+            <div class="websocket-requests-content">
+                <!-- Connection Status Section -->
+                <div class="websocket-connection-status-section">
+                    <div class="connection-status-line" id="connectionStatusLine">
+                        <div class="connection-status-badge" id="connectionStatusBadge" title="Connection Status">
+                            <div class="connection-status-badge-content">
+                                <i class="fas fa-lock connection-status-badge-icon" id="connectionSecurityIcon"></i>
+                                <span class="connection-status-badge-text"
+                                    id="connectionStatusValue">Disconnected</span>
+                            </div>
+                        </div>
+                        <div class="connection-status-indicator websocket-indicator" title="Network Traffic">
+                            <i class="fas fa-arrow-up websocket-arrow-up" id="connectionTrafficUp"></i>
+                            <i class="fas fa-arrow-down websocket-arrow-down" id="connectionTrafficDown"></i>
+                        </div>
+                        <div class="connection-status-indicator" title="Service Worker">
+                            <i class="fas fa-cog" id="serviceWorkerIcon"></i>
+                        </div>
+                        <div class="connection-status-indicator" title="Ping (RTT)">
+                            <i class="fas fa-tachometer-alt"></i>
+                            <span id="connectionRttValue">-</span>
+                        </div>
+                        <div class="connection-status-indicator" title="Variability">
+                            <i class="fas fa-chart-line"></i>
+                            <span id="connectionVariabilityValue">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Requests Section -->
+                <div class="websocket-requests-list active-requests scrollbar-padding" data-custom-scrollbar
+                    data-scrollable-wrapper-class="websocket-requests-list-wrapper">
+                    <div id="activeRequestsList" class="websocket-requests-list-content">
+                        <div class="empty-state" id="activeRequestsEmptyState">No active requests</div>
+                    </div>
+                </div>
+
+                <!-- Previous Requests Section -->
+                <div class="form-section previous-requests-section">
+                    <h3 class="section-header">
+                        <i class="fas fa-history"></i>
+                        <span>Previous Requests</span>
+                        <span class="tag-wiki-result-category" id="previousRequestsCount">0</span>
+                    </h3>
+                    <div class="websocket-requests-list previous-requests scrollbar-padding" data-custom-scrollbar
+                        data-scrollable-wrapper-class="websocket-requests-list-wrapper">
+                        <div id="previousRequestsList" class="websocket-requests-list-content">
+                            <div class="empty-state" id="previousRequestsEmptyState">No previous requests</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Desktop Settings Modal -->
     <div id="desktopSettingsModal" class="modal hidden">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-desktop icon-fa"></i>
+                <i class="fas fa-paint-roller icon-fa"></i>
                 <img src="/static_images/app_icons/colors.png" alt="" class="icon-image" />
-                <span>Desktop Settings</span>
+                <span>Personalize</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -5524,19 +5579,21 @@ Examples:
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="desktopSettingsWorkspaceName">Name</label>
-                                <input type="text" id="desktopSettingsWorkspaceName" class="form-control hover-show colored"
-                                    placeholder="Enter workspace name..." maxlength="50" autocorrect="false"
-                                    autocapitalize="false">
+                                <input type="text" id="desktopSettingsWorkspaceName"
+                                    class="form-control hover-show colored" placeholder="Enter workspace name..."
+                                    maxlength="50" autocorrect="false" autocapitalize="false">
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group" style="width: 72px; flex: 0 auto;">
                                 <label for="desktopSettingsWorkspaceColor">Color</label>
-                                <input type="color" id="desktopSettingsWorkspaceColor" class="form-control" value="#102040">
+                                <input type="color" id="desktopSettingsWorkspaceColor" class="form-control"
+                                    value="#102040">
                             </div>
                             <div class="form-group" style="width: 72px; flex: 0 auto;">
                                 <label for="desktopSettingsWorkspaceBackground">Background</label>
-                                <input type="color" id="desktopSettingsWorkspaceBackground" class="form-control" value="#0a1a2a">
+                                <input type="color" id="desktopSettingsWorkspaceBackground" class="form-control"
+                                    value="#0a1a2a">
                             </div>
                             <div class="form-group">
                                 <label for="desktopSettingsPrimaryFontDropdown">Primary Font</label>
@@ -5567,7 +5624,7 @@ Examples:
                     <!-- Wallpaper Section -->
                     <div class="settings-section">
                         <h3 class="section-header"><i class="fas fa-image"></i> Wallpaper</h3>
-                        
+
                         <!-- Two-column layout: Preview (left) and Controls (right) -->
                         <div class="wallpaper-section-content">
                             <!-- Preview Section (Left) -->
@@ -5581,7 +5638,7 @@ Examples:
                                     <div class="desktop-settings-monitor-base"></div>
                                 </div>
                             </div>
-                            
+
                             <!-- Controls (Right) -->
                             <div class="wallpaper-controls">
                                 <div class="form-row" style="align-items: flex-start;">
@@ -5589,18 +5646,20 @@ Examples:
                                     <div class="form-group">
                                         <label>Horizontal</label>
                                         <div id="desktopSettingsHorizontalDropdown" class="custom-dropdown">
-                                            <button type="button" id="desktopSettingsHorizontalBtn" class="btn-secondary custom-dropdown-btn hover-show colored">
+                                            <button type="button" id="desktopSettingsHorizontalBtn"
+                                                class="btn-secondary custom-dropdown-btn hover-show colored">
                                                 <span id="desktopSettingsHorizontalSelected">Center</span>
                                             </button>
                                             <div id="desktopSettingsHorizontalMenu" class="custom-dropdown-menu hidden">
                                                 <!-- Options will be populated by JavaScript -->
                                             </div>
                                         </div>
-                                        
+
                                         <!-- Custom Horizontal Slider -->
-                                        <div id="desktopSettingsHorizontalSliderContainer" class="slider-container hidden">
-                                            <input type="range" id="desktopSettingsHorizontalSlider" class="slider-input" 
-                                                min="0" max="100" value="50" step="1">
+                                        <div id="desktopSettingsHorizontalSliderContainer"
+                                            class="slider-container hidden">
+                                            <input type="range" id="desktopSettingsHorizontalSlider"
+                                                class="slider-input" min="0" max="100" value="50" step="1">
                                             <span id="desktopSettingsHorizontalValue" class="slider-value">50%</span>
                                         </div>
                                     </div>
@@ -5609,17 +5668,19 @@ Examples:
                                     <div class="form-group">
                                         <label>Vertical</label>
                                         <div id="desktopSettingsVerticalDropdown" class="custom-dropdown">
-                                            <button type="button" id="desktopSettingsVerticalBtn" class="btn-secondary custom-dropdown-btn hover-show colored">
+                                            <button type="button" id="desktopSettingsVerticalBtn"
+                                                class="btn-secondary custom-dropdown-btn hover-show colored">
                                                 <span id="desktopSettingsVerticalSelected">Center</span>
                                             </button>
                                             <div id="desktopSettingsVerticalMenu" class="custom-dropdown-menu hidden">
                                                 <!-- Options will be populated by JavaScript -->
                                             </div>
                                         </div>
-                                        
+
                                         <!-- Custom Vertical Slider -->
-                                        <div id="desktopSettingsVerticalSliderContainer" class="slider-container hidden">
-                                            <input type="range" id="desktopSettingsVerticalSlider" class="slider-input" 
+                                        <div id="desktopSettingsVerticalSliderContainer"
+                                            class="slider-container hidden">
+                                            <input type="range" id="desktopSettingsVerticalSlider" class="slider-input"
                                                 min="0" max="100" value="50" step="1">
                                             <span id="desktopSettingsVerticalValue" class="slider-value">50%</span>
                                         </div>
@@ -5627,8 +5688,10 @@ Examples:
                                 </div>
                                 <!-- Action Buttons -->
                                 <div class="desktop-settings-actions">
-                                    <input type="file" id="desktopSettingsWallpaperUpload" accept="image/*" class="form-control" style="display: none;">
-                                    <button type="button" id="desktopSettingsWallpaperUploadBtn" class="btn-secondary btn-small">
+                                    <input type="file" id="desktopSettingsWallpaperUpload" accept="image/*"
+                                        class="form-control" style="display: none;">
+                                    <button type="button" id="desktopSettingsWallpaperUploadBtn"
+                                        class="btn-secondary btn-small">
                                         <i class="fas fa-upload"></i>
                                         Custom
                                     </button>
@@ -5679,21 +5742,24 @@ Examples:
                     </div>
                 </div>
                 <div class="form-section-separator"></div>
-                
+
                 <div class="about-product-description-container">
                     <!-- Version Information -->
                     <div class="form-group">
                         <p class="about-product-name">Melaton Desktop</p>
-                        <p class="about-version">Version 25H1 (Build Release <span id="aboutMelatoninVersion">Unknown</span>)</p>
+                        <p class="about-version">Version 25H1 (Build Release <span
+                                id="aboutMelatoninVersion">Unknown</span>)</p>
                         <p class="about-copyright">© Academy City Research P.S.R. All Rights Reserved</p>
                     </div>
-                    
+
                     <!-- Description -->
                     <div class="form-group">
-                        <p id="aboutMelatoninDescription" class="about-description">The Melaton Dynamic Web Desktop Environment (DWDE) and its user interface are protected by trademark and other pending or existing intellectual property rights in the United States and other countries/regions.</p>
+                        <p id="aboutMelatoninDescription" class="about-description">The Melaton Dynamic Web Desktop
+                            Environment (DWDE) and its user interface are protected by trademark and other pending or
+                            existing intellectual property rights in the United States and other countries/regions.</p>
                     </div>
                 </div>
-                
+
                 <div class="form-section-separator"></div>
 
                 <!-- System Information Section -->
@@ -5707,7 +5773,8 @@ Examples:
     </div>
 
     <!-- Explorer Applet Modal (Windows Vista-style) -->
-    <div id="explorerModal" class="modal resizeable-window hidden" data-window-min-width="600" data-window-min-height="400">
+    <div id="explorerModal" class="modal resizeable-window hidden" data-window-min-width="600"
+        data-window-min-height="400">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-folder-open icon-fa"></i>
@@ -5748,8 +5815,7 @@ Examples:
     <!-- Start Menu (only visible in windowed mode) -->
     <div id="startMenu" class="start-menu hidden">
         <div class="start-menu-branding">
-            <i class="fa-light fa-cube"></i>
-            <span class="start-menu-brand-text">Melaton</span>
+            <span class="start-menu-brand-text">Melaton Desktop</span>
         </div>
         <div class="start-menu-content">
             <div class="start-menu-items" id="startMenuItems">
@@ -5783,25 +5849,32 @@ Examples:
         </div>
         <div class="taskbar-tray">
             <div class="taskbar-tray-icons">
+                <!-- Image Generation Active Indicator -->
+                <div class="image-generation-indicator taskbar-tray-icon hidden" id="imageGenerationIndicator"
+                    title="Image generation in progress">
+                    <i class="fas fa-sparkles"></i>
+                </div>
                 <!-- Subscription Renewal Indicator -->
-                <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator" title="">
+                <div class="subscription-renewal-indicator taskbar-tray-icon hidden" id="subscriptionRenewalIndicator"
+                    title="">
                     <i class="fas fa-hand-holding-circle-dollar"></i>
                 </div>
                 <!-- Fixed Credits Indicator -->
                 <div class="fixed-credits-indicator taskbar-tray-icon" id="fixedCreditsIndicator" title="">
                     <i class="nai-anla"></i>
                 </div>
-                <!-- Image Generation Active Indicator -->
-                <div class="image-generation-indicator taskbar-tray-icon hidden" id="imageGenerationIndicator" title="Image generation in progress">
-                    <i class="fas fa-sparkles"></i>
-                </div>
                 <!-- Search Indexing Indicator -->
-                <div class="search-indexing-indicator taskbar-tray-icon" id="searchIndexingIndicator" title="No Status Available">
+                <div class="search-indexing-indicator taskbar-tray-icon" id="searchIndexingIndicator"
+                    title="No Status Available">
                     <i class="fas fa-rotate-exclamation"></i>
                 </div>
                 <!-- Workspace Icon -->
                 <div class="workspace-tray-icon taskbar-tray-icon" id="workspaceTrayIcon" title="Workspace">
                     <i class="fa-duotone fa-clone"></i>
+                </div>
+                <!-- Ping Warning Indicator -->
+                <div class="ping-warning-indicator taskbar-tray-icon" id="pingWarningIndicator" title="">
+                    <i class="fas fa-satellite"></i>
                 </div>
                 <!-- WebSocket Indicator -->
                 <div class="websocket-indicator taskbar-ws-indicator" id="taskbarWebsocketIndicator">
@@ -5822,6 +5895,7 @@ Examples:
     <div class="modal-backdrop"></div>
 
     <script src="scripts/comp/toastManager.js"></script>
+    <script src="scripts/comp/popoverManager.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
     <script src="scripts/websocket.js"></script>
     <script src="scripts/comp/serviceWorkerManager.js"></script>
@@ -5845,6 +5919,8 @@ Examples:
     <script src="scripts/comp/referenceManager.js"></script>
     <script src="scripts/comp/emphasisManager.js"></script>
     <script src="scripts/comp/tagWikiSearchModal.js"></script>
+    <script src="scripts/comp/characterSearchModal.js"></script>
+    <script src="scripts/comp/websocketRequestsModal.js"></script>
     <script src="scripts/comp/confirmationDialog.js"></script>
     <script src="scripts/comp/creditCostDialog.js"></script>
     <script src="scripts/comp/galleryToolbar.js"></script>
@@ -5859,12 +5935,13 @@ Examples:
     <script src="scripts/comp/notepadManager.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
     <script src="scripts/comp/knowledgeMemoriesModal.js"></script>
-    <script src="scripts/ipManagement.js"></script>
-    <script src="scripts/director.js"></script>
+    <script src="scripts/comp/ipManagement.js"></script>
+    <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/utilities.js"></script>
     <script src="scripts/comp/manualDropdownManager.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>
 </body>
+
 </html>

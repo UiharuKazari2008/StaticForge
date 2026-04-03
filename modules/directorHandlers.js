@@ -412,7 +412,7 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
         '**Core Structure:**',
         '1. Structure: Main subject first, then appearance, clothing, pose/action, environment, character name, series name, style/quality.',
         '2. Emphasis: 1.25::keyword:: (mild), 1.5::keyword:: (more), 2.0::keyword:: (heavy). De-emphasize 0.8::keyword::.',
-        '3. Specificity: Precise anatomy/expression tags, lighting/angle details, subtle artist/style refs.',
+        '3. Specificity: Precise anatomy/expression tags, lighting/angle details, artist/style references.',
         '4. Issues: Balance overemphasized with "anatomically correct". Use "disembodied hand" vs "anonymous male hand".',
         '5. Negative: Use -1.0::unwanted elements:: to really exclude. NOTE: UC uses above 0 for emphasis and below 0 for de-emphasis of a negative.',
         '',

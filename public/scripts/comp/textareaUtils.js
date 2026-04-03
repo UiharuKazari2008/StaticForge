@@ -91,9 +91,14 @@ function setupEditableTextarea(textarea, customToolbarHandler = null) {
         if (toolbar) {
             toolbar.classList.add('hidden');
         }
-        
+
         if (container) {
             container.classList.remove('textarea-focused');
+        }
+
+        // Handle autocomplete blur - abort search and hide popup
+        if (window.handleTextareaBlur) {
+            window.handleTextareaBlur();
         }
     }, 'toolbar');
     

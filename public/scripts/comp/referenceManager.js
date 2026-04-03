@@ -1214,7 +1214,7 @@ function createVibeReferenceItem(vibeRef, selectedIe = null, strength = null, to
     // Add wheel event for scrolling
     ratioInput.addEventListener('wheel', function(e) {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.01 : 0.01;
+        const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
         const newValue = Math.max(-1, Math.min(1, parseFloat(this.value) + delta));
         this.value = newValue.toFixed(2);
         ratioOverlay.textContent = `${(newValue * 100).toFixed(0)}%`;
@@ -2072,10 +2072,9 @@ function createReferenceManagerContextMenuConfig() {
                         icon: 'fas fa-plus',
                         text: 'Add to Studio as...',
                         hidden: () => {
-                            const isDesktopMode = document.body.classList.contains('desktop-mode');
                             const manualModal = document.getElementById('manualModal');
                             const isManualModalActive = manualModal && !manualModal.classList.contains('hidden');
-                            return !isDesktopMode || !isManualModalActive;
+                            return !window.isDesktop || !isManualModalActive;
                         },
                         submenu: [
                             {
@@ -7005,7 +7004,7 @@ function initializeCacheManager() {
     if (unifiedUploadIeInput) {
         unifiedUploadIeInput.addEventListener('wheel', function(e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.35;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -7030,7 +7029,7 @@ function initializeCacheManager() {
     if (vibeEncodingIeInput) {
         vibeEncodingIeInput.addEventListener('wheel', function(e) {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? -0.01 : 0.01;
+            const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.01) : (e.shiftKey ? 0.1 : 0.01);
             const currentValue = parseFloat(this.value) || 0.35;
             const newValue = Math.max(0, Math.min(1, currentValue + delta));
             this.value = newValue.toFixed(2);
@@ -7910,7 +7909,7 @@ async function handlePendingUrlDownload() {
         // Show loading state
         const confirmBtn = document.getElementById('unifiedUploadConfirmBtn');
         if (confirmBtn) {
-            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+            confirmBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i> Downloading...';
             confirmBtn.disabled = true;
         }
         

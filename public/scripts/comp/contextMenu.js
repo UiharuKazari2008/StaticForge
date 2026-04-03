@@ -26,7 +26,7 @@ class ContextMenuController {
         };
         this.hoverSettings = {
             openDelay: 320, // ms
-            closeDelay: 500 // ms
+            closeDelay: 300 // ms - reduced for faster response, but submenu hover will cancel it
         };
 
         this.mobileBreakpoints = {
@@ -60,7 +60,7 @@ class ContextMenuController {
         } else if (item.hidden === true) {
             return false;
         }
-        
+
         const isMobile = this.isMobile();
 
         // Check mobile-only items
@@ -107,18 +107,19 @@ class ContextMenuController {
             // Prevent event bubbling to avoid conflicts
             e.stopPropagation();
 
-            // On mobile, close submenu first if it exists, then close main menu
-            if (this.isMobile() && this.currentSubmenu) {
+            // On mobile, keep submenus open - only close entire menu when clicking overlay
+            // On desktop, close submenu first if it exists
+            if (!this.isMobile() && this.currentSubmenu) {
                 // Close submenu and prevent further processing in this event loop
                 this.hideSubmenu();
-                // Don't close main menu in the same event - let user tap again
+                // Don't close main menu in the same event - let user click again
                 return;
             } else {
-                // No submenu open, close the main menu
+                // Close the main menu (which will also close any submenu)
                 this.hideMenu();
             }
         });
-        
+
         // Allow right-click and touch events to pass through the overlay
         this.overlay.addEventListener('contextmenu', (e) => {
             // Prevent browser context menu from appearing
@@ -149,55 +150,113 @@ class ContextMenuController {
                 }
             }, 50);
         });
-        
+
+        // Track overlay touch state for long-press detection
+        this.overlayTouchTimer = null;
+        this.overlayTouchStartTime = 0;
+        this.overlayTouchStartX = null;
+        this.overlayTouchStartY = null;
+        this.overlayHasScrolled = false;
+
         this.overlay.addEventListener('touchstart', (e) => {
             // Prevent touch events from passing through to elements below
             e.preventDefault();
 
-            // On mobile, close submenu first if it exists, then close main menu
-            if (this.isMobile() && this.currentSubmenu) {
+            // On mobile, disable proxy tap functionality - just close the menu
+            if (this.isMobile()) {
+                this.hideMenu();
+                return;
+            }
+
+            // On desktop, keep submenus open - only close entire menu when tapping overlay
+            // On desktop, close submenu first if it exists
+            if (this.currentSubmenu) {
                 // Close submenu and prevent further processing
                 this.hideSubmenu();
                 return; // Don't process further - let user tap again for main menu
             }
 
-            // Hide current menu immediately
+            // Hide current menu immediately (which will also close any submenu)
             this.hideMenu();
 
-            // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
-            setTimeout(() => {
-                const elementBelow = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
-                if (elementBelow && elementBelow !== this.overlay) {
-                    const target = elementBelow.closest('[data-context-menu]');
-                    if (target) {
-                        // Create and dispatch a new touchstart event on the target element
-                        const newEvent = new TouchEvent('touchstart', {
-                            bubbles: true,
-                            cancelable: true,
-                            touches: e.touches,
-                            targetTouches: e.targetTouches,
-                            changedTouches: e.changedTouches
-                        });
+            // Track touch start for long-press detection
+            this.overlayTouchStartTime = Date.now();
+            this.overlayTouchStartX = e.touches[0].clientX;
+            this.overlayTouchStartY = e.touches[0].clientY;
+            this.overlayHasScrolled = false;
 
-                        // Mark this as a proxy event from the overlay
-                        newEvent._isProxyEvent = true;
+            // Clear any existing overlay touch timer
+            if (this.overlayTouchTimer) {
+                clearTimeout(this.overlayTouchTimer);
+            }
 
-                        target.dispatchEvent(newEvent);
-                    }
+            // Set up long-press timer for proxy clicking
+            this.overlayTouchTimer = setTimeout(() => {
+                if (!this.overlayHasScrolled) {
+                    // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
+                    setTimeout(() => {
+                        const elementBelow = document.elementFromPoint(this.overlayTouchStartX, this.overlayTouchStartY);
+                        if (elementBelow && elementBelow !== this.overlay) {
+                            const target = elementBelow.closest('[data-context-menu]');
+                            if (target) {
+                                // Create and dispatch a new touchstart event on the target element
+                                const newEvent = new TouchEvent('touchstart', {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    touches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }],
+                                    targetTouches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }],
+                                    changedTouches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }]
+                                });
+
+                                // Mark this as a proxy event from the overlay
+                                newEvent._isProxyEvent = true;
+
+                                target.dispatchEvent(newEvent);
+                            }
+                        }
+                    }, 50);
                 }
-            }, 50);
+            }, this.longPressDelay);
         }, { passive: false });
-        
+
+        this.overlay.addEventListener('touchmove', (e) => {
+            if (this.overlayTouchTimer && e.touches.length === 1) {
+                const touch = e.touches[0];
+
+                // Calculate distance moved from initial touch point
+                const deltaX = Math.abs(touch.clientX - this.overlayTouchStartX);
+                const deltaY = Math.abs(touch.clientY - this.overlayTouchStartY);
+
+                // Cancel if moved too far (indicates scrolling or dragging)
+                if (deltaX > this.touchThreshold || deltaY > this.touchThreshold) {
+                    this.overlayHasScrolled = true;
+                    clearTimeout(this.overlayTouchTimer);
+                    this.overlayTouchTimer = null;
+                }
+            }
+        }, { passive: true });
+
+        this.overlay.addEventListener('touchend', (e) => {
+            if (this.overlayTouchTimer) {
+                clearTimeout(this.overlayTouchTimer);
+                this.overlayTouchTimer = null;
+            }
+            // Reset overlay touch tracking
+            this.overlayTouchStartX = null;
+            this.overlayTouchStartY = null;
+            this.overlayHasScrolled = false;
+        }, { passive: true });
+
         // Create the main context menu container
         this.menu = document.createElement('div');
         this.menu.className = 'context-menu hidden';
         this.menu.setAttribute('role', 'menu');
-        
+
         // Create the menu content container
         const menuContent = document.createElement('div');
         menuContent.className = 'context-menu-content';
         this.menu.appendChild(menuContent);
-        
+
         // Add overlay and menu to document
         document.body.appendChild(this.overlay);
         document.body.appendChild(this.menu);
@@ -345,28 +404,93 @@ class ContextMenuController {
 
         this.renderMenu(config, target);
         this.positionMenu(event, isTouch);
-        
+
         // Call loadfn for all sections after menu is fully rendered and positioned
         this.executeLoadFunctions(config, target);
-        
+
         // Update indicator dots after loadfn has set item.checked values
         this.updateIndicatorDots(config);
-        
+
         this.isOpen = true;
         this.currentTarget = target;
+
+        // Add position-based class for corner press effect
+        this.addPositionClass(target, event, isTouch);
 
         // Add context-open class to target element
         target.classList.add('context-open');
 
         // Show the overlay
         this.overlay.classList.remove('hidden');
-        
+
         // Add touch feedback for mobile
         if (isTouch) {
             target.classList.add('context-menu-triggered');
             setTimeout(() => {
                 target.classList.remove('context-menu-triggered');
             }, 200);
+        }
+    }
+
+    addPositionClass(target, event, isTouch) {
+        // Get click/touch coordinates
+        let clickX, clickY;
+        if (isTouch) {
+            clickX = event.touches[0].clientX;
+            clickY = event.touches[0].clientY;
+        } else {
+            clickX = event.clientX;
+            clickY = event.clientY;
+        }
+
+        // Get target element bounding rectangle
+        const rect = target.getBoundingClientRect();
+
+        // Calculate relative position within the element
+        const relativeX = clickX - rect.left;
+        const relativeY = clickY - rect.top;
+
+        // Calculate position ratios
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+
+        // Determine position class
+        let positionClass = '';
+
+        // Check if click is in center regions (within 40% of center)
+        const centerThreshold = 0.4;
+        const isCenterX = Math.abs(relativeX - centerX) / centerX < centerThreshold;
+        const isCenterY = Math.abs(relativeY - centerY) / centerY < centerThreshold;
+
+        if (isCenterX && relativeY < centerY * (1 - centerThreshold)) {
+            positionClass = 'center-top';
+        } else if (isCenterX && relativeY > centerY * (1 + centerThreshold)) {
+            positionClass = 'center-bottom';
+        } else if (isCenterY && relativeX < centerX * (1 - centerThreshold)) {
+            positionClass = 'center-left';
+        } else if (isCenterY && relativeX > centerX * (1 + centerThreshold)) {
+            positionClass = 'center-right';
+        } else if (isCenterX && isCenterY) {
+            positionClass = 'center-center';
+        } else {
+            // Corner regions
+            const isTop = relativeY < centerY;
+            const isLeft = relativeX < centerX;
+
+            if (isTop && isLeft) {
+                positionClass = 'top-left';
+            } else if (isTop && !isLeft) {
+                positionClass = 'top-right';
+            } else if (!isTop && isLeft) {
+                positionClass = 'bottom-left';
+            } else {
+                positionClass = 'bottom-right';
+            }
+        }
+
+        // Add the position class to the target element
+        if (positionClass) {
+            target.classList.add(positionClass);
         }
     }
 
@@ -538,7 +662,7 @@ class ContextMenuController {
 
     createListSection(section, target, sectionElement) {
         sectionElement.className += ' context-menu-list-section';
-        
+
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
@@ -556,26 +680,26 @@ class ContextMenuController {
             if (item.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
-                
+
                 // Support named separators with optional icon
                 if (item.text) {
                     const nameElement = document.createElement('div');
                     nameElement.className = 'context-menu-separator-name';
-                    
+
                     // Add icon if provided
                     if (item.icon) {
                         const iconElement = document.createElement('i');
                         iconElement.className = item.icon;
                         nameElement.appendChild(iconElement);
                     }
-                    
+
                     const textElement = document.createElement('span');
                     textElement.textContent = item.text;
                     nameElement.appendChild(textElement);
-                    
+
                     separator.appendChild(nameElement);
                 }
-                
+
                 sectionElement.appendChild(separator);
                 return;
             }
@@ -596,7 +720,7 @@ class ContextMenuController {
             itemElement.setAttribute('role', 'menuitem');
             itemElement.tabIndex = 0;
 
-                        // Custom content or Icon + Text
+            // Custom content or Icon + Text
             if (item.content) {
                 // Use custom content if provided
                 if (typeof item.content === 'string') {
@@ -618,7 +742,7 @@ class ContextMenuController {
                     iconElement.className = `${item.icon}`;
                     itemElement.appendChild(iconElement);
                 }
-                
+
                 if (item.text) {
                     const textElement = document.createElement('span');
                     textElement.className = 'context-menu-item-text';
@@ -640,7 +764,7 @@ class ContextMenuController {
                     }
                     itemElement.appendChild(valueDisplayElement);
                 }
-                
+
                 // Submenu arrow
                 const arrowElement = document.createElement('i');
                 arrowElement.className = 'context-menu-submenu-arrow fas fa-chevron-right';
@@ -652,8 +776,9 @@ class ContextMenuController {
             if (item.keepMenuOpen) {
                 const indicatorDot = document.createElement('span');
                 indicatorDot.className = 'context-menu-item-indicator';
-                // Apply checked class if item.checked is already set (from loadfn called earlier)
-                if (item.checked === true) {
+                // Apply checked class if item.checked is true or dataState is 'on' (from loadfn called earlier)
+                // Support both checked (boolean) and dataState ('on'/'off') for flexibility
+                if (item.checked === true || item.dataState === 'on') {
                     indicatorDot.classList.add('checked');
                 }
                 itemElement.appendChild(indicatorDot);
@@ -726,14 +851,14 @@ class ContextMenuController {
                 });
 
                 // Hover support for submenu
-                if (item.openOnHover !== false) {
+                if (!!item.openOnHover) {
                     this.addSubmenuHoverSupport(itemElement, item, target);
                 }
             } else if (item.optionsfn && typeof item.optionsfn === 'function') {
                 // Store optionsfn and handlerfn for refreshing
                 itemElement._optionsfn = item.optionsfn;
                 itemElement._handlerfn = item.handlerfn;
-                
+
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const isOptionsItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
@@ -746,7 +871,7 @@ class ContextMenuController {
                 });
 
                 // Hover support for submenu
-                if (item.openOnHover !== false) {
+                if (!!item.openOnHover) {
                     this.addSubmenuHoverSupport(itemElement, item, target);
                 }
             }
@@ -762,7 +887,7 @@ class ContextMenuController {
 
     createIconsSection(section, target, sectionElement) {
         sectionElement.className += ' context-menu-icons-section';
-        
+
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
@@ -783,26 +908,26 @@ class ContextMenuController {
             if (icon.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
-                
+
                 // Support named separators with optional icon
                 if (icon.text) {
                     const nameElement = document.createElement('div');
                     nameElement.className = 'context-menu-separator-name';
-                    
+
                     // Add icon if provided
                     if (icon.icon) {
                         const iconElement = document.createElement('i');
                         iconElement.className = icon.icon;
                         nameElement.appendChild(iconElement);
                     }
-                    
+
                     const textElement = document.createElement('span');
                     textElement.textContent = icon.text;
                     nameElement.appendChild(textElement);
-                    
+
                     separator.appendChild(nameElement);
                 }
-                
+
                 iconsContainer.appendChild(separator);
                 return;
             }
@@ -864,8 +989,16 @@ class ContextMenuController {
             }
 
             // Set data-state attribute if available (for toggle buttons)
+            // Support both dataState and checked for flexibility
             if (icon.dataState) {
                 iconElement.setAttribute('data-state', icon.dataState);
+            } else if (icon.keepMenuOpen && !icon.noIndicator) {
+                // If using checked instead of dataState, convert to dataState for consistent styling
+                if (icon.checked === true) {
+                    iconElement.setAttribute('data-state', 'on');
+                } else {
+                    iconElement.setAttribute('data-state', 'off');
+                }
             }
 
             iconsContainer.appendChild(iconElement);
@@ -877,7 +1010,7 @@ class ContextMenuController {
 
     createCustomSection(section, target, sectionElement) {
         sectionElement.className += ' context-menu-custom-section';
-        
+
         if (section.title) {
             const titleElement = document.createElement('div');
             titleElement.className = 'context-menu-section-title';
@@ -971,11 +1104,11 @@ class ContextMenuController {
         void menu.offsetWidth; // Trigger reflow
         menu.classList.add('context-menu-animate');
     }
-    
+
     calculatePositioning(clickX, clickY, menuWidth, menuHeight, viewportWidth, viewportHeight) {
         const spaceBelow = viewportHeight - clickY;
         const spaceRight = viewportWidth - clickX;
-        
+
         // Determine vertical positioning
         let vertical = 'down';
         let y = clickY + 5;
@@ -984,7 +1117,7 @@ class ContextMenuController {
             vertical = 'up';
             y = clickY - menuHeight - 5;
         }
-        
+
         // Determine horizontal positioning
         let horizontal = 'right';
         let x = clickX + 5;
@@ -993,7 +1126,7 @@ class ContextMenuController {
             horizontal = 'left';
             x = clickX - menuWidth - 5;
         }
-        
+
         // Ensure menu stays within viewport bounds
         if (x < 10) x = 10;
         if (x + menuWidth > viewportWidth - 10) x = viewportWidth - menuWidth - 10;
@@ -1001,7 +1134,7 @@ class ContextMenuController {
         // Vertical bounds checking
         if (y < 10) y = 10;
         if (y + menuHeight > viewportHeight - 10) y = viewportHeight - menuHeight - 10;
-        
+
         return { x, y, vertical, horizontal };
     }
 
@@ -1134,7 +1267,7 @@ class ContextMenuController {
 
         // Update indicator dot for toggle items
         this.updateItemIndicatorDot(itemElement, item);
-        
+
         // Update value display for submenu items
         if ((item.submenu && Array.isArray(item.submenu)) || item.optionsfn) {
             if (item.valueDisplay) {
@@ -1166,8 +1299,15 @@ class ContextMenuController {
         if (item.keepMenuOpen && !item.noIndicator) {
             const indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
             if (indicatorDot) {
-                // Show dot if item.checked is true, hide if false or undefined
+                // Support both checked (boolean) and dataState ('on'/'off') for flexibility
+                let shouldShow = false;
                 if (item.checked === true) {
+                    shouldShow = true;
+                } else if (item.dataState === 'on') {
+                    shouldShow = true;
+                }
+
+                if (shouldShow) {
                     indicatorDot.classList.add('checked');
                 } else {
                     indicatorDot.classList.remove('checked');
@@ -1218,21 +1358,42 @@ class ContextMenuController {
         }
 
         // Update text if it exists
-        const textElement = subItemElement.querySelector('.context-menu-item-text');
+        const textContainer = subItemElement.querySelector('.context-menu-item-text-container');
+        const textElement = textContainer
+            ? textContainer.querySelector('.context-menu-item-text')
+            : subItemElement.querySelector('.context-menu-item-text');
+
         if (subItem.text) {
             const textValue = typeof subItem.text === 'function' ? subItem.text(target) : subItem.text;
             if (textElement) {
                 textElement.textContent = textValue;
-            } else {
-                // Create text element if it doesn't exist
-                const newTextElement = document.createElement('span');
-                newTextElement.className = 'context-menu-item-text';
-                newTextElement.textContent = textValue;
-                subItemElement.appendChild(newTextElement);
             }
-        } else if (textElement) {
-            // Remove text if it no longer exists
-            textElement.remove();
+        }
+
+        // Update subtext if it exists
+        if (subItem.subtext && textContainer) {
+            const subtextElement = textContainer.querySelector('.context-menu-item-subtext');
+            const subtextValue = typeof subItem.subtext === 'function' ? subItem.subtext(target) : subItem.subtext;
+            if (subtextElement) {
+                subtextElement.textContent = subtextValue;
+            }
+        }
+
+        // Update badge if it exists
+        const badgeElement = subItemElement.querySelector('.context-menu-item-badge');
+        if (subItem.badge !== null && subItem.badge !== undefined) {
+            const badgeValue = typeof subItem.badge === 'function' ? subItem.badge(target) : String(subItem.badge);
+            if (badgeElement) {
+                badgeElement.textContent = badgeValue;
+            } else {
+                const newBadgeElement = document.createElement('span');
+                newBadgeElement.className = 'context-menu-item-badge';
+                newBadgeElement.textContent = badgeValue;
+                subItemElement.appendChild(newBadgeElement);
+            }
+        } else if (badgeElement) {
+            // Remove badge if it no longer exists
+            badgeElement.remove();
         }
 
         // Update className if it exists
@@ -1311,8 +1472,16 @@ class ContextMenuController {
         }
 
         // Update data-state attribute if available
+        // Support both dataState and checked for flexibility
         if (icon.dataState) {
             iconElement.setAttribute('data-state', icon.dataState);
+        } else if (icon.keepMenuOpen && !icon.noIndicator) {
+            // If using checked instead of dataState, convert to dataState for consistent styling
+            if (icon.checked === true) {
+                iconElement.setAttribute('data-state', 'on');
+            } else {
+                iconElement.setAttribute('data-state', 'off');
+            }
         } else {
             iconElement.removeAttribute('data-state');
         }
@@ -1331,19 +1500,30 @@ class ContextMenuController {
     hideMenu() {
         if (!this.isOpen) return;
 
-        // Remove context-open class from target element
+        // Remove context-open class and position classes from target element
         if (this.currentTarget) {
-            this.currentTarget.classList.remove('context-open');
+            this.currentTarget.classList.remove(
+                'context-open',
+                'top-left',
+                'top-right',
+                'bottom-left',
+                'bottom-right',
+                'center-left',
+                'center-right',
+                'center-top',
+                'center-bottom',
+                'center-center'
+            );
         }
 
         this.menu.classList.add('hidden');
         this.overlay.classList.add('hidden');
         this.isOpen = false;
         this.currentTarget = null;
-        
+
         // Hide any open submenu
         this.hideSubmenu();
-        
+
         // Clear any touch timers
         if (this.touchTimer) {
             clearTimeout(this.touchTimer);
@@ -1358,23 +1538,39 @@ class ContextMenuController {
         // Mouse enter - start timer to open submenu
         itemElement.addEventListener('mouseenter', () => {
             this.clearHoverTimers();
-            
+
             this.hoverTimers.openTimer = setTimeout(() => {
                 const isHoverItemDisabled = typeof item.disabled === 'function' ? item.disabled() : item.disabled;
                 if (!isHoverItemDisabled) {
                     let submenuOptions = null;
-                    
+
                     if (item.submenu && Array.isArray(item.submenu)) {
                         submenuOptions = item.submenu;
                     } else if (item.optionsfn && typeof item.optionsfn === 'function') {
                         submenuOptions = item.optionsfn(target);
                     }
-                    
+
                     if (submenuOptions && Array.isArray(submenuOptions)) {
                         this.showSubmenu(itemElement, submenuOptions, target, item.handlerfn);
                     }
                 }
             }, this.hoverSettings.openDelay);
+        });
+
+        // Mouse leave - start timer to close submenu (but submenu hover will cancel it)
+        itemElement.addEventListener('mouseleave', (e) => {
+            // Check if mouse is moving to the submenu
+            const relatedTarget = e.relatedTarget;
+            if (relatedTarget && this.currentSubmenu && this.currentSubmenu.contains(relatedTarget)) {
+                // Mouse is moving to submenu, don't close
+                return;
+            }
+
+            // Mouse is leaving parent item, start close timer
+            this.clearHoverTimers();
+            this.hoverTimers.closeTimer = setTimeout(() => {
+                this.hideSubmenu();
+            }, this.hoverSettings.closeDelay);
         });
     }
 
@@ -1392,29 +1588,29 @@ class ContextMenuController {
     // Public API methods
     attachToElement(element, config) {
         if (!element || !config) return;
-        
+
         // Store the config in a way that preserves functions
         const configId = 'context-menu-config-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         this.configs = this.configs || {};
         this.configs[configId] = config;
-        
+
         element.setAttribute('data-context-menu', configId);
     }
 
     detachFromElement(element) {
         if (!element) return;
-        
+
         const configId = element.dataset.contextMenu;
         if (configId && this.configs) {
             delete this.configs[configId];
         }
-        
+
         element.removeAttribute('data-context-menu');
     }
 
     attachToElements(selector, config) {
         if (!selector || !config) return;
-        
+
         const elements = document.querySelectorAll(selector);
         elements.forEach(element => {
             this.attachToElement(element, config);
@@ -1444,29 +1640,34 @@ class ContextMenuController {
 
         // Create submenu items
         submenuItems.forEach((subItem) => {
+            // Filter submenu items based on mobile/desktop visibility (same as main menu items)
+            if (!this.shouldShowItem(subItem)) {
+                return;
+            }
+
             if (subItem.separator) {
                 const separator = document.createElement('div');
                 separator.className = 'context-menu-separator';
-                
+
                 // Support named separators with optional icon
                 if (subItem.text) {
                     const nameElement = document.createElement('div');
                     nameElement.className = 'context-menu-separator-name';
-                    
+
                     // Add icon if provided
                     if (subItem.icon) {
                         const iconElement = document.createElement('i');
                         iconElement.className = subItem.icon;
                         nameElement.appendChild(iconElement);
                     }
-                    
+
                     const textElement = document.createElement('span');
                     textElement.textContent = subItem.text;
                     nameElement.appendChild(textElement);
-                    
+
                     separator.appendChild(nameElement);
                 }
-                
+
                 submenu.appendChild(separator);
                 return;
             }
@@ -1508,10 +1709,36 @@ class ContextMenuController {
                 }
 
                 if (subItem.text) {
-                    const textElement = document.createElement('span');
-                    textElement.className = 'context-menu-item-text';
-                    textElement.textContent = subItem.text;
-                    subItemElement.appendChild(textElement);
+                    // If subtext exists, wrap both in a container for proper layout
+                    if (subItem.subtext) {
+                        const textContainer = document.createElement('div');
+                        textContainer.className = 'context-menu-item-text-container';
+
+                        const textElement = document.createElement('span');
+                        textElement.className = 'context-menu-item-text';
+                        textElement.textContent = subItem.text;
+                        textContainer.appendChild(textElement);
+
+                        const subtextElement = document.createElement('span');
+                        subtextElement.className = 'context-menu-item-subtext';
+                        subtextElement.textContent = subItem.subtext;
+                        textContainer.appendChild(subtextElement);
+
+                        subItemElement.appendChild(textContainer);
+                    } else {
+                        const textElement = document.createElement('span');
+                        textElement.className = 'context-menu-item-text';
+                        textElement.textContent = subItem.text;
+                        subItemElement.appendChild(textElement);
+                    }
+                }
+
+                // Badge support (e.g., for index numbers)
+                if (subItem.badge !== null && subItem.badge !== undefined) {
+                    const badgeElement = document.createElement('span');
+                    badgeElement.className = 'context-menu-item-badge';
+                    badgeElement.textContent = subItem.badge;
+                    subItemElement.appendChild(badgeElement);
                 }
             }
 
@@ -1519,8 +1746,9 @@ class ContextMenuController {
             if (subItem.keepMenuOpen && !subItem.noIndicator) {
                 const indicatorDot = document.createElement('span');
                 indicatorDot.className = 'context-menu-item-indicator';
-                // Apply checked class if subItem.checked is already set (from loadfn called earlier)
-                if (subItem.checked === true) {
+                // Apply checked class if subItem.checked is true or dataState is 'on' (from loadfn called earlier)
+                // Support both checked (boolean) and dataState ('on'/'off') for flexibility
+                if (subItem.checked === true || subItem.dataState === 'on') {
                     indicatorDot.classList.add('checked');
                 }
                 subItemElement.appendChild(indicatorDot);
@@ -1533,6 +1761,14 @@ class ContextMenuController {
                 classes.forEach(cls => {
                     if (cls) subItemElement.classList.add(cls);
                 });
+            }
+
+            // Apply tooltip if it exists
+            if (subItem.tooltip !== undefined) {
+                const tooltipValue = typeof subItem.tooltip === 'function' ? subItem.tooltip(target) : subItem.tooltip;
+                if (tooltipValue) {
+                    subItemElement.title = tooltipValue;
+                }
             }
 
             // Disabled state - evaluate function if it's a function
@@ -1618,22 +1854,49 @@ class ContextMenuController {
 
         // Position the submenu (this also sets opacity to 1)
         this.positionSubmenu(submenu, parentItem);
-        
+
         this.currentSubmenu = submenu;
+
+        // Add hover support to submenu to keep it open when mouse is over it
+        if (!this.isMobile()) {
+            submenu.addEventListener('mouseenter', () => {
+                // Cancel any close timer when mouse enters submenu
+                this.clearHoverTimers();
+            });
+
+            submenu.addEventListener('mouseleave', (e) => {
+                // Check if mouse is moving back to parent item
+                const relatedTarget = e.relatedTarget;
+                if (relatedTarget && parentItem.contains(relatedTarget)) {
+                    // Mouse is moving back to parent, don't close
+                    return;
+                }
+
+                // Mouse is leaving submenu, start close timer
+                this.clearHoverTimers();
+                this.hoverTimers.closeTimer = setTimeout(() => {
+                    this.hideSubmenu();
+                }, this.hoverSettings.closeDelay);
+            });
+        }
 
         // Add click outside handler for submenu
         const submenuClickHandler = (e) => {
             // Only handle clicks that are actually outside the submenu
             if (!submenu.contains(e.target) && !parentItem.contains(e.target)) {
                 e.stopPropagation(); // Prevent bubbling to overlay handlers
-                this.hideSubmenu();
+                // On mobile, don't close submenu on outside click - keep it open
+                // On desktop, close it
+                if (!this.isMobile()) {
+                    this.hideSubmenu();
+                }
             }
         };
 
         document.addEventListener('click', submenuClickHandler);
         this.submenuClickHandler = submenuClickHandler;
     }
-    
+
     refreshAllSubmenuItems() {
         if (!this.currentSubmenuState || !this.currentSubmenu) return;
 
@@ -1662,20 +1925,20 @@ class ContextMenuController {
             this.currentSubmenu.remove();
             this.currentSubmenu = null;
         }
-        
+
         // Clear submenu state
         this.currentSubmenuState = null;
-        
+
         // Remove active state from any parent items
         const activeItems = this.menu.querySelectorAll('.context-menu-item.keyboard-selected');
         activeItems.forEach(item => item.classList.remove('keyboard-selected'));
-        
+
         if (this.submenuClickHandler) {
             document.removeEventListener('click', this.submenuClickHandler);
             this.submenuClickHandler = null;
         }
     }
-    
+
     positionSubmenu(submenu, parentItem) {
         // Get parent and viewport information
         const parentRect = parentItem.getBoundingClientRect();
@@ -1762,25 +2025,25 @@ class ContextMenuController {
         submenu.style.left = `${submenuX}px`;
         submenu.style.top = `${submenuY}px`;
         submenu.classList.add(`submenu-${submenuDirection}`);
-        
+
         // Make submenu visible
         submenu.style.opacity = '1';
     }
-    
+
     refreshSubmenu() {
         if (!this.currentSubmenuState) return;
-        
+
         // Preserve state before showSubmenu clears it
         const state = { ...this.currentSubmenuState };
         const { parentItem, target, customHandler, submenuItems: oldSubmenuItems } = state;
-        
+
         // Get optionsfn from the parent item or use stored one
         const getOptionsFn = state.optionsfn || parentItem._optionsfn;
         if (!getOptionsFn || typeof getOptionsFn !== 'function') return;
-        
+
         // Call optionsfn to get new submenu items
         const newSubmenuItems = getOptionsFn(target);
-        
+
         if (newSubmenuItems && Array.isArray(newSubmenuItems)) {
             // Preserve loadfn from old items to new items by matching actions
             // This allows indicators to refresh correctly
@@ -1791,7 +2054,7 @@ class ContextMenuController {
                         oldItemsMap.set(oldItem.action, oldItem.loadfn);
                     }
                 });
-                
+
                 // Apply loadfn to new items if they have the same action
                 newSubmenuItems.forEach(newItem => {
                     if (newItem.action && oldItemsMap.has(newItem.action)) {
@@ -1799,27 +2062,27 @@ class ContextMenuController {
                     }
                 });
             }
-            
+
             // Temporarily remove click handler to prevent closing during refresh
             const oldClickHandler = this.submenuClickHandler;
             if (oldClickHandler) {
                 document.removeEventListener('click', oldClickHandler);
             }
-            
+
             // Remove current submenu but preserve state
             if (this.currentSubmenu) {
                 this.currentSubmenu.remove();
             }
             this.currentSubmenu = null;
-            
+
             // Show new submenu with updated items (this will set new state)
             this.showSubmenu(parentItem, newSubmenuItems, target, state.handlerfn || customHandler || parentItem._handlerfn);
-            
+
             // Recalculate position after refresh (height may have changed)
             if (this.currentSubmenu && parentItem) {
                 this.positionSubmenu(this.currentSubmenu, parentItem);
             }
-            
+
             // Refresh all submenu items to update indicators and other dynamic properties
             // This ensures loadfn is called for items that need their state refreshed
             this.refreshAllSubmenuItems();

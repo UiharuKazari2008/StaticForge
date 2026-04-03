@@ -142,9 +142,20 @@ async function showPresetManager() {
         return;
     }
     
+    const wasClosed = modal.classList.contains('hidden');
     await loadPresets();
     await renderPresetList();
     openModal(modal);
+    
+    if (wasClosed && window.customScrollbar) {
+        // Initialize custom scrollbars after modal is opened
+        setTimeout(() => {
+            const presetListContainer = document.getElementById('presetListContainer');
+            if (presetListContainer) {
+                window.customScrollbar.forceReinit(presetListContainer);
+            }
+        }, 50);
+    }
 }
 
 // Hide preset manager modal
@@ -639,8 +650,7 @@ async function createPresetItem(key, preset) {
             return;
         }
         // Only close preset manager modal if not in desktop mode
-        const isDesktopMode = document.body.classList.contains('desktop-mode');
-        if (!isDesktopMode) {
+        if (!window.isDesktop) {
             hidePresetManager();
         }
         openManualModalWithContent({ type: 'preset', name: key, title: key });
@@ -660,7 +670,8 @@ async function createPresetItem(key, preset) {
                     {
                         text: 'Edit in Studio',
                         icon: 'fas fa-compass-drafting',
-                        action: 'edit-manual'
+                        action: 'edit-manual',
+                        hideOnBreakpoint: "small-mobile"
                     },
                     {
                         text: 'Request Settings',
@@ -675,7 +686,8 @@ async function createPresetItem(key, preset) {
                     {
                         text: 'Add to Desktop',
                         icon: 'fas fa-arrow-down-left',
-                        action: 'add-to-desktop'
+                        action: 'add-to-desktop',
+                        hidden: () => !document.body.classList.contains('desktop-mode')
                     },
                     { separator: true },
                     {
@@ -692,8 +704,7 @@ async function createPresetItem(key, preset) {
                     hidePresetManager();
                 } else if (actionName === 'edit-manual') {
                     // Only close preset manager modal if not in desktop mode
-                    const isDesktopMode = document.body.classList.contains('desktop-mode');
-                    if (!isDesktopMode) {
+                    if (!window.isDesktop) {
                         hidePresetManager();
                     }
                     openManualModalWithContent({ type: 'preset', name: key, title: key });

@@ -73,21 +73,11 @@ async function createTables() {
             size INTEGER,
             mtime INTEGER,
             metadata TEXT, -- JSON string for PNG metadata
-            thumbnail TEXT, -- base64 encoded tiny thumbnail for placeholders and fallback
             created_at INTEGER DEFAULT (strftime('%s', 'now')),
             updated_at INTEGER DEFAULT (strftime('%s', 'now'))
         )
     `);
     
-    // Add thumbnail column if it doesn't exist (migration for existing databases)
-    try {
-        await db.exec(`ALTER TABLE images ADD COLUMN thumbnail TEXT`);
-    } catch (error) {
-        // Column already exists, ignore error
-        if (!error.message.includes('duplicate column name')) {
-            logger.warn('Could not add thumbnail column:', error.message);
-        }
-    }
     
     // Receipts table
     await db.exec(`
@@ -186,7 +176,18 @@ async function createTables() {
         CREATE INDEX IF NOT EXISTS idx_search_models_filename ON search_models (filename);
         CREATE INDEX IF NOT EXISTS idx_search_models_name ON search_models (model_name);
     `);
-    
+
+    // Migration: Drop thumbnail column if it exists (removed in favor of other preview systems)
+    try {
+        await db.exec(`ALTER TABLE images DROP COLUMN thumbnail`);
+        logger.info('✅ Dropped thumbnail column from images table (migration complete)');
+    } catch (error) {
+        // Column may not exist or may have already been dropped, ignore error
+        if (!error.message.includes('no such column') && !error.message.includes('duplicate column name')) {
+            logger.warn('Could not drop thumbnail column:', error.message);
+        }
+    }
+
     logger.bootSubStep('Metadata database ready');
 }
 
@@ -700,8 +701,10 @@ async function getUnattributedReceipts() {
 
 /**
  * Get metadata for a specific image
+ * @param {string} filename - The image filename
+ * @param {boolean} includeReceipts - Whether to include receipts (default: true)
  */
-async function getCachedMetadata(filename) {
+async function getCachedMetadata(filename, includeReceipts = false) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
@@ -709,35 +712,54 @@ async function getCachedMetadata(filename) {
     
     if (!image) return null;
     
-    // Get receipts for this image
-    const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [image.id]);
-    
-    return {
+    const result = {
         ...image,
-        receipt: receipts.map(r => JSON.parse(r.receipt_data)),
         metadata: image.metadata ? JSON.parse(image.metadata) : {},
-        upscaled: Boolean(image.upscaled),
-        tinyThumbnail: image.thumbnail || null
+        upscaled: Boolean(image.upscaled)
     };
+    
+    // Only load receipts if requested (for performance)
+    if (includeReceipts) {
+        const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [image.id]);
+        result.receipt = receipts.map(r => JSON.parse(r.receipt_data));
+    } else {
+        result.receipt = [];
+    }
+    
+    return result;
 }
 
 /**
- * Get all cached metadata
+ * Get lightweight metadata for sorting (filename, mtime, width, height only)
+ * Much faster than full metadata for sorting operations
  */
-async function getImagesMetadata() {
-    const images = await db.all('SELECT * FROM images ORDER BY filename');
+async function getLightweightMetadata(filenames) {
+    if (!filenames || filenames.length === 0) {
+        return {};
+    }
+    
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
     
     const result = {};
+    
+    // Batch query: Get only essential fields for sorting
+    const placeholders = filenames.map(() => '?').join(',');
+    const images = await db.all(
+        `SELECT filename, mtime, width, height, size, upscaled, parent FROM images WHERE filename IN (${placeholders})`,
+        filenames
+    );
+    
     for (const image of images) {
-        // Get receipts for this image
-        const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [image.id]);
-        
         result[image.filename] = {
-            ...image,
-            receipt: receipts.map(r => JSON.parse(r.receipt_data)),
-            metadata: image.metadata ? JSON.parse(image.metadata) : {},
+            filename: image.filename,
+            mtime: image.mtime || Date.now(),
+            width: image.width || null,
+            height: image.height || null,
+            size: image.size || 0,
             upscaled: Boolean(image.upscaled),
-            tinyThumbnail: image.thumbnail || null
+            parent: image.parent || null
         };
     }
     
@@ -745,22 +767,71 @@ async function getImagesMetadata() {
 }
 
 /**
- * Get all cached metadata
- */
-async function getAllMetadata() {
-    return await getImagesMetadata();
-}
-
-/**
- * Get metadata for multiple images
+ * Get metadata for multiple images (optimized with batch queries)
+ * Note: Receipts are excluded for performance - use getCachedMetadata() for single image with receipts
+ * Uses batching to prevent OOM when processing large lists
  */
 async function getMultipleMetadata(filenames) {
+    if (!filenames || filenames.length === 0) {
+        return {};
+    }
+    
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+    
+    const BATCH_SIZE = 500; // Process 500 at a time
+    const MAX_JSON_SIZE = 5 * 1024 * 1024; // 5MB limit per JSON string
     const result = {};
     
-    for (const filename of filenames) {
-        const metadata = await getCachedMetadata(filename);
-        if (metadata) {
-            result[filename] = metadata;
+    // Process in batches to prevent OOM with large filename lists
+    for (let i = 0; i < filenames.length; i += BATCH_SIZE) {
+        const batch = filenames.slice(i, i + BATCH_SIZE);
+        
+        // Batch query: Get images to save memory
+        const placeholders = batch.map(() => '?').join(',');
+        const images = await db.all(
+            `SELECT id, filename, md5, width, height, parent, upscaled, size, mtime, metadata, created_at, updated_at 
+             FROM images 
+             WHERE filename IN (${placeholders})`,
+            batch
+        );
+        
+        if (images.length === 0) {
+            continue;
+        }
+        
+        // Parse metadata for this batch
+        for (const image of images) {
+            try {
+                let parsedMetadata = {};
+                if (image.metadata) {
+                    if (image.metadata.length > MAX_JSON_SIZE) {
+                        console.warn(`⚠️ Metadata too large for ${image.filename}: ${image.metadata.length} bytes, skipping parse`);
+                        parsedMetadata = {};
+                    } else {
+                        try {
+                            parsedMetadata = JSON.parse(image.metadata);
+                        } catch (parseError) {
+                            console.error(`❌ Error parsing metadata JSON for ${image.filename}:`, parseError.message);
+                            parsedMetadata = {};
+                        }
+                    }
+                }
+                
+                result[image.filename] = {
+                    ...image,
+                    metadata: parsedMetadata,
+                    upscaled: Boolean(image.upscaled)
+                };
+            } catch (error) {
+                console.error(`❌ Error processing metadata for ${image.filename}:`, error.message);
+            }
+        }
+        
+        // Allow GC between batches
+        if (i + BATCH_SIZE < filenames.length) {
+            await new Promise(resolve => setImmediate(resolve));
         }
     }
     
@@ -785,87 +856,7 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     return metadata;
 }
 
-/**
- * Update tiny thumbnail for an image
- */
-async function updateTinyThumbnail(filename, tinyThumbnailBase64) {
-    try {
-        if (!dbInitialized || !db) {
-            throw new Error('Database not initialized');
-        }
-        
-        await db.run(
-            'UPDATE images SET thumbnail = ?, updated_at = strftime(\'%s\', \'now\') WHERE filename = ?',
-            [tinyThumbnailBase64, filename]
-        );
-        
-        return true;
-    } catch (error) {
-        logger.error(`Error updating tiny thumbnail for ${filename}:`, error);
-        return false;
-    }
-}
 
-/**
- * Batch update tiny thumbnails for multiple images
- * @param {Array} thumbnails - Array of {filename, thumbnail} objects
- * @param {number} batchSize - Number of updates per transaction (default: 500)
- */
-async function updateTinyThumbnailsBatch(thumbnails, batchSize = 500) {
-    try {
-        if (!dbInitialized || !db) {
-            throw new Error('Database not initialized');
-        }
-        
-        if (!Array.isArray(thumbnails) || thumbnails.length === 0) {
-            return { updated: 0, errors: 0 };
-        }
-        
-        let updated = 0;
-        let errors = 0;
-        
-        // Process in batches to avoid overwhelming the database
-        for (let i = 0; i < thumbnails.length; i += batchSize) {
-            const batch = thumbnails.slice(i, i + batchSize);
-            
-            try {
-                // Use a transaction for each batch
-                await db.run('BEGIN TRANSACTION');
-                
-                // Execute all updates in the batch using individual run calls
-                // This is simpler and more reliable than prepared statements with async wrapper
-                for (const { filename, thumbnail } of batch) {
-                    try {
-                        await db.run(
-                            'UPDATE images SET thumbnail = ?, updated_at = strftime(\'%s\', \'now\') WHERE filename = ?',
-                            [thumbnail, filename]
-                        );
-                        updated++;
-                    } catch (error) {
-                        errors++;
-                        logger.error(`Error updating thumbnail for ${filename}:`, error);
-                    }
-                }
-                
-                // Commit transaction
-                await db.run('COMMIT');
-            } catch (error) {
-                try {
-                    await db.run('ROLLBACK');
-                } catch (rollbackError) {
-                    logger.error(`Error rolling back transaction:`, rollbackError);
-                }
-                logger.error(`Error in batch thumbnail update:`, error);
-                errors += batch.length;
-            }
-        }
-        
-        return { updated, errors };
-    } catch (error) {
-        logger.error('Error in updateTinyThumbnailsBatch:', error);
-        return { updated: 0, errors: thumbnails.length };
-    }
-}
 
 /**
  * Get all filenames from the database
@@ -884,22 +875,7 @@ async function getAllFilenames() {
     }
 }
 
-/**
- * Get filenames that are missing thumbnails
- */
-async function getFilenamesWithoutThumbnails() {
-    try {
-        if (!dbInitialized || !db) {
-            throw new Error('Database not initialized');
-        }
-        
-        const rows = await db.all('SELECT filename FROM images WHERE thumbnail IS NULL OR thumbnail = \'\'');
-        return rows.map(row => row.filename);
-    } catch (error) {
-        logger.error('Error getting filenames without thumbnails:', error);
-        return [];
-    }
-}
+
 
 /**
  * Update file's embedded metadata with new forge data
@@ -1929,8 +1905,7 @@ module.exports = {
     addReceipt,
     removeImageMetadata,
     getCachedMetadata,
-    getAllMetadata,
-    getImagesMetadata,
+    getLightweightMetadata,
     getMultipleMetadata,
     addReceiptMetadata,
     addUnattributedReceipt,
@@ -1938,10 +1913,7 @@ module.exports = {
     migrateFromJSON,
     getDatabaseStats,
     updateFileMetadata,
-    updateTinyThumbnail,
-    updateTinyThumbnailsBatch,
     getAllFilenames,
-    getFilenamesWithoutThumbnails,
     
     // Search index functions
     updateSearchIndexes,

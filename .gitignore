@@ -1,6 +1,10 @@
+data/
 images/
 .previews/
 node_modules/
+.git-audit.log
+*.swp
+*.bak
 .env
 .DS_Store
 .env.local

@@ -1,0 +1,25 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 500,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:staticforge}/.cache/tag_wiki.db",
+            "name": "Tag Wiki"
+        }
+    ],
+    "sqltools.useNodeRuntime": true,
+    "css.hover.documentation": false,
+    "css.hover.references": false,
+    "less.hover.references": false,
+    "scss.hover.documentation": false,
+    "scss.hover.references": false,
+    "less.hover.documentation": false,
+    "npm.fetchOnlinePackageInfo": false,
+    "github.showAvatar": false,
+    "npm.scriptHover": false,
+    "html.hover.references": false,
+    "html.hover.documentation": false,
+    "editor.hover.delay": 2500,
+    "workbench.hover.delay": 2500,
+    "workbench.sash.hoverDelay": 2000
+}

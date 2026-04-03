@@ -1,4 +1,5 @@
 const geo2city = require('geo2city');
+const { WebSocketServer } = require('./websocket');
 const {
     handleDirectorGetSessions,
     handleDirectorCreateSession,
@@ -43,6 +44,169 @@ const https = require('https');
  * This ensures clients can efficiently update local state without full reloads.
  */
 
+// LRU Cache for metadata (per workspace)
+class MetadataCache {
+    constructor(maxSize = 1000) {
+        this.maxSize = maxSize;
+        this.workspaceCaches = new Map(); // workspaceId -> Map of filenames
+        this.workspaceLastUsed = new Map(); // workspaceId -> last access timestamp
+        this.clientWorkspaces = new Map(); // sessionId -> Set of workspaceIds
+        this.cleanupInterval = null;
+        this.cleanupTimeout = 30 * 60 * 1000; // 30 minutes of inactivity before cleanup
+    }
+
+    // Start periodic cleanup of unused workspace caches
+    startCleanup() {
+        if (this.cleanupInterval) return; // Already started
+        
+        // Run cleanup every 5 minutes
+        this.cleanupInterval = setInterval(() => {
+            this.cleanupUnusedWorkspaces();
+        }, 5 * 60 * 1000);
+    }
+
+    // Stop periodic cleanup
+    stopCleanup() {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
+
+    // Clean up workspace caches that haven't been used recently
+    cleanupUnusedWorkspaces() {
+        const now = Date.now();
+        const workspacesToRemove = [];
+
+        for (const [workspaceId, lastUsed] of this.workspaceLastUsed.entries()) {
+            // Check if any clients are still using this workspace
+            let isInUse = false;
+            for (const [sessionId, workspaceSet] of this.clientWorkspaces.entries()) {
+                if (workspaceSet.has(workspaceId)) {
+                    isInUse = true;
+                    break;
+                }
+            }
+
+            // Remove if not in use and hasn't been accessed in cleanupTimeout
+            if (!isInUse && (now - lastUsed) > this.cleanupTimeout) {
+                workspacesToRemove.push(workspaceId);
+            }
+        }
+
+        // Remove unused workspace caches
+        for (const workspaceId of workspacesToRemove) {
+            this.workspaceCaches.delete(workspaceId);
+            this.workspaceLastUsed.delete(workspaceId);
+            console.log(`🧹 Cleaned up unused metadata cache for workspace: ${workspaceId}`);
+        }
+    }
+
+    // Track client workspace usage
+    trackClientWorkspace(sessionId, workspaceId) {
+        if (!this.clientWorkspaces.has(sessionId)) {
+            this.clientWorkspaces.set(sessionId, new Set());
+        }
+        this.clientWorkspaces.get(sessionId).add(workspaceId);
+        this.workspaceLastUsed.set(workspaceId, Date.now());
+    }
+
+    // Remove client tracking (when client disconnects)
+    removeClient(sessionId) {
+        const workspaceSet = this.clientWorkspaces.get(sessionId);
+        if (workspaceSet) {
+            // Note: We don't immediately clear the cache, just remove tracking
+            // The periodic cleanup will handle actual cache removal
+            this.clientWorkspaces.delete(sessionId);
+            console.log(`🧹 Removed client tracking for session: ${sessionId}`);
+        }
+    }
+
+    // Get cache for a specific workspace
+    getWorkspaceCache(workspaceId) {
+        if (!this.workspaceCaches.has(workspaceId)) {
+            this.workspaceCaches.set(workspaceId, new Map());
+        }
+        this.workspaceLastUsed.set(workspaceId, Date.now());
+        return this.workspaceCaches.get(workspaceId);
+    }
+
+    // Get metadata from cache
+    get(workspaceId, filename) {
+        const workspaceCache = this.getWorkspaceCache(workspaceId);
+        if (workspaceCache.has(filename)) {
+            const entry = workspaceCache.get(filename);
+            entry.lastAccessed = Date.now();
+            return entry.metadata;
+        }
+        return null;
+    }
+
+    // Set metadata in cache
+    set(workspaceId, filename, metadata) {
+        const workspaceCache = this.getWorkspaceCache(workspaceId);
+        
+        // If cache is full, remove least recently used
+        if (workspaceCache.size >= this.maxSize && !workspaceCache.has(filename)) {
+            // Find least recently used
+            let lruKey = null;
+            let lruTime = Infinity;
+            for (const [key, entry] of workspaceCache.entries()) {
+                if (entry.lastAccessed < lruTime) {
+                    lruTime = entry.lastAccessed;
+                    lruKey = key;
+                }
+            }
+            if (lruKey) {
+                workspaceCache.delete(lruKey);
+            }
+        }
+
+        workspaceCache.set(filename, {
+            metadata: metadata,
+            lastAccessed: Date.now()
+        });
+    }
+
+    // Prefetch multiple files
+    async prefetch(workspaceId, filenames, metadataDatabase) {
+        const workspaceCache = this.getWorkspaceCache(workspaceId);
+        const toFetch = [];
+        
+        // Check which files need to be fetched
+        for (const filename of filenames) {
+            if (!workspaceCache.has(filename)) {
+                toFetch.push(filename);
+            }
+        }
+
+        if (toFetch.length === 0) return;
+
+        // Batch fetch metadata
+        try {
+            const metadata = await metadataDatabase.getMultipleMetadata(toFetch);
+            for (const [filename, meta] of Object.entries(metadata)) {
+                this.set(workspaceId, filename, meta);
+            }
+        } catch (error) {
+            console.error('Error prefetching metadata:', error);
+        }
+    }
+
+    // Clear cache for a workspace (when workspace changes or is deleted)
+    clearWorkspace(workspaceId) {
+        this.workspaceCaches.delete(workspaceId);
+        this.workspaceLastUsed.delete(workspaceId);
+        
+        // Remove from all client tracking
+        for (const [sessionId, workspaceSet] of this.clientWorkspaces.entries()) {
+            workspaceSet.delete(workspaceId);
+        }
+        
+        console.log(`🧹 Cleared metadata cache for workspace: ${workspaceId}`);
+    }
+}
+
 // WebSocket message handlers
 class WebSocketMessageHandlers {
     constructor(globalResources) {
@@ -51,6 +215,15 @@ class WebSocketMessageHandlers {
             throw new Error('WebSocketMessageHandlers requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
+        this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
+        this.metadataCache.startCleanup(); // Start periodic cleanup
+    }
+
+    // Clean up metadata cache when client disconnects
+    cleanupClientCache(sessionId) {
+        if (this.metadataCache) {
+            this.metadataCache.removeClient(sessionId);
+        }
     }
 
     // Generate UUID for presets
@@ -64,8 +237,12 @@ class WebSocketMessageHandlers {
         const requestId = message.requestId || 'unknown';
 
         try {
-            // Check if client is authenticated
-            if (!clientInfo || !clientInfo.authenticated) {
+            // Allow critical messages without authentication
+            const isCriticalMessage = message.type && 
+                WebSocketServer.CRITICAL_MESSAGE_TYPES.includes(message.type);
+
+            // Check if client is authenticated (unless it's a critical message)
+            if ((!clientInfo || !clientInfo.authenticated) && !isCriticalMessage) {
                 wsServer.sendToClient(ws, {
                     type: 'auth_error',
                     message: 'Authentication required',
@@ -692,6 +869,27 @@ class WebSocketMessageHandlers {
 
             case 'ping':
                 this.handlePing(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'pong':
+                // Pong is handled automatically by the client, but we can acknowledge it
+                wsServer.sendToClient(ws, {
+                    type: 'pong',
+                    requestId: message.requestId,
+                    timestamp: new Date().toISOString()
+                });
+                break;
+
+            case 'server_status':
+                await this.handleServerStatus(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'check_updates':
+                await this.handleCheckUpdates(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'version_check':
+                await this.handleVersionCheck(ws, message, clientInfo, wsServer);
                 break;
 
             case 'generate_image':
@@ -2133,7 +2331,7 @@ class WebSocketMessageHandlers {
     handlePing(ws, message, clientInfo, wsServer) {
         // Server should always respond if initialized
         // No need to check context anymore - config is directly imported
-        this.sendToClient(ws, {
+        wsServer.sendToClient(ws, {
             type: 'pong',
             requestId: message.requestId,
             timestamp: new Date().toISOString(),
@@ -2235,7 +2433,7 @@ class WebSocketMessageHandlers {
 
     // Handle gallery request messages
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
-        const { requestId, viewType = 'images', includePinnedStatus = true } = message;
+        const { requestId, viewType = 'images', includePinnedStatus = true, light = false, offset = 0, limit = 100 } = message;
 
         try {
             // Start keep-alive for potentially long gallery requests
@@ -2251,25 +2449,18 @@ class WebSocketMessageHandlers {
                 const workspaceFiles = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(clientInfo.sessionId);
                 files = workspaceFiles;
 
-                // Also include wallpaper and large resolution images from metadata cache
-                const allMetadata = await this.globalResources.getMetadataDatabase().getAllMetadata();
+                // Load metadata only for workspace files to find large resolution images (area > 1024x1024)
+                const workspaceMetadata = await this.globalResources.getMetadataDatabase().getMultipleMetadata(workspaceFiles);
 
-                // Find large resolution images (area > 1024x1024)
+                // Find large resolution images in the current workspace
                 const specialImages = [];
-                for (const [filename, metadata] of Object.entries(allMetadata)) {
-                    if (metadata.width && metadata.height) {
-                        if (isImageLarge(metadata.width, metadata.height)) {
-                            // Check if this image is in the current workspace
-                            const workspace = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
-                            const workspaceData = this.globalResources.getWorkspaceManager().getWorkspace(workspace);
-                            if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
-                                specialImages.push(filename);
-                            }
-                        }
+                for (const [filename, metadata] of Object.entries(workspaceMetadata)) {
+                    if (metadata.width && metadata.height && isImageLarge(metadata.width, metadata.height)) {
+                        specialImages.push(filename);
                     }
                 }
 
-                // Add special images to the files list
+                // Add special images to the files list (they're already in workspace files, so no duplicates)
                 files = [...new Set([...files, ...specialImages])];
             } else {
                 // Default to regular images
@@ -2298,6 +2489,8 @@ class WebSocketMessageHandlers {
                 console.error('Files is not an array:', files);
                 files = [];
             }
+
+            // Convert files to baseMap for processing
             const baseMap = {};
             for (const file of files) {
                 const base = getBaseName(file);
@@ -2306,74 +2499,106 @@ class WebSocketMessageHandlers {
                 else baseMap[base].original = file;
             }
 
-            // Get all metadata from database in one batch query for better performance
-            const allFiles = Object.values(baseMap).flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
-            const allMetadata = await this.globalResources.getMetadataDatabase().getMultipleMetadata(allFiles);
-            
-            const gallery = [];
-            for (const base in baseMap) {
-                const { original, upscaled } = baseMap[base];
+            // Convert to array and sort by newest first
+            let baseArray = Object.keys(baseMap).map(base => ({
+                base,
+                ...baseMap[base]
+            }));
 
-                // Get the file to use (prefer upscaled, then original)
-                const file = upscaled || original;
-                if (!file) continue;
+            // Get mtime for sorting (lightweight query)
+            if (baseArray.length > 0) {
+                const allFilesForSort = baseArray.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
+                const sortMetadata = await this.globalResources.getMetadataDatabase().getLightweightMetadata(allFilesForSort);
 
-                // Get metadata from database (already loaded in batch)
-                let fileMetadata = allMetadata[file];
-                if (!fileMetadata) {
-                    // If not in batch, try individual lookup
-                    try {
-                        fileMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(file);
-                        if (!fileMetadata) {
-                            console.log(`🔄 Loading metadata for file: ${file}`);
-                            // Try to extract metadata for the missing file
-                            fileMetadata = await this.globalResources.getMetadataDatabase().getImageMetadata(file, this.globalResources.getPath("images"));
-                            if (!fileMetadata) {
-                                console.warn(`❌ Could not extract metadata for file: ${file}`);
-                                continue;
-                            }
-                        }
-                    } catch (error) {
-                        console.error(`❌ Error loading metadata for file ${file}:`, error);
-                        continue;
-                    }
-                }
-
-                const preview = getPreviewFilename(base);
-                const isLarge = fileMetadata?.width && fileMetadata?.height ?
-                    isImageLarge(fileMetadata.width, fileMetadata.height) : false;
-
-                if (viewType === 'upscaled') {
-                    // For upscaled view, include images that have upscaled versions OR are wallpaper/large
-                    const shouldInclude = upscaled || isLarge;
-                    if (!shouldInclude) continue;
-                }
-
-                // Get tiny thumbnail from database (stored when previews are generated)
-                let tinyThumbnail = fileMetadata.tinyThumbnail || null;
-                if (tinyThumbnail && !tinyThumbnail.startsWith('data:')) {
-                    // If stored as base64 without data URL prefix, add it
-                    tinyThumbnail = `data:image/jpeg;base64,${tinyThumbnail}`;
-                }
-
-                gallery.push({
-                    base,
-                    original,
-                    upscaled,
-                    preview,
-                    mtime: fileMetadata.mtime || Date.now(),
-                    size: fileMetadata.size || 0,
-                    isLarge: isLarge,
-                    isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false,
-                    // Include dimensions for PhotoSwipe
-                    width: fileMetadata.width || null,
-                    height: fileMetadata.height || null,
-                    tinyThumbnail: tinyThumbnail
+                // Add mtime to each item for sorting
+                baseArray.forEach(item => {
+                    const file = item.upscaled || item.original;
+                    const metadata = sortMetadata[file];
+                    item.mtime = metadata?.mtime || Date.now();
                 });
             }
 
             // Sort by newest first
-            gallery.sort((a, b) => b.mtime - a.mtime);
+            baseArray.sort((a, b) => b.mtime - a.mtime);
+
+            // Apply pagination
+            const totalItems = baseArray.length;
+            const paginatedItems = baseArray.slice(offset, offset + limit);
+            const hasMore = (offset + limit) < totalItems;
+
+            let gallery = [];
+
+            if (light) {
+                // Light mode: return basic file info without metadata
+                gallery = paginatedItems.map(({ base, original, upscaled }) => {
+                    const file = upscaled || original;
+                    return {
+                        base,
+                        original,
+                        upscaled,
+                        preview: getPreviewFilename(base),
+                        // Basic info only, no metadata
+                        isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false
+                    };
+                });
+            } else {
+                // Full mode: load metadata for paginated items
+                const filesToLoad = paginatedItems.flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
+                const allMetadata = await this.globalResources.getMetadataDatabase().getMultipleMetadata(filesToLoad);
+
+                for (const item of paginatedItems) {
+                    const { base, original, upscaled } = item;
+
+                    // Get the file to use (prefer upscaled, then original)
+                    const file = upscaled || original;
+                    if (!file) continue;
+
+                    // Get metadata from database (already loaded in batch)
+                    let fileMetadata = allMetadata[file];
+                    if (!fileMetadata) {
+                        // If not in batch, try individual lookup
+                        try {
+                            fileMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(file);
+                            if (!fileMetadata) {
+                                console.log(`🔄 Loading metadata for file: ${file}`);
+                                // Try to extract metadata for the missing file
+                                fileMetadata = await this.globalResources.getMetadataDatabase().getImageMetadata(file, this.globalResources.getPath("images"));
+                                if (!fileMetadata) {
+                                    console.warn(`❌ Could not extract metadata for file: ${file}`);
+                                    continue;
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error loading metadata for file ${file}:`, error);
+                            continue;
+                        }
+                    }
+
+                    const preview = getPreviewFilename(base);
+                    const isLarge = fileMetadata?.width && fileMetadata?.height ?
+                        isImageLarge(fileMetadata.width, fileMetadata.height) : false;
+
+                    if (viewType === 'upscaled') {
+                        // For upscaled view, include images that have upscaled versions OR are wallpaper/large
+                        const shouldInclude = upscaled || isLarge;
+                        if (!shouldInclude) continue;
+                    }
+
+                    gallery.push({
+                        base,
+                        original,
+                        upscaled,
+                        preview,
+                        mtime: fileMetadata.mtime || Date.now(),
+                        size: fileMetadata.size || 0,
+                        isLarge: isLarge,
+                        isPinned: includePinnedStatus ? pinnedFiles.includes(file) : false,
+                        // Include dimensions for PhotoSwipe
+                        width: fileMetadata.width || null,
+                        height: fileMetadata.height || null
+                    });
+                }
+            }
 
             // Stop keep-alive when complete
             this.stopKeepAliveInterval(requestId);
@@ -2382,7 +2607,16 @@ class WebSocketMessageHandlers {
             this.sendToClient(ws, {
                 type: 'request_gallery_response',
                 requestId: requestId,
-                data: { gallery, viewType },
+                data: {
+                    gallery,
+                    viewType,
+                    pagination: {
+                        offset,
+                        limit,
+                        hasMore,
+                        totalItems
+                    }
+                },
                 timestamp: new Date().toISOString()
             });
 
@@ -2413,8 +2647,35 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            // Get metadata from cache first
-            let cachedMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(filename);
+            // Check in-memory cache first
+            const workspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+            
+            // Track client workspace usage
+            this.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
+            
+            let cachedMetadata = this.metadataCache.get(workspaceId, filename);
+
+            // If not in cache, get from database
+            if (!cachedMetadata) {
+                cachedMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(filename, false);
+                
+                // If found in database, add to cache
+                if (cachedMetadata) {
+                    this.metadataCache.set(workspaceId, filename, cachedMetadata);
+                }
+            }
+
+            // If still not found, extract and update cache
+            if (!cachedMetadata) {
+                console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
+                cachedMetadata = await this.globalResources.getMetadataDatabase().getImageMetadata(filename, this.globalResources.getPath("images"));
+                if (!cachedMetadata) {
+                    this.sendError(ws, 'Failed to extract metadata', 'request_image_metadata', message.requestId);
+                    return;
+                }
+                // Add to cache
+                this.metadataCache.set(workspaceId, filename, cachedMetadata);
+            }
 
             // If not in cache, extract and update cache
             if (!cachedMetadata) {
@@ -2429,9 +2690,9 @@ class WebSocketMessageHandlers {
             // Get the metadata object (PNG embedded metadata)
             let metadata = cachedMetadata.metadata;
 
-            // If this is an upscaled image and has a parent, get the parent's metadata
+            // If this is an upscaled image and has a parent, get the parent's metadata (without receipts)
             if (cachedMetadata.upscaled && cachedMetadata.parent) {
-                const parentMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(cachedMetadata.parent);
+                const parentMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(cachedMetadata.parent, false);
                 if (parentMetadata) {
                     metadata = parentMetadata.metadata;
                     console.log(`📋 Using parent metadata for upscaled image: ${cachedMetadata.parent}`);
@@ -2506,21 +2767,14 @@ class WebSocketMessageHandlers {
                 const workspaceFiles = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(sessionId);
                 files = workspaceFiles;
 
-                // Also include wallpaper and large resolution images from metadata cache
-                const allMetadata = await this.globalResources.getMetadataDatabase().getAllMetadata();
+                // Load metadata only for workspace files to find large resolution images (area > 1024x1024)
+                const workspaceMetadata = await this.globalResources.getMetadataDatabase().getMultipleMetadata(workspaceFiles);
 
-                // Find large resolution images (area > 1024x1024)
+                // Find large resolution images in the current workspace
                 const specialImages = [];
-                for (const [filename, metadata] of Object.entries(allMetadata)) {
-                    if (metadata.width && metadata.height) {
-                        if (isImageLarge(metadata.width, metadata.height)) {
-                            // Check if this image is in the current workspace
-                            const workspace = this.globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
-                            const workspaceData = this.globalResources.getWorkspaceManager().getWorkspace(workspace);
-                            if (workspaceData && workspaceData.files && workspaceData.files.includes(filename)) {
-                                specialImages.push(filename);
-                            }
-                        }
+                for (const [filename, metadata] of Object.entries(workspaceMetadata)) {
+                    if (metadata.width && metadata.height && isImageLarge(metadata.width, metadata.height)) {
+                        specialImages.push(filename);
                     }
                 }
 
@@ -2547,6 +2801,10 @@ class WebSocketMessageHandlers {
             else baseMap[base].original = file;
         }
 
+        // Get all metadata in batch (without receipts for performance)
+        const allFiles = Object.values(baseMap).flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
+        const allMetadata = await this.globalResources.getMetadataDatabase().getMultipleMetadata(allFiles);
+        
         const gallery = [];
         for (const base in baseMap) {
             const { original, upscaled } = baseMap[base];
@@ -2555,20 +2813,24 @@ class WebSocketMessageHandlers {
             const file = upscaled || original;
             if (!file) continue;
 
-            // Get metadata from cache, or load it if missing
-            let metadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(file);
+            // Get metadata from batch (already loaded)
+            let metadata = allMetadata[file];
             if (!metadata) {
-                console.log(`🔄 Loading metadata for file: ${file}`);
-                try {
-                    // Try to extract metadata for the missing file
-                    metadata = await this.globalResources.getMetadataDatabase().getImageMetadata(file, this.globalResources.getPath("images"));
-                    if (!metadata) {
-                        console.warn(`❌ Could not extract metadata for file: ${file}`);
+                // If not in batch, try individual lookup (without receipts)
+                metadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(file, false);
+                if (!metadata) {
+                    console.log(`🔄 Loading metadata for file: ${file}`);
+                    try {
+                        // Try to extract metadata for the missing file
+                        metadata = await this.globalResources.getMetadataDatabase().getImageMetadata(file, this.globalResources.getPath("images"));
+                        if (!metadata) {
+                            console.warn(`❌ Could not extract metadata for file: ${file}`);
+                            continue;
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error loading metadata for file ${file}:`, error);
                         continue;
                     }
-                } catch (error) {
-                    console.error(`❌ Error loading metadata for file ${file}:`, error);
-                    continue;
                 }
             }
 
@@ -2613,28 +2875,114 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            // Build gallery data using shared helper
-            const images = await this.buildGalleryData(viewType, clientInfo);
+            // Get files based on view type (same logic as buildGalleryData but optimized)
+            const sessionId = clientInfo.sessionId;
+            let files;
+            switch (viewType) {
+                case 'scraps':
+                    files = this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(sessionId);
+                    break;
+                case 'pinned':
+                    files = this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(sessionId);
+                    break;
+                case 'upscaled':
+                    files = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(sessionId);
+                    // Note: For upscaled view, we'd need to filter, but for single image lookup we'll skip this optimization
+                    break;
+                case 'images':
+                default:
+                    files = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(sessionId);
+                    break;
+            }
+
+            if (!Array.isArray(files) || files.length === 0) {
+                this.sendError(ws, 'No images found', 'request_image_by_index', message.requestId);
+                return;
+            }
+
+            // Build base map (same as buildGalleryData)
+            const getBaseName = (filename) => {
+                const base = filename.replace(/\.(png|jpg|jpeg|webp)$/i, '');
+                return base.replace(/_upscaled$/, '');
+            };
+
+            const baseMap = {};
+            for (const file of files) {
+                const base = getBaseName(file);
+                if (!baseMap[base]) baseMap[base] = { original: null, upscaled: null };
+                if (file.includes('_upscaled')) baseMap[base].upscaled = file;
+                else baseMap[base].original = file;
+            }
+
+            // Get all files for lightweight metadata lookup (only for sorting)
+            const allFiles = Object.values(baseMap).flatMap(({ original, upscaled }) => [original, upscaled].filter(Boolean));
+            const lightweightMetadata = await this.globalResources.getMetadataDatabase().getLightweightMetadata(allFiles);
+
+            // Build minimal gallery array with just what we need for sorting
+            const gallery = [];
+            for (const base in baseMap) {
+                const { original, upscaled } = baseMap[base];
+                const file = upscaled || original;
+                if (!file) continue;
+
+                const metadata = lightweightMetadata[file];
+                if (!metadata) continue;
+
+                // Filter for upscaled view if needed
+                if (viewType === 'upscaled') {
+                    const isLarge = metadata?.width && metadata?.height ?
+                        isImageLarge(metadata.width, metadata.height) : false;
+                    if (!upscaled && !isLarge) continue;
+                }
+
+                gallery.push({
+                    base,
+                    original,
+                    upscaled,
+                    preview: `${base}.webp`,
+                    mtime: metadata.mtime || Date.now(),
+                    size: metadata.size || 0,
+                    isLarge: metadata?.width && metadata?.height ?
+                        isImageLarge(metadata.width, metadata.height) : false,
+                    width: metadata.width || null,
+                    height: metadata.height || null
+                });
+            }
+
+            // Sort by newest first
+            gallery.sort((a, b) => b.mtime - a.mtime);
 
             // Check if index is valid
-            if (index < 0 || index >= images.length) {
+            if (index < 0 || index >= gallery.length) {
                 this.sendError(ws, 'Index out of bounds', 'request_image_by_index', message.requestId);
                 return;
             }
 
-            const image = images[index];
+            const image = gallery[index];
 
-            // Get metadata for the image
+            // Load full metadata only for the target image (check cache first)
             let metadata = null;
             try {
                 const filePath = path.join(this.globalResources.getPath("images"), image.original);
                 if (fs.existsSync(filePath)) {
-                    let cachedMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(image.original);
-
+                    const workspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
+                    
+                    // Track client workspace usage
+                    this.metadataCache.trackClientWorkspace(clientInfo.sessionId, workspaceId);
+                    
+                    // Check in-memory cache first
+                    let cachedMetadata = this.metadataCache.get(workspaceId, image.original);
+                    
+                    // If not in cache, get from database
                     if (!cachedMetadata) {
-                        cachedMetadata = await this.globalResources.getMetadataDatabase().getImageMetadata(image.original, this.globalResources.getPath("images"));
+                        cachedMetadata = await this.globalResources.getMetadataDatabase().getCachedMetadata(image.original, false);
+                        
+                        // If found, add to cache
+                        if (cachedMetadata) {
+                            this.metadataCache.set(workspaceId, image.original, cachedMetadata);
+                        }
                     }
-
+                    
                     if (cachedMetadata && cachedMetadata.metadata) {
                         metadata = await this.globalResources.getPngMetadata().extractRelevantFields(cachedMetadata.metadata, image.original);
                     }
@@ -3085,6 +3433,9 @@ class WebSocketMessageHandlers {
 
             const movedCount = this.globalResources.getWorkspaceManager().deleteWorkspace(id);
 
+            // Clear metadata cache for deleted workspace
+            this.metadataCache.clearWorkspace(id);
+
             this.sendToClient(ws, {
                 type: 'workspace_delete_response',
                 requestId: message.requestId,
@@ -3118,8 +3469,15 @@ class WebSocketMessageHandlers {
     async handleWorkspaceActivate(ws, message, clientInfo, wsServer) {
         try {
             const { id } = message;
+            const oldWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId);
 
             this.globalResources.getWorkspaceManager().setActiveWorkspace(id, clientInfo.sessionId);
+
+            // Track new workspace usage
+            this.metadataCache.trackClientWorkspace(clientInfo.sessionId, id);
+            
+            // Note: We don't clear the old workspace cache immediately - it may be used by other clients
+            // The periodic cleanup will handle unused workspace caches
 
             this.sendToClient(ws, {
                 type: 'workspace_activate_response',
@@ -9454,9 +9812,8 @@ class WebSocketMessageHandlers {
 
     // Helper method to get file metadata
     async getFileMetadata(filename) {
-        try {
-            const allMetadata = await this.globalResources.getMetadataDatabase().getImagesMetadata();
-            return allMetadata[filename] || null;
+        try {            // Use getCachedMetadata instead of loading all metadata to prevent OOM
+            return await this.globalResources.getMetadataDatabase().getCachedMetadata(filename, true);
         } catch (error) {
             console.error('Error getting file metadata:', error);
             return null;
@@ -9648,11 +10005,12 @@ class WebSocketMessageHandlers {
                     wsServer
                 );
 
-                // Send final result (handleGeneration returns the normal result)
+                // Send final result (generateImageWebSocket now includes metadata)
                 const responseData = {
                     image: result.buffer.toString('base64'),
                     filename: result.filename,
-                    seed: result.seed || null
+                    seed: result.seed || null,
+                    metadata: result.metadata
                 };
 
                 // Include compiled prompt if it was processed
@@ -9696,7 +10054,8 @@ class WebSocketMessageHandlers {
                 const responseData = {
                     image: result.buffer.toString('base64'),
                     filename: result.filename,
-                    seed: result.seed || null
+                    seed: result.seed || null,
+                    metadata: result.metadata
                 };
 
                 // Include compiled prompt if it was processed
@@ -9724,6 +10083,10 @@ class WebSocketMessageHandlers {
                     timestamp: new Date().toISOString()
                 });
             }
+
+            // Broadcast gallery update to all clients since a new image was generated
+            const galleryData = await this.buildGalleryData('images', clientInfo);
+            wsServer.broadcastGalleryUpdate(galleryData, 'images');
 
             // Stop keep-alive when complete
             this.stopKeepAliveInterval(requestId);
@@ -9828,10 +10191,15 @@ class WebSocketMessageHandlers {
                 requestId: requestId,
                 data: {
                     image: result.buffer.toString('base64'),
-                    filename: result.filename
+                    filename: result.filename,
+                    metadata: result.metadata
                 },
                 timestamp: new Date().toISOString()
             });
+
+            // Broadcast gallery update to all clients since upscaling creates/modifies gallery images
+            const galleryData = await this.buildGalleryData('images', clientInfo);
+            wsServer.broadcastGalleryUpdate(galleryData, 'images');
 
         } catch (error) {
             console.error('❌ Image upscaling error:', error);
@@ -9913,7 +10281,7 @@ class WebSocketMessageHandlers {
             // Stop keep-alive
             this.stopKeepAliveInterval(ws, requestId);
 
-            // Send success response
+            // Send success response with metadata included
             this.sendToClient(ws, {
                 type: 'image_expansion_response',
                 requestId: requestId,
@@ -9922,10 +10290,15 @@ class WebSocketMessageHandlers {
                     filename: result.filename,
                     seed: result.seed,
                     expansionPrompt: result.expansionPrompt,
-                    expansionReason: result.expansionReason
+                    expansionReason: result.expansionReason,
+                    metadata: result.metadata
                 },
                 timestamp: new Date().toISOString()
             });
+
+            // Broadcast gallery update to all clients since expansion creates/modifies gallery images
+            const galleryData = await this.buildGalleryData('images', clientInfo);
+            wsServer.broadcastGalleryUpdate(galleryData, 'images');
 
         } catch (error) {
             console.error('❌ Image expansion error:', error);
@@ -9981,7 +10354,7 @@ class WebSocketMessageHandlers {
             // Stop keep-alive
             this.stopKeepAliveInterval(ws, requestId);
 
-            // Send success response
+            // Send success response with metadata included
             this.sendToClient(ws, {
                 type: 'image_expansion_reroll_response',
                 requestId: requestId,
@@ -9990,7 +10363,8 @@ class WebSocketMessageHandlers {
                     filename: result.filename,
                     seed: result.seed,
                     expansionPrompt: result.expansionPrompt,
-                    expansionReason: result.expansionReason
+                    expansionReason: result.expansionReason,
+                    metadata: result.metadata
                 },
                 timestamp: new Date().toISOString()
             });
@@ -12250,6 +12624,97 @@ class WebSocketMessageHandlers {
         }
 
         return `Image generation failed: ${errorMessage}`;
+    }
+
+    // Handle server status request (critical - no auth required)
+    async handleServerStatus(ws, message, clientInfo, wsServer) {
+        try {
+            const globalResources = this.globalResources;
+            const isReady = globalResources.isReady && globalResources.isInitialized();
+            const stage = globalResources.getServerStage ? globalResources.getServerStage() : 'unknown';
+            
+            wsServer.sendToClient(ws, {
+                type: 'server_status_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    isReady: isReady,
+                    stage: stage,
+                    timestamp: new Date().toISOString()
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error handling server status:', error);
+            wsServer.sendToClient(ws, {
+                type: 'server_status_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle check updates request (critical - no auth required)
+    async handleCheckUpdates(ws, message, clientInfo, wsServer) {
+        try {
+            // This is a placeholder - actual update checking is done via HTTP
+            // But we can acknowledge the request
+            wsServer.sendToClient(ws, {
+                type: 'check_updates_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    message: 'Update check should be performed via HTTP OPTIONS request to /'
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error handling check updates:', error);
+            wsServer.sendToClient(ws, {
+                type: 'check_updates_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
+    // Handle version check request (critical - no auth required)
+    async handleVersionCheck(ws, message, clientInfo, wsServer) {
+        try {
+            const packageJson = require('../package.json');
+            const serverVersion = packageJson.version || 'unknown';
+            
+            wsServer.sendToClient(ws, {
+                type: 'version_check_response',
+                requestId: message.requestId,
+                data: {
+                    success: true,
+                    serverVersion: serverVersion,
+                    clientVersion: message.data?.clientVersion || 'unknown',
+                    compatible: true // Add version compatibility logic if needed
+                },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Error handling version check:', error);
+            wsServer.sendToClient(ws, {
+                type: 'version_check_response',
+                requestId: message.requestId,
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                timestamp: new Date().toISOString()
+            });
+        }
     }
 }
 module.exports = { WebSocketMessageHandlers };

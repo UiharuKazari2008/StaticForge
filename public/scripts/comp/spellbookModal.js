@@ -638,7 +638,7 @@ class SpellbookModalManager {
 
         this.isGenerating = true;
         this.generateBtn.disabled = true;
-        this.generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        this.generateBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
 
         let toastId;
         let progressInterval;
@@ -803,10 +803,7 @@ class SpellbookModalManager {
         }
 
         // Open the generation editor modal
-        const genEditorBtn = document.getElementById('openGenEditorBtn');
-        if (genEditorBtn) {
-            genEditorBtn.click();
-        }
+        openManualModalWithContent();
         this.closeModal();
     }
 
@@ -1029,7 +1026,7 @@ class SpellbookModalManager {
         // Disable upscale button during upscaling
         if (this.upscaleBtn) {
             this.upscaleBtn.disabled = true;
-            this.upscaleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            this.upscaleBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
         }
 
         let toastId;
@@ -1082,7 +1079,7 @@ class SpellbookModalManager {
             const result = await window.wsClient.upscaleImage(upscaleParams);
 
             if (result) {
-                const { image: upscaledImage, filename: upscaledFilename } = result;
+                const { filename: upscaledFilename } = result;
 
                 // Stop progress animation
                 if (progressInterval) {
@@ -1099,21 +1096,9 @@ class SpellbookModalManager {
                     showProgress: false
                 });
 
-                // Convert base64 to blob
-                const byteCharacters = atob(upscaledImage);
-                const byteNumbers = new Array(byteCharacters.length);
-                for (let i = 0; i < byteCharacters.length; i++) {
-                    byteNumbers[i] = byteCharacters.charCodeAt(i);
-                }
-                const byteArray = new Uint8Array(byteNumbers);
-                const blob = new Blob([byteArray], { type: 'image/png' });
-
-                // Create object URL for the upscaled image
-                const upscaledImageUrl = URL.createObjectURL(blob);
-
-                // Update the preview image to show the upscaled version
+                // Update the preview image to show the upscaled version (file on disk)
                 if (this.previewImage) {
-                    this.previewImage.src = upscaledImageUrl;
+                    this.previewImage.src = `/images/${upscaledFilename}`;
                     this.previewImage.classList.remove('hidden');
                 }
 

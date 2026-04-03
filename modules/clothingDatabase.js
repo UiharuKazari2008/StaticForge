@@ -98,57 +98,135 @@ class ClothingDatabase {
             }
         };
 
-        // Holiday clothing options
+        // Holiday clothing options - Updated to match enriched holiday data
         this.holidayClothing = {
             christmas: {
-                fabrics: ['wool', 'cashmere', 'velvet', 'festive'],
-                layers: ['cozy sweaters', 'dressy attire', 'formal pieces'],
-                accessories: ['holiday jewelry', 'festive accessories', 'warm accessories'],
-                colors: ['red', 'green', 'gold', 'silver', 'holiday colors'],
-                effects: ['holiday warmth', 'festive styling', 'winter celebration']
+                fabrics: ['wool', 'cashmere', 'velvet', 'velour', 'fleece', 'flannel', 'knit', 'cable knit', 'tweed', 'tartan', 'plaid'],
+                layers: ['wool sweater', 'cashmere sweater', 'velvet dress', 'velvet blazer', 'knit cardigan', 'turtleneck sweater', 'cozy sweater', 'warm coat', 'wool coat', 'dressy attire', 'formal pieces'],
+                accessories: ['christmas jewelry', 'holiday jewelry', 'warm scarf', 'wool scarf', 'warm hat', 'beanie', 'gloves', 'mittens', 'warm boots', 'festive accessories', 'santa hat', 'christmas pins'],
+                colors: ['red', 'green', 'gold', 'silver', 'white', 'crimson', 'emerald', 'deep blue', 'candlelight yellow', 'snow white'],
+                effects: ['warm layers', 'cozy textures', 'festive styling', 'winter celebration', 'candlelit scenes']
             },
             halloween: {
-                fabrics: ['costume', 'themed', 'dark', 'spooky'],
-                layers: ['costume pieces', 'themed clothing'],
-                accessories: ['themed jewelry', 'costume props', 'halloween accessories'],
-                colors: ['black', 'orange', 'purple', 'dark tones', 'spooky colors'],
-                effects: ['spooky themes', 'costume styling', 'halloween atmosphere']
+                fabrics: ['costume fabric', 'themed fabric', 'dark fabric', 'mesh', 'lace', 'sheer', 'velvet', 'satin', 'silk'],
+                layers: ['costume pieces', 'themed clothing', 'costume dress', 'costume top', 'costume bottom', 'themed outfit', 'spooky attire'],
+                accessories: ['halloween jewelry', 'costume props', 'halloween accessories', 'masks', 'wigs', 'hats', 'gloves', 'boots', 'themed jewelry', 'spooky accessories'],
+                colors: ['black', 'orange', 'purple', 'green', 'white', 'deep orange', 'midnight black', 'eerie purple', 'lime green', 'blood red', 'shadowy gray'],
+                effects: ['spooky themes', 'costume styling', 'halloween atmosphere', 'dimly lit scenes', 'shadowy environments']
             },
             easter: {
-                fabrics: ['light', 'floral', 'spring', 'delicate'],
-                layers: ['light dresses', 'spring jackets', 'easter attire'],
-                accessories: ['floral accessories', 'spring jewelry', 'easter accessories'],
-                colors: ['pastel', 'spring colors', 'easter colors', 'floral tones'],
-                effects: ['spring freshness', 'floral themes', 'easter celebration']
+                fabrics: ['cotton', 'linen', 'chiffon', 'organza', 'voile', 'batiste', 'lightweight', 'floral print', 'delicate'],
+                layers: ['light dress', 'spring dress', 'floral dress', 'spring jacket', 'light cardigan', 'spring blouse', 'easter dress', 'spring attire'],
+                accessories: ['floral accessories', 'spring jewelry', 'easter accessories', 'flower hair accessories', 'ribbon accessories', 'pastel jewelry', 'spring hat', 'light scarf'],
+                colors: ['yellow', 'white', 'green', 'lavender', 'pink', 'soft blue', 'mint green', 'peach', 'butter yellow', 'spring green', 'purple', 'cream', 'light coral'],
+                effects: ['spring freshness', 'floral themes', 'easter celebration', 'outdoor settings', 'spring scenes']
             },
             independence: {
-                fabrics: ['cotton', 'patriotic', 'summer', 'comfortable'],
-                layers: ['light clothing', 'summer attire', 'patriotic pieces'],
-                accessories: ['patriotic accessories', 'flag themes', 'summer accessories'],
-                colors: ['red', 'white', 'blue', 'patriotic patterns', 'flag colors'],
-                effects: ['patriotic celebration', 'summer fun', 'independence day']
+                fabrics: ['cotton', 'linen', 'denim', 'summer fabric', 'breathable', 'lightweight'],
+                layers: ['light clothing', 'summer attire', 'patriotic shirt', 'patriotic dress', 'summer dress', 't-shirt', 'shorts', 'patriotic pieces'],
+                accessories: ['patriotic accessories', 'flag themed accessories', 'summer accessories', 'baseball cap', 'sun hat', 'sunglasses', 'patriotic jewelry', 'flag pins'],
+                colors: ['red', 'white', 'blue', 'bright red', 'pure white', 'deep blue', 'gold accents'],
+                effects: ['patriotic celebration', 'summer fun', 'outdoor celebrations', 'summer festivities']
             },
             valentines: {
-                fabrics: ['romantic', 'elegant', 'delicate', 'dressy'],
-                layers: ['dressy clothing', 'romantic attire', 'elegant pieces'],
-                accessories: ['romantic jewelry', 'heart themes', 'elegant accessories'],
-                colors: ['red', 'pink', 'white', 'romantic tones', 'love themes'],
-                effects: ['romantic styling', 'elegant sophistication', 'valentine celebration']
+                fabrics: ['silk', 'satin', 'lace', 'chiffon', 'velvet', 'romantic fabric', 'elegant fabric', 'delicate', 'dressy'],
+                layers: ['dressy clothing', 'romantic dress', 'elegant dress', 'romantic attire', 'elegant blouse', 'dressy top', 'elegant pieces'],
+                accessories: ['romantic jewelry', 'heart themed jewelry', 'elegant accessories', 'romantic accessories', 'heart pins', 'romantic flowers', 'elegant scarf'],
+                colors: ['red', 'pink', 'white', 'gold', 'silver', 'deep rose', 'blush pink', 'creamy white', 'crimson', 'cherry red', 'rose gold'],
+                effects: ['romantic styling', 'elegant sophistication', 'candlelit scenes', 'romantic settings']
             },
             // Additional holiday mappings for better coverage
             newyears: {
-                fabrics: ['wool', 'cashmere', 'velvet', 'festive', 'elegant'],
-                layers: ['cozy sweaters', 'dressy attire', 'formal pieces', 'evening wear'],
-                accessories: ['holiday jewelry', 'festive accessories', 'warm accessories', 'sparkly accessories'],
-                colors: ['red', 'green', 'gold', 'silver', 'holiday colors', 'sparkly'],
-                effects: ['holiday warmth', 'festive styling', 'new year celebration', 'elegant sophistication']
+                fabrics: ['wool', 'cashmere', 'velvet', 'silk', 'satin', 'sequins', 'metallic', 'shiny', 'elegant'],
+                layers: ['cozy sweater', 'dressy attire', 'formal pieces', 'evening wear', 'party dress', 'elegant dress', 'formal suit', 'evening gown'],
+                accessories: ['sparkly jewelry', 'festive accessories', 'warm accessories', 'sparkly accessories', 'party accessories', 'elegant jewelry', 'champagne accessories'],
+                colors: ['gold', 'silver', 'white', 'black', 'bright yellow', 'shimmering silver', 'midnight blue', 'vibrant purple', 'electric blue', 'neon highlights'],
+                effects: ['party atmosphere', 'fireworks displays', 'crowded celebrations', 'evening scenes']
             },
             thanksgiving: {
-                fabrics: ['wool', 'cashmere', 'velvet', 'festive', 'warm'],
-                layers: ['cozy sweaters', 'dressy attire', 'formal pieces', 'warm layers'],
-                accessories: ['holiday jewelry', 'festive accessories', 'warm accessories'],
-                colors: ['red', 'green', 'gold', 'silver', 'holiday colors', 'autumn tones'],
-                effects: ['holiday warmth', 'festive styling', 'thanksgiving celebration', 'autumn coziness']
+                fabrics: ['wool', 'cashmere', 'flannel', 'corduroy', 'tweed', 'warm fabric', 'cozy fabric'],
+                layers: ['cozy sweater', 'warm cardigan', 'flannel shirt', 'warm layers', 'dressy attire', 'warm dress', 'autumn attire'],
+                accessories: ['warm scarf', 'warm hat', 'warm accessories', 'autumn accessories', 'warm boots', 'cozy accessories'],
+                colors: ['orange', 'brown', 'yellow', 'gold', 'deep red', 'burgundy', 'amber', 'rust', 'sienna', 'cream', 'harvest orange', 'autumn brown', 'golden yellow'],
+                effects: ['warm layers', 'cozy textures', 'candlelit rooms', 'family dining scenes', 'harvest scenes']
+            },
+            // Japanese holidays
+            chinesenewyear: {
+                fabrics: ['silk', 'satin', 'brocade', 'traditional fabric', 'festive fabric', 'elegant'],
+                layers: ['traditional dress', 'festive attire', 'elegant clothing', 'traditional clothing', 'celebration attire'],
+                accessories: ['red accessories', 'gold accessories', 'traditional jewelry', 'festive accessories', 'red envelope accessories', 'lantern accessories'],
+                colors: ['red', 'gold', 'black', 'jade green', 'bright crimson', 'gold', 'deep black', 'emerald green', 'warm yellow', 'metallic gold'],
+                effects: ['lantern-lit scenes', 'parade scenes', 'crowded celebrations']
+            },
+            setsubun: {
+                fabrics: ['cotton', 'traditional fabric', 'comfortable'],
+                layers: ['traditional clothing', 'comfortable attire', 'home celebration attire'],
+                accessories: ['traditional accessories', 'ritual accessories'],
+                colors: ['red', 'white', 'gold', 'deep red', 'warm white', 'golden yellow', 'wood brown'],
+                effects: ['indoor celebrations', 'family gatherings']
+            },
+            hinamatsuri: {
+                fabrics: ['silk', 'chiffon', 'delicate', 'elegant', 'spring fabric'],
+                layers: ['elegant dress', 'spring dress', 'traditional dress', 'dressy attire', 'elegant clothing'],
+                accessories: ['elegant jewelry', 'spring accessories', 'floral accessories', 'traditional accessories'],
+                colors: ['pink', 'white', 'gold', 'sakura pink', 'pure white', 'warm gold', 'deep black', 'spring green', 'lavender'],
+                effects: ['indoor displays', 'spring scenes', 'doll displays']
+            },
+            summerfestival: {
+                fabrics: ['cotton', 'linen', 'yukata fabric', 'lightweight', 'breathable'],
+                layers: ['yukata', 'summer dress', 'light clothing', 'festival attire', 'summer attire'],
+                accessories: ['festival accessories', 'summer accessories', 'yukata accessories', 'festival jewelry'],
+                colors: ['navy', 'indigo', 'lantern gold', 'white', 'vibrant colors'],
+                effects: ['outdoor evening scenes', 'crowded festivals', 'firework displays']
+            },
+            japanesenewyear: {
+                fabrics: ['silk', 'traditional fabric', 'elegant', 'formal'],
+                layers: ['traditional dress', 'formal attire', 'elegant clothing', 'kimono', 'traditional clothing'],
+                accessories: ['traditional accessories', 'formal accessories', 'elegant jewelry', 'traditional jewelry'],
+                colors: ['red', 'white', 'gold', 'black', 'wood brown'],
+                effects: ['shrine visits', 'family gatherings', 'early morning scenes']
+            },
+            cherryblossom: {
+                fabrics: ['cotton', 'chiffon', 'lightweight', 'delicate', 'spring fabric'],
+                layers: ['spring dress', 'light dress', 'spring attire', 'picnic attire', 'casual dress'],
+                accessories: ['spring accessories', 'floral accessories', 'picnic accessories', 'light accessories'],
+                colors: ['pink', 'white', 'sakura pink', 'cherry blossom pink', 'soft white', 'spring green', 'lavender'],
+                effects: ['outdoor picnic scenes', 'petal-filled scenes', 'spring scenes']
+            },
+            starfestival: {
+                fabrics: ['cotton', 'lightweight', 'summer fabric'],
+                layers: ['summer dress', 'light clothing', 'festival attire', 'summer attire'],
+                accessories: ['festival accessories', 'summer accessories', 'star themed accessories'],
+                colors: ['blue', 'gold', 'red', 'white', 'deep blue', 'golden yellow', 'vibrant red', 'pure white', 'purple', 'summer sky blue'],
+                effects: ['outdoor evening scenes', 'starry nights', 'warm summer nights']
+            },
+            goldenweek: {
+                fabrics: ['cotton', 'comfortable', 'travel fabric'],
+                layers: ['comfortable clothing', 'travel attire', 'casual clothing', 'outdoor attire'],
+                accessories: ['travel accessories', 'comfortable accessories', 'outdoor accessories'],
+                colors: ['red', 'white', 'gold', 'green', 'spring green'],
+                effects: ['travel scenes', 'outdoor activities', 'family gatherings']
+            },
+            childrensday: {
+                fabrics: ['cotton', 'comfortable', 'playful'],
+                layers: ['comfortable clothing', 'casual attire', 'playful clothing'],
+                accessories: ['playful accessories', 'colorful accessories', 'child-friendly accessories'],
+                colors: ['blue', 'white', 'red', 'gold', 'vibrant blue', 'pure white', 'bright red', 'warm gold', 'spring green'],
+                effects: ['outdoor displays', 'family celebrations']
+            },
+            midautumnfestival: {
+                fabrics: ['silk', 'elegant', 'traditional fabric'],
+                layers: ['elegant dress', 'traditional dress', 'formal attire', 'elegant clothing'],
+                accessories: ['elegant accessories', 'traditional accessories', 'moon themed accessories'],
+                colors: ['white', 'silver', 'gold', 'moonlit white', 'silvery gray', 'warm gold', 'deep indigo', 'autumn orange', 'harvest gold'],
+                effects: ['outdoor evening scenes', 'harvest scenes', 'lantern-lit scenes']
+            },
+            obonfestival: {
+                fabrics: ['cotton', 'traditional fabric', 'comfortable'],
+                layers: ['traditional dress', 'comfortable clothing', 'festival attire', 'yukata'],
+                accessories: ['traditional accessories', 'festival accessories', 'lantern accessories'],
+                colors: ['white', 'gold', 'red', 'purple', 'pure white', 'warm gold', 'deep red', 'purple', 'lantern glow'],
+                effects: ['outdoor evening scenes', 'lantern-lit scenes', 'community gatherings']
             }
         };
 
@@ -276,24 +354,25 @@ class ClothingDatabase {
             if (holidayName) {
                 // Map holiday names to clothing database keys
                 const holidayMapping = {
-                    'Christmas/Holiday Season': 'christmas',
-                    'New Year\'s Celebration': 'christmas',
+                    'Christmas': 'christmas',
+                    'New Year\'s': 'newyears',
                     'Halloween': 'halloween',
-                    'Thanksgiving': 'christmas',
+                    'Thanksgiving': 'thanksgiving',
                     'Independence Day': 'independence',
                     'Valentine\'s Day': 'valentines',
-                    'Easter/Spring Holiday': 'easter',
-                    'Chinese New Year': 'christmas',
-                    'Setsubun': 'independence',
-                    'Hinamatsuri': 'easter',
-                    'Summer Festival': 'independence',
-                    'Japanese New Year (Oshogatsu)': 'christmas',
-                    'Cherry Blossom Season (Hanami)': 'easter',
-                    'Star Festival (Tanabata)': 'valentines',
-                    'Golden Week (Shukujitsu)': 'independence',
-                    'Children\'s Day (Kodomo no Hi)': 'easter',
-                    'Mid-Autumn Festival (Tsukimi)': 'easter',
-                    'Obon Festival (Bon Odori)': 'easter'
+                    'Easter': 'easter',
+                    'Chinese New Year': 'chinesenewyear',
+                    'Setsubun': 'setsubun',
+                    'Hinamatsuri': 'hinamatsuri',
+                    'Summer Festival': 'summerfestival',
+                    'Japanese New Year': 'japanesenewyear',
+                    'Cherry Blossom': 'cherryblossom',
+                    'Star Festival': 'starfestival',
+                    'Tanabata': 'starfestival',
+                    'Golden Week': 'goldenweek',
+                    'Children\'s Day': 'childrensday',
+                    'Mid-Autumn Festival': 'midautumnfestival',
+                    'Obon Festival': 'obonfestival'
                 };
                 const holidayCategory = (holidayMapping[holidayName] || holidayName.toLowerCase()).toLowerCase();
                 if (this.holidayClothing[holidayCategory]) {

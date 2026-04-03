@@ -212,7 +212,7 @@ async function loadTextReplacements() {
             // Request text replacements via WebSocket with pagination and search parameters
             const result = await window.wsClient.sendMessage('get_text_replacements', {
                 page: textReplacementPaginationInfo.currentPage,
-                itemsPerPage: 10,
+                itemsPerPage: 20,
                 searchTerm: textReplacementSearchTerm
             });
             
@@ -243,7 +243,7 @@ async function loadTextReplacements() {
                 textReplacementPaginationInfo = {
                     currentPage: 1,
                     totalPages: 1,
-                    itemsPerPage: 10,
+                    itemsPerPage: 20,
                     hasNextPage: false,
                     hasPrevPage: false
                 };
@@ -648,11 +648,6 @@ function openTextReplacementEmphasisMode(textarea, toolbar) {
 
 function closeTextReplacementEmphasisMode(toolbar) {
     if (!toolbar) return;
-    
-    // Use the existing emphasis editing system to close
-    if (window.stopEmphasisEditing) {
-        window.stopEmphasisEditing();
-    }
     
     toolbar.classList.remove('emphasis-mode');
 }
@@ -1226,6 +1221,7 @@ async function showFavoritesManager() {
     const modal = document.getElementById('favoritesManagerModal');
     if (!modal) return;
     
+    const wasClosed = modal.classList.contains('hidden');
     console.log('Opening favorites manager...');
     await loadFavorites();
     console.log('Favorites loaded, rendering list...');
@@ -1238,6 +1234,16 @@ async function showFavoritesManager() {
     }
     
     openModal(modal);
+    
+    if (wasClosed && window.customScrollbar) {
+        // Initialize custom scrollbars after modal is opened
+        setTimeout(() => {
+            const favoritesListContainer = document.getElementById('favoritesListContainer');
+            if (favoritesListContainer) {
+                window.customScrollbar.forceReinit(favoritesListContainer);
+            }
+        }, 50);
+    }
 }
 
 // Hide favorites manager modal
@@ -1336,7 +1342,7 @@ function renderFavoritesList() {
     
     if (allFavorites.length === 0) {
         favoritesList.innerHTML = `
-            <div class="favorites-empty">
+            <div class="text-replacement-empty">
                 <i class="fas fa-star"></i>
                 <p>No favorites yet</p>
                 <small>Add tags and text replacements to your favorites from other parts of the app</small>
@@ -1361,31 +1367,37 @@ function renderFavoritesList() {
 // Create favorite tag item element
 function createFavoriteTagItem(tag, index) {
     const item = document.createElement('div');
-    item.className = 'favorites-item';
+    item.className = 'text-replacement-item';
     item.dataset.index = index;
     item.dataset.type = 'tag';
 
+    const description = tag.name !== tag.description ? tag.description : '';
+
     item.innerHTML = `
-        <div class="favorites-item-content">
-            <div class="favorites-item-icon">
-                <i class="fas fa-tag"></i>
-            </div>
-            <div class="favorites-item-details">
-                <div class="favorites-item-name">
-                    <span class="favorites-item-type-badge tag-badge">Tag</span>
-                    ${escapeHtml(tag.name)}
+        <div class="text-replacement-header">
+            <div class="text-replacement-name">${escapeHtml(tag.name)}</div>
+            <div class="text-replacement-actions">
+                <div class="text-replacement-type">
+                    <i class="fas fa-tag"></i>
                 </div>
-                ${tag.description ? `<div class="favorites-item-description">${escapeHtml(tag.description)}</div>` : ''}
-                <div class="favorites-item-meta">
-                    <span class="favorites-item-date">Added: ${new Date(tag.dateAdded).toLocaleDateString()}</span>
+                <button type="button" class="btn-small btn-danger delete-btn remove-favorite-btn" data-type="tags" data-index="${index}" title="Remove from Favorites">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+        ${description ? `
+        <div class="text-replacement-content">
+            <div class="text-replacement-value-container">
+                <div class="text-replacement-array-items">
+                    <div class="text-replacement-array-item" data-index="0">
+                        <div class="text-replacement-value-display">
+                            <span class="text-replacement-text">${escapeHtml(description)}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="favorites-item-actions">
-            <button type="button" class="btn-secondary btn-small remove-favorite-btn" data-type="tags" data-index="${index}" title="Remove from Favorites">
-                <i class="fas fa-trash"></i>
-            </button>
-        </div>
+        ` : ``}
     `;
 
     // Add event listener after creating the element
@@ -1403,30 +1415,35 @@ function createFavoriteTagItem(tag, index) {
 // Create favorite text replacement item element
 function createFavoriteTextReplacementItem(textReplacement, index) {
     const item = document.createElement('div');
-    item.className = 'favorites-item';
+    item.className = 'text-replacement-item';
     item.dataset.index = index;
     item.dataset.type = 'textReplacement';
 
+    const placeholder = textReplacement.placeholder || '';
+    const replacementValue = textReplacement.replacementValue || '';
+
     item.innerHTML = `
-        <div class="favorites-item-content">
-            <div class="favorites-item-icon">
-                <i class="fas fa-lambda"></i>
-            </div>
-            <div class="favorites-item-details">
-                <div class="favorites-item-name">
-                    <span class="favorites-item-type-badge text-replacement-badge">Text</span>
-                    !${escapeHtml(textReplacement.placeholder)}
+        <div class="text-replacement-header">
+            <div class="text-replacement-name">!${escapeHtml(placeholder)}</div>
+            <div class="text-replacement-actions">
+                <div class="text-replacement-type">
+                    <i class="fas fa-input-text"></i>
                 </div>
-                ${textReplacement.replacementValue ? `<div class="favorites-item-description">${escapeHtml(textReplacement.replacementValue)}</div>` : ''}
-                <div class="favorites-item-meta">
-                    <span class="favorites-item-date">Added: ${new Date(textReplacement.dateAdded).toLocaleDateString()}</span>
-                </div>
+                <button type="button" class="btn-small btn-danger delete-btn remove-favorite-btn" data-type="textReplacements" data-index="${index}" title="Remove from Favorites">
+                    <i class="fas fa-trash"></i>
+                </button>
             </div>
         </div>
-        <div class="favorites-item-actions">
-            <button type="button" class="btn-secondary btn-small remove-favorite-btn" data-type="textReplacements" data-index="${index}" title="Remove from Favorites">
-                <i class="fas fa-trash"></i>
-            </button>
+        <div class="text-replacement-content">
+            <div class="text-replacement-value-container">
+                <div class="text-replacement-array-items">
+                    <div class="text-replacement-array-item" data-index="0">
+                        <div class="text-replacement-value-display">
+                            <span class="text-replacement-text">${escapeHtml(replacementValue)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
 
@@ -2030,7 +2047,7 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                 </div>` : ''}
                 ${anchorSection}
                 ${mitigationSection}
-                ${replacement.reason ? `<div style="color: var(--text-muted); font-size: 0.7em;" class="selectable">
+                ${replacement.reason ? `<div class="selectable reason-text">
                     <i class="fas fa-quote-left"></i> ${escapeHtml(replacement.reason)}
                 </div>` : ''}
                 ${replacement.references && replacement.references.length > 0 ? `<div class="text-replacement-references" style="font-size: 0.7em;">
@@ -2089,31 +2106,42 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
     // Add context menu to the item
     if (window.contextMenu) {
         window.contextMenu.attachToElement(item, {
-            sections: [{
+            sections: [
+                
+                {
+                    type: 'icons',
+                    position: 'outer',
+                    icons: [
+                        {
+                            tooltip: 'Toggle Lock Replacement',
+                            icon: 'fas fa-lock',
+                            action: 'lock',
+                            keepMenuOpen: true,
+                            loadfn: (item, target) => {
+                                item.checked = replacement.locked === true;
+                            }
+                        },
+                        {
+                            tooltip: 'Copy Replacement Value',
+                            icon: 'nai-clipboard',
+                            action: 'copy-value'
+                        },
+                        {
+                            tooltip: 'Apply Replacement to Prompt',
+                            icon: 'fas fa-pen-field',
+                            action: 'apply-prompt',
+                            disabled: !canApply
+                        },
+                    ]
+                },
+                {
                 type: 'list',
                 items: [
                     {
-                        text: 'Lock',
-                        icon: 'fas fa-lock',
-                        action: 'lock',
-                        keepMenuOpen: true,
-                        loadfn: (item, target) => {
-                            item.checked = replacement.locked === true;
-                        }
+                        text: 'Set Emphasis',
+                        icon: 'fas fa-sliders-h',
+                        action: 'set-emphasis',
                     },
-                    { separator: true },
-                    {
-                        text: 'Copy',
-                        icon: 'nai-clipboard',
-                        action: 'copy-value'
-                    },
-                    {
-                        text: 'Apply',
-                        icon: 'fas fa-pen-field',
-                        action: 'apply-prompt',
-                        disabled: !canApply
-                    },
-                    { separator: true },
                     {
                         text: 'Report Issue',
                         icon: 'fas fa-flag',
@@ -2152,6 +2180,8 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                     toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item);
                 } else if (actionName === 'delete-replacement') {
                     deleteDynamicReplacementFromLockModal(globalIndex);
+                } else if (actionName === 'set-emphasis') {
+                    setDynamicReplacementEmphasis(globalIndex, item);
                 }
             }
         });
@@ -2386,6 +2416,56 @@ function toggleDynamicReplacementLockInModal(globalIndex, lockBtn, item) {
     // Show feedback
     const statusText = isLocked ? 'locked for AI maintenance' : 'unlocked';
     showGlassToast('success', null, `Replacement ${statusText}`, false, 2000, '<i class="fas fa-lock"></i>');
+}
+
+// Set emphasis value for a dynamic replacement
+async function setDynamicReplacementEmphasis(globalIndex, itemElement) {
+    const found = findDynamicReplacementByIndex(globalIndex);
+    if (!found) {
+        console.error('Could not find replacement at index', globalIndex);
+        showGlassToast('error', null, 'Could not find replacement', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const { replacement } = found;
+    
+    // Get current emphasis value (default to 1.0 if not set)
+    const currentEmphasis = replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined 
+        ? String(replacement.segment_emphasis) 
+        : '1.0';
+    
+    // Show input dialog to get new emphasis value
+    // showInputDialog returns the input value if OK is clicked, null if cancelled
+    const inputValue = await showInputDialog(
+        'Enter emphasis value (e.g., 1.0, 1.2, 0.8, -0.5):',
+        currentEmphasis,
+        '1.0',
+        [
+            { text: 'Set', value: 'ok', className: 'btn-primary' },
+            { text: 'Cancel', value: null, className: 'btn-secondary' },
+        ]
+    );
+    
+    if (inputValue === null || inputValue === '') {
+        return; // User cancelled or entered empty value
+    }
+    
+    // Parse and validate the value
+    const emphasisValue = parseFloat(inputValue);
+    if (isNaN(emphasisValue)) {
+        showGlassToast('error', null, 'Invalid emphasis value. Must be a number.', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+    
+    // Set the emphasis value
+    replacement.segment_emphasis = emphasisValue;
+    
+    // Re-render the lock modal list to show updated emphasis
+    if (typeof renderTextReplacementLockList === 'function') {
+        renderTextReplacementLockList();
+    }
+    
+    showGlassToast('success', null, `Emphasis set to ${emphasisValue.toFixed(1)}`, false, 2000, '<i class="fas fa-sliders-h"></i>');
 }
 
 

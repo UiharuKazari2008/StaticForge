@@ -704,6 +704,7 @@ class TextReplacements {
                     } else if (lockedReplacement && !Array.isArray(replacementValue)) {
                         // For non-array values, use the locked value directly
                         selectedValue = lockedReplacement.value;
+                        replacementIndex = 0;
                         isLocked = true;
                     }
                 }
@@ -803,8 +804,8 @@ class TextReplacements {
                                 optionsMap.set(compositeKey, {value, key, index});
                             });
                         } else {
-                            const compositeKey = `${replacementValue}|${key}|0`;
-                            optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                            const compositeKey = `${replacementValue}|${key}`;
+                            optionsMap.set(compositeKey, {value: replacementValue, key}); // No index for single values
                         }
                     });
                 });
@@ -823,8 +824,8 @@ class TextReplacements {
                                 optionsMap.set(compositeKey, {value, key, index});
                             });
                         } else {
-                            const compositeKey = `${replacementValue}|${key}|0`;
-                            optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                            const compositeKey = `${replacementValue}|${key}`;
+                            optionsMap.set(compositeKey, {value: replacementValue, key}); // No index for single values
                         }
                     });
                 });
@@ -851,8 +852,8 @@ class TextReplacements {
                         optionsMap.set(compositeKey, {value, key, index});
                     });
                 } else {
-                    const compositeKey = `${replacementValue}|${key}|0`;
-                    optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                    const compositeKey = `${replacementValue}|${key}`;
+                    optionsMap.set(compositeKey, {value: replacementValue, key}); // No index for single values
                 }
             });
             return Array.from(optionsMap.values());
@@ -874,8 +875,8 @@ class TextReplacements {
                         optionsMap.set(compositeKey, {value, key, index});
                     });
                 } else {
-                    const compositeKey = `${replacementValue}|${key}|0`;
-                    optionsMap.set(compositeKey, {value: replacementValue, key, index: 0});
+                    const compositeKey = `${replacementValue}|${key}`;
+                    optionsMap.set(compositeKey, {value: replacementValue, key}); // No index for single values
                 }
             });
             return Array.from(optionsMap.values());
@@ -918,8 +919,8 @@ class TextReplacements {
                     optionsMap.set(compositeKey, {value, key: actualKey, index});
                 });
             } else {
-                const compositeKey = `${replacementValue}|${actualKey}|0`;
-                optionsMap.set(compositeKey, {value: replacementValue, key: actualKey, index: 0});
+                const compositeKey = `${replacementValue}|${actualKey}`;
+                optionsMap.set(compositeKey, {value: replacementValue, key: actualKey}); // No index for single values
             }
         }
 

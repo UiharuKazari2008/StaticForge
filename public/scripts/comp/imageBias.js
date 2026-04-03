@@ -1441,15 +1441,19 @@ async function cropImageToResolution() {
             croppedBlobUrl = await cropImageToResolutionInternal(imageDataUrl, bias);
         }
 
-        // Update the preview image
-        variationImage.src = croppedBlobUrl;
-        variationImage.classList.remove('hidden');
-        
-        // Wait for the image to actually load before updating mask preview
-        variationImage.onload = function() {
-            updateMaskPreview();
-        };
+        // Update the preview image and wait for it to load
+        await new Promise((resolve, reject) => {
+            variationImage.onload = function() {
+                updateMaskPreview();
+                resolve();
+            };
+            variationImage.onerror = function() {
+                reject(new Error('Failed to load cropped image'));
+            };
+            variationImage.src = croppedBlobUrl;
+        });
 
+        variationImage.classList.remove('hidden');
         window.uploadedImageData.croppedBlobUrl = croppedBlobUrl;
         
         // Update the image bias orientation to ensure it's correct

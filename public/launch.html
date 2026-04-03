@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <title>Dreamscape</title>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
@@ -12,30 +14,31 @@
     <meta name="apple-mobile-web-app-title" content="Dreamscape">
     <meta name="msapplication-TileColor" content="#6366f1">
     <meta name="msapplication-config" content="/browserconfig.xml">
-    
+
     <!-- Tablet and Orientation Support -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="format-detection" content="telephone=no">
     <meta name="apple-touch-fullscreen" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
+    <meta name="apple-mobile-web-app-status-bar-style" content="transparent">
+
     <!-- Cache Control - Prevent Browser Caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
-    
+
     <!-- Preload critical resources -->
     <link rel="preload" href="/static_images/splash.png" as="image">
     <link rel="preload" href="/static_images/logo_icon.png" as="image">
-    <link rel="preload" href="/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf" as="font" type="font/ttf" crossorigin="anonymous">
-    
+    <link rel="preload" href="/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf" as="font" type="font/ttf"
+        crossorigin="anonymous">
+
     <!-- PWA Icons -->
     <link rel="icon" type="image/png" sizes="32x32" href="/static_images/icon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static_images/icon-16x16.png">
-    
+
     <!-- iOS Icons -->
     <link rel="apple-touch-icon" href="/static_images/apple-touch-icon.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/static_images/apple-touch-icon.png">
@@ -48,53 +51,85 @@
     <link rel="apple-touch-icon" sizes="60x60" href="/static_images/apple-touch-icon-60x60.png">
     <link rel="apple-touch-icon" sizes="40x40" href="/static_images/apple-touch-icon-40x40.png">
     <link rel="apple-touch-icon" sizes="29x29" href="/static_images/apple-touch-icon-29x29.png">
-    
+
     <!-- Safari Pinned Tab Icon -->
     <link rel="mask-icon" href="/static_images/icon-192x192.png" color="#6366f1">
-    
+
     <!-- iOS Splash Screens -->
     <!-- iPhone 14 Pro Max / 15 Pro Max -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1290x2796.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1290x2796.png">
     <!-- iPhone 14 Pro / 15 Pro -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1179x2556.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1179x2556.png">
     <!-- iPhone 14 Plus / 15 Plus -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1284x2778.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1284x2778.png">
     <!-- iPhone 14 / 15 -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1170x2532.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1170x2532.png">
     <!-- iPhone 13 Pro / 14 Pro -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1125x2436.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1125x2436.png">
     <!-- iPhone 13 / 14 -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1242x2688.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1242x2688.png">
     <!-- iPhone 11 Pro Max / XS Max -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-828x1792.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-828x1792.png">
     <!-- iPhone 11 / XR -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-750x1334.png">
-         <!-- iPhone 12 mini / 13 mini -->
-     <link rel="apple-touch-startup-image" media="screen and (device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)" href="/static_images/apple-splash-1080x2340.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-750x1334.png">
+    <!-- iPhone 12 mini / 13 mini -->
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 360px) and (device-height: 780px) and (-webkit-device-pixel-ratio: 3)"
+        href="/static_images/apple-splash-1080x2340.png">
     <!-- iPhone 5 / SE -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-640x1136.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-640x1136.png">
     <!-- iPad Pro 12.9" -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2048x2732.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-2048x2732.png">
     <!-- iPad Pro 11" -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-1668x2388.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-1668x2388.png">
     <!-- iPad 9.7" / Air -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-1536x2048.png">
-    
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-1536x2048.png">
+
     <!-- Landscape Orientation Splash Screens -->
     <!-- iPad Pro 12.9" Landscape -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2732x2048.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 1366px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-2732x2048.png">
     <!-- iPad Pro 11" Landscape -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 1194px) and (device-height: 834px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2388x1668.png">
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 1194px) and (device-height: 834px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-2388x1668.png">
     <!-- iPad 9.7" / Air Landscape -->
-    <link rel="apple-touch-startup-image" media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)" href="/static_images/apple-splash-2048x1536.png">
-    
+    <link rel="apple-touch-startup-image"
+        media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)"
+        href="/static_images/apple-splash-2048x1536.png">
+
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         /* Window Controls Overlay API Variables */
         :root {
             --titlebar-area-x: env(titlebar-area-x, 0);
@@ -102,14 +137,14 @@
             --titlebar-area-width: env(titlebar-area-width, 100%);
             --titlebar-area-height: env(titlebar-area-height, 33px);
         }
-        
+
         @font-face {
             font-family: 'MozillaHeadline';
             src: url('/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf') format('truetype');
             font-weight: 100 900;
             font-stretch: 75% 125%;
         }
-        
+
         body {
             font-family: 'MozillaHeadline', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a1a1a;
@@ -121,7 +156,7 @@
             height: 100vh;
             width: 100vw;
         }
-        
+
         /* Window Controls Overlay API - Titlebar Grab Area */
         #titlebar-grab-area {
             position: fixed;
@@ -189,7 +224,7 @@
             app-region: no-drag;
             cursor: default;
         }
-        
+
         .launch-container {
             position: relative;
             width: 100%;
@@ -203,14 +238,14 @@
             justify-content: center;
             align-items: center;
         }
-        
+
         /* Landscape orientation - use top-center cropping to match generated splash screens */
         @media screen and (orientation: landscape) {
             .launch-container {
                 background-position: center top;
             }
         }
-        
+
         .launch-content {
             text-align: center;
             z-index: 10;
@@ -224,7 +259,7 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         .logo {
             width: 80px;
             height: 80px;
@@ -234,22 +269,22 @@
             background-repeat: no-repeat;
             background-position: center;
         }
-        
+
         .app-name {
             font-size: 1.5rem;
             font-weight: 600;
             margin-bottom: 0.5rem;
         }
-        
 
-        
+
+
         .loading {
             display: flex;
             justify-content: center;
             align-items: center;
             margin: 1rem 0;
         }
-        
+
         .spinner {
             width: 42px;
             height: 42px;
@@ -258,12 +293,17 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
-        
+
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
-        
+
         .error-message {
             color: #ef4444;
             margin: 1rem 0;
@@ -272,15 +312,16 @@
             border: 1px solid rgba(239, 68, 68, 0.3);
             border-radius: 0.5rem;
         }
-        
+
         .button-group {
             display: flex;
             gap: 1rem;
             margin-top: 1rem;
             justify-content: center;
         }
-        
-        .retry-button, .continue-button {
+
+        .retry-button,
+        .continue-button {
             background: #6366f1;
             color: white;
             border: none;
@@ -290,12 +331,13 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        
-        .retry-button:disabled, .continue-button:disabled {
+
+        .retry-button:disabled,
+        .continue-button:disabled {
             background: #6b7280;
             cursor: not-allowed;
         }
-        
+
         .rescue-button {
             background: #ef4444;
             color: white;
@@ -306,11 +348,11 @@
             cursor: pointer;
             transition: background-color 0.2s;
         }
-        
+
         .rescue-button:hover {
             background: #dc2626;
         }
-        
+
         .version-warning {
             position: fixed;
             top: calc(env(safe-area-inset-top, 0) + env(titlebar-area-height, 0));
@@ -323,7 +365,7 @@
             align-items: center;
             z-index: 1000;
         }
-        
+
         .warning-content {
             background: rgb(38 38 38 / 90%);
             padding: 2rem;
@@ -334,40 +376,41 @@
             max-width: 500px;
             margin: 1rem;
         }
-        
+
         .warning-content h3 {
             color: #fbbf24;
             margin-bottom: 1rem;
             font-size: 1.5rem;
         }
-        
+
         .warning-content p {
             margin-bottom: 2rem;
             line-height: 1.5;
         }
-        
+
         .hidden {
             display: none;
         }
-        
+
         /* Responsive adjustments */
         @media (max-width: 768px) {
             .launch-content {
                 margin: 1rem;
                 padding: 1.5rem;
             }
-            
+
             .logo {
                 width: 60px;
                 height: 60px;
             }
-            
+
             .app-name {
                 font-size: 1.25rem;
             }
         }
     </style>
 </head>
+
 <body>
     <!-- Window Controls Overlay API - Titlebar Grab Area -->
     <div id="titlebar-grab-area">
@@ -375,16 +418,16 @@
         <div id="titlebar-grab-center"></div>
         <div id="titlebar-null-right"></div>
     </div>
-    
+
     <div class="launch-container">
         <div class="launch-content">
             <div class="logo"></div>
             <div class="app-name">Dreamscape</div>
-            
+
             <div class="loading" id="loading">
                 <div class="spinner"></div>
             </div>
-            
+
             <div class="error-message hidden" id="errorMessage">
                 <div id="errorText"></div>
                 <div class="button-group">
@@ -392,7 +435,7 @@
                     <button class="rescue-button hidden" id="rescueButton" onclick="performRescue()">Rescue</button>
                 </div>
             </div>
-            
+
             <div class="version-warning hidden" id="versionWarning">
                 <div class="warning-content">
                     <h3>Version Mismatch Detected</h3>
@@ -408,11 +451,11 @@
 
     <script>
         let validationInProgress = false;
-        
+
         async function checkOnlineStatus() {
             return navigator.onLine;
         }
-        
+
         async function checkServerAccessibility() {
             try {
                 const response = await fetch('/static_images/icon-32x32.png', {
@@ -424,14 +467,14 @@
                 return false;
             }
         }
-        
+
         async function checkServerReadiness() {
             try {
                 const response = await fetch('/status', {
                     method: 'OPTIONS',
                     cache: 'no-cache'
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
                     return {
@@ -447,14 +490,14 @@
                 return null;
             }
         }
-        
+
         let serverReadinessInterval = null;
         let serverReadinessAttempts = 0;
         const maxReadinessAttempts = 20; // 20 attempts = 10 minutes (30s * 20)
-        
+
         async function pollServerReadiness() {
             const readiness = await checkServerReadiness();
-            
+
             if (readiness === null) {
                 // Server not responding at all
                 serverReadinessAttempts++;
@@ -466,7 +509,7 @@
                 showError(`Server not responding (attempt ${serverReadinessAttempts}/${maxReadinessAttempts})`, true);
                 return;
             }
-            
+
             if (readiness.isReady) {
                 // Server is ready, proceed with normal validation
                 clearInterval(serverReadinessInterval);
@@ -474,39 +517,39 @@
                 setTimeout(performValidation, 1000);
                 return;
             }
-            
+
             // Server is initializing, show current stage
             const uptimeSeconds = Math.floor(readiness.uptime / 1000);
             showError(`${readiness.stageMessage} (${uptimeSeconds}s)`, true);
         }
-        
+
         function startServerReadinessPolling() {
             if (serverReadinessInterval) {
                 clearInterval(serverReadinessInterval);
             }
-            
+
             serverReadinessAttempts = 0;
             showError('Checking server status...');
-            
+
             // Start polling every 30 seconds
             serverReadinessInterval = setInterval(pollServerReadiness, 30000);
-            
+
             // Also check immediately
             pollServerReadiness();
         }
-        
+
         async function checkSessionValidity() {
             try {
                 const response = await fetch('/app', {
                     method: 'OPTIONS',
                     cache: 'no-cache'
                 });
-                
+
                 if (response.ok) {
                     const data = await response.json();
-                    
+
                     // Check version compatibility
-                    const clientVersion = '1.0.1'; // Current client version
+                    const clientVersion = '1.0.2'; // Current client version
                     if (data.serverVersion && data.serverVersion !== clientVersion) {
                         // Version mismatch - show warning
                         showVersionWarning({
@@ -516,7 +559,7 @@
                         });
                         return null; // Indicate version check needed
                     }
-                    
+
                     return true; // Session valid and version compatible
                 } else {
                     return false; // Session invalid
@@ -525,49 +568,49 @@
                 return false;
             }
         }
-        
 
-        
+
+
         function showError(message, showRescue = false) {
             document.getElementById('loading').classList.add('hidden');
             document.getElementById('errorMessage').classList.remove('hidden');
             document.getElementById('errorText').textContent = message;
-            
+
             if (showRescue) {
                 document.getElementById('rescueButton').classList.remove('hidden');
             } else {
                 document.getElementById('rescueButton').classList.add('hidden');
             }
         }
-        
+
         function hideError() {
             document.getElementById('errorMessage').classList.add('hidden');
             document.getElementById('loading').classList.remove('hidden');
         }
-        
+
         function redirectToApp() {
             // Use replace to avoid back button issues and prevent white flash
             window.location.replace('/app');
         }
-        
+
         function redirectToHome() {
             // Use replace to avoid back button issues and prevent white flash
             window.location.replace('/');
         }
-        
+
         async function performValidation() {
             if (validationInProgress) return;
             validationInProgress = true;
-            
+
             hideError();
-            
+
             // Step 1: Check online status
             if (!await checkOnlineStatus()) {
                 showError('No internet connection');
                 validationInProgress = false;
                 return;
             }
-            
+
             // Step 2: Check server readiness first
             const readiness = await checkServerReadiness();
             if (readiness === null) {
@@ -576,21 +619,21 @@
                 startServerReadinessPolling();
                 return;
             }
-            
+
             if (!readiness.isReady) {
                 // Server is initializing, start polling
                 validationInProgress = false;
                 startServerReadinessPolling();
                 return;
             }
-            
+
             // Step 3: Check server accessibility (server is ready)
             if (!await checkServerAccessibility()) {
                 showError('Unable to connect to server', true); // Show rescue button
                 validationInProgress = false;
                 return;
             }
-            
+
             // Step 4: Check session validity and version compatibility
             const sessionResult = await checkSessionValidity();
             if (sessionResult === null) {
@@ -604,14 +647,14 @@
                 // Session invalid
                 setTimeout(redirectToHome, 500);
             }
-            
+
             validationInProgress = false;
         }
-        
+
         function retryValidation() {
             performValidation();
         }
-        
+
         async function performRescue() {
             try {
                 // Clear all caches
@@ -621,7 +664,7 @@
                         cacheNames.map(cacheName => caches.delete(cacheName))
                     );
                 }
-                
+
                 // Unregister service worker
                 if ('serviceWorker' in navigator) {
                     const registrations = await navigator.serviceWorker.getRegistrations();
@@ -629,11 +672,11 @@
                         registrations.map(registration => registration.unregister())
                     );
                 }
-                
+
                 // Clear localStorage and sessionStorage
                 localStorage.clear();
                 sessionStorage.clear();
-                
+
                 // Reload the page
                 window.location.reload();
             } catch (error) {
@@ -641,36 +684,37 @@
                 showError('Rescue failed. Please try refreshing the page manually.');
             }
         }
-        
 
-        
+
+
         function showVersionWarning(versionData) {
             document.getElementById('versionMessage').textContent = versionData.message;
             document.getElementById('versionWarning').classList.remove('hidden');
         }
-        
+
         function continueAnyway() {
             document.getElementById('versionWarning').classList.add('hidden');
             // Continue with normal flow
             performValidation();
         }
-        
+
         // Start validation when page loads
         document.addEventListener('DOMContentLoaded', () => {
             // Small delay to ensure the page is fully rendered
             setTimeout(performValidation, 100);
         });
-        
+
         // Handle online/offline events
         window.addEventListener('online', () => {
             if (document.getElementById('errorMessage').classList.contains('hidden')) {
                 performValidation();
             }
         });
-        
+
         window.addEventListener('offline', () => {
             showError('Connection lost. Please check your network and try again.');
         });
     </script>
 </body>
+
 </html>

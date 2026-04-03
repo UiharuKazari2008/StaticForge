@@ -24,6 +24,11 @@ let currentWorkspaceOperation = null;
 let isWorkspaceSwitching = false; // Flag to prevent duplicate calls during workspace switching
 let workspaceStyleElement = null; // Global style element for all workspace styles
 let workspaceToastId = null; // ID of the workspace switching toast
+let workspaceProgressModal = null; // Progress modal for workspace switching
+let workspaceProgressBarElement = null;
+let workspaceProgressTextElement = null;
+let workspaceProgressContainerElement = null;
+let workspaceProgressModeSwitched = false; // Track if we've switched from marquee to animate mode
 
 // Automatic background system
 let automaticBackgroundInterval = null;
@@ -328,8 +333,8 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     const GLASS_TINT_MIN_LIGHTNESS = 10; // Minimum glass tint lightness
     
     // Toggle button color variables
-    const TOGGLE_ON_LIGHTNESS = 30; // Toggle on state lightness
-    const TOGGLE_ON_SATURATION = 85; // Toggle on state saturation
+    const TOGGLE_ON_LIGHTNESS = 50; // Toggle on state lightness
+    const TOGGLE_ON_SATURATION = 45; // Toggle on state saturation
     const TOGGLE_ON_HOVER_LIGHTNESS = 35; // Toggle on hover state lightness
     const TOGGLE_ON_HOVER_SATURATION = 80; // Toggle on hover state saturation
     const TOGGLE_SHADOW_LIGHTNESS = 5; // Toggle shadow lightness (darker)
@@ -381,7 +386,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--btn-hover-border-primary: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 80%);`,
         `--btn-hover-text-primary: #ffffff;`,
         `--btn-shadow-primary: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
-        `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 89%);`,
+        `--btn-shadow-primary-glow: 0 2px 16px hsl(${workspaceHsl.h} 100% 85% / 90%);`,
         `--btn-hover-bg-secondary: hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 38%);`,
         `--btn-shadow-secondary-glow: 0 8px 20px hsl(${bgTintedHsl.h} ${bgTintedHsl.s}% ${bgTintedHsl.l}% / 33%);`,
         `--hover-show-active-bg: hsl(${workspaceHsl.h} ${originalSaturation}% ${originalLightness}% / 66%);`,
@@ -532,7 +537,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
 
         variables.push(
             `--glass-layer-dark-menu: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 97%);`,
-            `--glass-layer-dark-bg: hsl(${glassTintH} 25% 10% / 90%);`,
+            `--glass-layer-dark-bg: hsl(${glassTintH} 25% 10% / 85%);`,
             `--glass-layer-dark-5: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 66%);`,
             `--glass-layer-dark-4: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 44%);`,
             `--glass-layer-dark-3: hsl(${glassTintH} ${glassTintS}% ${glassTintL}% / 33%);`,
@@ -588,11 +593,11 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
             `--glass-border-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 55)}% ${Math.min(100, workspaceHsl.l + 40)}% / 15%);`,
             `--glass-border-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 45)}% ${Math.min(100, workspaceHsl.l + 35)}% / 20%);`,
             `--glass-border-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 35)}% ${Math.min(100, workspaceHsl.l + 30)}% / 25%);`,
-            `--glass-inset-bg-1: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 80)}% ${Math.min(100, workspaceHsl.l + 50)}% / 5%);`,
-            `--glass-inset-bg-2: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 75)}% ${Math.min(100, workspaceHsl.l + 45)}% / 8%);`,
-            `--glass-inset-bg-3: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 70)}% ${Math.min(100, workspaceHsl.l + 40)}% / 12%);`,
-            `--glass-inset-bg-4: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 65)}% ${Math.min(100, workspaceHsl.l + 35)}% / 15%);`,
-            `--glass-inset-bg-5: hsl(${workspaceHsl.h} ${Math.max(0, workspaceHsl.s - 60)}% ${Math.min(100, workspaceHsl.l + 30)}% / 20%);`,
+            `--glass-inset-bg-1: hsl(${workspaceHsl.h} ${Math.max(75, workspaceHsl.s - 80)}% ${Math.min(60, workspaceHsl.l + 50)}% / 5%);`,
+            `--glass-inset-bg-2: hsl(${workspaceHsl.h} ${Math.max(75, workspaceHsl.s - 75)}% ${Math.min(60, workspaceHsl.l + 45)}% / 8%);`,
+            `--glass-inset-bg-3: hsl(${workspaceHsl.h} ${Math.max(75, workspaceHsl.s - 70)}% ${Math.min(60, workspaceHsl.l + 40)}% / 12%);`,
+            `--glass-inset-bg-4: hsl(${workspaceHsl.h} ${Math.max(75, workspaceHsl.s - 65)}% ${Math.min(60, workspaceHsl.l + 35)}% / 15%);`,
+            `--glass-inset-bg-5: hsl(${workspaceHsl.h} ${Math.max(75, workspaceHsl.s - 60)}% ${Math.min(60, workspaceHsl.l + 30)}% / 20%);`,
             `--header-bg: hsl(${workspaceHsl.h} 100% 25% / 40%);`,
             `--header-border: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 30%);`,
             `--active-tab-bg: hsl(${workspaceHsl.h} ${workspaceHsl.s}% ${workspaceHsl.l}% / 54%);`,
@@ -1458,16 +1463,138 @@ async function dumpWorkspace(sourceId, targetId) {
     }
 }
 
+// Show workspace switching progress modal
+function showWorkspaceProgressModal(workspaceName) {
+    if (!window.isDesktop) {
+        // Fall back to toast for non-desktop mode
+        workspaceToastId = showGlassToast('info', 'Teleporting', `Switching to ${workspaceName} planet...`, false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
+        return;
+    }
+
+    // Create progress modal using confirmation dialog
+    const progressHtml = `
+        <div style="text-align: left; display: flex; flex-direction: column; gap: 8px;">
+            <div role="progressbar" class="marquee animate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Workspace switching progress">
+                <div id="workspaceProgressBar"></div>
+            </div>
+            <div id="workspaceProgressText" style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-accent);">${workspaceName}</span>
+                <span style="color: var(--text-accent-tinted);">Preparing...</span>
+            </div>
+        </div>
+    `;
+
+    workspaceProgressModal = showConfirmationDialog(
+        progressHtml,
+        [], // No buttons - this is a progress modal
+        null, // No event
+        {
+            title: `Change Workspace`,
+            icon: 'fas fa-planet-ringed',
+            showCloseButton: false,
+            width: '375px'
+        }
+    );
+
+    // Store references to progress elements after modal is created
+    setTimeout(() => {
+        workspaceProgressBarElement = document.getElementById('workspaceProgressBar');
+        workspaceProgressTextElement = document.getElementById('workspaceProgressText');
+        workspaceProgressContainerElement = workspaceProgressBarElement ? workspaceProgressBarElement.parentElement : null;
+    }, 100);
+}
+
+// Update workspace progress modal
+function updateWorkspaceProgress(progress) {
+    if (!workspaceProgressModal) return;
+
+    // Switch from marquee mode to determinate progress mode on first progress update
+    if (!workspaceProgressModeSwitched && workspaceProgressContainerElement) {
+        workspaceProgressContainerElement.classList.remove('marquee');
+        workspaceProgressModeSwitched = true;
+    }
+
+    if (workspaceProgressBarElement && workspaceProgressTextElement) {
+        const percent = Math.round(progress.progress * 100);
+        workspaceProgressBarElement.style.width = `${percent}%`;
+
+        // Update ARIA attributes for accessibility
+        if (workspaceProgressContainerElement && workspaceProgressContainerElement.hasAttribute('role') && workspaceProgressContainerElement.getAttribute('role') === 'progressbar') {
+            workspaceProgressContainerElement.setAttribute('aria-valuenow', percent);
+        }
+
+        const statusSpan = workspaceProgressTextElement.querySelector('span:last-child');
+        if (statusSpan) {
+            if (progress.phase === 'initial') {
+                statusSpan.textContent = `Preparing Workspace (${progress.loaded}/${progress.total || 'unknown'})`;
+            } else {
+                statusSpan.textContent = `Opening Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+            }
+        }
+    } else {
+        // Fallback: try to find elements if not stored yet
+        const progressBar = document.getElementById('workspaceProgressBar');
+        const progressText = document.getElementById('workspaceProgressText');
+        const progressContainer = progressBar ? progressBar.parentElement : null;
+
+        if (progressBar && progressText) {
+            // Switch from marquee mode to determinate progress mode on first progress update
+            if (!workspaceProgressModeSwitched && progressContainer) {
+                progressContainer.classList.remove('marquee');
+                workspaceProgressModeSwitched = true;
+            }
+
+            const percent = Math.round(progress.progress * 100);
+            progressBar.style.width = `${percent}%`;
+
+            if (progressContainer && progressContainer.hasAttribute('role') && progressContainer.getAttribute('role') === 'progressbar') {
+                progressContainer.setAttribute('aria-valuenow', percent);
+            }
+
+            const statusSpan = progressText.querySelector('span:last-child');
+            if (statusSpan) {
+                if (progress.phase === 'initial') {
+                    statusSpan.textContent = `Loading Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+                } else {
+                    statusSpan.textContent = `Please Wait (${progress.loaded}/${progress.total || 'unknown'})`;
+                }
+            }
+        }
+    }
+}
+
+// Hide workspace progress modal
+function hideWorkspaceProgressModal() {
+    if (workspaceProgressModal) {
+        hideConfirmationDialog();
+        workspaceProgressModal = null;
+    }
+
+    // Clear stored references and reset mode flag
+    workspaceProgressBarElement = null;
+    workspaceProgressTextElement = null;
+    workspaceProgressContainerElement = null;
+    workspaceProgressModeSwitched = false;
+}
+
 async function setActiveWorkspace(id) {
     try {
         // Set flag to prevent duplicate calls
         isWorkspaceSwitching = true;
         window.isWorkspaceSwitching = true;
 
-        // Show glass toast with loading gif
+        // Save any pending desktop shortcut changes before switching workspaces
+        if (desktopShortcuts && desktopShortcuts.pendingChanges) {
+            if (desktopShortcuts.saveDebounceTimer) {
+                clearTimeout(desktopShortcuts.saveDebounceTimer);
+            }
+            await desktopShortcuts.saveToServer();
+        }
+
+        // Show progress modal or toast
         const targetWorkspace = workspaces[id];
         const workspaceName = targetWorkspace ? targetWorkspace.name : id;
-        workspaceToastId = showGlassToast('info', 'Teleporting', `Switching to ${workspaceName} planet...`, false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
+        showWorkspaceProgressModal(workspaceName);
 
         // Fade out gallery
         if (gallery) {
@@ -1498,7 +1625,8 @@ async function setActiveWorkspace(id) {
             gallery.style.opacity = 1;
         }
         
-        // Remove workspace loading toast on error
+        // Hide workspace progress modal/toast on error
+        hideWorkspaceProgressModal();
         if (workspaceToastId) {
             removeGlassToast(workspaceToastId);
             workspaceToastId = null;
@@ -2197,7 +2325,7 @@ if (window.wsClient) {
 // Initialize WebSocket workspace event listeners
 function initializeWebSocketWorkspaceEvents() {
     // Listen for workspace updates from WebSocket
-    document.addEventListener('workspaceUpdated', (event) => {
+    document.addEventListener('workspaceUpdated', async (event) => {
         const data = event.detail;
         
         // Handle different types of workspace updates
@@ -2326,26 +2454,105 @@ function initializeWebSocketWorkspaceEvents() {
                 // Update UI components
                 renderWorkspaceDropdown();
                 
-                // Only refresh gallery if it's currently visible
-                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
-                    switchGalleryView(currentGalleryView, true);
-                }
                 break;
                 
             case 'scrap_added':
             case 'scrap_removed':
+                // Optimize: Use local updates instead of full refresh
+                if (!document.getElementById('gallery')?.classList.contains('hidden') && data.filename) {
+                    const gallery = document.getElementById('gallery');
+                    const image = findImageByFilename(data.filename);
+                    if (image) {
+                        if ((currentGalleryView === 'images' && data.action === 'scrap_added') || (currentGalleryView === 'scraps' && data.action === 'scrap_removed')) {
+                            // Remove from images view when moved to scraps
+                            removeImageFromGallery(image);
+                        } else if (currentGalleryView === 'scraps' && data.action === 'scrap_added') {
+                            // Image added to scraps - if not in current view, we'd need to add it
+                            // But since we're in scraps view, it should already be there or we refresh
+                            // For now, only refresh if image not found (it might be a new scrap)
+                            scrollPositionPreservationEnabled = true;
+                            preserveScrollPosition();
+                            await switchGalleryView(currentGalleryView, true);
+                            restoreScrollPosition();
+                        }
+                    } else if (currentGalleryView === 'scraps' && data.action === 'scrap_added') {
+                        // Image not found locally, might be a new scrap - refresh to get it
+                        scrollPositionPreservationEnabled = true;
+                        preserveScrollPosition();
+                        await switchGalleryView(currentGalleryView, true);
+                        restoreScrollPosition();
+                    }
+                }
+                break;
+                
             case 'pinned_added':
             case 'pinned_removed':
+                // Optimize: Update pin status locally and update gallery without full refresh
+                if (!document.getElementById('gallery')?.classList.contains('hidden') && data.filename) {
+                    const gallery = document.getElementById('gallery');
+                    const image = findImageByFilename(data.filename);
+                    if (image) {
+                        // Update local pin status
+                        image.isPinned = (data.action === 'pinned_added');
+                        
+                        // Update pin buttons in gallery
+                        if (typeof updateGalleryPinButtons === 'function') {
+                            updateGalleryPinButtons(data.filename, image.isPinned);
+                        }
+                        
+                        // If viewing 'pinned' view, add/remove item locally
+                        if (currentGalleryView === 'pinned') {
+                            if (data.action === 'pinned_removed') {
+                                // Remove from pinned view when unpinned
+                                removeImageFromGallery(image);
+                            } else if (data.action === 'pinned_added') {
+                                // Image was pinned - check if it's already in the gallery
+                                const existingItem = gallery.querySelector(`[data-filename="${data.filename}"]`);
+                                if (!existingItem) {
+                                    // Not in gallery - the image was just pinned and needs to be added
+                                    // Since pinned view has its own sorted allImages, we need to refresh
+                                    // to get the updated list with the new pinned image in the correct position
+                                    scrollPositionPreservationEnabled = true;
+                                    preserveScrollPosition();
+                                    await switchGalleryView(currentGalleryView, true);
+                                    restoreScrollPosition();
+                                }
+                                // If existingItem exists, it's already in the gallery, buttons already updated above
+                            }
+                        }
+                        // If not viewing pinned view, buttons are already updated above, no gallery change needed
+                    } else if (currentGalleryView === 'pinned' && data.action === 'pinned_added') {
+                        // Image not found locally but was pinned - refresh to get it
+                        scrollPositionPreservationEnabled = true;
+                        preserveScrollPosition();
+                        await switchGalleryView(currentGalleryView, true);
+                        restoreScrollPosition();
+                    }
+                }
+                break;
+                
             case 'bulk_pinned_added':
             case 'bulk_pinned_removed':
+                // For bulk operations, refresh is more efficient than individual updates
+                if (!document.getElementById('gallery')?.classList.contains('hidden')) {
+                    scrollPositionPreservationEnabled = true;
+                    preserveScrollPosition();
+                    await switchGalleryView(currentGalleryView, true);
+                    restoreScrollPosition();
+                }
+                break;
+                
             case 'group_created':
             case 'group_renamed':
             case 'group_deleted':
             case 'images_added_to_group':
             case 'images_removed_from_group':
-                // Only refresh gallery if it's currently visible
+                // Group operations don't affect gallery display directly, but refresh to be safe
                 if (!document.getElementById('gallery')?.classList.contains('hidden')) {
-                    switchGalleryView(currentGalleryView, true);
+                    scrollPositionPreservationEnabled = true;
+                    preserveScrollPosition();
+                    await switchGalleryView(currentGalleryView, true);
+                    restoreScrollPosition();
                 }
                 break;
                 
@@ -2428,8 +2635,7 @@ function initializeWebSocketWorkspaceEvents() {
         
         // Set up the completion callback and load gallery
         window.workspaceLoadingCompleteCallback = completeWorkspaceSwitch;
-        await switchGalleryView(window.currentGalleryView || 'images', true);        
-        // Gallery will be faded in by completeWorkspaceSwitch callback after data is loaded
+        await switchGalleryView(currentGalleryView || 'images', true, updateWorkspaceProgress);        
         
         // Clear the workspace switching flag
         isWorkspaceSwitching = false;
@@ -2447,7 +2653,8 @@ function completeWorkspaceSwitch() {
         gallery.style.opacity = '';
     }
     
-    // Remove workspace loading toast
+    // Hide workspace progress modal/toast
+    hideWorkspaceProgressModal();
     if (workspaceToastId) {
         removeGlassToast(workspaceToastId);
         workspaceToastId = null;
@@ -2591,7 +2798,7 @@ function initializeWorkspaceDragAndDrop() {
         // Add a small loading indicator
         const loadingIndicator = document.createElement('div');
         loadingIndicator.className = 'workspace-reorder-loading';
-        loadingIndicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        loadingIndicator.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
         loadingIndicator.style.cssText = `
             position: absolute;
             top: 50%;
