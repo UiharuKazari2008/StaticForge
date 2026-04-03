@@ -63,7 +63,24 @@
     "zod": "^3.23.8"
   },
   "description": "A powerful, feature-rich NovelAI API proxy and workspace built with modern web technologies. Dreamscape serves as an intelligent server-based proxy that enhances NovelAI's image generation capabilities with advanced prompt engineering tools, workspace management, and comprehensive image organization features. Built for power users who want more control, better organization, and enhanced workflow capabilities than the standard NovelAI interface.",
-  "main": "migrate_metadata.js",
+  "main": "web_server.js",
+  "packageManager": "pnpm@10.33.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3",
+      "canvas",
+      "sharp",
+      "spellchecker",
+      "sqlite3"
+    ],
+    "packageExtensions": {
+      "spellchecker": {
+        "scripts": {
+          "install": "node-gyp rebuild"
+        }
+      }
+    }
+  },
   "devDependencies": {
     "fantasticon": "^3.0.0",
     "webfont": "^11.2.26"

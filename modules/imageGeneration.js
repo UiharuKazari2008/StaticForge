@@ -3728,16 +3728,14 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             // Add file to workspace
             globalResources.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
             
-            // Update metadata cache with receipt (only when saving)
-            if (creditUsage.totalUsage > 0) {
-                const receiptData = {
-                    type: 'generation',
-                    cost: creditUsage.totalUsage,
-                    creditType: creditUsage.usageType,
-                    date: Date.now().valueOf()
-                };
-                await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), receiptData, forgeData);
-            }
+            // Register image in metadata DB (always); receipt row only when credits were charged
+            const generationReceiptData = creditUsage.totalUsage > 0 ? {
+                type: 'generation',
+                cost: creditUsage.totalUsage,
+                creditType: creditUsage.usageType,
+                date: Date.now().valueOf()
+            } : null;
+            await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), generationReceiptData, forgeData);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {

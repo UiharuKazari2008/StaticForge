@@ -3242,8 +3242,8 @@ class WebSocketClient {
 
                 // Also handle modal streaming updates for intermediate images
                 if (data.phase === 'generating' && data.currentStep !== undefined) {
-                    const manualModalForStream = document.getElementById('manualModal');
-                    if (manualModalForStream && !manualModalForStream.classList.contains('hidden')) {
+                    // Add step to the appropriate queue
+                    if (!manualModal.classList.contains('hidden')) {
                         this.queueStreamingStep('manual', data);
                     }
 

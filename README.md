@@ -113,9 +113,12 @@ A powerful, feature-rich NovelAI API proxy and workspace built with modern web t
 
 #### 1. Clone and Setup
 ```bash
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+source ~/.bashrc
+
 git clone https://yozora.bluesteel.737.jp.net/UiharuKazari2008/StaticForge dreamscape
 cd dreamscape
-npm install
+pnpm install
 ```
 
 #### 2. Configuration
