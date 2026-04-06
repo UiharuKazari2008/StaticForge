@@ -11,6 +11,141 @@ let windowSwitcherWindows = [];
 let windowSwitcherSelectedIndex = 0;
 let ctrlKeyPressed = false;
 
+let shortcutActionToastHost = null;
+let shortcutActionToastHideTimer = null;
+
+function resolutionShortcutLabel(value) {
+    if (!value || value === 'custom') return null;
+    const r = typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.get(value);
+    return r ? r.display : value;
+}
+
+function showShortcutActionToast(message) {
+    if (!message) return;
+    if (!shortcutActionToastHost) {
+        shortcutActionToastHost = document.createElement('div');
+        shortcutActionToastHost.className = 'shortcut-action-toast-host';
+        shortcutActionToastHost.setAttribute('aria-live', 'polite');
+        const inner = document.createElement('div');
+        inner.className = 'shortcut-action-toast';
+        shortcutActionToastHost.appendChild(inner);
+        document.body.appendChild(shortcutActionToastHost);
+    }
+    shortcutActionToastHost.querySelector('.shortcut-action-toast').textContent = message;
+    shortcutActionToastHost.classList.add('visible');
+    clearTimeout(shortcutActionToastHideTimer);
+    shortcutActionToastHideTimer = setTimeout(() => {
+        shortcutActionToastHost.classList.remove('visible');
+    }, 1500);
+}
+
+/** Portrait → Square → Landscape within the current size tier (normal / large / xlarge / small / wallpaper). */
+const RESOLUTION_ASPECT_CYCLE = ['portrait', 'square', 'landscape'];
+
+/** Normal → Large → Maximum (same aspect); only for standard `normal_` / `large_` / `xlarge_` presets. */
+const RESOLUTION_SIZE_TIER_CYCLE = [
+    { prefix: 'normal', group: 'Normal' },
+    { prefix: 'large', group: 'Large' },
+    { prefix: 'xlarge', group: 'Maximum' }
+];
+
+/** @returns {string|null} Display label for the new resolution, or null if unchanged */
+function cycleManualResolutionAspectPreset() {
+    const resVal = manualResolutionHidden && manualResolutionHidden.value;
+    if (!resVal || resVal === 'custom') return null;
+    const tierMatch = resVal.match(/^(normal|large|xlarge|small|wallpaper)_(.+)$/);
+    if (!tierMatch) return null;
+    const prefix = tierMatch[1];
+    const currentAspect = tierMatch[2];
+    const startIdx = RESOLUTION_ASPECT_CYCLE.indexOf(currentAspect);
+    if (startIdx === -1) {
+        const groupEntry = typeof RESOLUTION_GROUPS !== 'undefined' && RESOLUTION_GROUPS.find(g =>
+            g.group !== 'Custom' && g.options.some(o => o.value === resVal));
+        if (!groupEntry || groupEntry.options.length < 2) return null;
+        const idx = groupEntry.options.findIndex(o => o.value === resVal);
+        if (idx === -1) return null;
+        const next = groupEntry.options[(idx + 1) % groupEntry.options.length];
+        selectManualResolution(next.value, groupEntry.group);
+        return resolutionShortcutLabel(next.value);
+    }
+    for (let step = 1; step <= 3; step++) {
+        const nextAspect = RESOLUTION_ASPECT_CYCLE[(startIdx + step) % 3];
+        const candidate = `${prefix}_${nextAspect}`;
+        if (typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.has(candidate)) {
+            const groupObj = typeof RESOLUTION_GROUPS !== 'undefined' && RESOLUTION_GROUPS.find(g =>
+                g.options.some(o => o.value === candidate));
+            if (groupObj) {
+                selectManualResolution(candidate, groupObj.group);
+                return resolutionShortcutLabel(candidate);
+            }
+            return null;
+        }
+    }
+    return null;
+}
+
+/** @returns {string|null} Display label for the new resolution, or null if unchanged */
+function cycleManualResolutionSizeTier() {
+    const resVal = manualResolutionHidden && manualResolutionHidden.value;
+    if (!resVal) return null;
+
+    const isCustom = resVal === 'custom' || resVal.startsWith('custom');
+    if (isCustom) {
+        let w = parseInt(manualWidth && manualWidth.value, 10) || 0;
+        let h = parseInt(manualHeight && manualHeight.value, 10) || 0;
+        if ((w <= 0 || h <= 0) && typeof getDimensionsFromResolution === 'function') {
+            const d = getDimensionsFromResolution(resVal);
+            if (d) {
+                w = d.width;
+                h = d.height;
+            }
+        }
+        if (w <= 0 || h <= 0) return null;
+
+        let aspect;
+        if (w === h) aspect = 'square';
+        else if (w > h) aspect = 'landscape';
+        else aspect = 'portrait';
+
+        const presets = RESOLUTION_SIZE_TIER_CYCLE.map(t => {
+            const value = `${t.prefix}_${aspect}`;
+            const resMeta = typeof RESOLUTION_CACHE !== 'undefined' ? RESOLUTION_CACHE.get(value) : null;
+            return resMeta ? { ...t, value, resMeta } : null;
+        }).filter(Boolean);
+        if (presets.length === 0) return null;
+
+        const area = w * h;
+        let bestIdx = 0;
+        let bestDist = Infinity;
+        presets.forEach((p, i) => {
+            const presetArea = p.resMeta.width * p.resMeta.height;
+            const dist = Math.abs(presetArea - area);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i;
+            }
+        });
+        const nextIdx = (bestIdx + 1) % presets.length;
+        const next = presets[nextIdx];
+        selectManualResolution(next.value, next.group);
+        return resolutionShortcutLabel(next.value);
+    }
+
+    const m = resVal.match(/^(normal|large|xlarge)_(portrait|square|landscape)$/);
+    if (!m) return null;
+    const prefix = m[1];
+    const aspect = m[2];
+    const tierIdx = RESOLUTION_SIZE_TIER_CYCLE.findIndex(t => t.prefix === prefix);
+    if (tierIdx === -1) return null;
+    const nextTier = RESOLUTION_SIZE_TIER_CYCLE[(tierIdx + 1) % RESOLUTION_SIZE_TIER_CYCLE.length];
+    const candidate = `${nextTier.prefix}_${aspect}`;
+    if (typeof RESOLUTION_CACHE !== 'undefined' && RESOLUTION_CACHE.has(candidate)) {
+        selectManualResolution(candidate, nextTier.group);
+        return resolutionShortcutLabel(candidate);
+    }
+    return null;
+}
+
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
     createShortcutsOverlay();
@@ -108,7 +243,11 @@ function createShortcutsOverlay() {
                     <div class="divider"></div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F9</span>
-                        <span class="shortcut-desc"></span>
+                        <span class="shortcut-desc"><span>Cycle Ratio</span><i class="fa fa-arrows-alt"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F9</span>
+                        <span class="shortcut-desc"><span>Cycle Res. Group</span><i class="fa fa-layer-group"></i></span>
                     </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F10</span>
@@ -257,12 +396,14 @@ function handleKeyDown(event) {
                 event.preventDefault();
                 event.stopPropagation();
                 removeAllEmphasisFromSelection(activeElement);
+                showShortcutActionToast('Removed all EmphasisS');
             }
             break;
         case 'F4':
             event.preventDefault();
             event.stopPropagation();
             showDatasetTagToolbar();
+            showShortcutActionToast('Quick access');
             break;
         case 'F5':
             event.preventDefault();
@@ -271,12 +412,14 @@ function handleKeyDown(event) {
             const manualGenerateBtn = document.getElementById('manualGenerateBtn');
             if (manualGenerateBtn && !manualGenerateBtn.disabled) {
                 manualGenerateBtn.click();
+                showShortcutActionToast('Started Generation');
             }
             break;
         case 'F6':
             event.preventDefault();
             event.stopPropagation();
             showCacheBrowser();
+            showShortcutActionToast('References');
             break;
         case 'F7':
             event.preventDefault();
@@ -306,6 +449,7 @@ function handleKeyDown(event) {
             forcePaidRequest = false;
             paidRequestToggle.setAttribute('data-state', 'off');
             manualUpscale.setAttribute('data-state', 'off');
+            showShortcutActionToast('Reset to Free Limits');
             break;
         case 'ALT+F7':
             event.preventDefault();
@@ -333,6 +477,7 @@ function handleKeyDown(event) {
             paidRequestToggle.setAttribute('data-state', 'on');
             if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', 'on');
             manualUpscale.setAttribute('data-state', 'off');
+            showShortcutActionToast('Switched to Maximum Quality');
             break;
         case 'ALT+F8':
             event.preventDefault();
@@ -340,6 +485,7 @@ function handleKeyDown(event) {
             paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
             forcePaidRequest = !forcePaidRequest;
             if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+            showShortcutActionToast(forcePaidRequest ? 'Paid request: On' : 'Paid request: Off');
             break;
         case 'F8':
             event.preventDefault();
@@ -347,12 +493,35 @@ function handleKeyDown(event) {
             if (window.lastLoadedSeed) {
                 toggleSproutSeed();
                 updateSproutSeedButton();
+                const sproutBtn = document.getElementById('sproutSeedBtn');
+                showShortcutActionToast(sproutBtn && sproutBtn.getAttribute('data-state') === 'on'
+                    ? 'Seed Locked'
+                    : 'Randomize Seed');
+            }
+            break;
+        case 'F9':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            {
+                const label = cycleManualResolutionAspectPreset();
+                if (label) showShortcutActionToast(label);
+            }
+            break;
+        case 'ALT+F9':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            {
+                const label = cycleManualResolutionSizeTier();
+                if (label) showShortcutActionToast(label);
             }
             break;
         case 'ALT+A':
             event.preventDefault();
             event.stopPropagation();
             addCharacterPrompt();
+            showShortcutActionToast('New Character');
             break;
         case 'CTRL+F':
             // Trigger inline search in the active prompt toolbar
@@ -401,6 +570,7 @@ function handleKeyDown(event) {
                         }
                     }
                 });
+                showShortcutActionToast(newState ? 'Autofill On' : 'Autofill Off');
             }
             break;
         case 'ALT+F':
@@ -414,6 +584,7 @@ function handleKeyDown(event) {
                     event.stopPropagation();
                     if (window.showAddToFavoritesDialog) {
                         window.showAddToFavoritesDialog(selectedText.trim());
+                        showShortcutActionToast('Add to Favorites');
                     }
                 }
             }
@@ -427,6 +598,7 @@ function handleKeyDown(event) {
                 event.stopPropagation();
                 if (window.toggleDisableSyntax) {
                     window.toggleDisableSyntax(document.activeElement);
+                    showShortcutActionToast('Disable Selection');
                 }
             }
             break;
@@ -689,6 +861,12 @@ function cleanupManualModalShortcuts() {
     if (windowSwitcherOverlay && windowSwitcherOverlay.parentNode) {
         windowSwitcherOverlay.parentNode.removeChild(windowSwitcherOverlay);
     }
+
+    clearTimeout(shortcutActionToastHideTimer);
+    if (shortcutActionToastHost && shortcutActionToastHost.parentNode) {
+        shortcutActionToastHost.parentNode.removeChild(shortcutActionToastHost);
+    }
+    shortcutActionToastHost = null;
 } 
 
 window.wsClient.registerInitStep(50, 'Initializing Keyboard Shortcuts', async () => {
