@@ -1451,6 +1451,38 @@ app.get('/app', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
 });
 
+// Android WebView: JSON probe for AndroidBackgroundRefresh manifest (session cookies, same as WebView)
+app.get('/android/background-notification', serverReadinessMiddleware, authMiddleware, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    try {
+        const balance = await getBalance();
+        const fixed = balance.ok ? (balance.fixedTrainingStepsLeft || 0) : 0;
+        const paid = balance.ok ? (balance.purchasedTrainingSteps || 0) : 0;
+        let expiresAt = balance.subscription && balance.subscription.expiresAt;
+        if (expiresAt == null) {
+            const accountData = globalResources.getAccountData();
+            expiresAt = accountData && accountData.subscription && accountData.subscription.expiresAt;
+        }
+        let daysLeft = '';
+        if (expiresAt != null && expiresAt !== '') {
+            const sec = Number(expiresAt);
+            if (Number.isFinite(sec)) {
+                const d = Math.ceil((sec * 1000 - Date.now()) / (86400000));
+                daysLeft = String(d > 0 ? d : 0);
+            }
+        }
+        res.json({
+            free: String(fixed),
+            paid: String(paid),
+            daysLeft
+        });
+    } catch (error) {
+        console.error('❌ /android/background-notification:', error);
+        res.status(500).json({ error: 'Failed to load notification status' });
+    }
+});
+
 // Traces viewer page
 app.get('/traces', authMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'traces.html'));

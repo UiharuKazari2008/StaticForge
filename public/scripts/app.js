@@ -23735,6 +23735,32 @@ function clearAndroidNotificationImage() {
     }
 }
 
+/**
+ * Register AndroidBackgroundRefresh manifest so the native layer can GET JSON while the WebView is paused.
+ * See ANDROID_BRIDGE.md. Requires session cookies (same origin as the app).
+ */
+function registerAndroidBackgroundNotificationManifest() {
+    const abr = globalThis.AndroidBackgroundRefresh;
+    if (abr === undefined) return;
+    try {
+        const uri =
+            typeof location !== 'undefined' && location.origin
+                ? `${location.origin}/android/background-notification`
+                : '/android/background-notification';
+        abr.registerManifest(
+            JSON.stringify({
+                uri,
+                title: 'DreamScape',
+                body: '{{free}} Free / {{paid}} Paid Credits / {{daysLeft}} Days Left',
+                internal: false,
+                intervalMinutes: 15
+            })
+        );
+    } catch (error) {
+        console.warn('AndroidBackgroundRefresh.registerManifest failed:', error);
+    }
+}
+
 function handleServerPing(data) {
     lastPingTime = Date.now();
 
@@ -26220,6 +26246,7 @@ if (window.wsClient) {
         if (typeof window.initAndroidNotificationBridge === 'function') {
             window.initAndroidNotificationBridge();
         }
+        registerAndroidBackgroundNotificationManifest();
     });
 }
 
