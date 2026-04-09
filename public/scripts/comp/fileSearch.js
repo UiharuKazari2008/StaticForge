@@ -38,6 +38,14 @@ class FileSearch {
         this.setupEventListeners();
     }
 
+    /**
+     * Drop-down below the field only on narrow viewports.
+     * deviceUtils.isMobileDevice() is true for most touch desktops — that wrongly forced mobile layout.
+     */
+    isFileSearchDropDownViewport() {
+        return Boolean(window.matchMedia && window.matchMedia('(max-width: 767px)').matches);
+    }
+
     createAutofillOverlay() {
         // Remove existing overlay if any
         const existingOverlay = document.getElementById('fileSearchAutofill');
@@ -94,68 +102,50 @@ class FileSearch {
                 }
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so down arrow goes down
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.navigateSuggestions(1);
                 } else {
-                    // Desktop: overlay appears above, so down arrow goes up
                     this.navigateSuggestions(-1);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so up arrow goes up
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.navigateSuggestions(-1);
                 } else {
-                    // Desktop: overlay appears above, so up arrow goes down
                     this.navigateSuggestions(1);
                 }
             } else if (e.key === 'PageDown') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so PageDown goes down
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.handlePageNavigation(1);
                 } else {
-                    // Desktop: overlay appears above, so PageDown goes up
                     this.handlePageNavigation(-1);
                 }
             } else if (e.key === 'PageUp') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so PageUp goes up
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.handlePageNavigation(-1);
                 } else {
-                    // Desktop: overlay appears above, so PageUp goes down
                     this.handlePageNavigation(1);
                 }
             } else if (e.key === 'Home') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so Home goes to top
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.handleHomeEndNavigation(false);
                 } else {
-                    // Desktop: overlay appears above, so Home goes to bottom
                     this.handleHomeEndNavigation(true);
                 }
             } else if (e.key === 'End') {
                 e.preventDefault();
-                // Handle navigation based on mobile vs desktop layout
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
-                    // Mobile: overlay appears below, so End goes to bottom
+                const dropDown = this.isFileSearchDropDownViewport();
+                if (dropDown) {
                     this.handleHomeEndNavigation(true);
                 } else {
-                    // Desktop: overlay appears above, so End goes to top
                     this.handleHomeEndNavigation(false);
                 }
             }
@@ -391,9 +381,7 @@ class FileSearch {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
 
-                // Ensure mobile shows expanded results
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
+                if (this.isFileSearchDropDownViewport()) {
                     this.expandedResults = true;
                 }
 
@@ -471,9 +459,7 @@ class FileSearch {
                 this.tagSuggestions = result.tagSuggestions;
                 this.displayPreviewImages();
 
-                // Ensure mobile shows expanded results
-                const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                if (isMobile) {
+                if (this.isFileSearchDropDownViewport()) {
                     this.expandedResults = true;
                 }
 
@@ -754,45 +740,38 @@ class FileSearch {
     }
 
     showAutofill() {
-        if (this.autofillVisible) return;
+        const opening = !this.autofillVisible;
+        if (opening) {
+            this.autofillOverlay.classList.remove('hidden');
+            this.autofillVisible = true;
+        }
 
-        this.autofillOverlay.classList.remove('hidden');
-        this.autofillVisible = true;
-
-        // Position the overlay based on screen size
         const rect = this.searchInput.getBoundingClientRect();
-        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
+        const narrow = this.isFileSearchDropDownViewport();
 
         this.autofillOverlay.style.left = rect.left + 'px';
         this.autofillOverlay.style.width = Math.max(rect.width, 300) + 'px';
 
-        if (isMobile) {
-            // Mobile: position below the search input (drop down)
+        if (narrow) {
             this.autofillOverlay.style.top = (rect.bottom + 5) + 'px';
             this.autofillOverlay.style.bottom = 'auto';
 
-            // Mobile: always expanded for better usability
             this.expandedResults = true;
             this.autofillOverlay.classList.add('expanded');
 
-            // Use top-down for mobile layout
             this.autofillOverlay.classList.add('top-down');
             this.autofillOverlay.classList.remove('bottom-up');
         } else {
-            // Desktop: position above the search input (drop up)
             this.autofillOverlay.style.bottom = (window.innerHeight - rect.top + 5) + 'px';
             this.autofillOverlay.style.top = 'auto';
 
-            // Desktop: use default height (not expanded)
             this.expandedResults = false;
             this.autofillOverlay.classList.remove('expanded');
 
-            // Use bottom-up for desktop layout
             this.autofillOverlay.classList.add('bottom-up');
             this.autofillOverlay.classList.remove('top-down');
         }
 
-        // Refresh the display to show expanded/collapsed results based on new state
         if (this.tagSuggestions && this.tagSuggestions.length > 0) {
             this.displayTagSuggestions();
         }
@@ -804,9 +783,7 @@ class FileSearch {
         this.autofillOverlay.classList.add('hidden');
         this.autofillOverlay.classList.remove('bottom-up', 'top-down');
 
-        // Preserve expanded class on mobile, remove on desktop
-        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-        if (!isMobile) {
+        if (!this.isFileSearchDropDownViewport()) {
             this.autofillOverlay.classList.remove('expanded');
             this.expandedResults = false;
         }
@@ -1237,9 +1214,7 @@ class FileSearch {
                     this.tagSuggestions = result.tagSuggestions;
                     this.displayPreviewImages();
 
-                    // Ensure mobile shows expanded results
-                    const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-                    if (isMobile) {
+                    if (this.isFileSearchDropDownViewport()) {
                         this.expandedResults = true;
                     }
 
@@ -1320,9 +1295,7 @@ class FileSearch {
     }
 
     ensureMobileExpandedState() {
-        // Ensure mobile devices always have expanded autofill
-        const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) || (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
-        if (isMobile && this.autofillOverlay && !this.autofillOverlay.classList.contains('hidden')) {
+        if (this.isFileSearchDropDownViewport() && this.autofillOverlay && !this.autofillOverlay.classList.contains('hidden')) {
             this.autofillOverlay.classList.add('expanded');
             this.expandedResults = true;
         }
