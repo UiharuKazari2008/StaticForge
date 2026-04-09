@@ -1501,6 +1501,44 @@ async function searchFilesInDatabase(query, filenamesFilter = null, viewType = '
     }
 }
 
+/** Minimum indexed files before file-coverage overuse signals are trusted. */
+const SUGGESTION_OVERUSE_MIN_CORPUS_FILES = 12;
+/** Tags/presets appearing on this fraction of corpus files (workspace or index) are treated as boilerplate. */
+const SUGGESTION_OVERUSE_FILE_COVERAGE = 0.7;
+
+function isDynamicallyOverusedTag(suggestion, corpusFileCount) {
+    if (!corpusFileCount || corpusFileCount < SUGGESTION_OVERUSE_MIN_CORPUS_FILES) return false;
+    const type = suggestion.type || 'tag';
+    if (type !== 'tag' && type !== 'preset') return false;
+    const occ = suggestion.occurrenceCount || 0;
+    if (occ <= 0) return false;
+    return occ / corpusFileCount >= SUGGESTION_OVERUSE_FILE_COVERAGE;
+}
+
+/**
+ * Ranking score for tag/search suggestions: sublinear popularity + IDF-style boost from corpus size,
+ * with extra derank for presets and tags that appear on most files in the corpus (dynamic boilerplate).
+ */
+function computeTagSuggestionRankScore(suggestion, corpusFileCount) {
+    const occ = suggestion.occurrenceCount || 0;
+    const w = Math.abs(suggestion.totalWeight || 0);
+    const pop = Math.sqrt(occ + 1) + Math.sqrt(w + 0.25);
+    let idfBoost = 1;
+    if (corpusFileCount > 0) {
+        const idf = Math.log((corpusFileCount + 1) / (occ + 1));
+        idfBoost = 1 + 0.55 * Math.max(0, idf);
+    }
+    let score = pop * idfBoost;
+    const type = suggestion.type || 'tag';
+    if (type === 'preset') {
+        score *= 0.42;
+    }
+    if (isDynamicallyOverusedTag(suggestion, corpusFileCount)) {
+        score *= 0.18;
+    }
+    return score;
+}
+
 /**
  * Get tag suggestions from database
  */
@@ -1519,6 +1557,16 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             const placeholders = filenamesFilter.map(() => '?').join(',');
             filenameFilterClause = ` AND filename IN (${placeholders})`;
             filenameParams = filenamesFilter;
+        }
+
+        let rankingCorpusFileCount = filenamesFilter && filenamesFilter.length > 0 ? filenamesFilter.length : 0;
+        if (rankingCorpusFileCount <= 0) {
+            const row = await db.get(`
+                SELECT COUNT(DISTINCT filename) AS c
+                FROM search_tags
+                WHERE 1=1 ${filenameFilterClause}
+            `, filenameParams);
+            rankingCorpusFileCount = row && row.c ? row.c : 0;
         }
 
         const suggestions = [];
@@ -1676,12 +1724,16 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             }
         }
 
-        // Sort all suggestions by occurrence count and weight
         suggestions.sort((a, b) => {
+            const scoreA = computeTagSuggestionRankScore(a, rankingCorpusFileCount);
+            const scoreB = computeTagSuggestionRankScore(b, rankingCorpusFileCount);
+            if (scoreB !== scoreA) return scoreB - scoreA;
             if (b.occurrenceCount !== a.occurrenceCount) {
                 return b.occurrenceCount - a.occurrenceCount;
             }
-            return Math.abs(b.totalWeight) - Math.abs(a.totalWeight);
+            const wDiff = Math.abs(b.totalWeight || 0) - Math.abs(a.totalWeight || 0);
+            if (wDiff !== 0) return wDiff;
+            return (a.originalTag || a.tag || '').localeCompare(b.originalTag || b.tag || '');
         });
 
         return suggestions.slice(0, limit);
@@ -1919,6 +1971,7 @@ module.exports = {
     updateSearchIndexes,
     searchFilesInDatabase,
     getTagSuggestionsFromDatabase,
+    computeTagSuggestionRankScore,
     syncSearchIndexes,
     rebuildSearchIndexes,
     setIndexingPaused,

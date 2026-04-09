@@ -1,3 +1,4 @@
+const { computeTagSuggestionRankScore } = require('./metadataDatabase');
 const geo2city = require('geo2city');
 const { WebSocketServer } = require('./websocket');
 const {
@@ -2329,6 +2330,9 @@ class WebSocketMessageHandlers {
 
     // Handle ping messages
     handlePing(ws, message, clientInfo, wsServer) {
+        if (typeof message.clientRttMs === 'number' && Number.isFinite(message.clientRttMs) && message.clientRttMs >= 0 && message.clientRttMs <= 120000) {
+            clientInfo.lastClientRttMs = message.clientRttMs;
+        }
         // Server should always respond if initialized
         // No need to check context anymore - config is directly imported
         wsServer.sendToClient(ws, {
@@ -8527,8 +8531,34 @@ class WebSocketMessageHandlers {
         });
     }
 
+    // Step preview frames are large; skip them when the link is backed up or high-latency (align RTT with public/scripts/websocket.js pingWarningThreshold).
+    STEP_PREVIEW_RTT_MS_THRESHOLD = 500;
+    STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD = 512 * 1024;
+
+    shouldSendStepPreviewImages(ws) {
+        try {
+            if (ws.bufferedAmount > this.STEP_PREVIEW_BUFFERED_BYTES_THRESHOLD) {
+                return false;
+            }
+            const wsServer = this.globalResources.getWebSocketServer();
+            const clientInfo = wsServer && wsServer.clients && wsServer.clients.get(ws);
+            if (clientInfo && typeof clientInfo.lastClientRttMs === 'number' && Number.isFinite(clientInfo.lastClientRttMs)) {
+                if (clientInfo.lastClientRttMs > this.STEP_PREVIEW_RTT_MS_THRESHOLD) {
+                    return false;
+                }
+            }
+            return true;
+        } catch {
+            return true;
+        }
+    }
+
     // Send unified image generation progress updates
     sendGenerationProgress(ws, requestId, progressData) {
+        let imageData = progressData.imageData || null;
+        if (imageData && !this.shouldSendStepPreviewImages(ws)) {
+            imageData = null;
+        }
 
         this.sendToClient(ws, {
             type: 'image_generation_progress',
@@ -8544,7 +8574,7 @@ class WebSocketMessageHandlers {
                 reasoning: progressData.reasoning || null, // for 3rd line display
                 toolName: progressData.toolName || null, // tool name for icon/styling
                 toolReason: progressData.toolReason || null, // tool-specific reason
-                imageData: progressData.imageData || null, // base64 image data for preview
+                imageData, // base64 image data for preview (omitted when connection is slow or high-latency)
                 // Staged generation fields
                 totalStages: progressData.totalStages || null,
                 currentStage: progressData.currentStage || null,
@@ -9652,17 +9682,17 @@ class WebSocketMessageHandlers {
                     const contextMatchingFiles = await metadataDb.searchFilesInDatabase(contextQuery, workspaceFiles, viewType);
                     contextScore = contextMatchingFiles.length;
 
-                    // Boost score for context-relevant suggestions
+                    // Boost score for context-relevant suggestions (base rank matches non-context suggestions)
                     suggestion.contextScore = contextScore;
-                    suggestion.boostedScore = (suggestion.occurrenceCount + Math.abs(suggestion.totalWeight || 0)) + (contextScore * 10);
+                    suggestion.boostedScore = computeTagSuggestionRankScore(suggestion, workspaceFiles.length) + (contextScore * 10);
                 }
 
                 console.log('🔍 Backend: Context scores applied, sorting by boosted scores');
 
-                // Sort by boosted score (context relevance + original score)
+                // Sort by boosted score (context relevance + diversity-aware base rank)
                 suggestions.sort((a, b) => {
-                    const scoreA = a.boostedScore || (a.occurrenceCount + Math.abs(a.totalWeight || 0));
-                    const scoreB = b.boostedScore || (b.occurrenceCount + Math.abs(b.totalWeight || 0));
+                    const scoreA = a.boostedScore != null ? a.boostedScore : computeTagSuggestionRankScore(a, workspaceFiles.length);
+                    const scoreB = b.boostedScore != null ? b.boostedScore : computeTagSuggestionRankScore(b, workspaceFiles.length);
                     if (scoreA !== scoreB) return scoreB - scoreA;
                     return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
                 });

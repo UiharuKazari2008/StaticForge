@@ -4068,6 +4068,9 @@ class WebSocketClient {
                 type: 'ping',
                 requestId
             };
+            if (this.currentRtt !== null) {
+                message.clientRttMs = Math.round(this.currentRtt);
+            }
 
             // Store pending request with timestamp
             this.pendingRequests = this.pendingRequests || new Map();
