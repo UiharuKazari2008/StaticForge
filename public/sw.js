@@ -211,11 +211,14 @@ function createImageStrategy(strategy) {
   return {
     async handle({ request, event }) {
       try {
+        const reqUrl = new URL(request.url);
         const response = await strategy.handle({ request, event });
         if (response) {
-          // Add cache-busting headers to prevent browser caching
-          const finalResponse = addCacheBustingHeaders(response);
-          
+          // Previews: keep origin cache headers (server sends max-age) so the browser HTTP cache
+          // complements Workbox; busting here forced no-store on every preview and removed that layer.
+          const isPreviewPath = reqUrl.pathname.startsWith('/previews/');
+          const finalResponse = isPreviewPath ? response : addCacheBustingHeaders(response);
+
           // Emit receive event for successful responses
           notifyClientsOfNetworkActivity('receive', {
             url: request.url,
@@ -223,7 +226,7 @@ function createImageStrategy(strategy) {
             status: response.status,
             timestamp: Date.now()
           });
-          
+
           return finalResponse;
         }
         return response;

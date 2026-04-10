@@ -452,7 +452,8 @@ class WebSocketClient {
         this.pingVariabilityThreshold = 0.3; // Show warning if variability exceeds 30% of average
 
         this.progressToastId = null;
-        this.serverNotRespondingToastId = null;
+        /** Persistent glass toast until the socket is connected again (disconnect, ping failure, max retries). */
+        this.connectionRecoveryToastId = null;
         this.messageHandlers = new Map();
 
         this.initSteps = [];
@@ -499,6 +500,53 @@ class WebSocketClient {
 
         // Initialize
         this.init();
+    }
+
+    dismissConnectionRecoveryToast() {
+        if (this.connectionRecoveryToastId && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.connectionRecoveryToastId);
+            this.connectionRecoveryToastId = null;
+        }
+    }
+
+    /**
+     * Shows or updates a non-dismissible (until connected) toast with a Connect action.
+     * Connect runs a full teardown + reconnect via manualReconnect().
+     */
+    showConnectionRecoveryToast(message, options = {}) {
+        const title = options.title != null ? options.title : 'Disconnected';
+        const type = options.type || 'error';
+        const icon = options.icon || '<i class="fas fa-fade fa-plug-circle-xmark"></i>';
+        const connectButtons = [{
+            text: 'Connect',
+            onClick: () => {
+                this.manualReconnect();
+            }
+        }];
+
+        if (this.connectionRecoveryToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.connectionRecoveryToastId, {
+                type,
+                title,
+                message,
+                customIcon: icon,
+                buttons: connectButtons,
+                timeout: false
+            });
+            return;
+        }
+
+        if (typeof showGlassToast === 'function') {
+            this.connectionRecoveryToastId = showGlassToast(
+                type,
+                title,
+                message,
+                false,
+                false,
+                icon,
+                connectButtons
+            );
+        }
     }
 
     // Helper method to safely clear timeouts
@@ -1449,12 +1497,6 @@ class WebSocketClient {
         this.initWebSocketIndicators();
         this.setupRequestsModalHandlers();
 
-        // Dismiss the server not responding toast when attempting to connect
-        if (this.serverNotRespondingToastId && typeof removeGlassToast === 'function') {
-            removeGlassToast(this.serverNotRespondingToastId);
-            this.serverNotRespondingToastId = null;
-        }
-
         // Use connection lock to prevent concurrent connection attempts
         if (this.connectionLock) {
             console.log('🔒 Connection already in progress, skipping duplicate attempt');
@@ -1467,6 +1509,17 @@ class WebSocketClient {
 
         this.connectionLock = true;
         this.isConnecting = true;
+
+        if (this.connectionRecoveryToastId && typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.connectionRecoveryToastId, {
+                type: 'warning',
+                title: 'Reconnecting',
+                message: 'Dialing server…',
+                customIcon: '<i class="fas fa-fade fa-phone-arrow-up-right"></i>',
+                timeout: false
+            });
+        }
+
         this.updateProgressNotification('Dialing Server...', 0);
 
         // Show connecting ticker (don't auto-hide until connected)
@@ -1498,37 +1551,19 @@ class WebSocketClient {
                 // If we're already in circuit breaker mode, don't retry immediately
                 if (this.circuitBreaker) {
                     this.bannerManager.showWebSocketTicker('error', pingError.message, 'fa-exclamation-triangle', false);
+                    this.showConnectionRecoveryToast(pingError.message || 'Server may be unavailable.', {
+                        icon: '<i class="fas fa-fade fa-phone-missed"></i>'
+                    });
                     return;
                 }
 
-                // Show persistent toast with Connect button instead of just banner ticker
                 this.bannerManager.showWebSocketTicker('error', 'Server Not Responding', 'fa-phone-missed', false);
-                if (typeof showGlassToast === 'function') {
-                    this.serverNotRespondingToastId = showGlassToast(
-                        'error',
-                        'Disconnected',
-                        'Unable to reach the server.',
-                        false, // no progress bar
-                        false, // no auto-hide
-                        '<i class="fas fa-fade fa-phone-missed"></i>',
-                        [
-                            {
-                                text: 'Connect',
-                                onClick: () => {
-                                    // Dismiss the toast and attempt reconnection
-                                    if (this.serverNotRespondingToastId) {
-                                        removeGlassToast(this.serverNotRespondingToastId);
-                                        this.serverNotRespondingToastId = null;
-                                    }
-                                    this.manualReconnect();
-                                }
-                            }
-                        ]
-                    );
-                }
+                this.showConnectionRecoveryToast('Unable to reach the server.', {
+                    icon: '<i class="fas fa-fade fa-phone-missed"></i>'
+                });
 
-                // Retry connection after a delay (only if toast wasn't shown)
-                if (!this.serverNotRespondingToastId) {
+                // Retry connection after a delay (only if we could not show the recovery toast)
+                if (!this.connectionRecoveryToastId) {
                     setTimeout(() => {
                         this.reconnect();
                     }, 3000);
@@ -1552,6 +1587,8 @@ class WebSocketClient {
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
+
+                this.dismissConnectionRecoveryToast();
 
                 // Show connected ticker and auto-hide after 3 seconds
                 this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
@@ -1649,6 +1686,12 @@ class WebSocketClient {
                 }
 
                 if (!this.isManualClose) {
+                    // Intentional recycle (forceReconnect / manualReconnect): connect() is scheduled; no user-facing disconnect UI or auto-reconnect from this close.
+                    if (event.code === 1000 && String(event.reason || '') === 'Manual disconnect') {
+                        this.triggerEvent('disconnected', event);
+                        return;
+                    }
+
                     // Clear and fail all pending requests when connection is lost
                     this.clearPendingRequests();
 
@@ -1690,6 +1733,8 @@ class WebSocketClient {
                         disconnectMessage += '. Server may be unavailable.';
                         this.bannerManager.showWebSocketTicker('error', disconnectMessage, 'fa-exclamation-triangle', false);
                     }
+
+                    this.showConnectionRecoveryToast(disconnectMessage);
                 }
 
                 // Trigger disconnect event
@@ -1865,19 +1910,15 @@ class WebSocketClient {
         // Check if we've exceeded max attempts
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.circuitBreaker = true;
-            this.bannerManager.updateWebSocketToast(
-                'error',
-                'Connection failed. Click to retry or restart the app.',
-                '<i class="fas fa-exclamation-triangle"></i>',
-                true, // Don't auto-hide
-                0,
-                '<button onclick="window.wsClient.manualReconnect()" class="retry-btn" style="margin-left: 10px; padding: 5px 10px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">Retry Now</button>'
-            );
             this.bannerManager.showWebSocketTicker(
                 'error',
                 'Connection Failed',
                 'fa-exclamation-triangle',
                 false // Don't auto-hide
+            );
+            this.showConnectionRecoveryToast(
+                'Connection failed after several attempts. Use Connect to fully reconnect.',
+                { icon: '<i class="fas fa-fade fa-exclamation-triangle"></i>' }
             );
             return;
         }
@@ -1913,11 +1954,13 @@ class WebSocketClient {
         this.circuitBreaker = false;
         this.lastConnectionAttempt = 0;
 
-        // Show connecting ticker (don't auto-hide until connected)
         this.bannerManager.showWebSocketTicker('connecting', 'Reconnecting...', 'fa-signal', false);
 
-        // Attempt connection
-        this.connect();
+        // Full socket teardown before connect so the next session is clean (same as forceReconnect).
+        this.disconnect(false);
+        setTimeout(() => {
+            this.connect();
+        }, 100);
     }
 
     /**
@@ -1995,6 +2038,8 @@ class WebSocketClient {
             this.bannerManager.hideWebSocketToast();
             this.bannerManager.hideWebSocketTicker();
         }
+
+        this.dismissConnectionRecoveryToast();
 
         console.log('✅ WebSocket client destroyed');
     }
@@ -4645,10 +4690,36 @@ class WebSocketClient {
         return true;
     }
 
+    /**
+     * Remove pagination group entries that no longer have any pending gallery request in the map.
+     * Without this, a stuck group (e.g. hasMore never cleared) blocks the ticker from ever
+     * dismissing after unrelated work like image generation completes with zero pending requests.
+     */
+    pruneOrphanPaginationGroups() {
+        if (!this.paginationGroups || this.paginationGroups.size === 0 || !this.pendingRequests) {
+            return;
+        }
+        const activeGroupIds = new Set();
+        for (const [, req] of this.pendingRequests) {
+            if (req.isGalleryPaginationRequest && req.paginationGroupId) {
+                activeGroupIds.add(req.paginationGroupId);
+            }
+        }
+        for (const groupId of this.paginationGroups.keys()) {
+            if (!activeGroupIds.has(groupId)) {
+                this.paginationGroups.delete(groupId);
+            }
+        }
+    }
+
     // 🎯 SINGLE SOURCE OF TRUTH for ALL ticker display logic
     updateTickerDisplay() {
         // Update ticker badge
         this.updateTickerBadge();
+
+        if (this.pendingRequestsCount === 0) {
+            this.pruneOrphanPaginationGroups();
+        }
 
         if (this.pendingRequestsCount === 0 && this.areAllPaginationGroupsComplete()) {
             // No pending requests and all pagination groups complete - clear cycle timer and show check mark for 2 seconds then close
@@ -4678,6 +4749,9 @@ class WebSocketClient {
 
                 // Set timer to hide after 2 seconds
                 this.completionTimer = setTimeout(() => {
+                    if (this.pendingRequestsCount === 0) {
+                        this.pruneOrphanPaginationGroups();
+                    }
                     // Only hide if there are still no pending requests and pagination groups are complete
                     if (this.pendingRequestsCount === 0 && this.areAllPaginationGroupsComplete()) {
                         this.bannerManager.hideWebSocketTicker();
@@ -5065,6 +5139,10 @@ class WebSocketClient {
 
         if (this.pendingRequests.has(requestId)) {
             const request = this.pendingRequests.get(requestId);
+            // Oldest pending = first Map entry; must read before delete (was incorrectly using first remaining key after delete)
+            const wasDisplayedRequest = request.showBanner !== false && !!request.type &&
+                requestId === this.pendingRequests.keys().next().value;
+
             this.pendingRequests.delete(requestId);
 
             // Clear timeout safely
@@ -5087,11 +5165,6 @@ class WebSocketClient {
                     shouldDecrementCounter = this.isPaginationGroupComplete(request.paginationGroupId);
                 }
             }
-
-            // Check if this was the currently displayed request BEFORE decrementing
-            const oldestRequestId = this.pendingRequests.size > 0 ?
-                this.pendingRequests.keys().next().value : null;
-            const wasDisplayedRequest = requestId === oldestRequestId;
 
             // Track completed request (only if not ping)
             if (request.type && request.type !== 'ping') {
@@ -5124,8 +5197,8 @@ class WebSocketClient {
                 this.decrementPendingRequests();
             }
 
-            // Handle completion display if this was the currently displayed request (prioritizing showBanner requests)
-            if (wasDisplayedRequest && request.type && request.showBanner !== false) {
+            // Handle completion display if this was the oldest pending request (matches ticker "primary" slot when not cycling)
+            if (wasDisplayedRequest) {
                 // Show completion with check mark for 2 seconds (only if showBanner is true)
                 const displayName = this.bannerManager.formatRequestType(request.type);
                 this.bannerManager.showWebSocketTicker('success', displayName, 'fa-check', true, 2000);
