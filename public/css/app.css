@@ -33887,9 +33887,14 @@ body.windows-classic-theme [role=progressbar]>div::after {
     display: none;
 }
 
-/* Windows Blue Background (startup) */
+/* Desktop startup: solid fill; black when transitioning from launch (matches handoff) */
 body.desktop-mode.windows-startup {
     background: teal;
+    background-image: none;
+}
+
+body.desktop-mode.windows-startup.boot-from-launch {
+    background: #000000;
     background-image: none;
 }
 

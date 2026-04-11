@@ -14,7 +14,8 @@ const {
     getDimensionsFromResolution, 
     processDynamicImage,
     processDynamicImageLetterbox,
-    resizeMaskWithCanvas
+    resizeMaskWithCanvas,
+    dimensionsMaxUnderArea
 } = require('./imageTools');
 const { generateMobilePreviews } = require('./previewUtils');
 const { upscaleImageCore } = require('./imageUpscaling');
@@ -2334,19 +2335,16 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     const maxArea = 262144; // 512x512 equivalent
                     
                     if (body.width && body.height) {
-                        // Custom dimensions
-                        const originalArea = body.width * body.height;
-                        const scale = Math.sqrt(maxArea / originalArea);
-                        previewWidth = Math.round(body.width * scale);
-                        previewHeight = Math.round(body.height * scale);
+                        const previewDims = dimensionsMaxUnderArea(body.width, body.height, maxArea, 64, 64, 64);
+                        previewWidth = previewDims.width;
+                        previewHeight = previewDims.height;
                     } else {
                         // Named resolution - extract dimensions
                         const dims = getDimensionsFromResolution((body.resolution || 'normal_square').toLowerCase());
                         if (dims && dims.width && dims.height) {
-                            const originalArea = dims.width * dims.height;
-                            const scale = Math.sqrt(maxArea / originalArea);
-                            previewWidth = Math.round(dims.width * scale);
-                            previewHeight = Math.round(dims.height * scale);
+                            const previewDims = dimensionsMaxUnderArea(dims.width, dims.height, maxArea, 64, 64, 64);
+                            previewWidth = previewDims.width;
+                            previewHeight = previewDims.height;
                         } else {
                             // Fallback to 512x512
                             previewWidth = 512;
@@ -4543,51 +4541,27 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                         // Previous stage used custom dimensions - resize based on target area
                         const currentWidth = stageRequestBody.width;
                         const currentHeight = stageRequestBody.height;
-                        const currentArea = currentWidth * currentHeight;
                         
                         // Define target areas for each resolution level
                         const areaMap = {
                             'small': 409600,      // ~640x640
                             'normal': 1048576,    // ~1024x1024 (1MP)
                             'large': 2166784,     // ~1472x1472 (2MP)
-                            'xlarge': 3047424     // ~1728x1728 (3MP)
+                            'xlarge': 3047424     // ~1728x1728 (3MP), must not exceed NovelAI max pixels
                         };
+                        // nekoai-js MetadataProcessor enforces product width*height <= 3047424
+                        const MAX_API_TOTAL_PIXELS = 3047424;
                         
-                        const targetArea = areaMap[stage.resolution] || areaMap['normal'];
+                        const maxArea = Math.min(areaMap[stage.resolution] || areaMap['normal'], MAX_API_TOTAL_PIXELS);
                         
-                        if (currentArea !== targetArea) {
-                            // Calculate scale factor based on area ratio
-                            const areaRatio = targetArea / currentArea;
-                            const scaleFactor = Math.sqrt(areaRatio);
-                            
-                            // Scale dimensions proportionally
-                            let newWidth = Math.round(currentWidth * scaleFactor);
-                            let newHeight = Math.round(currentHeight * scaleFactor);
-                            
-                            // Snap to step 64
-                            newWidth = Math.round(newWidth / 64) * 64;
-                            newHeight = Math.round(newHeight / 64) * 64;
-                            
-                            // Check if we exceeded target area and adjust if needed
-                            let finalArea = newWidth * newHeight;
-                            if (finalArea > targetArea * 1.05) { // Allow 5% tolerance
-                                // Scale down slightly to fit within target area
-                                const adjustRatio = Math.sqrt(targetArea / finalArea);
-                                newWidth = Math.round((newWidth * adjustRatio) / 64) * 64;
-                                newHeight = Math.round((newHeight * adjustRatio) / 64) * 64;
-                            }
-                            
-                            // Ensure minimum dimensions
-                            newWidth = Math.max(512, newWidth);
-                            newHeight = Math.max(512, newHeight);
-                            
-                            stageRequestBody.width = newWidth;
-                            stageRequestBody.height = newHeight;
-                            delete stageRequestBody.resolution;
-                            
-                            console.log(`🎨 Enhance stage ${stageIndex}: Resized from ${currentWidth}x${currentHeight} to ${newWidth}x${newHeight} (target area: ${stage.resolution})`);
+                        const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, maxArea, 64, 512, 512);
+                        stageRequestBody.width = snapped.width;
+                        stageRequestBody.height = snapped.height;
+                        delete stageRequestBody.resolution;
+                        if (snapped.width !== currentWidth || snapped.height !== currentHeight) {
+                            console.log(`🎨 Enhance stage ${stageIndex}: Resized from ${currentWidth}x${currentHeight} to ${snapped.width}x${snapped.height} (target area: ${stage.resolution})`);
                         } else {
-                            console.log(`🎨 Enhance stage ${stageIndex}: Keeping dimensions ${currentWidth}x${currentHeight} (already at target area)`);
+                            console.log(`🎨 Enhance stage ${stageIndex}: Keeping dimensions ${currentWidth}x${currentHeight} (already at max under area cap)`);
                         }
                     } else if (needsImg2Img && stage.resolution && stageRequestBody.resolution) {
                         // Previous stage used named resolution - determine aspect ratio and apply modifier

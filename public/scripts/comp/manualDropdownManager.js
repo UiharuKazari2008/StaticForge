@@ -2647,8 +2647,6 @@ function toggleResolutionAreaLimit() {
     if (manualSelectedResolution === 'custom' && manualWidth && manualHeight) {
         const currentWidth = parseInt(manualWidth.value) || 1024;
         const currentHeight = parseInt(manualHeight.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-        const aspectRatio = currentWidth / currentHeight;
         
         let newMaxArea;
         let newAreaName;
@@ -2665,13 +2663,8 @@ function toggleResolutionAreaLimit() {
             newAreaName = 'Normal';
         }
         
-        // Calculate new dimensions proportionally based on area ratio
-        const areaRatio = Math.sqrt(newMaxArea / currentArea);
-        let newWidth = Math.round(currentWidth * areaRatio);
-        let newHeight = Math.round(currentHeight * areaRatio);
-        
-        // Apply step 64 snapping and area constraints
-        const result = correctDimensions(newWidth, newHeight, {
+        const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, newMaxArea, 64, UTILS_CONFIG.MIN_DIMENSION, UTILS_CONFIG.MIN_DIMENSION);
+        const result = correctDimensions(snapped.width, snapped.height, {
             step: 64,
             maxArea: newMaxArea
         });

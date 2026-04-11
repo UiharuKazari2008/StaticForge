@@ -923,7 +923,10 @@ class WebSocketClient {
     }
 
     // Progress notification methods
-    showProgressNotification(message = 'Connecting...', progress = 0) {
+    async showProgressNotification(message = 'Connecting...', progress = 0) {
+        if (typeof dismissLaunchHandoffIfNeeded === 'function') {
+            await dismissLaunchHandoffIfNeeded();
+        }
         if (window.isDesktop) {
             // Desktop mode: use Windows startup modal (clear any toast from before isDesktop flipped, e.g. auto layout)
             if (this.progressToastId && typeof removeGlassToast === 'function') {
@@ -951,13 +954,13 @@ class WebSocketClient {
         }
     }
 
-    hideProgressNotification() {
+    async hideProgressNotification() {
         if (this.progressToastId && typeof removeGlassToast === 'function') {
             removeGlassToast(this.progressToastId);
             this.progressToastId = null;
         }
         if (window.isDesktop) {
-            this.hideWindowsStartupModal();
+            await this.hideWindowsStartupModal();
         }
         document.body.classList.remove('initializing');
 
@@ -1075,14 +1078,14 @@ class WebSocketClient {
         this.updateStepByStepButton();
     }
 
-    hideWindowsStartupModal() {
+    async hideWindowsStartupModal() {
         if (!window.isDesktop) return;
 
         const modal = document.getElementById('windowsStartupModal');
         if (modal) {
-            // Use normal modal closing process
+            // Use normal modal closing process; wait so body background stays in sync with close animation
             if (typeof closeModal === 'function') {
-                closeModal(modal);
+                await closeModal(modal);
             } else {
                 modal.classList.add('hidden');
             }
@@ -1090,6 +1093,7 @@ class WebSocketClient {
 
         // Remove startup background
         document.body.classList.remove('windows-startup');
+        document.body.classList.remove('boot-from-launch');
         // Keep windows-classic-theme until workspace theme is loaded (handled in workspace loading step)
     }
 
@@ -1329,7 +1333,7 @@ class WebSocketClient {
     async executeInitSteps() {
         // Prevent duplicate initialization on reconnection
         if (this.initializationCompleted) {
-            this.hideProgressNotification();
+            await this.hideProgressNotification();
             this.initializationLock = false; // Ensure lock is released even for early return
             return;
         }
@@ -1346,7 +1350,7 @@ class WebSocketClient {
         if (!this.initSteps || this.initSteps.length === 0) {
             this.initializationCompleted = true;
             this.initializationLock = false; // Release initialization lock
-            this.hideProgressNotification();
+            await this.hideProgressNotification();
             return;
         }
 
@@ -1390,15 +1394,15 @@ class WebSocketClient {
             this.initializationLock = false; // Release initialization lock
 
             // Hide overlay after all steps complete
-            setTimeout(() => {
-                this.hideProgressNotification();
+            setTimeout(async () => {
+                await this.hideProgressNotification();
             }, 500);
         } catch (error) {
             console.error('❌ Error during initialization:', error);
             this.updateProgressNotification('Initialization failed', 100);
             this.initializationLock = false; // Release initialization lock on error
-            setTimeout(() => {
-                this.hideProgressNotification();
+            setTimeout(async () => {
+                await this.hideProgressNotification();
             }, 2000);
         }
     }
@@ -1441,8 +1445,8 @@ class WebSocketClient {
             console.log('🔍 Step-by-step mode enabled (Shift key detected on startup)');
         }
 
-        // Show progress notification immediately
-        this.showProgressNotification('Initializing...', 0);
+        // Show progress notification immediately (after launch handoff fade when applicable)
+        await this.showProgressNotification('Initializing...', 0);
 
         // Initialize pending requests spinner
         this.updatePendingRequestsSpinner();
@@ -1628,7 +1632,7 @@ class WebSocketClient {
                     // Now with RTT data available for dynamic timeout adjustment
                     this.executeInitSteps();
                 } else {
-                    this.hideProgressNotification();
+                    await this.hideProgressNotification();
                 }
 
                 // Sync current workspace with server (only on reconnection, not initial connection)
@@ -2026,7 +2030,7 @@ class WebSocketClient {
         this.clearWebSocketIndicatorTimeouts();
 
         // Clear progress notification
-        this.hideProgressNotification();
+        this.hideProgressNotification().catch(() => {});
 
         // Clear any pending initialization
         this.initializationCompleted = false;

@@ -10067,23 +10067,13 @@ function setupEventListeners() {
 
             // Recalculate area after stepping
             currentArea = width * height;
+            const neededAreaCap = currentArea > currentMaxArea;
 
-            // If area exceeds max, scale both dimensions down while maintaining aspect ratio
-            if (currentArea > currentMaxArea) {
-                const scaleFactor = Math.sqrt(currentMaxArea / currentArea);
-
-                // Calculate new dimensions
-                width = Math.round(width * scaleFactor);
-                height = Math.round(height * scaleFactor);
-
-                // Ensure they're still multiples of 64
-                width = Math.floor(width / 64) * 64;
-                height = Math.floor(height / 64) * 64;
-
-                // Ensure minimum size
-                width = Math.max(64, width);
-                height = Math.max(64, height);
-
+            // If area exceeds max, gcd + 64-grid shrink (same as correctDimensions / server pipeline)
+            if (neededAreaCap) {
+                const capped = capDimensionsToMaxArea(width, height, currentMaxArea, 64, 64, 64);
+                width = capped.width;
+                height = capped.height;
                 widthChanged = true;
                 heightChanged = true;
             }
@@ -10111,7 +10101,7 @@ function setupEventListeners() {
                 debouncedCropImageToResolution();
 
                 // Show feedback about the adjustment
-                if (currentArea > currentMaxArea) {
+                if (neededAreaCap) {
                     showGlassToast('warning', null, `Dimensions scaled down to fit maximum area limit (${width}x${height})`);
                 } else if (widthChanged || heightChanged) {
                     showGlassToast('info', null, `Dimensions adjusted to 64px steps (${width}x${height})`);
@@ -20295,22 +20285,11 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
             // Recalculate area after stepping
             currentArea = width * height;
 
-            // If area exceeds max, scale both dimensions down while maintaining aspect ratio
+            // If area exceeds max, gcd + 64-grid shrink (same as correctDimensions / server pipeline)
             if (currentArea > maxArea) {
-                const scaleFactor = Math.sqrt(maxArea / currentArea);
-
-                // Calculate new dimensions
-                width = Math.round(width * scaleFactor);
-                height = Math.round(height * scaleFactor);
-
-                // Ensure they're still multiples of 64
-                width = Math.floor(width / 64) * 64;
-                height = Math.floor(height / 64) * 64;
-
-                // Ensure minimum size
-                width = Math.max(64, width);
-                height = Math.max(64, height);
-
+                const capped = capDimensionsToMaxArea(width, height, maxArea, 64, 64, 64);
+                width = capped.width;
+                height = capped.height;
                 widthChanged = true;
                 heightChanged = true;
             }
@@ -21862,8 +21841,6 @@ function toggleStageResolutionAreaLimit(stageId) {
     if (widthInput && heightInput && widthInput.value && heightInput.value) {
         const currentWidth = parseInt(widthInput.value) || 1024;
         const currentHeight = parseInt(heightInput.value) || 1024;
-        const currentArea = currentWidth * currentHeight;
-        const aspectRatio = currentWidth / currentHeight;
 
         let newMaxArea;
         let newAreaName;
@@ -21880,13 +21857,8 @@ function toggleStageResolutionAreaLimit(stageId) {
             newAreaName = 'Normal';
         }
 
-        // Calculate new dimensions proportionally based on area ratio
-        const areaRatio = Math.sqrt(newMaxArea / currentArea);
-        let newWidth = Math.round(currentWidth * areaRatio);
-        let newHeight = Math.round(currentHeight * areaRatio);
-
-        // Apply step 64 snapping and area constraints
-        const result = correctDimensions(newWidth, newHeight, {
+        const snapped = dimensionsMaxUnderArea(currentWidth, currentHeight, newMaxArea, 64, UTILS_CONFIG.MIN_DIMENSION, UTILS_CONFIG.MIN_DIMENSION);
+        const result = correctDimensions(snapped.width, snapped.height, {
             step: 64,
             maxArea: newMaxArea
         });

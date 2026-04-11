@@ -545,6 +545,51 @@ function getResolutionFromDisplay(displayText) {
 }
 
 /**
+ * Largest width×height ≤ maxArea with exact aspect of (width×height), on `step` grid (gcd discrete scale).
+ */
+function dimensionsMaxUnderArea(width, height, maxArea, step = 64, minW = 64, minH = 64) {
+    let w = Math.max(1, Math.floor(Number(width)) || 0);
+    let h = Math.max(1, Math.floor(Number(height)) || 0);
+    const stepSize = step > 1 ? step : 1;
+    let g = w;
+    let x = h;
+    while (x) {
+        const t = x;
+        x = g % x;
+        g = t;
+    }
+    const gcdWH = g || 1;
+    const a = Math.floor(w / gcdWH);
+    const b = Math.floor(h / gcdWH);
+    const cellArea = stepSize * stepSize * a * b;
+    if (!cellArea || !Number.isFinite(maxArea) || maxArea < 1) {
+        return { width: w, height: h };
+    }
+    let m = Math.floor(Math.sqrt(maxArea / cellArea));
+    while (cellArea * (m + 1) * (m + 1) <= maxArea) m++;
+    const mMin = Math.max(1, Math.ceil(minW / (stepSize * a)), Math.ceil(minH / (stepSize * b)));
+    if (m < mMin) m = mMin;
+    while (cellArea * m * m > maxArea && m > mMin) m--;
+    while (cellArea * m * m > maxArea && m > 1) m--;
+    return {
+        width: stepSize * m * a,
+        height: stepSize * m * b
+    };
+}
+
+function capDimensionsToMaxArea(width, height, maxArea, step = 64, minW = 64, minH = 64) {
+    const w = Math.floor(Number(width)) || 0;
+    const h = Math.floor(Number(height)) || 0;
+    if (w < 1 || h < 1) {
+        return { width: Math.max(minW, w), height: Math.max(minH, h) };
+    }
+    if (w * h <= maxArea) {
+        return { width: w, height: h };
+    }
+    return dimensionsMaxUnderArea(w, h, maxArea, step, minW, minH);
+}
+
+/**
  * Sanitizes, clamps, enforces max-area constraints, and reports dimension adjustments
  * @param {string|number} rawW - Raw width value (string or number)
  * @param {string|number} rawH - Raw height value (string or number)
@@ -630,25 +675,13 @@ function correctDimensions(rawW, rawH, {
         }
     }
 
-    // Enforce maximum area constraint with intelligent dimension reduction
-    const currentArea = w * h;
-    if (currentArea > maxArea) {
-        const aspectRatio = w / h;
-
-        // Try reducing height first while maintaining aspect ratio
-        const newHeight = Math.floor(maxArea / w);
-        const snappedHeight = step ? Math.floor(newHeight / step) * step : newHeight;
-
-        if (snappedHeight >= minH) {
-            h = Math.max(minH, snappedHeight);
-            changed = changed === 'width' ? 'both' : 'height';
-            reason = 'max_area';
-        } else {
-            // If height reduction fails, reduce width
-            const newWidth = Math.floor(maxArea / originalH);
-            const snappedWidth = step ? Math.floor(newWidth / step) * step : newWidth;
-            w = Math.max(minW, snappedWidth);
-            changed = changed === 'height' ? 'both' : 'width';
+    // Enforce maximum area: gcd + step grid so aspect preserved and area never exceeds maxArea
+    if (w * h > maxArea) {
+        const capped = capDimensionsToMaxArea(w, h, maxArea, step, minW, minH);
+        if (capped.width !== w || capped.height !== h) {
+            w = capped.width;
+            h = capped.height;
+            changed = 'both';
             reason = 'max_area';
         }
     }

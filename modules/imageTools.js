@@ -470,6 +470,40 @@ async function generateAndPadMask(maskInput, targetDims, maskBias = 2) {
     return maskBuffer;
 }
 
+/**
+ * Largest width×height ≤ maxArea with exact aspect ratio of (width×height), both sides on `step` grid.
+ * Same gcd/discrete-k method as client utilities / pipeline enhance.
+ */
+function dimensionsMaxUnderArea(width, height, maxArea, step = 64, minW = 64, minH = 64) {
+    let w = Math.max(1, Math.floor(Number(width)) || 0);
+    let h = Math.max(1, Math.floor(Number(height)) || 0);
+    const stepSize = step > 1 ? step : 1;
+    let g = w;
+    let x = h;
+    while (x) {
+        const t = x;
+        x = g % x;
+        g = t;
+    }
+    const gcdWH = g || 1;
+    const a = Math.floor(w / gcdWH);
+    const b = Math.floor(h / gcdWH);
+    const cellArea = stepSize * stepSize * a * b;
+    if (!cellArea || !Number.isFinite(maxArea) || maxArea < 1) {
+        return { width: w, height: h };
+    }
+    let m = Math.floor(Math.sqrt(maxArea / cellArea));
+    while (cellArea * (m + 1) * (m + 1) <= maxArea) m++;
+    const mMin = Math.max(1, Math.ceil(minW / (stepSize * a)), Math.ceil(minH / (stepSize * b)));
+    if (m < mMin) m = mMin;
+    while (cellArea * m * m > maxArea && m > mMin) m--;
+    while (cellArea * m * m > maxArea && m > 1) m--;
+    return {
+        width: stepSize * m * a,
+        height: stepSize * m * b
+    };
+}
+
 // Helper: Determine if image is wallpaper or large resolution based on dimensions
 function isImageLarge(width, height) {
     // Calculate area
@@ -493,5 +527,6 @@ module.exports = {
     processDynamicImageLetterbox,
     getImageDimensionsWithCanvas,
     resizeMaskWithCanvas,
-    isImageLarge
+    isImageLarge,
+    dimensionsMaxUnderArea
 };

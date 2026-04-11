@@ -43,6 +43,27 @@
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json">
 
+    <!-- Cross-document View Transitions (Chromium; optional enhancement for launch → app) -->
+    <meta name="view-transition" content="same-origin">
+
+    <style id="launch-handoff-critical">
+        /* Solid handoff; only injected when sessionStorage flag set from launch */
+        #launchHandoff {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            background: #000000;
+            opacity: 1;
+            transition: opacity 0.4s ease;
+            pointer-events: none;
+            view-transition-name: launch-splash;
+        }
+
+        #launchHandoff.launch-handoff--fade {
+            opacity: 0;
+        }
+    </style>
+
     <!-- PWA Icons -->
     <link rel="icon" type="image/png" sizes="32x32" href="/static_images/icon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static_images/icon-16x16.png">
@@ -149,6 +170,44 @@
 </head>
 
 <body class="initializing">
+    <script>
+        (function () {
+            try {
+                if (sessionStorage.getItem('dreamscapeLaunchHandoff') === '1') {
+                    document.write('<div id="launchHandoff" aria-hidden="true"></div>');
+                    document.body.classList.add('boot-from-launch');
+                }
+            } catch (e) { /* ignore */ }
+        })();
+        window.dismissLaunchHandoffIfNeeded = function () {
+            return new Promise(function (resolve) {
+                var el = document.getElementById('launchHandoff');
+                if (!el) {
+                    try { sessionStorage.removeItem('dreamscapeLaunchHandoff'); } catch (e) { /* ignore */ }
+                    resolve();
+                    return;
+                }
+                var finished = false;
+                function done() {
+                    if (finished) return;
+                    finished = true;
+                    el.remove();
+                    try { sessionStorage.removeItem('dreamscapeLaunchHandoff'); } catch (e) { /* ignore */ }
+                    resolve();
+                }
+                el.addEventListener('transitionend', function te(ev) {
+                    if (ev.propertyName === 'opacity') {
+                        el.removeEventListener('transitionend', te);
+                        done();
+                    }
+                });
+                requestAnimationFrame(function () {
+                    el.classList.add('launch-handoff--fade');
+                });
+                setTimeout(done, 450);
+            });
+        };
+    </script>
     <script>
         if (window.isDesktop) {
             document.body.classList.add('desktop-mode');
