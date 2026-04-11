@@ -2547,6 +2547,11 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
             `;
             characterAutocompleteList.appendChild(moreItem);
         }
+
+        // Same as rebuildAutocompleteDisplay: restore highlight after list rebuild
+        setTimeout(() => {
+            restoreSelection(displayResults);
+        }, 10);
     }
 
     // Position overlay relative to viewport
@@ -2726,11 +2731,6 @@ function storeCurrentSelection() {
 // Restore selection after content updates
 function restoreSelection(displayResults) {
     if (!lastSelectedItemData || !lastSelectedItemType || !characterAutocompleteList) {
-        return;
-    }
-
-    // Don't restore selection if user is actively navigating
-    if (userActivelyNavigating) {
         return;
     }
 

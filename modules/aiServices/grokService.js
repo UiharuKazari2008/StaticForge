@@ -3,6 +3,7 @@ const { z } = require('zod');
 const clarinet = require('clarinet');
 const sharp = require('sharp');
 const { createDynamicGenerationResponseSchema } = require('../dynamicGenerationSchema');
+const { stripPromptBlocksForEffectivePrompt } = require('../promptStageBlocks');
 
 /**
  * GrokService class - handles all Grok AI service interactions
@@ -6625,16 +6626,13 @@ class GrokService {
             console.log(`  [REASON] ${reason}`);
         }
 
-        // Strip disabled text blocks (!/.../) so they are not counted in token analysis
-        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
-
         try {
             const t5TokenizerService = this.globalResources.getT5Tokenizer();
             const results = [];
 
             for (let i = 0; i < texts.length; i++) {
                 const rawText = texts[i];
-                const text = stripDisabledBlocks(rawText);
+                const text = stripPromptBlocksForEffectivePrompt(rawText || '', { stageIndex: 0, pipelineStageGeneration: false });
                 console.log(`   📊 Analyzing text ${i + 1}/${texts.length}: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
 
                 // Get token data for this text (using stripped text so disabled blocks are excluded)

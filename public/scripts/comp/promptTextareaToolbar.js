@@ -251,16 +251,16 @@ class PromptTextareaToolbar {
         promptTextareas.push(...Array.from(characterPrompts));
         ucTextareas.push(...Array.from(characterUcs));
         
-        // Strip disabled text blocks (!/.../) so they are not counted (they are removed from the prompt when sent)
-        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
+        // Strip stage blocks and disabled blocks (matches server); non-pipeline preview uses stage 0
+        const stripForTokens = (s) => stripPromptBlocksForEffectivePrompt(s || '', { stageIndex: 0, pipelineStageGeneration: false });
         const promptPrefix = (typeof getEffectivePromptPrefixForTokenCount === 'function') ? getEffectivePromptPrefixForTokenCount() : '';
         const ucPrefix = (typeof getEffectiveUcPrefixForTokenCount === 'function') ? getEffectiveUcPrefixForTokenCount() : '';
         const promptTexts = promptTextareas.map((ta, i) => {
-            const base = stripDisabledBlocks(ta.value || '');
+            const base = stripForTokens(ta.value || '');
             return (i === 0 && promptPrefix) ? promptPrefix + base : base;
         });
         const ucTexts = ucTextareas.map((ta, i) => {
-            const base = stripDisabledBlocks(ta.value || '');
+            const base = stripForTokens(ta.value || '');
             return (i === 0 && ucPrefix) ? ucPrefix + base : base;
         });
         
@@ -343,9 +343,7 @@ class PromptTextareaToolbar {
     }
 
     calculateTokenCount(text) {
-        // Strip disabled text blocks (!/.../) so they are not counted
-        const stripDisabledBlocks = (s) => (s || '').replace(/!\/[^\/]+\//g, '');
-        const cleanedText = stripDisabledBlocks(text || '');
+        const cleanedText = stripPromptBlocksForEffectivePrompt(text || '', { stageIndex: 0, pipelineStageGeneration: false });
         if (t5Tokenizer) {
             return t5Tokenizer.countTokens(cleanedText);
         }

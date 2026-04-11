@@ -1508,6 +1508,17 @@ function highlightEmphasisInText(text) {
         }).join('|');
     }
 
+    // Step 0: Protect stage-conditional blocks (!-N/, !N+/, !N/) — same delimiters as embedded expander stage rules
+    const stageConditionalBlocks = [];
+    const protectStageBlock = (match) => {
+        const blockId = `__STAGE_COND_BLOCK_${stageConditionalBlocks.length}__`;
+        stageConditionalBlocks.push({ id: blockId, original: match });
+        return blockId;
+    };
+    highlightedText = highlightedText.replace(/!-(\d+)\/([^\/]*)\//g, protectStageBlock);
+    highlightedText = highlightedText.replace(/!(\d+)\+\/([^\/]*)\//g, protectStageBlock);
+    highlightedText = highlightedText.replace(/!(\d+)\/([^\/]*)\//g, protectStageBlock);
+
     // Step 1: Protect disable blocks from further processing
     // This prevents any inner highlighting from being applied to disabled content
     const disableBlocks = [];
@@ -1712,16 +1723,26 @@ function highlightEmphasisInText(text) {
         });
     });
 
-    // Step 3: Restore disable blocks with proper highlighting
+    // Step 3: Restore disable blocks with proper highlighting (black: slash-delimited / stage-adjacent syntax)
     disableBlocks.forEach(block => {
-        const backgroundColor = '#444444'; // Disable syntax color (red)
+        const backgroundColor = '#000000';
         
         // Escape special characters for HTML display
         const escapedMatch = block.original.replace(/!/g, '&#33;')
                                          .replace(/\//g, '&#47;');
 
         highlightedText = highlightedText.replace(block.id, 
-            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`
+            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: #555555;">${escapedMatch}</span>`
+        );
+    });
+
+    // Step 4: Restore stage-conditional blocks
+    stageConditionalBlocks.forEach(block => {
+        const backgroundColor = '#000000';
+        const escapedMatch = block.original.replace(/!/g, '&#33;')
+                                         .replace(/\//g, '&#47;');
+        highlightedText = highlightedText.replace(block.id,
+            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: #555555;">${escapedMatch}</span>`
         );
     });
 
@@ -2673,8 +2694,8 @@ function toggleDisableSyntax(target) {
         
         target.value = newValue;
         
-        // Set cursor position after the disabled text
-        const newCursorPosition = selectionStart + disabledText.length;
+        // Cursor after "!" and before first "/" so a stage index can be typed (!0/, !1+/, !-2/, or leave empty for !/…/)
+        const newCursorPosition = selectionStart + 1;
         target.setSelectionRange(newCursorPosition, newCursorPosition);
         
         // Trigger input event to update any dependent UI
@@ -2744,8 +2765,7 @@ function openTokenDisplayModal(textarea) {
     }
     
     const rawText = textarea.value;
-    // Strip disabled blocks (!/.../) so analysis matches effective prompt token count
-    const text = (rawText || '').replace(/!\/[^\/]+\//g, '');
+    const text = stripPromptBlocksForEffectivePrompt(rawText || '', { stageIndex: 0, pipelineStageGeneration: false });
     if (!text.trim()) {
         showGlassToast('info', 'Info', 'No text to analyze', false, 3000, '<i class="fas fa-info-circle"></i>');
         return;

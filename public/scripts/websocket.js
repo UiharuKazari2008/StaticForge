@@ -480,6 +480,8 @@ class WebSocketClient {
 
         // WebSocket indicator elements (dynamically populated array)
         this.websocketIndicators = [];
+        /** Server app ping overdue while socket still OPEN — flash green dot (see setPingResponseWaitingFlash). */
+        this._pingResponseWaitingFlash = false;
 
         // Banner manager for status updates
         this.bannerManager = new BannerManager();
@@ -4887,11 +4889,26 @@ class WebSocketClient {
 
         // Restore current status to all indicators
         this.updateWebSocketStatus(currentStatus);
+        if (this._pingResponseWaitingFlash) {
+            this.setPingResponseWaitingFlash(true);
+        }
 
         // Re-setup click handlers for new indicators
         this.setupRequestsModalHandlers();
 
         this.logInfo(`WebSocket indicators refreshed. Found ${this.websocketIndicators.length} indicator(s).`);
+    }
+
+    /**
+     * Slow server ping response while WebSocket still connected: flash status dot (CSS .ping-response-wait).
+     * No-op if not connected — class only applies with .connected.
+     */
+    setPingResponseWaitingFlash(active) {
+        this._pingResponseWaitingFlash = !!active;
+        this.websocketIndicators.forEach(indicator => {
+            if (!indicator.status) return;
+            indicator.status.classList.toggle('ping-response-wait', !!(active && indicator.status.classList.contains('connected')));
+        });
     }
 
     // Update WebSocket connection status for all indicators
@@ -4904,10 +4921,17 @@ class WebSocketClient {
 
         const statusClass = statusClasses[status] || '';
 
+        if (status !== 'connected') {
+            this._pingResponseWaitingFlash = false;
+        }
+
         // Update all indicators
         this.websocketIndicators.forEach(indicator => {
             if (indicator.status) {
                 indicator.status.className = `websocket-status ${statusClass}`;
+                if (status === 'connected' && this._pingResponseWaitingFlash) {
+                    indicator.status.classList.add('ping-response-wait');
+                }
             }
         });
 

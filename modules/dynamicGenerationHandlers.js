@@ -15,15 +15,17 @@ const globalResources = require('./globalResources');
 const localPromptOptimizer = require('./localPromptOptimizer');
 const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
 const ClothingDatabase = require('./clothingDatabase');
+const { stripPromptBlocksForEffectivePrompt } = require('./promptStageBlocks');
 
 /**
- * Strip disabled text blocks (!/.../) from text. These blocks are not included in the prompt when sent.
- * @param {string} text - Raw text that may contain !/content/ blocks
- * @returns {string} Text with disabled blocks removed
+ * Strip stage-conditional blocks (!N/, !N+/, !-N/) and disabled text blocks (!/.../).
+ * @param {string} text
+ * @param {{ stageIndex?: number, pipelineStageGeneration?: boolean } | null} stageData - optional; defaults to non-pipeline stage 0
+ * @returns {string}
  */
-function stripDisabledBlocks(text) {
+function stripDisabledBlocks(text, stageData = null) {
     if (!text || typeof text !== 'string') return text || '';
-    return text.replace(/!\/[^\/]+\//g, '');
+    return stripPromptBlocksForEffectivePrompt(text, stageData);
 }
 
 /**
@@ -9938,6 +9940,10 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
     const allPhase1AttemptIds = [];
     
     try {
+        const stageDataForStrip = stageContext && (stageContext.stageIndex !== undefined || stageContext.pipelineStageGeneration !== undefined)
+            ? { stageIndex: stageContext.stageIndex ?? 0, pipelineStageGeneration: !!stageContext.pipelineStageGeneration }
+            : null;
+
         // Summarized console output
         globalResources.getLogger().normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
         
@@ -10145,16 +10151,16 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         context.lockSubject = lockSubjectEnabled;
 
         // Count tokens for all prompts (only if token count enforcement is enabled)
-        // Strip disabled blocks (!/.../) so they are not counted
+        // Strip stage blocks and disabled blocks (!/.../) so they are not counted
         if (tokenCountEnabled) {
             try {
                 const t5TokenizerService = globalResources.getT5Tokenizer();
-                const promptTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(prompt || ''));
-                const ucTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(uc || ''));
+                const promptTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(prompt || '', stageDataForStrip));
+                const ucTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(uc || '', stageDataForStrip));
                 
                 const characterTokenCounts = characterPrompts.map(char => ({
-                    prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt || '')),
-                    uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc || ''))
+                    prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt || '', stageDataForStrip)),
+                    uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc || '', stageDataForStrip))
                 }));
                 
                 const totalCharacterPromptTokens = characterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);
@@ -11273,12 +11279,12 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 if (tokenCountEnabled) {
                     try {
                         const t5TokenizerService = globalResources.getT5Tokenizer();
-                        const finalPromptTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalPrompt));
-                        const finalUCTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalUC));
+                        const finalPromptTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalPrompt, stageDataForStrip));
+                        const finalUCTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalUC, stageDataForStrip));
                         
                         const finalCharacterTokenCounts = finalCharacterPrompts.map(char => ({
-                            prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt)),
-                            uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc))
+                            prompt: t5TokenizerService.countTokens(stripDisabledBlocks(char.prompt, stageDataForStrip)),
+                            uc: t5TokenizerService.countTokens(stripDisabledBlocks(char.uc, stageDataForStrip))
                         }));
                         
                         const finalTotalPromptTokens = finalPromptTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.prompt, 0);

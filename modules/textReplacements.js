@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { applyStageConditionalPromptBlocks } = require('./promptStageBlocks');
 
 class TextReplacements {
     constructor(globalResources = null) {
@@ -169,14 +170,20 @@ class TextReplacements {
             periodKey = this.normalizePeriodKey(periodKey);
         }
 
-        let result = text.replace(/!PRESET_NAME/g, presetName);
         const replacements = [];
+
+        const stageDataForBlocks = stageData || { stageIndex: 0, pipelineStageGeneration: false };
+        // Slash-delimited blocks first: avoids !PRESET_NAME eating "!PRESET_NAME/..." and matches the rule that "/" in the token means not a plain expander
+        let result = applyStageConditionalPromptBlocks(text, stageDataForBlocks);
 
         // Handle disable syntax !/content/ - remove content from text and trim
         result = result.replace(/(\s*)!\/([^\/]+)\/(\s*)/g, (match, beforeSpace, content, afterSpace) => {
             // Remove the entire match and trim surrounding whitespace
             return '';
         });
+
+        // Not when followed by "/" — "!PRESET_NAME/foo/..." is slash-syntax, not the preset placeholder
+        result = result.replace(/!PRESET_NAME(?!\/)/g, presetName != null && presetName !== '' ? presetName : '');
 
         // Track which body replacement configs apply to current stage (for metadata preservation)
         const currentStageBodyReplacements = new Map();

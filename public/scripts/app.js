@@ -8514,7 +8514,7 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
         } catch (error) {
             lastError = error;
             if (attempt >= maxRetries) {
-                showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, 0, '<i class="fas fa-exclamation-triangle"></i>');
+                showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, false, '<i class="fas fa-exclamation-triangle"></i>');
             }
             console.error(`❌ Failed to load app options (attempt ${attempt}/${maxRetries}):`, error);
             if (attempt < maxRetries) {
@@ -8532,7 +8532,7 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
     console.error(errorMessage);
 
     // Show critical error to user
-    showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, 0, '<i class="fas fa-exclamation-triangle"></i>');
+    showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, false, '<i class="fas fa-exclamation-triangle"></i>');
 
     // Throw the error to be handled by the caller
     throw new Error(errorMessage);
@@ -23551,7 +23551,6 @@ function loadBlurPreference() {
 // Ping management
 let lastPingTime = null;
 let pingTimeoutId = null;
-let connectionToastId = null;
 let imageCount = 0;
 // websocketToastId is now global (window.websocketToastId)
 
@@ -23770,10 +23769,8 @@ function handleServerPing(data) {
     // Update Android persistent notification with latest status
     updateAndroidNotificationBody();
 
-    // Clear connection warning toast if it exists
-    if (connectionToastId) {
-        removeGlassToast(connectionToastId);
-        connectionToastId = null;
+    if (window.wsClient && typeof window.wsClient.setPingResponseWaitingFlash === 'function') {
+        window.wsClient.setPingResponseWaitingFlash(false);
     }
 
     // Clear WebSocket connection toast if it exists
@@ -23787,26 +23784,11 @@ function handleServerPing(data) {
         clearTimeout(pingTimeoutId);
     }
 
-    // Set timeout for next ping (15 seconds)
+    // Set timeout for next ping (15 seconds) — flash WS dot if still connected but server silent
     pingTimeoutId = setTimeout(() => {
-        if (!connectionToastId) {
-            const reconnectButton = {
-                text: 'Reconnect',
-                type: 'primary',
-                onClick: () => {
-                    console.log('User initiated reconnection');
-                    if (window.wsClient) {
-                        window.wsClient.reconnect();
-                    }
-                    if (connectionToastId) {
-                        removeGlassToast(connectionToastId);
-                        connectionToastId = null;
-                    }
-                },
-                closeOnClick: false
-            };
-
-            connectionToastId = showGlassToast('warning', 'Connection Status', 'Waiting for server response...', false, false, '<i class="fas fa-phone-arrow-up-right fa-fade"></i>', [reconnectButton]);
+        if (window.wsClient && window.wsClient.isConnected && window.wsClient.isConnected()
+            && typeof window.wsClient.setPingResponseWaitingFlash === 'function') {
+            window.wsClient.setPingResponseWaitingFlash(true);
         }
     }, 15000);
 }

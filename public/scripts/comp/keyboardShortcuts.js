@@ -220,6 +220,10 @@ function createShortcutsOverlay() {
                         <span class="shortcut-key">F5</span>
                         <span class="shortcut-desc"><span>Generate</span><i class="fa fa-sparkles"></i></span>
                     </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F5</span>
+                        <span class="shortcut-desc"><span>Staged Generation</span><i class="fas fa-arrow-down-square-triangle"></i></span>
+                    </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F6</span>
                         <span class="shortcut-desc"><span>References</span><i class="nai-img2img"></i></span>
@@ -413,6 +417,21 @@ function handleKeyDown(event) {
             if (manualGenerateBtn && !manualGenerateBtn.disabled) {
                 manualGenerateBtn.click();
                 showShortcutActionToast('Started Generation');
+            }
+            break;
+        case 'ALT+F5':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            {
+                const stageGenBtn = document.getElementById('enableStageGenerationBtn');
+                if (!stageGenBtn || stageGenBtn.classList.contains('hidden')) break;
+                const newState = stageGenBtn.dataset.state === 'on' ? 'off' : 'on';
+                stageGenBtn.dataset.state = newState;
+                const windowStageGenBtn = document.getElementById('windowEnableStageGenerationBtn');
+                if (windowStageGenBtn) windowStageGenBtn.dataset.state = newState;
+                if (typeof updateSaveStage0BtnVisibility === 'function') updateSaveStage0BtnVisibility();
+                showShortcutActionToast(newState === 'on' ? 'Stage generation: On' : 'Stage generation: Off');
             }
             break;
         case 'F6':

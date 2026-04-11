@@ -1352,10 +1352,12 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
         // Create stageData for request body replacements (stub for stage 0 - base generation)
         // Use provided stageData or create default for base generation
-        const currentStageData = stageData || {
+        const currentStageData = {
             stageIndex: 0,
             stageType: 'base',
-            text_replacements: body.text_replacements || []
+            text_replacements: body.text_replacements || [],
+            pipelineStageGeneration: Array.isArray(body.pipeline) && body.pipeline.length > 0,
+            ...(stageData || {})
         };
 
         let processedPromptResult = globalResources.textReplacements.applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
@@ -4122,7 +4124,8 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
             stageIndex: 0,
             stageType: 'base',
             totalStages: totalStages,
-            text_replacements: bodyData.text_replacements || []
+            text_replacements: bodyData.text_replacements || [],
+            pipelineStageGeneration: pipeline.length > 0
         };
 
         const baseOpts = await buildOptions(previousStageBody, null, {}, ws, handler, wsServer, baseStageData);
@@ -4690,7 +4693,9 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                         isInitial: i === 0, // First stage in pipeline
                         isBackgroundFocus: stage.type === 'expand-canvas' && stage.backgroundFocus,
                         isEnhance: stage.type !== 'expand-canvas',
-                        hasPreview: !!stageRequestBody.dynamic_generation.compiled_prompt?.preview_image_hash
+                        hasPreview: !!stageRequestBody.dynamic_generation.compiled_prompt?.preview_image_hash,
+                        stageIndex,
+                        pipelineStageGeneration: true
                     };
                     stageRequestBody.dynamic_generation.stageContext = stageContext;
                     
@@ -4782,7 +4787,8 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                     stageIndex: stageIndex,
                     stageType: stage.type,
                     totalStages: totalStages,
-                    text_replacements: stageRequestBody.text_replacements || []
+                    text_replacements: stageRequestBody.text_replacements || [],
+                    pipelineStageGeneration: true
                 };
 
                 // Build options and generate
