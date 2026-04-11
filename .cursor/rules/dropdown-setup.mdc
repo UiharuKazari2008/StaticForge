@@ -1,4 +1,15 @@
 ---
+description: >-
+  StaticForge custom dropdown system: HTML (custom-dropdown, custom-dropdown-btn,
+  custom-dropdown-menu), CSS classes and variants (dropup, dropright, dark, hover-show),
+  and JS (setupDropdown, renderSimpleDropdown, closeDropdown, grouped options, keyboard
+  nav). Use when adding or changing dropdown UI, wiring new selects, or debugging
+  dropdown behavior—do not invent a separate dropdown pattern.
+globs:
+  - public/scripts/comp/dropdown.js
+  - public/scripts/comp/manualDropdownManager.js
+  - public/app.html
+  - public/css/app.css
 alwaysApply: false
 ---
 # Dropdown Menu Setup Guide
