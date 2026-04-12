@@ -571,6 +571,13 @@ class FileSearch {
             suggestionElement.addEventListener('click', () => {
                 this.insertSuggestion(suggestion);
             });
+            touchSlopUtils.registerTouchSlopTracking(suggestionElement);
+            suggestionElement.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(suggestionElement, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+                e.preventDefault();
+                this.insertSuggestion(suggestion);
+            }, { passive: false });
 
             suggestionsList.appendChild(suggestionElement);
         });
@@ -587,6 +594,13 @@ class FileSearch {
             moreItem.addEventListener('click', () => {
                 this.expandResults();
             });
+            touchSlopUtils.registerTouchSlopTracking(moreItem);
+            moreItem.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(moreItem, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+                e.preventDefault();
+                this.expandResults();
+            }, { passive: false });
             suggestionsList.appendChild(moreItem);
         }
 

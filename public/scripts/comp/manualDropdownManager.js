@@ -11,6 +11,16 @@
  * - app.js (for data structures and utilities)
  */
 
+function bindCustomDropdownOptionTouchSlop(option, fn) {
+    touchSlopUtils.registerTouchSlopTracking(option);
+    option.addEventListener('touchend', (e) => {
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        e.preventDefault();
+        fn();
+    }, { passive: false });
+}
+
 // ============================================================================
 // DOM ELEMENTS (MOVED FROM app.js)
 // ============================================================================
@@ -333,6 +343,13 @@ function renderSimpleDropdown(menu, items, value_key, display_key, selectHandler
             e.preventDefault();
             action();
         });
+        touchSlopUtils.registerTouchSlopTracking(option);
+        option.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+            e.preventDefault();
+            action();
+        }, { passive: false });
         option.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -399,17 +416,18 @@ function renderManualSamplerDropdown(selectedVal) {
             e.preventDefault();
             action();
         });
-        
+        bindCustomDropdownOptionTouchSlop(option, action);
+
         option.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 action();
             }
         });
-        
+
         manualSamplerDropdownMenu.appendChild(option);
     });
-    
+
     // Add noise scheduler section header
     const noiseHeader = document.createElement('div');
     noiseHeader.className = 'custom-dropdown-group';
@@ -434,6 +452,7 @@ function renderManualSamplerDropdown(selectedVal) {
             e.preventDefault();
             action();
         });
+        bindCustomDropdownOptionTouchSlop(option, action);
 
         option.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -633,6 +652,7 @@ function renderManualWorkspaceDropdown(selectedVal) {
         };
 
         option.addEventListener('click', action);
+        bindCustomDropdownOptionTouchSlop(option, action);
         option.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === ' ') {
                 action();
@@ -1671,6 +1691,10 @@ function renderUcPresetsDropdown() {
 
         option.addEventListener('click', (e) => {
             e.preventDefault();
+            selectUcPreset(preset.value);
+            closeUcPresetsDropdown();
+        });
+        bindCustomDropdownOptionTouchSlop(option, () => {
             selectUcPreset(preset.value);
             closeUcPresetsDropdown();
         });

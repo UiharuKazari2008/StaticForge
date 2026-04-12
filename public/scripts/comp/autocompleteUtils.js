@@ -32,7 +32,6 @@ let currentSearchTimestamp = null;
 let serviceResults = new Map(); // Store results per service
 let serviceStatuses = new Map(); // Store status per service (stalled/completed/no-results)
 
-
 // Global handler for ack-less search responses
 window.handleSearchResponse = function (message) {
     if (message.type === 'search_characters_response') {
@@ -2200,6 +2199,8 @@ function createAutocompleteItem(result) {
             selectTextReplacement(result.placeholder);
         });
         item.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
             selectTextReplacement(result.placeholder);
         }, { passive: false });
@@ -2225,6 +2226,8 @@ function createAutocompleteItem(result) {
             selectDynamicPlaceholder(result.placeholder);
         });
         item.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
             selectDynamicPlaceholder(result.placeholder);
         }, { passive: false });
@@ -2306,6 +2309,8 @@ function createAutocompleteItem(result) {
             selectTag(result.name, result.category);
         });
         item.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
             selectTag(result.name, result.category);
         }, { passive: false });
@@ -2391,6 +2396,8 @@ function createAutocompleteItem(result) {
             selectTag(tagName, result.category);
         });
         item.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
             selectTag(tagName, result.category);
         }, { passive: false });
@@ -2420,6 +2427,8 @@ function createAutocompleteItem(result) {
                 selectCharacterItem(result.character);
             });
             item.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                 e.preventDefault();
                 selectCharacterItem(result.character);
             }, { passive: false });
@@ -2440,10 +2449,14 @@ function createAutocompleteItem(result) {
                 e.preventDefault();
             });
             item.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                 e.preventDefault();
             }, { passive: false });
         }
     }
+
+    touchSlopUtils.registerTouchSlopTracking(item);
 
     return item;
 }
@@ -2931,7 +2944,10 @@ function showSpellCheckSuggestions(spellCheckData, target) {
                 e.preventDefault();
                 applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
             });
+            touchSlopUtils.registerTouchSlopTracking(btn);
             btn.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                 e.preventDefault();
                 applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
             }, { passive: false });
@@ -2943,7 +2959,10 @@ function showSpellCheckSuggestions(spellCheckData, target) {
             e.preventDefault();
             addWordToDictionary(word);
         });
+        touchSlopUtils.registerTouchSlopTracking(addWordBtn);
         addWordBtn.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(addWordBtn, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
             e.preventDefault();
             addWordToDictionary(word);
         }, { passive: false });
@@ -3905,7 +3924,10 @@ function showCharacterDetail(character) {
                 enhancerGroups[0].classList.add('selected');
             }
             enhancerGroups.forEach((group) => {
+                touchSlopUtils.registerTouchSlopTracking(group);
                 group.addEventListener('touchend', (e) => {
+                    const maxDelta = touchSlopUtils.finalizeTouchSlop(group, e);
+                    if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                     e.preventDefault();
                     const enhancerGroupData = group.getAttribute('data-enhancer-group');
                     const characterData = group.getAttribute('data-character');
@@ -3922,7 +3944,10 @@ function showCharacterDetail(character) {
             });
             const closeBtn = document.querySelector('.character-detail-content .close-character-detail');
             if (closeBtn) {
+                touchSlopUtils.registerTouchSlopTracking(closeBtn);
                 closeBtn.addEventListener('touchend', (e) => {
+                    const maxDelta = touchSlopUtils.finalizeTouchSlop(closeBtn, e);
+                    if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                     e.preventDefault();
                     hideCharacterDetail();
                 }, { passive: false });

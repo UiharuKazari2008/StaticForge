@@ -2941,6 +2941,19 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             baseOptions.resPreset = "NORMAL_SQUARE";
         }
 
+        // nekoai-js MetadataProcessor.handleResolution caps at 3,047,424 px; explicit width/height from the client or pipeline can exceed it (e.g. 2304×1344).
+        if (baseOptions.width && baseOptions.height) {
+            const maxApiTotalPixels = 3047424;
+            const w = baseOptions.width;
+            const h = baseOptions.height;
+            if (w * h > maxApiTotalPixels) {
+                const snapped = dimensionsMaxUnderArea(w, h, maxApiTotalPixels, 64, 64, 64);
+                baseOptions.width = snapped.width;
+                baseOptions.height = snapped.height;
+                console.log(`📐 Clamped dimensions to API max ${maxApiTotalPixels} px: ${w}x${h} → ${snapped.width}x${snapped.height}`);
+            }
+        }
+
         if (body.chara_reference_source !== undefined) {
             try {
                 // Convert character reference to base64 PNG image (following chunk pattern)

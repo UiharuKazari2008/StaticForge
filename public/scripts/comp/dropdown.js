@@ -39,6 +39,13 @@ function renderGroupedDropdown(menu, groups, selectHandler, closeHandler, select
                 });
             }
             option.addEventListener('click', action);
+            touchSlopUtils.registerTouchSlopTracking(option);
+            option.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(option, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+                e.preventDefault();
+                action();
+            }, { passive: false });
             option.addEventListener('keydown', e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     action();
