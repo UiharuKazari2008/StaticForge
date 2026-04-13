@@ -100,6 +100,15 @@ const presetSelect = document.getElementById('presetSelect');
 const gallery = document.getElementById('gallery');
 const cacheGallery = document.getElementById('cacheGallery');
 const confettiContainer = document.getElementById('confettiContainer');
+
+/** Celebration after a successful image generation: `'sakura'` (default) or classic `'confetti'`. Persists via localStorage key `generationCelebrationEffect`. */
+var generationCelebrationEffect = 'sakura';
+try {
+    const _storedCelebration = localStorage.getItem('generationCelebrationEffect');
+    if (_storedCelebration === 'sakura' || _storedCelebration === 'confetti') {
+        generationCelebrationEffect = _storedCelebration;
+    }
+} catch (e) { /* ignore */ }
 const manualModel = document.getElementById('manualModel');
 const manualPrompt = document.getElementById('manualPrompt');
 const manualUc = document.getElementById('manualUc');
@@ -810,7 +819,9 @@ function deregisterManualPreviewEventListeners() {
     manualPreviewEventListenersRegistered = false;
 }
 
-function createConfetti() {
+function createConfettiClassic() {
+    if (!confettiContainer) return;
+
     // Multi-colored confetti palette with vibrant colors
     const colors = [
         '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', // Orange/Red variants
@@ -881,6 +892,70 @@ function createConfetti() {
                 }
             }, (duration + delay) * 1000 + 1000); // Extra 1 second buffer
         }, i * 25); // Slightly increased delay between pieces for better distribution
+    }
+}
+
+function createSakuraPetals() {
+    if (!confettiContainer) return;
+
+    const petalColors = [
+        ['#fff5f7', '#ffe4ec'],
+        ['#ffe4ec', '#ffb7c5'],
+        ['#ffd6e0', '#ff9ebb'],
+        ['#fff0f5', '#ffc0cb'],
+        ['#fce4ec', '#f8bbd9'],
+        ['#ffffff', '#ffe4ec']
+    ];
+
+    const totalPieces = 160;
+
+    for (let i = 0; i < totalPieces; i++) {
+        setTimeout(() => {
+            const petal = document.createElement('div');
+            petal.className = 'sakura-petal';
+
+            const w = Math.random() * 8 + 8;
+            const h = Math.random() * 10 + 12;
+            petal.style.width = w + 'px';
+            petal.style.height = h + 'px';
+            petal.style.left = Math.random() * 100 + 'vw';
+
+            const [c1, c2] = petalColors[Math.floor(Math.random() * petalColors.length)];
+            const angle = Math.floor(Math.random() * 40) + 100;
+            petal.style.background = `linear-gradient(${angle}deg, ${c1}, ${c2})`;
+            petal.style.borderRadius = '50% 50% 50% 0';
+
+            const startRot = Math.random() * 360;
+            petal.style.setProperty('--sakura-start-rot', startRot + 'deg');
+            petal.style.setProperty('--sakura-drift', (Math.random() * 80 - 40) + 'px');
+
+            if (i % 3 === 0) {
+                petal.style.left = (Math.random() * 25 - 12) + 'vw';
+            } else if (i % 3 === 1) {
+                petal.style.left = (78 + Math.random() * 22) + 'vw';
+            }
+
+            const duration = 6 + Math.random() * 4;
+            const delay = Math.random() * 2;
+            petal.style.animationDuration = duration + 's';
+            petal.style.animationDelay = delay + 's';
+
+            confettiContainer.appendChild(petal);
+
+            setTimeout(() => {
+                if (petal.parentNode) {
+                    petal.parentNode.removeChild(petal);
+                }
+            }, (duration + delay) * 1000 + 1000);
+        }, i * 28);
+    }
+}
+
+function createConfetti() {
+    if (generationCelebrationEffect === 'sakura') {
+        createSakuraPetals();
+    } else {
+        createConfettiClassic();
     }
 }
 

@@ -12407,13 +12407,15 @@ i#carouselCacheIcon {
     color: #ffffff;
 }
 
-/* Confetti Styles */
+/* Confetti Styles — inset extends past the viewport so particles spawn out of frame (overflow clips the band above/side edges) */
 #confettiContainer {
     position: fixed;
-    top: 0;
+    top: -25px;
     left: 0;
-    width: 100%;
-    height: 100%;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
     pointer-events: none;
     z-index: var(--z-notification);
     overflow: hidden;
@@ -12421,6 +12423,8 @@ i#carouselCacheIcon {
 
 .confetti {
     position: absolute;
+    top: 0;
+    left: 0;
     border-radius: 2px;
     animation: confettiFall 5s linear forwards;
     transform-origin: center;
@@ -12479,6 +12483,71 @@ i#carouselCacheIcon {
 .confetti:nth-child(7n) {
     animation-duration: 4.3s;
     animation-delay: 0.7s;
+}
+
+/* Sakura petals (post-generation celebration, see generationCelebrationEffect in manualModalManager.js) */
+.sakura-petal {
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-radius: 50% 50% 50% 0;
+    animation: sakuraPetalFall 7s ease-in-out forwards;
+    transform-origin: center center;
+    z-index: var(--z-fullscreen);
+    pointer-events: none;
+    box-shadow: 0 1px 2px rgba(255, 182, 193, 0.35);
+}
+
+@keyframes sakuraPetalFall {
+    0% {
+        transform: translateY(-14px) translateX(0) rotate(var(--sakura-start-rot, 0deg));
+        opacity: 0.94;
+    }
+
+    22% {
+        transform: translateY(22vh) translateX(calc(var(--sakura-drift, 0px) * 0.45)) rotate(calc(var(--sakura-start-rot, 0deg) + 110deg));
+        opacity: 0.88;
+    }
+
+    48% {
+        transform: translateY(48vh) translateX(calc(var(--sakura-drift, 0px) * -0.55)) rotate(calc(var(--sakura-start-rot, 0deg) + 260deg));
+        opacity: 0.78;
+    }
+
+    72% {
+        transform: translateY(74vh) translateX(calc(var(--sakura-drift, 0px) * 0.38)) rotate(calc(var(--sakura-start-rot, 0deg) + 420deg));
+        opacity: 0.52;
+    }
+
+    100% {
+        transform: translateY(106vh) translateX(calc(var(--sakura-drift, 0px) * 0.12)) rotate(calc(var(--sakura-start-rot, 0deg) + 640deg));
+        opacity: 0;
+    }
+}
+
+.sakura-petal:nth-child(odd) {
+    animation-duration: 6.8s;
+    animation-delay: 0.15s;
+}
+
+.sakura-petal:nth-child(even) {
+    animation-duration: 8.2s;
+    animation-delay: 0.25s;
+}
+
+.sakura-petal:nth-child(3n) {
+    animation-duration: 7.4s;
+    animation-delay: 0.35s;
+}
+
+.sakura-petal:nth-child(4n) {
+    animation-duration: 7.1s;
+    animation-delay: 0.45s;
+}
+
+.sakura-petal:nth-child(5n) {
+    animation-duration: 8.6s;
+    animation-delay: 0.2s;
 }
 
 /* Disable scroll arrows (spinners) in number inputs */
