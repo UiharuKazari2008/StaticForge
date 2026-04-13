@@ -27,6 +27,7 @@ const { authMiddleware, devAuthMiddleware } = require('./modules/auth');
 const { tagSuggestionsCache } = require('./modules/cache');
 const { processDynamicImage } = require('./modules/imageTools');
 const tracing = require('./modules/tracing');
+const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('./modules/cacheDirExpiry');
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
 
@@ -2954,6 +2955,20 @@ async function handleSendCommand(data) {
         globalResources.registerTimer('accountDataRefresh', 'interval', () => initializeAccountData(), ACCOUNT_DATA_REFRESH_INTERVAL);
         globalResources.registerTimer('balanceRefresh', 'interval', () => refreshBalance(), BALANCE_REFRESH_INTERVAL);
         globalResources.registerTimer('cacheRefresh', 'interval', () => initializeCacheData(), CACHE_REFRESH_INTERVAL);
+        setTimeout(() => {
+            try {
+                runCacheDirExpiry(globalResources);
+            } catch (err) {
+                globalResources.logger.warn('Cache dir expiry failed:', err.message);
+            }
+        }, FIRST_RUN_DELAY_MS);
+        globalResources.registerTimer('cacheDirExpiry', 'interval', () => {
+            try {
+                runCacheDirExpiry(globalResources);
+            } catch (err) {
+                globalResources.logger.warn('Cache dir expiry failed:', err.message);
+            }
+        }, CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('securityCleanup', 'interval', () => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('retrievedRequestsCleanup', 'interval', () => cleanupRetrievedRequests(), 5 * 60 * 1000);
         

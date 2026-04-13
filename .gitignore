@@ -14,6 +14,7 @@ node_modules/
 config.json
 *config.json
 .cache/*
+# Legacy SQLite snapshot dir (before unified .cache/checkpoints/<dbStem>/); safe to keep for old trees
 .checkpoints/*
 logs/
 log.txt

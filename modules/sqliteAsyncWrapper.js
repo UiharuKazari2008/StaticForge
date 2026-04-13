@@ -570,36 +570,31 @@ class AsyncSQLiteDatabase {
                 console.warn(`⚠️ WAL checkpoint warning: ${walError.message}`);
             }
             
-            // Generate checkpoint filename and path
+            // Generate checkpoint filename and path (same dir as DatabaseCheckpointManager)
             const checkpointFilename = this.checkpointManager.generateCheckpointFilename();
-            const checkpointPath = path.join(
-                path.dirname(this.dbPath),
-                '.checkpoints',
-                checkpointFilename
-            );
-            
-            // Ensure checkpoint directory exists
-            const checkpointDir = path.dirname(checkpointPath);
+            const checkpointDir = this.checkpointManager.checkpointDir;
+            const checkpointPath = path.join(checkpointDir, checkpointFilename);
+
             if (!fs.existsSync(checkpointDir)) {
                 fs.mkdirSync(checkpointDir, { recursive: true });
             }
-            
+
             // After WAL checkpoint, the database is in a consistent state
             // We can safely copy the database file directly without needing the backup API
             // This avoids connection management issues entirely
             if (!fs.existsSync(this.dbPath)) {
                 throw new Error(`Database file does not exist: ${this.dbPath}`);
             }
-            
+
             // Copy the main database file
             fs.copyFileSync(this.dbPath, checkpointPath);
-            
+
             // Also copy WAL and SHM files if they exist (though they should be empty after checkpoint)
             const walPath = this.dbPath + '-wal';
             const shmPath = this.dbPath + '-shm';
             const checkpointWalPath = checkpointPath + '-wal';
             const checkpointShmPath = checkpointPath + '-shm';
-            
+
             if (fs.existsSync(walPath)) {
                 try {
                     fs.copyFileSync(walPath, checkpointWalPath);
@@ -608,7 +603,7 @@ class AsyncSQLiteDatabase {
                     console.warn(`⚠️ Could not copy WAL file: ${walCopyError.message}`);
                 }
             }
-            
+
             if (fs.existsSync(shmPath)) {
                 try {
                     fs.copyFileSync(shmPath, checkpointShmPath);
@@ -617,12 +612,12 @@ class AsyncSQLiteDatabase {
                     console.warn(`⚠️ Could not copy SHM file: ${shmCopyError.message}`);
                 }
             }
-            
+
             // Update checkpoint manager signature
             const currentSignature = this.checkpointManager.getDatabaseSignature();
             this.checkpointManager.lastCheckpointSignature = currentSignature;
             this.checkpointManager.cleanupOldCheckpoints();
-            
+
             this.markClean();
             console.log(`✅ Created database checkpoint: ${checkpointFilename}`);
             return true;
@@ -634,7 +629,7 @@ class AsyncSQLiteDatabase {
             this.notifyCheckpointComplete();
         }
     }
-    
+
     /**
      * Force checkpoint creation (even if not dirty)
      * Blocks other operations while checkpointing
@@ -665,36 +660,31 @@ class AsyncSQLiteDatabase {
                 console.warn(`⚠️ WAL checkpoint warning: ${walError.message}`);
             }
             
-            // Generate checkpoint filename and path
+            // Generate checkpoint filename and path (same dir as DatabaseCheckpointManager)
             const checkpointFilename = this.checkpointManager.generateCheckpointFilename();
-            const checkpointPath = path.join(
-                path.dirname(this.dbPath),
-                '.checkpoints',
-                checkpointFilename
-            );
-            
-            // Ensure checkpoint directory exists
-            const checkpointDir = path.dirname(checkpointPath);
+            const checkpointDir = this.checkpointManager.checkpointDir;
+            const checkpointPath = path.join(checkpointDir, checkpointFilename);
+
             if (!fs.existsSync(checkpointDir)) {
                 fs.mkdirSync(checkpointDir, { recursive: true });
             }
-            
+
             // After WAL checkpoint, the database is in a consistent state
             // We can safely copy the database file directly without needing the backup API
             // This avoids connection management issues entirely
             if (!fs.existsSync(this.dbPath)) {
                 throw new Error(`Database file does not exist: ${this.dbPath}`);
             }
-            
+
             // Copy the main database file
             fs.copyFileSync(this.dbPath, checkpointPath);
-            
+
             // Also copy WAL and SHM files if they exist (though they should be empty after checkpoint)
             const walPath = this.dbPath + '-wal';
             const shmPath = this.dbPath + '-shm';
             const checkpointWalPath = checkpointPath + '-wal';
             const checkpointShmPath = checkpointPath + '-shm';
-            
+
             if (fs.existsSync(walPath)) {
                 try {
                     fs.copyFileSync(walPath, checkpointWalPath);
@@ -703,7 +693,7 @@ class AsyncSQLiteDatabase {
                     console.warn(`⚠️ Could not copy WAL file: ${walCopyError.message}`);
                 }
             }
-            
+
             if (fs.existsSync(shmPath)) {
                 try {
                     fs.copyFileSync(shmPath, checkpointShmPath);
@@ -712,12 +702,12 @@ class AsyncSQLiteDatabase {
                     console.warn(`⚠️ Could not copy SHM file: ${shmCopyError.message}`);
                 }
             }
-            
+
             // Update checkpoint manager signature
             const currentSignature = this.checkpointManager.getDatabaseSignature();
             this.checkpointManager.lastCheckpointSignature = currentSignature;
             this.checkpointManager.cleanupOldCheckpoints();
-            
+
             this.markClean();
             console.log(`✅ Created database checkpoint: ${checkpointFilename}`);
             return true;
@@ -729,7 +719,7 @@ class AsyncSQLiteDatabase {
             this.notifyCheckpointComplete();
         }
     }
-    
+
     /**
      * Get database statistics
      * @returns {Promise<Object>}

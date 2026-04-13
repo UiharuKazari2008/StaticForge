@@ -1,3 +1,9 @@
+/**
+ * NovelAI `suggest-tags` API result cache (`search_cache`, `cached_tags`, processed cache tables).
+ * Local anime/furry tag search uses in-memory JSON indexes via animeTagSearch/furryTagSearch, not this file.
+ * Migrating dataset tags into SQLite for unified search would be a separate server-side effort; the browser
+ * does not query this database directly.
+ */
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');

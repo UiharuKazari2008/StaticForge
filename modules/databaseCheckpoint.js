@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const {
+    getDatabaseCheckpointDir,
+    migrateLegacyDatabaseCheckpoints,
+    removeOrphanCheckpointSidecars
+} = require('./checkpointPaths');
 
 /**
  * Database Checkpoint Manager
@@ -12,12 +17,12 @@ class DatabaseCheckpointManager {
     constructor(dbPath, maxCheckpoints = 5) {
         this.dbPath = dbPath;
         this.maxCheckpoints = maxCheckpoints;
-        this.checkpointDir = path.join(path.dirname(dbPath), '.checkpoints');
         this.dbName = path.basename(dbPath, path.extname(dbPath));
         this.dbExt = path.extname(dbPath);
+        this.checkpointDir = getDatabaseCheckpointDir(dbPath);
+        migrateLegacyDatabaseCheckpoints(dbPath, this.dbName, this.dbExt);
         this.lastCheckpointSignature = null;
-        
-        // Ensure checkpoint directory exists
+
         this.ensureCheckpointDirectory();
         this.loadLastCheckpointSignature();
     }
@@ -182,12 +187,21 @@ class DatabaseCheckpointManager {
                 filesToDelete.forEach(file => {
                     try {
                         fs.unlinkSync(file.filePath);
+                        const walPath = file.filePath + '-wal';
+                        const shmPath = file.filePath + '-shm';
+                        if (fs.existsSync(walPath)) {
+                            fs.unlinkSync(walPath);
+                        }
+                        if (fs.existsSync(shmPath)) {
+                            fs.unlinkSync(shmPath);
+                        }
                         console.log(`🗑️ Deleted old database checkpoint: ${file.filename}`);
                     } catch (error) {
                         console.error(`❌ Error deleting checkpoint ${file.filename}:`, error);
                     }
                 });
             }
+            removeOrphanCheckpointSidecars(this.checkpointDir);
         } catch (error) {
             console.error('❌ Error cleaning up database checkpoints:', error);
         }
@@ -521,5 +535,6 @@ function createDatabaseCheckpointManager(dbPath, maxCheckpoints = 5) {
 
 module.exports = {
     DatabaseCheckpointManager,
-    createDatabaseCheckpointManager
+    createDatabaseCheckpointManager,
+    getDatabaseCheckpointDir
 };
