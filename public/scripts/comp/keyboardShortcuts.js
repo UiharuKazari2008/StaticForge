@@ -184,6 +184,10 @@ function createShortcutsOverlay() {
                         <span class="shortcut-key">Alt + D</span>
                         <span class="shortcut-desc"><span>Disable Syntax</span><i class="fa fa-ban"></i></span>
                     </div>
+                    <div class="shortcut-item">
+                        <span class="shortcut-key">Alt + Esc</span>
+                        <span class="shortcut-desc"><span>Close Editor</span><i class="fa fa-times"></i></span>
+                    </div>
                     <div class="divider"></div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">Alt + ,</span>
@@ -620,6 +624,14 @@ function handleKeyDown(event) {
                     showShortcutActionToast('Disable Selection');
                 }
             }
+            break;
+        case 'ALT+ESCAPE':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            altKeyPressed = false;
+            hideShortcutsOverlay();
+            hideManualModal(event);
             break;
             
         // Exit confirmation keyboard shortcuts
