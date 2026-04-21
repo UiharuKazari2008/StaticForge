@@ -6,18 +6,12 @@
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-    <title>Dreamscape Workspace</title>
+    <title>DreamStudio Editor</title>
 
-    <!-- Global desktop mode detection - set at the very top before any other scripts -->
+    <!-- Editor standalone: do not read or write galleryWindowMode; single full-window app surface -->
     <script>
-        // Check both viewport width and user preference from localStorage
-        let galleryWindowPreference = null; // 'windowed', 'maximized', or null for auto
-
-        galleryWindowPreference = localStorage.getItem('galleryWindowMode');
-        const isWideScreen = window.innerWidth >= 1200;
-        window.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
-
-        // Detect Shift key on startup for step-by-step mode (desktop mode only)
+        window.isEditorStandaloneWindow = true;
+        window.isDesktop = false;
         window.shiftKeyOnStartup = false;
     </script>
 
@@ -173,7 +167,7 @@
     <link rel="stylesheet" href="/dist/remixicon/remixicon.css">
 </head>
 
-<body class="initializing">
+<body class="editor-standalone-entry">
     <script>
         (function () {
             try {
@@ -484,10 +478,6 @@
                             <div class="main-menu-group">
                                 <button type="button" id="searchToggleBtn" class="btn-secondary">
                                     <i class="fa-light fa-search"></i>
-                                </button>
-                                <button type="button" id="windowListGalleryBtn" class="btn-secondary hidden"
-                                    title="Windows & Applications">
-                                    <i class="fa-light fa-atom-alt"></i>
                                 </button>
                                 <div id="workspaceDropdown" class="custom-dropdown dropup dark hidden">
                                     <button type="button" id="workspaceDropdownBtn" class="btn-secondary">
@@ -809,9 +799,9 @@
                                                 title="Preset Settings">
                                                 <i class="fa-regular fa-bookmark"></i>
                                             </button>
-                                            <button type="button" id="windowListEditorBtn" class="btn-secondary"
-                                                title="Windows & Applications">
-                                                <i class="fa-light fa-atom-alt"></i>
+                                            <button type="button" id="tagWikiSearchBtn" class="btn-secondary"
+                                                title="Tag Wiki Search">
+                                                <i class="fas fa-book"></i>
                                             </button>
                                             <!-- Add Item Dropdown -->
                                             <div id="addItemDropdown" class="custom-dropdown dropright dark">
@@ -6005,6 +5995,7 @@ Examples:
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
     <script src="scripts/comp/galleryView.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
+    <script src="scripts/comp/explorerApplet.js"></script>
     <script src="scripts/comp/notepadManager.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>
     <script src="scripts/comp/knowledgeMemoriesModal.js"></script>
@@ -6015,6 +6006,7 @@ Examples:
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>
+    <script src="scripts/editorShell.js"></script>
 </body>
 
 </html>

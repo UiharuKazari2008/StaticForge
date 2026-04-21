@@ -2104,8 +2104,8 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
         });
     }
     // Add context menu to the item
-    if (window.contextMenu) {
-        window.contextMenu.attachToElement(item, {
+    if (contextMenu) {
+        contextMenu.attachToElement(item, {
             sections: [
                 
                 {
@@ -2117,6 +2117,7 @@ function createDynamicReplacementItemForLockModal(replacement, globalIndex) {
                             icon: 'fas fa-lock',
                             action: 'lock',
                             keepMenuOpen: true,
+                            showIndicator: true,
                             loadfn: (item, target) => {
                                 item.checked = replacement.locked === true;
                             }

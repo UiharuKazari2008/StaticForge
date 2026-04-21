@@ -2187,6 +2187,23 @@ span.menu-logo,
     }
 }
 
+@keyframes flashGreen {
+
+    0%,
+    49% {
+        background: #7eff7e;
+        border: 1px solid #00cd00;
+        box-shadow: 0 0 15px 2px #00ff22;
+    }
+
+    50%,
+    100% {
+        background: #001a0a;
+        border: 1px solid #00331a;
+        box-shadow: 0 0 15px 2px rgb(0 255 34 / 12%);
+    }
+}
+
 @keyframes flashRed {
 
     0%,
@@ -2362,6 +2379,14 @@ span.menu-logo,
     animation: cyan-magenta-cycle 45s infinite;
 }
 
+#manualPreviewUseAsSourceBtn.indicator[data-compare-ui="suspended"]::after,
+#manualPreviewUseAsSourceBtn.indicator[data-state="suspended"]::after {
+    background: #7eff7e;
+    border: 1px solid #00cd00;
+    box-shadow: 0 0 15px 2px #00ff22;
+    animation: flashGreen 1s infinite;
+}
+
 /* Creative Directive Dropdown Indicator Colors */
 /* Strategy: off=no color (default), A=green, B=blue, C=orange */
 #creativeDirectiveStrategyBtn.indicator[data-value="A"]::after {
@@ -2374,6 +2399,14 @@ span.menu-logo,
     background: #8ccaff;
     border: 1px solid #4999c1;
     box-shadow: 0 0 15px 2px #8ee2ff;
+}
+
+#manualPreviewUseAsSourceBtn.indicator[data-compare-ui="armed"]::after,
+#manualPreviewUseAsSourceBtn.indicator[data-state="armed"]::after {
+    background: #ffe97e;
+    border: 1px solid #cd9300;
+    box-shadow: 0 0 15px 2px rgb(255, 219, 112);
+    animation: flash 1s infinite;
 }
 
 #creativeDirectiveStrategyBtn.indicator[data-value="C"]::after {
@@ -5104,13 +5137,13 @@ body.desktop-mode {
 body.desktop-mode #main-controls-bar,
 body.desktop-mode #closeManualBtn,
 body.desktop-mode #manualModal #manualPresetPlaceholder,
-body.desktop-mode #manualModal #tagWikiSearchBtn,
+body.desktop-mode #manualModal #windowListEditorBtn,
 body.desktop-mode #manualModal #manualPreviewToggleDialogsBtn,
 body.desktop-mode #manualModal #enableStageGenerationBtn,
 body.desktop-mode #main-menu-bar #allChatsBtn,
 body.desktop-mode #main-menu-bar #openNotebookBtn,
 body.desktop-mode #main-menu-bar #workspaceDropdown,
-body.desktop-mode #main-menu-bar #openWikiBtn {
+body.desktop-mode #main-menu-bar #windowListGalleryBtn {
     display: none !important;
 }
 
@@ -7511,6 +7544,35 @@ body.desktop-mode .desktop-icons {
     transform: translateZ(0);
 }
 
+.manual-preview-compare-source {
+    position: absolute;
+    inset: 0;
+    height: inherit;
+    width: inherit;
+    user-select: none;
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    clip-path: inset(0 100% 0 0);
+    transition: opacity 0.12s ease, clip-path 0.12s ease;
+}
+
+.manual-preview-content.compare-has-source .manual-preview-compare-source {
+    opacity: 0;
+}
+
+/* Compare overlay/slide stacking is applied inline in updateCompareDisplayState (app.js); classes compare-overlay-on / compare-slide-on are hints only */
+
+.manual-preview-content.compare-temp-show-source .manual-preview-compare-source {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+}
+
+.manual-preview-content.compare-temp-hide-source .manual-preview-compare-source {
+    opacity: 0 !important;
+    clip-path: inset(0 100% 0 0) !important;
+}
+
 /* Dialog overlay styles */
 .manual-preview-dialogs {
     position: absolute;
@@ -7842,6 +7904,7 @@ body.desktop-mode .desktop-icons {
     flex-wrap: nowrap;
     align-items: center;
 }
+
 
 /* Generated Image Name Display */
 .generated-image-name {
@@ -28327,6 +28390,10 @@ span.context-menu-item-state {
     /* Prevent menu from growing too wide */
 }
 
+.context-menu-item.minimised-window .context-menu-item-text {
+    font-style: italic;
+}
+
 .context-menu-item-subtext {
     display: block;
     font-size: 0.75em;
@@ -28514,6 +28581,93 @@ span.context-menu-item-state {
 
 .dark .context-menu-icon-btn.keyboard-selected {
     background: var(--glass-layer-dark-3, rgba(255, 255, 255, 0.2));
+}
+
+/* Grid section: flex-wrap cells (swatch and/or icon), optional selection indicator — generic layout */
+.context-menu-grid-section {
+    /* inherits .context-menu-section */
+}
+
+.context-menu-grid-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm, 0.5em);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    justify-content: flex-start;
+    align-items: center;
+}
+
+.context-menu-submenu-grid {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 2px 0;
+}
+
+.context-menu-submenu-grid + .context-menu-submenu-grid {
+    margin-top: var(--spacing-xs, 4px);
+}
+
+.context-menu-submenu .context-menu-grid-container {
+    min-width: 200px;
+}
+
+.context-menu-grid-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    min-width: 32px;
+    min-height: 32px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    border-radius: var(--border-radius-md);
+    transition: background var(--transition-fast, 0.15s) ease;
+    color: inherit;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.context-menu-grid-btn.has-toggle-indicator {
+    padding-bottom: 2px;
+}
+
+.context-menu-grid-btn .context-menu-grid-swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: block;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+
+.dark .context-menu-grid-btn .context-menu-grid-swatch {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.context-menu-grid-btn.has-toggle-indicator .context-menu-item-indicator {
+    position: absolute;
+    right: 1px;
+    bottom: 0;
+    margin: 0;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .context-menu-grid-btn:hover:not(.disabled) {
+        background: var(--glass-layer-2, rgba(0, 0, 0, 0.15));
+    }
+
+    .dark .context-menu-grid-btn:hover:not(.disabled) {
+        background: var(--glass-layer-dark-2, rgba(255, 255, 255, 0.2));
+    }
+}
+
+.context-menu-grid-btn.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 /* Separator Styles */
@@ -33994,6 +34148,16 @@ body.desktop-mode.windows-startup.boot-from-launch {
     color: var(--text-primary);
     z-index: 10;
     pointer-events: none;
+}
+
+/* Standalone /editor: hide main shell chrome; manual modal is the primary surface */
+body.editor-standalone #titlebar-grab-area-container,
+body.editor-standalone #desktopTaskbar {
+    display: none !important;
+}
+
+body.editor-standalone #galleryWindow {
+    display: none !important;
 }
 
 /* Rules for hiding elements and overrides, this must be located at the end of the stylesheet always and no other rules should come after this */

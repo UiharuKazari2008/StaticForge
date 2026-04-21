@@ -34,6 +34,9 @@ class ContextMenuController {
             tablet: 768  // Tablets and larger mobile devices
         };
 
+        /** Active root menu config while open (for options like closeTreeOnOuterClick). */
+        this.activeRootMenuConfig = null;
+
         this.init();
     }
 
@@ -94,6 +97,52 @@ class ContextMenuController {
         return true;
     }
 
+    /** Radio-style selection dot: keepMenuOpen toggles, or showIndicator without keeping menu open. */
+    itemWantsIndicator(item) {
+        if (!item || item.noIndicator) return false;
+        return Boolean(item.keepMenuOpen || item.showIndicator);
+    }
+
+    /**
+     * Run initfn or loadfn on every entry in a submenu array, including nested `type: 'grid'` blocks (same rules as list/icons).
+     * @param {'initfn'|'loadfn'} fnKey
+     */
+    applySubmenuItemFns(submenuItems, target, fnKey) {
+        if (!submenuItems || !Array.isArray(submenuItems)) return;
+        submenuItems.forEach((entry) => {
+            if (!entry || entry.separator) return;
+            if (entry.type === 'grid' && Array.isArray(entry.items)) {
+                const blockFn = entry[fnKey];
+                if (typeof blockFn === 'function') {
+                    try {
+                        blockFn(entry, target);
+                    } catch (error) {
+                        console.error(`Error executing submenu grid block ${fnKey}:`, error);
+                    }
+                }
+                entry.items.forEach((cell) => {
+                    const fn = cell && cell[fnKey];
+                    if (typeof fn === 'function') {
+                        try {
+                            fn(cell, target);
+                        } catch (error) {
+                            console.error(`Error executing submenu grid cell ${fnKey}:`, error);
+                        }
+                    }
+                });
+            } else {
+                const fn = entry[fnKey];
+                if (typeof fn === 'function') {
+                    try {
+                        fn(entry, target);
+                    } catch (error) {
+                        console.error(`Error executing submenu item ${fnKey}:`, error);
+                    }
+                }
+            }
+        });
+    }
+
     init() {
         this.createMenu();
         this.bindEvents();
@@ -108,16 +157,16 @@ class ContextMenuController {
             e.stopPropagation();
 
             // On mobile, keep submenus open - only close entire menu when clicking overlay
-            // On desktop, close submenu first if it exists
+            // On desktop, close submenu first if it exists (unless root opts into closing the whole tree)
             if (!this.isMobile() && this.currentSubmenu) {
-                // Close submenu and prevent further processing in this event loop
+                if (this.activeRootMenuConfig && this.activeRootMenuConfig.closeTreeOnOuterClick) {
+                    this.hideMenu();
+                    return;
+                }
                 this.hideSubmenu();
-                // Don't close main menu in the same event - let user click again
                 return;
-            } else {
-                // Close the main menu (which will also close any submenu)
-                this.hideMenu();
             }
+            this.hideMenu();
         });
 
         // Allow right-click and touch events to pass through the overlay
@@ -168,12 +217,14 @@ class ContextMenuController {
                 return;
             }
 
-            // On desktop, keep submenus open - only close entire menu when tapping overlay
-            // On desktop, close submenu first if it exists
+            // On desktop, close submenu first if it exists (unless root opts into closing the whole tree)
             if (this.currentSubmenu) {
-                // Close submenu and prevent further processing
+                if (this.activeRootMenuConfig && this.activeRootMenuConfig.closeTreeOnOuterClick) {
+                    this.hideMenu();
+                    return;
+                }
                 this.hideSubmenu();
-                return; // Don't process further - let user tap again for main menu
+                return;
             }
 
             // Hide current menu immediately (which will also close any submenu)
@@ -405,6 +456,8 @@ class ContextMenuController {
         this.renderMenu(config, target);
         this.positionMenu(event, isTouch);
 
+        this.activeRootMenuConfig = config;
+
         // Call loadfn for all sections after menu is fully rendered and positioned
         this.executeLoadFunctions(config, target);
 
@@ -538,6 +591,9 @@ class ContextMenuController {
                             console.error('Error executing list item initfn:', error);
                         }
                     }
+                    if (item.submenu && Array.isArray(item.submenu)) {
+                        this.applySubmenuItemFns(item.submenu, target, 'initfn');
+                    }
                 });
             }
 
@@ -549,6 +605,25 @@ class ContextMenuController {
                             icon.initfn(icon, target);
                         } catch (error) {
                             console.error('Error executing icon initfn:', error);
+                        }
+                    }
+                });
+            }
+
+            if (section.type === 'grid' && section.items && Array.isArray(section.items)) {
+                if (section.initfn && typeof section.initfn === 'function') {
+                    try {
+                        section.initfn(section, target);
+                    } catch (error) {
+                        console.error('Error executing grid section initfn:', error);
+                    }
+                }
+                section.items.forEach((cell) => {
+                    if (cell.initfn && typeof cell.initfn === 'function') {
+                        try {
+                            cell.initfn(cell, target);
+                        } catch (error) {
+                            console.error('Error executing grid item initfn:', error);
                         }
                     }
                 });
@@ -590,6 +665,9 @@ class ContextMenuController {
                                 console.error('Error executing list item loadfn:', error);
                             }
                         }
+                        if (item.submenu && Array.isArray(item.submenu)) {
+                            this.applySubmenuItemFns(item.submenu, target, 'loadfn');
+                        }
                     });
                 }
             }
@@ -602,6 +680,25 @@ class ContextMenuController {
                             icon.loadfn(icon, target);
                         } catch (error) {
                             console.error('Error executing icon loadfn:', error);
+                        }
+                    }
+                });
+            }
+
+            if (section.type === 'grid' && section.items && Array.isArray(section.items)) {
+                if (section.loadfn && typeof section.loadfn === 'function') {
+                    try {
+                        section.loadfn(section, target);
+                    } catch (error) {
+                        console.error('Error executing grid section loadfn:', error);
+                    }
+                }
+                section.items.forEach((cell) => {
+                    if (cell.loadfn && typeof cell.loadfn === 'function') {
+                        try {
+                            cell.loadfn(cell, target);
+                        } catch (error) {
+                            console.error('Error executing grid item loadfn:', error);
                         }
                     }
                 });
@@ -643,6 +740,8 @@ class ContextMenuController {
                 return this.createListSection(section, target, sectionElement);
             case 'icons':
                 return this.createIconsSection(section, target, sectionElement);
+            case 'grid':
+                return this.createGridSection(section, target, sectionElement);
             case 'custom':
                 return this.createCustomSection(section, target, sectionElement);
             case 'separator':
@@ -772,8 +871,8 @@ class ContextMenuController {
                 itemElement.classList.add('has-submenu');
             }
 
-            // Indicator dot for toggle items (keepMenuOpen: true)
-            if (item.keepMenuOpen) {
+            // Indicator dot for keepMenuOpen toggles or showIndicator (e.g. exclusive mode list)
+            if (this.itemWantsIndicator(item)) {
                 const indicatorDot = document.createElement('span');
                 indicatorDot.className = 'context-menu-item-indicator';
                 // Apply checked class if item.checked is true or dataState is 'on' (from loadfn called earlier)
@@ -992,7 +1091,7 @@ class ContextMenuController {
             // Support both dataState and checked for flexibility
             if (icon.dataState) {
                 iconElement.setAttribute('data-state', icon.dataState);
-            } else if (icon.keepMenuOpen && !icon.noIndicator) {
+            } else if (this.itemWantsIndicator(icon)) {
                 // If using checked instead of dataState, convert to dataState for consistent styling
                 if (icon.checked === true) {
                     iconElement.setAttribute('data-state', 'on');
@@ -1006,6 +1105,149 @@ class ContextMenuController {
 
         sectionElement.appendChild(iconsContainer);
         return sectionElement;
+    }
+
+    createGridSection(section, target, sectionElement) {
+        sectionElement.className += ' context-menu-grid-section';
+
+        if (section.title) {
+            const titleElement = document.createElement('div');
+            titleElement.className = 'context-menu-section-title';
+            const titleText = typeof section.title === 'function' ? section.title() : section.title;
+            titleElement.textContent = titleText;
+            sectionElement.appendChild(titleElement);
+        }
+
+        if (!section.items || !Array.isArray(section.items)) {
+            console.warn('Grid section must have items array');
+            return sectionElement;
+        }
+
+        const gridContainer = document.createElement('div');
+        gridContainer.className = 'context-menu-grid-container';
+
+        section.items.forEach((cell) => {
+            if (cell.separator) {
+                const separator = document.createElement('div');
+                separator.className = 'context-menu-separator';
+                separator.style.flexBasis = '100%';
+                separator.style.height = '1px';
+                gridContainer.appendChild(separator);
+                return;
+            }
+
+            if (!this.shouldShowItem(cell)) {
+                return;
+            }
+
+            if (cell.loadfn && typeof cell.loadfn === 'function') {
+                try {
+                    cell.loadfn(cell, target);
+                } catch (error) {
+                    console.error('Error executing grid cell loadfn:', error);
+                }
+            }
+
+            const cellEl = this.createGridCellElement(cell, target, {
+                submenuContext: false
+            });
+            if (cellEl) {
+                cell._element = cellEl;
+                gridContainer.appendChild(cellEl);
+            }
+        });
+
+        sectionElement.appendChild(gridContainer);
+        return sectionElement;
+    }
+
+    createGridCellElement(cell, target, options = {}) {
+        const submenuContext = Boolean(options.submenuContext);
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'context-menu-grid-btn';
+        btn.setAttribute('role', 'menuitem');
+        btn.tabIndex = 0;
+
+        if (cell.swatchColor) {
+            const sw = document.createElement('span');
+            sw.className = 'context-menu-grid-swatch';
+            sw.style.backgroundColor = typeof cell.swatchColor === 'function' ? cell.swatchColor(target) : cell.swatchColor;
+            btn.appendChild(sw);
+        }
+
+        if (cell.icon) {
+            const ic = document.createElement('i');
+            ic.className = typeof cell.icon === 'function' ? cell.icon(target) : cell.icon;
+            btn.appendChild(ic);
+        }
+
+        if (this.itemWantsIndicator(cell)) {
+            const indicatorDot = document.createElement('span');
+            indicatorDot.className = 'context-menu-item-indicator';
+            if (cell.checked === true || cell.dataState === 'on') {
+                indicatorDot.classList.add('checked');
+            }
+            btn.appendChild(indicatorDot);
+            btn.classList.add('has-toggle-indicator');
+        }
+
+        if (cell.tooltip !== undefined) {
+            const tooltipValue = typeof cell.tooltip === 'function' ? cell.tooltip(target) : cell.tooltip;
+            if (tooltipValue) {
+                btn.title = tooltipValue;
+            }
+        }
+
+        if (cell.className) {
+            const classes = Array.isArray(cell.className) ? cell.className : cell.className.split(' ');
+            classes.forEach((cls) => {
+                if (cls) btn.classList.add(cls);
+            });
+        }
+
+        const isDisabled = typeof cell.disabled === 'function' ? cell.disabled() : cell.disabled;
+        if (isDisabled) {
+            btn.classList.add('disabled');
+            btn.setAttribute('aria-disabled', 'true');
+        }
+
+        btn.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+        });
+
+        const runClick = () => {
+            const isCellDisabled = typeof cell.disabled === 'function' ? cell.disabled() : cell.disabled;
+            if (isCellDisabled) return;
+
+            if (submenuContext && options.customHandler && typeof options.customHandler === 'function') {
+                options.customHandler(cell, target);
+            } else if (cell.action && typeof cell.action === 'string') {
+                this.executeAction(cell.action, target, cell);
+            }
+
+            if (!cell.keepMenuOpen) {
+                this.hideMenu();
+            } else {
+                if (submenuContext && this.currentSubmenuState) {
+                    if (this.currentSubmenuState.optionsfn) {
+                        this.refreshSubmenu();
+                    } else {
+                        this.refreshAllSubmenuItems();
+                    }
+                } else {
+                    this.refreshSubmenuItemDisplay(btn, cell, target);
+                }
+            }
+        };
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            runClick();
+        });
+
+        return btn;
     }
 
     createCustomSection(section, target, sectionElement) {
@@ -1189,6 +1431,11 @@ class ContextMenuController {
             return;
         }
 
+        if (itemElement.classList.contains('context-menu-grid-btn')) {
+            this.refreshSubmenuItemDisplay(itemElement, item, target);
+            return;
+        }
+
         // Call loadfn to update item properties
         if (item.loadfn && typeof item.loadfn === 'function') {
             try {
@@ -1296,7 +1543,7 @@ class ContextMenuController {
     }
 
     updateItemIndicatorDot(itemElement, item) {
-        if (item.keepMenuOpen && !item.noIndicator) {
+        if (this.itemWantsIndicator(item)) {
             const indicatorDot = itemElement.querySelector('.context-menu-item-indicator');
             if (indicatorDot) {
                 // Support both checked (boolean) and dataState ('on'/'off') for flexibility
@@ -1326,6 +1573,34 @@ class ContextMenuController {
                 } catch (error) {
                     console.error('Error executing submenu item loadfn:', error);
                 }
+            }
+            return;
+        }
+
+        if (subItemElement.classList.contains('context-menu-grid-btn')) {
+            if (subItem.loadfn && typeof subItem.loadfn === 'function') {
+                try {
+                    subItem.loadfn(subItem, target);
+                } catch (error) {
+                    console.error('Error executing submenu item loadfn:', error);
+                }
+            }
+            const isSubItemRefreshDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
+            if (isSubItemRefreshDisabled) {
+                subItemElement.classList.add('disabled');
+                subItemElement.setAttribute('aria-disabled', 'true');
+            } else {
+                subItemElement.classList.remove('disabled');
+                subItemElement.removeAttribute('aria-disabled');
+            }
+            this.updateItemIndicatorDot(subItemElement, subItem);
+            const sw = subItemElement.querySelector('.context-menu-grid-swatch');
+            if (sw && subItem.swatchColor !== undefined && subItem.swatchColor !== null) {
+                sw.style.backgroundColor = typeof subItem.swatchColor === 'function' ? subItem.swatchColor(target) : subItem.swatchColor;
+            }
+            const ic = subItemElement.querySelector('i');
+            if (ic && subItem.icon) {
+                ic.className = typeof subItem.icon === 'function' ? subItem.icon(target) : subItem.icon;
             }
             return;
         }
@@ -1427,8 +1702,16 @@ class ContextMenuController {
         config.sections.forEach((section) => {
             if (section.type === 'list' && section.items && Array.isArray(section.items)) {
                 section.items.forEach((item) => {
-                    if (item.keepMenuOpen && item._element) {
+                    if (this.itemWantsIndicator(item) && item._element) {
                         this.updateItemIndicatorDot(item._element, item);
+                    }
+                });
+            }
+            if (section.type === 'grid' && section.items && Array.isArray(section.items)) {
+                section.items.forEach((cell) => {
+                    if (cell.separator || !cell._element) return;
+                    if (this.itemWantsIndicator(cell)) {
+                        this.updateItemIndicatorDot(cell._element, cell);
                     }
                 });
             }
@@ -1475,7 +1758,7 @@ class ContextMenuController {
         // Support both dataState and checked for flexibility
         if (icon.dataState) {
             iconElement.setAttribute('data-state', icon.dataState);
-        } else if (icon.keepMenuOpen && !icon.noIndicator) {
+        } else if (this.itemWantsIndicator(icon)) {
             // If using checked instead of dataState, convert to dataState for consistent styling
             if (icon.checked === true) {
                 iconElement.setAttribute('data-state', 'on');
@@ -1520,6 +1803,7 @@ class ContextMenuController {
         this.overlay.classList.add('hidden');
         this.isOpen = false;
         this.currentTarget = null;
+        this.activeRootMenuConfig = null;
 
         // Hide any open submenu
         this.hideSubmenu();
@@ -1672,6 +1956,54 @@ class ContextMenuController {
                 return;
             }
 
+            if (subItem.type === 'grid' && Array.isArray(subItem.items)) {
+                const gridWrap = document.createElement('div');
+                gridWrap.className = 'context-menu-submenu-grid';
+                if (subItem.title) {
+                    const titleElement = document.createElement('div');
+                    titleElement.className = 'context-menu-section-title';
+                    const titleText = typeof subItem.title === 'function' ? subItem.title() : subItem.title;
+                    titleElement.textContent = titleText;
+                    gridWrap.appendChild(titleElement);
+                }
+                const gridInner = document.createElement('div');
+                gridInner.className = 'context-menu-grid-container';
+
+                subItem.items.forEach((cell) => {
+                    if (cell.separator) {
+                        const sep = document.createElement('div');
+                        sep.className = 'context-menu-separator';
+                        sep.style.flexBasis = '100%';
+                        sep.style.height = '1px';
+                        gridInner.appendChild(sep);
+                        return;
+                    }
+                    if (!this.shouldShowItem(cell)) {
+                        return;
+                    }
+                    if (cell.loadfn && typeof cell.loadfn === 'function') {
+                        try {
+                            cell.loadfn(cell, target);
+                        } catch (error) {
+                            console.error('Error executing submenu grid cell loadfn:', error);
+                        }
+                    }
+                    const cellEl = this.createGridCellElement(cell, target, {
+                        submenuContext: true,
+                        customHandler
+                    });
+                    if (cellEl) {
+                        cell._element = cellEl;
+                        gridInner.appendChild(cellEl);
+                    }
+                });
+
+                gridWrap.appendChild(gridInner);
+                submenu.appendChild(gridWrap);
+                subItem._element = gridWrap;
+                return;
+            }
+
             // Call loadfn if it exists to update subItem properties before rendering
             if (subItem.loadfn && typeof subItem.loadfn === 'function') {
                 try {
@@ -1742,8 +2074,8 @@ class ContextMenuController {
                 }
             }
 
-            // Indicator dot for toggle items (keepMenuOpen: true, unless noIndicator is set)
-            if (subItem.keepMenuOpen && !subItem.noIndicator) {
+            // Indicator dot for keepMenuOpen toggles or showIndicator
+            if (this.itemWantsIndicator(subItem)) {
                 const indicatorDot = document.createElement('span');
                 indicatorDot.className = 'context-menu-item-indicator';
                 // Apply checked class if subItem.checked is true or dataState is 'on' (from loadfn called earlier)
@@ -1902,9 +2234,19 @@ class ContextMenuController {
 
         const { submenuItems, target } = this.currentSubmenuState;
 
-        // Call loadfn for all submenu items
+        // Call loadfn for all submenu items (including nested grid cells)
         submenuItems.forEach((subItem) => {
-            if (subItem.separator || !subItem._element) return;
+            if (subItem.separator) return;
+
+            if (subItem.type === 'grid' && Array.isArray(subItem.items)) {
+                subItem.items.forEach((cell) => {
+                    if (cell.separator || !cell._element) return;
+                    this.refreshSubmenuItemDisplay(cell._element, cell, target);
+                });
+                return;
+            }
+
+            if (!subItem._element) return;
 
             // Call loadfn to update subItem properties
             if (subItem.loadfn && typeof subItem.loadfn === 'function') {
@@ -2097,8 +2439,8 @@ class ContextMenuController {
     }
 }
 
-// Create global instance
-window.contextMenu = new ContextMenuController();
+// Create global instance (var so other classic scripts can reference contextMenu)
+const contextMenu = new ContextMenuController();
 
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {

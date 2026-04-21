@@ -984,7 +984,7 @@ class NotepadManager {
 
     // Attach context menu to notebook note item
     attachNotebookNoteContextMenu(element, noteData) {
-        if (!window.contextMenu) {
+        if (!contextMenu) {
             console.warn('Context menu not available');
             return;
         }
@@ -1039,7 +1039,7 @@ class NotepadManager {
             }
         };
 
-        window.contextMenu.attachToElement(element, contextMenuConfig);
+        contextMenu.attachToElement(element, contextMenuConfig);
     }
 
     // Open note in standalone window

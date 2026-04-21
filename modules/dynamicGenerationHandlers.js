@@ -9851,7 +9851,7 @@ async function initializeSystemMessageConversation(params) {
 
         // Always send fresh request with full system message (no previous_response_id on retries)
         const aiOptions = {
-            model: 'grok-4-fast-reasoning',
+            model: globalResources.getGrokService().getDefaultGrokModel(),
             timeout: 30000,
             liveSearch: true,
             store: true,
@@ -10927,7 +10927,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             
             // Prepare AI options with temperature from dynamic config
             const aiOptions = {
-                model: 'grok-4-fast-reasoning',
+                model: globalResources.getGrokService().getDefaultGrokModel(),
                 timeout: 30000, // 30 seconds
                 liveSearch: true,
                 store: true,
@@ -12244,7 +12244,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             const schema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts, dialogsCount);
             // Prepare AI options for Phase 2
             const aiOptions = {
-                model: 'grok-4-fast-reasoning',
+                model: globalResources.getGrokService().getDefaultGrokModel(),
                 timeout: 30000,
                 liveSearch: true,
                 store: true,

@@ -383,7 +383,7 @@ class ImageViewer {
 
     setupContextMenu() {
         const container = this.element.querySelector('.image-container');
-        if (!container || !window.contextMenu) return;
+        if (!container || !contextMenu) return;
 
         const hasMetadata = this.hasValidMetadata();
 
@@ -492,7 +492,7 @@ class ImageViewer {
         }
 
         // Attach context menu
-        window.contextMenu.attachToElement(container, contextMenuConfig);
+        contextMenu.attachToElement(container, contextMenuConfig);
 
         // Handle context menu actions on document level
         this.boundContextMenuHandler = (e) => this.handleContextMenuAction(e);

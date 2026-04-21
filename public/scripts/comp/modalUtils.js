@@ -2149,6 +2149,9 @@ function updateTaskbarWindows() {
             }
         }
     });
+
+    // Broadcast taskbar/window state changes so other UI controls can stay in sync.
+    document.dispatchEvent(new CustomEvent('taskbarWindowsUpdated'));
 }
 
 function getModalTitle(modal) {
@@ -2390,6 +2393,54 @@ function isModalActive(modal) {
     // Modal is active if currentActiveWindowId matches (supports no active window case)
     if (!currentActiveWindowId) return false;
     return modal && modal.id === currentActiveWindowId;
+}
+
+function getNonRootTaskbarWindowEntries() {
+    const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'windowsUpdateModal']);
+    const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
+        .filter((modal) => !modal.classList.contains('closing') && !rootWindowIds.has(modal.id));
+
+    return openModals.map((modal) => {
+        const title = getModalTitle(modal);
+        const { icon } = getModalIcons(modal);
+        const nonImageIcon = icon && !isImageIcon(icon) ? icon : 'fas fa-window';
+
+        return {
+            modalId: modal.id,
+            title,
+            icon: nonImageIcon,
+            isMinimised: modal.classList.contains('minimised'),
+            isActive: isModalActive(modal)
+        };
+    });
+}
+
+function activateTaskbarWindowEntry(modalId) {
+    if (!modalId) return false;
+
+    const modal = document.getElementById(modalId);
+    if (!modal || modal.classList.contains('hidden') || modal.classList.contains('closing')) {
+        return false;
+    }
+
+    const taskbarItem = getOrCreateTaskbarItem(modal);
+    if (modal.classList.contains('minimised')) {
+        if (taskbarItem) {
+            setMinimizeTargetVariables(modal, taskbarItem);
+        }
+        modal.classList.remove('minimised');
+        modal.classList.add('unminimising');
+        const unminimisingHandler = (e) => {
+            if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
+                modal.removeEventListener('animationend', unminimisingHandler);
+                modal.classList.remove('unminimising');
+            }
+        };
+        modal.addEventListener('animationend', unminimisingHandler);
+    }
+
+    bringModalToFront(modal);
+    return true;
 }
 
 // Get or temporarily create taskbar item for minimize animation
@@ -3041,9 +3092,15 @@ document.addEventListener('contextMenuAction', (e) => {
 let startMenu = null;
 let startMenuItems = null;
 
+/** Optional per-item: desktopOnly, fullName (start menu label only), appRootOnly (omit from desktop taskbar start menu only). */
 const startMenuConfig = [
     {
-        launchId: 'workspace', icon: 'fas fa-film-canister', imageIcon: 'art.png', text: 'Workspace', action: () => {
+        launchId: 'workspace',
+        icon: 'fas fa-film-canister',
+        imageIcon: 'art.png',
+        text: 'Workspace',
+        desktopOnly: true,
+        action: () => {
             // In desktop mode, show the gallery if hidden
             if (isGalleryWindowHidden()) {
                 showGalleryWindow();
@@ -3052,7 +3109,15 @@ const startMenuConfig = [
             }
         }
     },
-    { launchId: 'studio', icon: 'fas fa-compass-drafting', imageIcon: 'studio.png', text: 'DreamStudio 2025', action: () => { openManualModalWithContent(); } },
+    {
+        launchId: 'studio',
+        icon: 'fas fa-compass-drafting',
+        imageIcon: 'studio.png',
+        text: 'Studio',
+        fullName: 'DreamStudio 2025',
+        desktopOnly: true,
+        action: () => { openManualModalWithContent(); }
+    },
     { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
     {
@@ -3061,9 +3126,15 @@ const startMenuConfig = [
     },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Encyclopedia', action: () => { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
-    { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'cabinet.png', text: 'Explorer', action: () => { openExplorerApplet(); } },
     { separator: true },
-    { icon: 'fas fa-planet-ringed', imageIcon: 'planet.png', text: 'Planets', hasSubmenu: true, submenu: 'planets' },
+    {
+        icon: 'fas fa-planet-ringed',
+        imageIcon: 'planet.png',
+        text: 'Planets',
+        desktopOnly: true,
+        hasSubmenu: true,
+        submenu: 'planets'
+    },
     { icon: 'fas fa-toolbox', imageIcon: 'slider.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' }
 ];
 
@@ -3097,6 +3168,47 @@ const startMenuSubmenus = {
         { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
     ]
 };
+
+function isDesktopStartMenuEnvironment() {
+    return Boolean(document.body.classList.contains('desktop-mode') || window.isDesktop);
+}
+
+/**
+ * Main start menu rows: drops desktopOnly off-desktop; optionally drops appRootOnly in desktop start menu.
+ * @param {{ excludeAppRootOnly?: boolean }} [options] If excludeAppRootOnly is true, omit items with appRootOnly (desktop taskbar start menu).
+ */
+function getFilteredStartMenuConfig(options) {
+    const opts = options && typeof options === 'object' ? options : {};
+    const excludeAppRootOnly = opts.excludeAppRootOnly === true;
+    const desktop = isDesktopStartMenuEnvironment();
+    const stage = [];
+    for (const item of startMenuConfig) {
+        if (!item) continue;
+        if (item.separator) {
+            stage.push({ separator: true });
+            continue;
+        }
+        if (item.desktopOnly && !desktop) continue;
+        if (excludeAppRootOnly && item.appRootOnly) continue;
+        stage.push(item);
+    }
+    const out = [];
+    let prevSep = true;
+    for (const item of stage) {
+        if (item.separator) {
+            if (!prevSep && out.length) {
+                out.push(item);
+                prevSep = true;
+            }
+        } else {
+            out.push(item);
+            prevSep = false;
+        }
+    }
+    while (out.length && out[0].separator) out.shift();
+    while (out.length && out[out.length - 1].separator) out.pop();
+    return out;
+}
 
 const startMenuIconRow = [
     {
@@ -3147,8 +3259,9 @@ function buildStartMenu() {
 
     startMenuItems.innerHTML = '';
 
-    // Add main items
-    startMenuConfig.forEach(item => {
+    const desktop = isDesktopStartMenuEnvironment();
+    // Add main items: desktop start menu hides appRootOnly; label is fullName if set, else text
+    getFilteredStartMenuConfig({ excludeAppRootOnly: desktop }).forEach(item => {
         if (item.separator) {
             const separator = document.createElement('div');
             separator.className = 'start-menu-separator';
@@ -3157,9 +3270,10 @@ function buildStartMenu() {
             const menuItem = document.createElement('div');
             menuItem.className = 'start-menu-item' + (item.hasSubmenu ? ' has-submenu' : '') + (item.rightAction ? ' has-right-action' : '');
 
+            const label = item.fullName ? item.fullName : item.text;
             menuItem.innerHTML = `
                 ${getIconHTML(item.icon, item.imageIcon)}
-                <span>${item.text}</span>
+                <span>${label}</span>
                 ${item.rightAction ? `<button class="start-menu-right-btn" title="${item.rightAction.tooltip || ''}">${getIconHTML(item.rightAction.icon, item.rightAction.imageIcon)}</button>` : ''}
             `;
 
@@ -3190,15 +3304,16 @@ function buildStartMenu() {
                             subMenuItem.className = 'start-menu-item submenu-item';
 
                             // Use color dot if color is provided, otherwise use icon
+                            const subLabel = subItem.fullName ? subItem.fullName : subItem.text;
                             if (subItem.color) {
                                 subMenuItem.innerHTML = `
                                     <div class="workspace-color-indicator" style="background-color: ${subItem.color}"></div>
-                                    <span>${subItem.text}</span>
+                                    <span>${subLabel}</span>
                                 `;
                             } else {
                                 subMenuItem.innerHTML = `
                                     ${getIconHTML(subItem.icon, subItem.imageIcon)}
-                                    <span>${subItem.text}</span>
+                                    <span>${subLabel}</span>
                                 `;
                             }
 
@@ -3583,6 +3698,7 @@ function setupDesktopContextMenu() {
                         tooltip: 'Liquid Glass',
                         action: 'toggle-glass',
                         keepMenuOpen: true,
+                        showIndicator: true,
                         loadfn: (icon, target) => {
                             const isOn = document.documentElement.classList.contains('disable-blur');
                             icon.dataState = !isOn ? 'on' : 'off';
@@ -3593,6 +3709,7 @@ function setupDesktopContextMenu() {
                         tooltip: 'Focus Cover',
                         action: 'toggle-privacy-mode',
                         keepMenuOpen: true,
+                        showIndicator: true,
                         loadfn: (icon, target) => {
                             icon.dataState = focusCoverEnabled ? 'on' : 'off';
                         }
@@ -4940,6 +5057,9 @@ function renderAboutMelatoninSystemInfo(data) {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         initializeModalDragging();
+        if (window.isEditorStandaloneWindow) {
+            return;
+        }
         initializeGalleryWindow();
         initializeDesktopTaskbar();
         initializeStartMenu();
@@ -4947,8 +5067,10 @@ if (document.readyState === 'loading') {
     });
 } else {
     initializeModalDragging();
-    initializeGalleryWindow();
-    initializeDesktopTaskbar();
-    initializeStartMenu();
-    initializeDesktopWallpaper();
+    if (!window.isEditorStandaloneWindow) {
+        initializeGalleryWindow();
+        initializeDesktopTaskbar();
+        initializeStartMenu();
+        initializeDesktopWallpaper();
+    }
 }

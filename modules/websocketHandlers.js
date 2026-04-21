@@ -3130,6 +3130,7 @@ class WebSocketMessageHandlers {
                 } : null
             };
             const config = this.globalResources.getConfig();
+            options.defaultGrokModel = this.globalResources.getGrokService().getDefaultGrokModel();
             if (config.enable_dev) {
                 options.devPort = config.devPort || 65202;
                 options.devHost = config.devHost || 'localhost';
@@ -10773,7 +10774,7 @@ class WebSocketMessageHandlers {
             // Handle both message.data and direct message properties
             const data = message.data || message;
             console.log('📝 Creating chat session with data:', JSON.stringify(data, null, 2));
-            const { filename, characterName, textContextInfo, textViewerInfo, storyContext, verbosityLevel } = data;
+            const { filename, characterName, textContextInfo, textViewerInfo, storyContext, verbosityLevel, model: clientModel } = data;
 
             if (!filename) {
                 this.sendError(ws, 'Filename is required', null, message.requestId);
@@ -10786,7 +10787,7 @@ class WebSocketMessageHandlers {
                 chat_name: characterName || null,
                 filename: filename,
                 provider: 'grok',
-                model: 'grok-4-fast-reasoning',
+                model: clientModel || this.globalResources.getGrokService().getDefaultGrokModel(),
                 character_name: characterName || null,
                 text_context_info: textContextInfo || null,
                 text_viewer_info: textViewerInfo || null,
@@ -10927,7 +10928,7 @@ class WebSocketMessageHandlers {
                 const sessionData = {
                     id: chatId,
                     provider: 'grok',
-                    model: 'grok-4-fast-reasoning',
+                    model: (session && session.model) || this.globalResources.getGrokService().getDefaultGrokModel(),
                     verbosity_level: verbosityLevel || 3
                 };
                 const chat = await this.globalResources.getGrokService().createPersonaChatSession(sessionData, personaSettings, systemPrompt);

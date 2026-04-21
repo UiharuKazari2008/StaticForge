@@ -1784,6 +1784,7 @@ function setupUcDropdownContextMenu() {
                         text: 'Auto Remove Phrases',
                         action: 'toggleAutoClean',
                         keepMenuOpen: true,
+                        showIndicator: true,
                         disabled: false,
                         loadfn: (item) => {
                             // Update the icon based on current state

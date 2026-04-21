@@ -425,6 +425,8 @@ class WebSocketClient {
         this.clientVersion = '1.0.2'; // Update this when making breaking changes to client
 
         this.ws = null;
+        /** Confirmed from server welcome message; mirrors URL sessionLinkId query (multi-tab link; one WebSocket per tab). */
+        this.sessionLinkId = null;
         this.reconnectAttempts = 0;
         this.updateCheckAttempted = false; // Track if update check has been attempted
         this.maxReconnectAttempts = WebSocketClient.ATTEMPTS_MAX_RECONNECT;
@@ -1583,7 +1585,12 @@ class WebSocketClient {
 
             // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}`;
+            const baseHost = `${protocol}//${window.location.host}`;
+            let wsUrl = baseHost;
+            if (typeof getOrCreateSessionLinkId === 'function') {
+                const linkId = getOrCreateSessionLinkId();
+                wsUrl = `${baseHost}/?sessionLinkId=${encodeURIComponent(linkId)}`;
+            }
 
             this.ws = new WebSocket(wsUrl);
 
@@ -2532,6 +2539,9 @@ class WebSocketClient {
         // Handle specific message types
         switch (message.type) {
             case 'connection':
+                if (message.sessionLinkId) {
+                    this.sessionLinkId = message.sessionLinkId;
+                }
                 break;
 
             case 'error':
@@ -3426,8 +3436,8 @@ class WebSocketClient {
         }
 
         // Re-attach context menu if it exists to update dynamic items
-        if (indicator._menuConfigFn && window.contextMenu) {
-            window.contextMenu.attachToElement(indicator, indicator._menuConfigFn());
+        if (indicator._menuConfigFn && contextMenu) {
+            contextMenu.attachToElement(indicator, indicator._menuConfigFn());
         }
 
         // Trigger event for other parts of the app that might want to listen

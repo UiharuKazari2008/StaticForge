@@ -528,7 +528,7 @@ const limiter = rateLimit({
         
         // Skip rate limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app'];
+            const allowedPaths = ['/', '/app', '/editor'];
             return allowedPaths.includes(req.path);
         }
         
@@ -563,7 +563,7 @@ const speedLimiter = slowDown({
         
         // Skip speed limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app'];
+            const allowedPaths = ['/', '/app', '/editor'];
             return allowedPaths.includes(req.path);
         }
         
@@ -1258,6 +1258,7 @@ app.options('/', (req, res) => {
         const routeFiles = [
             { url: '/', name: '/index.html' },
             { url: '/app', name: '/app.html' },
+            { url: '/editor', name: '/editor.html' },
             { url: '/launch', name: '/launch.html' }
         ];
 
@@ -1450,6 +1451,10 @@ app.options('/app', authMiddleware, (req, res) => {
 });
 app.get('/app', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
+});
+
+app.get('/editor', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'editor.html'));
 });
 
 // Android WebView: JSON probe for AndroidBackgroundRefresh manifest (session cookies, same as WebView)

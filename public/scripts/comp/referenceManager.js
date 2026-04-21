@@ -2681,7 +2681,7 @@ async function handleDeleteAction(option, target, event) {
 
 // Initialize context menu for reference manager items
 function initializeReferenceManagerContextMenu() {
-    if (!window.contextMenu) {
+    if (!contextMenu) {
         console.warn('Context menu system not available');
         return;
     }
@@ -2696,7 +2696,7 @@ function initializeReferenceManagerContextMenu() {
 
 // Initialize context menu for reference browser items
 function initializeReferenceBrowserContextMenu() {
-    if (!window.contextMenu) {
+    if (!contextMenu) {
         console.warn('Context menu system not available');
         return;
     }
@@ -2714,7 +2714,7 @@ function initializeReferenceBrowserContextMenu() {
 
 // Attach context menu only to cache manager gallery items within the visible modal
 function attachContextMenuToManagerItems() {
-    if (!window.contextMenu || !window.referenceManagerContextMenuConfig || !cacheManagerModal) return;
+    if (!contextMenu || !window.referenceManagerContextMenuConfig || !cacheManagerModal) return;
 
     // Only attach if modal is visible
     if (cacheManagerModal.classList.contains('hidden')) return;
@@ -2727,7 +2727,7 @@ function attachContextMenuToManagerItems() {
 
     galleryItems.forEach(item => {
         if (item.dataset.contextMenu === 'reference-manager-item') {
-            window.contextMenu.attachToElement(item, window.referenceManagerContextMenuConfig);
+            contextMenu.attachToElement(item, window.referenceManagerContextMenuConfig);
             item.setAttribute('data-context-menu-attached', 'true');
         } else {
             console.warn('Gallery item missing correct data-context-menu attribute');
@@ -2737,39 +2737,39 @@ function attachContextMenuToManagerItems() {
 
 // Detach context menu from all cache manager gallery items
 function detachContextMenuFromManagerItems() {
-    if (!window.contextMenu) return;
+    if (!contextMenu) return;
 
     // Find all cache manager gallery items that have context menu attached
     const attachedItems = document.querySelectorAll('.cache-manager-gallery-item[data-context-menu-attached]');
 
     attachedItems.forEach(item => {
-        window.contextMenu.detachFromElement(item);
+        contextMenu.detachFromElement(item);
         item.removeAttribute('data-context-menu-attached');
     });
 }
 
 // Attach context menu to reference browser gallery items
 function attachContextMenuToBrowserItems() {
-    if (!window.contextMenu || !window.referenceBrowserContextMenuConfig || !cacheBrowserContainer) return;
+    if (!contextMenu || !window.referenceBrowserContextMenuConfig || !cacheBrowserContainer) return;
 
     // Find cache gallery items within the browser that don't already have context menu attached
     const galleryItems = cacheBrowserContainer.querySelectorAll('.cache-gallery-item:not([data-context-menu-attached])');
 
     galleryItems.forEach(item => {
-        window.contextMenu.attachToElement(item, window.referenceBrowserContextMenuConfig);
+        contextMenu.attachToElement(item, window.referenceBrowserContextMenuConfig);
         item.setAttribute('data-context-menu-attached', 'true');
     });
 }
 
 // Detach context menu from all reference browser gallery items
 function detachContextMenuFromBrowserItems() {
-    if (!window.contextMenu) return;
+    if (!contextMenu) return;
 
     // Find all reference browser gallery items that have context menu attached
     const attachedItems = document.querySelectorAll('.cache-gallery-item[data-context-menu-attached]');
 
     attachedItems.forEach(item => {
-        window.contextMenu.detachFromElement(item);
+        contextMenu.detachFromElement(item);
         item.removeAttribute('data-context-menu-attached');
     });
 }

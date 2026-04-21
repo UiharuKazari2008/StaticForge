@@ -2137,7 +2137,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
         }
         
         // Simple model selection based on image parameters
-        const selectedModel = highReason ? 'grok-4' : 'grok-4-fast-reasoning';
+        const selectedModel = highReason ? 'grok-4' : (globalResources.getGrokService().getDefaultGrokModel());
         const provider = 'grok';
 
         // Handle image processing based on model

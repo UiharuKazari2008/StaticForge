@@ -223,7 +223,7 @@ class ChatSystem {
         this.pendingChatId = null;
         
         try {
-            // Always use grok-4-fast-reasoning
+            const defaultGrok = window.optionsData?.defaultGrokModel || 'grok-4-fast-reasoning';
             const chatData = {
                 filename: this.currentFilename,
                 characterName: document.getElementById('chatName').value || null,
@@ -232,7 +232,7 @@ class ChatSystem {
                 storyContext: document.getElementById('chatStoryContext').value || null,
                 verbosityLevel: parseInt(document.getElementById('chatVerbosity').value) || 3,
                 provider: 'grok',
-                model: 'grok-4-fast-reasoning'
+                model: defaultGrok
             };
             
             // Open chat interface modal BEFORE sending request so we can receive streaming events
@@ -340,8 +340,8 @@ class ChatSystem {
             });
             
             // Add context menu to the session element
-            if (window.contextMenu) {
-                window.contextMenu.attachToElement(sessionElement, {
+            if (contextMenu) {
+                contextMenu.attachToElement(sessionElement, {
                     sections: [
                         {
                             type: 'list',
@@ -723,9 +723,9 @@ class ChatSystem {
     }
 
     attachMessageContextMenu(messageElement, messageId) {
-        if (!window.contextMenu || !messageId) return;
+        if (!contextMenu || !messageId) return;
         
-        window.contextMenu.attachToElement(messageElement, {
+        contextMenu.attachToElement(messageElement, {
             sections: [
                 {
                     type: 'list',
@@ -802,8 +802,8 @@ class ChatSystem {
         }
         
         // Add context menu to chat messages container
-        if (window.contextMenu) {
-            window.contextMenu.attachToElement(container, {
+        if (contextMenu) {
+            contextMenu.attachToElement(container, {
                 sections: [
                     {
                         type: 'list',

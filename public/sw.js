@@ -503,6 +503,21 @@ self.addEventListener('message', (event) => {
                 });
             });
         });
+    } else if (event.data && event.data.type === 'TAB_MESH_RELAY' && event.data.envelope) {
+        const envelope = event.data.envelope;
+        const senderId = event.source && event.source.id;
+        event.waitUntil(
+            self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+                clients.forEach((client) => {
+                    if (client.id !== senderId) {
+                        client.postMessage({
+                            type: 'TAB_MESH_MESSAGE',
+                            envelope: envelope
+                        });
+                    }
+                });
+            })
+        );
     }
 });
 

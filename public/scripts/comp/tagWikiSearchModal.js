@@ -23,7 +23,7 @@ class WikiDisplayBase {
     
     setupLinkContextMenu(link) {
         // Setup context menu for a tag wiki link using existing context menu system
-        if (!link || !window.contextMenu) return;
+        if (!link || !contextMenu) return;
         
         const tagName = link.dataset.tagName;
         if (!tagName) return;
@@ -88,7 +88,7 @@ class WikiDisplayBase {
             }
         };
         
-        window.contextMenu.attachToElement(link, linkMenuConfig);
+        contextMenu.attachToElement(link, linkMenuConfig);
         this.contextMenuElements.push(link);
     }
     
@@ -1037,7 +1037,7 @@ class WikiDisplayBase {
     }
     
     setupBackButtonContextMenu() {
-        if (!this.backBtn || !window.contextMenu) return;
+        if (!this.backBtn || !contextMenu) return;
         
         // Store reference to update menu dynamically
         this.backMenuConfig = {
@@ -1055,7 +1055,7 @@ class WikiDisplayBase {
             }
         };
         
-        window.contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
+        contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
         this.contextMenuElements.push(this.backBtn);
     }
     
@@ -1065,7 +1065,7 @@ class WikiDisplayBase {
     }
     
     setupForwardButtonContextMenu() {
-        if (!this.forwardBtn || !window.contextMenu) return;
+        if (!this.forwardBtn || !contextMenu) return;
         
         // Store reference to update menu dynamically
         this.forwardMenuConfig = {
@@ -1083,7 +1083,7 @@ class WikiDisplayBase {
             }
         };
 
-        window.contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
+        contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
         this.contextMenuElements.push(this.forwardBtn);
     }
     
@@ -1296,7 +1296,7 @@ class WikiWindowInstance extends WikiDisplayBase {
         }
         
         // Setup context menu for display area using existing context menu system
-        if (this.displayArea && window.contextMenu) {
+        if (this.displayArea && contextMenu) {
             const displayMenuConfig = {
                 sections: [
                     {
@@ -1419,7 +1419,7 @@ class WikiWindowInstance extends WikiDisplayBase {
                 }
             };
             
-            window.contextMenu.attachToElement(this.displayArea, displayMenuConfig);
+            contextMenu.attachToElement(this.displayArea, displayMenuConfig);
             this.contextMenuElements.push(this.displayArea);
         }
         
@@ -1513,7 +1513,7 @@ class WikiWindowInstance extends WikiDisplayBase {
         }
         
         // Update back button context menu
-        if (this.backMenuConfig && window.contextMenu && this.backBtn) {
+        if (this.backMenuConfig && contextMenu && this.backBtn) {
             const backItems = [];
             const isStandalone = this.isStandaloneWindow();
             
@@ -1545,12 +1545,12 @@ class WikiWindowInstance extends WikiDisplayBase {
             }
             
             this.backMenuConfig.sections[0].items = backItems;
-            window.contextMenu.detachFromElement(this.backBtn);
-            window.contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
+            contextMenu.detachFromElement(this.backBtn);
+            contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
         }
         
         // Update forward button context menu
-        if (this.forwardMenuConfig && window.contextMenu && this.forwardBtn) {
+        if (this.forwardMenuConfig && contextMenu && this.forwardBtn) {
             const forwardItems = [];
             const isStandalone = this.isStandaloneWindow();
             
@@ -1582,8 +1582,8 @@ class WikiWindowInstance extends WikiDisplayBase {
             }
             
             this.forwardMenuConfig.sections[0].items = forwardItems;
-            window.contextMenu.detachFromElement(this.forwardBtn);
-            window.contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
+            contextMenu.detachFromElement(this.forwardBtn);
+            contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
         }
     }
     
@@ -1659,10 +1659,10 @@ class WikiWindowInstance extends WikiDisplayBase {
     
     destroy() {
         // Detach context menus
-        if (window.contextMenu) {
+        if (contextMenu) {
             this.contextMenuElements.forEach(element => {
                 if (element && element.parentNode) {
-                    window.contextMenu.detachFromElement(element);
+                    contextMenu.detachFromElement(element);
                 }
             });
         }
@@ -1746,7 +1746,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     setupContextMenu() {
         // Setup context menu for display area using existing context menu system
-        if (this.displayArea && window.contextMenu) {
+        if (this.displayArea && contextMenu) {
             const displayMenuConfig = {
                 sections: [
                     {
@@ -1869,7 +1869,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 }
             };
             
-            window.contextMenu.attachToElement(this.displayArea, displayMenuConfig);
+            contextMenu.attachToElement(this.displayArea, displayMenuConfig);
             this.contextMenuElements.push(this.displayArea);
         }
     }
@@ -2518,7 +2518,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
         
         // Update back button context menu
-        if (this.backMenuConfig && window.contextMenu && this.backBtn) {
+        if (this.backMenuConfig && contextMenu && this.backBtn) {
             const backItems = [];
             const isStandalone = this.isStandaloneWindow();
             
@@ -2550,12 +2550,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
             
             this.backMenuConfig.sections[0].items = backItems;
-            window.contextMenu.detachFromElement(this.backBtn);
-            window.contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
+            contextMenu.detachFromElement(this.backBtn);
+            contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
         }
         
         // Update forward button context menu
-        if (this.forwardMenuConfig && window.contextMenu && this.forwardBtn) {
+        if (this.forwardMenuConfig && contextMenu && this.forwardBtn) {
             const forwardItems = [];
             const isStandalone = this.isStandaloneWindow();
             
@@ -2587,8 +2587,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
             
             this.forwardMenuConfig.sections[0].items = forwardItems;
-            window.contextMenu.detachFromElement(this.forwardBtn);
-            window.contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
+            contextMenu.detachFromElement(this.forwardBtn);
+            contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
         }
     }
 }

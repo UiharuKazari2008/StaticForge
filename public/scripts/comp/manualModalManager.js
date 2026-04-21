@@ -686,7 +686,7 @@ async function handleManualPreviewImageContextMenuAction(event) {
  * Initialize context menu for manual preview image
  */
 function initializeManualPreviewImageContextMenu() {
-    if (!window.contextMenu || !manualPreviewImage) {
+    if (!contextMenu || !manualPreviewImage) {
         console.warn('Context menu system or manualPreviewImage element not available');
         return;
     }
@@ -695,7 +695,7 @@ function initializeManualPreviewImageContextMenu() {
     const contextMenuConfig = createManualPreviewImageContextMenuConfig();
 
     // Attach context menu to manualPreviewImage
-    window.contextMenu.attachToElement(manualPreviewImage, contextMenuConfig);
+    contextMenu.attachToElement(manualPreviewImage, contextMenuConfig);
 }
 
 // Add context menu event listener for manual preview image
@@ -2343,6 +2343,10 @@ async function openManualModalWithContent(content = null, event = null) {
                 loadMetadata = content.metadata;
                 needsMetadataFetch = !content.metadata && content.image;
                 hasContentToLoad = true;
+                if (content.image) {
+                    // registerCompareBaselineFromImageObject: public/scripts/app.js
+                    registerCompareBaselineFromImageObject(content.image);
+                }
                 break;
             case 'none':
                 hasContentToLoad = false;
@@ -2634,6 +2638,11 @@ function updateLoadButtonState() {
 
 // Hide manual modal
 async function hideManualModal(e) {
+    if (window.isEditorStandaloneWindow) {
+        await closeModal(manualModal);
+        close();
+        return;
+    }
     // Don't close the modal if preventModalReset is true (for generation)
     await closeModal(manualModal);
 
@@ -2663,6 +2672,8 @@ async function hideManualModal(e) {
         previewSection.classList.remove('active', 'show');
         hideManualPreview();
     }
+    // resetCompareRuntimeSettings: public/scripts/app.js
+    resetCompareRuntimeSettings();
     clearManualForm();
 
     // Reset manual preview
@@ -3897,6 +3908,10 @@ async function handleManualGeneration(e) {
         return;
     }
 
+    // Save the last registered editor-loaded/generation baseline before this generation starts.
+    // captureCompareBaselineBeforeGeneration: public/scripts/app.js
+    captureCompareBaselineBeforeGeneration();
+
     // Prepare base requestBody (shared between both paths)
     const requestBody = {
         prompt: values.prompt,
@@ -3967,6 +3982,9 @@ async function handleManualGeneration(e) {
         paidRequestToggle.setAttribute('data-state', 'on');
     }
 
+    // syncCompareSourceBeforeGeneration: public/scripts/app.js (includes locked-seed → compare source when empty)
+    syncCompareSourceBeforeGeneration(requestBody);
+
     // Show loading and hide modal
     if (!window.isDesktop) {
         restoreGalleryState();
@@ -4001,6 +4019,10 @@ async function handleManualGeneration(e) {
     }
     if (directorBtn && directorBtn.dataset.directorMessageId) {
         generationParams.director_message_id = directorBtn.dataset.directorMessageId;
+    }
+
+    if (compareSourceImageData && compareSourceImageData.chainSourceFile) {
+        generationParams.chain_source = compareSourceImageData.chainSourceFile;
     }
 
     try {

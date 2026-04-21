@@ -86,7 +86,7 @@ class CharacterSearchModal extends WikiDisplayBase {
     }
 
     setupContextMenu() {
-        if (this.displayArea && window.contextMenu) {
+        if (this.displayArea && contextMenu) {
             const displayMenuConfig = {
                 sections: [
                     {
@@ -109,7 +109,7 @@ class CharacterSearchModal extends WikiDisplayBase {
                     }
                 }
             };
-            window.contextMenu.attachToElement(this.displayArea, displayMenuConfig);
+            contextMenu.attachToElement(this.displayArea, displayMenuConfig);
         }
     }
 

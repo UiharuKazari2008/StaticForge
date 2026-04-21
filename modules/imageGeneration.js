@@ -2879,6 +2879,14 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }));
         }
 
+        if (dynamic_generation?.compiled_prompt) {
+            dynamic_generation.compiled_prompt.prompt = processedPrompt;
+            dynamic_generation.compiled_prompt.uc = processedNegativePrompt;
+            if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
+                dynamic_generation.compiled_prompt.characterPrompts = processedCharacterPrompts;
+            }
+        }
+
         // Check if this is an img2img request
         const baseOptions = {
             prompt: processedPrompt,
@@ -3664,6 +3672,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         if (opts.auto_clean_uc !== undefined) {
             forgeData.auto_clean_uc = opts.auto_clean_uc;
         }
+        if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
+            forgeData.chain_source = opts.chain_source;
+        }
 
         // Update buffer with forge metadata
         let finalBuffer;
@@ -3677,7 +3688,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             
             // Conditionally update only allowed fields
             forgeData.date_generated = Date.now();
-            
+            if (opts.chain_source && typeof opts.chain_source === 'string' && opts.chain_source.length > 0) {
+                forgeData.chain_source = opts.chain_source;
+            }
+
             // Inject stage_seeds if provided and we're saving (stages accumulate seeds from previous stages)
             if (stageSeeds && Array.isArray(stageSeeds)) {
                 const currentStageSeedData = {
@@ -6111,7 +6125,7 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
             const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
             const grokResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(messages, {
-                model: 'grok-4-fast-reasoning',
+                model: globalResources.getGrokService().getDefaultGrokModel(),
                 timeout: 120000,
                 store: false,
                 responseSchema: ExpansionPromptSchema,

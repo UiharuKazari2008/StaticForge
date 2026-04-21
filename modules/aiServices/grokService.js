@@ -16,6 +16,11 @@ class GrokService {
         this.globalResources = globalResources;
     }
 
+    /** Default Grok model id when none is specified (from config.json `defaultGrokModel`) */
+    getDefaultGrokModel() {
+        return this.globalResources.getConfig({ path: 'defaultGrokModel' }) || 'grok-4-fast-reasoning';
+    }
+
     // Zod schema for chat event responses (shared constants)
     static get ChatEventSchema() {
         return z.object({
@@ -281,7 +286,7 @@ class GrokService {
             }
         ],
         verbosityLevel: sessionData.verbosity_level || 3,
-        model: sessionData.model || "grok-4-fast-reasoning",
+        model: sessionData.model || this.getDefaultGrokModel(),
         chatId: sessionData.id,
         sessionData: sessionData,
         personaSettings: personaSettings
@@ -390,7 +395,7 @@ class GrokService {
         // NOTE: Using Responses API with store: false for initial persona establishment with images
         // to avoid 413 errors when sending large images, as per x.ai documentation recommendation.
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: input,
             max_completion_tokens: 8000,
             response_format: zodResponseFormat(GrokService.ChatResponseSchema, "response"),
@@ -561,7 +566,7 @@ class GrokService {
 
         // Configure API call based on model - using Responses API format
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: messages,
             max_completion_tokens: 8000,
             response_format: zodResponseFormat(GrokService.ChatResponseSchema, "response"),
@@ -748,7 +753,7 @@ class GrokService {
 
         // Configure API call based on model - using Responses API format
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: inputMessages,
             max_completion_tokens: 8000,
             timeout: 25000,
@@ -936,7 +941,7 @@ class GrokService {
         // NOTE: Using Responses API with store: false for initial persona establishment with images
         // to avoid 413 errors when sending large images, as per x.ai documentation recommendation. (Temp set to true for now to test)
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: input,
             max_completion_tokens: 120000,
             response_format: zodResponseFormat(GrokService.ChatResponseSchema, "response"),
@@ -1304,7 +1309,7 @@ class GrokService {
 
         // Configure API call based on model - using Responses API format
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: messages,
             max_completion_tokens: 8000,
             response_format: zodResponseFormat(GrokService.ChatResponseSchema, "response"),
@@ -1651,7 +1656,7 @@ class GrokService {
 
         // Configure API call based on model - using Responses API format
         const apiConfig = {
-            model: chat.model || "grok-4-fast-reasoning",
+            model: chat.model || this.getDefaultGrokModel(),
             input: inputMessages,
             max_completion_tokens: 10000,
             timeout: 120000,
@@ -8689,7 +8694,7 @@ class GrokService {
             }
             
             let apiConfig = {
-                model: options?.model || "grok-4-fast-reasoning", 
+                model: options?.model || this.getDefaultGrokModel(), 
                 input: messagesToSend,
                 max_output_tokens: options?.max_completion_tokens !== undefined ? options.max_completion_tokens : options?.max_output_tokens !== undefined ? options.max_output_tokens : 4000,
                 temperature: parseFloat((options?.temperature !== undefined ? options.temperature : 0.1).toFixed(2)),
@@ -10282,7 +10287,7 @@ class GrokService {
             }
             
             let apiConfig = {
-                model: options?.model || "grok-4-fast-reasoning", 
+                model: options?.model || this.getDefaultGrokModel(), 
                 messages: conversationMessages,
                 max_tokens: options?.max_completion_tokens || options?.max_tokens || 8000,
                 temperature: options.temperature,

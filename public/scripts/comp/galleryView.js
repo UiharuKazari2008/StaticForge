@@ -2028,7 +2028,7 @@ function createGalleryItem(image, index, skipImgElement = false) {
     item.appendChild(overlay);
 
     // Add context menu to gallery item
-    if (window.contextMenu) {
+    if (contextMenu) {
         // Create move workspace submenu options function
         const contextMenuConfig = {
             maxHeight: true,
@@ -2218,21 +2218,21 @@ function createGalleryItem(image, index, skipImgElement = false) {
             ]
         };
 
-        window.contextMenu.attachToElement(item, contextMenuConfig);
+        contextMenu.attachToElement(item, contextMenuConfig);
     }
 
     // If we're in selection mode, switch to bulk context menu for this new item
-    if (isSelectionMode && window.contextMenu && !item.dataset.bulkContextMenuActive) {
+    if (isSelectionMode && contextMenu && !item.dataset.bulkContextMenuActive) {
         // Store original context menu config
         const originalConfigId = item.dataset.contextMenu;
-        if (originalConfigId && window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+        if (originalConfigId && contextMenu.configs && contextMenu.configs[originalConfigId]) {
             item.dataset.originalContextMenuConfig = originalConfigId;
             item.dataset.originalContextMenuStored = 'true';
         }
 
         // Attach bulk context menu
         const bulkActionsConfig = getBulkActionsContextMenuConfig();
-        window.contextMenu.attachToElement(item, bulkActionsConfig);
+        contextMenu.attachToElement(item, bulkActionsConfig);
         item.dataset.bulkContextMenuActive = 'true';
     }
 
@@ -4854,7 +4854,7 @@ function updateBulkActionsBar() {
         isSelectionMode = true;
 
         // Switch to bulk actions context menu when in selection mode
-        if (window.contextMenu && !gallery.dataset.bulkContextMenuActive) {
+        if (contextMenu && !gallery.dataset.bulkContextMenuActive) {
             switchToBulkContextMenu();
             gallery.dataset.bulkContextMenuActive = 'true';
         }
@@ -4863,7 +4863,7 @@ function updateBulkActionsBar() {
         isSelectionMode = false;
 
         // Switch back to original context menus when not in selection mode
-        if (window.contextMenu && gallery.dataset.bulkContextMenuActive) {
+        if (contextMenu && gallery.dataset.bulkContextMenuActive) {
             switchToOriginalContextMenu();
             gallery.dataset.bulkContextMenuActive = '';
         }
@@ -6365,7 +6365,7 @@ function getBulkActionsContextMenuConfig() {
 
 // Switch to bulk actions context menu
 function switchToBulkContextMenu() {
-    if (!window.contextMenu) return;
+    if (!contextMenu) return;
 
     const gallery = document.getElementById('gallery');
     if (!gallery) return;
@@ -6373,49 +6373,49 @@ function switchToBulkContextMenu() {
     const bulkActionsConfig = getBulkActionsContextMenuConfig();
 
     // Attach bulk context menu to gallery and all gallery items
-    window.contextMenu.attachToElement(gallery, bulkActionsConfig);
+    contextMenu.attachToElement(gallery, bulkActionsConfig);
 
     const galleryItems = gallery.querySelectorAll('.gallery-item');
     galleryItems.forEach(item => {
         // Store original context menu config if not already stored
         if (!item.dataset.originalContextMenuStored) {
             const originalConfigId = item.dataset.contextMenu;
-            if (originalConfigId && window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+            if (originalConfigId && contextMenu.configs && contextMenu.configs[originalConfigId]) {
                 item.dataset.originalContextMenuConfig = originalConfigId;
                 item.dataset.originalContextMenuStored = 'true';
             }
         }
 
         // Attach bulk context menu to override individual menu
-        window.contextMenu.attachToElement(item, bulkActionsConfig);
+        contextMenu.attachToElement(item, bulkActionsConfig);
         item.dataset.bulkContextMenuActive = 'true';
     });
 }
 
 // Switch back to original context menus
 function switchToOriginalContextMenu() {
-    if (!window.contextMenu) return;
+    if (!contextMenu) return;
 
     const gallery = document.getElementById('gallery');
     if (!gallery) return;
 
     // Detach bulk context menu from gallery
-    window.contextMenu.detachFromElement(gallery);
+    contextMenu.detachFromElement(gallery);
 
     // Restore original context menus for all gallery items
     const galleryItems = gallery.querySelectorAll('.gallery-item');
     galleryItems.forEach(item => {
         if (item.dataset.bulkContextMenuActive) {
             // Detach bulk context menu
-            window.contextMenu.detachFromElement(item);
+            contextMenu.detachFromElement(item);
             item.dataset.bulkContextMenuActive = '';
 
             // Restore original context menu if it was stored
             if (item.dataset.originalContextMenuStored && item.dataset.originalContextMenuConfig) {
                 const originalConfigId = item.dataset.originalContextMenuConfig;
-                if (window.contextMenu.configs && window.contextMenu.configs[originalConfigId]) {
+                if (contextMenu.configs && contextMenu.configs[originalConfigId]) {
                     // Reattach the original context menu
-                    window.contextMenu.attachToElement(item, window.contextMenu.configs[originalConfigId]);
+                    contextMenu.attachToElement(item, contextMenu.configs[originalConfigId]);
                 }
             }
         }

@@ -1197,8 +1197,8 @@ class Director {
         `;
 
         // Attach context menu to this session item
-        if (window.contextMenu && this.directorSessionContextConfig) {
-            window.contextMenu.attachToElement(item, this.directorSessionContextConfig);
+        if (contextMenu && this.directorSessionContextConfig) {
+            contextMenu.attachToElement(item, this.directorSessionContextConfig);
         }
 
         // Store event listener for batch attachment
@@ -1340,7 +1340,7 @@ class Director {
             const message = {
                 type: 'director_create_session',
                 requestId: Date.now().toString(),
-                model: (sessionMode !== 'create' && maxResolution) ?'grok-4' : 'grok-4-fast-reasoning',
+                model: (sessionMode !== 'create' && maxResolution) ? 'grok-4' : (window.optionsData?.defaultGrokModel || 'grok-4-fast-reasoning'),
                 highReason: maxResolution,
                 maxResolution: (sessionMode === 'create') ? false : maxResolution,
                 sessionMode: sessionMode,

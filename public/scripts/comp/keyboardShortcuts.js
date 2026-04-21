@@ -177,6 +177,10 @@ function createShortcutsOverlay() {
                         <span class="shortcut-desc"><span>Toggle Autofill</span><i class="fa fa-lightbulb"></i></span>
                     </div>
                     <div class="shortcut-item">
+                        <span class="shortcut-key">ALT + P</span>
+                        <span class="shortcut-desc"><span>Allow Paid</span><i class="fa fa-dollar-sign"></i></span>
+                    </div>
+                    <div class="shortcut-item">
                         <span class="shortcut-key">Alt + F</span>
                         <span class="shortcut-desc"><span>Favorite Tag</span><i class="fa fa-star"></i></span>
                     </div>
@@ -246,7 +250,7 @@ function createShortcutsOverlay() {
                     </div>
                     <div class="shortcut-item alt">
                         <span class="shortcut-key">ALT + F8</span>
-                        <span class="shortcut-desc"><span>Allow Paid</span><i class="fa fa-dollar-sign"></i></span>
+                        <span class="shortcut-desc"><span>Toggle/Replace Compare Source</span><i class="fas fa-eye-dropper"></i></span>
                     </div>
                     <div class="divider"></div>
                     <div class="shortcut-item">
@@ -259,7 +263,19 @@ function createShortcutsOverlay() {
                     </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F10</span>
-                        <span class="shortcut-desc"></span>
+                        <span class="shortcut-desc"><span>Comparison</span><i class="fas fa-columns-3"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F10</span>
+                        <span class="shortcut-desc"><span>Cycle Compare View</span><i class="fas fa-columns-3"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + L/SHFT</span>
+                        <span class="shortcut-desc"><span>Peek Source</span><i class="fas fa-eye-dropper"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + R/SHFT</span>
+                        <span class="shortcut-desc"><span>Peek Result</span><i class="fas fa-eye-dropper"></i></span>
                     </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F11</span>
@@ -350,7 +366,18 @@ function handleKeyDown(event) {
     
     // Only handle shortcuts when relevant modals are open (and window switcher is not active)
     if (windowSwitcherActive) return;
-    if (!shouldHandleManualModalActions && !isTextReplacementModalOpen && !isCreateTextReplacementModalOpen) return;
+    const shortcutsContext = shouldHandleManualModalActions || isTextReplacementModalOpen || isCreateTextReplacementModalOpen;
+    const plainF5 = event.key === 'F5' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
+    const manualEditorFocused = isManualModalOpen && manualModal.contains(document.activeElement);
+    if (!shortcutsContext) {
+        if (plainF5 && !manualEditorFocused) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        if (!plainF5 || !manualEditorFocused) return;
+        // Plain F5 while focus is inside the open manual modal: continue (e.g. desktop mode, modal not active-window)
+    }
     
     // Handle Alt key press
     if (event.key === 'Alt') {
@@ -503,12 +530,20 @@ function handleKeyDown(event) {
             showShortcutActionToast('Switched to Maximum Quality');
             break;
         case 'ALT+F8':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
-            forcePaidRequest = !forcePaidRequest;
-            if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
-            showShortcutActionToast(forcePaidRequest ? 'Paid request: On' : 'Paid request: Off');
+            // compareSourceAltF8Hotkey: public/scripts/app.js
+            const r = compareSourceAltF8Hotkey();
+            if (r === 'set') {
+                showShortcutActionToast('Compare: source set');
+            } else if (r === 'replaced') {
+                showShortcutActionToast('Compare: source replaced');
+            } else if (r === 'cleared') {
+                showShortcutActionToast('Compare: cleared');
+            } else {
+                showShortcutActionToast('Compare: no change');
+            }
             break;
         case 'F8':
             event.preventDefault();
@@ -531,14 +566,26 @@ function handleKeyDown(event) {
                 if (label) showShortcutActionToast(label);
             }
             break;
+        case 'ALT+F10':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            // compareAltF10CycleHotkey: public/scripts/app.js
+            compareAltF10CycleHotkey(true);
+            break;
+        case 'F10':
+            if (!shouldHandleManualModalActions) break;
+            event.preventDefault();
+            event.stopPropagation();
+            // compareSourcePrimaryClick: public/scripts/app.js
+            compareSourcePrimaryClick(true);
+            break;
         case 'ALT+F9':
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            {
-                const label = cycleManualResolutionSizeTier();
-                if (label) showShortcutActionToast(label);
-            }
+            const label = cycleManualResolutionSizeTier();
+            if (label) showShortcutActionToast(label);
             break;
         case 'ALT+A':
             event.preventDefault();
@@ -611,6 +658,14 @@ function handleKeyDown(event) {
                     }
                 }
             }
+            break;
+        case 'ALT+P':
+            event.preventDefault();
+            event.stopPropagation();
+            paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
+            forcePaidRequest = !forcePaidRequest;
+            if (windowPaidToggle) windowPaidToggle.setAttribute('data-state', forcePaidRequest ? 'on' : 'off');
+            showShortcutActionToast(forcePaidRequest ? 'Paid request: On' : 'Paid request: Off');
             break;
         case 'ALT+D':
             // Toggle disable syntax (!/ /) for selected text or remove if cursor is inside

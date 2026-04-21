@@ -657,8 +657,8 @@ async function createPresetItem(key, preset) {
     });
 
     // Add context menu with all actions
-    if (window.contextMenu) {
-        window.contextMenu.attachToElement(item, {
+    if (contextMenu) {
+        contextMenu.attachToElement(item, {
             sections: [{
                 type: 'list',
                 items: [
