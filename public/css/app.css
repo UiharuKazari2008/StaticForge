@@ -3866,7 +3866,7 @@ div#bulkMoveToWorkspaceModal:not(.hidden) {
     color: var(--text-primary);
 }
 
-/* Hide backdrop when not in desktop mode */
+/* Hide Melaton backdrop and window handle when not in desktop mode */
 body:not(.desktop-mode) .gallery-melatonin-backdrop,
 body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
     display: none;
@@ -7573,6 +7573,69 @@ body.desktop-mode .desktop-icons {
     clip-path: inset(0 100% 0 0) !important;
 }
 
+.manual-preview-compare-labels {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+}
+
+.manual-preview-compare-label {
+    position: absolute;
+    top: 10px;
+    padding: 3px 7px;
+    border-radius: var(--border-radius-pill);
+    border: 1px solid hsl(0deg 0% 100% / 38%);
+    background: hsl(0deg 0% 0% / 48%);
+    color: hsl(0deg 0% 100% / 90%);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+    text-transform: uppercase;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.compare-label-source {
+    left: 10px;
+}
+
+.compare-label-result {
+    right: 10px;
+}
+
+.manual-preview-content.compare-show-both-labels .manual-preview-compare-label {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.manual-preview-content.compare-show-source-label .compare-label-source {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.manual-preview-content.compare-show-result-label .compare-label-result {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.manual-preview-content.compare-drag-split-active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--compare-split, 50%);
+    width: 3px;
+    margin-left: -1.5px;
+    border-radius: var(--border-radius-pill);
+    background: hsl(0deg 0% 100% / 95%);
+    box-shadow: 0 0 0 1px hsl(0deg 0% 0% / 22%), 0 0 14px hsl(0deg 0% 100% / 35%);
+    pointer-events: none;
+    z-index: 5;
+}
+
 /* Dialog overlay styles */
 .manual-preview-dialogs {
     position: absolute;
@@ -8469,6 +8532,15 @@ body.desktop-mode .desktop-icons {
 
 .dynamic-generation-progress-overlay:not(.hidden) {
     opacity: 1;
+    pointer-events: auto;
+}
+
+.dynamic-generation-progress-cancel-wrap {
+    position: absolute;
+    bottom: var(--spacing-lg);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
     pointer-events: auto;
 }
 
@@ -9892,6 +9964,11 @@ button::-moz-focus-inner {
     height: calc(var(--textarea-height, auto) + var(--extra-height, 0px));
     width: 100%;
     min-height: 80px;
+}
+
+.prompt-textarea-emphasis-wrap {
+    position: relative;
+    width: 100%;
 }
 
 .prompt-textarea-container.director-prompt,
@@ -14766,10 +14843,19 @@ textarea {
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .position-cell:hover:not(:disabled) {
+    .position-cell:hover:not(:disabled):not(.position-cell-occupied) {
         border-color: var(--primary-color);
         background: var(--bg-quaternary);
     }
+}
+
+.position-cell.position-cell-occupied {
+    opacity: 0.38;
+    cursor: not-allowed;
+    pointer-events: none;
+    border-color: var(--border-secondary);
+    background: var(--bg-secondary);
+    color: var(--text-muted, var(--text-secondary));
 }
 
 .position-cell.selected {
@@ -15927,10 +16013,16 @@ div#manualWorkspaceDropdownMenu {
 
 /* Ensure prompt textarea maintains its styling */
 .tab-pane #manualPrompt,
-.tab-pane #manualUc {
+.tab-pane #manualUc,
+.tab-pane #manualPromptNegative {
     min-height: 80px;
     font-family: var(--font-mono);
     font-size: 0.85em;
+}
+
+#uc-tab .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap {
+    margin-top: var(--spacing-xs);
+    border-top: 1px solid var(--glass-border-3);
 }
 
 /* Show both panes layout */
@@ -23026,19 +23118,206 @@ body.scraps-grayscale::after {
     opacity: 1;
 }
 
+.shortcut-action-toast-host.fade-out {
+    opacity: 0;
+}
+
 .shortcut-action-toast {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     background: var(--glass-layer-dark-5);
     backdrop-filter: var(--glass-blur-4, none);
     border: 1px solid var(--glass-border-4);
     border-radius: var(--border-radius-lg);
-    padding: 10px 20px;
+    padding: 7px 16px;
     box-shadow: var(--glass-shadow-4);
     color: var(--text-primary);
     font-size: 0.88rem;
     font-weight: 500;
+    min-width: min(240px, 92vw);
     max-width: min(90vw, 380px);
     text-align: center;
-    line-height: 1.35;
+    line-height: 1.25;
+}
+
+.shortcut-action-toast.no-icon {
+    gap: 0;
+}
+
+.shortcut-action-toast.flash-border {
+    animation: shortcutActionToastBorderFlash 420ms ease-out;
+}
+
+.shortcut-action-toast-icon {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.shortcut-action-toast-icon:empty {
+    visibility: hidden;
+}
+
+.shortcut-action-toast-icon i,
+.shortcut-action-toast-icon img {
+    max-width: 18px;
+    max-height: 18px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.shortcut-action-toast-text {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    max-width: 100%;
+    text-align: center;
+}
+
+.shortcut-action-toast-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+}
+
+.shortcut-action-toast-line > span {
+    display: inline-block;
+}
+
+.gallery-jump-index-tool {
+    width: min(560px, 92vw);
+    height: min(70vh, 640px);
+}
+
+.gallery-jump-index-content {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+}
+
+.gallery-jump-index-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 45px;
+    padding: 10px 10px;
+}
+
+.gallery-jump-index-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-accent-tinted);
+    font-size: 0.84rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.gallery-jump-index-controls {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gallery-jump-index-controls .custom-dropdown-btn {
+    min-width: 54px;
+    height: 30px;
+}
+
+.gallery-jump-index-grid-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.gallery-jump-index-grid-scrollable {
+    height: 100%;
+    overflow: auto;
+    padding: 0;
+}
+
+.gallery-jump-index-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 8px;
+    padding: 0 10px 10px 10px;
+}
+
+.gallery-jump-index-card {
+    position: relative;
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    display: block;
+    min-height: 135px;
+}
+
+.gallery-jump-index-card:hover {
+    border-color: var(--color-primary, #7aa2ff);
+}
+
+.gallery-jump-index-card.active-boundary {
+    border-color: var(--color-primary, #7aa2ff);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #7aa2ff) 65%, transparent);
+}
+
+.gallery-jump-index-card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+}
+
+.gallery-jump-index-card-meta {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 2;
+    max-width: calc(100% - 12px);
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1.15;
+    color: var(--text-primary, #e8e8e8);
+    text-align: center;
+    padding: 3px 5px;
+    border-radius: var(--border-radius-sm, 4px);
+    background: color-mix(in srgb, var(--glass-layer-dark-4, rgba(0, 0, 0, 0.72)) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--glass-border-4, rgba(255, 255, 255, 0.12)) 70%, transparent);
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes shortcutActionToastBorderFlash {
+    0% {
+        border-color: var(--glass-border-4);
+        box-shadow: var(--glass-shadow-4);
+    }
+    35% {
+        border-color: var(--color-primary, #7aa2ff);
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary, #7aa2ff) 70%, transparent), var(--glass-shadow-4);
+    }
+    100% {
+        border-color: var(--glass-border-4);
+        box-shadow: var(--glass-shadow-4);
+    }
 }
 
 .shortcuts-title {
@@ -26937,6 +27216,7 @@ html:has(body.desktop-mode) {
 
 .preview-lines-foreground {
     z-index: var(--z-layer-1);
+    pointer-events: none;
 }
 
 .preview-line {
@@ -26960,6 +27240,15 @@ html:has(body.desktop-mode) {
 
 .preview-lines-foreground .preview-line {
     background: var(--primary-color-light, rgba(255, 100, 150, 0.9));
+}
+
+/* Background lines run whenever preview animation is active; foreground waits until diffusion (preview-foreground-lines-active). */
+.preview-animation-active:not(.preview-foreground-lines-active) .preview-lines-foreground .preview-line {
+    animation-play-state: paused;
+}
+
+.preview-animation-active.preview-foreground-lines-active .preview-lines-foreground .preview-line {
+    animation-play-state: running;
 }
 
 /* Line positions using percentages */
@@ -30000,6 +30289,15 @@ span.context-menu-item-state {
     max-width: 87.5%;
 }
 
+.generating.manual-preview-dynamic-gen-active .manual-preview-image-container-inner {
+    max-height: 65%;
+    max-width: 65%;
+}
+
+.generating.manual-preview-dynamic-gen-active .manual-preview-image-container-inner #manualPreviewImage {
+    opacity: 0.5;
+}
+
 .generating .manual-preview-image-container-inner #manualPreviewImage {
     box-shadow: 0 0px 0px 0px hsl(0deg 0% 0% / 0%);
 }
@@ -32055,6 +32353,127 @@ div#spellbookCustomPresetDropdown {
     color: var(--text-muted);
 }
 
+.tag-wiki-display-content .dreamwiki-home {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: var(--spacing-xs) 0;
+}
+
+/* Match #aboutMelatoninModal logo hero (app.html) inside DreamWiki home */
+.tag-wiki-display-content .dreamwiki-home .about-logo-container {
+    display: flex;
+    flex-wrap: nowrap;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+}
+
+.tag-wiki-display-content .dreamwiki-home .about-logo {
+    width: 64px;
+    height: 64px;
+    flex-shrink: 0;
+}
+
+.tag-wiki-display-content .dreamwiki-home .form-row .logo-text {
+    margin: 0;
+    font-size: 2.75rem;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.tag-wiki-display-content .dreamwiki-home .dreamwiki-home-small-sep .form-section-separator {
+    margin: var(--spacing-sm) 0;
+}
+
+.tag-wiki-display-content .dreamwiki-home-main-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+}
+
+.tag-wiki-display-content .dreamwiki-home-col-start {
+    flex: 0 0 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.tag-wiki-display-content .dreamwiki-home-col-direct {
+    flex: 1 1 220px;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tag-wiki-display-content .dreamwiki-home-col-direct .dreamwiki-direct-page-input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tag-wiki-display-content .dreamwiki-home-section-label.tag-wiki-no-wiki-header {
+    padding-left: 0;
+    padding-right: 0;
+    margin-bottom: var(--spacing-xs);
+}
+
+.tag-wiki-display-content .dreamwiki-starting-points {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
+}
+
+.tag-wiki-display-content .dreamwiki-starting-points.dreamwiki-starting-points-inline {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.tag-wiki-display-content .dreamwiki-start-row {
+    width: auto;
+    align-self: flex-start;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.tag-wiki-display-content .dreamwiki-source-hint {
+    opacity: 0.82;
+}
+
+.tag-wiki-display-content .dreamwiki-recent-panel {
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
+    padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm);
+    background: var(--glass-layer-2);
+    min-height: 3rem;
+}
+
+.tag-wiki-display-content .dreamwiki-recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.tag-wiki-display-content .dreamwiki-recent-item {
+    cursor: pointer;
+}
+
+.tag-wiki-display-content .dreamwiki-recent-empty {
+    padding: var(--spacing-sm);
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
 .tag-wiki-page {
     max-width: 100%;
 }
@@ -32736,6 +33155,161 @@ div#spellbookCustomPresetDropdown {
         text-decoration: underline;
     }
 
+}
+
+.tag-wiki-body-content .dreamscape-fatal-panel {
+    max-width: 100%;
+    color: var(--text-color, #e8f4ff);
+    background: rgba(0, 24, 48, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-top: 0.5rem;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-title {
+    margin: 0 0 0.35rem;
+    font-size: 1.2rem;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-lead {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-dl {
+    margin: 0 0 0.75rem;
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 0.3rem 0.5rem;
+    font-size: 0.82rem;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-dl dt {
+    margin: 0;
+    font-weight: 600;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-dl dd {
+    margin: 0;
+    min-width: 0;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.75rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.45rem 0.55rem;
+    border-radius: 4px;
+    max-height: 9rem;
+    overflow: auto;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-stack {
+    max-height: 12rem;
+}
+
+.tag-wiki-body-content .dreamscape-fatal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+/* Fatal client error overlay (scripts/comp/fatalErrorBootstrap.js) */
+#dreamscapeFatalErrorRoot {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    background: #0c4a8c;
+    color: #e8f4ff;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: max(16px, var(--inset-top)) max(16px, var(--inset-right)) max(16px, var(--inset-bottom)) max(16px, var(--inset-left));
+    box-sizing: border-box;
+    overflow: auto;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-panel {
+    max-width: 52rem;
+    width: 100%;
+    background: rgba(0, 24, 48, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-title {
+    margin: 0 0 0.35rem;
+    font-size: 1.35rem;
+    font-weight: 600;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-lead {
+    margin: 0 0 1rem;
+    opacity: 0.9;
+    font-size: 0.95rem;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-dl {
+    margin: 0 0 1rem;
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-dl dt {
+    margin: 0;
+    font-weight: 600;
+    opacity: 0.85;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-dl dd {
+    margin: 0;
+    min-width: 0;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 0.5rem 0.65rem;
+    border-radius: 4px;
+    max-height: 10rem;
+    overflow: auto;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-stack-wrap {
+    margin-bottom: 1rem;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-stack-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
+    margin-bottom: 0.35rem;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-stack {
+    max-height: 14rem;
+}
+
+#dreamscapeFatalErrorRoot .dreamscape-fatal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-start;
 }
 
 /* ============================================================================
@@ -34178,6 +34752,14 @@ body.initializing.no-animation *,
 body.initializing.no-animation {
     animation: none !important;
     transition: none !important;
+}
+
+body:not(.desktop-mode) .desktop-only {
+    display: none;
+}
+
+body.desktop-mode .singleapp-only {
+    display: none!
 }
 
 .scrollable-content>.scrollable-content {

@@ -154,6 +154,7 @@ class BannerManager {
             'upscale_image': 'Upscale Image',
             'reroll_image': 'Recast Spell',
             'expand_image': 'Expand Image',
+            'preview_expand_image_prompt': 'Preview Expand Prompt',
             'reroll_expanded_image': 'Recast Spell',
 
             // Preset operations
@@ -1469,8 +1470,13 @@ class WebSocketClient {
             }
         });
 
-        // Handle beforeunload
-        window.addEventListener('beforeunload', () => {
+        // Intentionally do nothing on beforeunload.
+        // The event fires even when the browser leave/refresh prompt is cancelled.
+        // Disconnecting here can leave the app offline until a manual reconnect.
+        window.addEventListener('beforeunload', () => {});
+
+        // Mark true manual close only when the page is actually leaving.
+        window.addEventListener('pagehide', () => {
             this.isManualClose = true;
             this.disconnect();
         });
@@ -1993,7 +1999,7 @@ class WebSocketClient {
 
         console.log(`👁️ App regained focus (${source}) — checking WebSocket...`);
 
-        // If the page was manually closed (e.g. beforeunload was fired), don't reconnect
+        // If the page is actually being closed/navigated away, don't reconnect
         if (this.isManualClose) {
             return;
         }
@@ -2291,6 +2297,10 @@ class WebSocketClient {
                 updateManualGenerateBtnState();
             }
 
+            if (typeof setGenerationPreviewForegroundLinesActive === 'function') {
+                setGenerationPreviewForegroundLinesActive(false);
+            }
+
             return;
         }
 
@@ -2579,6 +2589,15 @@ class WebSocketClient {
             case 'gallery_updated':
                 this.handleGalleryUpdate(message.data);
                 break;
+
+            case 'gallery_scroll_state': {
+                const incoming = message.data && typeof message.data === 'object' ? message.data : {};
+                window.galleryScrollStateFromSession = { ...(window.galleryScrollStateFromSession || {}), ...incoming };
+                if (typeof window.applyGallerySessionRestoreIfReady === 'function') {
+                    window.applyGallerySessionRestoreIfReady();
+                }
+                break;
+            }
 
             case 'workspace_updated':
                 this.handleWorkspaceUpdate(message.data);
@@ -3101,6 +3120,31 @@ class WebSocketClient {
         }
     }
 
+    /**
+     * Carousel updates only from dynamic_generation_progress_update payloads (context / compiled_prompt).
+     */
+    applyRentanCarouselFromDynamicProgress(phase, data) {
+        if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
+            updateDynamicCarousel(data.carousel, 'current');
+        }
+        if (data?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
+            updateDynamicCarousel(data.compiled_prompt.context, 'compiled');
+        }
+    }
+
+    /**
+     * Manual + spellbook Rentan overlays (same phase strings as sendGenerationProgress / dynamic_generation_progress_update).
+     */
+    applyRentanGenerationProgressUi(phase, data = {}) {
+        if (!spellbookModalManager?.modal?.classList?.contains('hidden')) {
+            updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+        }
+        const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
+        if (isDynamicGenerationActive) {
+            updateDynamicGenerationProgressOverlay(phase, data);
+        }
+    }
+
     // Handle Rentan progress updates
     handleDynamicGenerationProgressUpdate(message) {
         const { phase, data } = message;
@@ -3109,29 +3153,8 @@ class WebSocketClient {
         // This prevents timeouts during long-running Rentan processes
         this.resetTimeoutsForRequestType('resolve_dynamic_context');
 
-        // Update carousel with context data when available
-        if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
-            // Update current context during generation
-            updateDynamicCarousel(data.carousel, 'current');
-        }
-
-        // Update compiled prompt context when preview data is updated
-        if (data?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
-            // Update compiled context and switch to compiled mode
-            updateDynamicCarousel(data.compiled_prompt.context, 'compiled');
-        }
-
-        // Import the progress overlay manager functions for both modals
-        if (!spellbookModalManager?.modal?.classList?.contains('hidden')) {
-            updateSpellbookDynamicGenerationProgressOverlay(phase, data);
-        }
-
-        // Update overlay if dynamic generation is active, even if modal is hidden (modal hides during generation)
-        const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
-
-        if (isDynamicGenerationActive) {
-            updateDynamicGenerationProgressOverlay(phase, data);
-        }
+        this.applyRentanCarouselFromDynamicProgress(phase, data || {});
+        this.applyRentanGenerationProgressUi(phase, data || {});
     }
 
     handleImageGenerationProgress(message) {
@@ -3164,12 +3187,24 @@ class WebSocketClient {
 
         progressState.phase = data.phase;
 
+        if (data.hasDynamicGen) {
+            this.applyRentanGenerationProgressUi(data.phase, data);
+        }
+
+        if (data.phase === 'generating' && typeof setGenerationPreviewForegroundLinesActive === 'function') {
+            setGenerationPreviewForegroundLinesActive(true);
+        }
+        // Keep foreground lines moving until preview teardown (stopPreviewAnimation / forceStop), same as background — do not clear on complete.
+        if (data.phase === 'starting' && typeof setGenerationPreviewForegroundLinesActive === 'function') {
+            setGenerationPreviewForegroundLinesActive(false);
+        }
+
         // Calculate progress percentage using the client-side function
         if (typeof calculateGenerationProgress === 'function') {
             let progressPercent = calculateGenerationProgress(data);
 
             // Handle timer-based progress for certain phases
-            if (data.phase === 'initializing' && !progressState.timer) {
+            if (data.phase === 'starting' && !progressState.timer) {
                 // Start timer for 0-15% progress (1% per second)
                 progressState.progress = 0;
                 progressState.timer = setInterval(() => {
@@ -3187,7 +3222,7 @@ class WebSocketClient {
                         updateGlassToastProgress(progressToastId, progressState.progress);
                     }
                 }, 1000);
-            } else if (data.phase !== 'initializing' && data.phase !== 'upscaling') {
+            } else if (data.phase !== 'starting' && data.phase !== 'upscaling') {
                 // Clear timer for non-timer phases
                 if (progressState.timer) {
                     clearInterval(progressState.timer);
@@ -3197,7 +3232,7 @@ class WebSocketClient {
 
             // Update progress toast if it exists (skip for timer phases that are self-updating)
             if (typeof updateGlassToastProgress === 'function' && progressToastId &&
-                data.phase !== 'initializing' && data.phase !== 'upscaling') {
+                data.phase !== 'starting' && data.phase !== 'upscaling') {
                 updateGlassToastProgress(progressToastId, progressPercent);
             }
 
@@ -3205,7 +3240,7 @@ class WebSocketClient {
             if (typeof updateGlassToastMessage === 'function' && progressToastId) {
                 let statusMessage = '';
                 switch (data.phase) {
-                    case 'initializing':
+                    case 'starting':
                         statusMessage = 'Analyzing request...';
                         break;
                     case 'tool_execution':
@@ -3215,10 +3250,10 @@ class WebSocketClient {
                             statusMessage = 'Executing tools...';
                         }
                         break;
-                    case 'ai_streaming':
+                    case 'streaming':
                         statusMessage = 'Processing AI response...';
                         break;
-                    case 'ai_complete':
+                    case 'completion':
                         statusMessage = 'AI processing complete, starting generation...';
                         break;
                     case 'generating':
@@ -3475,6 +3510,19 @@ class WebSocketClient {
         }
     }
 
+    async previewExpandImagePrompt(params) {
+        if (!this.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        try {
+            return await this.sendMessage('preview_expand_image_prompt', params);
+        } catch (error) {
+            console.error('Preview expand prompt error:', error);
+            throw error;
+        }
+    }
+
     // Method to reroll expanded image via WebSocket
     async rerollExpandedImage(params, requestId = null) {
         if (!this.isConnected()) {
@@ -3561,7 +3609,27 @@ class WebSocketClient {
     // Mark gallery loading as complete
     completeGalleryLoading() {
         this.isGalleryLoadingActive = false;
+        const previousGalleryGroupId = this.activeGalleryPaginationGroupId;
         this.activeGalleryPaginationGroupId = null;
+
+        if (this.paginationGroups && this.paginationGroups.size > 0) {
+            for (const [groupId, groupInfo] of this.paginationGroups.entries()) {
+                const isActiveGroup = previousGalleryGroupId && groupId === previousGalleryGroupId;
+                const isGalleryGroup = groupInfo && groupInfo.tickerBaseLabel === 'Loading Gallery';
+                if (isActiveGroup || isGalleryGroup) {
+                    this.paginationGroups.delete(groupId);
+                }
+            }
+        }
+
+        // If no pending requests remain, force-reset the counter so stale gallery groups
+        // cannot keep the ticker alive after local IndexedDB fast-path loads.
+        if (!this.pendingRequests || this.pendingRequests.size === 0) {
+            this.pendingRequestsCount = 0;
+            this.updatePendingRequestsSpinner();
+        }
+
+        this.updateTickerDisplay();
     }
 
     // Method to request specific gallery view (scraps, pinned, upscaled)
@@ -4282,6 +4350,34 @@ class WebSocketClient {
         return this.sendMessage('cancel_generation', {});
     }
 
+    /**
+     * Reject pending generate_image / generate_preset promises (unblocks UI), clear streaming queues,
+     * and notify the server to stop keep-alive timers for those request IDs. Server work may continue until completed.
+     */
+    cancelClientImageGeneration(reason = 'Generation cancelled') {
+        if (!this.pendingRequests || this.pendingRequests.size === 0) {
+            return [];
+        }
+        const types = new Set(['generate_image', 'generate_preset']);
+        const cancelledIds = [];
+        for (const [requestId, req] of [...this.pendingRequests.entries()]) {
+            if (!types.has(req.type)) continue;
+            const err = new Error(reason);
+            err.code = 'CLIENT_CANCELLED';
+            cancelledIds.push(requestId);
+            this.resolveRequest(requestId, null, err);
+        }
+        if (cancelledIds.length > 0) {
+            this.clearStreamingStepQueues();
+            try {
+                this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: cancelledIds });
+            } catch (e) {
+                console.warn('cancel_generation notify failed:', e && e.message);
+            }
+        }
+        return cancelledIds;
+    }
+
     // IP Management methods
     async getBlockedIPs(page = 1, limit = 15) {
         return this.sendMessage('get_blocked_ips', { page, limit });
@@ -4516,7 +4612,9 @@ class WebSocketClient {
                 reject,
                 callback: callback || null,
                 type,
-                showBanner
+                showBanner,
+                offset: data.offset || 0,
+                limit: data.limit || 0
             });
 
             // Increment pending requests count
@@ -4610,7 +4708,10 @@ class WebSocketClient {
                         currentPage: 0,
                         totalPages: 0,
                         hasMore: true,
-                        lastUpdated: Date.now()
+                        currentOffset: 0,
+                        lastUpdated: Date.now(),
+                        tickerBaseLabel: this.paginationTickerBaseLabelForType(type, data),
+                        paginationChunkSize: (data && data.limit) > 0 ? data.limit : 750
                     });
                 }
                 const group = this.paginationGroups.get(paginationGroupId);
@@ -4629,6 +4730,7 @@ class WebSocketClient {
                 showBanner,
                 paginationGroupId,
                 isGalleryPaginationRequest: true,
+                isPaginationRequest: true,
                 offset: data.offset || 0
             });
 
@@ -4671,8 +4773,10 @@ class WebSocketClient {
         group.currentOffset = currentOffset;
         group.lastUpdated = Date.now();
 
-        // Force ticker update to show pagination progress
-        this.updateTickerDisplay();
+        // Defer ticker refresh: resolveRequest deletes the completed row before this runs, and the next chunk is
+        // only queued after request.resolve() microtasks — sync updateTickerDisplay would see an empty map and
+        // clear the cycle without redrawing (public/scripts/websocket.js resolveRequest / sendGalleryPaginationRequest).
+        setTimeout(() => this.updateTickerDisplay(), 0);
     }
 
     // Check if pagination group is complete
@@ -4717,15 +4821,72 @@ class WebSocketClient {
         }
         const activeGroupIds = new Set();
         for (const [, req] of this.pendingRequests) {
-            if (req.isGalleryPaginationRequest && req.paginationGroupId) {
+            if (this.requestUsesPaginationGroup(req) && req.paginationGroupId) {
                 activeGroupIds.add(req.paginationGroupId);
             }
         }
         for (const groupId of this.paginationGroups.keys()) {
             if (!activeGroupIds.has(groupId)) {
+                const group = this.paginationGroups.get(groupId);
+                if (!group) continue;
+
+                // Keep incomplete groups only for a brief grace window between resolve and next send.
+                if (!this.isPaginationGroupComplete(groupId)) {
+                    if (!group.orphanedAt) {
+                        group.orphanedAt = Date.now();
+                    }
+                    if (Date.now() - group.orphanedAt < 3000) {
+                        continue;
+                    }
+                } else {
+                    group.orphanedAt = 0;
+                }
+
+                if (!this.isPaginationGroupComplete(groupId) && group.hasMore) {
+                    continue;
+                }
                 this.paginationGroups.delete(groupId);
+            } else {
+                const group = this.paginationGroups.get(groupId);
+                if (group) {
+                    group.orphanedAt = 0;
+                }
             }
         }
+    }
+
+    requestUsesPaginationGroup(request) {
+        return !!(request && (request.isGalleryPaginationRequest || request.isPaginationRequest));
+    }
+
+    paginationTickerBaseLabelForType(type, data = {}) {
+        if (type === 'request_gallery') return 'Loading Gallery';
+        return (data && data.tickerLabel) || 'Loading';
+    }
+
+    /**
+     * Build ticker label for any pagination group (blocks left vs totalItems / chunk size).
+     * public/scripts/comp/workspaceUtils.js formatGalleryBlocksProgressLabel
+     */
+    formatPaginationGroupTickerText(groupInfo) {
+        if (!groupInfo) {
+            return { displayName: 'Loading', iconClass: 'fa-download' };
+        }
+        const chunk = groupInfo.paginationChunkSize || 750;
+        const base = groupInfo.tickerBaseLabel || 'Loading';
+        // Do not show block suffix until at least one real chunk has completed.
+        if (groupInfo.totalItems && typeof groupInfo.currentOffset === 'number' && groupInfo.currentOffset > 0) {
+            const totalBlocks = Math.ceil(groupInfo.totalItems / chunk);
+            const chunksCompleted = Math.min(totalBlocks, Math.ceil(groupInfo.currentOffset / chunk));
+            const blocksLeft = Math.max(0, totalBlocks - chunksCompleted);
+            if (blocksLeft > 0) {
+                return {
+                    displayName: `${base} [${formatGalleryBlocksProgressLabel({ blocksLeft })}]`,
+                    iconClass: 'fa-download'
+                };
+            }
+        }
+        return { displayName: base, iconClass: 'fa-download' };
     }
 
     // 🎯 SINGLE SOURCE OF TRUTH for ALL ticker display logic
@@ -4802,13 +4963,15 @@ class WebSocketClient {
         this.updatePendingRequestsSpinner();
     }
 
-    // Update ticker badge with current pending count
+    // Update ticker badge with current pending count (pagination group = one ticker row; see getPendingRequestsForTicker)
     updateTickerBadge() {
+        let displayCount = this.pendingRequestsCount;
+        const tickerLen = this.getPendingRequestsForTicker().length;
+        displayCount = Math.max(displayCount, tickerLen);
         const badges = document.querySelectorAll('.websocket-ticker-badge');
         badges.forEach(badge => {
-            const count = this.pendingRequestsCount;
-            badge.textContent = count > 0 ? count : '';
-            badge.setAttribute('data-count', count);
+            badge.textContent = displayCount > 0 ? String(displayCount) : '';
+            badge.setAttribute('data-count', displayCount);
         });
     }
 
@@ -5041,51 +5204,68 @@ class WebSocketClient {
 
     // Get all pending requests that should be shown in the ticker
     getPendingRequestsForTicker() {
-        if (!this.pendingRequests || this.pendingRequests.size === 0) {
-            return [];
-        }
-
         const tickerRequests = [];
-        const paginationGroups = new Map(); // Track pagination groups we've seen
+        const paginationGroupsSeen = new Set();
 
-        for (const [requestId, request] of this.pendingRequests) {
-            // Handle pagination groups specially
-            if (request.isGalleryPaginationRequest && request.paginationGroupId) {
-                if (!paginationGroups.has(request.paginationGroupId)) {
-                    // Create aggregated pagination request
-                    const groupInfo = this.getPaginationGroupInfo(request.paginationGroupId);
-                    if (groupInfo) {
-                        const aggregatedRequest = {
-                            requestId: `pagination_${request.paginationGroupId}`,
-                            request: {
-                                ...request,
-                                type: 'request_gallery_paginated',
-                                paginationGroupId: request.paginationGroupId,
-                                paginationInfo: groupInfo,
-                                showBanner: true // Always show pagination groups
-                            }
-                        };
-                        tickerRequests.push(aggregatedRequest);
-                        paginationGroups.set(request.paginationGroupId, true);
+        if (this.pendingRequests && this.pendingRequests.size > 0) {
+            for (const [requestId, request] of this.pendingRequests) {
+                if (this.requestUsesPaginationGroup(request) && request.paginationGroupId) {
+                    const gid = request.paginationGroupId;
+                    if (!paginationGroupsSeen.has(gid)) {
+                        const groupInfo = this.getPaginationGroupInfo(gid);
+                        if (groupInfo) {
+                            tickerRequests.push({
+                                requestId: `pagination_${gid}`,
+                                request: {
+                                    ...request,
+                                    type: 'request_gallery_paginated',
+                                    paginationGroupId: gid,
+                                    paginationInfo: groupInfo,
+                                    showBanner: true
+                                }
+                            });
+                            paginationGroupsSeen.add(gid);
+                        }
                     }
+                    continue;
                 }
-                // Skip individual pagination requests - they're aggregated above
-                continue;
-            }
-
-            // Only include non-pagination requests with showBanner: true
-            if (request.showBanner !== false && request.type) {
-                tickerRequests.push({ requestId, request });
+                if (request.showBanner !== false && request.type) {
+                    tickerRequests.push({ requestId, request });
+                }
             }
         }
+
+        // Placeholder rows: pending map can be empty between chunk resolve and next send; group still has hasMore
+        if (this.paginationGroups && this.paginationGroups.size > 0) {
+            for (const groupId of this.paginationGroups.keys()) {
+                if (paginationGroupsSeen.has(groupId)) continue;
+                if (this.isPaginationGroupComplete(groupId)) continue;
+                const groupInfo = this.getPaginationGroupInfo(groupId);
+                if (!groupInfo) continue;
+                tickerRequests.push({
+                    requestId: `pagination_placeholder_${groupId}`,
+                    request: {
+                        type: 'request_gallery_paginated',
+                        paginationGroupId: groupId,
+                        paginationInfo: groupInfo,
+                        showBanner: true,
+                        paginationPlaceholder: true
+                    }
+                });
+            }
+        }
+
         return tickerRequests;
     }
 
     // Start cycling through pending requests in the ticker
     startTickerCycle(resetIndex = false) {
-        // Always check if we have pending requests first
-        if (this.pendingRequestsCount === 0) {
-            // No pending requests, clear cycle if running
+        const tickerRequests = this.getPendingRequestsForTicker();
+        const hasTickerWork =
+            this.pendingRequestsCount > 0 ||
+            tickerRequests.length > 0;
+
+        if (!hasTickerWork) {
             if (this.tickerCycleTimer) {
                 clearTimeout(this.tickerCycleTimer);
                 this.tickerCycleTimer = null;
@@ -5094,19 +5274,13 @@ class WebSocketClient {
             return;
         }
 
-        // Clear any existing cycle timer
         const wasRunning = !!this.tickerCycleTimer;
         if (this.tickerCycleTimer) {
             clearTimeout(this.tickerCycleTimer);
             this.tickerCycleTimer = null;
         }
 
-        // Get all pending requests for ticker
-        const tickerRequests = this.getPendingRequestsForTicker();
-
         if (tickerRequests.length === 0) {
-            // No requests to show in ticker, but we have pending requests
-            // This means all requests have showBanner: false, so don't show ticker
             this.tickerCycleIndex = 0;
             return;
         }
@@ -5126,36 +5300,21 @@ class WebSocketClient {
         let displayName = this.bannerManager.formatRequestType(current.request.type);
         let iconClass = 'fa-spinner-third fa-spin';
 
-        // Handle pagination groups specially
         if (current.request.paginationInfo) {
-            const pagination = current.request.paginationInfo;
-            // Show remaining items if we have total and current offset
-            if (pagination.totalItems && pagination.currentOffset !== undefined) {
-                const remaining = pagination.totalItems - pagination.currentOffset;
-                if (remaining > 0) {
-                    displayName = `Loading Gallery [${remaining} left]`;
-                    iconClass = 'fa-download';
-                } else {
-                    displayName = `Loading Gallery`;
-                    iconClass = 'fa-download';
-                }
-            } else {
-                displayName = `Loading Gallery`;
-                iconClass = 'fa-download';
-            }
+            const tick = this.formatPaginationGroupTickerText(current.request.paginationInfo);
+            displayName = tick.displayName;
+            iconClass = tick.iconClass;
         }
 
         this.bannerManager.showWebSocketTicker('info', displayName, iconClass, false);
 
         // Move to next request after 2 seconds
         this.tickerCycleTimer = setTimeout(() => {
-            // Double-check we still have pending requests before continuing
-            if (this.pendingRequestsCount > 0) {
+            const nextRequests = this.getPendingRequestsForTicker();
+            if (this.pendingRequestsCount > 0 || nextRequests.length > 0) {
                 this.tickerCycleIndex++;
-                // Continue cycling - don't reset index when continuing the cycle
                 this.startTickerCycle(false);
             } else {
-                // No more pending requests, clean up
                 this.tickerCycleTimer = null;
                 this.tickerCycleIndex = 0;
             }
@@ -5188,7 +5347,7 @@ class WebSocketClient {
 
             // Handle pagination group completion
             let shouldDecrementCounter = true;
-            if (request.isGalleryPaginationRequest && request.paginationGroupId) {
+            if (this.requestUsesPaginationGroup(request) && request.paginationGroupId) {
                 // Update pagination group progress
                 if (this.paginationGroups && this.paginationGroups.has(request.paginationGroupId)) {
                     const group = this.paginationGroups.get(request.paginationGroupId);
@@ -5196,7 +5355,9 @@ class WebSocketClient {
 
                     // Update pagination info if available in response data
                     if (data && data.pagination) {
-                        this.updatePaginationProgress(request.paginationGroupId, data.pagination, request.offset || 0);
+                        const responseChunkLength = Array.isArray(data.gallery) ? data.gallery.length : 0;
+                        const completedOffset = Math.max(0, Number(request.offset) || 0) + responseChunkLength;
+                        this.updatePaginationProgress(request.paginationGroupId, data.pagination, completedOffset);
                     }
 
                     // Only decrement counter if this is the last request in the group or no more pages
@@ -5235,8 +5396,15 @@ class WebSocketClient {
                 this.decrementPendingRequests();
             }
 
+            const paginationHasMoreData =
+                (request.isGalleryPaginationRequest || request.isPaginationRequest) &&
+                data &&
+                data.pagination &&
+                data.pagination.hasMore === true;
+
             // Handle completion display if this was the oldest pending request (matches ticker "primary" slot when not cycling)
-            if (wasDisplayedRequest) {
+            // Omit per-chunk success while pagination continues so the ticker stays on loading until the last block.
+            if (wasDisplayedRequest && !paginationHasMoreData) {
                 // Show completion with check mark for 2 seconds (only if showBanner is true)
                 const displayName = this.bannerManager.formatRequestType(request.type);
                 this.bannerManager.showWebSocketTicker('success', displayName, 'fa-check', true, 2000);
@@ -5245,14 +5413,17 @@ class WebSocketClient {
                 setTimeout(() => {
                     this.updateTickerDisplay();
                 }, 2100);
-            } else {
-                // For non-displayed requests or requests with showBanner=false, just update the ticker display
+            } else if (!paginationHasMoreData) {
+                // Mid-pagination chunks: updatePaginationProgress schedules updateTickerDisplay(0); pending map can be
+                // empty until the next send — do not sync refresh or we clear the cycle with no rows to show.
                 this.updateTickerDisplay();
             }
 
             // Handle gallery pagination state changes
             if (request.type === 'request_gallery' && data && data.pagination) {
-                if (data.pagination.hasMore && !this.isGalleryLoadingActive) {
+                const requestLimit = Number(request.limit) || 0;
+                const shouldEnableGalleryPagination = data.pagination.hasMore && requestLimit > 0;
+                if (shouldEnableGalleryPagination && !this.isGalleryLoadingActive) {
                     // This response indicates pagination has started - set the flag for future requests
                     this.isGalleryLoadingActive = true;
                     // Don't create pagination group yet - wait for the next request

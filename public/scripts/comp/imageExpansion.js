@@ -11,7 +11,9 @@ let expansionModalData = {
     selectedBias: 2, // Default to center
     upscaleAfterComplete: false,
     overrideParams: {},
-    enableAI: false // Default to disabled
+    enableAI: false, // Default to disabled
+    enableInset: false, // Default to disabled
+    expandSourcePixels: null // { width, height } of image being expanded (for inset eligibility)
 };
 
 // Open image expansion modal
@@ -43,7 +45,9 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         selectedBias: 2,
         upscaleAfterComplete: false,
         overrideParams: {},
-        enableAI: false // Reset to disabled
+        enableAI: false, // Reset to disabled
+        enableInset: false, // Reset to disabled
+        expandSourcePixels: null
     };
     
     // Reset AI toggle state
@@ -141,6 +145,16 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
                                metadata.forge_data.expansion_params?.upscaleAfterComplete
             upscaleToggle.setAttribute('data-state', wasUpscaled ? 'on' : 'off');
         }
+        
+        // Set inset toggle if it was used
+        const insetToggle = document.getElementById('expansionInsetToggle');
+        if (insetToggle) {
+            const wasInset = metadata.forge_data?.expansion_inset === true ||
+                metadata.forge_data.expansion_params?.inset === true ||
+                metadata.forge_data.expansion_params?.inset === 'true';
+            insetToggle.setAttribute('data-state', wasInset ? 'on' : 'off');
+            expansionModalData.enableInset = wasInset;
+        }
 
         // Set requested content if it was used
         const requestedContentTextarea = document.getElementById('expansionRequestedContent');
@@ -211,6 +225,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         if (upscaleToggle) {
             upscaleToggle.setAttribute('data-state', 'off');
         }
+        const insetToggle = document.getElementById('expansionInsetToggle');
+        if (insetToggle) {
+            insetToggle.setAttribute('data-state', 'off');
+        }
         
         // Clear advanced inputs
         document.getElementById('expansionModelInput').value = '';
@@ -239,6 +257,16 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     
     hideExpansionAdvancedOptions();
 
+    const expansionPromptReviewPanel = document.getElementById('expansionPromptReviewPanel');
+    if (expansionPromptReviewPanel) {
+        expansionPromptReviewPanel.classList.add('hidden');
+        expansionPromptReviewPanel.dataset.loaded = 'false';
+    }
+    const expansionFinalPromptTextarea = document.getElementById('expansionFinalPromptTextarea');
+    const expansionFinalUcTextarea = document.getElementById('expansionFinalUcTextarea');
+    if (expansionFinalPromptTextarea) expansionFinalPromptTextarea.value = '';
+    if (expansionFinalUcTextarea) expansionFinalUcTextarea.value = '';
+
     // Setup expansion mode dropdown (only once)
     const expansionModeDropdown = document.getElementById('expansionModeDropdown');
     if (expansionModeDropdown && !expansionModeDropdown.dataset.initialized) {
@@ -252,6 +280,8 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     // Show modal
     openModal(modal);
     modal.classList.add('visible');
+
+    updateExpansionInsetToggleVisibility();
 }
 
 // Close image expansion modal
@@ -439,6 +469,8 @@ async function populateExpansionResolutionDropdown() {
 
     if (!dimsToUse) {
         console.warn('No dimensions available');
+        expansionModalData.expandSourcePixels = null;
+        updateExpansionInsetToggleVisibility();
         const noOptions = document.createElement('div');
         noOptions.className = 'custom-dropdown-option';
         noOptions.style.opacity = '0.5';
@@ -449,6 +481,7 @@ async function populateExpansionResolutionDropdown() {
 
     const baseW = parseInt(dimsToUse.width, 10) || 0;
     const baseH = parseInt(dimsToUse.height, 10) || 0;
+    expansionModalData.expandSourcePixels = { width: baseW, height: baseH };
 
     // Filter RESOLUTION_GROUPS: hide small presets and any preset with the same aspect ratio as the image (exact rational match)
     const filteredGroups = RESOLUTION_GROUPS.map(group => {
@@ -490,6 +523,36 @@ async function populateExpansionResolutionDropdown() {
         noOptions.textContent = 'No expansion options available';
         dropdown.appendChild(noOptions);
     }
+
+    updateExpansionInsetToggleVisibility();
+}
+
+/** Target canvas is strictly larger than source on both axes (inset letterbox is meaningful). */
+function expansionInsetTargetApplicable(sw, sh, tw, th) {
+    const swN = parseInt(sw, 10) || 0;
+    const shN = parseInt(sh, 10) || 0;
+    const twN = parseInt(tw, 10) || 0;
+    const thN = parseInt(th, 10) || 0;
+    return swN > 0 && shN > 0 && twN > 0 && thN > 0 && twN > swN && thN > shN;
+}
+
+/** Show inset toggle only when output is larger than source on both dimensions; otherwise hide and clear inset. */
+function updateExpansionInsetToggleVisibility() {
+    const btn = document.getElementById('expansionInsetToggle');
+    if (!btn) return;
+
+    const px = expansionModalData.expandSourcePixels;
+    const res = expansionModalData.selectedResolution;
+    const target = res ? getDimensionsFromResolution(res) : null;
+
+    if (!px || !px.width || !px.height || !target || !expansionInsetTargetApplicable(px.width, px.height, target.width, target.height)) {
+        btn.classList.add('hidden');
+        btn.setAttribute('data-state', 'off');
+        expansionModalData.enableInset = false;
+        return;
+    }
+
+    btn.classList.remove('hidden');
 }
 
 // Select expansion resolution
@@ -525,6 +588,8 @@ function selectExpansionResolution(value, group) {
             }
         }
     }
+
+    updateExpansionInsetToggleVisibility();
 }
 
 // Close expansion resolution dropdown
@@ -701,6 +766,9 @@ async function submitImageExpansionReroll() {
     if (advancedSection && !advancedSection.classList.contains('hidden')) {
         Object.assign(overrideParams, getExpansionOverrideParams());
     }
+    const insetToggleReroll = document.getElementById('expansionInsetToggle');
+    const rerollInsetOn = insetToggleReroll ? insetToggleReroll.getAttribute('data-state') === 'on' : false;
+    overrideParams.inset = rerollInsetOn;
     
     closeImageExpansionModal();
     
@@ -722,6 +790,8 @@ async function submitImageExpansionReroll() {
         const result = await wsClient.rerollExpandedImage({
             filename: expansionModalData.targetImage,
             overrideParams: overrideParams,
+            inset: rerollInsetOn,
+            enableInset: rerollInsetOn,
             workspace: activeWorkspace || null,
             enableStreaming: true
         });
@@ -966,6 +1036,84 @@ function hideExpansionAdvancedOptions() {
     }
 }
 
+// Load full prompt + UC for review (serverside: same as Generate, including optional AI pass)
+async function loadExpansionPromptForReview() {
+    const imageToExpand = expansionModalData.targetImage;
+    if (!imageToExpand) {
+        showGlassToast('error', 'Error', 'No image selected');
+        return;
+    }
+    if (!expansionModalData.selectedResolution) {
+        showGlassToast('error', 'Error', 'Please select a target resolution');
+        return;
+    }
+    if (!wsClient || !wsClient.isConnected()) {
+        showGlassToast('error', 'Error', 'WebSocket not connected');
+        return;
+    }
+
+    const upscaleToggle = document.getElementById('expansionUpscaleToggle');
+    const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+
+    let overrideParams = {};
+    const advancedSection = document.getElementById('expansionAdvancedOptions');
+    if (advancedSection && !advancedSection.classList.contains('hidden')) {
+        overrideParams = getExpansionOverrideParams();
+    }
+    const requestedContentTextarea = document.getElementById('expansionRequestedContent');
+    if (requestedContentTextarea && requestedContentTextarea.value.trim()) {
+        overrideParams.requestedContent = requestedContentTextarea.value.trim();
+    }
+    overrideParams.inset = expansionModalData.enableInset;
+
+    const loadToastId = showGlassToast('info', 'Loading prompt', 'Resolving full prompt for expand…', true, false, '<i class="fas fa-align-left"></i>');
+    try {
+        const data = await wsClient.previewExpandImagePrompt({
+            filename: imageToExpand,
+            sourceFilename: expansionModalData.originalImage,
+            resolution: expansionModalData.selectedResolution,
+            imageBias: expansionModalData.selectedBias,
+            upscaleAfterComplete: upscaleAfterComplete,
+            overrideParams: overrideParams,
+            inset: expansionModalData.enableInset,
+            enableInset: expansionModalData.enableInset,
+            workspace: activeWorkspace || null,
+            enableAI: expansionModalData.enableAI
+        });
+
+        const panel = document.getElementById('expansionPromptReviewPanel');
+        const promptTa = document.getElementById('expansionFinalPromptTextarea');
+        const ucTa = document.getElementById('expansionFinalUcTextarea');
+        if (promptTa) {
+            promptTa.value = data.prompt != null ? data.prompt : '';
+        }
+        if (ucTa) {
+            ucTa.value = data.uc != null ? data.uc : '';
+        }
+        if (panel) {
+            panel.classList.remove('hidden');
+            panel.dataset.loaded = 'true';
+        }
+
+        updateGlassToastComplete(loadToastId, {
+            type: 'success',
+            title: 'Prompt loaded',
+            message: data.expansionReasonDisplay ? String(data.expansionReasonDisplay) : 'Edit below, then generate.',
+            showProgress: false
+        });
+    } catch (error) {
+        console.error('Expansion prompt preview failed:', error);
+        updateGlassToastComplete(loadToastId, {
+            type: 'error',
+            title: 'Could not load prompt',
+            message: error.message || 'Preview failed',
+            showProgress: false
+        });
+    }
+}
+
 // Get expansion override parameters from UI
 function getExpansionOverrideParams() {
     const params = {};
@@ -1041,6 +1189,10 @@ async function submitImageExpansion() {
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
     expansionModalData.upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
     
+    // Get inset toggle state
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+    
     // Get override parameters from advanced options
     const advancedSection = document.getElementById('expansionAdvancedOptions');
     if (advancedSection && !advancedSection.classList.contains('hidden')) {
@@ -1055,6 +1207,21 @@ async function submitImageExpansion() {
         expansionModalData.overrideParams.requestedContent = requestedContentTextarea.value.trim();
     }
     
+    // Persist inset in existing override params channel
+    expansionModalData.overrideParams.inset = expansionModalData.enableInset;
+
+    const reviewPanel = document.getElementById('expansionPromptReviewPanel');
+    if (reviewPanel && reviewPanel.dataset.loaded === 'true') {
+        const promptTa = document.getElementById('expansionFinalPromptTextarea');
+        const ucTa = document.getElementById('expansionFinalUcTextarea');
+        if (promptTa) {
+            expansionModalData.overrideParams.expansionPromptOverride = promptTa.value;
+        }
+        if (ucTa) {
+            expansionModalData.overrideParams.expansionUcOverride = ucTa.value;
+        }
+    }
+
     // Close modal
     closeImageExpansionModal();
     
@@ -1085,6 +1252,8 @@ async function submitImageExpansion() {
             imageBias: expansionModalData.selectedBias,
             upscaleAfterComplete: expansionModalData.upscaleAfterComplete,
             overrideParams: expansionModalData.overrideParams,
+            inset: expansionModalData.enableInset,
+            enableInset: expansionModalData.enableInset,
             workspace: activeWorkspace || null,
             enableStreaming: true,
             enableAI: expansionModalData.enableAI
@@ -1278,6 +1447,17 @@ function toggleExpansionUpscale() {
     upscaleToggle.setAttribute('data-state', newState);
 }
 
+// Toggle inset padding behavior
+function toggleExpansionInset() {
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    if (!insetToggle) return;
+    
+    const currentState = insetToggle.getAttribute('data-state');
+    const newState = currentState === 'on' ? 'off' : 'on';
+    insetToggle.setAttribute('data-state', newState);
+    expansionModalData.enableInset = newState === 'on';
+}
+
 // Toggle AI enhancement
 function toggleExpansionAI() {
     const toggle = document.getElementById('expansionAIToggle');
@@ -1343,6 +1523,12 @@ document.addEventListener('DOMContentLoaded', () => {
         upscaleToggle.addEventListener('click', toggleExpansionUpscale);
     }
     
+    // Setup inset toggle
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    if (insetToggle) {
+        insetToggle.addEventListener('click', toggleExpansionInset);
+    }
+    
     // Setup reroll button
     const rerollBtn = document.getElementById('rerollExpansionBtn');
     if (rerollBtn) {
@@ -1359,6 +1545,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiToggle = document.getElementById('expansionAIToggle');
     if (aiToggle) {
         aiToggle.addEventListener('click', toggleExpansionAI);
+    }
+
+    const expansionLoadPromptBtn = document.getElementById('expansionLoadPromptBtn');
+    if (expansionLoadPromptBtn) {
+        expansionLoadPromptBtn.addEventListener('click', loadExpansionPromptForReview);
     }
     
     // Setup wheel event listeners for numeric inputs with percentage overlays

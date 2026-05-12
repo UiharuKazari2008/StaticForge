@@ -3,6 +3,8 @@
 
 let altKeyPressed = false;
 let shortcutsOverlay = null;
+let suppressAltOverlayUntilRelease = false;
+const activeAltKeyCodes = new Set();
 
 // Window switcher state
 let windowSwitcherActive = false;
@@ -13,6 +15,7 @@ let ctrlKeyPressed = false;
 
 let shortcutActionToastHost = null;
 let shortcutActionToastHideTimer = null;
+let shortcutActionToastFadeTimer = null;
 
 function resolutionShortcutLabel(value) {
     if (!value || value === 'custom') return null;
@@ -20,8 +23,11 @@ function resolutionShortcutLabel(value) {
     return r ? r.display : value;
 }
 
-function showShortcutActionToast(message) {
+function showShortcutActionToast(message, options = {}) {
     if (!message) return;
+    const centerOn = options.centerOn || null;
+    const icon = options.icon || null;
+    const durationMs = Number.isFinite(options.durationMs) ? Math.max(300, Math.floor(options.durationMs)) : 1500;
     if (!shortcutActionToastHost) {
         shortcutActionToastHost = document.createElement('div');
         shortcutActionToastHost.className = 'shortcut-action-toast-host';
@@ -31,13 +37,76 @@ function showShortcutActionToast(message) {
         shortcutActionToastHost.appendChild(inner);
         document.body.appendChild(shortcutActionToastHost);
     }
-    shortcutActionToastHost.querySelector('.shortcut-action-toast').textContent = message;
+    const toastEl = shortcutActionToastHost.querySelector('.shortcut-action-toast');
+    toastEl.classList.remove('flash-border');
+    toastEl.innerHTML = '';
+
+    const iconWrap = document.createElement('div');
+    iconWrap.className = 'shortcut-action-toast-icon';
+    if (icon) {
+        if (typeof icon === 'string' && icon.trim().startsWith('<')) {
+            iconWrap.innerHTML = icon;
+        } else if (typeof icon === 'string' && icon.trim().length > 0) {
+            const img = document.createElement('img');
+            img.src = icon;
+            img.alt = '';
+            img.loading = 'lazy';
+            iconWrap.appendChild(img);
+        }
+    }
+
+    const textWrap = document.createElement('div');
+    textWrap.className = 'shortcut-action-toast-text';
+    const lines = String(message).split('\n').filter((line) => line.length > 0);
+    (lines.length ? lines : ['']).forEach((line) => {
+        const lineEl = document.createElement('div');
+        lineEl.className = 'shortcut-action-toast-line';
+        const span = document.createElement('span');
+        span.textContent = line;
+        lineEl.appendChild(span);
+        textWrap.appendChild(lineEl);
+    });
+
+    toastEl.appendChild(iconWrap);
+    toastEl.appendChild(textWrap);
+    const hasIcon = iconWrap.children.length > 0;
+    toastEl.classList.toggle('no-icon', !hasIcon);
+
+    // Default centered in viewport unless a target element is provided.
+    shortcutActionToastHost.style.inset = '';
+    shortcutActionToastHost.style.left = '';
+    shortcutActionToastHost.style.top = '';
+    shortcutActionToastHost.style.width = '';
+    shortcutActionToastHost.style.height = '';
+    shortcutActionToastHost.style.transform = '';
+
+    if (centerOn && centerOn.getBoundingClientRect) {
+        const rect = centerOn.getBoundingClientRect();
+        shortcutActionToastHost.style.inset = 'auto';
+        shortcutActionToastHost.style.left = `${Math.round(rect.left)}px`;
+        shortcutActionToastHost.style.top = `${Math.round(rect.top)}px`;
+        shortcutActionToastHost.style.width = `${Math.max(0, Math.round(rect.width))}px`;
+        shortcutActionToastHost.style.height = `${Math.max(0, Math.round(rect.height))}px`;
+        shortcutActionToastHost.style.transform = 'none';
+    }
+
+    shortcutActionToastHost.classList.remove('fade-out');
     shortcutActionToastHost.classList.add('visible');
+    requestAnimationFrame(() => {
+        toastEl.classList.add('flash-border');
+    });
     clearTimeout(shortcutActionToastHideTimer);
+    clearTimeout(shortcutActionToastFadeTimer);
+    shortcutActionToastFadeTimer = setTimeout(() => {
+        shortcutActionToastHost.classList.add('fade-out');
+    }, Math.max(200, durationMs - 250));
     shortcutActionToastHideTimer = setTimeout(() => {
+        shortcutActionToastHost.classList.remove('fade-out');
         shortcutActionToastHost.classList.remove('visible');
-    }, 1500);
+    }, durationMs);
 }
+
+window.showShortcutActionToast = showShortcutActionToast;
 
 /** Portrait → Square → Landscape within the current size tier (normal / large / xlarge / small / wallpaper). */
 const RESOLUTION_ASPECT_CYCLE = ['portrait', 'square', 'landscape'];
@@ -152,6 +221,8 @@ function initializeManualModalShortcuts() {
     createWindowSwitcherOverlay();
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleShortcutWindowBlur);
+    document.addEventListener('visibilitychange', handleShortcutVisibilityChange);
 }
 
 // Create the shortcuts overlay
@@ -343,14 +414,9 @@ function handleKeyDown(event) {
         return;
     }
     
-    const textReplacementModal = document.getElementById('textReplacementManagerModal');
-    const createTextReplacementModal = document.getElementById('createTextReplacementModal');
-    
-    const isTextReplacementModalOpen = textReplacementModal && !textReplacementModal.classList.contains('hidden');
-    const isCreateTextReplacementModalOpen = createTextReplacementModal && !createTextReplacementModal.classList.contains('hidden');
-    
     // Check if manualModal is open
-    const isManualModalOpen = !manualModal.classList.contains('hidden');
+    const isManualModalOpen = !manualModal.classList.contains('hidden') && !manualModal.classList.contains('minimised') &&
+    !manualModal.classList.contains('minimising');
     
     // If manualModal is open, check if it should handle keyboard actions
     let shouldHandleManualModalActions = false;
@@ -364,50 +430,45 @@ function handleKeyDown(event) {
         }
     }
     
-    // Only handle shortcuts when relevant modals are open (and window switcher is not active)
     if (windowSwitcherActive) return;
-    const shortcutsContext = shouldHandleManualModalActions || isTextReplacementModalOpen || isCreateTextReplacementModalOpen;
-    const plainF5 = event.key === 'F5' && !event.ctrlKey && !event.altKey && !event.metaKey && !event.shiftKey;
-    const manualEditorFocused = isManualModalOpen && manualModal.contains(document.activeElement);
-    if (!shortcutsContext) {
-        if (plainF5 && !manualEditorFocused) {
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        }
-        if (!plainF5 || !manualEditorFocused) return;
-        // Plain F5 while focus is inside the open manual modal: continue (e.g. desktop mode, modal not active-window)
-    }
-    
+
     // Handle Alt key press
-    if (event.key === 'Alt') {
+    if (event.key === 'Alt' && shouldHandleManualModalActions) {
         event.preventDefault();
         event.stopPropagation();
+        activeAltKeyCodes.add(event.code || 'AltLeft');
         showShortcutsOverlay();
         altKeyPressed = true;
         return;
     }
+
+    // Hide overlay after the second key in an Alt combo is pressed,
+    // and keep it hidden until all Alt keys are released.
+    if (altKeyPressed && event.key !== 'Alt') {
+        suppressAltOverlayUntilRelease = true;
+        hideShortcutsOverlay();
+    }
     
-    // Handle Alt + key combinations
     if (altKeyPressed && !event.altKey) {
-        // Alt was released, hide overlay
         altKeyPressed = false;
         hideShortcutsOverlay();
-        return;
     }
     
     switch (`${event.ctrlKey ? 'CTRL+' : ''}${event.altKey ? 'ALT+' : ''}${event.metaKey ? 'META+' : ''}${event.shiftKey ? 'SHIFT+' : ''}${event.key.toUpperCase()}`) {
         case 'F1':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             switchManualTab('prompt', document.activeElement);
             break;
         case 'F2':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             switchManualTab('uc', document.activeElement);
             break;
         case 'ALT+F1':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             toggleManualShowBoth();
@@ -435,12 +496,14 @@ function handleKeyDown(event) {
             }
             break;
         case 'F4':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             showDatasetTagToolbar();
             showShortcutActionToast('Quick access');
             break;
         case 'F5':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             // Check if manual modal is open
@@ -454,24 +517,24 @@ function handleKeyDown(event) {
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            {
-                const stageGenBtn = document.getElementById('enableStageGenerationBtn');
-                if (!stageGenBtn || stageGenBtn.classList.contains('hidden')) break;
-                const newState = stageGenBtn.dataset.state === 'on' ? 'off' : 'on';
-                stageGenBtn.dataset.state = newState;
-                const windowStageGenBtn = document.getElementById('windowEnableStageGenerationBtn');
-                if (windowStageGenBtn) windowStageGenBtn.dataset.state = newState;
-                if (typeof updateSaveStage0BtnVisibility === 'function') updateSaveStage0BtnVisibility();
-                showShortcutActionToast(newState === 'on' ? 'Stage generation: On' : 'Stage generation: Off');
-            }
+            const stageGenBtn = document.getElementById('enableStageGenerationBtn');
+            if (!stageGenBtn || stageGenBtn.classList.contains('hidden')) break;
+            const newState = stageGenBtn.dataset.state === 'on' ? 'off' : 'on';
+            stageGenBtn.dataset.state = newState;
+            const windowStageGenBtn = document.getElementById('windowEnableStageGenerationBtn');
+            if (windowStageGenBtn) windowStageGenBtn.dataset.state = newState;
+            if (typeof updateSaveStage0BtnVisibility === 'function') updateSaveStage0BtnVisibility();
+            showShortcutActionToast(newState === 'on' ? 'Stage generation: On' : 'Stage generation: Off');
             break;
         case 'F6':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             showCacheBrowser();
             showShortcutActionToast('References');
             break;
         case 'F7':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             // Reset steps if over 28
@@ -502,6 +565,7 @@ function handleKeyDown(event) {
             showShortcutActionToast('Reset to Free Limits');
             break;
         case 'ALT+F7':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             // Set Max Steps
@@ -546,15 +610,18 @@ function handleKeyDown(event) {
             }
             break;
         case 'F8':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             if (window.lastLoadedSeed) {
-                toggleSproutSeed();
-                updateSproutSeedButton();
-                const sproutBtn = document.getElementById('sproutSeedBtn');
-                showShortcutActionToast(sproutBtn && sproutBtn.getAttribute('data-state') === 'on'
-                    ? 'Seed Locked'
-                    : 'Randomize Seed');
+                void (async () => {
+                    await toggleSproutSeed();
+                    updateSproutSeedButton();
+                    const sproutBtn = document.getElementById('sproutSeedBtn');
+                    showShortcutActionToast(sproutBtn && sproutBtn.getAttribute('data-state') === 'on'
+                        ? 'Seed Locked'
+                        : 'Randomize Seed');
+                })();
             }
             break;
         case 'F9':
@@ -588,6 +655,7 @@ function handleKeyDown(event) {
             if (label) showShortcutActionToast(label);
             break;
         case 'ALT+A':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             addCharacterPrompt();
@@ -611,12 +679,14 @@ function handleKeyDown(event) {
             break;
         case 'ALT+,':
         case 'ALT+≤':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             navigateManualPreview({ currentTarget: { id: 'manualPreviewPrevBtn' } });
             break;
         case 'ALT+.':
         case 'ALT+≥':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             navigateManualPreview({ currentTarget: { id: 'manualPreviewNextBtn' } });
@@ -660,6 +730,7 @@ function handleKeyDown(event) {
             }
             break;
         case 'ALT+P':
+            if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             paidRequestToggle.setAttribute('data-state', !forcePaidRequest ? 'on' : 'off');
@@ -684,7 +755,6 @@ function handleKeyDown(event) {
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
-            altKeyPressed = false;
             hideShortcutsOverlay();
             hideManualModal(event);
             break;
@@ -731,10 +801,14 @@ function handleKeyDown(event) {
 // Handle key up events
 function handleKeyUp(event) {
     if (event.key === 'Alt') {
-        altKeyPressed = false;
-        hideShortcutsOverlay();
+        activeAltKeyCodes.delete(event.code || 'AltLeft');
+        if (activeAltKeyCodes.size === 0) {
+            suppressAltOverlayUntilRelease = false;
+            altKeyPressed = false;
+            hideShortcutsOverlay();
+        }
     }
-    
+
     // Handle CTRL release for window switcher
     if (event.key === 'Control' && windowSwitcherActive) {
         activateSelectedWindow();
@@ -896,6 +970,7 @@ function activateSelectedWindow() {
         }
         
         selectedModal.classList.remove('minimised');
+        updateBackdropVisibility(); // public/scripts/comp/modalUtils.js
         selectedModal.classList.add('unminimising');
         
         const unminimisingHandler = (e) => {
@@ -917,14 +992,35 @@ function activateSelectedWindow() {
 }
 
 let shortcutOverlayTimeout = null;
+function resetShortcutModifierState() {
+    altKeyPressed = false;
+    ctrlKeyPressed = false;
+    suppressAltOverlayUntilRelease = false;
+    activeAltKeyCodes.clear();
+    hideShortcutsOverlay();
+    if (windowSwitcherActive) {
+        stopWindowSwitcher();
+    }
+}
+
+function handleShortcutWindowBlur() {
+    resetShortcutModifierState();
+}
+
+function handleShortcutVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+        resetShortcutModifierState();
+    }
+}
+
 // Show shortcuts overlay
 function showShortcutsOverlay() {
-    if (shortcutsOverlay && !altKeyPressed) {
-        shortcutsOverlay.classList.add('visible');
-        shortcutOverlayTimeout = setTimeout(() => {
-            shortcutsOverlay.classList.remove('visible');
-        }, 30000);
-    }
+    if (!shortcutsOverlay) return;
+    shortcutsOverlay.classList.add('visible');
+    clearTimeout(shortcutOverlayTimeout);
+    shortcutOverlayTimeout = setTimeout(() => {
+        shortcutsOverlay.classList.remove('visible');
+    }, 30000);
 }
 
 // Hide shortcuts overlay
@@ -939,6 +1035,9 @@ function hideShortcutsOverlay() {
 function cleanupManualModalShortcuts() {
     document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('keyup', handleKeyUp);
+    window.removeEventListener('blur', handleShortcutWindowBlur);
+    document.removeEventListener('visibilitychange', handleShortcutVisibilityChange);
+    resetShortcutModifierState();
     
     if (shortcutsOverlay && shortcutsOverlay.parentNode) {
         shortcutsOverlay.parentNode.removeChild(shortcutsOverlay);
@@ -949,11 +1048,13 @@ function cleanupManualModalShortcuts() {
     }
 
     clearTimeout(shortcutActionToastHideTimer);
+    clearTimeout(shortcutActionToastFadeTimer);
     if (shortcutActionToastHost && shortcutActionToastHost.parentNode) {
         shortcutActionToastHost.parentNode.removeChild(shortcutActionToastHost);
     }
     shortcutActionToastHost = null;
-} 
+    clearTimeout(shortcutOverlayTimeout);
+}
 
 window.wsClient.registerInitStep(50, 'Initializing Keyboard Shortcuts', async () => {
     await initializeManualModalShortcuts();

@@ -6,7 +6,87 @@ let confirmationDialogActive = false;
 let confirmationDialogCallback = null;
 let confirmationDialogCancelCallback = null;
 let currentResolve = null;
-let escapeHandler = null;
+let confirmationDialogKeydownHandler = null;
+/** Options array for the open dialog (Escape resolves like Cancel). */
+let confirmationDialogKeydownOptionsRef = null;
+/** When set, dialog is input mode (Escape → null). */
+let confirmationDialogKeydownInputRef = null;
+
+function getConfirmationCancelResolveValue(options) {
+    if (!options || !options.length) return null;
+    const cancelButton = options.find(option => option.value === null || option.value === false);
+    if (cancelButton) return cancelButton.value;
+    return options[options.length - 1].value;
+}
+
+/** Index of the default (Enter) action; used for data-dialog-primary and focus. */
+function getConfirmationPrimaryButtonIndex(options) {
+    if (!options || !options.length) return -1;
+    let i = options.findIndex(o => o.primary === true);
+    if (i !== -1) return i;
+    i = options.findIndex(o => /\bprimary\b/.test(o.className || ''));
+    if (i !== -1) return i;
+    i = options.findIndex(o => o.value !== null && o.value !== false);
+    if (i !== -1) return i;
+    return 0;
+}
+
+function registerConfirmationDialogKeydown() {
+    if (confirmationDialogKeydownHandler) {
+        document.removeEventListener('keydown', confirmationDialogKeydownHandler);
+    }
+    confirmationDialogKeydownHandler = (e) => {
+        if (!confirmationDialogActive || !confirmationDialog || confirmationDialog.classList.contains('hidden')) return;
+
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            const res = currentResolve;
+            const opts = confirmationDialogKeydownOptionsRef;
+            const inputRef = confirmationDialogKeydownInputRef;
+            hideConfirmationDialog();
+            if (res) {
+                res(inputRef != null ? null : getConfirmationCancelResolveValue(opts));
+            }
+            return;
+        }
+
+        if (/^[1-9]$/.test(e.key)) {
+            if (confirmationDialogKeydownInputRef && document.activeElement === confirmationDialogKeydownInputRef) return;
+            const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
+            const buttons = controlsFooter ? controlsFooter.querySelectorAll('button:not(:disabled)') : [];
+            if (!buttons.length) return;
+            const digit = parseInt(e.key, 10);
+            const idxFromRight = digit - 1;
+            const btnIndex = buttons.length - 1 - idxFromRight;
+            if (btnIndex >= 0 && btnIndex < buttons.length) {
+                e.preventDefault();
+                e.stopPropagation();
+                buttons[btnIndex].click();
+            }
+            return;
+        }
+
+        if (e.key === 'Enter') {
+            if (e.target.tagName === 'TEXTAREA') return;
+            if (e.target.tagName === 'SELECT') return;
+            if (e.target.isContentEditable) return;
+            const controlsFooter = confirmationDialog.querySelector('#confirmationControls');
+            if (controlsFooter && e.target.closest('#confirmationControls') === controlsFooter && e.target.tagName === 'BUTTON') {
+                return;
+            }
+            const primaryBtn = confirmationDialog.querySelector('#confirmationControls [data-dialog-primary="1"]')
+                || confirmationDialog.querySelector('#confirmationControls .btn.btn-primary:not(:disabled)')
+                || confirmationDialog.querySelector('#confirmationControls .btn.btn-danger:not(:disabled)')
+                || confirmationDialog.querySelector('#confirmationControls .btn.primary:not(:disabled)');
+            if (!primaryBtn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            primaryBtn.click();
+        }
+    };
+    document.addEventListener('keydown', confirmationDialogKeydownHandler);
+}
 
 // Create and show confirmation dialog with multiple options
 function showConfirmationDialog(message, options = [], event = null, config = {}) {
@@ -107,6 +187,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         controlsEl.style.display = hasOptions ? '' : 'none';
         controlsEl.innerHTML = '';
         if (hasOptions) {
+            const primaryIndex = Math.max(0, getConfirmationPrimaryButtonIndex(options));
 
             options.forEach((option, index) => {
                 const button = document.createElement('button');
@@ -128,20 +209,23 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
                 button.appendChild(document.createTextNode(option.text));
                 button.id = `confirmationBtn${index}`;
 
+                if (index === primaryIndex) {
+                    button.setAttribute('data-dialog-primary', '1');
+                }
+
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
+                    const res = currentResolve;
                     hideConfirmationDialog();
-                    if (currentResolve) {
-                        currentResolve(option.value);
-                        currentResolve = null;
+                    if (res) {
+                        res(option.value);
                     }
                 });
 
                 controlsEl.appendChild(button);
 
-                // Focus the last button (usually cancel) by default
-                if (index === options.length - 1) {
-                    button.focus();
+                if (index === primaryIndex) {
+                    setTimeout(() => button.focus(), 50);
                 }
             });
         }
@@ -153,40 +237,18 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
             closeBtnElement.parentNode.replaceChild(newCloseBtnElement, closeBtnElement);
 
             newCloseBtnElement.addEventListener('click', () => {
+                const res = currentResolve;
+                const cancelValue = getConfirmationCancelResolveValue(options);
                 hideConfirmationDialog();
-                if (currentResolve) {
-                    // Find the cancel button value (last button, or button with null/false value)
-                    let cancelValue = null;
-                    if (options && options.length > 0) {
-                        // Look for a button with null or false value
-                        const cancelButton = options.find(option => option.value === null || option.value === false);
-                        if (cancelButton) {
-                            cancelValue = cancelButton.value;
-                        } else {
-                            // If no explicit cancel button, use the last button's value
-                            cancelValue = options[options.length - 1].value;
-                        }
-                    }
-                    currentResolve(cancelValue);
-                    currentResolve = null;
+                if (res) {
+                    res(cancelValue);
                 }
             });
         }
 
-        // Set up escape key handler
-        if (escapeHandler) {
-            document.removeEventListener('keydown', escapeHandler);
-        }
-        escapeHandler = (e) => {
-            if (e.key === 'Escape' && confirmationDialogActive && !confirmationDialog.classList.contains('hidden')) {
-                hideConfirmationDialog();
-                if (currentResolve) {
-                    currentResolve(null);
-                    currentResolve = null;
-                }
-            }
-        };
-        document.addEventListener('keydown', escapeHandler);
+        confirmationDialogKeydownOptionsRef = options;
+        confirmationDialogKeydownInputRef = null;
+        registerConfirmationDialogKeydown();
 
         // Apply custom width from config
         if (config.width) {
@@ -378,11 +440,12 @@ async function hideConfirmationDialog() {
         confirmationDialog.style.width = '';
         confirmationDialog.style.height = '';
 
-        // Remove escape key handler
-        if (escapeHandler) {
-            document.removeEventListener('keydown', escapeHandler);
-            escapeHandler = null;
+        if (confirmationDialogKeydownHandler) {
+            document.removeEventListener('keydown', confirmationDialogKeydownHandler);
+            confirmationDialogKeydownHandler = null;
         }
+        confirmationDialogKeydownOptionsRef = null;
+        confirmationDialogKeydownInputRef = null;
         currentResolve = null;
     }
 }
@@ -499,6 +562,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         controlsEl.style.display = hasOptions ? '' : 'none';
         controlsEl.innerHTML = '';
         if (hasOptions) {
+            const primaryIndex = Math.max(0, getConfirmationPrimaryButtonIndex(options));
 
             options.forEach((option, index) => {
                 const button = document.createElement('button');
@@ -516,24 +580,21 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
                 button.appendChild(document.createTextNode(option.text));
                 button.id = `confirmationBtn${index}`;
 
+                if (index === primaryIndex) {
+                    button.setAttribute('data-dialog-primary', '1');
+                }
+
                 button.addEventListener('click', (e) => {
                     e.preventDefault();
                     const inputValue = input.value.trim();
+                    const res = currentResolve;
                     hideConfirmationDialog();
-
-                    // Return input value if OK was clicked, null otherwise
-                    if (currentResolve) {
-                        currentResolve(option.value ? inputValue : null);
-                        currentResolve = null;
+                    if (res) {
+                        res(option.value ? inputValue : null);
                     }
                 });
 
                 controlsEl.appendChild(button);
-
-                // Focus the first button (OK) by default for input dialogs
-                if (index === 0) {
-                    setTimeout(() => button.focus(), 100);
-                }
             });
         }
 
@@ -544,54 +605,24 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
             inputCloseBtnElement.parentNode.replaceChild(newInputCloseBtnElement, inputCloseBtnElement);
 
             newInputCloseBtnElement.addEventListener('click', () => {
+                const res = currentResolve;
+                const cancelValue = getConfirmationCancelResolveValue(options);
                 hideConfirmationDialog();
-                if (currentResolve) {
-                    // Find the cancel button value (last button, or button with null/false value)
-                    let cancelValue = null;
-                    if (options && options.length > 0) {
-                        // Look for a button with null or false value
-                        const cancelButton = options.find(option => option.value === null || option.value === false);
-                        if (cancelButton) {
-                            cancelValue = cancelButton.value;
-                        } else {
-                            // If no explicit cancel button, use the last button's value
-                            cancelValue = options[options.length - 1].value;
-                        }
-                    }
-                    currentResolve(cancelValue);
-                    currentResolve = null;
+                if (res) {
+                    res(cancelValue);
                 }
             });
         }
-        
+
         // Focus input field
         setTimeout(() => {
             input.focus();
             input.select();
         }, 150);
-        
-        // Submit on Enter key
-        const handleEnter = (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                const inputValue = input.value.trim();
-                hideConfirmationDialog();
-                if (currentResolve) {
-                    currentResolve(inputValue);
-                    currentResolve = null;
-                }
-                document.removeEventListener('keydown', handleEnter);
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                hideConfirmationDialog();
-                if (currentResolve) {
-                    currentResolve(null);
-                    currentResolve = null;
-                }
-                document.removeEventListener('keydown', handleEnter);
-            }
-        };
-        document.addEventListener('keydown', handleEnter);
+
+        confirmationDialogKeydownOptionsRef = options;
+        confirmationDialogKeydownInputRef = input;
+        registerConfirmationDialogKeydown();
 
         // Apply custom width from config
         if (config.width) {

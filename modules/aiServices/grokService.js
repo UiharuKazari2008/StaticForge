@@ -8811,7 +8811,7 @@ class GrokService {
                 // Send initial streaming start signal
                 if (options.ws && options.handler) {
                     options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                        phase: 'ai_streaming',
+                        phase: 'streaming',
                         currentKey: totalKeys > 0 ? 0 : undefined,
                         totalKeys: totalKeys > 0 ? totalKeys : undefined
                     });
@@ -8872,7 +8872,7 @@ class GrokService {
                                 // Send progress update for key start
                                 if (options.ws && options.handler) {
                                     options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                                        phase: 'ai_streaming',
+                                        phase: 'streaming',
                                         currentKey: currentKeyIndex,
                                         totalKeys: totalKeys,
                                         reasoning: `Processing ${key}...`
@@ -8904,7 +8904,7 @@ class GrokService {
                         if (fullPath.endsWith('.reason') || fullPath.endsWith('.reason_display')) {
                             if (options.ws && options.handler && typeof value === 'string') {
                                 options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                                    phase: 'ai_streaming',
+                                    phase: 'streaming',
                                     currentKey: currentKeyIndex,
                                     totalKeys: totalKeys,
                                     reasoning: value
@@ -10340,7 +10340,7 @@ class GrokService {
                     // Send initial streaming start signal
                     if (options.ws && options.handler) {
                         options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                            phase: 'ai_streaming',
+                            phase: 'streaming',
                             currentKey: totalKeys > 0 ? 0 : undefined,
                             totalKeys: totalKeys > 0 ? totalKeys : undefined
                         });
@@ -10386,7 +10386,7 @@ class GrokService {
                                     currentKeyIndex = Math.min(currentKeyIndex + 1, totalKeys);
                                     if (options.ws && options.handler) {
                                         options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                                            phase: 'ai_streaming',
+                                            phase: 'streaming',
                                             currentKey: currentKeyIndex,
                                             totalKeys: totalKeys,
                                             reasoning: `Processing ${key}...`
@@ -10414,7 +10414,7 @@ class GrokService {
                             if (fullPath.endsWith('.reason') || fullPath.endsWith('.reason_display')) {
                                 if (options.ws && options.handler && typeof value === 'string') {
                                     options.handler.sendGenerationProgress(options.ws, options.requestId || 'streaming', {
-                                        phase: 'ai_streaming',
+                                        phase: 'streaming',
                                         currentKey: currentKeyIndex,
                                         totalKeys: totalKeys,
                                         reasoning: value

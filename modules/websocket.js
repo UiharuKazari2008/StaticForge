@@ -157,6 +157,7 @@ class WebSocketServer {
             // Restore session workspace for reconnection sync (only if authenticated)
             if (clientInfo.authenticated && clientInfo.sessionId) {
                 this.restoreSessionWorkspace(clientInfo.sessionId, ws);
+                this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
             }
 
             // Send current indexing state to newly connected client
@@ -216,6 +217,28 @@ class WebSocketServer {
         });
 
         console.log('✓ WebSocket server initialized');
+    }
+
+    /**
+     * Push saved gallery scroll positions from express session so client can restore after loadGallery.
+     */
+    sendGalleryScrollStateFromSession(sessionId, ws) {
+        try {
+            if (!this.sessionStore || typeof this.sessionStore.get !== 'function') return;
+            this.sessionStore.get(sessionId, (err, sess) => {
+                if (err || !sess) return;
+                const data = sess.galleryScrollState && typeof sess.galleryScrollState === 'object'
+                    ? sess.galleryScrollState
+                    : {};
+                this.sendToClient(ws, {
+                    type: 'gallery_scroll_state',
+                    data,
+                    timestamp: new Date().toISOString()
+                });
+            });
+        } catch (e) {
+            console.warn('sendGalleryScrollStateFromSession:', e.message);
+        }
     }
 
     // Restore session workspace when user reconnects

@@ -37,6 +37,11 @@ class ContextMenuController {
         /** Active root menu config while open (for options like closeTreeOnOuterClick). */
         this.activeRootMenuConfig = null;
 
+        /** After touch long-press open, ignore synthetic `contextmenu` (stops double open / double animation). */
+        this._suppressDocumentContextMenuUntil = 0;
+        /** Next `positionMenu` pass centers the root menu in the viewport (e.g. bulk move shortcut). */
+        this._nextMenuViewportCenter = false;
+
         this.init();
     }
 
@@ -330,6 +335,9 @@ class ContextMenuController {
             const target = e.target.closest('[data-context-menu]');
             if (target) {
                 e.preventDefault();
+                if (!e._isProxyEvent && Date.now() < this._suppressDocumentContextMenuUntil) {
+                    return;
+                }
                 this.showMenu(e, target, false, e._isProxyEvent);
             }
         });
@@ -349,10 +357,18 @@ class ContextMenuController {
                     clearTimeout(this.touchTimer);
                 }
 
-                // Set up long-press timer
+                // Set up long-press timer (use stored coords — TouchEvent.touches may be empty when the callback runs)
                 this.touchTimer = setTimeout(() => {
-                    if (!this.hasScrolled) {
-                        this.showMenu(e, target, true, e._isProxyEvent);
+                    if (!this.hasScrolled && this.touchStartX != null && this.touchStartY != null) {
+                        this._suppressDocumentContextMenuUntil = Date.now() + 600;
+                        const x = this.touchStartX;
+                        const y = this.touchStartY;
+                        const syntheticTouchEvent = {
+                            touches: [{ clientX: x, clientY: y }],
+                            clientX: x,
+                            clientY: y
+                        };
+                        this.showMenu(syntheticTouchEvent, target, true, e._isProxyEvent);
                     }
                 }, this.longPressDelay);
             }
@@ -1282,6 +1298,8 @@ class ContextMenuController {
     positionMenu(event, isTouch = false) {
         const menu = this.menu;
         const menuContent = menu.querySelector('.context-menu-content');
+        const centerInViewport = this._nextMenuViewportCenter;
+        this._nextMenuViewportCenter = false;
 
         // Check if we're on a small mobile screen (480px or less)
         const isSmallMobile = window.innerWidth <= 480;
@@ -1305,7 +1323,7 @@ class ContextMenuController {
 
         // Get click/touch position
         let clickX, clickY;
-        if (isTouch) {
+        if (isTouch && event.touches && event.touches[0]) {
             clickX = event.touches[0].clientX;
             clickY = event.touches[0].clientY;
         } else {
@@ -1326,8 +1344,18 @@ class ContextMenuController {
         const actualHeight = menuRect.height;
         const menuHeight = actualHeight > 0 ? actualHeight : 350; // Fallback
 
-        // Calculate positioning with real dimensions
-        const positioning = this.calculatePositioning(clickX, clickY, menuWidth, menuHeight, viewportWidth, viewportHeight);
+        let positioning;
+        if (centerInViewport) {
+            let x = (viewportWidth - menuWidth) / 2;
+            let y = (viewportHeight - menuHeight) / 2;
+            if (x < 10) x = 10;
+            if (x + menuWidth > viewportWidth - 10) x = Math.max(10, viewportWidth - menuWidth - 10);
+            if (y < 10) y = 10;
+            if (y + menuHeight > viewportHeight - 10) y = Math.max(10, viewportHeight - menuHeight - 10);
+            positioning = { x, y, vertical: 'down', horizontal: 'right' };
+        } else {
+            positioning = this.calculatePositioning(clickX, clickY, menuWidth, menuHeight, viewportWidth, viewportHeight);
+        }
 
         // Apply positioning classes BEFORE animation
         menu.className = menu.className.replace(/position-\w+/g, ''); // Remove existing position classes
@@ -1778,6 +1806,38 @@ class ContextMenuController {
             iconElement.classList.remove('disabled');
             iconElement.removeAttribute('aria-disabled');
         }
+    }
+
+    /**
+     * Open bulk gallery menu centered, with the Move-to-workspace submenu already expanded.
+     * @param {HTMLElement} galleryElement — element with bulk context menu attached (e.g. #gallery)
+     */
+    openBulkActionsMoveSubmenuCentered(galleryElement) {
+        if (!galleryElement || !galleryElement.dataset.contextMenu) return;
+        if (this.isOpen) {
+            this.hideMenu();
+        }
+        this._nextMenuViewportCenter = true;
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        const ev = { clientX: cx, clientY: cy, touches: [{ clientX: cx, clientY: cy }] };
+        this.showMenu(ev, galleryElement, false, false);
+        const openMove = () => {
+            const items = this.menu.querySelectorAll('.context-menu-item.has-submenu');
+            for (let i = 0; i < items.length; i++) {
+                const el = items[i];
+                const textEl = el.querySelector('.context-menu-item-text');
+                const label = textEl ? textEl.textContent.trim() : '';
+                if (label.startsWith('Move to') && el._optionsfn) {
+                    const opts = el._optionsfn(this.currentTarget);
+                    if (opts && opts.length) {
+                        this.showSubmenu(el, opts, this.currentTarget, el._handlerfn);
+                    }
+                    break;
+                }
+            }
+        };
+        requestAnimationFrame(() => requestAnimationFrame(openMove));
     }
 
     hideMenu() {

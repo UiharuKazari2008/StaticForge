@@ -14,6 +14,10 @@ const presetAutocompleteOverlay = document.getElementById('presetAutocompleteOve
 const presetAutocompleteList = document.querySelector('.preset-autocomplete-list');
 
 let bypassConfirmation = false;
+__dreamscapeFence = (typeof __dreamscapeFence !== 'undefined' && __dreamscapeFence)
+    ? __dreamscapeFence
+    : Object.create(null);
+__dreamscapeFence['app.js'] = false;
 let previewRatio = 1;
 let compareSourceImageData = null;
 let compareOverlayEnabled = false;
@@ -235,14 +239,21 @@ function updateCompareDisplayState() {
     const hasSource = Boolean(compareSourceImageData && compareSourceImageData.url);
     const effOverlay = getEffectiveCompareOverlay();
     const effSlide = getEffectiveCompareSlide();
+    const isInspectOverride = hasSource && (compareTempShowSourceActive || compareTempHideSourceActive);
+    const showBothLabels = hasSource && effSlide && compareDragActive && compareDragMoved;
+    const showSourceLabel = hasSource && compareTempShowSourceActive && !showBothLabels;
+    const showResultLabel = hasSource && compareTempHideSourceActive && !showBothLabels;
     previewContent.classList.toggle('compare-has-source', hasSource);
     previewContent.classList.toggle('compare-overlay-on', hasSource && effOverlay);
     previewContent.classList.toggle('compare-slide-on', hasSource && effSlide);
     previewContent.classList.toggle('compare-temp-show-source', hasSource && compareTempShowSourceActive);
     previewContent.classList.toggle('compare-temp-hide-source', hasSource && compareTempHideSourceActive);
+    previewContent.classList.toggle('compare-show-both-labels', showBothLabels);
+    previewContent.classList.toggle('compare-show-source-label', showSourceLabel);
+    previewContent.classList.toggle('compare-show-result-label', showResultLabel);
+    previewContent.classList.toggle('compare-drag-split-active', showBothLabels);
     setCompareSplitPosition(compareSplitPosition);
     previewContent.style.setProperty('--compare-overlay-opacity', `${(compareRuntimeSettings.overlayOpacity || 50) / 100}`);
-    const isInspectOverride = hasSource && (compareTempShowSourceActive || compareTempHideSourceActive);
     if (sourceImage) {
         sourceImage.style.mixBlendMode = 'normal';
         sourceImage.style.filter = isInspectOverride ? '' : (COMPARE_COLOR_FILTERS[compareRuntimeSettings.sourceColor] || '');
@@ -260,11 +271,24 @@ function updateCompareDisplayState() {
     }
 
     if (isInspectOverride && sourceImage && previewImage) {
-        // ALT+Shift inspect mode should show raw layers without runtime overlay settings.
-        sourceImage.style.zIndex = '4';
-        previewImage.style.zIndex = '2';
-        sourceImage.style.opacity = '1';
-        previewImage.style.opacity = '1';
+        // ALT+Shift inspect mode: force explicit side output instead of relying on compare classes.
+        if (compareTempShowSourceActive) {
+            // Left Shift + Alt => Source only.
+            sourceImage.style.zIndex = '4';
+            previewImage.style.zIndex = '2';
+            sourceImage.style.opacity = '1';
+            previewImage.style.opacity = '0';
+            sourceImage.style.clipPath = 'none';
+            previewImage.style.clipPath = 'none';
+        } else if (compareTempHideSourceActive) {
+            // Right Shift + Alt => Result only.
+            sourceImage.style.zIndex = '2';
+            previewImage.style.zIndex = '4';
+            sourceImage.style.opacity = '0';
+            previewImage.style.opacity = '1';
+            sourceImage.style.clipPath = 'inset(0 100% 0 0)';
+            previewImage.style.clipPath = 'none';
+        }
     } else if (hasSource && sourceImage && previewImage) {
         const overlayOpacity = `${(compareRuntimeSettings.overlayOpacity || 50) / 100}`;
         const blendMode = compareRuntimeSettings.blendMode || 'normal';
@@ -771,6 +795,7 @@ function startComparePointerDrag(e) {
     compareDragStartX = e.clientX;
     compareDragStartY = e.clientY;
     compareDragStartAtMs = Date.now();
+    updateCompareDisplayState();
 }
 
 function updateComparePointerDrag(e) {
@@ -806,6 +831,7 @@ function endComparePointerDrag(e) {
     compareDragActive = false;
     compareDragPointerId = null;
     compareDragMoved = false;
+    updateCompareDisplayState();
 }
 
 function updateCompareSplitFromPointer(clientX) {
@@ -1398,7 +1424,8 @@ let errorSubHeaderTimeout = null;
 // toggleCharacterPromptEnabled, updateAutoPositionToggle, showPositionDialog, hidePositionDialog,
 // confirmPosition, getCharacterPrompts, clearCharacterPrompts, loadCharacterPrompts,
 // getCellLabelFromCoords, toggleCharacterPromptCollapse, updateCharacterPromptCollapseButton,
-// updateCharacterPromptPreview, etc.
+// updateCharacterPromptPreview, scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts,
+// maybeSyncMainPromptSubjectTagsFromCharacterPrompts, etc.
 
 // Character Prompts Functions
 
@@ -3621,6 +3648,10 @@ function getReplacementTypeDisplay(type) {
         case 'bracketed_prefix_combine':
         case 'combine':
             return 'Random';
+        case 'combine_incrementing':
+            return 'Incrementing (pool)';
+        case 'pick_incrementing':
+            return 'Incrementing (pick)';
         case 'regular':
             return 'Static';
         default:
@@ -3642,6 +3673,10 @@ function getReplacementTypeIcon(type) {
         case 'bracketed_prefix_combine':
         case 'combine':
             return '<i class="fas fa-dice"></i>';
+        case 'combine_incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
+        case 'pick_incrementing':
+            return '<i class="fas fa-arrow-up-1-9"></i>';
         case 'regular':
             return '<i class="fas fa-arrows-rotate"></i>';
         default:
@@ -3654,7 +3689,7 @@ function getLocationBadgeClass(source) {
     const sourceLower = source.toLowerCase();
     if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
         return 'location-prompt';
-    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
         return 'location-uc';
     } else if (sourceLower.includes('character')) {
         return 'location-character';
@@ -3666,7 +3701,7 @@ function getLocationIcon(source) {
     const sourceLower = source.toLowerCase();
     if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
         return '<i class="ri-code-block"></i>';
-    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
         return '<i class="ri-eraser-fill"></i>';
     } else if (sourceLower.includes('character')) {
         return '<i class="fas fa-user"></i>';
@@ -3678,7 +3713,7 @@ function getLocationColor(source) {
     const sourceLower = source.toLowerCase();
     if (sourceLower.includes('prompt') || sourceLower === 'prompt') {
         return '#81ffcb';
-    } else if (sourceLower.includes('negative') || sourceLower.includes('uc')) {
+    } else if (sourceLower.includes('negative') || sourceLower.includes('uc') || sourceLower === 'negative_prompt' || sourceLower === 'input_prompt_negative') {
         return '#ff8199';
     } else if (sourceLower.includes('character')) {
         return '#b481ff';
@@ -3699,6 +3734,9 @@ function getReplacementTypeColor(type) {
         case 'bracketed_prefix_combine':
         case 'combine':
             return '#ff81ff'; // Pink/purple for random/combine
+        case 'combine_incrementing':
+        case 'pick_incrementing':
+            return '#81b4ff'; // Blue for sequential
         case 'regular':
             return '#ffb981'; // Orange for standard replacement
         default:
@@ -4354,6 +4392,8 @@ function replacePlaceholderInPrompt(seed, index) {
         textarea = document.getElementById('manualPrompt');
     } else if (seed.source === 'negative_prompt') {
         textarea = document.getElementById('manualUc');
+    } else if (seed.source === 'input_prompt_negative') {
+        textarea = document.getElementById('manualPromptNegative');
     } else if (seed.source && seed.source.startsWith('character_') && seed.source.endsWith('_prompt')) {
         // For character prompts, we might need to handle this differently
         // For now, just use the main prompt
@@ -4455,7 +4495,8 @@ function renderTextReplacementLockList() {
 
         // Check if source is UC/negative and add class
         const source = seed.source || '';
-        if (source === 'negative_prompt' || (source.startsWith('character_') && source.endsWith('_uc'))) {
+        if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
+            (source.startsWith('character_') && source.endsWith('_uc'))) {
             itemDiv.classList.add('negative-prompt');
         }
 
@@ -4479,7 +4520,7 @@ function renderTextReplacementLockList() {
             if (seed.type.startsWith('bracketed_')) {
                 originalPattern = seed.pattern;
             } else {
-                originalPattern = `!${seed.key}${seed.type === 'combine' ? '~+' : '~'}`;
+                originalPattern = `!${seed.key}${seed.type === 'combine_incrementing' ? '~+#' : seed.type === 'pick_incrementing' ? '~#' : seed.type === 'combine' ? '~+' : '~'}`;
             }
         }
 
@@ -4548,7 +4589,8 @@ function renderTextReplacementLockList() {
             // For non-lockable replacements, show info only
             // Check if source is UC/negative and add class
             const source = seed.source || '';
-            if (source === 'negative_prompt' || (source.startsWith('character_') && source.endsWith('_uc'))) {
+            if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
+                (source.startsWith('character_') && source.endsWith('_uc'))) {
                 itemDiv.classList.add('negative-prompt');
             }
 
@@ -4676,18 +4718,16 @@ function renderTextReplacementLockList() {
 
                                         // If we have cached options, return them
                                         if (cached.options && Array.isArray(cached.options) && cached.options.length > 0) {
-                                            return cached.options.map(opt => {
-                                                // Create placeholder key display (just the key, index will be shown as badge)
-                                                const placeholderKey = `!${opt.key}`;
-                                                return {
-                                                    icon: 'fas fa-bookmark',
-                                                    text: placeholderKey,
-                                                    subtext: opt.value,
-                                                    badge: opt.index !== null && opt.index !== undefined ? ('#' + String(opt.index)) : null,
-                                                    action: `select-option-${opt.value}`,
-                                                    data: { value: opt.value, key: opt.key, index: opt.index }
-                                                };
-                                            });
+                                            const distinctKeys = new Set(cached.options.map(o => o.key));
+                                            const showSelectorSubtext = distinctKeys.size > 1;
+                                            return cached.options.map(opt => ({
+                                                icon: 'fas fa-bookmark',
+                                                text: opt.value,
+                                                subtext: showSelectorSubtext ? `!${opt.key}` : undefined,
+                                                badge: opt.index !== null && opt.index !== undefined ? ('#' + String(opt.index)) : null,
+                                                action: `select-option-${opt.value}`,
+                                                data: { value: opt.value, key: opt.key, index: opt.index }
+                                            }));
                                         }
 
                                         // If cached but no options (error or empty), return that
@@ -9048,7 +9088,7 @@ async function moveImageToScrapsDirect(filename, event = null) {
         const confirmed = await showConfirmationDialog(
             'Are you sure you want to move this image to scraps?',
             [
-                { text: 'Move to Scraps', value: true, className: 'btn-primary' },
+                { text: 'Move to Scraps', value: true, className: 'btn-danger' },
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
             ],
             event
@@ -9242,6 +9282,7 @@ async function togglePinImage(image, pinBtn = null) {
 
         // Update all pin buttons in the gallery for this image
         updateGalleryPinButtons(filename, !isPinned);
+        syncServiceWorkerImageCacheRules();
     } catch (error) {
         console.error('Error toggling pin status:', error);
         showError('Failed to toggle pin status');
@@ -9263,6 +9304,89 @@ function checkIfImageIsPinned(filename) {
 
     // Default to false if not found (newly generated images can't be pinned)
     return false;
+}
+
+let imageCacheRulesSyncTimer = null;
+function buildPreviewUrlForCache(image) {
+    if (!image) return null;
+
+    let previewValue = image.preview || null;
+    if (!previewValue) {
+        const baseFilename = image.filename || image.original || image.upscaled;
+        if (!baseFilename) return null;
+        previewValue = baseFilename.replace(/\.(jpg|jpeg|png|webp)$/i, '.webp');
+    }
+
+    if (typeof getGalleryPreviewUrl === 'function') {
+        previewValue = getGalleryPreviewUrl(previewValue);
+    } else if (globalThis.deviceUtils && typeof globalThis.deviceUtils.getGalleryPreviewUrl === 'function') {
+        previewValue = globalThis.deviceUtils.getGalleryPreviewUrl(previewValue);
+    }
+
+    if (!previewValue) return null;
+    return `/previews/${encodeURIComponent(previewValue)}`;
+}
+
+function buildImageUrlForCache(image) {
+    if (!image) return null;
+    const filename = image.filename || image.original || image.upscaled;
+    if (!filename) return null;
+    return `/images/${filename}`;
+}
+
+function syncServiceWorkerImageCacheRules() {
+    if (imageCacheRulesSyncTimer) {
+        clearTimeout(imageCacheRulesSyncTimer);
+    }
+
+    imageCacheRulesSyncTimer = setTimeout(async () => {
+        try {
+            if (!globalThis.serviceWorkerManager || typeof globalThis.serviceWorkerManager.syncImageCacheRules !== 'function') {
+                return;
+            }
+
+            const images = Array.isArray(allImages) ? allImages : [];
+            if (!images.length) {
+                await globalThis.serviceWorkerManager.syncImageCacheRules([], []);
+                return;
+            }
+
+            const favoriteUrls = [];
+            const lockedPreviewUrls = [];
+            const seenFavorites = new Set();
+            const seenLockedPreviews = new Set();
+
+            for (const image of images) {
+                if (image && image.isPinned) {
+                    const imageUrl = buildImageUrlForCache(image);
+                    if (imageUrl && !seenFavorites.has(imageUrl)) {
+                        seenFavorites.add(imageUrl);
+                        favoriteUrls.push(imageUrl);
+                    }
+                }
+            }
+
+            for (let i = 0; i < images.length && lockedPreviewUrls.length < 500; i++) {
+                const previewUrl = buildPreviewUrlForCache(images[i]);
+                if (previewUrl && !seenLockedPreviews.has(previewUrl)) {
+                    seenLockedPreviews.add(previewUrl);
+                    lockedPreviewUrls.push(previewUrl);
+                }
+            }
+
+            await globalThis.serviceWorkerManager.syncImageCacheRules(
+                favoriteUrls,
+                lockedPreviewUrls,
+                {
+                    maxEntries: 5000,
+                    maxSizeBytes: 2 * 1024 * 1024 * 1024,
+                    maxIdleMs: 7 * 24 * 60 * 60 * 1000
+                }
+            );
+        } catch (error) {
+            console.error('Failed to sync service worker image cache rules:', error);
+        }
+    }, 300);
 }
 
 // Get image metadata via WebSocket with fallback to HTTP
@@ -9721,6 +9845,11 @@ function setupEventListeners() {
                             text: 'Unlock All',
                             icon: 'fas fa-unlock',
                             action: 'unlockAllReplacements'
+                        },
+                        {
+                            text: 'Compile Tendai',
+                            icon: 'fas fa-wand-magic-sparkles',
+                            action: 'compileTendaiReplacements'
                         }
                     ]
                 }
@@ -10545,6 +10674,7 @@ function setupEventListeners() {
         updateEmphasisHighlighting(manualPrompt);
         autoResizeTextarea(manualPrompt);
         stopEmphasisHighlighting();
+        scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
     }, 'blur');
 
     addSafeEventListener(manualUc, 'input', handleCharacterAutocompleteInput, 'autocomplete');
@@ -10559,6 +10689,20 @@ function setupEventListeners() {
 
     // TEXTAREA AUTOCOMPLETE SYSTEM - Auto-resize functionality for manual UC field
     addSafeEventListener(manualUc, 'input', () => autoResizeTextarea(manualUc), 'resize');
+
+    const manualPromptNegative = document.getElementById('manualPromptNegative');
+    if (manualPromptNegative) {
+        addSafeEventListener(manualPromptNegative, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+        addSafeEventListener(manualPromptNegative, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+        addSafeEventListener(manualPromptNegative, 'focus', () => startEmphasisHighlighting(manualPromptNegative), 'focus');
+        addSafeEventListener(manualPromptNegative, 'blur', () => {
+            applyFormattedText(manualPromptNegative, true);
+            updateEmphasisHighlighting(manualPromptNegative);
+            autoResizeTextarea(manualPromptNegative);
+            stopEmphasisHighlighting();
+        }, 'blur');
+        addSafeEventListener(manualPromptNegative, 'input', () => autoResizeTextarea(manualPromptNegative), 'resize');
+    }
 
     // PRESET AUTOCOMPLETE SYSTEM - Preset name field autocomplete events
     manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
@@ -10826,61 +10970,98 @@ function setupEventListeners() {
     //     if (e.target === metadataDialog) hideMetadataDialog();
     // });
 
-    // Page Up/Down navigation for gallery (only in desktop mode when gallery is active)
+    // Gallery keyboard navigation (desktop mode, active gallery window only)
     document.addEventListener('keydown', (e) => {
-        // Only handle Page Up/Down when in desktop mode and gallery window is active
-        if ((e.key === 'PageUp' || e.key === 'PageDown') &&
-            document.body.classList.contains('desktop-mode')) {
+        if (!document.body.classList.contains('desktop-mode')) return;
+        const handledKeys = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End']);
+        if (!handledKeys.has(e.key)) return;
 
-            // Check if we're in an input field
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-                return;
-            }
+        // Check if we're in an input field
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+            return;
+        }
 
-            // Check if gallery window is the active window (top of modal stack)
-            const galleryWindow = document.querySelector('#galleryWindow');
-            if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
-                return;
-            }
+        // Check if gallery window is the active window (top of modal stack)
+        const galleryWindow = document.querySelector('#galleryWindow');
+        if (!galleryWindow || galleryWindow.classList.contains('hidden')) {
+            return;
+        }
 
-            // Check if gallery window is the top modal (active window)
-            if (typeof window.isModalActive === 'function') {
-                if (!window.isModalActive(galleryWindow)) {
-                    return; // Gallery is not the active window
-                }
-            } else {
-                // Fallback: check modal stack directly
-                const modalStack = window.modalStack || [];
-                if (modalStack.length > 0 && modalStack[modalStack.length - 1] !== galleryWindow) {
-                    return; // Gallery is not the active window
-                }
-            }
-            e.preventDefault();
-            e.stopPropagation();
+        if (typeof window.isModalActive === 'function') {
+            if (!window.isModalActive(galleryWindow)) return;
+        } else {
+            const modalStack = window.modalStack || [];
+            if (modalStack.length > 0 && modalStack[modalStack.length - 1] !== galleryWindow) return;
+        }
 
-            // Get effective length (filtered or full)
-            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
-            if (effectiveLength === 0) return;
+        const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+        if (effectiveLength === 0) return;
 
-            // Get current first visible row index
+        const runLegacyPageJump = (direction) => {
             const currentFirstVisibleIndex = getFirstVisibleRowIndex();
             const cols = realGalleryColumns || 5;
             const currentRow = Math.floor(currentFirstVisibleIndex / cols);
-
-            let targetRow;
-            if (e.key === 'PageDown') {
-                // Jump down 50 items (approximately 10 rows with 5 columns)
-                targetRow = currentRow + 10;
-            } else {
-                // Jump up 50 items
-                targetRow = Math.max(0, currentRow - 10);
-            }
-
-            // Calculate target index
+            const targetRow = direction > 0 ? (currentRow + 10) : Math.max(0, currentRow - 10);
             const targetIndex = Math.min(targetRow * cols, effectiveLength - 1);
             const finalTargetIndex = Math.max(0, targetIndex);
             displayGalleryFromStartIndex(finalTargetIndex, false);
+        };
 
+        if (e.key === 'PageUp' || e.key === 'PageDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            const direction = e.key === 'PageDown' ? 1 : -1;
+            if (typeof jumpToNextGalleryTimeBoundary === 'function') {
+                if (e.shiftKey) {
+                    // Shift+Page: require >=12h jump and no in-window item cap.
+                    jumpToNextGalleryTimeBoundary(direction, {
+                        thresholdMs: 12 * 60 * 60 * 1000,
+                        scanWindow: null
+                    });
+                } else {
+                    // Page: standard adaptive time jump (Jump Index refresh runs in jump finally).
+                    jumpToNextGalleryTimeBoundary(direction);
+                }
+            }
+            return;
+        }
+
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            const direction = e.key === 'ArrowDown' ? 1 : -1;
+            if (e.shiftKey) {
+                // Shift+Arrow: previous PageUp/PageDown behavior.
+                runLegacyPageJump(direction);
+                if (refreshGalleryJumpIndexUI) {
+                    refreshGalleryJumpIndexUI();
+                } else if (triggerGalleryVirtualScrollFromShortcut) {
+                    triggerGalleryVirtualScrollFromShortcut();
+                }
+                return;
+            }
+
+            // Arrow: real container scrolling (no jump re-render).
+            const galleryContainer = galleryWindow.querySelector('.gallery-container');
+            const scrollStep = galleryContainer ? Math.max(64, Math.floor(galleryContainer.clientHeight * 0.82)) : Math.floor(window.innerHeight * 0.82);
+            if (galleryContainer) {
+                galleryContainer.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+            } else {
+                window.scrollBy({ top: direction * scrollStep, behavior: 'smooth' });
+            }
+            return;
+        }
+
+        if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault();
+            e.stopPropagation();
+            const targetIndex = e.key === 'Home' ? 0 : Math.max(0, effectiveLength - 1);
+            displayGalleryFromStartIndex(targetIndex, false);
+            if (refreshGalleryJumpIndexUI) {
+                refreshGalleryJumpIndexUI();
+            } else if (triggerGalleryVirtualScrollFromShortcut) {
+                triggerGalleryVirtualScrollFromShortcut();
+            }
             return;
         }
     });
@@ -11109,8 +11290,8 @@ function setupEventListeners() {
         // Use a flag to prevent input event handlers from firing during wheel updates
         let isWheelUpdating = false;
         manualWidth.addEventListener('wheel', function (e) {
-            e.preventDefault();
             if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+            e.preventDefault();
 
             isWheelUpdating = true;
 
@@ -11204,8 +11385,8 @@ function setupEventListeners() {
         // Use a flag to prevent input event handlers from firing during wheel updates
         let isWheelUpdating = false;
         manualHeight.addEventListener('wheel', function (e) {
-            e.preventDefault();
             if (manualSelectedResolution !== 'custom' || isWheelUpdating) return;
+            e.preventDefault();
 
             isWheelUpdating = true;
 
@@ -11560,6 +11741,41 @@ function setupEventListeners() {
         });
     }
 
+    const positionGrid = document.querySelector('#positionDialog .position-grid');
+    if (positionGrid && !positionGrid.hasAttribute('data-position-grid-bound')) {
+        positionGrid.setAttribute('data-position-grid-bound', 'true');
+        positionGrid.addEventListener('click', (e) => {
+            const cell = e.target.closest('.position-cell');
+            if (!cell || !positionGrid.contains(cell)) return;
+            if (cell.classList.contains('position-cell-occupied')) return;
+            e.preventDefault();
+            positionGrid.querySelectorAll('.position-cell').forEach(c => c.classList.remove('selected'));
+            cell.classList.add('selected');
+            selectedPositionCell = cell;
+        });
+    }
+
+    if (!document.body.hasAttribute('data-position-dialog-keydown-bound')) {
+        document.body.setAttribute('data-position-dialog-keydown-bound', 'true');
+        document.addEventListener('keydown', (e) => {
+            if (!isPositionDialogTopModal()) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                hidePositionDialog();
+                return;
+            }
+            if (e.key === 'Enter') {
+                const pd = document.getElementById('positionDialog');
+                if (e.target.closest('#positionDialog') && e.target.tagName === 'BUTTON') return;
+                if (pd && !pd.contains(e.target)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                confirmPosition();
+            }
+        }, true);
+    }
+
     // Mouse wheel functionality for numeric inputs
     let manualStepsWheelTimeout = false;
     if (manualSteps) {
@@ -11600,7 +11816,7 @@ function setupEventListeners() {
             }
             updateManualPriceDisplay();
             updateAllStagesInheritedValues();
-        });
+        }, { passive: true });
     }
 
     if (manualGuidance) {
@@ -11610,7 +11826,7 @@ function setupEventListeners() {
             const newValue = Math.max(0.0, Math.min(10.0, currentValue + delta));
             this.value = newValue.toFixed(2);
             updateAllStagesInheritedValues();
-        });
+        }, { passive: true });
         manualGuidance.addEventListener('input', () => {
             updateAllStagesInheritedValues();
         });
@@ -11625,7 +11841,7 @@ function setupEventListeners() {
             if (manualRescaleOverlay)
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
             updateAllStagesInheritedValues();
-        });
+        }, { passive: true });
         if (manualRescaleOverlay) {
             manualRescale.addEventListener('input', () => {
                 updatePercentageOverlay(manualRescale, manualRescaleOverlay);
@@ -11648,7 +11864,7 @@ function setupEventListeners() {
             const currentValue = parseInt(this.value) || 12;
             const newValue = Math.max(0, Math.min(23, currentValue + delta));
             this.value = newValue;
-        });
+        }, { passive: true });
     }
 
     if (timeDateMinute) {
@@ -11657,7 +11873,7 @@ function setupEventListeners() {
             const currentValue = parseInt(this.value) || 0;
             const newValue = Math.max(0, Math.min(59, currentValue + delta));
             this.value = newValue;
-        });
+        }, { passive: true });
     }
 
     if (timeDateDay) {
@@ -11666,7 +11882,7 @@ function setupEventListeners() {
             const currentValue = parseInt(this.value) || 15;
             const newValue = Math.max(1, Math.min(31, currentValue + delta));
             this.value = newValue;
-        });
+        }, { passive: true });
     }
 
     if (timeDateMonth) {
@@ -11675,7 +11891,7 @@ function setupEventListeners() {
             const currentValue = parseInt(this.value) || 6;
             const newValue = Math.max(1, Math.min(12, currentValue + delta));
             this.value = newValue;
-        });
+        }, { passive: true });
     }
 
     // Tab switching functionality for prompt/UC tabs (Manual Generation Model)
@@ -11689,6 +11905,7 @@ function setupEventListeners() {
     document.addEventListener('focusin', (e) => {
         if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
             lastFocusedTextarea = e.target;
+            window.lastFocusedPromptTextarea = e.target;
         }
     });
 
@@ -11936,6 +12153,16 @@ function setupEventListeners() {
             }
         });
     }
+
+    const galleryVisualIndexBtn = document.getElementById('galleryVisualIndexBtn');
+    if (galleryVisualIndexBtn) {
+        galleryVisualIndexBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // openGalleryJumpIndexToolWindow — public/scripts/comp/galleryView.js
+            window.openGalleryJumpIndexToolWindow();
+        });
+    }
+
     // Gallery toggle group
     galleryToggleGroup.querySelectorAll('.gallery-toggle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -12094,6 +12321,9 @@ function setupEventListeners() {
     // Always show browser warning for unsaved changes
     // This ensures the browser shows its native dialog for tab/window closing
     window.addEventListener('beforeunload', (event) => {
+        if (typeof __dreamscapeFatalNavBypass !== 'undefined' && __dreamscapeFatalNavBypass) {
+            return;
+        }
         // Always prevent unload and show browser warning
         if (bypassConfirmation) {
             return;
@@ -12258,7 +12488,11 @@ function switchManualTab(targetTab, previouslyFocused = null) {
             if (targetTab === 'prompt') {
                 focusTarget = document.getElementById('manualPrompt');
             } else if (targetTab === 'uc') {
-                focusTarget = document.getElementById('manualUc');
+                focusTarget = document.getElementById(
+                    currentlyFocused && currentlyFocused.id === 'manualPromptNegative'
+                        ? 'manualPromptNegative'
+                        : 'manualUc'
+                );
             } else if (targetTab === 'creative') {
                 focusTarget = document.getElementById('creativeDirectiveInput');
             }
@@ -13315,25 +13549,29 @@ function collectDialogsFromMetadata(metadata) {
     const allDialogs = [];
     const seenTimestamps = new Set();
 
-    // Collect from main compiled_prompt
+    // Collect from main compiled_prompt (timestamp optional — dedupe key falls back so dialogs still count)
     const mainDialogs = metadata?.dynamic_generation?.compiled_prompt?.dialogs;
     const mainTimestamp = metadata?.dynamic_generation?.compiled_prompt?.timestamp;
-    if (mainDialogs && mainDialogs.length > 0 && mainTimestamp) {
-        allDialogs.push(...mainDialogs);
-        seenTimestamps.add(mainTimestamp);
+    if (mainDialogs && mainDialogs.length > 0) {
+        const key = mainTimestamp ?? '__main__';
+        if (!seenTimestamps.has(key)) {
+            allDialogs.push(...mainDialogs);
+            seenTimestamps.add(key);
+        }
     }
 
     // Collect from pipeline stage seeds
     const stageSeeds = metadata?.forge_data?.stage_seeds;
     if (stageSeeds && Array.isArray(stageSeeds)) {
-        stageSeeds.forEach((stageSeed) => {
+        stageSeeds.forEach((stageSeed, i) => {
             const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
             const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
 
-            if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
-                if (!seenTimestamps.has(stageTimestamp)) {
+            if (stageDialogs && stageDialogs.length > 0) {
+                const key = stageTimestamp ?? `stage:${i}`;
+                if (!seenTimestamps.has(key)) {
                     allDialogs.push(...stageDialogs);
-                    seenTimestamps.add(stageTimestamp);
+                    seenTimestamps.add(key);
                 }
             }
         });
@@ -13457,8 +13695,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
 
             // Single load on preview element (avoids duplicate decode; SW handles /images/ cache)
             let imageWidth, imageHeight;
+            previewImage.dataset.manualPreviewUrl = imageUrl;
+            let timedOut = false;
             await new Promise((resolve, reject) => {
                 let timeoutId;
+                let settled = false;
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
                     previewImage.onload = null;
@@ -13468,35 +13709,61 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                     }
                 };
                 const finish = () => {
+                    if (settled) return;
+                    // Ignore stale loads if a newer preview request repointed the element.
+                    if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                    settled = true;
                     imageWidth = previewImage.naturalWidth;
                     imageHeight = previewImage.naturalHeight;
+                    // If we already timed out, swap from placeholder to the loaded image now.
+                    previewImage.classList.remove('hidden');
+                    previewPlaceholder.classList.add('hidden');
                     cleanup();
+                    // If the editor continued after timeout, apply sizing once the image finally loads.
+                    if (timedOut && imageWidth && imageHeight) {
+                        sizeManualPreviewContainer(imageWidth, imageHeight);
+                    }
                     resolve();
                 };
                 previewImage.onerror = () => {
+                    if (settled) return;
+                    // Ignore stale errors if a newer preview request repointed the element.
+                    if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                    settled = true;
                     cleanup();
                     reject(new Error('Failed to load image into DOM'));
                 };
                 timeoutId = setTimeout(() => {
-                    cleanup();
+                    if (settled) return;
+                    // Don't reject here: allow the rest of the editor to keep loading.
+                    // Keep the load/error handlers active so the image can still load later.
+                    timedOut = true;
                     resolve();
-                    console.error(new Error('Image load timeout - failed to load within 10 seconds'));
                 }, 10000);
+                previewImage.onload = finish;
                 if (previewImage.src && previewImage.src.startsWith('data:')) {
                     previewImage.removeAttribute('src');
                 }
                 previewImage.src = imageUrl;
                 if (previewImage.decode) {
                     previewImage.decode().then(finish).catch(() => {
-                        previewImage.onload = finish;
+                        if (previewImage.complete && previewImage.naturalWidth > 0) {
+                            finish();
+                        }
                     });
-                } else {
-                    previewImage.onload = finish;
                 }
             });
 
-            previewImage.classList.remove('hidden');
-            previewPlaceholder.classList.add('hidden');
+            // If a newer preview request started while we waited, don't clobber UI state.
+            if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+            if (!timedOut) {
+                previewImage.classList.remove('hidden');
+                previewPlaceholder.classList.add('hidden');
+            } else {
+                // Keep the placeholder visible until the image finishes loading in the background.
+                previewImage.classList.add('hidden');
+                previewPlaceholder.classList.remove('hidden');
+            }
 
             // Preview URL for download/copy (same-origin /images/)
             previewImage.dataset.blobUrl = imageUrl;
@@ -13622,6 +13889,11 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
             }
 
+            // Preview chrome uses .manual-preview-controls; CSS forces opacity 0 while #manualForm.generating — clear before toggles/dialogs run (finally runs later).
+            if (response && manualForm?.classList.contains('generating')) {
+                manualForm.classList.remove('generating');
+            }
+
             // Show control buttons
             if (downloadBtn) downloadBtn.classList.remove('hidden');
             if (manualPreviewCopyBtn) manualPreviewCopyBtn.classList.remove('hidden');
@@ -13672,42 +13944,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
             }
 
-            // Render character dialogs if available
-            // Collect dialogs from BOTH main and all pipeline stages (they add up!)
-            let allDialogs = [];
-            const dialogSources = [];
-            const seenTimestamps = new Set(); // Track timestamps to deduplicate
-
-            // Collect from main compiled_prompt
-            const mainDialogs = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
-            const mainTimestamp = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
-            if (mainDialogs && mainDialogs.length > 0 && mainTimestamp) {
-                allDialogs = allDialogs.concat(mainDialogs);
-                seenTimestamps.add(mainTimestamp);
-                dialogSources.push(`main(${mainDialogs.length})`);
-            }
-
-            // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
-            // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
-            const stageSeeds = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
-            if (stageSeeds && Array.isArray(stageSeeds)) {
-                // Iterate through ALL stage seeds to collect their dialogs
-                stageSeeds.forEach((stageSeed, i) => {
-                    const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
-                    const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
-
-                    if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
-                        // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
-                        if (!seenTimestamps.has(stageTimestamp)) {
-                            allDialogs = allDialogs.concat(stageDialogs);
-                            seenTimestamps.add(stageTimestamp);
-                            dialogSources.push(`stage_${i}(${stageDialogs.length})`);
-                        }
-                    }
-                });
-            }
-
-            // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
+            // Render character dialogs if available (single collector — collectDialogsFromMetadata)
+            const stageSeedsForLog = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
+            let allDialogs = collectDialogsFromMetadata(window.currentManualPreviewImage?.metadata);
             allDialogs = processDialogPositions(allDialogs);
 
             console.log('💬 Checking for dialogs in updateManualPreview:', {
@@ -13715,10 +13954,9 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 hasMetadata: !!window.currentManualPreviewImage?.metadata,
                 hasDynamicGen: !!window.currentManualPreviewImage?.metadata?.dynamic_generation,
                 hasCompiledPrompt: !!window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt,
-                hasStageSeeds: !!stageSeeds,
-                stageSeedsCount: stageSeeds?.length || 0,
+                hasStageSeeds: !!stageSeedsForLog,
+                stageSeedsCount: stageSeedsForLog?.length || 0,
                 totalDialogs: allDialogs.length,
-                dialogSources: dialogSources.join(', '),
                 isResponse: !!response
             });
 
@@ -13729,7 +13967,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 if (dialogsVisible) {
                     // Check if this is a fresh generation (response parameter indicates new generation)
                     const isGenerating = !!response;
-                    console.log(`💬 Found ${allDialogs.length} total dialogs from [${dialogSources.join(', ')}], rendering with isGenerating:`, isGenerating);
+                    console.log(`💬 Found ${allDialogs.length} dialogs, rendering with isGenerating:`, isGenerating);
                     renderManualPreviewDialogs(allDialogs, isGenerating);
                 } else {
                     console.log('💬 Dialogs hidden by toggle button');
@@ -13824,8 +14062,11 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             const imageUrl = `/images/${imageObj.upscaled || imageObj.original || imageObj.filename}`;
 
             let imageWidth, imageHeight;
+            previewImage.dataset.manualPreviewUrl = imageUrl;
+            let timedOut = false;
             await new Promise((resolve, reject) => {
                 let timeoutId;
+                let settled = false;
                 const cleanup = () => {
                     if (timeoutId) clearTimeout(timeoutId);
                     previewImage.onload = null;
@@ -13835,32 +14076,58 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
                     }
                 };
                 const finish = () => {
+                    if (settled) return;
+                    // Ignore stale loads if a newer preview request repointed the element.
+                    if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                    settled = true;
                     imageWidth = previewImage.naturalWidth;
                     imageHeight = previewImage.naturalHeight;
+                    // If we already timed out, swap from placeholder to the loaded image now.
+                    previewImage.classList.remove('hidden');
+                    previewPlaceholder.classList.add('hidden');
                     cleanup();
+                    // If the editor continued after timeout, apply sizing once the image finally loads.
+                    if (timedOut && imageWidth && imageHeight) {
+                        sizeManualPreviewContainer(imageWidth, imageHeight);
+                    }
                     resolve();
                 };
                 previewImage.onerror = () => {
+                    if (settled) return;
+                    // Ignore stale errors if a newer preview request repointed the element.
+                    if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+                    settled = true;
                     cleanup();
                     reject(new Error('Failed to load image into DOM'));
                 };
                 timeoutId = setTimeout(() => {
-                    cleanup();
+                    if (settled) return;
+                    // Don't reject here: allow the rest of the editor to keep loading.
+                    // Keep the load/error handlers active so the image can still load later.
+                    timedOut = true;
                     resolve();
-                    console.error(new Error('Image load timeout - failed to load within 10 seconds'));
                 }, 10000);
+                previewImage.onload = finish;
                 previewImage.src = imageUrl;
                 if (previewImage.decode) {
                     previewImage.decode().then(finish).catch(() => {
-                        previewImage.onload = finish;
+                        if (previewImage.complete && previewImage.naturalWidth > 0) {
+                            finish();
+                        }
                     });
-                } else {
-                    previewImage.onload = finish;
                 }
             });
 
-            previewImage.classList.remove('hidden');
-            previewPlaceholder.classList.add('hidden');
+            // If a newer preview request started while we waited, don't clobber UI state.
+            if (previewImage.dataset.manualPreviewUrl !== imageUrl) return;
+            if (!timedOut) {
+                previewImage.classList.remove('hidden');
+                previewPlaceholder.classList.add('hidden');
+            } else {
+                // Keep the placeholder visible until the image finishes loading in the background.
+                previewImage.classList.add('hidden');
+                previewPlaceholder.classList.remove('hidden');
+            }
 
             previewImage.dataset.blobUrl = imageUrl;
 
@@ -13958,39 +14225,7 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             if (deleteBtn) deleteBtn.classList.remove('hidden');
 
             // Render character dialogs if available (for direct preview updates)
-            // Collect dialogs from BOTH main and all pipeline stages (they add up!)
-            let allDialogsDirect = [];
-            const seenTimestampsDirect = new Set(); // Track timestamps to deduplicate
-
-            // Collect from main compiled_prompt
-            const mainDialogsDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.dialogs;
-            const mainTimestampDirect = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.timestamp;
-            if (mainDialogsDirect && mainDialogsDirect.length > 0 && mainTimestampDirect) {
-                allDialogsDirect = allDialogsDirect.concat(mainDialogsDirect);
-                seenTimestampsDirect.add(mainTimestampDirect);
-            }
-
-            // Collect from ALL pipeline stage seeds (each stage can add more dialogs)
-            // Pipeline stage data is stored in forge_data.stage_seeds, not pipeline_stages
-            const stageSeedsDirect = window.currentManualPreviewImage?.metadata?.forge_data?.stage_seeds;
-            if (stageSeedsDirect && Array.isArray(stageSeedsDirect)) {
-                // Iterate through ALL stage seeds to collect their dialogs
-                stageSeedsDirect.forEach((stageSeed, i) => {
-                    const stageDialogs = stageSeed?.dynamic_generation?.dialogs;
-                    const stageTimestamp = stageSeed?.dynamic_generation?.timestamp;
-
-                    if (stageDialogs && stageDialogs.length > 0 && stageTimestamp) {
-                        // Check if this timestamp has NOT been seen before (deduplicate against ALL previous)
-                        if (!seenTimestampsDirect.has(stageTimestamp)) {
-                            allDialogsDirect = allDialogsDirect.concat(stageDialogs);
-                            seenTimestampsDirect.add(stageTimestamp);
-                        }
-                    }
-                });
-            }
-
-            // Normalize dialog positions: apply 80% max size constraint and resolve overlaps
-            // Reuse the same processDialogPositions function
+            let allDialogsDirect = collectDialogsFromMetadata(window.currentManualPreviewImage?.metadata);
             allDialogsDirect = processDialogPositions(allDialogsDirect);
 
             if (allDialogsDirect.length > 0) {
@@ -14203,7 +14438,7 @@ function resetManualPreview() {
         }
         // Ensure animation container is reset to default state
         if (previewContainer) {
-            previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+            previewContainer.classList.remove('preview-animation-active', 'preview-fade-out', 'preview-foreground-lines-active');
         }
         if (previewStars) {
             previewStars.classList.add('hidden');
@@ -15798,53 +16033,157 @@ function loadSeedFromPreview() {
     manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
-function toggleSproutSeed() {
+/** Genso seeds present (whether or not they're already locked). */
+function sproutHasGensoSeedList() {
+    return Array.isArray(window.lastGenerationTextReplacements) && window.lastGenerationTextReplacements.length > 0;
+}
+
+
+// Carousel lock flags live on `#dynamicCarousel` (see manualModalManager.js addSharedFieldsToRequestBody cache_locked / context_locked)
+function sproutHasTendaiCompileCache() {
+    const dc = document.getElementById('dynamicCarousel');
+    return !!(window.dynamicGenerationData?.compiled_prompt)
+        && dc && dc.getAttribute('data-has-cache') === 'true';
+}
+
+/** At least one lockable expander is still unlocked — "Text Expanders +" still does something. */
+function sproutNeedsExpandersLockChoice() {
+    const seeds = window.lastGenerationTextReplacements;
+    if (!Array.isArray(seeds) || seeds.length === 0) return false;
+    const lockable = seeds.filter(r => (r.can_lock !== undefined ? r.can_lock !== false : true));
+    if (lockable.length === 0) return false;
+    return lockable.some(r => r.locked !== true);
+}
+
+/** Tendai carousel could still pin cache/context — "Tendai +" still does something. */
+function sproutNeedsTendaiLockChoice() {
+    if (!sproutHasTendaiCompileCache()) return false;
+    const dc = document.getElementById('dynamicCarousel');
+    if (!dc) return false;
+    const cacheOn = dc.getAttribute('data-state') === 'on';
+    const contextOn = dc.dataset.contextLocked === 'true';
+    return !(cacheOn && contextOn);
+}
+
+function loadSproutExpandersFromPreviewMetadata() {
+    if (!window.currentManualPreviewImage || !window.currentManualPreviewImage.metadata) return;
+    const metadata = window.currentManualPreviewImage.metadata;
+    if (!metadata.text_replacements_seed || !Array.isArray(metadata.text_replacements_seed)) return;
+
+    const replacementsWithLockStatus = metadata.text_replacements_seed
+        .filter(r => r.can_lock !== undefined ? r.can_lock !== false : true)
+        .map(replacement => ({
+            ...replacement,
+            locked: true
+        }));
+
+    window.lastGenerationTextReplacements = replacementsWithLockStatus;
+    window.lockedTextReplacements = replacementsWithLockStatus;
+    updateMainLockButtonState();
+}
+
+function applySproutExpandersLockFromMemoryOrMetadata() {
+    if (window.lastGenerationTextReplacements && window.lastGenerationTextReplacements.length > 0) {
+        window.lastGenerationTextReplacements = window.lastGenerationTextReplacements.map(r => ({
+            ...r,
+            locked: (r.can_lock !== undefined ? r.can_lock !== false : true)
+        }));
+        window.lockedTextReplacements = window.lastGenerationTextReplacements.filter(s => s.locked);
+        updateMainLockButtonState();
+        return;
+    }
+    loadSproutExpandersFromPreviewMetadata();
+}
+
+async function toggleSproutSeed() {
     if (!sproutSeedBtn || !window.lastLoadedSeed) return;
 
     const currentState = sproutSeedBtn.getAttribute('data-state');
-    const newState = currentState === 'off' ? 'on' : 'off';
+    const turningOff = currentState === 'on';
 
-    sproutSeedBtn.setAttribute('data-state', newState);
-
-    if (newState === 'on') {
-        // Set the seed value and disable the field
-        manualSeed.value = window.lastLoadedSeed;
-        if (window.lastLoadedSeed) {
-            sproutSeedBtn?.classList.remove('hidden');
-        }
-
-        manualSeed.disabled = true;
-        if (manualSeed) {
-            manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
-        }
-
-        // Load Genso seed data from current image
-        if (window.currentManualPreviewImage && window.currentManualPreviewImage.metadata) {
-            const metadata = window.currentManualPreviewImage.metadata;
-            if (metadata.text_replacements_seed && Array.isArray(metadata.text_replacements_seed)) {
-                // Load the replacements and lock ALL of them when seed is locked
-                const replacementsWithLockStatus = metadata.text_replacements_seed
-                    .filter(r => r.can_lock !== undefined ? r.can_lock !== false : true)
-                    .map(replacement => ({
-                        ...replacement,
-                        locked: true // Lock ALL replacements when seed is locked
-                    }));
-
-                window.lastGenerationTextReplacements = replacementsWithLockStatus;
-                window.lockedTextReplacements = replacementsWithLockStatus; // All are locked
-
-                // Update the lock button state
-                updateMainLockButtonState();
-            }
-        }
-    } else {
-        // Clear the seed value and enable the field, but don't hide the sprout button
+    if (turningOff) {
+        sproutSeedBtn.setAttribute('data-state', 'off');
         manualSeed.value = '';
         manualSeed.disabled = false;
         if (manualSeed) {
             manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
         }
+        manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
     }
+
+    const wantsExpanders = sproutNeedsExpandersLockChoice();
+    const wantsTendai = sproutNeedsTendaiLockChoice();
+    /** No extra pinning exists beyond the seed → lock seed without a dialog */
+    let scope = 'seed';
+    if (wantsExpanders || wantsTendai) {
+        const dialogButtons = [];
+        if (wantsTendai) {
+            dialogButtons.push({ text: 'Tendai +', value: 'tendai', className: 'btn-secondary' });
+        }
+        if (wantsExpanders) {
+            dialogButtons.push({ text: 'Text Expanders +', value: 'expanders', className: 'btn-secondary' });
+        }
+        dialogButtons.push({ text: 'Seed', value: 'seed', className: 'btn-secondary' });
+        const maxIdx = dialogButtons.findIndex(b => b.value === 'tendai');
+        const primaryIdx = maxIdx !== -1 ? maxIdx : dialogButtons.findIndex(b => b.value === 'expanders');
+        const pinIdx = primaryIdx !== -1 ? primaryIdx : dialogButtons.length - 1;
+        dialogButtons.forEach((b, i) => {
+            if (i === pinIdx) {
+                b.className = 'btn-primary';
+                b.primary = true;
+            }
+        });
+
+        let msgParts = [];
+        if (wantsTendai && wantsExpanders) {
+            msgParts.push('Pinned Tendai output and unlocked Genso expanders are mixed with this seed.');
+        } else if (wantsTendai) {
+            msgParts.push('A cached Tendai compile can still be pinned.');
+        } else {
+            msgParts.push('Genso expanders can still be fully locked.');
+        }
+        msgParts.push('Pick what to pin with this seed.');
+        const choice = await showConfirmationDialog(
+            msgParts.join(' '),
+            dialogButtons,
+            null,
+            { title: 'Lock seed scope', icon: 'fas fa-dice' }
+        );
+        if (choice === null || choice === undefined) return;
+        scope = choice;
+    }
+
+    sproutSeedBtn.setAttribute('data-state', 'on');
+    manualSeed.value = window.lastLoadedSeed;
+    if (window.lastLoadedSeed) {
+        sproutSeedBtn?.classList.remove('hidden');
+    }
+
+    manualSeed.disabled = true;
+    if (manualSeed) {
+        manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
+    }
+
+    const dc = document.getElementById('dynamicCarousel');
+
+    if (scope === 'seed') {
+        // Seed only — keep in-memory Genso locks. If there is no list yet, match older behavior: pull from preview metadata when nothing else is in play.
+        if (!sproutHasGensoSeedList() && !sproutHasTendaiCompileCache()) {
+            loadSproutExpandersFromPreviewMetadata();
+        }
+    } else if (scope === 'expanders') {
+        applySproutExpandersLockFromMemoryOrMetadata();
+    } else if (scope === 'tendai') {
+        if (sproutNeedsExpandersLockChoice()) {
+            applySproutExpandersLockFromMemoryOrMetadata();
+        }
+        if (dc) {
+            dc.setAttribute('data-state', 'on');
+            dc.setAttribute('data-context-locked', 'true');
+        }
+    }
+
     manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -15984,19 +16323,53 @@ async function handleClipboardPaste(event) {
 }
 
 let showSubscriptionExpirationToast = false;
+function getSubscriptionRenewalDisplayData(expiresAtUnix) {
+    const expiresAt = new Date(expiresAtUnix * 1000);
+    const now = new Date();
+    const msUntilRenewal = expiresAt - now;
+    const hourMs = 1000 * 60 * 60;
+    const dayMs = 1000 * 60 * 60 * 24;
+
+    // Use ceiling so users are warned before a period fully elapses.
+    const hoursUntilRenewal = Math.ceil(msUntilRenewal / hourMs);
+    const daysUntilRenewal = Math.ceil(msUntilRenewal / dayMs);
+
+    // Calendar-day delta in local timezone avoids "2 days" when renewal date is tomorrow locally.
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfRenewalDay = new Date(expiresAt.getFullYear(), expiresAt.getMonth(), expiresAt.getDate());
+    const calendarDaysUntilRenewal = Math.max(0, Math.round((startOfRenewalDay - startOfToday) / dayMs));
+
+    const useHours = hoursUntilRenewal < 96;
+    const timeRemainingValue = useHours ? hoursUntilRenewal : calendarDaysUntilRenewal;
+    const timeRemainingUnit = useHours ? 'hour' : 'day';
+    const timeRemaining = `${timeRemainingValue} ${timeRemainingUnit}${timeRemainingValue !== 1 ? 's' : ''}`;
+    const renewalDateTimeStr = expiresAt.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZoneName: 'short'
+    });
+
+    return {
+        msUntilRenewal,
+        hoursUntilRenewal,
+        daysUntilRenewal,
+        calendarDaysUntilRenewal,
+        timeRemaining,
+        renewalDateTimeStr
+    };
+}
+
 async function checkSubscriptionExpiration() {
-    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
+    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
     const subTier = window.optionsData.user.subscription.tier;
     const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
-    const now = new Date();
-    const daysUntilExpiration = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
-    const renewalDateStr = expiresAt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 
-    if (daysUntilExpiration <= 7 && daysUntilExpiration > 0) {
+    if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
         if (!showSubscriptionExpirationToast) {
-            let message = daysUntilExpiration === 1
-                ? `Your NovelAI ${subName} subscription renews tomorrow!`
-                : `Your NovelAI ${subName} subscription will renew in ${daysUntilExpiration} days! (${renewalDateStr})`;
+            const message = `Your NovelAI ${subName} subscription will renew in ${renewalData.timeRemaining}! (${renewalData.renewalDateTimeStr})`;
             showGlassToast('warning', 'NovelAI Subscription Status', message, false, 15000);
             showSubscriptionExpirationToast = true;
         }
@@ -16005,23 +16378,29 @@ async function checkSubscriptionExpiration() {
 
 let showFixedTrainingStepsToast = false;
 async function checkFixedTrainingSteps() {
-    if (!window.optionsData?.balance) {
+    if (!window.optionsData?.balance || !window.optionsData?.user?.subscription?.expiresAt) {
         console.error('No balance data available');
         return;
     }
 
-    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLef || 0;
-    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
-    const now = new Date();
-    const daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+    const fixedSteps = window.optionsData.balance.fixedTrainingStepsLeft || 0;
+    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
+    const daysUntilRenewal = Math.max(1, renewalData.daysUntilRenewal);
     const usePerDay = parseInt((fixedSteps / daysUntilRenewal).toFixed(0));
+    const usePerHour = Math.max(1, parseInt((fixedSteps / Math.max(1, renewalData.hoursUntilRenewal)).toFixed(0)));
+    const pacingSuggestion = renewalData.hoursUntilRenewal < 96
+        ? `${usePerHour} Anlas per hour`
+        : `${usePerDay} Anlas per day`;
     if (fixedSteps > 500 && daysUntilRenewal <= 15 && daysUntilRenewal > 0) {
         if (!showFixedTrainingStepsToast) {
             showGlassToast('info', 'Account Fixed Anlas Expiring',
-                `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining.<br/>
-                Consider using <i class="nai-anla"></i> ${usePerDay} Anlas per day in the next ${daysUntilRenewal} days.`, false, 60000, '<i class="nai-anla"></i>');
+                `You have <i class="nai-anla"></i> ${fixedSteps} Fixed Anlas remaining that will expire.<br/>
+                Consider burning <i class="nai-anla"></i> ${pacingSuggestion} over the next ${renewalData.timeRemaining}.`, false, 300000, '<i class="nai-anla"></i>');
             showFixedTrainingStepsToast = true;
         }
+    } else {
+        // Reset so the toast can fire again when account state re-enters the warning window.
+        showFixedTrainingStepsToast = false;
     }
 }
 
@@ -16314,36 +16693,19 @@ function updateSubscriptionRenewalIndicator() {
         return;
     }
 
-    const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
-    const now = new Date();
-    const msUntilRenewal = expiresAt - now;
-    const daysUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60 * 24));
-    const hoursUntilRenewal = Math.ceil(msUntilRenewal / (1000 * 60 * 60));
-
-    const subTier = window.optionsData.user.subscription.tier;
-    const subName = subTier === 3 ? 'Opus' : subTier === 2 ? 'Scroll' : subTier === 1 ? 'Tablet' : 'Enterprise';
-    const renewalDateStr = expiresAt.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+    const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
 
     // Show indicator if renewal is within 7 days (including today/less than 1 day)
-    // Use hours for more accurate display when less than 1 day remains
-    if (daysUntilRenewal <= 7 && msUntilRenewal > 0) {
+    // Use hours when renewal is within 96 hours.
+    if (renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
         indicator.classList.remove('hidden');
-
-        // Format time remaining message
-        let timeRemaining;
-        if (hoursUntilRenewal < 24) {
-            timeRemaining = `${hoursUntilRenewal} hour${hoursUntilRenewal !== 1 ? 's' : ''}`;
-        } else {
-            timeRemaining = `${daysUntilRenewal} day${daysUntilRenewal !== 1 ? 's' : ''}`;
-        }
-
-        indicator.title = `Subscription renews in ${timeRemaining} (${renewalDateStr})`;
+        indicator.title = `Subscription renews in ${renewalData.timeRemaining} (${renewalData.renewalDateTimeStr})`;
 
         // Update warning level
         indicator.classList.remove('warning', 'critical');
-        if (daysUntilRenewal <= 1 || hoursUntilRenewal <= 24) {
+        if (renewalData.hoursUntilRenewal <= 24 || renewalData.calendarDaysUntilRenewal <= 1) {
             indicator.classList.add('critical');
-        } else if (daysUntilRenewal <= 3) {
+        } else if (renewalData.hoursUntilRenewal <= 72 || renewalData.calendarDaysUntilRenewal <= 3) {
             indicator.classList.add('warning');
         }
     } else {
@@ -16376,11 +16738,9 @@ function updateFixedCreditsIndicator() {
     const totalCredits = window.optionsData.balance.totalCredits || 0;
 
     // Get subscription expiration info
-    let daysUntilRenewal = null;
+    let renewalData = null;
     if (window.optionsData?.user?.subscription?.expiresAt) {
-        const expiresAt = new Date(window.optionsData.user.subscription.expiresAt * 1000);
-        const now = new Date();
-        daysUntilRenewal = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
+        renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
     }
 
     // Remove all state classes
@@ -16395,12 +16755,10 @@ function updateFixedCreditsIndicator() {
         // Less than 250 credits
         indicator.classList.add('low-credits');
         indicator.title = `Low free credits: ${fixedCredits} remaining (Total: ${totalCredits})`;
-    } else if (fixedCredits >= 250 && daysUntilRenewal !== null && daysUntilRenewal <= 7 && daysUntilRenewal > 0) {
+    } else if (fixedCredits >= 250 && renewalData !== null && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
         // More than 250 credits but subscription expiring soon
         indicator.classList.add('expiring-credits');
-        const renewalDateStr = new Date(window.optionsData.user.subscription.expiresAt * 1000)
-            .toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
-        indicator.title = `${fixedCredits} free credits remaining, subscription expires in ${daysUntilRenewal} day${daysUntilRenewal !== 1 ? 's' : ''} (${renewalDateStr})`;
+        indicator.title = `${fixedCredits} free credits remaining, subscription expires in ${renewalData.timeRemaining} (${renewalData.renewalDateTimeStr})`;
     } else {
         // Normal state - no special classes
         indicator.title = `Free credits: ${fixedCredits} (Total: ${totalCredits})`;
@@ -16487,28 +16845,25 @@ function updateFixedCreditsIndicator() {
                                     }
                                     daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
 
-                                    // Calculate days till expire
-                                    let daysTillExpire = 0;
+                                    // Calculate time till expire
+                                    let renewalData = null;
                                     if (accountData.user.subscription.expiresAt) {
-                                        const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
-                                        const now = new Date();
-                                        const diffTime = expireDate.getTime() - now.getTime();
-                                        daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        renewalData = getSubscriptionRenewalDisplayData(accountData.user.subscription.expiresAt);
                                     }
 
-                                    daysText.textContent = `${daysTillExpire} days`;
+                                    daysText.textContent = renewalData ? renewalData.timeRemaining : '0 days';
 
                                     // Show warning icon if expiring in a week or less
-                                    if (daysTillExpire <= 7 && daysTillExpire > 0) {
+                                    if (renewalData && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
                                         warningIcon.classList.remove('hidden');
                                     } else {
                                         warningIcon.classList.add('hidden');
                                     }
 
                                     // Add color coding for urgency
-                                    if (daysTillExpire <= 3) {
+                                    if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (3 * 24 * 60 * 60 * 1000)) {
                                         daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
-                                    } else if (daysTillExpire <= 7) {
+                                    } else if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
                                         daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
                                     } else {
                                         daysTillExpireElement.style.color = '';
@@ -16975,7 +17330,7 @@ async function handleBulkUnpin(event = null) {
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to unpin ${selectedCount} selected image(s)?`,
         [
-            { text: 'Unpin', value: true, className: 'btn-secondary' },
+            { text: 'Unpin', value: true, className: 'btn-danger' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
         ],
         event
@@ -17257,12 +17612,19 @@ async function executeRandomPrompt() {
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
         }
+        const manualPromptNegativeRp = document.getElementById('manualPromptNegative');
+        if (manualPromptNegativeRp) {
+            manualPromptNegativeRp.value = '';
+            autoResizeTextarea(manualPromptNegativeRp);
+            updateEmphasisHighlighting(manualPromptNegativeRp);
+        }
 
         const characterPrompts = promptData.slice(1).map(p => ({ prompt: p, uc: '', enabled: true }));
 
         savedRandomPromptState = {
             basePrompt: promptData[0],
             baseUc: '',
+            input_prompt_negative: '',
             characters: characterPrompts
         };
 
@@ -17298,6 +17660,12 @@ function transferRandomPrompt() {
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
         }
+        const manualPromptNegativeXfer = document.getElementById('manualPromptNegative');
+        if (manualPromptNegativeXfer) {
+            manualPromptNegativeXfer.value = savedRandomPromptState.input_prompt_negative || '';
+            autoResizeTextarea(manualPromptNegativeXfer);
+            updateEmphasisHighlighting(manualPromptNegativeXfer);
+        }
         loadCharacterPrompts(savedRandomPromptState.characters, false);
     }
 
@@ -17327,9 +17695,11 @@ async function toggleRandomPrompt() {
 
     if (isEnabled) {
         // Turning OFF - save current random prompt state
+        const _mnpSave = document.getElementById('manualPromptNegative');
         savedRandomPromptState = {
             basePrompt: document.getElementById('manualPrompt').value,
             baseUc: document.getElementById('manualUc').value,
+            input_prompt_negative: _mnpSave ? _mnpSave.value : '',
             characters: getCharacterPrompts()
         };
 
@@ -17342,6 +17712,7 @@ async function toggleRandomPrompt() {
         if (lastPromptState) {
             const manualPrompt = document.getElementById('manualPrompt');
             const manualUc = document.getElementById('manualUc');
+            const manualPromptNegativeRestore = document.getElementById('manualPromptNegative');
             if (manualPrompt) {
                 manualPrompt.value = lastPromptState.basePrompt;
                 autoResizeTextarea(manualPrompt);
@@ -17352,6 +17723,11 @@ async function toggleRandomPrompt() {
                 autoResizeTextarea(manualUc);
                 updateEmphasisHighlighting(manualUc);
             }
+            if (manualPromptNegativeRestore) {
+                manualPromptNegativeRestore.value = lastPromptState.input_prompt_negative || '';
+                autoResizeTextarea(manualPromptNegativeRestore);
+                updateEmphasisHighlighting(manualPromptNegativeRestore);
+            }
             loadCharacterPrompts(lastPromptState.characters, false);
         }
         lastPromptState = null;
@@ -17359,9 +17735,11 @@ async function toggleRandomPrompt() {
     } else {
         // Turning ON
         // Save current state before doing anything
+        const _mnpLast = document.getElementById('manualPromptNegative');
         lastPromptState = {
             basePrompt: document.getElementById('manualPrompt').value,
             baseUc: document.getElementById('manualUc').value,
+            input_prompt_negative: _mnpLast ? _mnpLast.value : '',
             characters: getCharacterPrompts()
         };
 
@@ -17385,6 +17763,12 @@ async function toggleRandomPrompt() {
                 manualUc.value = savedRandomPromptState.baseUc;
                 autoResizeTextarea(manualUc);
                 updateEmphasisHighlighting(manualUc);
+            }
+            const manualPromptNegativeSaved = document.getElementById('manualPromptNegative');
+            if (manualPromptNegativeSaved) {
+                manualPromptNegativeSaved.value = savedRandomPromptState.input_prompt_negative || '';
+                autoResizeTextarea(manualPromptNegativeSaved);
+                updateEmphasisHighlighting(manualPromptNegativeSaved);
             }
             loadCharacterPrompts(savedRandomPromptState.characters, false);
         } else {
@@ -17561,6 +17945,7 @@ function addCharacterPrompt() {
             updateEmphasisHighlighting(promptField);
             autoResizeTextarea(promptField);
             stopEmphasisHighlighting();
+            scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
         }, 'blur');
 
         // Add auto-resize functionality
@@ -17674,6 +18059,7 @@ function deleteCharacterPrompt(characterId) {
 
         // Reinitialize drag and drop functionality
         initializeCharacterPromptDragAndDrop();
+        scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
     }
     if (characterPromptsContainer.querySelectorAll('.character-prompt-item').length === 0) {
         characterPromptsContainer.classList.add('hidden');
@@ -17919,6 +18305,7 @@ function toggleCharacterPromptEnabled(characterId) {
         } else {
             characterItem.classList.add('character-prompt-disabled');
         }
+        scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
     }
 }
 
@@ -17982,37 +18369,132 @@ function updateAutoPositionToggle() {
     }
 }
 
+function getOccupiedPositionCellLabels(excludeCharacterId) {
+    const labels = new Set();
+    if (!characterPromptsContainer) return labels;
+    characterPromptsContainer.querySelectorAll('.character-prompt-item').forEach(item => {
+        if (item.id === excludeCharacterId) return;
+        const label = item.dataset.positionCell;
+        if (label) {
+            labels.add(label);
+            return;
+        }
+        const sx = item.dataset.positionX;
+        const sy = item.dataset.positionY;
+        if (sx !== undefined && sy !== undefined && sx !== '' && sy !== '') {
+            const fx = parseFloat(sx);
+            const fy = parseFloat(sy);
+            if (Number.isFinite(fx) && Number.isFinite(fy)) {
+                const inferred = getCellLabelFromCoords(fx, fy);
+                if (inferred) labels.add(inferred);
+            }
+        }
+    });
+    return labels;
+}
+
+function isPositionDialogTopModal() {
+    const pd = document.getElementById('positionDialog');
+    if (!pd || pd.classList.contains('hidden') || pd.classList.contains('closing')) return false;
+    return typeof modalStack !== 'undefined' && modalStack.length > 0 && modalStack[modalStack.length - 1] === pd;
+}
+
 function showPositionDialog(characterId) {
     currentPositionCharacterId = characterId;
+
+    const positionDialog = document.getElementById('positionDialog');
+    const cells = positionDialog ? positionDialog.querySelectorAll('.position-cell') : [];
+    cells.forEach(cell => {
+        cell.classList.remove('selected', 'position-cell-occupied');
+        cell.removeAttribute('aria-disabled');
+    });
     selectedPositionCell = null;
 
-    // Reset grid selection
-    document.querySelectorAll('.position-cell').forEach(cell => {
-        cell.classList.remove('selected');
-    });
+    const occupiedLabels = getOccupiedPositionCellLabels(characterId);
+    for (const cell of cells) {
+        if (occupiedLabels.has(cell.dataset.cell)) {
+            cell.classList.add('position-cell-occupied');
+            cell.setAttribute('aria-disabled', 'true');
+        }
+    }
 
-    // Show dialog
-    document.getElementById('positionDialog').classList.remove('hidden');
+    const characterItem = document.getElementById(characterId);
+    if (characterItem && cells.length) {
+        const label = characterItem.dataset.positionCell;
+        const sx = characterItem.dataset.positionX;
+        const sy = characterItem.dataset.positionY;
+        let match = null;
+        if (label) {
+            for (const cell of cells) {
+                if (cell.dataset.cell === label) {
+                    match = cell;
+                    break;
+                }
+            }
+        }
+        if (!match && sx !== undefined && sy !== undefined && sx !== '' && sy !== '') {
+            const fx = parseFloat(sx);
+            const fy = parseFloat(sy);
+            if (Number.isFinite(fx) && Number.isFinite(fy)) {
+                for (const cell of cells) {
+                    const cx = parseFloat(cell.dataset.x);
+                    const cy = parseFloat(cell.dataset.y);
+                    if (Number.isFinite(cx) && Number.isFinite(cy) &&
+                        Math.abs(fx - cx) < 1e-3 && Math.abs(fy - cy) < 1e-3) {
+                        match = cell;
+                        break;
+                    }
+                }
+            }
+        }
+        if (match && !match.classList.contains('position-cell-occupied')) {
+            match.classList.add('selected');
+            selectedPositionCell = match;
+        }
+    }
 
-    // Add event listeners to position cells
-    document.querySelectorAll('.position-cell').forEach(cell => {
-        cell.addEventListener('click', function (e) {
-            e.preventDefault();
-            document.querySelectorAll('.position-cell').forEach(c => c.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedPositionCell = this;
+    if (positionDialog && typeof linkToolWindowToParent === 'function') {
+        const manualModalEl = document.getElementById('manualModal');
+        if (manualModalEl) {
+            linkToolWindowToParent(positionDialog, manualModalEl);
+        }
+    }
+    if (positionDialog && typeof openModal === 'function') {
+        openModal(positionDialog);
+        positionDialog.setAttribute('tabindex', '-1');
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                positionDialog.focus({ preventScroll: true });
+            });
         });
-    });
+    } else if (positionDialog) {
+        positionDialog.classList.remove('hidden');
+    }
 }
 
 function hidePositionDialog() {
-    document.getElementById('positionDialog').classList.add('hidden');
+    const positionDialog = document.getElementById('positionDialog');
+    if (positionDialog) {
+        positionDialog.querySelectorAll('.position-cell').forEach(cell => {
+            cell.classList.remove('selected', 'position-cell-occupied');
+            cell.removeAttribute('aria-disabled');
+        });
+    }
     currentPositionCharacterId = null;
     selectedPositionCell = null;
+    if (!positionDialog) return;
+    if (typeof closeModal === 'function' &&
+        !positionDialog.classList.contains('hidden') &&
+        !positionDialog.classList.contains('closing')) {
+        void closeModal(positionDialog);
+        return;
+    }
+    positionDialog.classList.add('hidden');
 }
 
 function confirmPosition() {
     if (currentPositionCharacterId && selectedPositionCell) {
+        if (selectedPositionCell.classList.contains('position-cell-occupied')) return;
         const x = parseFloat(selectedPositionCell.dataset.x);
         const y = parseFloat(selectedPositionCell.dataset.y);
         const cellLabel = selectedPositionCell.dataset.cell;
@@ -18040,8 +18522,8 @@ function getCharacterPrompts() {
     characterItems.forEach((item, index) => {
         const characterId = item.id;
         const enabled = document.getElementById(`${characterId}_enabled`).getAttribute('data-state') === 'on';
-        const prompt = document.getElementById(`${characterId}_prompt`).value.trim();
-        const uc = document.getElementById(`${characterId}_uc`).value.trim();
+        const prompt = normalizePromptNewlines(document.getElementById(`${characterId}_prompt`).value).trim();
+        const uc = normalizePromptNewlines(document.getElementById(`${characterId}_uc`).value).trim();
         const charaName = item.dataset.charaName || `Character ${index + 1}`;
 
         let center = null;
@@ -18065,6 +18547,162 @@ function getCharacterPrompts() {
     });
 
     return characterPrompts;
+}
+
+// Character gender → main prompt subject tags (1girl / 2girls / solo); sync from /public/scripts/app.js
+const _CHAR_GENDER_GYNO_RE = /\b(gynomorph|futanari|dickgirls?|dickgirl|futa|hermaphrodit|intersex)\b/i;
+const _CHAR_GENDER_MALE_RE = /\b(1boy|2boys|[0-9]+boys?|male|males|man|men|boy|boys|shota|shotas|otoko\s+no\s+ko)\b/i;
+const _CHAR_GENDER_FEMALE_RE = /\b(1girl|2girls|[0-9]+girls?|female|females|woman|women|girl|girls|loli|lolis)\b/i;
+
+function detectCharacterGenderBucketFromCharPromptSlice(slice100) {
+    if (!slice100) return null;
+    if (_CHAR_GENDER_GYNO_RE.test(slice100)) return 'gynomorph';
+    const hasMale = _CHAR_GENDER_MALE_RE.test(slice100);
+    const hasFemale = _CHAR_GENDER_FEMALE_RE.test(slice100);
+    if (hasMale && hasFemale) return null;
+    if (hasMale) return 'boy';
+    if (hasFemale) return 'girl';
+    return null;
+}
+
+function buildDesiredMainPromptSubjectTagSegment(counts) {
+    const parts = [];
+    if (counts.boy) parts.push(counts.boy === 1 ? '1boy' : `${counts.boy}boys`);
+    if (counts.girl) parts.push(counts.girl === 1 ? '1girl' : `${counts.girl}girls`);
+    if (counts.gynomorph) parts.push(counts.gynomorph === 1 ? 'gynomorph' : `${counts.gynomorph}gynomorphs`);
+    return parts.join(', ');
+}
+
+function collectMainPromptSubjectTagMatchRanges(str, removeSolo) {
+    const staticParts = [
+        'multiple girls', 'multiple boys', 'multiple gynomorphs', 'no humans',
+        '1other', '2others'
+    ];
+    if (removeSolo) staticParts.push('solo');
+    const escaped = staticParts.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const re = new RegExp(
+        `\\b(?:${escaped.join('|')}|\\d+girls?|\\d+boys?|\\d+gynomorphs?|gynomorph)\\b`,
+        'gi'
+    );
+    const ranges = [];
+    let m;
+    while ((m = re.exec(str)) !== null) {
+        ranges.push({ start: m.index, end: m.index + m[0].length });
+    }
+    return ranges;
+}
+
+function mergeCommaAdjacentRanges(str, ranges) {
+    if (!ranges.length) return [];
+    ranges.sort((a, b) => a.start - b.start);
+    const merged = [];
+    let cur = { ...ranges[0] };
+    for (let i = 1; i < ranges.length; i++) {
+        const r = ranges[i];
+        const gap = str.slice(cur.end, r.start);
+        if (/^[\s,]*$/.test(gap)) {
+            cur.end = r.end;
+        } else {
+            merged.push(cur);
+            cur = { ...r };
+        }
+    }
+    merged.push(cur);
+    return merged;
+}
+
+function applyMainPromptSubjectTagSegment(mainText, desiredSegment, removeSolo) {
+    const ranges = collectMainPromptSubjectTagMatchRanges(mainText, removeSolo);
+    if (!ranges.length) {
+        if (!desiredSegment) return mainText;
+        const t = mainText.trim();
+        return desiredSegment + (t ? ', ' + t : '');
+    }
+    const spans = mergeCommaAdjacentRanges(mainText, ranges);
+    const firstStart = Math.min(...spans.map((s) => s.start));
+    let out = mainText;
+    const sorted = [...spans].sort((a, b) => b.start - a.start);
+    for (const sp of sorted) {
+        out = out.slice(0, sp.start) + out.slice(sp.end);
+    }
+    let pos = firstStart;
+    for (const sp of spans) {
+        if (sp.end <= firstStart) pos -= sp.end - sp.start;
+    }
+    const left = out.slice(0, pos).replace(/[\s,]+$/, '');
+    const right = out.slice(pos).replace(/^[\s,]+/, '');
+    if (!desiredSegment) {
+        if (!left) return right;
+        if (!right) return left;
+        return `${left}, ${right}`;
+    }
+    if (!left) return right ? `${desiredSegment}, ${right}` : desiredSegment;
+    if (!right) return `${left}, ${desiredSegment}`;
+    return `${left}, ${desiredSegment}, ${right}`;
+}
+
+function isAnyManualScenePromptTextareaFocused() {
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal || manualModal.classList.contains('hidden')) return false;
+    const ae = document.activeElement;
+    if (!ae || ae.nodeName !== 'TEXTAREA') return false;
+    if (!manualModal.contains(ae)) return false;
+    if (ae.id === 'manualPrompt') return true;
+    return !!(ae.id && ae.id.endsWith('_prompt') && ae.classList.contains('character-prompt-textarea'));
+}
+
+let _syncMainPromptSubjectTagsRaf = null;
+function scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts() {
+    if (_syncMainPromptSubjectTagsRaf != null) cancelAnimationFrame(_syncMainPromptSubjectTagsRaf);
+    _syncMainPromptSubjectTagsRaf = requestAnimationFrame(() => {
+        _syncMainPromptSubjectTagsRaf = null;
+        requestAnimationFrame(() => {
+            maybeSyncMainPromptSubjectTagsFromCharacterPrompts();
+        });
+    });
+}
+
+function maybeSyncMainPromptSubjectTagsFromCharacterPrompts() {
+    const manualModal = document.getElementById('manualModal');
+    if (!manualModal || manualModal.classList.contains('hidden')) return;
+    if (isAnyManualScenePromptTextareaFocused()) return;
+    if (!characterPromptsContainer || !manualPrompt) return;
+
+    const characterItems = characterPromptsContainer.querySelectorAll('.character-prompt-item');
+    const buckets = [];
+    for (const item of characterItems) {
+        const characterId = item.id;
+        const enabledEl = document.getElementById(`${characterId}_enabled`);
+        if (!enabledEl || enabledEl.getAttribute('data-state') !== 'on') continue;
+        const pf = document.getElementById(`${characterId}_prompt`);
+        if (!pf) continue;
+        const raw = normalizePromptNewlines(pf.value || '').trim();
+        if (!raw) return;
+        const bucket = detectCharacterGenderBucketFromCharPromptSlice(raw.slice(0, 100));
+        if (!bucket) return;
+        buckets.push(bucket);
+    }
+    if (!buckets.length) return;
+
+    const counts = { girl: 0, boy: 0, gynomorph: 0 };
+    for (const b of buckets) counts[b]++;
+    const desired = buildDesiredMainPromptSubjectTagSegment(counts);
+    if (!desired) return;
+
+    const removeSolo = buckets.length >= 2;
+
+    const before = manualPrompt.value;
+    const after = applyMainPromptSubjectTagSegment(before, desired, removeSolo);
+    if (after === before) return;
+
+    manualPrompt.value = after;
+    applyFormattedText(manualPrompt, true);
+    updateEmphasisHighlighting(manualPrompt);
+    autoResizeTextarea(manualPrompt);
+    // promptTextareaToolbar — /public/scripts/comp/promptTextareaToolbar.js
+    if (promptTextareaToolbar) {
+        promptTextareaToolbar.updateTokenCount(manualPrompt);
+    }
 }
 
 function clearCharacterPrompts() {
@@ -18296,6 +18934,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                 updateEmphasisHighlighting(promptField);
                 autoResizeTextarea(promptField);
                 stopEmphasisHighlighting();
+                scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
             }, 'blur');
 
             // Add auto-resize functionality
@@ -18380,6 +19019,11 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
             updateCharacterPromptCollapseButton(characterId, true);
         }
     });
+
+    // Match addCharacterPrompt: toolbar action menus, overlay target lists, and reorder handles
+    promptTextareaToolbar.initializeCharacterDropdowns();
+    updateAllTextOverlayTargetDropdowns();
+    initializeCharacterPromptDragAndDrop();
 
     // Update auto position toggle after loading
     updateAutoPositionToggle();
@@ -18659,11 +19303,17 @@ function renderTextOverlayTypeDropdown(textOverlayId) {
     const selectedValue = item.dataset.textType || 'speech';
     menu.innerHTML = '';
 
-    // Get text tags from config (fallback if not loaded)
-    const textTags = {
-        'speech': { name: 'Speech Bubble', tags: 'english text, speech bubble' },
-        'thought': { name: 'Thought Bubble', tags: 'english text, thought bubble' },
-        'caption': { name: 'Subtitle', tags: 'english text, caption, subtitle' }
+    const configuredTextTags = window.optionsData?.text_tags || {};
+    const fallbackTextTags = {
+        speech: { name: 'Speech Bubble', tags: '2.0::english text, speech bubble::', icon: 'fas fa-comment-lines' },
+        thought: { name: 'Thought Bubble', tags: '2.0::english text, thought bubble::', icon: 'fas fa-thought-bubble' },
+        caption: { name: 'Subtitle', tags: '2.0::english text, 3.0::caption, subtitle::', icon: 'fas fa-closed-captioning' }
+    };
+    const textTags = Object.keys(configuredTextTags).length ? configuredTextTags : fallbackTextTags;
+    const fallbackIcons = {
+        speech: 'fas fa-comment-lines',
+        thought: 'fas fa-thought-bubble',
+        caption: 'fas fa-closed-captioning'
     };
 
     Object.keys(textTags).forEach(key => {
@@ -18671,7 +19321,16 @@ function renderTextOverlayTypeDropdown(textOverlayId) {
         const option = document.createElement('div');
         option.className = 'custom-dropdown-option' + (selectedValue === key ? ' selected' : '');
         option.dataset.value = key;
-        option.textContent = type.name;
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = type?.name || key;
+        option.appendChild(nameSpan);
+
+        const iconClass = type?.icon || fallbackIcons[key] || 'fas fa-comment-lines';
+        const iconEl = document.createElement('i');
+        iconEl.className = iconClass;
+        iconEl.style.marginLeft = 'auto';
+        option.appendChild(iconEl);
+
         option.addEventListener('click', () => {
             selectTextOverlayType(textOverlayId, key, type.name);
             closeDropdown(menu, document.getElementById(`${textOverlayId}_type_btn`));
@@ -18890,10 +19549,12 @@ function selectTextOverlayType(textOverlayId, typeKey, typeName) {
     if (item && typeBtn) {
         item.dataset.textType = typeKey;
 
-        // Determine icon class based on type
-        const typeIconClass = typeKey === 'thought' ? 'fas fa-thought-bubble' :
-            typeKey === 'caption' ? 'fas fa-closed-captioning' :
-                'fas fa-comment-lines';
+        // Determine icon class based on configured text_tags
+        const configuredIcon = window.optionsData?.text_tags?.[typeKey]?.icon;
+        const typeIconClass = configuredIcon ||
+            (typeKey === 'thought' ? 'fas fa-thought-bubble' :
+                typeKey === 'caption' ? 'fas fa-closed-captioning' :
+                    'fas fa-comment-lines');
 
         // Update toolbar button icon
         const icon = typeBtn.querySelector('i');
@@ -19642,6 +20303,18 @@ function addPipelineStage(type, options = {}) {
         }
     });
 
+    // Inset toggle (preserve source scale when target output is larger)
+    const insetBtn = document.createElement('button');
+    insetBtn.type = 'button';
+    insetBtn.id = `${stageId}_insetToggle`;
+    insetBtn.className = 'btn-secondary btn-small toggle-btn';
+    insetBtn.dataset.state = 'off';
+    insetBtn.title = 'Inset source when output is larger';
+    insetBtn.innerHTML = '<i class="fas fa-border-none"></i>';
+    insetBtn.addEventListener('click', () => {
+        insetBtn.dataset.state = insetBtn.dataset.state === 'on' ? 'off' : 'on';
+    });
+
     // Save results toggle button
     const saveResultsBtn = document.createElement('button');
     saveResultsBtn.type = 'button';
@@ -19733,6 +20406,7 @@ function addPipelineStage(type, options = {}) {
     });
 
     stageControls.appendChild(upscaleBtn);
+    stageControls.appendChild(insetBtn);
     stageControls.appendChild(saveResultsBtn);
     stageControls.appendChild(lockPromptBtn);
     stageControls.appendChild(advancedToggleBtn);
@@ -21145,6 +21819,7 @@ function setupExpandCanvasStageEvents(stageId) {
             // Update bias orientation and cascade downstream
             updateStageBiasOrientation(stageId, newResolution.value);
             updateDownstreamStageResolutions(stageId);
+            updateExpandCanvasStageInsetToggle(stageId);
         });
     }
 
@@ -21194,6 +21869,8 @@ function setupExpandCanvasStageEvents(stageId) {
 
     // Setup advanced controls (shared function)
     setupStageAdvancedControls(stageId);
+
+    updateExpandCanvasStageInsetToggle(stageId);
 }
 
 // Setup custom resolution controls (shared between expand canvas and variation stages)
@@ -21313,6 +21990,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
                 // Update bias orientation and cascade
                 updateStageBiasOrientation(stageId, 'custom');
                 updatePipelineStages(stageId);
+                updateExpandCanvasStageInsetToggle(stageId);
             }
         }, 100);
     };
@@ -21321,6 +21999,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
         if (resolutionInput.value === 'custom') {
             updateStageBiasOrientation(stageId, 'custom');
         }
+        updateExpandCanvasStageInsetToggle(stageId);
     };
 
     // Input events for immediate feedback
@@ -21369,6 +22048,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
 
         // Update downstream stages
         updatePipelineStages(stageId);
+        updateExpandCanvasStageInsetToggle(stageId);
 
         isWheelUpdating = false;
     };
@@ -21419,6 +22099,7 @@ function setupStageCustomResolutionControls(stageId, resolutionDropdown, resolut
 
         // Update downstream stages
         updatePipelineStages(stageId);
+        updateExpandCanvasStageInsetToggle(stageId);
 
         isWheelUpdating = false;
     };
@@ -22595,6 +23276,44 @@ function getExpandCanvasStageBasePixelDimensions(stageId) {
     return { width: 0, height: 0 };
 }
 
+/** Show expand-canvas inset control only when target output is strictly larger than incoming image on both axes. */
+function updateExpandCanvasStageInsetToggle(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem || stageItem.dataset.stageType !== STAGE_TYPES.EXPAND_CANVAS) return;
+
+    const insetBtn = document.getElementById(`${stageId}_insetToggle`);
+    if (!insetBtn) return;
+
+    const base = getExpandCanvasStageBasePixelDimensions(stageId);
+    const bw = base.width || 0;
+    const bh = base.height || 0;
+
+    const resInput = document.getElementById(`${stageId}_resolution`);
+    const resVal = resInput?.value;
+    let tw = 0;
+    let th = 0;
+    if (resVal === 'custom') {
+        const wEl = document.getElementById(`${stageId}_width`);
+        const hEl = document.getElementById(`${stageId}_height`);
+        tw = parseInt(wEl?.value, 10) || 0;
+        th = parseInt(hEl?.value, 10) || 0;
+    } else if (resVal) {
+        const d = getDimensionsFromResolution(resVal);
+        if (d) {
+            tw = d.width;
+            th = d.height;
+        }
+    }
+
+    const applicable = bw > 0 && bh > 0 && tw > 0 && th > 0 && tw > bw && th > bh;
+    if (applicable) {
+        insetBtn.classList.remove('hidden');
+    } else {
+        insetBtn.classList.add('hidden');
+        insetBtn.dataset.state = 'off';
+    }
+}
+
 // Stage dropdown render functions
 function renderStageResolutionDropdown(stageId, selectedValue) {
     const menu = document.getElementById(`${stageId}_resolutionDropdownMenu`);
@@ -22782,6 +23501,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
 
         // Update this stage and all downstream stages
         updatePipelineStages(stageId);
+        updateExpandCanvasStageInsetToggle(stageId);
         return;
     }
 
@@ -22826,6 +23546,7 @@ function selectStageResolution(stageId, value, group, isInheritedDisplay = false
 
     // Update this stage and all downstream stages
     updatePipelineStages(stageId);
+    updateExpandCanvasStageInsetToggle(stageId);
 }
 
 // Toggle resolution area limit for a stage between normal (1MP) and large (3MP)
@@ -22883,6 +23604,7 @@ function toggleStageResolutionAreaLimit(stageId) {
 
         // Update downstream stages to reflect new custom dimensions
         updatePipelineStages(stageId);
+        updateExpandCanvasStageInsetToggle(stageId);
 
         // Show feedback about the change
         showGlassToast('info', null, `Resolution scaled to ${result.width}x${result.height} (${newAreaName} area limit)`);
@@ -23603,6 +24325,7 @@ function getExpandCanvasStageData(stageId) {
     const upscaleToggle = document.getElementById(`${stageId}_upscaleToggle`);
     const stopToggle = document.getElementById(`${stageId}_stopToggle`);
     const lockPromptToggle = document.getElementById(`${stageId}_lockPromptToggle`);
+    const insetToggle = document.getElementById(`${stageId}_insetToggle`);
     const resolutionValue = document.getElementById(`${stageId}_resolution`)?.value || null;
 
     // Get background focus - handle three states: '' (inherit), 'on' (explicit), 'off' (explicit)
@@ -23629,6 +24352,7 @@ function getExpandCanvasStageData(stageId) {
         upscale: upscaleToggle?.dataset.state === 'on',
         stopAtStage: stopToggle?.dataset.state === 'on',
         lockPrompt: lockPromptToggle?.dataset.state === 'on',
+        inset: insetToggle?.dataset.state === 'on',
         backgroundFocus: backgroundFocus,
         branch: branchToggle?.dataset.state === 'on'
     };
@@ -23842,6 +24566,13 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
         selectStageBias(stageId, stageData.bias, getBiasName(stageData.bias, isPortrait), isPortrait);
     }
 
+    if (stageData.inset !== undefined) {
+        const insetToggle = document.getElementById(`${stageId}_insetToggle`);
+        if (insetToggle) {
+            insetToggle.dataset.state = stageData.inset ? 'on' : 'off';
+        }
+    }
+
     // Load background focus toggle state
     if (stageData.backgroundFocus !== undefined) {
         const bgFocusToggle = document.getElementById(`${stageId}_bgFocusToggle`);
@@ -24052,6 +24783,8 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
             }
         }
     }
+
+    updateExpandCanvasStageInsetToggle(stageId);
 }
 
 // Load enhance stage data
@@ -25018,7 +25751,7 @@ async function handleBulkSequenzia(event = null) {
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to send ${selectedCount} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
         [
-            { text: 'Send to Sequenzia', value: true, className: 'btn-primary' },
+            { text: 'Send to Sequenzia', value: true, className: 'btn-danger' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
         ],
         event
@@ -25083,7 +25816,7 @@ async function handleBulkMoveToScraps(event = null) {
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to move ${selectedCount} selected image(s) to scraps?`,
         [
-            { text: 'Move', value: true, className: 'btn-primary' },
+            { text: 'Move', value: true, className: 'btn-danger' },
             { text: 'Cancel', value: false, className: 'btn-secondary' }
         ],
         event
@@ -25761,6 +26494,10 @@ function setupMainMenuContextMenus() {
                             const isDesc = sortBtn && sortBtn.dataset.state === 'desc';
                             return isDesc ? 'Sort: Newest First (Click to change)' : 'Sort: Oldest First (Click to change)';
                         },
+                        hidden: () => {
+                            if (document.body.classList.contains('desktop-mode')) return true;
+                            return false;
+                        },
                         action: 'invert-sort'
                     },
                     {
@@ -25778,6 +26515,16 @@ function setupMainMenuContextMenus() {
             {
                 type: 'list',
                 items: [
+                    {
+                        icon: 'fa-regular fa-objects-column',
+                        text: 'Visual Index',
+                        action: 'open-jump-index',
+                        hidden: () => {
+                            if (document.body.classList.contains('desktop-mode')) return true;
+                            const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : (allImages ? allImages.length : 0);
+                            return effectiveLength === 0;
+                        }
+                    },
                     {
                         icon: 'fa-regular fa-location-dot',
                         text: 'Jog to Position',
@@ -26097,28 +26844,25 @@ function setupMainMenuContextMenus() {
                                 }
                                 daysTillExpireElement.classList.toggle('hidden', subscriptionTier < 0 || subscriptionTier === 'Unknown');
 
-                                // Calculate days till expire
-                                let daysTillExpire = 0;
+                                // Calculate time till expire
+                                let renewalData = null;
                                 if (accountData.user.subscription.expiresAt) {
-                                    const expireDate = new Date(accountData.user.subscription.expiresAt * 1000);
-                                    const now = new Date();
-                                    const diffTime = expireDate.getTime() - now.getTime();
-                                    daysTillExpire = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    renewalData = getSubscriptionRenewalDisplayData(accountData.user.subscription.expiresAt);
                                 }
 
-                                daysText.textContent = `${daysTillExpire} days`;
+                                daysText.textContent = renewalData ? renewalData.timeRemaining : '0 days';
 
                                 // Show warning icon if expiring in a week or less
-                                if (daysTillExpire <= 7 && daysTillExpire > 0) {
+                                if (renewalData && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000) && renewalData.msUntilRenewal > 0) {
                                     warningIcon.classList.remove('hidden');
                                 } else {
                                     warningIcon.classList.add('hidden');
                                 }
 
                                 // Add color coding for urgency
-                                if (daysTillExpire <= 3) {
+                                if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (3 * 24 * 60 * 60 * 1000)) {
                                     daysTillExpireElement.style.color = 'var(--danger-color, #ff6b6b)';
-                                } else if (daysTillExpire <= 7) {
+                                } else if (renewalData && renewalData.msUntilRenewal > 0 && renewalData.msUntilRenewal <= (7 * 24 * 60 * 60 * 1000)) {
                                     daysTillExpireElement.style.color = 'var(--warning-color, #ffc107)';
                                 } else {
                                     daysTillExpireElement.style.color = '';
@@ -26231,6 +26975,11 @@ function setupMainMenuContextMenus() {
                 displayGalleryFromStartIndex(0);
                 window.scrollTo(0, { behavior: 'instant' });
                 break;
+            case 'open-jump-index':
+                if (typeof window.openGalleryJumpIndexToolWindow === 'function') {
+                    window.openGalleryJumpIndexToolWindow();
+                }
+                break;
 
             case 'invert-sort':
                 // Toggle sort order directly
@@ -26263,10 +27012,13 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'open-encyclopedia':
-                // Open encyclopedia modal directly
-                const tagWikiSearchModal = document.getElementById('tagWikiSearchModal');
-                if (tagWikiSearchModal) {
-                    openModal(tagWikiSearchModal);
+                if (window.tagWikiSearchModal) {
+                    window.tagWikiSearchModal.open();
+                } else {
+                    const tagWikiSearchModalEl = document.getElementById('tagWikiSearchModal');
+                    if (tagWikiSearchModalEl) {
+                        openModal(tagWikiSearchModalEl);
+                    }
                 }
                 break;
 
@@ -26320,6 +27072,10 @@ function setupMainMenuContextMenus() {
                 window.lastGenerationTextReplacements = window.lastGenerationTextReplacements.map(r => ({ ...r, locked: false }));
                 updateMainLockButtonState();
                 showGlassToast('success', null, 'Unlocked all Expanders or Tsubo\'s.');
+                break;
+
+            case 'compileTendaiReplacements':
+                compileAllTendaiReplacements();
                 break;
 
             case 'text-replacement-manager':
@@ -26604,11 +27360,11 @@ function calculateGenerationProgress(progressData) {
 
     // Normal path with Rentan
     switch (phase) {
-        case 'initializing':
+        case 'starting':
             // 0-15%: AI processing starting (client-side timer)
             return 0;
 
-        case 'ai_streaming':
+        case 'streaming':
             // 16-25%: AI streaming progress
             if (totalKeys && totalKeys > 0) {
                 const baseProgress = 16;
@@ -26617,7 +27373,7 @@ function calculateGenerationProgress(progressData) {
             }
             return 16;
 
-        case 'ai_complete':
+        case 'completion':
             // 25%: AI processing complete
             return 25;
 
@@ -26838,6 +27594,7 @@ if (window.wsClient) {
         if (isGalleryWindowHidden()) {
             if (data.gallery) {
                 allImages = data.gallery;
+                syncServiceWorkerImageCacheRules();
             }
             return;
         };
@@ -26864,6 +27621,7 @@ if (window.wsClient) {
             if (changes.type === 'full_reload') {
                 // Complete reload needed
                 allImages = newImages;
+                syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
@@ -26874,6 +27632,7 @@ if (window.wsClient) {
             } else if (changes.type === 'append_top') {
                 // New items added to top - append them
                 allImages = newImages;
+                syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
@@ -26882,6 +27641,7 @@ if (window.wsClient) {
             } else if (changes.type === 'shift_indexes') {
                 // Gallery shifted - adjust indexes and add placeholders
                 allImages = newImages;
+                syncServiceWorkerImageCacheRules();
                 if (window.sortGalleryData) {
                     window.sortGalleryData();
                 }
@@ -27286,7 +28046,8 @@ if (window.wsClient) {
                     { text: 'Retry', value: 'retry', className: 'btn-primary' },
                     { text: 'Restart', value: 'refresh', className: 'btn-secondary' }
                 ],
-                'Critical Error'
+                null,
+                { title: 'Critical Error', icon: 'fas fa-triangle-exclamation' }
             );
 
             if (confirmed === 'retry') {
@@ -27423,6 +28184,10 @@ if (window.wsClient) {
         // Initialize emphasis highlighting for manual fields
         await initializeEmphasisOverlay(manualPrompt);
         await initializeEmphasisOverlay(manualUc);
+        const manualPromptNegativeInit = document.getElementById('manualPromptNegative');
+        if (manualPromptNegativeInit) {
+            await initializeEmphasisOverlay(manualPromptNegativeInit);
+        }
 
         // Activate the Android notification bridge now that all scripts have loaded.
         // This must run last so that window.AndroidNotification (injected by the host)
@@ -27869,3 +28634,4 @@ function activateTitlebarResizeListeners() {
         }
     }
 }
+__dreamscapeFence['app.js'] = true;

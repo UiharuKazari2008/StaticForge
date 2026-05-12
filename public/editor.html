@@ -7,6 +7,7 @@
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <title>DreamStudio Editor</title>
+    <script src="/scripts/comp/fatalErrorBootstrap.js"></script>
 
     <!-- Editor standalone: do not read or write galleryWindowMode; single full-window app surface -->
     <script>
@@ -488,7 +489,8 @@
                                     </div>
                                 </div>
                             </div>
-                            <button type="button" id="sortOrderToggleBtn" class="btn-secondary indicator hidden"
+                            <button type="button" id="sortOrderToggleBtn"
+                                class="btn-secondary indicator desktop-only"
                                 data-state="desc" title="Sort Order: Newest First">
                                 <i class="fa-light fa-sort-amount-down"></i>
                             </button>
@@ -1053,11 +1055,20 @@
                                         <div class="tab-pane" id="uc-tab" data-label="Undesired Content">
                                             <div class="prompt-textarea-container">
                                                 <div class="prompt-textarea-background"></div>
-                                                <textarea id="manualUc"
-                                                    class="form-control prompt-textarea textarea-inset" rows="3"
-                                                    placeholder="Enter undesired content..." autocapitalize="false"
-                                                    autocorrect="false" spellcheck="false"
-                                                    data-ms-editor="false"></textarea>
+                                                <div class="prompt-textarea-emphasis-wrap">
+                                                    <textarea id="manualUc"
+                                                        class="form-control prompt-textarea textarea-inset" rows="3"
+                                                        placeholder="Enter undesired content..." autocapitalize="false"
+                                                        autocorrect="false" spellcheck="false"
+                                                        data-ms-editor="false"></textarea>
+                                                </div>
+                                                <div class="prompt-textarea-emphasis-wrap">
+                                                    <textarea id="manualPromptNegative"
+                                                        class="form-control prompt-textarea textarea-inset" rows="3"
+                                                        placeholder="Inline negative (merged into prompt as -1::...::)..."
+                                                        autocapitalize="false" autocorrect="false" spellcheck="false"
+                                                        data-ms-editor="false"></textarea>
+                                                </div>
                                                 <div class="prompt-status-icons">
                                                     <div class="prompt-token-progress">
                                                         <div class="token-progress-bar">
@@ -1548,6 +1559,10 @@
                                 class="dynamic-generation-progress-overlay hidden">
                                 <!-- Inner Container for Reasoning Items -->
                                 <div class="progress-reasoning-container" id="progressReasoningContainer"></div>
+                                <div class="dynamic-generation-progress-cancel-wrap">
+                                    <button type="button" id="dynamicGenerationProgressCancelBtn"
+                                        class="btn-secondary btn-small">Cancel</button>
+                                </div>
                             </div>
                             <!-- Navigation buttons -->
                             <div class="manual-preview-image-container">
@@ -2392,6 +2407,10 @@
                                 data-state="off" title="Enable upscaling after expansion">
                                 <i class="nai-upscale"></i>
                             </button>
+                            <button type="button" id="expansionInsetToggle" class="btn-secondary indicator"
+                                data-state="off" title="Inset source when output is larger (transparent padding for inpaint)">
+                                <i class="fas fa-border-outer"></i>
+                            </button>
                         </div>
                     </div>
 
@@ -2518,12 +2537,25 @@
                     </div>
                 </div>
 
+                <div id="expansionPromptReviewPanel" class="form-group hidden" data-loaded="false">
+                    <label for="expansionFinalPromptTextarea">Prompt sent to the model</label>
+                    <textarea id="expansionFinalPromptTextarea" class="form-control" rows="5"
+                        placeholder="Load prompts with the button below, then edit before generating."></textarea>
+                    <label for="expansionFinalUcTextarea">Undesired content (UC)</label>
+                    <textarea id="expansionFinalUcTextarea" class="form-control" rows="2"></textarea>
+                </div>
+
                 <!-- Actions -->
                 <div class="modal-footer">
                     <div class="controls-flex-left">
                         <button type="button" id="expansionAIToggle" class="btn-secondary indicator" data-state="off"
                             title="Enable AI prompt enhancement">
                             <i class="mdi mdi-brain"></i>
+                        </button>
+                        <button type="button" id="expansionLoadPromptBtn" class="btn-secondary"
+                            title="Load the full prompt (and UC) that will be sent; refine with AI if enabled">
+                            <i class="fas fa-align-left"></i>
+                            <span>Review prompt</span>
                         </button>
                     </div>
                     <div class="controls-flex-right">
@@ -5077,6 +5109,10 @@ Examples:
 
                                 <!-- Inner Container for Reasoning Items -->
                                 <div class="progress-reasoning-container" id="spellbookProgressReasoningContainer">
+                                </div>
+                                <div class="dynamic-generation-progress-cancel-wrap">
+                                    <button type="button" id="spellbookDynamicGenerationProgressCancelBtn"
+                                        class="btn-secondary btn-small">Cancel</button>
                                 </div>
                             </div>
 

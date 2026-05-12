@@ -270,7 +270,7 @@ class Director {
             const result = await showConfirmationDialog(
                 `Are you sure you want to delete the session "${session.name}"?`,
                 [
-                    { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
+                    { text: 'Delete', value: true, className: 'btn-danger', icon: 'fas fa-trash' },
                     { text: 'Cancel', value: false, className: 'btn-secondary' }
                 ]
             );
@@ -1382,7 +1382,7 @@ class Director {
         const result = await showConfirmationDialog(
             `Are you sure you want to delete the session "${this.currentSession.name}"?`,
             [
-                { text: 'Delete', value: true, className: 'btn-primary', icon: 'fas fa-trash' },
+                { text: 'Delete', value: true, className: 'btn-danger', icon: 'fas fa-trash' },
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
             ]
         );
@@ -2092,6 +2092,16 @@ class Director {
                     autoResizeTextarea(manualUc);
                 }
 
+                const manualPromptNegativeDir = document.getElementById('manualPromptNegative');
+                const pn = prompt.input_prompt_negative ?? prompt.base_prompt_negative;
+                if (manualPromptNegativeDir && pn) {
+                    manualPromptNegativeDir.value = pn;
+                    applyFormattedText(manualPromptNegativeDir, true);
+                    updateEmphasisHighlighting(manualPromptNegativeDir);
+                    stopEmphasisHighlighting();
+                    autoResizeTextarea(manualPromptNegativeDir);
+                }
+
                 // Apply quality preset setting
                 if (prompt.apply_quality_preset !== undefined) {
                     appendQuality = prompt.apply_quality_preset;
@@ -2334,18 +2344,24 @@ class Director {
         // Get prompts in new JSON structure
         let baseInput = '';
         let baseUc = '';
+        let basePromptNegative = '';
         const chara = [];
 
         // Add main/base prompt if available
         const manualPrompt = document.getElementById('manualPrompt');
         if (manualPrompt && manualPrompt.value.trim()) {
-            baseInput = manualPrompt.value.trim();
+            baseInput = normalizePromptNewlines(manualPrompt.value).trim();
         }
 
         // Add main/base UC if available
         const manualUc = document.getElementById('manualUc');
         if (manualUc && manualUc.value.trim()) {
-            baseUc = manualUc.value.trim();
+            baseUc = normalizePromptNewlines(manualUc.value).trim();
+        }
+
+        const manualPromptNegativeCollect = document.getElementById('manualPromptNegative');
+        if (manualPromptNegativeCollect && manualPromptNegativeCollect.value.trim()) {
+            basePromptNegative = normalizePromptNewlines(manualPromptNegativeCollect.value).trim();
         }
 
         // Add character prompts if available
@@ -2364,14 +2380,14 @@ class Director {
             const characterPrompt = document.getElementById(`${characterId}_prompt`);
             let characterInput = '';
             if (characterPrompt && characterPrompt.value.trim()) {
-                characterInput = characterPrompt.value.trim();
+                characterInput = normalizePromptNewlines(characterPrompt.value).trim();
             }
 
             // Get character UC
             const characterUc = document.getElementById(`${characterId}_uc`);
             let characterUcValue = '';
             if (characterUc && characterUc.value.trim()) {
-                characterUcValue = characterUc.value.trim();
+                characterUcValue = normalizePromptNewlines(characterUc.value).trim();
             }
 
             // Only add character if they have some content
@@ -2388,6 +2404,7 @@ class Director {
         return {
             base_input: baseInput,
             base_uc: baseUc,
+            input_prompt_negative: basePromptNegative,
             chara: chara,
             // Include compilation flags so server knows to compile using buildOptions logic
             append_quality: appendQuality || false,
@@ -5578,6 +5595,16 @@ class Director {
                     applyFormattedText(manualUc, true);
                     updateEmphasisHighlighting(manualUc);
                     stopEmphasisHighlighting();
+                }
+
+                const manualPromptNegativeMsg2 = document.getElementById('manualPromptNegative');
+                const pnMsg = prompt.input_prompt_negative ?? prompt.base_prompt_negative;
+                if (manualPromptNegativeMsg2 && pnMsg) {
+                    manualPromptNegativeMsg2.value = pnMsg;
+                    applyFormattedText(manualPromptNegativeMsg2, true);
+                    updateEmphasisHighlighting(manualPromptNegativeMsg2);
+                    stopEmphasisHighlighting();
+                    setTimeout(() => autoResizeTextarea(manualPromptNegativeMsg2), 10);
                 }
 
                 // Apply quality preset setting

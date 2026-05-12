@@ -94,6 +94,7 @@ function updateManualModalTitlebar(value = null, skipTaskbarUpdate = false) {
 const manualModal = document.getElementById('manualModal');
 const manualGenerateBtn = document.getElementById('manualGenerateBtn');
 const manualForm = document.getElementById('manualForm');
+const dynamicGenerationProgressCancelBtn = document.getElementById('dynamicGenerationProgressCancelBtn');
 const closeManualBtn = document.getElementById('closeManualBtn');
 const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
 const presetSelect = document.getElementById('presetSelect');
@@ -112,6 +113,7 @@ try {
 const manualModel = document.getElementById('manualModel');
 const manualPrompt = document.getElementById('manualPrompt');
 const manualUc = document.getElementById('manualUc');
+const manualPromptNegative = document.getElementById('manualPromptNegative');
 const manualResolution = document.getElementById('manualResolution');
 const manualSteps = document.getElementById('manualSteps');
 const manualGuidance = document.getElementById('manualGuidance');
@@ -1098,6 +1100,26 @@ function updateManualBlockGrid() {
     }
 }
 
+function setGenerationPreviewForegroundLinesActive(active) {
+    const on = Boolean(active);
+    if (previewContainer?.classList.contains('preview-animation-active')) {
+        previewContainer.classList.toggle('preview-foreground-lines-active', on);
+    }
+    const spellbookHost = document.querySelector('.spellbook-preview-image-container.preview-animation-active');
+    if (spellbookHost) {
+        spellbookHost.classList.toggle('preview-foreground-lines-active', on);
+    }
+    // Inline animation-play-state from force-stop beats CSS (.preview-foreground-lines-active); drop it when enabling foreground motion.
+    if (on) {
+        previewForegroundLines?.querySelectorAll('.preview-line').forEach((line) => {
+            line.style.removeProperty('animation-play-state');
+        });
+        spellbookHost?.querySelectorAll('.preview-lines-foreground .preview-line').forEach((line) => {
+            line.style.removeProperty('animation-play-state');
+        });
+    }
+}
+
 function startPreviewAnimation() {
     if (generationAnimationActive) return;
 
@@ -1140,6 +1162,7 @@ function startPreviewAnimation() {
         previewForegroundLines.classList.remove('hidden');
 
         // Add active class for CSS animations
+        previewContainer.classList.remove('preview-foreground-lines-active');
         previewContainer.classList.add('preview-animation-active');
 
         // Fade in stars (0.25s)
@@ -1149,13 +1172,15 @@ function startPreviewAnimation() {
             }
         }, 10);
 
-        // Start lines rising
-        const lines = document.querySelectorAll('.preview-line');
-        lines.forEach((line, index) => {
+        // Rising lines: background only until diffusion reports generating (foreground controlled by CSS + setGenerationPreviewForegroundLinesActive)
+        previewBackgroundLines.querySelectorAll('.preview-line').forEach((line) => {
             line.style.animationPlayState = 'running';
             line.style.transition = 'opacity 0.3s ease-out, visibility 0.3s ease-out';
             line.style.opacity = '1';
             line.style.visibility = 'visible';
+        });
+        previewForegroundLines.querySelectorAll('.preview-line').forEach((line) => {
+            line.style.removeProperty('animation-play-state');
         });
 
         // Note: Don't hide dynamic generation progress overlay here
@@ -1218,7 +1243,7 @@ async function stopPreviewAnimation() {
 
                             // Hide everything after fade out completes
                             if (previewContainer) {
-                                previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+                                previewContainer.classList.remove('preview-animation-active', 'preview-fade-out', 'preview-foreground-lines-active');
                             }
                             if (previewStars) {
                                 previewStars.classList.add('hidden');
@@ -1287,7 +1312,7 @@ async function forceStopPreviewAnimation() {
 
     // Force reset all animation states
     if (previewContainer) {
-        previewContainer.classList.remove('preview-animation-active', 'preview-fade-out');
+        previewContainer.classList.remove('preview-animation-active', 'preview-fade-out', 'preview-foreground-lines-active');
     }
     if (previewStars) {
         previewStars.classList.add('hidden');
@@ -1702,8 +1727,11 @@ function collectManualFormValues() {
 
     let values = {
         model: manualModel.value,
-        prompt: manualPrompt.value.trim() + '',
-        uc: manualUc.value.trim() + '',
+        prompt: normalizePromptNewlines(manualPrompt.value).trim() + '',
+        uc: normalizePromptNewlines(manualUc.value).trim() + '',
+        input_prompt_negative: manualPromptNegative
+            ? normalizePromptNewlines(manualPromptNegative.value).trim()
+            : '',
         seed: manualSeed.value.trim(),
         sampler: manualSampler.value,
         noiseScheduler: manualNoiseScheduler.value,
@@ -1844,14 +1872,10 @@ function collectVibeTransferData() {
 function extractLockedDynamicReplacements() {
     const lockedReplacements = [];
 
-    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
-        return lockedReplacements;
-    }
-
-    const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    const textReplacements = window.dynamicGenerationData?.compiled_prompt?.text_replacements;
 
     // Extract locked replacements from prompt
-    if (textReplacements.prompt && Array.isArray(textReplacements.prompt)) {
+    if (textReplacements?.prompt && Array.isArray(textReplacements.prompt)) {
         textReplacements.prompt.forEach(rep => {
             if (rep.locked === true) {
                 lockedReplacements.push({
@@ -1864,7 +1888,7 @@ function extractLockedDynamicReplacements() {
     }
 
     // Extract locked replacements from UC (negative prompt)
-    if (textReplacements.uc && Array.isArray(textReplacements.uc)) {
+    if (textReplacements?.uc && Array.isArray(textReplacements.uc)) {
         textReplacements.uc.forEach(rep => {
             if (rep.locked === true) {
                 lockedReplacements.push({
@@ -1877,7 +1901,7 @@ function extractLockedDynamicReplacements() {
     }
 
     // Extract locked replacements from character prompts
-    if (textReplacements.character_prompts && Array.isArray(textReplacements.character_prompts)) {
+    if (textReplacements?.character_prompts && Array.isArray(textReplacements.character_prompts)) {
         textReplacements.character_prompts.forEach((char, charIndex) => {
             if (char?.prompt && Array.isArray(char.prompt)) {
                 char.prompt.forEach(rep => {
@@ -1906,6 +1930,19 @@ function extractLockedDynamicReplacements() {
         });
     }
 
+    if (window.lockedDynamicReplacements && Array.isArray(window.lockedDynamicReplacements)) {
+        const keyOf = (r) => `${r.targetType || ''}|${r.targetSource}|${r.targetField || ''}|${r.select_text}|${r.original_select_text}|${r.replace_with}|${r.segment_text}`;
+        const seen = new Set(lockedReplacements.map(keyOf));
+        window.lockedDynamicReplacements.forEach((rep) => {
+            if (rep.locked !== true) return;
+            const k = keyOf(rep);
+            if (!seen.has(k)) {
+                seen.add(k);
+                lockedReplacements.push(rep);
+            }
+        });
+    }
+
     return lockedReplacements;
 }
 
@@ -1915,6 +1952,9 @@ function extractLockedDynamicReplacements() {
  */
 function addSharedFieldsToRequestBody(requestBody, values) {
     if (values.uc) requestBody.uc = values.uc;
+    if (values.input_prompt_negative !== undefined && values.input_prompt_negative !== '') {
+        requestBody.input_prompt_negative = values.input_prompt_negative;
+    }
     if (values.seed) requestBody.seed = parseInt(values.seed);
 
     if (values.sampler) {
@@ -2843,6 +2883,14 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             manualUc.value = data.uc || '';
             autoResizeTextarea(manualUc);
             updateEmphasisHighlighting(manualUc);
+        }
+        if (manualPromptNegative) {
+            manualPromptNegative.value =
+                data.input_prompt_negative ||
+                data.forge_data?.input_prompt_negative ||
+                '';
+            autoResizeTextarea(manualPromptNegative);
+            updateEmphasisHighlighting(manualPromptNegative);
         }
 
         // Load creative directive if present in dynamic_generation
@@ -3834,6 +3882,12 @@ function autoResizeTextareasAfterModalShow() {
         stopEmphasisHighlighting();
         autoResizeTextarea(manualUc);
     }
+    if (manualPromptNegative) {
+        applyFormattedText(manualPromptNegative, true);
+        updateEmphasisHighlighting(manualPromptNegative);
+        stopEmphasisHighlighting();
+        autoResizeTextarea(manualPromptNegative);
+    }
 
     // Auto-resize character prompt textareas
     const characterPromptItems = document.querySelectorAll('.character-prompt-item');
@@ -4052,6 +4106,12 @@ async function handleManualGeneration(e) {
         if (result) {
             const { filename, seed, compiled_prompt, text_replacements_seed, stage_seeds, metadata } = result;
 
+            // Ensure nested metadata carries compiled_prompt (dialogs, names, etc.) when the payload lists it top-level only
+            if (compiled_prompt && metadata && typeof metadata === 'object') {
+                metadata.dynamic_generation = metadata.dynamic_generation || {};
+                metadata.dynamic_generation.compiled_prompt = compiled_prompt;
+            }
+
             // Store text replacement seeds for the lock modal
             if (text_replacements_seed && Array.isArray(text_replacements_seed)) {
                 window.lastGenerationTextReplacements = text_replacements_seed;
@@ -4198,6 +4258,10 @@ async function handleManualGeneration(e) {
         }
 
     } catch (error) {
+        if (error && error.code === 'CLIENT_CANCELLED') {
+            stopPreviewAnimation();
+            return;
+        }
         if (!window.isDesktop) {
             restoreGalleryState();
         }
@@ -4506,6 +4570,19 @@ function getDirectorReferenceForForgeData() {
 // Track if overlay is in completion/hide phase
 let progressOverlayCompleting = false;
 
+// Preview tighten during Enshutsuka inside manual generation — CSS: public/css/app.css (.manual-preview-dynamic-gen-active)
+function applyManualPreviewDynamicGenPhase(phase) {
+    const manualFormEl = document.getElementById('manualForm');
+    if (!manualFormEl || !manualFormEl.classList.contains('generating')) return;
+    const activePhases = ['starting', 'context', 'thinking', 'streaming', 'tool_execution', 'optimizing'];
+    const inactivePhases = ['completion', 'error'];
+    if (inactivePhases.includes(phase)) {
+        manualFormEl.classList.remove('manual-preview-dynamic-gen-active');
+    } else if (activePhases.includes(phase)) {
+        manualFormEl.classList.add('manual-preview-dynamic-gen-active');
+    }
+}
+
 // Reset progress overlay for new dynamic generation session
 function resetProgressOverlay() {
     // Reset state flags
@@ -4527,7 +4604,7 @@ function resetProgressOverlay() {
     reasoningPositions.length = 0;
 }
 
-// Update dynamic generation progress overlay
+// Update dynamic generation progress overlay (canonical phases only — aliases merged in websocket.js normalizeRentanOverlayPhase)
 function updateDynamicGenerationProgressOverlay(phase, data) {
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
     if (!overlay) return;
@@ -4551,8 +4628,14 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
         return;
     }
 
+    applyManualPreviewDynamicGenPhase(phase);
+
     // Update content based on phase
     switch (phase) {
+        case 'starting':
+            updateProgressStatus('Starting Enshutsuka...');
+            overlay.classList.remove('hidden');
+            return;
         case 'context':
             //updateProgressContext(data); // This handles the reset and shows overlay
             overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
@@ -4563,7 +4646,7 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             break;
         case 'streaming':
             updateProgressStatus('Reading Response...');
-            addProgressReasoning(data?.reason);
+            addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason));
             break;
         case 'tool_execution':
             if (overlay?.classList?.contains('hidden') && !isNewSession) return;
@@ -4572,9 +4655,7 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             } else {
                 updateProgressStatus('Executing Tools...');
             }
-            if (data?.reason) {
-                addProgressReasoning(data.reason, data?.toolName, data?.toolState, data?.toolReasoningId, data);
-            }
+            addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason), data?.toolName, data?.toolState, data?.toolReasoningId, data);
             break;
         case 'optimizing':
             updateProgressStatus('Optimizing...');
@@ -4598,9 +4679,9 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
                 });
             }
             // Add the optimization reason if provided
-            if (data?.reason) {
+            if (data?.reason || data?.reasoning || data?.toolReason) {
                 setTimeout(() => {
-                    addProgressReasoning(data.reason);
+                    addProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason));
                 }, existingItems?.length > 0 ? (existingItems.length * 50 + 400) : 0);
             }
             break;
@@ -4977,6 +5058,28 @@ function addProgressReasoning(reason, toolName = null, toolState = 'completed', 
     }, 50);
 }
 
+function hideDynamicGenerationProgressOverlayImmediate() {
+    const overlay = document.getElementById('dynamicGenerationProgressOverlay');
+    if (!overlay) return;
+    overlay.classList.add('hidden');
+    const reasoningContainer = document.getElementById('progressReasoningContainer');
+    if (reasoningContainer) {
+        reasoningContainer.innerHTML = '';
+    }
+    reasoningPositions.length = 0;
+    progressOverlayCompleting = false;
+}
+
+function cancelManualDynamicGenerationFromUser() {
+    const overlay = document.getElementById('dynamicGenerationProgressOverlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    if (window.wsClient && typeof window.wsClient.cancelClientImageGeneration === 'function') {
+        window.wsClient.cancelClientImageGeneration();
+    }
+    hideDynamicGenerationProgressOverlayImmediate();
+    applyManualPreviewDynamicGenPhase('error');
+}
+
 // Hide dynamic generation progress overlay with fade-out animations
 function hideDynamicGenerationProgressOverlay() {
     const overlay = document.getElementById('dynamicGenerationProgressOverlay');
@@ -5052,3 +5155,7 @@ function hideDynamicGenerationProgressOverlay() {
 
 // These functions will remain global to avoid breaking existing code
 // TODO: Move implementations from app.js here when ready
+
+if (dynamicGenerationProgressCancelBtn) {
+    dynamicGenerationProgressCancelBtn.addEventListener('click', () => cancelManualDynamicGenerationFromUser());
+}

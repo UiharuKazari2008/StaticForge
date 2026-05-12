@@ -13,6 +13,7 @@ class SpellbookModalManager {
         this.editorBtn = null;
         this.previewImage = null;
         this.isGenerating = false;
+        this.spellbookProgressInterval = null;
 
         this.selectedPreset = '';
         this.confettiContainer = null;
@@ -52,6 +53,7 @@ class SpellbookModalManager {
         this.previewStars = document.getElementById('spellbookPreviewStars');
         this.previewBackgroundLines = document.getElementById('spellbookPreviewBackgroundLines');
         this.previewForegroundLines = document.getElementById('spellbookPreviewForegroundLines');
+        this.previewAnimationHost = this.previewBackgroundLines?.closest('.spellbook-preview-image-container');
 
         // Dynamic generation overlay elements
         this.dynamicGenerationOverlay = document.getElementById('spellbookDynamicGenerationOverlay');
@@ -74,6 +76,7 @@ class SpellbookModalManager {
         this.progressHoliday = document.getElementById('spellbookProgressHoliday');
         this.progressSeason = document.getElementById('spellbookProgressSeason');
         this.progressReasoningContainer = document.getElementById('spellbookProgressReasoningContainer');
+        this.dynamicGenerationProgressCancelBtn = document.getElementById('spellbookDynamicGenerationProgressCancelBtn');
 
         // Button elements
         this.downloadBtn = document.getElementById('spellbookDownloadBtn');
@@ -139,6 +142,10 @@ class SpellbookModalManager {
             this.goToWorkspaceBtn.addEventListener('click', () => this.handleGoToWorkspace());
         }
 
+        if (this.dynamicGenerationProgressCancelBtn) {
+            this.dynamicGenerationProgressCancelBtn.addEventListener('click', () => this.cancelSpellbookGenerationFromUser());
+        }
+
         // Escape key to close modal
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.modal && !this.modal.classList.contains('hidden')) {
@@ -156,6 +163,10 @@ class SpellbookModalManager {
 
         // Update content based on phase
         switch (phase) {
+            case 'starting':
+                this.updateSpellbookProgressStatus('Starting Enshutsuka...');
+                overlay.classList.remove('hidden');
+                break;
             case 'context':
                 this.updateSpellbookProgressContext(data);
                 overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
@@ -167,7 +178,7 @@ class SpellbookModalManager {
             case 'streaming':
                 if (overlay?.classList?.contains('hidden')) return;
                 this.updateSpellbookProgressStatus('Reading Response...');
-                this.addSpellbookProgressReasoning(data?.reason);
+                this.addSpellbookProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason));
                 break;
             case 'tool_execution':
                 if (overlay?.classList?.contains('hidden')) return;
@@ -176,9 +187,8 @@ class SpellbookModalManager {
                 } else {
                     this.updateSpellbookProgressStatus('Executing Tools...');
                 }
-                if (data?.reason) {
-                    this.addSpellbookProgressReasoning(data.reason, data?.toolName, data?.toolState, data?.toolReasoningId, data);
-                }
+                if (data?.reason || data?.reasoning || data?.toolReason)
+                    this.addSpellbookProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason), data?.toolName, data?.toolState, data?.toolReasoningId, data);
                 break;
             case 'optimizing':
                 if (overlay?.classList?.contains('hidden')) return;
@@ -203,10 +213,10 @@ class SpellbookModalManager {
                     });
                 }
                 // Add the optimization reason if provided
-                if (data?.reason) {
+                if (data?.reason || data?.reasoning || data?.toolReason) {
                     const existingItems = this.progressReasoningContainer?.querySelectorAll('.progress-reasoning-item');
                     setTimeout(() => {
-                        this.addSpellbookProgressReasoning(data.reason);
+                        this.addSpellbookProgressReasoning((data?.reason ?? data?.reasoning ?? data?.toolReason));
                     }, existingItems?.length > 0 ? (existingItems.length * 50 + 400) : 0);
                 }
                 break;
@@ -641,7 +651,6 @@ class SpellbookModalManager {
         this.generateBtn.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
 
         let toastId;
-        let progressInterval;
 
         try {
             // Check if WebSocket is connected and has generatePreset method
@@ -692,7 +701,11 @@ class SpellbookModalManager {
 
             // Start progress animation (1% per second)
             let progress = 0;
-            progressInterval = setInterval(() => {
+            if (this.spellbookProgressInterval) {
+                clearInterval(this.spellbookProgressInterval);
+                this.spellbookProgressInterval = null;
+            }
+            this.spellbookProgressInterval = setInterval(() => {
                 progress += 1;
                 updateGlassToastProgress(toastId, progress);
             }, 1000);
@@ -705,9 +718,9 @@ class SpellbookModalManager {
             const workspace = result.workspace;
 
             // Stop progress animation
-            if (progressInterval) {
-                clearInterval(progressInterval);
-                progressInterval = null;
+            if (this.spellbookProgressInterval) {
+                clearInterval(this.spellbookProgressInterval);
+                this.spellbookProgressInterval = null;
             }
 
             // Update toast to show success
@@ -734,7 +747,35 @@ class SpellbookModalManager {
             if (filename && this.previewImage) {
                 // Construct image URL
                 const imageUrl = `/images/${filename}`;
-                this.previewImage.src = imageUrl;
+                await new Promise((resolve, reject) => {
+                    let timeoutId;
+                    const cleanup = () => {
+                        if (timeoutId) clearTimeout(timeoutId);
+                        this.previewImage.onload = null;
+                        this.previewImage.onerror = null;
+                    };
+                    const finish = () => {
+                        cleanup();
+                        resolve();
+                    };
+                    this.previewImage.onerror = () => {
+                        cleanup();
+                        reject(new Error('Failed to load generated preview image'));
+                    };
+                    timeoutId = setTimeout(() => {
+                        cleanup();
+                        resolve();
+                        console.warn('Spellbook preview image load timed out after 10 seconds');
+                    }, 10000);
+                    this.previewImage.src = imageUrl;
+                    if (this.previewImage.decode) {
+                        this.previewImage.decode().then(finish).catch(() => {
+                            this.previewImage.onload = finish;
+                        });
+                    } else {
+                        this.previewImage.onload = finish;
+                    }
+                });
                 this.previewImage.classList.remove('hidden');
 
                 // Store generated image info
@@ -764,12 +805,24 @@ class SpellbookModalManager {
             await loadGallery(true);
 
         } catch (error) {
+            if (error && error.code === 'CLIENT_CANCELLED') {
+                if (this.spellbookProgressInterval) {
+                    clearInterval(this.spellbookProgressInterval);
+                    this.spellbookProgressInterval = null;
+                }
+                this.stopSpellbookGenerationAnimation();
+                this.hideSpellbookDynamicGenerationProgressOverlayImmediate();
+                this.isGenerating = false;
+                this.generateBtn.disabled = false;
+                this.generateBtn.innerHTML = '<i class="nai-sparkles"></i>';
+                return;
+            }
             console.error('Generation error:', error);
 
             // Stop progress animation
-            if (progressInterval) {
-                clearInterval(progressInterval);
-                progressInterval = null;
+            if (this.spellbookProgressInterval) {
+                clearInterval(this.spellbookProgressInterval);
+                this.spellbookProgressInterval = null;
             }
 
             // Update toast to show error
@@ -1193,6 +1246,11 @@ class SpellbookModalManager {
             return;
         }
 
+        if (this.previewAnimationHost) {
+            this.previewAnimationHost.classList.remove('preview-foreground-lines-active');
+            this.previewAnimationHost.classList.add('preview-animation-active');
+        }
+
         this.previewStars.classList.remove('hidden');
         this.previewBackgroundLines.classList.remove('hidden');
         this.previewForegroundLines.classList.remove('hidden');
@@ -1204,13 +1262,15 @@ class SpellbookModalManager {
             }
         }, 10);
         
-        // Start lines rising
-        const lines = this.modal.querySelectorAll('.preview-line');
-        lines.forEach((line, index) => {
+        // Rising lines: background only until diffusion reports generating (foreground via CSS + setGenerationPreviewForegroundLinesActive)
+        this.previewBackgroundLines.querySelectorAll('.preview-line').forEach((line) => {
             line.style.animationPlayState = 'running';
             line.style.transition = 'opacity 0.3s ease-out, visibility 0.3s ease-out';
             line.style.opacity = '1';
             line.style.visibility = 'visible';
+        });
+        this.previewForegroundLines.querySelectorAll('.preview-line').forEach((line) => {
+            line.style.removeProperty('animation-play-state');
         });
         
     }
@@ -1243,7 +1303,10 @@ class SpellbookModalManager {
                 this.previewForegroundLines.classList.add('hidden');
                 this.previewForegroundLines.classList.remove('fadeOut');
             }
-            
+            if (this.previewAnimationHost) {
+                this.previewAnimationHost.classList.remove('preview-animation-active', 'preview-foreground-lines-active');
+            }
+
             // Reset line states
             const lines = this.modal.querySelectorAll('.preview-line');
             lines.forEach(line => {
@@ -1266,7 +1329,10 @@ class SpellbookModalManager {
             this.previewForegroundLines.classList.add('hidden');
             this.previewForegroundLines.classList.remove('fadeOut');
         }
-        
+        if (this.previewAnimationHost) {
+            this.previewAnimationHost.classList.remove('preview-animation-active', 'preview-foreground-lines-active');
+        }
+
         // Reset line states
         const lines = this.modal.querySelectorAll('.preview-line');
         lines.forEach(line => {
@@ -1286,6 +1352,31 @@ class SpellbookModalManager {
         if (this.dynamicGenerationOverlay) {
             this.dynamicGenerationOverlay.classList.add('hidden');
         }
+    }
+
+    hideSpellbookDynamicGenerationProgressOverlayImmediate() {
+        if (!this.dynamicGenerationProgressOverlay) return;
+        const timeSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-time-section');
+        const weatherSection = document.querySelector('#spellbookDynamicGenerationProgressOverlay .progress-weather-section');
+        if (timeSection) timeSection.classList.remove('fade-out');
+        if (weatherSection) weatherSection.classList.remove('fade-out');
+        this.dynamicGenerationProgressOverlay.classList.add('hidden');
+        if (this.progressReasoningContainer) {
+            this.progressReasoningContainer.innerHTML = '';
+        }
+        if (this.spellbookReasoningPositions) {
+            this.spellbookReasoningPositions = [];
+        }
+    }
+
+    cancelSpellbookGenerationFromUser() {
+        if (!this.dynamicGenerationProgressOverlay || this.dynamicGenerationProgressOverlay.classList.contains('hidden')) {
+            return;
+        }
+        if (window.wsClient && typeof window.wsClient.cancelClientImageGeneration === 'function') {
+            window.wsClient.cancelClientImageGeneration();
+        }
+        this.hideSpellbookDynamicGenerationProgressOverlayImmediate();
     }
 
     hideSpellbookDynamicGenerationProgressOverlay() {

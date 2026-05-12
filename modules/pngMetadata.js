@@ -352,6 +352,7 @@ class PngMetadata {
                     'img2img_noise',
                     'input_prompt',
                     'input_uc',
+                    'input_prompt_negative',
                     'dataset_config',
                     'append_quality',
                     'append_uc',
@@ -572,9 +573,11 @@ class PngMetadata {
         
         const resultPrompt = forgeData.input_prompt !== undefined ? forgeData.input_prompt : meta.prompt;
         const resultUc = forgeData.input_prompt !== undefined ? (forgeData?.input_uc || '') : meta.uc;
+        const resultPromptNegative = forgeData.input_prompt_negative !== undefined ? forgeData.input_prompt_negative : '';
         const result = {
             prompt: resultPrompt,
             uc: resultUc,
+            input_prompt_negative: resultPromptNegative,
             model: model,
             model_display_name: modelDisplayName,
             steps: meta.steps,

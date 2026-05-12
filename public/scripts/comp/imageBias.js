@@ -1561,12 +1561,11 @@ function setupImageBiasAdjustmentListeners() {
         if (input) {
             input.addEventListener('input', handleBiasControlChange);
             input.addEventListener('wheel', (e) => {
-                
                 const delta = e.deltaY > 0 ? -1 : 1;
                 const step = parseFloat(input.step) || 1;
                 input.value = parseFloat(input.value || 0) + (delta * step);
                 handleBiasControlChange();
-            });
+            }, { passive: true });
         }
     });
 

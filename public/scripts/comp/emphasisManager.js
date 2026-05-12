@@ -7,6 +7,56 @@ let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
 
+/** UC tab stacks two fields in one container; each textarea lives in .prompt-textarea-emphasis-wrap (app.html). */
+function getPromptTextareaOverlayHost(textarea) {
+    const p = textarea && textarea.parentElement;
+    if (p && p.classList.contains('prompt-textarea-emphasis-wrap')) {
+        return p;
+    }
+    return p;
+}
+
+function findPromptEmphasisHighlightOverlay(textarea) {
+    const host = getPromptTextareaOverlayHost(textarea);
+    return host ? host.querySelector(':scope > .emphasis-highlight-overlay') : null;
+}
+
+function ensurePromptEmphasisHighlightOverlay(textarea) {
+    const host = getPromptTextareaOverlayHost(textarea);
+    if (!host) return null;
+
+    let overlay = host.querySelector(':scope > .emphasis-highlight-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'emphasis-highlight-overlay';
+        host.insertBefore(overlay, textarea);
+        return overlay;
+    }
+
+    if (textarea.parentElement === host && overlay.nextSibling !== textarea) {
+        host.insertBefore(overlay, textarea);
+    }
+    return overlay;
+}
+
+function ensurePromptSearchHighlightOverlay(textarea) {
+    const host = getPromptTextareaOverlayHost(textarea);
+    if (!host) return null;
+
+    let overlay = host.querySelector(':scope > .search-highlight-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.className = 'search-highlight-overlay';
+        host.insertBefore(overlay, textarea);
+        return overlay;
+    }
+
+    if (textarea.parentElement === host && overlay.nextSibling !== textarea) {
+        host.insertBefore(overlay, textarea);
+    }
+    return overlay;
+}
+
 // Function to check if cursor is inside an emphasis block
 function isCursorInsideEmphasisBlock(target) {
     if (!target) return null;
@@ -101,7 +151,8 @@ function splitEmphasisBlock(target) {
 }
 
 // Function to determine if a terminator (::) should be added
-function shouldAddTerminator(text, selectionEnd) {
+function shouldAddTerminator(text, selectionEnd, options = {}) {
+    const { allowAutoTerminationByNextGroup = true } = options;
     // Get text after the selection
     const textAfter = text.substring(selectionEnd);
     
@@ -113,10 +164,10 @@ function shouldAddTerminator(text, selectionEnd) {
         return true;
     }
     
-    // If the next meaningful text starts with a number followed by ::, we don't need a terminator
-    // (it will auto-terminate at the next emphasis)
+    // If the next meaningful text starts with a number followed by ::, we can skip the
+    // closing terminator when auto-termination is allowed.
     const nextEmphasisPattern = /^-?\d+\.?\d*::/;
-    if (nextEmphasisPattern.test(trimmedAfter)) {
+    if (allowAutoTerminationByNextGroup && nextEmphasisPattern.test(trimmedAfter)) {
         return false;
     }
     
@@ -301,7 +352,9 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
                 }
             } else {
                 // Normal/Group mode: determine if we need a terminator
-                const needsTerminator = shouldAddTerminator(value, selectionEnd);
+                const needsTerminator = shouldAddTerminator(value, selectionEnd, {
+                    allowAutoTerminationByNextGroup: false
+                });
                 emphasizedText = `${formattedWeight}::${innerText}${needsTerminator ? '::' : ''}`;
             }
             console.log('Updated existing emphasis:', { old: selectedText, new: emphasizedText });
@@ -328,11 +381,15 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
             }
         } else if (mode === 'group') {
             // Group mode: determine if we need a terminator
-            const needsTerminator = shouldAddTerminator(value, selectionEnd);
+            const needsTerminator = shouldAddTerminator(value, selectionEnd, {
+                allowAutoTerminationByNextGroup: false
+            });
             emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
         } else {
             // Normal mode: determine if we need a terminator
-            const needsTerminator = shouldAddTerminator(value, selectionEnd);
+            const needsTerminator = shouldAddTerminator(value, selectionEnd, {
+                allowAutoTerminationByNextGroup: false
+            });
             emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
         }
         console.log('Created new emphasis:', emphasizedText);
@@ -741,37 +798,8 @@ function startEmphasisEditing(target) {
 function addEmphasisSelectionHighlight(textarea, selection) {
     if (!textarea || !selection) return;
     
-    // Create or get the emphasis overlay
-    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'emphasis-highlight-overlay';
-        overlay.style.cssText = `
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-            z-index: 1;
-            font-family: inherit;
-            font-size: inherit;
-            line-height: inherit;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow: hidden;
-            background: transparent;
-        `;
-        
-        // Ensure textarea container has relative positioning
-        const container = textarea.parentElement;
-        const containerStyle = window.getComputedStyle(container);
-        if (containerStyle.position === 'static') {
-            container.style.position = 'relative';
-        }
-        
-        container.appendChild(overlay);
-    }
+    const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
+    if (!overlay) return;
     
     // Create a simple text-based highlight by wrapping the selected text
     const text = textarea.value;
@@ -796,13 +824,11 @@ function addEmphasisSelectionHighlight(textarea, selection) {
 
 // Remove emphasis selection highlight
 function removeEmphasisSelectionHighlight(textarea) {
-    if (textarea && textarea.emphasisSelectionHighlight) {
-        textarea.emphasisSelectionHighlight.remove();
-        delete textarea.emphasisSelectionHighlight;
-    }
-    
-    // Also remove any selection highlight overlay
-    const overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
+    if (!textarea) return;
+
+    const overlay = textarea.emphasisSelectionHighlight || findPromptEmphasisHighlightOverlay(textarea);
+    delete textarea.emphasisSelectionHighlight;
+
     if (overlay) {
         overlay.remove();
     }
@@ -1220,7 +1246,10 @@ const EMPHASIS_PATTERNS = {
     bracketedReplacement: /(!)\[([^\]]+)\](_*)(~\+|~)?/g,
     disableSyntax: /(!)\/([^\/]+)\//g,
     incrementingSyntax: /(!)([a-zA-Z0-9_]+)#/g,
-    pickReplacement: /(!)([a-zA-Z0-9_]+)(~\+|~)/g,
+    pickCombineIncrementing: /(!)([a-zA-Z0-9_]+)~\+#/g,
+    pickIncrementingSuffix: /(!)([a-zA-Z0-9_]+)~#/g,
+    // Do not treat ~+ / ~ as pick when followed by # (~+# and ~# are separate patterns).
+    pickReplacement: /(!)([a-zA-Z0-9_]+)(~\+(?!#)|~(?!#))/g,
     regularReplacement: /(!)([a-zA-Z0-9_]+)\b/g
 };
 
@@ -1302,6 +1331,7 @@ function handleNsfwTagDetection(textarea, currentValue) {
 
         // Check if this is a UC textarea
         const isUcTextarea = textarea.id === 'manualUc' ||
+                           textarea.id === 'manualPromptNegative' ||
                            textarea.classList.contains('uc-textarea') ||
                            textarea.closest('.character-uc-container') ||
                            textarea.getAttribute('data-type') === 'uc' ||
@@ -1333,13 +1363,8 @@ function updateEmphasisHighlighting(textarea) {
     // Use normal emphasis highlighting
     const highlightedValue = highlightEmphasisInText(value);
 
-    // Create or update the highlighting overlay
-    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'emphasis-highlight-overlay';
-        textarea.parentElement.appendChild(overlay);
-    }
+    const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
+    if (!overlay) return;
 
     overlay.innerHTML = highlightedValue;
 
@@ -1357,13 +1382,8 @@ function initializeEmphasisOverlay(textarea) {
     const value = textarea.value;
     const highlightedValue = highlightEmphasisInText(value);
 
-    // Create or update the highlighting overlay
-    let overlay = textarea.parentElement.querySelector('.emphasis-highlight-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.className = 'emphasis-highlight-overlay';
-        textarea.parentElement.appendChild(overlay);
-    }
+    const overlay = ensurePromptEmphasisHighlightOverlay(textarea);
+    if (!overlay) return;
 
     overlay.innerHTML = highlightedValue;
 
@@ -1672,6 +1692,20 @@ function highlightEmphasisInText(text) {
                                  .replace(/_/g, '&#95;')
                                  .replace(/#/g, '&#35;');
 
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+    // Sequential combined pool ~+# — before ~+ / ~
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.pickCombineIncrementing, (match, exclamation, content) => {
+        const backgroundColor = '#ff9800';
+        const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/\+/g, '&#43;').replace(/#/g, '&#35;');
+        return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
+    });
+
+    // Sticky-prefix pick ~# — before ~+ / ~
+    highlightedText = highlightedText.replace(EMPHASIS_PATTERNS.pickIncrementingSuffix, (match, exclamation, content) => {
+        const backgroundColor = '#f57c00';
+        const escapedMatch = match.replace(/!/g, '&#33;').replace(/~/g, '&#126;').replace(/#/g, '&#35;');
         return `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: ${backgroundColor};">${escapedMatch}</span>`;
     });
 
@@ -2734,10 +2768,17 @@ function initializeTokenInfoClickHandlers() {
         const container = toolbar.parentElement;
         if (!container) return;
         
-        // Look for textarea in the container
-        const textarea = container.querySelector('textarea.prompt-textarea, textarea.character-prompt-textarea') ||
-                        container.querySelector('#manualPrompt, #manualUc');
-        
+        // Look for textarea in the container (UC tab has two fields; prefer the one that was focused)
+        let textarea = null;
+        if (window.promptTextareaToolbar && window.promptTextareaToolbar.activeTextarea &&
+            container.contains(window.promptTextareaToolbar.activeTextarea)) {
+            textarea = window.promptTextareaToolbar.activeTextarea;
+        }
+        if (!textarea) {
+            textarea = container.querySelector('textarea.prompt-textarea, textarea.character-prompt-textarea') ||
+                container.querySelector('#manualPrompt, #manualUc, #manualPromptNegative');
+        }
+
         if (textarea) {
             // Open token display modal
             openTokenDisplayModal(textarea);

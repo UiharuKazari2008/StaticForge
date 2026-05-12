@@ -1,0 +1,75 @@
+diff --git a/cjs/extract.js b/cjs/extract.js
+index 4294006b3497265f42604088ff936ac622c80675..38f9307b9978d4cc148266648075d31d287ebe28 100644
+--- a/cjs/extract.js
++++ b/cjs/extract.js
+@@ -1,4 +1,4 @@
+-const {unlink} = require('fs');
++const {existsSync, statSync} = require('fs');
+ const {dirname, join} = require('path');
+ 
+ const extract = require('extract-zip');
+@@ -8,17 +8,21 @@ const SQLiteTag = require('sqlite-tag');
+ const worldcities = 'worldcities.db';
+ const dir = dirname(__dirname);
+ const zip = join(dir, worldcities + '.zip');
++const dbPath = join(dir, worldcities);
+ 
+-extract(zip, {dir}).then(() => {
+-  unlink(zip, error => {
+-    if (error) {
+-      console.error('Unable to unzip ' + zip);
+-      process.exit(1);
+-    }
+-    const db = new Database(join(dir, worldcities));
+-    const {query} = SQLiteTag(db);
+-    query`CREATE VIRTUAL TABLE search USING FTS5(place, latitude, longitude)`.then(() => {
+-      query`
++function buildFtsIndex() {
++    const db = new Database(dbPath);
++    const {get, query} = SQLiteTag(db);
++    return get`
++    SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'search' LIMIT 1
++  `.then(row => {
++        if (row) {
++            return new Promise((resolve, reject) => {
++                db.close(err => (err ? reject(err) : resolve()));
++            });
++        }
++        return query`CREATE VIRTUAL TABLE search USING FTS5(place, latitude, longitude)`.then(() =>
++            query`
+         INSERT INTO search(place, latitude, longitude) SELECT
+           (
+             worldcities_city.city || ' ' ||
+@@ -36,7 +40,30 @@ extract(zip, {dir}).then(() => {
+           worldcities_country.id = worldcities.country
+         AND
+           worldcities_city.id = worldcities.city
+-      `.then(() => db.close());
++      `.then(
++                () =>
++                    new Promise((resolve, reject) => {
++                        db.close(err => (err ? reject(err) : resolve()));
++                    })
++            )
++        );
+     });
+-  });
++}
++
++function main() {
++    if (existsSync(zip)) {
++        return extract(zip, {dir}).then(() => buildFtsIndex());
++    }
++    if (existsSync(dbPath) && statSync(dbPath).size > 0) {
++        return buildFtsIndex();
++    }
++    console.error(
++        'geo2city: worldcities.db.zip is missing and worldcities.db is empty or missing. Run: pnpm install geo2city --force'
++    );
++    process.exit(1);
++}
++
++main().catch(err => {
++    console.error(err);
++    process.exit(1);
+ });

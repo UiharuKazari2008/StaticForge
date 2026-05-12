@@ -273,6 +273,7 @@ class WorkspaceManager {
             // Save changes if any were made
             if (missingFiles.length > 0 || removedCount > 0) {
                 this.globalResources.saveConfig('workspaces', workspaces);
+                this.bumpAllGalleryDestructiveTimestamps();
             }
 
             // Sync pinned/scrapped files to ensure consistency
@@ -315,7 +316,8 @@ class WorkspaceManager {
             files: [],
             scraps: [],
             pinned: [], // Initialize empty pinned array
-            groups: {} // Initialize empty groups object
+            groups: {}, // Initialize empty groups object
+            lastGalleryDestructiveAt: 0
         };
 
         // Save using config manager
@@ -466,6 +468,7 @@ class WorkspaceManager {
 
         delete workspaces[id];
         this.globalResources.saveConfig('workspaces', workspaces);
+        this.bumpGalleryDestructiveTimestamp(['default']);
 
         // Delete notes associated with this workspace
         if (this.globalResources.getNotesDatabase()) {
@@ -523,6 +526,7 @@ class WorkspaceManager {
 
         delete workspaces[sourceId];
         this.globalResources.saveConfig('workspaces', workspaces);
+        this.bumpGalleryDestructiveTimestamp([targetId]);
 
         // Move notes to target workspace
         if (this.globalResources.getNotesDatabase()) {
@@ -612,6 +616,37 @@ class WorkspaceManager {
         }
 
         return relatedFiles;
+    }
+
+    bumpGalleryDestructiveTimestamp(workspaceIds = []) {
+        const ids = [...new Set((workspaceIds || []).filter(id => id && typeof id === 'string'))];
+        if (ids.length === 0) {
+            return;
+        }
+        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
+        const now = Date.now();
+        let changed = false;
+        for (const id of ids) {
+            if (!workspaces[id]) {
+                continue;
+            }
+            workspaces[id].lastGalleryDestructiveAt = now;
+            changed = true;
+        }
+        if (changed) {
+            this.globalResources.saveConfig('workspaces', workspaces);
+        }
+    }
+
+    bumpAllGalleryDestructiveTimestamps() {
+        const workspaces = this.globalResources.getWorkspacesConfig({ clone: true });
+        const now = Date.now();
+        for (const id of Object.keys(workspaces)) {
+            if (workspaces[id]) {
+                workspaces[id].lastGalleryDestructiveAt = now;
+            }
+        }
+        this.globalResources.saveConfig('workspaces', workspaces);
     }
 
     // Move files between this.workspaces
@@ -989,6 +1024,27 @@ class WorkspaceManager {
         return pinned || [];
     }
 
+    /**
+     * Remove filenames that no longer exist on disk from files/scraps/pinned everywhere.
+     * Returns a Set of filenames that still exist under IMAGES_DIR (from the merged candidate lists).
+     * @param {...string[]} filenameLists One or more arrays of image basenames (e.g. workspace files + pinned)
+     */
+    pruneAbsentImageFilenamesFromWorkspaces(...filenameLists) {
+        const dir = this.IMAGES_DIR;
+        const merged = [...new Set(
+            filenameLists.flat().filter(f => typeof f === 'string' && f.length > 0)
+        )];
+        if (merged.length === 0) {
+            return new Set();
+        }
+        const missing = merged.filter(f => !fs.existsSync(path.join(dir, f)));
+        if (missing.length > 0) {
+            this.removeFilesFromWorkspaces(missing);
+            console.log(`🧹 Dropped ${missing.length} workspace reference(s) to missing images on disk`);
+        }
+        return new Set(merged.filter(f => fs.existsSync(path.join(dir, f))));
+    }
+
     // Remove files from all this.workspaces (used when files are deleted)
     removeFilesFromWorkspaces(filenames) {
         // Filter out null/invalid filenames
@@ -1023,6 +1079,7 @@ class WorkspaceManager {
 
         if (needsSave) {
             this.globalResources.saveConfig('workspaces', workspaces);
+            this.bumpAllGalleryDestructiveTimestamps();
         }
 
         if (totalRemoved > 0) {
@@ -1109,6 +1166,9 @@ class WorkspaceManager {
 
         if (addedCount > 0) {
             this.globalResources.saveConfig('workspaces', workspaces);
+            if (type === 'scraps') {
+                this.bumpAllGalleryDestructiveTimestamps();
+            }
 
             // Broadcast image addition via WebSocket if type is 'files' (images)
             if (type === 'files') {
@@ -1196,6 +1256,9 @@ class WorkspaceManager {
         if (removedCount > 0 && !workspacesOverride) {
             // If workspaces wasn't passed in, we need to save the clone we created
             this.globalResources.saveConfig('workspaces', workspaces);
+            if (type === 'files') {
+                this.bumpGalleryDestructiveTimestamp([targetId]);
+            }
         }
 
         return removedCount;
@@ -1362,6 +1425,13 @@ class WorkspaceManager {
 
         if (movedCount > 0) {
             this.globalResources.saveConfig('workspaces', workspaces);
+            if (type === 'files') {
+                if (sourceWorkspaceId) {
+                    this.bumpGalleryDestructiveTimestamp([sourceWorkspaceId, targetWorkspaceId]);
+                } else {
+                    this.bumpAllGalleryDestructiveTimestamps();
+                }
+            }
             const message = type === 'files' ?
                 `✅ Moved ${movedCount} ${type} (including related and upscaled files) to workspace: ${workspaces[targetWorkspaceId].name}` :
                 `✅ Moved ${movedCount} ${type} to workspace: ${workspaces[targetWorkspaceId].name}`;

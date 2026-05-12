@@ -1971,19 +1971,6 @@ function createReferenceManagerContextMenuConfig() {
                 type: 'icons',
                 icons: [
                     {
-                        icon: 'fas fa-eye',
-                        text: 'Preview Image',
-                        action: 'reference-manager-preview',
-                        loadfn: (menuItem, target) => {
-                            const cacheImage = getCacheManagerImageFromElement(target);
-                            if (!cacheImage || !cacheImage.hasPreview) {
-                                menuItem.disabled = true;
-                            } else {
-                                menuItem.disabled = false;
-                            }
-                        }
-                    },
-                    {
                         icon: 'fas fa-comment',
                         text: 'View Comments',
                         action: 'reference-manager-comment',
@@ -2008,7 +1995,16 @@ function createReferenceManagerContextMenuConfig() {
             },
             {
                 type: 'list',
-                items: [      
+                items: [
+                    {
+                        icon: 'fas fa-external-link-alt',
+                        text: 'Open in Window',
+                        action: 'reference-manager-open-in-window',
+                        loadfn: (menuItem, target) => {
+                            const cacheImage = getCacheManagerImageFromElement(target);
+                            menuItem.disabled = !cacheImage;
+                        }
+                    },
                     {
                         icon: "nai-vibe-transfer",
                         text: "New Encoding",
@@ -2163,19 +2159,6 @@ function createReferenceBrowserContextMenuConfig() {
                 type: 'icons',
                 icons: [
                     {
-                        icon: 'fas fa-eye',
-                        tooltip: 'Preview',
-                        action: 'reference-browser-preview',
-                        loadfn: (menuItem, target) => {
-                            const cacheImage = getReferenceBrowserImageFromElement(target);
-                            if (!cacheImage || !cacheImage.hasPreview) {
-                                menuItem.disabled = true;
-                            } else {
-                                menuItem.disabled = false;
-                            }
-                        }
-                    },
-                    {
                         icon: 'nai-img2img',
                         tooltip: 'Add as Base Image',
                         action: 'reference-browser-add-base',
@@ -2237,7 +2220,7 @@ function createReferenceBrowserContextMenuConfig() {
                 items: [
                     {
                         icon: 'fas fa-external-link-alt',
-                        tooltip: 'Open in Window',
+                        text: 'Open in Window',
                         action: 'reference-browser-open-in-window',
                         loadfn: (menuItem, target) => {
                             const cacheImage = getReferenceBrowserImageFromElement(target);
@@ -2781,9 +2764,9 @@ function handleReferenceManagerContextMenuAction(event) {
     // Only handle actions that are specific to reference manager gallery items
     const referenceManagerActions = [
         'reference-manager-comment',
-        'reference-manager-preview',
         'reference-manager-vibe-encode',
         'reference-manager-director',
+        'reference-manager-open-in-window',
         'reference-manager-manage',
         'reference-manager-set-wallpaper',
         'reference-manager-create-shortcut-base',
@@ -2817,32 +2800,6 @@ function handleReferenceManagerContextMenuAction(event) {
             const vibesWithComments = cacheImage.vibes.filter(vibe => vibe.comment && vibe.comment.trim() !== '');
             showVibesCommentsDialog(vibesWithComments);
             break;
-        case 'reference-manager-preview':
-            // Get the full image source - prefer original image if available
-            let imageSrc;
-            if (cacheImage.isStandalone) {
-                // For standalone vibes, use the vibe's preview or fallback
-                if (cacheImage.type === 'base64' && cacheImage.source) {
-                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
-                } else if (cacheImage.type === 'vibe' && cacheImage.source) {
-                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
-                } else if (cacheImage.hasPreview) {
-                    imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
-                }
-            } else {
-                if (cacheImage.hash) {
-                    imageSrc = `/cache/upload/${cacheImage.hash}`;
-                } else if (cacheImage.hasPreview) {
-                    imageSrc = `/cache/preview/${cacheImage.hash}.webp`;
-                }
-            }
-
-            if (imageSrc) {
-                showLightbox({ url: imageSrc });
-            } else {
-                showError('No image found');
-            }
-            break;
         case 'reference-manager-vibe-encode':
             if (cacheImage.hasVibes && cacheImage.vibes.length > 0) {
                 // Use 'ie' mode to add additional IEs to existing vibe
@@ -2855,6 +2812,13 @@ function handleReferenceManagerContextMenuAction(event) {
         case 'reference-manager-director':
             createDirectorSessionWithImage(cacheImage);
             break;
+        case 'reference-manager-open-in-window': {
+            const viewer = openReferenceImageInViewer(cacheImage);
+            if (viewer && viewer.element) {
+                viewer.element.dataset.cacheImageData = JSON.stringify(cacheImage);
+            }
+            break;
+        }
         case 'reference-manager-manage':
             showManageReferenceModal(cacheImage);
             break;
@@ -2889,7 +2853,6 @@ function handleReferenceBrowserContextMenuAction(event) {
 
     // Only handle actions that are specific to reference browser gallery items
     const referenceBrowserActions = [
-        'reference-browser-preview',
         'reference-browser-add-base',
         'reference-browser-add-vibe',
         'reference-browser-add-character',
@@ -2900,6 +2863,7 @@ function handleReferenceBrowserContextMenuAction(event) {
         'reference-browser-open-manager',
         'reference-browser-import',
         'reference-browser-cancel',
+        'reference-browser-open-in-window',
         'reference-browser-create-shortcut-base',
         'reference-browser-create-shortcut-vibe',
         'reference-browser-create-shortcut-character'
@@ -2924,32 +2888,6 @@ function handleReferenceBrowserContextMenuAction(event) {
 
     // Handle the action using the same functions as the existing browser buttons
     switch (action) {
-        case 'reference-browser-preview':
-            // Get the full image source - prefer original image if available
-            let imageSrc;
-            if (cacheImage.isStandalone) {
-                // For standalone vibes, use the vibe's preview or fallback
-                if (cacheImage.type === 'base64' && cacheImage.source) {
-                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
-                } else if (cacheImage.type === 'vibe' && cacheImage.source) {
-                    imageSrc = `data:image/png;base64,${cacheImage.source}`;
-                } else if (cacheImage.hasPreview) {
-                    imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
-                }
-            } else {
-                if (cacheImage.hash) {
-                    imageSrc = `/cache/upload/${cacheImage.hash}`;
-                } else if (cacheImage.hasPreview) {
-                    imageSrc = `/cache/preview/${cacheImage.hash}.webp`;
-                }
-            }
-
-            if (imageSrc) {
-                showLightbox({ url: imageSrc });
-            } else {
-                showError('No image found');
-            }
-            break;
         case 'reference-browser-add-base':
             addAsBaseImage(cacheImage);
             break;
@@ -3606,6 +3544,9 @@ function transformRawMetadataForEditor(metadata) {
         if (forgeData.input_uc !== undefined) {
             transformed.uc = forgeData.input_uc;
         }
+        if (forgeData.input_prompt_negative !== undefined) {
+            transformed.input_prompt_negative = forgeData.input_prompt_negative;
+        }
         if (forgeData.append_quality !== undefined) {
             transformed.append_quality = forgeData.append_quality;
         }
@@ -3870,6 +3811,9 @@ function transformMetadataForEditor(metadata) {
         }
         if (transformed.forge_data.input_uc !== undefined) {
             transformed.uc = transformed.forge_data.input_uc;
+        }
+        if (transformed.forge_data.input_prompt_negative !== undefined) {
+            transformed.input_prompt_negative = transformed.forge_data.input_prompt_negative;
         }
         if (transformed.forge_data.append_quality !== undefined) {
             transformed.append_quality = transformed.forge_data.append_quality;
@@ -5388,7 +5332,7 @@ function createVibeManagerGalleryItem(vibeImage) {
         ieBtn.className = 'btn-secondary btn-small';
         ieBtn.innerHTML = '<i class="nai-plus"></i>';
         ieBtn.title = 'Request new Information Extraction';
-        ieBtn.addEventListener('click', (e) => {z``
+        ieBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             showVibeEncodingModal('ie', vibeImage);
         });

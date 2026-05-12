@@ -7,6 +7,201 @@
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <!-- Launch-only design mode (this file only): / → ?design=1; validation paused; HUD presets = launch DOM only -->
+    <script>
+        var dreamscapeDesignModeActive = false;
+
+        (function dreamscapeLaunchDesignBoot() {
+            var STORAGE_KEY = 'dreamscapeDesignMode';
+
+            function readFromUrl() {
+                try {
+                    return new URLSearchParams(location.search || '').get('design') === '1';
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            function readFlag() {
+                try {
+                    if (sessionStorage.getItem(STORAGE_KEY) === '1' || readFromUrl()) {
+                        dreamscapeDesignModeActive = true;
+                        sessionStorage.setItem(STORAGE_KEY, '1');
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            function dreamscapeLaunchDesignContinueToApp() {
+                try {
+                    sessionStorage.removeItem(STORAGE_KEY);
+                } catch (e) { /* ignore */ }
+                try {
+                    sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
+                } catch (e2) { /* ignore */ }
+                location.replace('/app');
+            }
+
+            function dreamscapeLaunchDesignExit() {
+                try {
+                    sessionStorage.removeItem(STORAGE_KEY);
+                } catch (e) { /* ignore */ }
+                try {
+                    var u = new URL(location.href);
+                    u.searchParams.delete('design');
+                    var next = u.pathname + (u.search || '') + (u.hash || '');
+                    location.replace(next || '/launch');
+                } catch (e2) {
+                    location.replace('/launch');
+                }
+            }
+
+            function dreamscapeLaunchDesignApplyPreset(preset) {
+                var loading = document.getElementById('loading');
+                var errEl = document.getElementById('errorMessage');
+                var verEl = document.getElementById('versionWarning');
+                var errText = document.getElementById('errorText');
+                var verMsg = document.getElementById('versionMessage');
+                if (!loading || !errEl || !verEl) {
+                    return;
+                }
+                if (preset === 'splash') {
+                    errEl.classList.add('hidden');
+                    verEl.classList.add('hidden');
+                    loading.classList.remove('hidden');
+                    var rescueSplash = document.getElementById('rescueButton');
+                    if (rescueSplash) {
+                        rescueSplash.classList.add('hidden');
+                    }
+                    return;
+                }
+                if (preset === 'error') {
+                    loading.classList.add('hidden');
+                    verEl.classList.add('hidden');
+                    errEl.classList.remove('hidden');
+                    var rescueOff = document.getElementById('rescueButton');
+                    if (rescueOff) {
+                        rescueOff.classList.add('hidden');
+                    }
+                    if (errText) {
+                        errText.textContent = 'Example error copy (design mode — no network)';
+                    }
+                    return;
+                }
+                if (preset === 'errorRescue') {
+                    loading.classList.add('hidden');
+                    verEl.classList.add('hidden');
+                    errEl.classList.remove('hidden');
+                    if (errText) {
+                        errText.textContent = 'Example error with rescue (design mode)';
+                    }
+                    var rescueBtn = document.getElementById('rescueButton');
+                    if (rescueBtn) {
+                        rescueBtn.classList.remove('hidden');
+                    }
+                    return;
+                }
+                if (preset === 'version') {
+                    loading.classList.add('hidden');
+                    errEl.classList.add('hidden');
+                    verEl.classList.remove('hidden');
+                    var rescueVer = document.getElementById('rescueButton');
+                    if (rescueVer) {
+                        rescueVer.classList.add('hidden');
+                    }
+                    if (verMsg) {
+                        verMsg.textContent = 'Example version mismatch copy (design mode)';
+                    }
+                    return;
+                }
+                if (preset === 'reset') {
+                    dreamscapeLaunchDesignApplyPreset('splash');
+                    var rescueBtn2 = document.getElementById('rescueButton');
+                    if (rescueBtn2) {
+                        rescueBtn2.classList.add('hidden');
+                    }
+                }
+            }
+
+            function dreamscapeLaunchDesignMountHud() {
+                if (document.getElementById('dreamscapeLaunchDesignHud')) {
+                    return;
+                }
+                var wrap = document.createElement('div');
+                wrap.id = 'dreamscapeLaunchDesignHud';
+                wrap.innerHTML =
+                    '<div class="dreamscape-launch-design-hud-inner">' +
+                    '<div class="dreamscape-launch-design-hud-title">Design mode (launch)</div>' +
+                    '<p class="dreamscape-launch-design-hud-note">Validation is paused. Toggles only affect this page. App is unchanged.</p>' +
+                    '<div class="dreamscape-launch-design-presets">' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="splash">View: splash</button>' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="error">View: error</button>' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="errorRescue">View: error + rescue</button>' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="version">View: version warning</button>' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" data-launch-preset="reset">Reset view</button>' +
+                    '</div>' +
+                    '<div class="dreamscape-launch-design-hud-actions">' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-primary" id="dreamscapeLaunchDesignGoBtn">Continue to app</button>' +
+                    '<button type="button" class="dreamscape-launch-design-btn dreamscape-launch-design-btn-muted" id="dreamscapeLaunchDesignExitBtn">Exit design mode</button>' +
+                    '</div></div>';
+                document.body.appendChild(wrap);
+                document.getElementById('dreamscapeLaunchDesignGoBtn').addEventListener('click', dreamscapeLaunchDesignContinueToApp);
+                document.getElementById('dreamscapeLaunchDesignExitBtn').addEventListener('click', dreamscapeLaunchDesignExit);
+                wrap.addEventListener('click', function (ev) {
+                    var btn = ev.target && ev.target.closest ? ev.target.closest('[data-launch-preset]') : null;
+                    if (btn) {
+                        dreamscapeLaunchDesignApplyPreset(btn.getAttribute('data-launch-preset') || 'splash');
+                    }
+                });
+            }
+
+            readFlag();
+            try {
+                document.documentElement.classList.toggle('dreamscape-design-mode', dreamscapeDesignModeActive);
+            } catch (e) { /* ignore */ }
+
+            function dreamscapeLaunchDesignSlash(ev) {
+                if (dreamscapeDesignModeActive) {
+                    return;
+                }
+                if (ev.repeat) {
+                    return;
+                }
+                var ok = ev.code === 'Slash' || ev.code === 'NumpadDivide' || ev.key === '/';
+                if (!ok) {
+                    return;
+                }
+                try {
+                    sessionStorage.setItem(STORAGE_KEY, '1');
+                } catch (x) { /* ignore */ }
+                ev.preventDefault();
+                ev.stopImmediatePropagation();
+                removeEventListener('keydown', dreamscapeLaunchDesignSlash, true);
+                try {
+                    var u = new URL(location.href);
+                    u.searchParams.set('design', '1');
+                    location.replace(u.pathname + u.search + (u.hash || ''));
+                } catch (e2) {
+                    location.replace('/launch?design=1');
+                }
+            }
+
+            if (!dreamscapeDesignModeActive) {
+                addEventListener('keydown', dreamscapeLaunchDesignSlash, true);
+            }
+
+            if (dreamscapeDesignModeActive) {
+                function onDomReady() {
+                    dreamscapeLaunchDesignMountHud();
+                }
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', onDomReady);
+                } else {
+                    onDomReady();
+                }
+            }
+        })();
+    </script>
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -401,6 +596,84 @@
                 font-size: 1.25rem;
             }
         }
+
+        /* Launch-only design mode HUD (see inline script in <head>) */
+        html.dreamscape-design-mode #dreamscapeLaunchDesignHud {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            z-index: 100001;
+            max-width: min(300px, calc(100vw - 24px));
+            font-family: system-ui, sans-serif;
+            font-size: 12px;
+            color: #e5e7eb;
+            pointer-events: auto;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-hud-inner {
+            background: rgba(17, 24, 39, 0.96);
+            border: 1px solid rgba(75, 85, 99, 0.9);
+            border-radius: 10px;
+            padding: 10px 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-hud-title {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-hud-note {
+            margin: 0 0 10px;
+            line-height: 1.35;
+            color: #9ca3af;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-hud-note code {
+            font-size: 11px;
+            color: #d1d5db;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-presets {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-hud-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-btn {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-btn-primary {
+            background: #6366f1;
+            color: #fff;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-btn-primary:hover {
+            background: #4f46e5;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-btn-muted {
+            background: #374151;
+            color: #e5e7eb;
+            border: 1px solid #4b5563;
+        }
+
+        html.dreamscape-design-mode .dreamscape-launch-design-btn-muted:hover {
+            background: #4b5563;
+        }
     </style>
 </head>
 
@@ -444,6 +717,8 @@
 
     <script>
         let validationInProgress = false;
+        /** Earliest time normal validation may run (splash visible); paired with design-mode inline script in <head> */
+        var dreamscapeLaunchSplashHoldUntilMs = 0;
 
         async function checkOnlineStatus() {
             return navigator.onLine;
@@ -489,6 +764,9 @@
         const maxReadinessAttempts = 20; // 20 attempts = 10 minutes (30s * 20)
 
         async function pollServerReadiness() {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
             const readiness = await checkServerReadiness();
 
             if (readiness === null) {
@@ -506,6 +784,9 @@
             if (readiness.isReady) {
                 // Server is ready, proceed with normal validation
                 clearInterval(serverReadinessInterval);
+                if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                    return;
+                }
                 showError('Server is ready, validating...');
                 setTimeout(performValidation, 1000);
                 return;
@@ -517,6 +798,9 @@
         }
 
         function startServerReadinessPolling() {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
             if (serverReadinessInterval) {
                 clearInterval(serverReadinessInterval);
             }
@@ -582,6 +866,9 @@
         }
 
         function redirectToApp() {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
             try {
                 sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
             } catch (e) { /* ignore */ }
@@ -596,11 +883,29 @@
         }
 
         function redirectToHome() {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
             // Use replace to avoid back button issues and prevent white flash
             window.location.replace('/');
         }
 
         async function performValidation() {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
+            if (dreamscapeLaunchSplashHoldUntilMs > 0) {
+                var splashRem = dreamscapeLaunchSplashHoldUntilMs - Date.now();
+                if (splashRem > 0) {
+                    await new Promise(function (resolve) {
+                        setTimeout(resolve, splashRem);
+                    });
+                }
+            }
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
+
             if (validationInProgress) return;
             validationInProgress = true;
 
@@ -700,14 +1005,24 @@
             performValidation();
         }
 
-        // Start validation when page loads
+        // Start validation when page loads (mandatory 1s splash hold so / can be caught; design mode skips validation)
         document.addEventListener('DOMContentLoaded', () => {
-            // Small delay to ensure the page is fully rendered
-            setTimeout(performValidation, 100);
+            dreamscapeLaunchSplashHoldUntilMs = Date.now() + 1000;
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                if (serverReadinessInterval) {
+                    clearInterval(serverReadinessInterval);
+                    serverReadinessInterval = null;
+                }
+                return;
+            }
+            performValidation();
         });
 
         // Handle online/offline events
         window.addEventListener('online', () => {
+            if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
+                return;
+            }
             if (document.getElementById('errorMessage').classList.contains('hidden')) {
                 performValidation();
             }

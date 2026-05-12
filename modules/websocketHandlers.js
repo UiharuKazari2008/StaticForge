@@ -11,7 +11,7 @@ const {
     handleDirectorRollbackMessage
 } = require('./directorHandlers');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage } = require('./imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
 const { getTimezoneByCoordinates } = require('./dynamicGenerationHandlers');
@@ -20,6 +20,29 @@ const fs = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const https = require('https');
+
+/** Merge optional top-level inset flags into overrideParams (some clients send inset only at root). */
+function normalizeExpansionOverrideParams(data) {
+    let op = data.overrideParams;
+    if (typeof op === 'string') {
+        try {
+            op = JSON.parse(op);
+        } catch {
+            op = {};
+        }
+    }
+    if (!op || typeof op !== 'object' || Array.isArray(op)) {
+        op = {};
+    }
+    const merged = { ...op };
+    const truthy = (v) => v === true || v === 'true' || v === 1 || v === '1';
+    if (data.inset !== undefined && data.inset !== null) {
+        merged.inset = truthy(data.inset);
+    } else if (data.enableInset !== undefined && data.enableInset !== null) {
+        merged.inset = truthy(data.enableInset);
+    }
+    return merged;
+}
 
 /*
  * WebSocket Response Format Standards for Workspace Operations:
@@ -346,6 +369,7 @@ class WebSocketMessageHandlers {
             'upscale_image',
             'reroll_image',
             'expand_image',
+            'preview_expand_image_prompt',
             'reroll_expanded_image',
             'update_image_preset_bulk',
             'director_create_session',
@@ -696,6 +720,10 @@ class WebSocketMessageHandlers {
                 await this.handleWorkspaceUpdateWindowPositions(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'gallery_position_hint':
+                await this.handleGalleryPositionHint(ws, message, clientInfo, wsServer);
+                break;
+
             case 'workspace_update_primary_font':
                 await this.handleWorkspaceUpdatePrimaryFont(ws, message, clientInfo, wsServer);
                 break;
@@ -907,6 +935,10 @@ class WebSocketMessageHandlers {
 
             case 'expand_image':
                 await this.handleImageExpansion(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'preview_expand_image_prompt':
+                await this.handlePreviewExpandImagePrompt(ws, message, clientInfo, wsServer);
                 break;
 
             case 'reroll_expanded_image':
@@ -2436,12 +2468,31 @@ class WebSocketMessageHandlers {
     }
 
     // Handle gallery request messages
+    buildGalleryHash(baseArray, pinnedFiles, workspaceId, viewType, existingFilenamesSet = null) {
+        const rawPins = Array.isArray(pinnedFiles) ? pinnedFiles : [];
+        const pinsForHash = (existingFilenamesSet && typeof existingFilenamesSet.has === 'function')
+            ? rawPins.filter(f => existingFilenamesSet.has(f))
+            : rawPins;
+        const pinnedSet = new Set(pinsForHash);
+        const hashSource = baseArray.map(item => {
+            const file = item.upscaled || item.original || '';
+            const pinned = pinnedSet.has(file) ? '1' : '0';
+            return `${item.base}|${item.original || ''}|${item.upscaled || ''}|${item.mtime || 0}|${pinned}`;
+        }).join('\n');
+
+        return crypto.createHash('sha256')
+            .update(`${workspaceId}::${viewType}::${baseArray.length}::${hashSource}`)
+            .digest('hex');
+    }
+
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
         const { requestId, viewType = 'images', includePinnedStatus = true, light = false, offset = 0, limit = 100 } = message;
 
         try {
             // Start keep-alive for potentially long gallery requests
             this.startKeepAliveInterval(ws, requestId, 10000); // Every 10 seconds for gallery requests
+
+            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId) || 'default';
 
             // Get files based on view type
             let files;
@@ -2477,6 +2528,25 @@ class WebSocketMessageHandlers {
                 pinnedFiles = this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
             }
 
+            if (!Array.isArray(files)) {
+                console.error('Files is not an array:', files);
+                files = [];
+            }
+
+            const wm = this.globalResources.getWorkspaceManager();
+            const activeWsRecord = wm.getWorkspace(wm.getActiveWorkspace(clientInfo.sessionId)) || {};
+            const unionForPrune = [...new Set([
+                ...(activeWsRecord.files || []),
+                ...(activeWsRecord.scraps || []),
+                ...(activeWsRecord.pinned || []),
+                ...files
+            ])];
+            const existingOnDisk = wm.pruneAbsentImageFilenamesFromWorkspaces(unionForPrune);
+            files = files.filter(f => existingOnDisk.has(f));
+            if (includePinnedStatus) {
+                pinnedFiles = pinnedFiles.filter(f => existingOnDisk.has(f));
+            }
+
             // Helper function to get base name
             const getBaseName = (filename) => {
                 const base = filename.replace(/\.(png|jpg|jpeg)$/i, '');
@@ -2487,12 +2557,6 @@ class WebSocketMessageHandlers {
             const getPreviewFilename = (baseName) => {
                 return `${baseName}.webp`;
             };
-
-            // Build gallery data
-            if (!Array.isArray(files)) {
-                console.error('Files is not an array:', files);
-                files = [];
-            }
 
             // Convert files to baseMap for processing
             const baseMap = {};
@@ -2524,6 +2588,9 @@ class WebSocketMessageHandlers {
 
             // Sort by newest first
             baseArray.sort((a, b) => b.mtime - a.mtime);
+            const galleryHash = this.buildGalleryHash(baseArray, pinnedFiles, activeWorkspaceId, viewType, existingOnDisk);
+            const workspaceRecord = this.globalResources.getWorkspaceManager().getWorkspace(activeWorkspaceId);
+            const lastGalleryDestructiveAt = Number(workspaceRecord?.lastGalleryDestructiveAt) || 0;
 
             // Apply pagination
             const totalItems = baseArray.length;
@@ -2614,6 +2681,9 @@ class WebSocketMessageHandlers {
                 data: {
                     gallery,
                     viewType,
+                    workspaceId: activeWorkspaceId,
+                    galleryHash,
+                    lastGalleryDestructiveAt,
                     pagination: {
                         offset,
                         limit,
@@ -2791,11 +2861,21 @@ class WebSocketMessageHandlers {
                 break;
         }
 
-        // Build gallery data (same logic as handleGalleryRequest)
         if (!Array.isArray(files)) {
             console.error('Files is not an array:', files);
             files = [];
         }
+
+        const wm = this.globalResources.getWorkspaceManager();
+        const activeWsRecord = wm.getWorkspace(wm.getActiveWorkspace(sessionId)) || {};
+        const unionForPrune = [...new Set([
+            ...(activeWsRecord.files || []),
+            ...(activeWsRecord.scraps || []),
+            ...(activeWsRecord.pinned || []),
+            ...files
+        ])];
+        const existingOnDisk = wm.pruneAbsentImageFilenamesFromWorkspaces(unionForPrune);
+        files = files.filter(f => existingOnDisk.has(f));
 
         const baseMap = {};
         for (const file of files) {
@@ -3121,9 +3201,11 @@ class WebSocketMessageHandlers {
                 noiseSchedulers: Object.fromEntries(Object.keys(this.globalResources.getNekoAiService('Noise')).map(key => [key, this.globalResources.getNekoAiService('Noise')[key]])),
                 resolutions: Object.fromEntries(Object.keys(this.globalResources.getNekoAiService('Resolution')).map(key => [key, this.globalResources.getNekoAiService('Resolution')[key]])),
                 textReplacements: currentPromptConfig.text_replacements || {},
+                text_tags: currentPromptConfig.text_tags || {},
                 datasets: currentPromptConfig.datasets || [],
                 quality_presets: currentPromptConfig.quality_presets || {},
                 uc_presets: currentPromptConfig.uc_presets || {},
+                nsfw_presets: currentPromptConfig.nsfw_presets || {},
                 activeWorkspace: activeWorkspaceData ? {
                     id: activeWorkspaceId,
                     data: activeWorkspaceData
@@ -4410,6 +4492,40 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Workspace reorder error:', error);
             this.sendError(ws, 'Failed to reorder workspaces', error.message, message.requestId);
+        }
+    }
+
+    // Ackless: persist first-visible gallery scroll position in express session (restore on reconnect / reload)
+    async handleGalleryPositionHint(ws, message, clientInfo, wsServer) {
+        try {
+            if (!clientInfo || !clientInfo.sessionId) return;
+            const store = this.globalResources.getSessionStore();
+            if (!store || typeof store.get !== 'function') return;
+
+            const { index, viewType, workspaceId, anchorFilename } = message;
+            if (typeof viewType !== 'string' || viewType.length === 0) return;
+            if (typeof index !== 'number' || !Number.isFinite(index) || index < 0) return;
+
+            const wsKey = (workspaceId && typeof workspaceId === 'string') ? workspaceId : 'default';
+            const key = `${wsKey}:${viewType}`;
+
+            await new Promise((resolve) => {
+                store.get(clientInfo.sessionId, (err, sess) => {
+                    if (err || !sess) {
+                        resolve();
+                        return;
+                    }
+                    sess.galleryScrollState = sess.galleryScrollState || {};
+                    sess.galleryScrollState[key] = {
+                        index: Math.floor(index),
+                        anchorFilename: typeof anchorFilename === 'string' && anchorFilename.length > 0 ? anchorFilename : undefined,
+                        updatedAt: Date.now()
+                    };
+                    store.set(clientInfo.sessionId, sess, () => resolve());
+                });
+            });
+        } catch (error) {
+            console.error('gallery_position_hint error:', error);
         }
     }
 
@@ -8565,7 +8681,7 @@ class WebSocketMessageHandlers {
             type: 'image_generation_progress',
             requestId: requestId,
             data: {
-                phase: progressData.phase, // 'initializing|ai_streaming|ai_complete|generating|upscaling|previews|complete|stage_delay'
+                phase: progressData.phase, // 'starting|streaming|completion|generating|tool_execution|upscaling|previews|complete|stage_delay'
                 currentStep: progressData.currentStep || 0,
                 totalSteps: progressData.totalSteps || 0,
                 currentKey: progressData.currentKey || 0,
@@ -10248,6 +10364,61 @@ class WebSocketMessageHandlers {
         }
     }
 
+    // Preview expand-canvas prompt (same resolution of prompt/UC as expand_image, without generating)
+    async handlePreviewExpandImagePrompt(ws, message, clientInfo, wsServer) {
+        const requestId = message.requestId || 'unknown';
+
+        try {
+            const { requestId: _rid, ...data } = message;
+            console.log(`📝 Preview expand prompt: ${requestId}`);
+
+            const overrideParams = normalizeExpansionOverrideParams(data);
+
+            if (!data.filename) {
+                throw new Error('Filename is required');
+            }
+            if (!data.resolution) {
+                throw new Error('Resolution is required');
+            }
+            if (data.imageBias === undefined || data.imageBias === null) {
+                throw new Error('Image bias is required');
+            }
+
+            this.startKeepAliveInterval(ws, requestId, 15000);
+
+            const result = await previewExpandImagePrompt(
+                data.filename,
+                data.resolution,
+                data.imageBias,
+                overrideParams,
+                data.sourceFilename || null,
+                data.enableAI || false,
+                ws,
+                this,
+                requestId
+            );
+
+            this.stopKeepAliveInterval(ws, requestId);
+
+            this.sendToClient(ws, {
+                type: 'expand_image_prompt_preview_response',
+                requestId: requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('❌ Preview expand prompt error:', error);
+            this.stopKeepAliveInterval(ws, requestId);
+            this.sendToClient(ws, {
+                type: 'expand_image_prompt_preview_error',
+                requestId: requestId,
+                data: null,
+                error: error.message || 'Preview failed',
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
     // Handle image expansion requests
     async handleImageExpansion(ws, message, clientInfo, wsServer) {
         const requestId = message.requestId || 'unknown';
@@ -10256,6 +10427,9 @@ class WebSocketMessageHandlers {
             const { requestId: _, enableStreaming, ...data } = message;
             console.log(`🔍 Processing image expansion request: ${requestId}`);
             console.log('📋 Expansion data:', data);
+
+            const overrideParams = normalizeExpansionOverrideParams(data);
+            console.log('📌 Normalized expansion overrideParams:', overrideParams);
 
             // Validate required parameters
             if (!data.filename) {
@@ -10298,7 +10472,7 @@ class WebSocketMessageHandlers {
                 data.resolution,
                 data.imageBias,
                 data.upscaleAfterComplete || false,
-                data.overrideParams || {},
+                overrideParams,
                 clientInfo.sessionId,
                 data.workspace,
                 streamingCallback,
@@ -10359,6 +10533,9 @@ class WebSocketMessageHandlers {
                 throw new Error('Filename is required');
             }
 
+            const overrideParams = normalizeExpansionOverrideParams(data);
+            console.log('📌 Normalized expansion reroll overrideParams:', overrideParams);
+
             // Start keep-alive for long-running reroll
             this.startKeepAliveInterval(ws, requestId, 15000);
 
@@ -10373,7 +10550,7 @@ class WebSocketMessageHandlers {
             // Call the reroll function
             const result = await rerollExpandedImage(
                 data.filename,
-                data.overrideParams || {},
+                overrideParams,
                 clientInfo.sessionId,
                 data.workspace,
                 streamingCallback,
@@ -11609,20 +11786,21 @@ class WebSocketMessageHandlers {
 
     async handleCancelGeneration(ws, message, clientInfo, wsServer) {
         try {
-            // TODO: Implement actual generation cancellation
-            // For now, we'll return a placeholder response
-            console.log('🛑 Cancel generation requested');
-
-            // This would need to be implemented to actually cancel ongoing generations
-            // For now, we'll just return success
-            const success = true; // Placeholder - actual implementation needed
+            const ids = message.cancelledRequestIds || message.data?.cancelledRequestIds;
+            if (Array.isArray(ids)) {
+                for (const id of ids) {
+                    if (typeof id === 'string') {
+                        this.stopKeepAliveInterval(id);
+                    }
+                }
+            }
 
             this.sendToClient(ws, {
                 type: 'cancel_generation_response',
                 requestId: message.requestId,
                 data: {
-                    success: success,
-                    message: success ? 'Generation cancellation requested' : 'No active generation to cancel'
+                    success: true,
+                    message: 'Generation cancellation acknowledged'
                 },
                 timestamp: new Date().toISOString()
             });

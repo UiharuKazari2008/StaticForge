@@ -711,21 +711,22 @@ class GlobalResources {
             // Initialize system info cache
             this.initializeSystemInfoCache();
 
-            this.initialized = true;
-            this.initEndTime = Date.now();
-
-            const initTime = ((this.initEndTime - this.initStartTime) / 1000).toFixed(2);
-            console.log(`✓ Global Resources ready in ${initTime}s`);
-
-            // Now that initialization is complete, sync workspace files (migrates JSON to database)
+            // Sync workspace files (migrates JSON to database) before marking initialized so
+            // anything that checks `initialized` does not race with migration.
             if (this.workspace) {
                 try {
-                    this.workspace.syncWorkspaceFiles();
+                    await this.workspace.syncWorkspaceFiles();
                 } catch (error) {
                     console.error('  ⚠️ Failed to sync workspace files after initialization:', error.message);
                     // Don't throw - this is non-critical, can retry later
                 }
             }
+
+            this.initialized = true;
+            this.initEndTime = Date.now();
+
+            const initTime = ((this.initEndTime - this.initStartTime) / 1000).toFixed(2);
+            console.log(`✓ Global Resources ready in ${initTime}s`);
 
             return true;
         } catch (error) {

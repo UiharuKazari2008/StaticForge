@@ -18,6 +18,7 @@ class FileSearch {
         this.cacheInitialized = false;
         this.cacheViewType = null;
         this.autofillVisible = false;
+        this.isInitializingAutofill = false;
 
         // Keyboard navigation state
         this.selectedIndex = -1;
@@ -97,8 +98,7 @@ class FileSearch {
                     // Close search container to return to main menu mode
                     closeSearchContainer();
                 } else {
-                    this.hideAutofill();
-                    this.unfocusInput();
+                    this.hideAutofill(true);
                 }
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
@@ -259,8 +259,9 @@ class FileSearch {
         }
 
         try {
+            this.isInitializingAutofill = true;
             // Show autofill overlay and initialization banner so user can see status
-            this.showAutofill();
+            this.showAutofill(true);
             this.showInitializationBanner();
 
             await this.initializeSearchWithGalleryData(this.getCurrentViewType());
@@ -282,6 +283,8 @@ class FileSearch {
                 this.searchInput.disabled = false;
             }
             throw error; // Re-throw so caller knows initialization failed
+        } finally {
+            this.isInitializingAutofill = false;
         }
     }
 
@@ -390,7 +393,7 @@ class FileSearch {
                     this.showNoResultsBanner();
                 }
                 // Ensure autofill is visible (it should already be from initialization)
-                this.showAutofill();
+                this.showAutofill(this.isInitializingAutofill);
             } else {
                 this.showNoResultsBanner();
                 console.warn('⚠️ No top results:', result);
@@ -467,7 +470,7 @@ class FileSearch {
                 if (this.tagSuggestions.length === 0) {
                     this.showNoResultsBanner();
                 }
-                this.showAutofill();
+                this.showAutofill(this.isInitializingAutofill);
             } else {
                 this.showNoResultsBanner();
                 console.warn('⚠️ No tag suggestions in result:', result);
@@ -753,7 +756,13 @@ class FileSearch {
         }
     }
 
-    showAutofill() {
+    showAutofill(force = false) {
+        // Prevent stale async suggestion responses from reopening the popup
+        // after the user has dismissed it (blur/ESC/click away).
+        if (!force && document.activeElement !== this.searchInput) {
+            return;
+        }
+
         const opening = !this.autofillVisible;
         if (opening) {
             this.autofillOverlay.classList.remove('hidden');
@@ -791,7 +800,7 @@ class FileSearch {
         }
     }
 
-    hideAutofill() {
+    hideAutofill(blurInput = true) {
         if (!this.autofillVisible) return;
 
         this.autofillOverlay.classList.add('hidden');
@@ -805,6 +814,12 @@ class FileSearch {
         this.autofillVisible = false;
 
         this.selectedIndex = -1;
+
+        // Keep popup dismissal and input focus state in sync so focus-driven
+        // async updates cannot immediately reopen suggestions.
+        if (blurInput && document.activeElement === this.searchInput) {
+            this.unfocusInput();
+        }
 
         // Clean any banners when hiding
         this.hidePleaseWaitBanner();
@@ -1236,7 +1251,7 @@ class FileSearch {
                     if (this.tagSuggestions.length === 0) {
                         this.showNoResultsBanner();
                     }
-                    this.showAutofill();
+                    this.showAutofill(this.isInitializingAutofill);
                 } else {
                     this.showNoResultsBanner();
                 }

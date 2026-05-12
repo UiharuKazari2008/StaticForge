@@ -185,14 +185,16 @@ function filterToolsForFastMode(tools) {
  * @param {string} prompt - The main prompt
  * @param {string} uc - The negative prompt
  * @param {Array} characterPrompts - Character prompts array
+ * @param {string} [inputPromptNegative] - Raw inline prompt-negative (merged into prompt on server)
  * @returns {string} MD5 hash of the prompts
  */
-function generatePromptHash(prompt, uc, characterPrompts) {
+function generatePromptHash(prompt, uc, characterPrompts, inputPromptNegative = '') {
     return crypto.createHash('md5')
         .update(JSON.stringify({
             prompt: prompt,
             uc: uc,
-            characterPrompts: characterPrompts || []
+            characterPrompts: characterPrompts || [],
+            input_prompt_negative: inputPromptNegative || ''
         }))
         .digest('hex');
 }
@@ -3924,6 +3926,16 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
     
     // Define the append marker constant (must match imageGeneration.js)
     const APPEND_MARKER = '__ENSHUTSUKA_APPEND_POINT__';
+    const appendMarkerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
+    const stripAppendMarker = (text) => {
+        if (typeof text !== 'string') return text;
+        return text
+            .replace(appendMarkerRegex, ', ')
+            .replace(/,\s*,+/g, ', ')
+            .replace(/^,\s*|\s*,$/g, '')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    };
 
     // Get the appropriate replacements array
     let targetReplacements = [];
@@ -4916,6 +4928,9 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
 
     // Return success object instead of throwing error
     // This allows the caller to handle failures (e.g., retry with correction)
+    // Always strip internal append marker before returning result text.
+    result = stripAppendMarker(result);
+
     if (failedReplacements.length > 0) {
         console.error(`❌ Text replacement validation FAILED: Could not find ${failedReplacements.length} target text(s): ${failedReplacements.join(', ')}`);
         return {
@@ -9962,7 +9977,17 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Use pre-calculated hashes if provided, otherwise calculate them
         // Pre-calculated hashes ensure consistency with imageGeneration.js hash calculations
         const currentRequestHash = preCalculatedHashes?.requestHash ?? generateRequestHash(dynamicConfig, datasetConfig);
-        const currentPromptHash = preCalculatedHashes?.promptHash ?? generatePromptHash(prompt, uc, characterPrompts);
+        let promptNegForHash = '';
+        if (dynamicConfig) {
+            if (Object.prototype.hasOwnProperty.call(dynamicConfig, '_hash_input_prompt_negative')) {
+                promptNegForHash = dynamicConfig._hash_input_prompt_negative != null
+                    ? String(dynamicConfig._hash_input_prompt_negative)
+                    : '';
+            } else if (dynamicConfig._hash_prompt_negative != null) {
+                promptNegForHash = String(dynamicConfig._hash_prompt_negative);
+            }
+        }
+        const currentPromptHash = preCalculatedHashes?.promptHash ?? generatePromptHash(prompt, uc, characterPrompts, promptNegForHash);
         const currentDirectiveHash = preCalculatedHashes?.directiveHash ?? generateDirectiveHash(dynamicConfig.directive);
 
         // Check if we can reuse previous response ID (stateful conversation optimization)

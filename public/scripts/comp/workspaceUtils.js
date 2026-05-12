@@ -1504,6 +1504,27 @@ function showWorkspaceProgressModal(workspaceName) {
     }, 100);
 }
 
+// Shared label for gallery chunk loading (public/scripts/comp/galleryView.js loadCompleteGallery)
+function formatGalleryBlocksProgressLabel(progress) {
+    if (progress && (progress.phase === 'hash_probe' || progress.suppressBlocks === true)) {
+        return '';
+    }
+    if (progress && typeof progress.blocksLeft === 'number') {
+        const n = progress.blocksLeft;
+        return `${n} Block${n === 1 ? '' : 's'} Left`;
+    }
+    // Prefer a block-based estimate over item counts when blocksLeft is absent.
+    if (progress && typeof progress.total === 'number' && progress.total > 0) {
+        const chunkSize = Number(progress.chunkSize) > 0 ? Number(progress.chunkSize) : 750;
+        const loadedItems = Math.max(0, Number(progress.loaded) || 0);
+        const totalBlocks = Math.ceil(progress.total / chunkSize);
+        const completedBlocks = Math.min(totalBlocks, Math.ceil(loadedItems / chunkSize));
+        const blocksLeft = Math.max(0, totalBlocks - completedBlocks);
+        return `${blocksLeft} Block${blocksLeft === 1 ? '' : 's'} Left`;
+    }
+    return '---';
+}
+
 // Update workspace progress modal
 function updateWorkspaceProgress(progress) {
     if (!workspaceProgressModal) return;
@@ -1525,10 +1546,12 @@ function updateWorkspaceProgress(progress) {
 
         const statusSpan = workspaceProgressTextElement.querySelector('span:last-child');
         if (statusSpan) {
+            const detail = formatGalleryBlocksProgressLabel(progress);
+            const suffix = detail ? ` (${detail})` : '';
             if (progress.phase === 'initial') {
-                statusSpan.textContent = `Preparing Workspace (${progress.loaded}/${progress.total || 'unknown'})`;
+                statusSpan.textContent = `Preparing Workspace${suffix}`;
             } else {
-                statusSpan.textContent = `Opening Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+                statusSpan.textContent = `Opening Gallery${suffix}`;
             }
         }
     } else {
@@ -1553,10 +1576,12 @@ function updateWorkspaceProgress(progress) {
 
             const statusSpan = progressText.querySelector('span:last-child');
             if (statusSpan) {
+                const detail = formatGalleryBlocksProgressLabel(progress);
+                const suffix = detail ? ` (${detail})` : '';
                 if (progress.phase === 'initial') {
-                    statusSpan.textContent = `Loading Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+                    statusSpan.textContent = `Loading Gallery${suffix}`;
                 } else {
-                    statusSpan.textContent = `Please Wait (${progress.loaded}/${progress.total || 'unknown'})`;
+                    statusSpan.textContent = `Please Wait${suffix}`;
                 }
             }
         }

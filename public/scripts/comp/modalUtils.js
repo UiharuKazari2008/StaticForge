@@ -148,6 +148,11 @@ function setActiveWindow(modalId) {
             currentActiveWindowId = modal.id;
             mainActiveWindowId = modal.id; // Update main active window
 
+            // Linked tool windows (e.g. Jump Index) share focus with the parent so overlays stay pass-through and both stay scrollable.
+            getLinkedToolWindows(modal).forEach((tw) => {
+                tw.classList.add('active-window');
+            });
+
             // Update usage stack for main windows
             updateWindowUsageStack(modal);
         }
@@ -211,6 +216,7 @@ function initializeModalDragging() {
                     modal.classList.add('minimised');
                     modal.classList.remove('minimising');
                     debouncedUpdateTaskbarWindows();
+                    updateBackdropVisibility();
                 }
             };
             modal.addEventListener('animationend', minimisingAnimationHandler);
@@ -659,6 +665,7 @@ function openModal(modal) {
         const otherOpenNonTransientModals = Array.from(document.querySelectorAll('.modal')).filter(m =>
             m !== modal &&
             !m.classList.contains('hidden') &&
+            !m.classList.contains('minimised') &&
             (!m.classList.contains('transient') && !m.hasAttribute('data-modal-moved')) &&
             m !== draggedModal
         );
@@ -776,6 +783,7 @@ function closeMainModal(modal) {
         const otherOpenNonTransientModals = Array.from(document.querySelectorAll('.modal')).filter(m =>
             m !== modal &&
             !m.classList.contains('hidden') &&
+            !m.classList.contains('minimised') &&
             (!m.classList.contains('transient') && !m.hasAttribute('data-modal-moved')) &&
             m !== draggedModal
         );
@@ -1091,6 +1099,7 @@ function updateBackdropVisibility() {
     const resizedModal = document.querySelector('.modal[data-resizing="true"]');
     const visibleNonTransientModals = Array.from(document.querySelectorAll('.modal')).filter(m =>
         !m.classList.contains('hidden') &&
+        !m.classList.contains('minimised') &&
         (!m.classList.contains('transient') && !m.hasAttribute('data-modal-moved')) &&
         m !== draggedModal &&
         m !== resizedModal
@@ -1597,8 +1606,12 @@ const desktopIconsConfig = [
         icon: 'fa-duotone fa-book',
         label: 'Wiki',
         action: () => {
-            const modal = document.getElementById('tagWikiSearchModal');
-            if (modal) openModal(modal);
+            if (window.tagWikiSearchModal) {
+                window.tagWikiSearchModal.open();
+            } else {
+                const modal = document.getElementById('tagWikiSearchModal');
+                if (modal) openModal(modal);
+            }
         }
     },
     {
@@ -1720,7 +1733,7 @@ function updateTaskbarActiveStates() {
             const modal = openModals.find(m => m.id === modalId);
 
             if (modal) {
-                const isActive = isModalActive(modal);
+                const isActive = isModalActiveForTaskbar(modal);
                 const isMinimised = modal.classList.contains('minimised');
                 const title = getModalTitle(modal);
                 const { icon, imageIcon } = getModalIcons(modal);
@@ -1770,7 +1783,7 @@ function updateTaskbarActiveStates() {
 
             if (shouldGroup && modals.length > 0) {
                 // Recalculate active state for the group
-                const hasActive = modals.some(m => isModalActive(m) && !m.classList.contains('minimised'));
+                const hasActive = modals.some(m => isModalActiveForTaskbar(m) && !m.classList.contains('minimised'));
                 const allMinimised = modals.every(m => m.classList.contains('minimised'));
 
                 // Update classes - preserve entering/leaving
@@ -1825,7 +1838,7 @@ function updateTaskbarWindows() {
         if (shouldGroup) {
             // Should have a group item
             const modalIds = modals.map(m => m.id);
-            const hasActive = modals.some(m => isModalActive(m) && !m.classList.contains('minimised'));
+            const hasActive = modals.some(m => isModalActiveForTaskbar(m) && !m.classList.contains('minimised'));
             const allMinimised = modals.every(m => m.classList.contains('minimised'));
 
             itemsThatShouldExist.set(`group:${type}`, {
@@ -1839,7 +1852,7 @@ function updateTaskbarWindows() {
         } else {
             // Should have individual items
             modals.forEach(modal => {
-                const isActive = isModalActive(modal);
+                const isActive = isModalActiveForTaskbar(modal);
                 const isMinimised = modal.classList.contains('minimised');
 
                 itemsThatShouldExist.set(modal.id, {
@@ -2035,6 +2048,7 @@ function updateTaskbarWindows() {
                         if (modal.classList.contains('minimised')) {
                             setMinimizeTargetVariables(modal, newItem);
                             modal.classList.remove('minimised');
+                            updateBackdropVisibility();
                             modal.classList.add('unminimising');
                             const unminimisingHandler = (e) => {
                                 if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
@@ -2067,6 +2081,7 @@ function updateTaskbarWindows() {
                         if (modal.classList.contains('minimised')) {
                             setMinimizeTargetVariables(modal, existingItem);
                             modal.classList.remove('minimised');
+                            updateBackdropVisibility();
                             modal.classList.add('unminimising');
                             setTimeout(() => {
                                 modal.classList.remove('unminimising');
@@ -2115,6 +2130,7 @@ function updateTaskbarWindows() {
                     if (modal.classList.contains('minimised')) {
                         setMinimizeTargetVariables(modal, item);
                         modal.classList.remove('minimised');
+                        updateBackdropVisibility();
                         modal.classList.add('unminimising');
                         const unminimisingHandler = (e) => {
                             if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
@@ -2392,7 +2408,26 @@ function getModalType(modal) {
 function isModalActive(modal) {
     // Modal is active if currentActiveWindowId matches (supports no active window case)
     if (!currentActiveWindowId) return false;
-    return modal && modal.id === currentActiveWindowId;
+    if (!modal || !modal.id) return false;
+    if (modal.id === currentActiveWindowId) return true;
+    // Gallery shortcuts while a linked tool window (e.g. Jump Index) was focused last
+    if (modal.id === 'galleryWindow') {
+        const activeEl = document.getElementById(currentActiveWindowId);
+        if (activeEl && activeEl.classList.contains('tool-window')
+            && activeEl.getAttribute('data-parent-modal-id') === 'galleryWindow') {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Taskbar highlight only: parent-linked tool windows never get their own "active" taskbar button (parent shows active instead). */
+function isModalActiveForTaskbar(modal) {
+    if (!modal) return false;
+    if (isToolWindow(modal) && modal.getAttribute('data-parent-modal-id')) {
+        return false;
+    }
+    return isModalActive(modal);
 }
 
 function getNonRootTaskbarWindowEntries() {
@@ -2410,7 +2445,7 @@ function getNonRootTaskbarWindowEntries() {
             title,
             icon: nonImageIcon,
             isMinimised: modal.classList.contains('minimised'),
-            isActive: isModalActive(modal)
+            isActive: isModalActiveForTaskbar(modal)
         };
     });
 }
@@ -2429,6 +2464,7 @@ function activateTaskbarWindowEntry(modalId) {
             setMinimizeTargetVariables(modal, taskbarItem);
         }
         modal.classList.remove('minimised');
+        updateBackdropVisibility();
         modal.classList.add('unminimising');
         const unminimisingHandler = (e) => {
             if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
@@ -2545,7 +2581,7 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
     const menuItems = modals.map(modal => {
         const title = getModalTitle(modal);
         const icon = getModalIcon(modal);
-        const isActive = isModalActive(modal) && !modal.classList.contains('minimised');
+        const isActive = isModalActiveForTaskbar(modal) && !modal.classList.contains('minimised');
         const isMinimised = modal.classList.contains('minimised');
 
         const item = document.createElement('div');
@@ -2568,6 +2604,7 @@ function toggleTaskbarGroupMenu(groupItem, modals) {
                 setMinimizeTargetVariables(modal, groupItem);
 
                 modal.classList.remove('minimised');
+                updateBackdropVisibility();
                 modal.classList.add('unminimising');
                 const unminimisingHandler = (e) => {
                     if (e.target === modal && e.animationName === 'modalUnminimize' && modal.classList.contains('unminimising')) {
@@ -2796,7 +2833,7 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
     const currentlyActiveModal = modalStack.length > 0 ? modalStack[modalStack.length - 1] : null;
     const activeModalInGroup = currentlyActiveModal && modals.includes(currentlyActiveModal)
         ? currentlyActiveModal
-        : modals.find(m => isModalActive(m) && !m.classList.contains('minimised'));
+        : modals.find(m => isModalActiveForTaskbar(m) && !m.classList.contains('minimised'));
 
     // Build context menu - only include active modal's menu if it's in the group
     const menuItems = [];
@@ -3011,6 +3048,7 @@ document.addEventListener('contextMenuAction', (e) => {
                             modal.classList.add('minimised');
                             modal.classList.remove('minimising');
                             debouncedUpdateTaskbarWindows();
+                            updateBackdropVisibility();
                         }, 250);
                     }
                 });
@@ -3065,6 +3103,7 @@ document.addEventListener('contextMenuAction', (e) => {
                     modal.classList.add('minimised');
                     modal.classList.remove('minimising');
                     debouncedUpdateTaskbarWindows();
+                    updateBackdropVisibility();
                 }
             };
             modal.addEventListener('animationend', minimisingAnimationHandler);
@@ -3124,7 +3163,7 @@ const startMenuConfig = [
         launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notebook', action: () => { window.notepadManager.openNotebook(); },
         rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } }
     },
-    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Encyclopedia', action: () => { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } },
+    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Encyclopedia', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
     { separator: true },
     {

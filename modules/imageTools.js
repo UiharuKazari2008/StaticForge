@@ -205,7 +205,7 @@ async function processDynamicImage(imageBuffer, targetDims, bias = 2) {
 }
 
 // Letterbox mode: Scale image to fit inside target dimensions with transparent padding
-async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2) {
+async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2, options = {}) {
     if (!targetDims || !targetDims.width || !targetDims.height) {
         throw new Error('Target dimensions are required');
     }
@@ -217,17 +217,26 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2) {
     // Calculate scaled dimensions that fit inside target while maintaining aspect ratio
     const origAR = origDims.width / origDims.height;
     const targetAR = targetDims.width / targetDims.height;
+    const insetEnabled = options && (options.inset === true || options.inset === 'true' || options.inset === 1);
     
     let scaledWidth, scaledHeight;
     
-    if (origAR > targetAR) {
-        // Image is wider than target, scale to match target width
-        scaledWidth = targetDims.width;
-        scaledHeight = Math.round(targetDims.width / origAR);
+    // Inset mode keeps source scale when output is larger than source dimensions.
+    // This guarantees transparent padding on both axes for low-resolution inputs.
+    const targetIsLargerThanSource = targetDims.width > origDims.width && targetDims.height > origDims.height;
+    if (insetEnabled && targetIsLargerThanSource) {
+        scaledWidth = origDims.width;
+        scaledHeight = origDims.height;
     } else {
-        // Image is taller than target, scale to match target height
-        scaledHeight = targetDims.height;
-        scaledWidth = Math.round(targetDims.height * origAR);
+        if (origAR > targetAR) {
+            // Image is wider than target, scale to match target width
+            scaledWidth = targetDims.width;
+            scaledHeight = Math.round(targetDims.width / origAR);
+        } else {
+            // Image is taller than target, scale to match target height
+            scaledHeight = targetDims.height;
+            scaledWidth = Math.round(targetDims.height * origAR);
+        }
     }
     
     // Calculate positioning based on bias (0-4)
@@ -236,14 +245,26 @@ async function processDynamicImageLetterbox(imageBuffer, targetDims, bias = 2) {
     const biasFrac = biasFractions[bias] !== undefined ? biasFractions[bias] : 0.5;
     
     let left, top;
-    
-    if (origAR > targetAR) {
+    const padX = targetDims.width - scaledWidth;
+    const padY = targetDims.height - scaledHeight;
+
+    // Inset with slack on both axes: bias follows portrait/vertical vs landscape/horizontal (matches expansion modal)
+    if (insetEnabled && padX > 0 && padY > 0) {
+        const isPortraitSource = origDims.height > origDims.width;
+        if (isPortraitSource) {
+            left = Math.round(padX * 0.5);
+            top = Math.round(padY * biasFrac);
+        } else {
+            left = Math.round(padX * biasFrac);
+            top = Math.round(padY * 0.5);
+        }
+    } else if (origAR > targetAR) {
         // Wider image, position vertically based on bias
         left = 0;
-        top = Math.round((targetDims.height - scaledHeight) * biasFrac);
+        top = Math.round(padY * biasFrac);
     } else {
         // Taller image, position horizontally based on bias
-        left = Math.round((targetDims.width - scaledWidth) * biasFrac);
+        left = Math.round(padX * biasFrac);
         top = 0;
     }
     

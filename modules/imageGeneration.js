@@ -434,6 +434,42 @@ function applyBiasToText(input, bias) {
     }
 }
 
+/**
+ * Invert NAI-style numeric emphasis prefixes for inline prompt-negative (each `N::` -> opposite sign, 1 decimal).
+ */
+function invertNumericEmphasisPrefixes(input) {
+    if (!input || typeof input !== 'string') return input;
+    return input.replace(/(-?\d+\.?\d*)::/g, (match, num) => {
+        const v = parseFloat(num);
+        const neg = Math.round(-v * 10) / 10;
+        return `${neg.toFixed(1)}::`;
+    });
+}
+
+/**
+ * Merge processed inline negative fragment into positive prompt before first `Text:` (same boundary rules as quality preset).
+ */
+function mergePromptNegativeFragmentIntoPrompt(processedPrompt, addition) {
+    const block = (addition || '').trim();
+    if (!block) return processedPrompt;
+
+    if (processedPrompt.includes('Text:')) {
+        const textIndex = processedPrompt.indexOf('Text:');
+        const beforeText = processedPrompt.substring(0, textIndex).trim();
+        const afterText = processedPrompt.substring(textIndex);
+        if (beforeText) {
+            return beforeText + ', ' + block + ', ' + afterText;
+        }
+        return block + ', ' + afterText;
+    }
+    const groups = processedPrompt.split('|').map(group => group.trim());
+    if (groups.length > 0) {
+        groups[0] = groups[0] ? groups[0] + ', ' + block : block;
+        return groups.join(' | ');
+    }
+    return processedPrompt ? processedPrompt + ', ' + block : block;
+}
+
 // Dynamic Generation Processing - Uses pre-compiled AI prompts from client
 
 // Function to convert character reference to base64 JPG with max edge 1500px
@@ -1308,7 +1344,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
     const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
     const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
-    
+    const rawInputPromptNegative = (body.input_prompt_negative !== undefined && body.input_prompt_negative !== null)
+        ? body.input_prompt_negative
+        : (body.prompt_negative !== undefined && body.prompt_negative !== null ? body.prompt_negative : (preset?.input_prompt_negative ?? preset?.prompt_negative ?? ''));
+
     // Handle upscale override from query parameters
     let upscaleValue = (body.upscale !== undefined && body.upscale !== null) ? body.upscale : preset?.upscale;
     if (queryParams.upscale !== undefined) {
@@ -1362,6 +1401,14 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
         let processedPromptResult = globalResources.textReplacements.applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
         let processedNegativePromptResult = globalResources.textReplacements.applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+        let processedPromptNegativeFragmentResult = globalResources.textReplacements.applyTextReplacements(
+            rawInputPromptNegative || '',
+            presetName,
+            body.model,
+            periodKey,
+            lockedReplacements,
+            currentStageData
+        );
 
         // Initialize processed prompts and character prompts
         let processedPrompt = processedPromptResult.text;
@@ -1416,7 +1463,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         // Collect all text replacement seeds
         const allTextReplacementSeeds = [
             ...processedPromptResult.replacements.map(r => ({ ...r, source: 'prompt' })),
-            ...processedNegativePromptResult.replacements.map(r => ({ ...r, source: 'negative_prompt' }))
+            ...processedNegativePromptResult.replacements.map(r => ({ ...r, source: 'negative_prompt' })),
+            ...processedPromptNegativeFragmentResult.replacements.map(r => ({ ...r, source: 'input_prompt_negative' }))
         ];
 
         if (allTextReplacementSeeds.length > 0) {
@@ -1455,6 +1503,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         // Expand any shorthand tag sections to full keywords (always run for consistency)
         processedPrompt = expandShorthandTags(processedPrompt);
         processedNegativePrompt = expandShorthandTags(processedNegativePrompt);
+        let processedPromptNegativeFragment = expandShorthandTags(processedPromptNegativeFragmentResult.text);
 
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map(char => ({
@@ -1780,6 +1829,24 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 });
             }
         }
+
+        // Inline prompt-negative: invert emphases, wrap as -1::...:: (or preserve leading NUM::), merge into positive prompt before "Text:"
+        {
+            const invertedFrag = invertNumericEmphasisPrefixes(processedPromptNegativeFragment || '').trim();
+            if (invertedFrag) {
+                let block;
+                if (/^-?\d+(\.\d*)?::/.test(invertedFrag)) {
+                    block = invertedFrag;
+                } else {
+                    block = `-1::${invertedFrag}::`;
+                }
+                processedPrompt = mergePromptNegativeFragmentIntoPrompt(processedPrompt, block);
+                appliedPresetControls.prompt.push({
+                    action: 'input_prompt_negative',
+                    text: block
+                });
+            }
+        }
         
         // Handle append_uc with enhanced preset selection
         if (body.append_uc !== undefined && body.append_uc > 0 && currentPromptConfig.uc_presets) {
@@ -1948,7 +2015,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             const currentPromptHash = generatePromptHash(
                 rawPrompt,
                 rawNegativePrompt,
-                body.allCharacterPrompts || preset?.allCharacterPrompts || []
+                body.allCharacterPrompts || preset?.allCharacterPrompts || [],
+                rawInputPromptNegative || ''
             );
 
             // Generate consistent request hash using utility function (context only - no directive)
@@ -2027,7 +2095,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             // COMPILE CONTEXT ONCE - will be used for cache validation AND AI processing
             let dynaRequest = body.dynamic_generation;
             let contextForAI = null;
-            
+            if (dynaRequest && typeof dynaRequest === 'object') {
+                dynaRequest._hash_input_prompt_negative = rawInputPromptNegative || '';
+            }
+
             if (dynaRequest.context_locked && dynaRequest.compiled_prompt?.context) {
                 // Context is locked - reuse from compiled_prompt
                 console.log('🔒 Context locked: Reusing existing context from compiled prompt');
@@ -2287,7 +2358,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Send progress update indicating AI processing is complete (cached)
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, body.requestId || 'buildOptions', {
-                        phase: 'ai_complete',
+                        phase: 'completion',
                         hasDynamicGen: true
                     });
                 }
@@ -2427,10 +2498,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                 }
 
-                // Send progress update indicating AI processing is starting
+                // AI path confirmed (cache/reuse rejected): toast + Rentan overlay use image_generation_progress with same phases as Rentan WS updates
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, body.requestId || 'buildOptions', {
-                        phase: 'initializing',
+                        phase: 'starting',
                         hasDynamicGen: true
                     });
                 }
@@ -2442,14 +2513,23 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 
                 // Remove append marker from prompts before passing to AI
                 // AI shouldn't see the marker - it's only for internal processing
-                const markerRegex = new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g');
-                const promptForAI = processedPrompt.replace(markerRegex, '');
-                const ucForAI = processedNegativePrompt.replace(markerRegex, '');
+                const markerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
+                const stripAppendMarker = (text) => {
+                    if (typeof text !== 'string') return text;
+                    return text
+                        .replace(markerRegex, ', ')
+                        .replace(/,\s*,+/g, ', ')
+                        .replace(/^,\s*|\s*,$/g, '')
+                        .replace(/\s{2,}/g, ' ')
+                        .trim();
+                };
+                const promptForAI = stripAppendMarker(processedPrompt);
+                const ucForAI = stripAppendMarker(processedNegativePrompt);
                 const characterPromptsForAI = (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) 
                     ? processedCharacterPrompts.map(char => ({
                         ...char,
-                        prompt: char.prompt ? char.prompt.replace(markerRegex, '') : char.prompt,
-                        uc: char.uc ? char.uc.replace(markerRegex, '') : char.uc
+                        prompt: stripAppendMarker(char.prompt),
+                        uc: stripAppendMarker(char.uc)
                     }))
                     : [];
                 
@@ -2885,6 +2965,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
                 dynamic_generation.compiled_prompt.characterPrompts = processedCharacterPrompts;
             }
+            // Always persist UI/request lock toggles on compiled_prompt (including cache-hit path).
+            dynamic_generation.compiled_prompt.cache_locked = !!dynamic_generation.cache_locked;
+            dynamic_generation.compiled_prompt.context_locked = !!dynamic_generation.context_locked;
         }
 
         // Check if this is an img2img request
@@ -2893,6 +2976,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             negative_prompt: processedNegativePrompt,
             input_prompt: rawPrompt,
             input_uc: rawNegativePrompt,
+            input_prompt_negative: rawInputPromptNegative,
             model: globalResources.getNekoAiService('Model')[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
@@ -3080,11 +3164,16 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 throw new Error('Invalid target dimensions');
             }
             
-            if (targetDims.width && targetDims.height && body.stage_index === undefined) {
+            const skipBaseImageResize = body.stage_index !== undefined || body.image_preletterboxed === true;
+            if (targetDims.width && targetDims.height && !skipBaseImageResize) {
                 imageBuffer = await processDynamicImage(imageBuffer, targetDims, body.image_bias);
                 console.log(`📏 Resized base image to ${targetDims.width}x${targetDims.height} with bias ${body.image_bias}`);
-            } else if (body.stage_index !== undefined) {
-                console.log(`⏭️ Skipping image processing for pipeline stage ${body.stage_index} (image already letterboxed)`);
+            } else if (skipBaseImageResize) {
+                if (body.image_preletterboxed) {
+                    console.log(`⏭️ Skipping base image resize (pre-letterboxed expansion/inpaint canvas)`);
+                } else {
+                    console.log(`⏭️ Skipping image processing for pipeline stage ${body.stage_index} (image already letterboxed)`);
+                }
             }
 
             baseOptions.action = (body.mask || body.mask_compressed) ? globalResources.getNekoAiService('Action').INPAINT : globalResources.getNekoAiService('Action').IMG2IMG;
@@ -3299,23 +3388,38 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
         }
 
-        // Remove the append marker from all prompts at the very end (after all presets have been applied)
+        // Remove the append marker from all prompt-bearing fields at the very end.
         // APPEND_MARKER is already defined at the top of this function
-        const markerRegex = new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g');
-        
-        if (baseOptions.prompt) {
-            baseOptions.prompt = baseOptions.prompt.replace(markerRegex, '');
-        }
-        if (baseOptions.negative_prompt) {
-            baseOptions.negative_prompt = baseOptions.negative_prompt.replace(markerRegex, '');
-        }
-        if (baseOptions.allCharacterPrompts && Array.isArray(baseOptions.allCharacterPrompts)) {
-            baseOptions.allCharacterPrompts = baseOptions.allCharacterPrompts.map(char => ({
-                ...char,
-                prompt: char.prompt ? char.prompt.replace(markerRegex, '') : char.prompt,
-                uc: char.uc ? char.uc.replace(markerRegex, '') : char.uc
-            }));
-        }
+        const markerRegex = new RegExp(`\\s*,?\\s*${APPEND_MARKER}\\s*,?\\s*`, 'g');
+        const sanitizeMarkerFromText = (text) => typeof text === 'string' ? text.replace(markerRegex, '') : text;
+        const normalizePromptSeparators = (text) => {
+            if (typeof text !== 'string') return text;
+            return text
+                .replace(/,\s*,+/g, ', ')
+                .replace(/^,\s*|\s*,$/g, '')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+        };
+        const sanitizeAndNormalizeText = (text) => normalizePromptSeparators(sanitizeMarkerFromText(text));
+        const sanitizeMarkerFromCharacterPrompts = (characterPrompts) => {
+            if (!Array.isArray(characterPrompts)) return characterPrompts;
+            return characterPrompts.map(char => {
+                if (!char || typeof char !== 'object') return char;
+                return {
+                    ...char,
+                    prompt: sanitizeAndNormalizeText(char.prompt),
+                    uc: sanitizeAndNormalizeText(char.uc)
+                };
+            });
+        };
+
+        baseOptions.prompt = sanitizeAndNormalizeText(baseOptions.prompt);
+        baseOptions.negative_prompt = sanitizeAndNormalizeText(baseOptions.negative_prompt);
+        baseOptions.input_prompt = sanitizeAndNormalizeText(baseOptions.input_prompt);
+        baseOptions.input_uc = sanitizeAndNormalizeText(baseOptions.input_uc);
+        baseOptions.input_prompt_negative = sanitizeAndNormalizeText(baseOptions.input_prompt_negative);
+        baseOptions.allCharacterPrompts = sanitizeMarkerFromCharacterPrompts(baseOptions.allCharacterPrompts);
+        baseOptions.input_character_prompts = sanitizeMarkerFromCharacterPrompts(baseOptions.input_character_prompts);
 
         // Trace: store full buildOptions output (no sanitization per user request)
         try {
@@ -3368,6 +3472,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     delete apiOpts.append_uc;
     delete apiOpts.input_prompt;
     delete apiOpts.input_uc;
+    delete apiOpts.input_prompt_negative;
     delete apiOpts.input_character_prompts;
     delete apiOpts.vibe_transfer;
     delete apiOpts.normalize_vibes;
@@ -3606,6 +3711,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         if (opts.input_uc !== undefined) {
             forgeData.input_uc = opts.input_uc;
+        }
+        if (opts.input_prompt_negative !== undefined) {
+            forgeData.input_prompt_negative = opts.input_prompt_negative;
         }
         // Add new parameters to forge data
         if (opts.dataset_config !== undefined) {
@@ -4762,7 +4870,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                     const originalDims = await getImageDimensions(currentBuffer);
 
                     // Create letterboxed image with transparent padding
-                    const letterboxedBuffer = await processDynamicImageLetterbox(currentBuffer, targetDims, stage.bias);
+                    const letterboxedBuffer = await processDynamicImageLetterbox(currentBuffer, targetDims, stage.bias, { inset: stage.inset === true || stage.inset === 'true' || stage.inset === 1 });
                     console.log(`📦 Letterboxed image created for stage ${stageIndex}`);
                     
                     // Trace: attach letterboxed image
@@ -4779,12 +4887,21 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                     }
                     
                     // Create expansion mask from letterboxed image with edge detection
-                    const maskBuffer = await createExpansionMask(letterboxedBuffer, targetDims.width, targetDims.height, originalDims.width, originalDims.height);
+                    const stageInset = stage.inset === true || stage.inset === 'true' || stage.inset === 1;
+                    const maskBuffer = await createExpansionMask(
+                        letterboxedBuffer,
+                        targetDims.width,
+                        targetDims.height,
+                        originalDims.width,
+                        originalDims.height,
+                        stageInset
+                    );
                     const compressedMaskBase64 = await compressMask(maskBuffer);
 
                     // Set on request body for buildOptions to process
                     stageRequestBody.mask_compressed = compressedMaskBase64;
                     stageRequestBody.image = `data:${letterboxedBuffer.toString('base64')}`;
+                    stageRequestBody.image_preletterboxed = true;
                 }
 
                 // Set save flag
@@ -5116,6 +5233,11 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
     if (extractedMetadata.append_uc_id !== undefined) {
         requestBody.append_uc_id = extractedMetadata.append_uc_id;
     }
+    if (forgeData.input_prompt_negative !== undefined && forgeData.input_prompt_negative !== '') {
+        requestBody.input_prompt_negative = forgeData.input_prompt_negative;
+    } else if (extractedMetadata.input_prompt_negative !== undefined && extractedMetadata.input_prompt_negative !== '') {
+        requestBody.input_prompt_negative = extractedMetadata.input_prompt_negative;
+    }
 
     // Add vibe transfer data if available (from forge_data)
     if (forgeData.vibe_transfer && Array.isArray(forgeData.vibe_transfer) && forgeData.vibe_transfer.length > 0) {
@@ -5267,8 +5389,83 @@ async function handleRerollGeneration(metadata, sessionId, workspaceId = null, a
     }
 }
 
+/**
+ * Grow inpaint mask (white) slightly into preserved RGBA (black) for seam blending (overbleed).
+ * Inset letterboxing pads multiple sides; omnidirectional dilation + extra passes avoids thin masks at content edges.
+ */
+function dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, opts) {
+    const coerceExpansionBool = (v) =>
+        v === true || v === 'true' || v === 1 || v === '1';
+    const {
+        inset: insetRaw,
+        hasTransparentTop: hasTransparentTopRaw,
+        hasTransparentBottom: hasTransparentBottomRaw,
+        hasTransparentLeft: hasTransparentLeftRaw,
+        hasTransparentRight: hasTransparentRightRaw,
+        isExpandingHorizontally: isExpandingHorizontallyRaw,
+        isExpandingVertically: isExpandingVerticallyRaw
+    } = opts || {};
+
+    const inset = coerceExpansionBool(insetRaw);
+    const hasTransparentTop = coerceExpansionBool(hasTransparentTopRaw);
+    const hasTransparentBottom = coerceExpansionBool(hasTransparentBottomRaw);
+    const hasTransparentLeft = coerceExpansionBool(hasTransparentLeftRaw);
+    const hasTransparentRight = coerceExpansionBool(hasTransparentRightRaw);
+    const isExpandingHorizontally = coerceExpansionBool(isExpandingHorizontallyRaw);
+    const isExpandingVertically = coerceExpansionBool(isExpandingVerticallyRaw);
+
+    let expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128));
+    if (inset) {
+        expandPixels = Math.max(expandPixels + 3, Math.ceil(Math.max(compressedMaskWidth, compressedMaskHeight) / 72), 4);
+    }
+
+    const cw = compressedMaskWidth;
+    const ch = compressedMaskHeight;
+    const expandedMaskData = new Uint8ClampedArray(maskData);
+
+    function shouldExpandPixel(tempData, x, y) {
+        const i = (y * cw + x) * 4;
+        if (tempData[i] === 255) {
+            return false;
+        }
+        if (inset) {
+            if (x > 0 && tempData[(y * cw + (x - 1)) * 4] === 255) return true;
+            if (x < cw - 1 && tempData[(y * cw + (x + 1)) * 4] === 255) return true;
+            if (y > 0 && tempData[((y - 1) * cw + x) * 4] === 255) return true;
+            if (y < ch - 1 && tempData[((y + 1) * cw + x) * 4] === 255) return true;
+            return false;
+        }
+        let ok = false;
+        if (isExpandingHorizontally) {
+            if (hasTransparentLeft && x > 0 && tempData[(y * cw + (x - 1)) * 4] === 255) ok = true;
+            if (hasTransparentRight && x < cw - 1 && tempData[(y * cw + (x + 1)) * 4] === 255) ok = true;
+        }
+        if (isExpandingVertically) {
+            if (hasTransparentTop && y > 0 && tempData[((y - 1) * cw + x) * 4] === 255) ok = true;
+            if (hasTransparentBottom && y < ch - 1 && tempData[((y + 1) * cw + x) * 4] === 255) ok = true;
+        }
+        return ok;
+    }
+
+    for (let pass = 0; pass < expandPixels; pass++) {
+        const tempData = new Uint8ClampedArray(expandedMaskData);
+        for (let y = 0; y < ch; y++) {
+            for (let x = 0; x < cw; x++) {
+                if (!shouldExpandPixel(tempData, x, y)) continue;
+                const i = (y * cw + x) * 4;
+                expandedMaskData[i] = 255;
+                expandedMaskData[i + 1] = 255;
+                expandedMaskData[i + 2] = 255;
+                expandedMaskData[i + 3] = 255;
+            }
+        }
+    }
+
+    return expandedMaskData;
+}
+
 // Helper function to create expansion mask from letterboxed image
-async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight, originalWidth, originalHeight) {
+async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight, originalWidth, originalHeight, inset = false) {
     const letterboxedImg = await loadImage(letterboxedBuffer);
     
     // Calculate compressed dimensions (8x smaller)
@@ -5321,33 +5518,15 @@ async function createExpansionMask(letterboxedBuffer, targetWidth, targetHeight,
         }
     }
     
-    // Expand mask by 1-2 pixels ONLY in expansion direction
-    const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128));
-    const expandedMaskData = new Uint8ClampedArray(maskData);
-    
-    for (let pass = 0; pass < expandPixels; pass++) {
-        const tempData = new Uint8ClampedArray(expandedMaskData);
-        for (let y = 0; y < compressedMaskHeight; y++) {
-            for (let x = 0; x < compressedMaskWidth; x++) {
-                const i = (y * compressedMaskWidth + x) * 4;
-                if (tempData[i] === 255) continue;
-                
-                let shouldExpand = false;
-                if (isExpandingHorizontally) {
-                    if (hasTransparentLeft && x > 0 && tempData[(y * compressedMaskWidth + (x - 1)) * 4] === 255) shouldExpand = true;
-                    if (hasTransparentRight && x < compressedMaskWidth - 1 && tempData[(y * compressedMaskWidth + (x + 1)) * 4] === 255) shouldExpand = true;
-                }
-                if (isExpandingVertically) {
-                    if (hasTransparentTop && y > 0 && tempData[((y - 1) * compressedMaskWidth + x) * 4] === 255) shouldExpand = true;
-                    if (hasTransparentBottom && y < compressedMaskHeight - 1 && tempData[((y + 1) * compressedMaskWidth + x) * 4] === 255) shouldExpand = true;
-                }
-                
-                if (shouldExpand) {
-                    expandedMaskData[i] = expandedMaskData[i + 1] = expandedMaskData[i + 2] = expandedMaskData[i + 3] = 255;
-                }
-            }
-        }
-    }
+    const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
+        inset,
+        hasTransparentTop,
+        hasTransparentBottom,
+        hasTransparentLeft,
+        hasTransparentRight,
+        isExpandingHorizontally,
+        isExpandingVertically
+    });
     
     const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
     finalMaskImageData.data.set(expandedMaskData);
@@ -5381,7 +5560,7 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
         
         // Process image with letterbox mode to add transparent padding
-        const letterboxedBuffer = await processDynamicImageLetterbox(imageBuffer, targetDims, params.bias);
+        const letterboxedBuffer = await processDynamicImageLetterbox(imageBuffer, targetDims, params.bias, { inset: params.inset === true || params.inset === 'true' || params.inset === 1 });
         console.log(`📦 Letterboxed image created`);
         
         // Load letterboxed image for mask creation
@@ -5471,120 +5650,134 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
             }
         }
         
-        // Expand mask by 1-2 pixels ONLY in the direction of expansion
-        const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128)); // Scale for compressed size
-        const expandedMaskData = new Uint8ClampedArray(maskData);
-        
-        for (let pass = 0; pass < expandPixels; pass++) {
-            const tempData = new Uint8ClampedArray(expandedMaskData);
+        const insetExpandCanvas = params.inset === true || params.inset === 'true' || params.inset === 1;
+        let expandedMaskData;
+        if (insetExpandCanvas) {
+            expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
+                inset: true,
+                hasTransparentTop,
+                hasTransparentBottom,
+                hasTransparentLeft,
+                hasTransparentRight,
+                isExpandingHorizontally,
+                isExpandingVertically
+            });
+        } else {
+            // Expand mask by 1-2 pixels ONLY in the direction of expansion
+            const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128)); // Scale for compressed size
+            expandedMaskData = new Uint8ClampedArray(maskData);
             
-            for (let y = 0; y < compressedMaskHeight; y++) {
-                for (let x = 0; x < compressedMaskWidth; x++) {
-                    const i = (y * compressedMaskWidth + x) * 4;
-                    
-                    // Skip if already white
-                    if (tempData[i] === 255) continue;
-                    
-                    // Only expand in the direction of expansion
-                    let shouldExpand = false;
-                    
-                    if (isExpandingHorizontally) {
-                        // Only expand left-right
-                        if (hasTransparentLeft && x > 0) {
-                            const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
-                            if (tempData[leftI] === 255) shouldExpand = true;
-                        }
+            for (let pass = 0; pass < expandPixels; pass++) {
+                const tempData = new Uint8ClampedArray(expandedMaskData);
+                
+                for (let y = 0; y < compressedMaskHeight; y++) {
+                    for (let x = 0; x < compressedMaskWidth; x++) {
+                        const i = (y * compressedMaskWidth + x) * 4;
                         
-                        // Ensure sufficient overlap between expanded mask and original content by adaptively adding rows
-                        // Definition: overlapCount = count of pixels that turned from black (original mask) to white (expanded)
-                        // Target: at least ~1.5% of total pixels (configurable via params.min_mask_overlap_pct in [0.01, 0.03])
-                        (function ensureMinimumMaskOverlap() {
-                            const totalPixels = compressedMaskWidth * compressedMaskHeight;
-                            const minPct = Math.max(0.01, Math.min(0.03, Number(params?.min_mask_overlap_pct) || 0.015));
-                            const minOverlap = Math.max(1, Math.floor(totalPixels * minPct));
-                            
-                            function computeOverlapCount() {
-                                let count = 0;
-                                for (let i = 0; i < expandedMaskData.length; i += 4) {
-                                    // original black (maskData[i] === 0) turned white (expandedMaskData[i] === 255)
-                                    if (maskData[i] === 0 && expandedMaskData[i] === 255) count++;
-                                }
-                                return count;
+                        // Skip if already white
+                        if (tempData[i] === 255) continue;
+                        
+                        // Only expand in the direction of expansion
+                        let shouldExpand = false;
+                        
+                        if (isExpandingHorizontally) {
+                            // Only expand left-right
+                            if (hasTransparentLeft && x > 0) {
+                                const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
+                                if (tempData[leftI] === 255) shouldExpand = true;
                             }
                             
-                            function expandOneRowDirectionally() {
-                                const tempData = new Uint8ClampedArray(expandedMaskData);
-                                for (let y = 0; y < compressedMaskHeight; y++) {
-                                    for (let x = 0; x < compressedMaskWidth; x++) {
-                                        const i = (y * compressedMaskWidth + x) * 4;
-                                        if (tempData[i] === 255) continue; // already white
-                                        let shouldExpand = false;
-                                        if (isExpandingHorizontally) {
-                                            if (hasTransparentLeft && x > 0) {
-                                                const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
-                                                if (tempData[leftI] === 255) shouldExpand = true;
+                            // Ensure sufficient overlap between expanded mask and original content by adaptively adding rows
+                            // Definition: overlapCount = count of pixels that turned from black (original mask) to white (expanded)
+                            // Target: at least ~1.5% of total pixels (configurable via params.min_mask_overlap_pct in [0.01, 0.03])
+                            (function ensureMinimumMaskOverlap() {
+                                const totalPixels = compressedMaskWidth * compressedMaskHeight;
+                                const minPct = Math.max(0.01, Math.min(0.03, Number(params?.min_mask_overlap_pct) || 0.015));
+                                const minOverlap = Math.max(1, Math.floor(totalPixels * minPct));
+                                
+                                function computeOverlapCount() {
+                                    let count = 0;
+                                    for (let i = 0; i < expandedMaskData.length; i += 4) {
+                                        // original black (maskData[i] === 0) turned white (expandedMaskData[i] === 255)
+                                        if (maskData[i] === 0 && expandedMaskData[i] === 255) count++;
+                                    }
+                                    return count;
+                                }
+                                
+                                function expandOneRowDirectionally() {
+                                    const tempData = new Uint8ClampedArray(expandedMaskData);
+                                    for (let y = 0; y < compressedMaskHeight; y++) {
+                                        for (let x = 0; x < compressedMaskWidth; x++) {
+                                            const i = (y * compressedMaskWidth + x) * 4;
+                                            if (tempData[i] === 255) continue; // already white
+                                            let shouldExpand = false;
+                                            if (isExpandingHorizontally) {
+                                                if (hasTransparentLeft && x > 0) {
+                                                    const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
+                                                    if (tempData[leftI] === 255) shouldExpand = true;
+                                                }
+                                                if (hasTransparentRight && x < compressedMaskWidth - 1) {
+                                                    const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
+                                                    if (tempData[rightI] === 255) shouldExpand = true;
+                                                }
                                             }
-                                            if (hasTransparentRight && x < compressedMaskWidth - 1) {
-                                                const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
-                                                if (tempData[rightI] === 255) shouldExpand = true;
+                                            if (isExpandingVertically) {
+                                                if (hasTransparentTop && y > 0) {
+                                                    const topI = ((y - 1) * compressedMaskWidth + x) * 4;
+                                                    if (tempData[topI] === 255) shouldExpand = true;
+                                                }
+                                                if (hasTransparentBottom && y < compressedMaskHeight - 1) {
+                                                    const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
+                                                    if (tempData[bottomI] === 255) shouldExpand = true;
+                                                }
                                             }
-                                        }
-                                        if (isExpandingVertically) {
-                                            if (hasTransparentTop && y > 0) {
-                                                const topI = ((y - 1) * compressedMaskWidth + x) * 4;
-                                                if (tempData[topI] === 255) shouldExpand = true;
+                                            if (shouldExpand) {
+                                                expandedMaskData[i] = 255;
+                                                expandedMaskData[i + 1] = 255;
+                                                expandedMaskData[i + 2] = 255;
+                                                expandedMaskData[i + 3] = 255;
                                             }
-                                            if (hasTransparentBottom && y < compressedMaskHeight - 1) {
-                                                const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
-                                                if (tempData[bottomI] === 255) shouldExpand = true;
-                                            }
-                                        }
-                                        if (shouldExpand) {
-                                            expandedMaskData[i] = 255;
-                                            expandedMaskData[i + 1] = 255;
-                                            expandedMaskData[i + 2] = 255;
-                                            expandedMaskData[i + 3] = 255;
                                         }
                                     }
                                 }
-                            }
+                                
+                                let overlapCount = computeOverlapCount();
+                                let safetyPasses = 0;
+                                const maxExtraPasses = 16; // safety cap
+                                while (overlapCount < minOverlap && safetyPasses < maxExtraPasses) {
+                                    expandOneRowDirectionally();
+                                    overlapCount = computeOverlapCount();
+                                    safetyPasses++;
+                                }
+                                if (overlapCount < minOverlap) {
+                                    console.warn(`⚠️ Mask overlap below target after max passes: ${overlapCount}/${minOverlap}`);
+                                }
+                            })();
                             
-                            let overlapCount = computeOverlapCount();
-                            let safetyPasses = 0;
-                            const maxExtraPasses = 16; // safety cap
-                            while (overlapCount < minOverlap && safetyPasses < maxExtraPasses) {
-                                expandOneRowDirectionally();
-                                overlapCount = computeOverlapCount();
-                                safetyPasses++;
+                            if (hasTransparentRight && x < compressedMaskWidth - 1) {
+                                const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
+                                if (tempData[rightI] === 255) shouldExpand = true;
                             }
-                            if (overlapCount < minOverlap) {
-                                console.warn(`⚠️ Mask overlap below target after max passes: ${overlapCount}/${minOverlap}`);
-                            }
-                        })();
+                        }
                         
-                        if (hasTransparentRight && x < compressedMaskWidth - 1) {
-                            const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
-                            if (tempData[rightI] === 255) shouldExpand = true;
+                        if (isExpandingVertically) {
+                            // Only expand top-bottom
+                            if (hasTransparentTop && y > 0) {
+                                const topI = ((y - 1) * compressedMaskWidth + x) * 4;
+                                if (tempData[topI] === 255) shouldExpand = true;
+                            }
+                            if (hasTransparentBottom && y < compressedMaskHeight - 1) {
+                                const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
+                                if (tempData[bottomI] === 255) shouldExpand = true;
+                            }
                         }
-                    }
-                    
-                    if (isExpandingVertically) {
-                        // Only expand top-bottom
-                        if (hasTransparentTop && y > 0) {
-                            const topI = ((y - 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[topI] === 255) shouldExpand = true;
+                        
+                        if (shouldExpand) {
+                            expandedMaskData[i] = 255;
+                            expandedMaskData[i + 1] = 255;
+                            expandedMaskData[i + 2] = 255;
+                            expandedMaskData[i + 3] = 255;
                         }
-                        if (hasTransparentBottom && y < compressedMaskHeight - 1) {
-                            const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[bottomI] === 255) shouldExpand = true;
-                        }
-                    }
-                    
-                    if (shouldExpand) {
-                        expandedMaskData[i] = 255;
-                        expandedMaskData[i + 1] = 255;
-                        expandedMaskData[i + 2] = 255;
-                        expandedMaskData[i + 3] = 255;
                     }
                 }
             }
@@ -5662,7 +5855,8 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
             mask_compressed: compressedMaskBase64,
             upscale: params.upscale || false,
             append_quality: 0,
-            append_uc: 0
+            append_uc: 0,
+            image_preletterboxed: true
             // Note: no_save will be set by the calling function based on stage requirements
         };
         
@@ -5695,6 +5889,7 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
         
         // Create metadata for the expansion
         const expansionMetadata = {
+            expansion_inset: params.inset === true,
             expansion_direction: direction,
             expansion_percentages: {
                 left: leftPercent,
@@ -5816,10 +6011,280 @@ async function processEnhanceStage(imageBuffer, params, streamingCallback = null
     }
 }
 
+/**
+ * Resolve the inpaint prompt (and metadata side-effects) for expand-canvas: optional Grok enhancement, or source prompt only.
+ * Used by expandImage and previewExpandImagePrompt.
+ */
+async function resolveExpandImageExpansionPrompt({
+    originalImageBuffer,
+    originalDims,
+    targetDims,
+    imageBias,
+    originalPrompt,
+    enableAI,
+    overrideParams,
+    ws,
+    handler,
+    requestId
+}) {
+    const origAR = originalDims.width / originalDims.height;
+    const targetAR = targetDims.width / targetDims.height;
+    const isExpandingHorizontally = origAR < targetAR;
+    const isExpandingVertically = origAR > targetAR;
+
+    const biasFractions = [0, 0.25, 0.5, 0.75, 1];
+    const biasFrac = biasFractions[imageBias] !== undefined ? biasFractions[imageBias] : 0.5;
+
+    let direction;
+    let leftPercent = 0;
+    let rightPercent = 0;
+    let topPercent = 0;
+    let bottomPercent = 0;
+
+    if (isExpandingVertically) {
+        direction = 'taller';
+        const addedHeight = targetDims.height - targetDims.width / origAR;
+        const topAdd = addedHeight * biasFrac;
+        const bottomAdd = addedHeight * (1 - biasFrac);
+        topPercent = Math.round((topAdd / targetDims.height) * 100);
+        bottomPercent = Math.round((bottomAdd / targetDims.height) * 100);
+    } else if (isExpandingHorizontally) {
+        direction = 'wider';
+        const addedWidth = targetDims.width - targetDims.height * origAR;
+        const leftAdd = addedWidth * biasFrac;
+        const rightAdd = addedWidth * (1 - biasFrac);
+        leftPercent = Math.round((leftAdd / targetDims.width) * 100);
+        rightPercent = Math.round((rightAdd / targetDims.width) * 100);
+    } else {
+        throw new Error('Cannot expand: original and target have the same aspect ratio');
+    }
+
+    let expansionPrompt;
+    let expansionReason;
+    let expansionReasonDisplay;
+
+    const imageBufferUsable = Buffer.isBuffer(originalImageBuffer) && originalImageBuffer.length > 0;
+    let runExpansionAi = enableAI;
+    if (enableAI && !imageBufferUsable) {
+        console.warn('⚠️ resolveExpandImageExpansionPrompt: missing or empty originalImageBuffer; skipping Grok expansion.');
+        runExpansionAi = false;
+    }
+
+    if (runExpansionAi) {
+        let expansionDescription = `given this image we are adding content to make it ${direction}`;
+        if (direction === 'wider') {
+            if (leftPercent > 0 && rightPercent > 0) {
+                expansionDescription += ` by adding ${leftPercent}% on the left and ${rightPercent}% on the right`;
+            } else if (leftPercent > 0) {
+                expansionDescription += ` by adding ${leftPercent}% on the left`;
+            } else {
+                expansionDescription += ` by adding ${rightPercent}% on the right`;
+            }
+        } else {
+            if (topPercent > 0 && bottomPercent > 0) {
+                expansionDescription += ` by adding ${topPercent}% on the top and ${bottomPercent}% on the bottom`;
+            } else if (topPercent > 0) {
+                expansionDescription += ` by adding ${topPercent}% on the top`;
+            } else {
+                expansionDescription += ` by adding ${bottomPercent}% on the bottom`;
+            }
+        }
+
+        let aiInstruction = expansionDescription;
+
+        if (originalPrompt) {
+            aiInstruction += `\n\nThe original image was generated with this NovelAI prompt:\n---\n${originalPrompt}\n---`;
+        }
+
+        aiInstruction += `\n\nNovelAI Emphasis Syntax Rules:
+- {tag} = light emphasis, {{tag}} = stronger emphasis, {{{tag}}} = even stronger
+- [tag] = light de-emphasis, [[tag]] = stronger de-emphasis, [[[tag]]] = even stronger
+- 1.5::content:: = weighted emphasis groups (positive or negative values) (preserve the weight::content:: structure exactly)
+
+CRITICAL: Preserve all artist/style references and environment tags from the original prompt verbatim. Include them unchanged in your output to maintain artistic consistency.`;
+
+        const requestedContent = overrideParams?.requestedContent;
+        if (requestedContent && requestedContent.trim()) {
+            aiInstruction += `\n\nUser has requested to incorporate the following into the expanded area:\n---\n${requestedContent.trim()}\n---`;
+        }
+
+        aiInstruction += `\n\nAdd descriptive text to help clarify and enhance the environment in the expanded area. Focus on adding missing visual details that would naturally extend the existing scene. Do not describe scale, give directional instructions, or duplicate information already present in the original prompt. Only add text if it provides meaningful environmental details that aren't already clear from the original prompt. Your response should be only the additional descriptive text to append to the original prompt.`;
+
+        if (ws && handler) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'starting',
+                hasDynamicGen: true
+            });
+        }
+
+        console.log(`🤖 Calling Grok for expansion prompt with enhanced context`);
+
+        const ExpansionPromptSchema = z.object({
+            additional_text: z.string().describe('Additional descriptive text to append to the original prompt'),
+            reason: z.string().describe('Brief reasoning for the additional text'),
+            reason_display: z.string().describe('Very short explanation for display in UI (2-5 words)')
+        });
+
+        const messages = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${originalImageBuffer.toString('base64')}`,
+                            detail: 'high'
+                        }
+                    },
+                    {
+                        type: 'text',
+                        text: aiInstruction
+                    }
+                ]
+            }
+        ];
+
+        console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
+        const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
+        const grokResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(messages, {
+            model: globalResources.getGrokService().getDefaultGrokModel(),
+            timeout: 120000,
+            store: false,
+            responseSchema: ExpansionPromptSchema,
+            ws: ws,
+            handler: handler,
+            requestId: requestId,
+            _attemptId: expansionAttemptId
+        });
+        console.log(`✅ Grok expansion AI call completed`);
+
+        const additionalText = grokResponse.content?.additional_text || grokResponse.additional_text;
+        expansionReason = grokResponse.content?.reason || grokResponse.reason;
+        expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
+
+        if (originalPrompt) {
+            if (originalPrompt.includes(', Text:')) {
+                const textIndex = originalPrompt.indexOf(', Text:');
+                const beforeText = originalPrompt.substring(0, textIndex).trim();
+                expansionPrompt = beforeText + ', ' + additionalText + originalPrompt.substring(textIndex);
+            } else {
+                expansionPrompt = originalPrompt + ', ' + additionalText;
+            }
+        } else {
+            expansionPrompt = additionalText;
+        }
+
+        console.log(`✨ Grok additional text: ${additionalText}`);
+        console.log(`🔗 Combined expansion prompt: ${expansionPrompt}`);
+        console.log(`💭 Grok reasoning: ${expansionReason}`);
+
+        if (ws && handler && requestId) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'completion',
+                hasDynamicGen: true,
+                reasoning: expansionReasonDisplay
+            });
+            console.log(`✅ Sent completion progress message`);
+        } else {
+            console.warn(`⚠️ Cannot send completion progress: ws=${!!ws}, handler=${!!handler}, requestId=${requestId}`);
+        }
+    } else {
+        if (!enableAI) {
+            console.log('🚫 AI processing disabled, using original prompt');
+            expansionReason = 'AI processing disabled';
+            expansionReasonDisplay = 'No AI';
+        } else {
+            console.log('🚫 Skipping Grok expansion (no usable image buffer), using original prompt');
+            expansionReason = 'Expansion AI skipped: invalid image buffer';
+            expansionReasonDisplay = 'No image for AI';
+        }
+        expansionPrompt = originalPrompt;
+
+        if (ws && handler && requestId) {
+            handler.sendGenerationProgress(ws, requestId, {
+                phase: 'completion',
+                hasDynamicGen: false
+            });
+            console.log(`✅ Sent completion progress (AI disabled)`);
+        }
+    }
+
+    return { expansionPrompt, expansionReason, expansionReasonDisplay };
+}
+
+/** Preview-only: same prompt/UC as expand would use (runs Grok when enableAI). */
+async function previewExpandImagePrompt(
+    filename,
+    resolution,
+    imageBias,
+    overrideParams = {},
+    sourceFilename = null,
+    enableAI = false,
+    ws = null,
+    handler = null,
+    requestId = null
+) {
+    const filePath = path.join(globalResources.getPath('images'), filename);
+    if (!fs.existsSync(filePath)) {
+        throw new Error('Image not found');
+    }
+    const sourceFilePath = sourceFilename ? path.join(globalResources.getPath('images'), sourceFilename) : null;
+    if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
+        throw new Error('Source image not found');
+    }
+
+    const originalImageBuffer = fs.readFileSync(filePath);
+    const sourceImageBuffer = sourceFilePath ? fs.readFileSync(sourceFilePath) : originalImageBuffer;
+    const originalDims = await getImageDimensions(originalImageBuffer);
+
+    let originalPrompt = '';
+    let originalUc = '';
+    let originalCharacters = [];
+    try {
+        const metadata = globalResources.getPngMetadata().readMetadata(sourceImageBuffer);
+        if (metadata?.tEXt?.Comment) {
+            const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
+            originalPrompt = parsedMetadata.prompt || '';
+            originalUc = parsedMetadata.uc || '';
+            originalCharacters = parsedMetadata.characterPrompts || parsedMetadata.forge_data?.allCharacters || [];
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not extract original metadata:', error.message);
+    }
+
+    const targetDims = getDimensionsFromResolution(resolution?.toLowerCase() || '');
+    if (!targetDims || !targetDims.width || !targetDims.height) {
+        throw new Error(`Invalid target resolution: ${resolution}`);
+    }
+
+    const { expansionPrompt, expansionReason, expansionReasonDisplay } = await resolveExpandImageExpansionPrompt({
+        originalImageBuffer,
+        originalDims,
+        targetDims,
+        imageBias,
+        originalPrompt,
+        enableAI,
+        overrideParams,
+        ws,
+        handler,
+        requestId
+    });
+
+    return {
+        prompt: expansionPrompt,
+        uc: originalUc,
+        characterPrompts: originalCharacters,
+        expansionReason,
+        expansionReasonDisplay
+    };
+}
+
 // Image expansion function - expands image to new resolution using AI-powered inpainting
 async function expandImage(filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false) {
     try {
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
+        const inset = overrideParams?.inset === true || overrideParams?.inset === 'true' || overrideParams?.inset === 1;
+        console.log(`📌 Expansion inset (native-scale letterbox padding): ${inset}`);
         
         // Load original image
         const filePath = path.join(globalResources.getPath('images'), filename);
@@ -5861,7 +6326,7 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
         
         // Process image with letterbox mode to add transparent padding
-        const letterboxedBuffer = await processDynamicImageLetterbox(originalImageBuffer, targetDims, imageBias);
+        const letterboxedBuffer = await processDynamicImageLetterbox(originalImageBuffer, targetDims, imageBias, { inset });
         console.log(`📦 Letterboxed image created`);
         
         // Load letterboxed image for mask creation
@@ -5951,56 +6416,15 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
             }
         }
         
-        // Expand mask by 1-2 pixels ONLY in the direction of expansion
-        const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128)); // Scale for compressed size
-        const expandedMaskData = new Uint8ClampedArray(maskData);
-        
-        for (let pass = 0; pass < expandPixels; pass++) {
-            const tempData = new Uint8ClampedArray(expandedMaskData);
-            
-            for (let y = 0; y < compressedMaskHeight; y++) {
-                for (let x = 0; x < compressedMaskWidth; x++) {
-                    const i = (y * compressedMaskWidth + x) * 4;
-                    
-                    // Skip if already white
-                    if (tempData[i] === 255) continue;
-                    
-                    // Only expand in the direction of expansion
-                    let shouldExpand = false;
-                    
-                    if (isExpandingHorizontally) {
-                        // Only expand left-right
-                        if (hasTransparentLeft && x > 0) {
-                            const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
-                            if (tempData[leftI] === 255) shouldExpand = true;
-                        }
-                        if (hasTransparentRight && x < compressedMaskWidth - 1) {
-                            const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
-                            if (tempData[rightI] === 255) shouldExpand = true;
-                        }
-                    }
-                    
-                    if (isExpandingVertically) {
-                        // Only expand top-bottom
-                        if (hasTransparentTop && y > 0) {
-                            const topI = ((y - 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[topI] === 255) shouldExpand = true;
-                        }
-                        if (hasTransparentBottom && y < compressedMaskHeight - 1) {
-                            const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[bottomI] === 255) shouldExpand = true;
-                        }
-                    }
-                    
-                    if (shouldExpand) {
-                        expandedMaskData[i] = 255;
-                        expandedMaskData[i + 1] = 255;
-                        expandedMaskData[i + 2] = 255;
-                        expandedMaskData[i + 3] = 255;
-                    }
-                }
-            }
-        }
+        const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
+            inset,
+            hasTransparentTop,
+            hasTransparentBottom,
+            hasTransparentLeft,
+            hasTransparentRight,
+            isExpandingHorizontally,
+            isExpandingVertically
+        });
         
         // Create ImageData using canvas context (Node.js compatible)
         const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
@@ -6036,157 +6460,36 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
             // No expansion needed (same aspect ratio)
             throw new Error('Cannot expand: original and target have the same aspect ratio');
         }
-        
-        // Conditionally process with AI or use original prompt
-        let expansionPrompt, expansionReason, expansionReasonDisplay;
-        
-        if (enableAI) {
-            // AI ENABLED - Build Grok prompt
-            let expansionDescription = `given this image we are adding content to make it ${direction}`;
-            if (direction === 'wider') {
-                if (leftPercent > 0 && rightPercent > 0) {
-                    expansionDescription += ` by adding ${leftPercent}% on the left and ${rightPercent}% on the right`;
-                } else if (leftPercent > 0) {
-                    expansionDescription += ` by adding ${leftPercent}% on the left`;
-                } else {
-                    expansionDescription += ` by adding ${rightPercent}% on the right`;
-                }
-            } else {
-                if (topPercent > 0 && bottomPercent > 0) {
-                    expansionDescription += ` by adding ${topPercent}% on the top and ${bottomPercent}% on the bottom`;
-                } else if (topPercent > 0) {
-                    expansionDescription += ` by adding ${topPercent}% on the top`;
-                } else {
-                    expansionDescription += ` by adding ${bottomPercent}% on the bottom`;
-                }
-            }
-            
-            // Build enhanced AI instruction with context
-            let aiInstruction = expansionDescription;
-            
-            // Add original prompt context if available
-            if (originalPrompt) {
-                aiInstruction += `\n\nThe original image was generated with this NovelAI prompt:\n---\n${originalPrompt}\n---`;
-            }
-            
-            // Add emphasis syntax rules
-            aiInstruction += `\n\nNovelAI Emphasis Syntax Rules:
-- {tag} = light emphasis, {{tag}} = stronger emphasis, {{{tag}}} = even stronger
-- [tag] = light de-emphasis, [[tag]] = stronger de-emphasis, [[[tag]]] = even stronger
-- 1.5::content:: = weighted emphasis groups (positive or negative values) (preserve the weight::content:: structure exactly)
 
-CRITICAL: Preserve all artist/style references and environment tags from the original prompt verbatim. Include them unchanged in your output to maintain artistic consistency.`;
+        let expansionPrompt;
+        let expansionReason;
+        let expansionReasonDisplay;
 
-            // Add requested content if provided
-            const requestedContent = overrideParams.requestedContent;
-            if (requestedContent && requestedContent.trim()) {
-                aiInstruction += `\n\nUser has requested to incorporate the following into the expanded area:\n---\n${requestedContent.trim()}\n---`;
-            }
-            
-            aiInstruction += `\n\nAdd descriptive text to help clarify and enhance the environment in the expanded area. Focus on adding missing visual details that would naturally extend the existing scene. Do not describe scale, give directional instructions, or duplicate information already present in the original prompt. Only add text if it provides meaningful environmental details that aren't already clear from the original prompt. Your response should be only the additional descriptive text to append to the original prompt.`;
-            
-            // Send progress update indicating expansion AI processing is starting
-            if (ws && handler) {
-                handler.sendGenerationProgress(ws, requestId, {
-                    phase: 'initializing',
-                    hasDynamicGen: true
-                });
-            }
-
-            console.log(`🤖 Calling Grok for expansion prompt with enhanced context`);
-
-            // Define Zod schema for Grok response
-            const ExpansionPromptSchema = z.object({
-                additional_text: z.string().describe('Additional descriptive text to append to the original prompt'),
-                reason: z.string().describe('Brief reasoning for the additional text'),
-                reason_display: z.string().describe("Very short explanation for display in UI (2-5 words)"),
-            });
-            
-            // Call Grok with structured output
-            const messages = [
-                {
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image_url',
-                            image_url: {
-                                url: `data:image/png;base64,${originalImageBuffer.toString('base64')}`,
-                                detail: "high"
-                            }
-                        },
-                        {
-                            type: 'text',
-                            text: aiInstruction
-                        }
-                    ]
-                }
-            ];
-            
-            console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
-            const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
-            const grokResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(messages, {
-                model: globalResources.getGrokService().getDefaultGrokModel(),
-                timeout: 120000,
-                store: false,
-                responseSchema: ExpansionPromptSchema,
-                // Expansion uses simple schema - no complex key tracking needed
-                ws: ws,
-                handler: handler,
-                requestId: requestId,
-                _attemptId: expansionAttemptId
-            });
-            console.log(`✅ Grok expansion AI call completed`);
-
-            const additionalText = grokResponse.content?.additional_text || grokResponse.additional_text;
-            expansionReason = grokResponse.content?.reason || grokResponse.reason;
-            expansionReasonDisplay = grokResponse.content?.reason_display || grokResponse.content?.reason || grokResponse.reason;
-
-            // Combine original prompt with additional text, handling ", Text:" case like the existing codebase
-            if (originalPrompt) {
-                if (originalPrompt.includes(', Text:')) {
-                    // Inject before ", Text:" as per existing pattern (line 1512-1516)
-                    const textIndex = originalPrompt.indexOf(', Text:');
-                    const beforeText = originalPrompt.substring(0, textIndex).trim();
-                    expansionPrompt = beforeText + ', ' + additionalText + originalPrompt.substring(textIndex);
-                } else {
-                    // Otherwise, append with comma separator
-                    expansionPrompt = originalPrompt + ', ' + additionalText;
-                }
-            } else {
-                expansionPrompt = additionalText;
-            }
-
-            console.log(`✨ Grok additional text: ${additionalText}`);
-            console.log(`🔗 Combined expansion prompt: ${expansionPrompt}`);
-            console.log(`💭 Grok reasoning: ${expansionReason}`);
-            console.log(`📨 Sending ai_complete progress for requestId: ${requestId}`);
-
-            // Send progress update indicating AI processing is complete
-            if (ws && handler && requestId) {
-                handler.sendGenerationProgress(ws, requestId, {
-                    phase: 'ai_complete',
-                    hasDynamicGen: true,
-                    reasoning: expansionReasonDisplay
-                });
-                console.log(`✅ Sent ai_complete progress message`);
-            } else {
-                console.warn(`⚠️ Cannot send ai_complete progress: ws=${!!ws}, handler=${!!handler}, requestId=${requestId}`);
-            }
+        if (typeof overrideParams?.expansionPromptOverride === 'string') {
+            expansionPrompt = overrideParams.expansionPromptOverride;
+            expansionReason = 'User-edited prompt';
+            expansionReasonDisplay = 'Edited';
         } else {
-            // AI DISABLED - Use original prompt without modification
-            console.log('🚫 AI processing disabled, using original prompt');
-            expansionPrompt = originalPrompt;
-            expansionReason = 'AI processing disabled';
-            expansionReasonDisplay = 'No AI';
-            
-            // Send progress update to skip AI phase
-            if (ws && handler && requestId) {
-                handler.sendGenerationProgress(ws, requestId, {
-                    phase: 'ai_complete',
-                    hasDynamicGen: false
-                });
-                console.log(`✅ Sent ai_complete progress (AI disabled)`);
-            }
+            const resolved = await resolveExpandImageExpansionPrompt({
+                originalImageBuffer,
+                originalDims,
+                targetDims,
+                imageBias,
+                originalPrompt,
+                enableAI,
+                overrideParams,
+                ws,
+                handler,
+                requestId
+            });
+            expansionPrompt = resolved.expansionPrompt;
+            expansionReason = resolved.expansionReason;
+            expansionReasonDisplay = resolved.expansionReasonDisplay;
+        }
+
+        let ucForRequest = originalUc;
+        if (typeof overrideParams?.expansionUcOverride === 'string') {
+            ucForRequest = overrideParams.expansionUcOverride;
         }
 
         // Get system defaults for generation
@@ -6201,13 +6504,14 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             seed: undefined // Let system generate random seed unless overridden
         };
         
-        // Merge with override params
-        const genParams = { ...defaultParams, ...overrideParams };
+        // Merge with override params (strip prompt-review-only keys)
+        const { expansionPromptOverride: _stripPromptOv, expansionUcOverride: _stripUcOv, ...overrideForGen } = overrideParams || {};
+        const genParams = { ...defaultParams, ...overrideForGen };
         
         // Build request body for inpainting
         const requestBody = {
             prompt: expansionPrompt,
-            uc: originalUc, // Use original UC from metadata
+            uc: ucForRequest,
             characterPrompts: originalCharacters, // Use original characters from metadata
             model: genParams.model,
             steps: genParams.steps,
@@ -6223,7 +6527,8 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             upscale: upscaleAfterComplete,
             append_quality: 0, // Disable quality presets since they're already compiled
             append_uc: 0, // Disable UC presets since we're using original UC
-            no_save: true // Prevent handleGeneration from saving, we'll save with custom name
+            no_save: true, // Prevent handleGeneration from saving, we'll save with custom name
+            image_preletterboxed: true
         };
         
         console.log(`🔍 Expansion upscale setting: upscaleAfterComplete=${upscaleAfterComplete}, type=${typeof upscaleAfterComplete}`);
@@ -6259,6 +6564,7 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
             expansion_source: sourceFilename || filename, // Use source filename for tracking original source
             expansion_resolution: resolution,
             expansion_bias: imageBias,
+            expansion_inset: inset,
             expansion_direction: direction,
             expansion_percentages: {
                 left: leftPercent,
@@ -6401,7 +6707,14 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         console.log(`🎯 Target dimensions: ${targetDims.width}x${targetDims.height}`);
         
         // Process SOURCE image with letterbox mode to add transparent padding
-        const letterboxedBuffer = await processDynamicImageLetterbox(sourceImageBuffer, targetDims, imageBias);
+        const insetFromForge = forgeData.expansion_inset === true || forgeData.expansion_params?.inset === true ||
+            forgeData.expansion_params?.inset === 'true' || forgeData.expansion_params?.inset === 1;
+        const insetFromOverrides = overrideParams?.inset === true || overrideParams?.inset === 'true' || overrideParams?.inset === 1;
+        const inset = Object.prototype.hasOwnProperty.call(overrideParams || {}, 'inset')
+            ? insetFromOverrides
+            : insetFromForge;
+        console.log(`📌 Expansion reroll inset (native-scale letterbox padding): ${inset}`);
+        const letterboxedBuffer = await processDynamicImageLetterbox(sourceImageBuffer, targetDims, imageBias, { inset });
         console.log(`📦 Letterboxed image created`);
         
         // Load letterboxed image for mask creation
@@ -6491,56 +6804,15 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
             }
         }
         
-        // Expand mask by 1-2 pixels ONLY in the direction of expansion
-        const expandPixels = Math.max(1, Math.floor(compressedMaskWidth / 128)); // Scale for compressed size
-        const expandedMaskData = new Uint8ClampedArray(maskData);
-        
-        for (let pass = 0; pass < expandPixels; pass++) {
-            const tempData = new Uint8ClampedArray(expandedMaskData);
-            
-            for (let y = 0; y < compressedMaskHeight; y++) {
-                for (let x = 0; x < compressedMaskWidth; x++) {
-                    const i = (y * compressedMaskWidth + x) * 4;
-                    
-                    // Skip if already white
-                    if (tempData[i] === 255) continue;
-                    
-                    // Only expand in the direction of expansion
-                    let shouldExpand = false;
-                    
-                    if (isExpandingHorizontally) {
-                        // Only expand left-right
-                        if (hasTransparentLeft && x > 0) {
-                            const leftI = (y * compressedMaskWidth + (x - 1)) * 4;
-                            if (tempData[leftI] === 255) shouldExpand = true;
-                        }
-                        if (hasTransparentRight && x < compressedMaskWidth - 1) {
-                            const rightI = (y * compressedMaskWidth + (x + 1)) * 4;
-                            if (tempData[rightI] === 255) shouldExpand = true;
-                        }
-                    }
-                    
-                    if (isExpandingVertically) {
-                        // Only expand top-bottom
-                        if (hasTransparentTop && y > 0) {
-                            const topI = ((y - 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[topI] === 255) shouldExpand = true;
-                        }
-                        if (hasTransparentBottom && y < compressedMaskHeight - 1) {
-                            const bottomI = ((y + 1) * compressedMaskWidth + x) * 4;
-                            if (tempData[bottomI] === 255) shouldExpand = true;
-                        }
-                    }
-                    
-                    if (shouldExpand) {
-                        expandedMaskData[i] = 255;
-                        expandedMaskData[i + 1] = 255;
-                        expandedMaskData[i + 2] = 255;
-                        expandedMaskData[i + 3] = 255;
-                    }
-                }
-            }
-        }
+        const expandedMaskData = dilateExpansionMaskWhiteIntoOpaque(maskData, compressedMaskWidth, compressedMaskHeight, {
+            inset,
+            hasTransparentTop,
+            hasTransparentBottom,
+            hasTransparentLeft,
+            hasTransparentRight,
+            isExpandingHorizontally,
+            isExpandingVertically
+        });
         
         // Create ImageData using canvas context (Node.js compatible)
         const finalMaskImageData = maskCtx.createImageData(compressedMaskWidth, compressedMaskHeight);
@@ -6581,7 +6853,8 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
             upscale: genParams.upscale || false,
             append_quality: 0,
             append_uc: 0,
-            no_save: true
+            no_save: true,
+            image_preletterboxed: true
         };
         
         // Add seed if provided in overrides
@@ -6613,6 +6886,7 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
             expansion_source: expansion_source,  // Maintain the chain!
             expansion_resolution: resolution,
             expansion_bias: imageBias,
+            expansion_inset: inset,
             expansion_direction: forgeData.expansion_direction,
             expansion_percentages: forgeData.expansion_percentages,
             expansion_prompt: expansionPrompt,
@@ -6692,5 +6966,6 @@ module.exports = {
     processExpandCanvas,
     processEnhanceStage,
     handleStagedGeneration,
+    previewExpandImagePrompt,
 };
 

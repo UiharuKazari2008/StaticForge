@@ -12,7 +12,7 @@ let debounceGalleryTimeout = null;
 let isLoadingMore = false;
 let hasMoreImages = true;
 let hasMoreImagesBefore = false; // Track if there are images before current page
-let visibleItems = new Set(); // Track visible items
+let visibleItems = new Set(); // Track visible gallery indices (data-index), not DOM positions
 let virtualScrollEnabled = true; // Enable virtual scrolling
 let currentImage = null;
 let savedGalleryPosition = null;
@@ -22,7 +22,53 @@ let galleryClearTimeout = null;
 let displayedStartIndex = 0; // First displayed image index in allImages array
 let displayedEndIndex = 0;   // Last displayed image index in allImages array
 let lastHintIndex = -1; // Track last sent hint index to avoid duplicate sends
+let lastHintAnchorFilename = undefined;
+let suppressGalleryPositionHintUntilInteraction = false;
 let galleryPositionHintThrottle = null; // Throttle for position hints
+const GALLERY_TIME_JUMP_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes default
+const GALLERY_TIME_JUMP_MIN_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes hard floor
+const GALLERY_TIME_JUMP_ADAPT_WINDOW_ITEMS = 100;
+const GALLERY_TIME_JUMP_READY_WAIT_MS = 2200;
+const GALLERY_TIME_JUMP_HIGHLIGHT_WAIT_MS = 3400;
+const GALLERY_TIME_JUMP_RELEASE_DEBOUNCE_MS = 120;
+const GALLERY_JUMP_INDEX_DEFAULT_MIN_TIME_MS = 30 * 60 * 1000;
+const GALLERY_JUMP_INDEX_DEFAULT_MAX_GROUP_IMAGES = 100;
+const GALLERY_JUMP_INDEX_MIN_GROUP_IMAGES = 9;
+let galleryTimeJumpInFlight = false;
+let galleryTimeJumpDebounceUntil = 0;
+let galleryJumpIndexToolEl = null;
+let galleryJumpIndexListEl = null;
+let galleryJumpIndexSummaryEl = null;
+let galleryJumpIndexMinTimeSelectedEl = null;
+let galleryJumpIndexMaxGroupSelectedEl = null;
+let galleryJumpIndexRegenerating = false;
+let galleryJumpIndexRegenPending = false;
+let galleryJumpIndexEntries = [];
+let galleryJumpIndexHoveredBoundaryIndex = null;
+let galleryJumpIndexActiveBoundaryIndex = null;
+let galleryJumpIndexDropdownsInitialized = false;
+let galleryJumpIndexListenersInitialized = false;
+let selectedGalleryJumpIndexMinTimeMs = GALLERY_JUMP_INDEX_DEFAULT_MIN_TIME_MS;
+let selectedGalleryJumpIndexMaxGroupImages = GALLERY_JUMP_INDEX_DEFAULT_MAX_GROUP_IMAGES;
+const GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS = [
+    { value: 5 * 60 * 1000, name: '5m' },
+    { value: 15 * 60 * 1000, name: '15m' },
+    { value: 30 * 60 * 1000, name: '30m' },
+    { value: 60 * 60 * 1000, name: '1h' },
+    { value: 6 * 60 * 60 * 1000, name: '6h' },
+    { value: 12 * 60 * 60 * 1000, name: '12h' },
+    { value: 24 * 60 * 60 * 1000, name: '1d' },
+    { value: 7 * 24 * 60 * 60 * 1000, name: '7d' },
+    { value: 30 * 24 * 60 * 60 * 1000, name: '30d' }
+];
+const GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS = [
+    { value: 25, name: '25' },
+    { value: 50, name: '50' },
+    { value: 100, name: '100' },
+    { value: 200, name: '200' },
+    { value: 400, name: '400' },
+    { value: 'none', name: 'No max' }
+];
 
 // Improved infinite scroll configuration
 let infiniteScrollConfig = {
@@ -49,6 +95,7 @@ let selectedImages = new Set();
 let isAllSelected = false; // Flag to indicate all items are selected (for performance)
 let isSelectionMode = false;
 let lastSelectedGalleryIndex = null; // Track last selected index for range selection
+let galleryBatchEscapePrevTs = 0;
 let infiniteScrollLoading = document.getElementById('infiniteScrollLoading');
 
 const galleryToggleGroup = document.getElementById('galleryToggleGroup');
@@ -60,13 +107,15 @@ let galleryProgressBarElement = null;
 let galleryProgressTextElement = null;
 let galleryProgressContainerElement = null;
 let galleryProgressModeSwitched = false; // Track if we've switched from marquee to animate mode
+let galleryCatchupBusyLineEl = null;
 
 // IndexedDB utilities for gallery metadata caching
 class GalleryMetadataCache {
     constructor() {
         this.dbName = 'StaticForgeGallery';
-        this.version = 1;
+        this.version = 2;
         this.db = null;
+        this.snapshotCleanupDone = false;
         this.initPromise = this.initDB();
     }
 
@@ -81,6 +130,11 @@ class GalleryMetadataCache {
 
             request.onsuccess = (event) => {
                 this.db = event.target.result;
+                // Run legacy/orphan snapshot cleanup once during init.
+                if (!this.snapshotCleanupDone) {
+                    this.snapshotCleanupDone = true;
+                    this.cleanupLegacySnapshotEntries();
+                }
                 resolve(this.db);
             };
 
@@ -97,7 +151,58 @@ class GalleryMetadataCache {
                 if (!db.objectStoreNames.contains('thumbnails')) {
                     db.createObjectStore('thumbnails', { keyPath: 'base' });
                 }
+
+                // Create object store for full gallery snapshots by workspace/view/hash
+                if (!db.objectStoreNames.contains('gallerySnapshots')) {
+                    const snapshotStore = db.createObjectStore('gallerySnapshots', { keyPath: 'key' });
+                    snapshotStore.createIndex('workspaceView', 'workspaceView', { unique: false });
+                    snapshotStore.createIndex('cachedAt', 'cachedAt', { unique: false });
+                }
             };
+        });
+    }
+
+    buildSnapshotKey(workspaceId, viewType) {
+        return `${workspaceId || 'default'}::${viewType || 'images'}`;
+    }
+
+    async cleanupLegacySnapshotEntries() {
+        if (!this.db) return;
+        const knownWorkspaceIds = new Set(['default']);
+        const workspacesData = workspaces || window.workspaces || {};
+        for (const workspace of Object.values(workspacesData)) {
+            if (workspace && workspace.id) {
+                knownWorkspaceIds.add(workspace.id);
+            }
+        }
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
+            const store = transaction.objectStore('gallerySnapshots');
+            const request = store.openCursor();
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (!cursor) {
+                    resolve();
+                    return;
+                }
+
+                const key = String(cursor.primaryKey || '');
+                const record = cursor.value || {};
+                const workspaceId = record.workspaceId || 'default';
+                const viewType = record.viewType || 'images';
+                const expectedKey = this.buildSnapshotKey(workspaceId, viewType);
+                const isLegacyKeyFormat = key !== expectedKey;
+                const hasUnknownWorkspace = knownWorkspaceIds instanceof Set && !knownWorkspaceIds.has(workspaceId);
+
+                if (isLegacyKeyFormat || hasUnknownWorkspace) {
+                    cursor.delete();
+                }
+                cursor.continue();
+            };
+            request.onerror = () => resolve();
+            transaction.onerror = () => resolve();
         });
     }
 
@@ -175,11 +280,81 @@ class GalleryMetadataCache {
             request.onerror = () => resolve();
         });
     }
+
+    async getGallerySnapshot(workspaceId, viewType, hash) {
+        if (!this.db || !hash) return null;
+        const key = this.buildSnapshotKey(workspaceId, viewType);
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
+            const store = transaction.objectStore('gallerySnapshots');
+            const request = store.get(key);
+
+            request.onsuccess = () => {
+                const snapshot = request.result || null;
+                if (!snapshot) {
+                    resolve(null);
+                    return;
+                }
+                const snapshotHash = snapshot.galleryHash || snapshot.hash || null;
+                resolve(snapshotHash === hash ? snapshot : null);
+            };
+            request.onerror = () => resolve(null);
+        });
+    }
+
+    async setGallerySnapshot(workspaceId, viewType, hash, gallery, meta = {}) {
+        if (!this.db || !hash || !Array.isArray(gallery)) return;
+        const key = this.buildSnapshotKey(workspaceId, viewType);
+        const lastGalleryDestructiveAt = Number(meta.lastGalleryDestructiveAt) || 0;
+        const workspaceView = key;
+
+        return new Promise((resolve) => {
+            const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => resolve();
+            const store = transaction.objectStore('gallerySnapshots');
+            const baseRecord = {
+                workspaceView,
+                workspaceId: workspaceId || 'default',
+                viewType: viewType || 'images',
+                galleryHash: hash,
+                hash,
+                gallery,
+                totalItems: gallery.length,
+                lastGalleryDestructiveAt,
+                cachedAt: Date.now()
+            };
+            store.put({ ...baseRecord, key });
+        });
+    }
+
 }
 
 // Global gallery metadata cache instance
 const galleryMetadataCache = new GalleryMetadataCache();
 
+function getGalleryItemSyncKey(item) {
+    if (!item) {
+        return '';
+    }
+    const file = item.upscaled || item.original || item.base || '';
+    const mtime = item.mtime != null ? item.mtime : 0;
+    const pinned = item.isPinned ? '1' : '0';
+    return `${file}|${mtime}|${pinned}`;
+}
+
+function verifyGalleryOverlap(cachedGallery, serverChunk, count) {
+    if (!cachedGallery || !serverChunk || count <= 0) {
+        return true;
+    }
+    for (let i = 0; i < count; i++) {
+        if (getGalleryItemSyncKey(cachedGallery[i]) !== getGalleryItemSyncKey(serverChunk[i])) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // Gallery view state
 let currentGalleryView = 'images'; // 'images', 'scraps', 'pinned', 'upscaled'
@@ -344,6 +519,7 @@ function startPlaceholderWatcher() {
 
 // Process queued placeholders with RTT-based multiplexing
 function processNextPlaceholders() {
+    try {
     if (placeholderResolutionQueue.length === 0) {
         placeholderWatcherRunning = false;
         placeholderWatcherFrameId = null;
@@ -353,8 +529,42 @@ function processNextPlaceholders() {
         return;
     }
 
-    // Pause resolution when actively scrolling
-    if (isScrolling) {
+    // Pause bulk resolution when actively scrolling fast; still resolve a few in-view placeholders
+    // so visible rows never stay empty while off-screen rows keep changing.
+    if (isScrolling && Math.abs(scrollVelocity) > 1.2) {
+        const resolveVisibleNow = () => {
+            const galleryWindow = document.querySelector('#galleryWindow');
+            const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+            const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+            const viewportTop = isContainerScroll && galleryContainer ? galleryContainer.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0);
+            const viewportBottom = viewportTop + (isContainerScroll && galleryContainer ? galleryContainer.clientHeight : window.innerHeight);
+            const maxImmediate = 4;
+            let resolved = 0;
+            const placeholders = gallery ? gallery.querySelectorAll('.gallery-item.gallery-placeholder') : [];
+            for (let i = 0; i < placeholders.length && resolved < maxImmediate; i++) {
+                const el = placeholders[i];
+                const rect = el.getBoundingClientRect();
+                let itemTop;
+                let itemBottom;
+                if (isContainerScroll && galleryContainer) {
+                    const containerRect = galleryContainer.getBoundingClientRect();
+                    itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
+                    itemBottom = rect.bottom - containerRect.top + galleryContainer.scrollTop;
+                } else {
+                    itemTop = rect.top + window.pageYOffset;
+                    itemBottom = rect.bottom + window.pageYOffset;
+                }
+                if (itemBottom <= viewportTop || itemTop >= viewportBottom) continue;
+                if (el.querySelector('img')) continue;
+                const fileIndex = parseInt(el.dataset.fileIndex, 10);
+                const image = allImages && Number.isFinite(fileIndex) ? allImages[fileIndex] : null;
+                if (!image) continue;
+                el.classList.remove('gallery-placeholder');
+                addImgToGalleryItemAsync(el, image);
+                resolved++;
+            }
+        };
+        resolveVisibleNow();
         placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 100);
         return;
     }
@@ -453,10 +663,11 @@ function processNextPlaceholders() {
         return;
     }
 
-    // Prioritize placeholders based on scroll direction when scrolling recently stopped
+    // Prioritize placeholders: always resolve in-viewport first, then apply direction preference.
     if (Math.abs(scrollVelocity) > 0.5) {
-        // Sort queue to prioritize based on scroll direction
+        // Sort queue to prioritize based on visibility + scroll direction
         const viewportCenter = viewportTop + (window.innerHeight / 2);
+        const viewportPad = itemHeight * 0.5;
 
         placeholderResolutionQueue.sort((a, b) => {
             if (!a.element || !b.element) return 0;
@@ -464,7 +675,17 @@ function processNextPlaceholders() {
             const aRect = a.element.getBoundingClientRect();
             const bRect = b.element.getBoundingClientRect();
             const aTop = aRect.top + window.pageYOffset;
+            const aBottom = aRect.bottom + window.pageYOffset;
             const bTop = bRect.top + window.pageYOffset;
+            const bBottom = bRect.bottom + window.pageYOffset;
+
+            const aInViewport = aBottom > (viewportTop - viewportPad) && aTop < (viewportBottom + viewportPad);
+            const bInViewport = bBottom > (viewportTop - viewportPad) && bTop < (viewportBottom + viewportPad);
+            if (aInViewport !== bInViewport) return aInViewport ? -1 : 1;
+
+            const aDist = Math.abs((aTop + aBottom) * 0.5 - viewportCenter);
+            const bDist = Math.abs((bTop + bBottom) * 0.5 - viewportCenter);
+            if (aDist !== bDist) return aDist - bDist;
 
             if (scrollVelocity > 0) {
                 // Scrolling down - prioritize items below viewport center
@@ -595,6 +816,9 @@ function processNextPlaceholders() {
     if (activeResolutions > 0) {
         placeholderWatcherFrameId = setTimeout(processNextPlaceholders, 0);
     }
+    } finally {
+        updateGalleryCatchupBusyLine();
+    }
 }
 
 // Add placeholder to resolution queue
@@ -609,17 +833,40 @@ function queuePlaceholderResolution(element, fileImageIndex, filteredIndex) {
     // Calculate queue limit: viewport capacity + buffer, adjusted for multiplexing
     const multiplexingLevel = calculateMultiplexingLevel();
     const currentCapacity = galleryRows * realGalleryColumns;
-    const queueLimit = currentCapacity + (multiplexingLevel * 5); // Base capacity + multiplexing buffer
+    const queueLimit = currentCapacity + (multiplexingLevel * 12); // Larger buffer so fast scroll does not starve visible rows
 
     // Don't add to queue if we're already at capacity
-    if (placeholderResolutionQueue.length >= queueLimit) {
-        return;
-    }
+    if (placeholderResolutionQueue.length >= queueLimit) return;
 
     placeholderResolutionQueue.push({ element, fileImageIndex, filteredIndex });
     if (!placeholderWatcherRunning) {
         startPlaceholderWatcher();
     }
+    updateGalleryCatchupBusyLine();
+}
+
+function updateGalleryCatchupBusyLine() {
+    const qLen = placeholderResolutionQueue.length;
+    const cap = (galleryRows || 5) * (realGalleryColumns || 6);
+    const busy = qLen > Math.max(12, Math.floor(cap * 0.45)) || activeResolutions > 10;
+    const gw = document.getElementById('galleryWindow');
+    if (!gw || gw.classList.contains('hidden')) {
+        if (galleryCatchupBusyLineEl) galleryCatchupBusyLineEl.classList.add('hidden');
+        return;
+    }
+    const wrap = gw.querySelector('.gallery-container-wrapper');
+    if (!wrap) return;
+    if (!galleryCatchupBusyLineEl) {
+        galleryCatchupBusyLineEl = document.createElement('div');
+        galleryCatchupBusyLineEl.id = 'galleryCatchupBusyLine';
+        galleryCatchupBusyLineEl.setAttribute('aria-busy', 'true');
+        galleryCatchupBusyLineEl.setAttribute('aria-label', 'Resolving gallery previews');
+        galleryCatchupBusyLineEl.className = 'hidden';
+        galleryCatchupBusyLineEl.style.cssText = 'height:3px;width:100%;flex-shrink:0;overflow:hidden;position:relative;z-index:12;background:rgba(0,0,0,0.12);';
+        galleryCatchupBusyLineEl.innerHTML = '<div class="marquee animate" role="progressbar" style="height:3px;"><div style="height:3px;background:rgba(120,180,255,0.55);"></div></div>';
+        wrap.insertBefore(galleryCatchupBusyLineEl, wrap.firstChild);
+    }
+    galleryCatchupBusyLineEl.classList.toggle('hidden', !busy);
 }
 
 function triggerBuildGalleryNavigationCache() {
@@ -635,6 +882,742 @@ function triggerBuildGalleryNavigationCache() {
         buildGalleryNavigationCache(allImages);
     }
 }
+
+// Session key for gallery_scroll_state map (server: public/scripts/websocket.js gallery_scroll_state)
+function galleryScrollRestoreKey() {
+    const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+    return `${ws}:${currentGalleryView}`;
+}
+
+function isGallerySearchModeActive() {
+    const hasSearchTerm = typeof window.currentSearchTerm === 'string' && window.currentSearchTerm.trim().length > 0;
+    const hasNarrowFilter = Array.isArray(window.filteredImageIndices)
+        && window.filteredImageIndices.length > 0
+        && Array.isArray(window.originalAllImages)
+        && window.filteredImageIndices.length < window.originalAllImages.length;
+    return hasSearchTerm || hasNarrowFilter;
+}
+
+function getGalleryImageTimestampMs(image) {
+    if (!image || typeof image !== 'object') return null;
+
+    const rawCandidates = [
+        image.mtime,
+        image.timestamp,
+        image.createdAt,
+        image.metadata && image.metadata.date,
+        image.metadata && image.metadata.timestamp,
+        Array.isArray(image.receipt) && image.receipt.length > 0 ? image.receipt[0].timestamp : null
+    ];
+
+    for (const raw of rawCandidates) {
+        if (raw === null || raw === undefined || raw === '') continue;
+        const ms = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+        if (Number.isFinite(ms)) return ms;
+    }
+
+    return null;
+}
+
+function getVisibleGalleryIndexRange() {
+    if (visibleItems.size === 0) return null;
+    const indices = Array.from(visibleItems).filter((idx) => Number.isFinite(idx));
+    if (indices.length === 0) return null;
+    return {
+        min: Math.min(...indices),
+        max: Math.max(...indices)
+    };
+}
+
+function getGalleryJumpSearchStartIndex(direction, effectiveLength) {
+    const visibleRange = getVisibleGalleryIndexRange();
+    const hintAnchor = Number.isFinite(lastHintIndex) && lastHintIndex >= 0
+        ? Math.max(0, Math.min(effectiveLength - 1, lastHintIndex))
+        : Math.max(0, Math.min(effectiveLength - 1, getFirstVisibleRowIndex()));
+    if (direction > 0) {
+        if (visibleRange && visibleRange.max < effectiveLength - 1) return Math.max(1, visibleRange.max + 1);
+        return Math.max(1, Math.min(effectiveLength - 1, hintAnchor + 1));
+    }
+    if (visibleRange && visibleRange.min > 0) return Math.min(effectiveLength - 2, visibleRange.min - 1);
+    return Math.min(effectiveLength - 2, Math.max(0, hintAnchor - 1));
+}
+
+function findNextTimeJumpFilteredIndex(direction, thresholdMs = GALLERY_TIME_JUMP_THRESHOLD_MS, startIndex = null, scanLimit = null) {
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    if (!effectiveLength || effectiveLength < 2) return null;
+    let computedStartIndex = Number.isFinite(startIndex) ? Math.floor(startIndex) : getGalleryJumpSearchStartIndex(direction, effectiveLength);
+    let scanned = 0;
+    if (direction > 0) {
+        computedStartIndex = Math.max(1, Math.min(effectiveLength - 1, computedStartIndex)); // Need previous neighbor to compare
+        for (let i = computedStartIndex; i < effectiveLength; i++) {
+            if (scanLimit !== null && scanned >= scanLimit) break;
+            scanned++;
+            if (visibleItems.has(i)) continue;
+            const prevIndex = i - 1;
+            const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined ? window.filteredImageIndices[i] : i;
+            const prevFileIndex = window.filteredImageIndices && window.filteredImageIndices[prevIndex] !== undefined ? window.filteredImageIndices[prevIndex] : prevIndex;
+            const currTs = getGalleryImageTimestampMs(allImages[fileIndex]);
+            const prevTs = getGalleryImageTimestampMs(allImages[prevFileIndex]);
+            if (currTs === null || prevTs === null) continue;
+            if (Math.abs(currTs - prevTs) >= thresholdMs) return i;
+        }
+    } else {
+        computedStartIndex = Math.max(0, Math.min(effectiveLength - 2, computedStartIndex)); // Need next neighbor to compare
+        for (let i = computedStartIndex; i >= 0; i--) {
+            if (scanLimit !== null && scanned >= scanLimit) break;
+            scanned++;
+            if (visibleItems.has(i)) continue;
+            const nextIndex = i + 1;
+            const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined ? window.filteredImageIndices[i] : i;
+            const nextFileIndex = window.filteredImageIndices && window.filteredImageIndices[nextIndex] !== undefined ? window.filteredImageIndices[nextIndex] : nextIndex;
+            const currTs = getGalleryImageTimestampMs(allImages[fileIndex]);
+            const nextTs = getGalleryImageTimestampMs(allImages[nextFileIndex]);
+            if (currTs === null || nextTs === null) continue;
+            if (Math.abs(currTs - nextTs) >= thresholdMs) return i;
+        }
+    }
+
+    return null;
+}
+
+function formatGalleryTimeJumpDetails(fromMs, toMs) {
+    if (!Number.isFinite(fromMs) || !Number.isFinite(toMs)) return null;
+    const deltaMs = toMs - fromMs;
+    const absMs = Math.abs(deltaMs);
+    const sign = deltaMs < 0 ? '-' : '+';
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+
+    if (absMs >= day) {
+        const days = Math.round(absMs / day);
+        const targetDate = new Date(toMs);
+        const month = targetDate.toLocaleString(undefined, { month: 'short' });
+        const dayNum = targetDate.getDate();
+        return {
+            relativeLabel: `${sign}${days} day${days === 1 ? '' : 's'}`,
+            absoluteLabel: `${month} ${dayNum}`
+        };
+    }
+    if (absMs >= hour) {
+        const hours = Math.round(absMs / hour);
+        const targetTime = new Date(toMs).toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit'
+        });
+        return {
+            relativeLabel: `${sign}${hours} hour${hours === 1 ? '' : 's'}`,
+            absoluteLabel: targetTime
+        };
+    }
+    const mins = Math.max(1, Math.round(absMs / minute));
+    const targetTime = new Date(toMs).toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+    return {
+        relativeLabel: `${sign}${mins} min`,
+        absoluteLabel: targetTime
+    };
+}
+
+function isGalleryReadyForTimeJump() {
+    if (!gallery) return false;
+    if (isJumpingToPosition || isGalleryResetting || isLoadingMore) return false;
+    return !!gallery.querySelector('.gallery-item:not(.gallery-placeholder)');
+}
+
+function triggerGalleryVirtualScrollFromShortcut() {
+    const galleryWindow = document.querySelector('#galleryWindow');
+    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+    const scrollTarget = isContainerScroll ? galleryContainer : window;
+
+    // Route through the same scroll listener pipeline used by user scrolling.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            scrollTarget.dispatchEvent(new Event('scroll'));
+            if (galleryJumpIndexToolEl && !galleryJumpIndexToolEl.classList.contains('hidden')) {
+                updateGalleryJumpIndexActiveCard();
+                if (!Number.isFinite(galleryJumpIndexHoveredBoundaryIndex)) {
+                    updateGalleryJumpIndexSummary();
+                }
+            }
+        });
+    });
+}
+
+/** Re-run gallery scroll pipeline so Jump Index (and virtual list) stay in sync after jumps. Prefer calling after highlight/layout settles (e.g. time-jump finally block). */
+function refreshGalleryJumpIndexUI() {
+    triggerGalleryVirtualScrollFromShortcut();
+}
+
+function getCurrentGalleryAnchorIndex() {
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    if (!effectiveLength) return 0;
+    if (Number.isFinite(lastHintIndex) && lastHintIndex >= 0) {
+        return Math.max(0, Math.min(effectiveLength - 1, lastHintIndex));
+    }
+    return Math.max(0, Math.min(effectiveLength - 1, getFirstVisibleRowIndex()));
+}
+
+function getGalleryJumpIndexSelectedThresholdMs() {
+    return Number.isFinite(selectedGalleryJumpIndexMinTimeMs) && selectedGalleryJumpIndexMinTimeMs > 0
+        ? selectedGalleryJumpIndexMinTimeMs
+        : GALLERY_JUMP_INDEX_DEFAULT_MIN_TIME_MS;
+}
+
+function getGalleryJumpIndexSelectedMaxGroupImages() {
+    if (selectedGalleryJumpIndexMaxGroupImages === Infinity) return Infinity;
+    return Number.isFinite(selectedGalleryJumpIndexMaxGroupImages) && selectedGalleryJumpIndexMaxGroupImages > 0
+        ? selectedGalleryJumpIndexMaxGroupImages
+        : GALLERY_JUMP_INDEX_DEFAULT_MAX_GROUP_IMAGES;
+}
+
+function getGalleryImageAtFilteredIndex(filteredIndex) {
+    const fileIndex = window.filteredImageIndices && window.filteredImageIndices[filteredIndex] !== undefined
+        ? window.filteredImageIndices[filteredIndex]
+        : filteredIndex;
+    return allImages[fileIndex] || null;
+}
+
+function getGalleryPreviewSrcForImage(image) {
+    if (!image) return '';
+    const previewName = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(image.preview) : image.preview;
+    if (previewName) return `/previews/${encodeURIComponent(previewName)}`;
+    const filename = image.filename || image.original || image.upscaled || image.base;
+    return filename ? `/images/${encodeURIComponent(filename)}` : '';
+}
+
+function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    if (!effectiveLength) return [];
+    const entries = [];
+    let groupStart = 0;
+    let groupStartTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(groupStart));
+    entries.push({ index: 0, groupCount: 0 });
+
+    for (let i = 1; i < effectiveLength; i++) {
+        const prevTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(i - 1));
+        const currTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(i));
+        const groupSize = i - groupStart;
+        const timeFromStart = (groupStartTs !== null && currTs !== null) ? Math.abs(currTs - groupStartTs) : 0;
+        const reachedMinGroupSize = groupSize >= GALLERY_JUMP_INDEX_MIN_GROUP_IMAGES;
+        const boundaryByTime = reachedMinGroupSize && Number.isFinite(minTimeMs) && minTimeMs > 0 && timeFromStart >= minTimeMs;
+        const boundaryBySize = Number.isFinite(maxGroupImages) && maxGroupImages !== Infinity && groupSize >= maxGroupImages;
+        const boundaryByNeighborJump = reachedMinGroupSize && (prevTs !== null && currTs !== null) && Math.abs(currTs - prevTs) >= minTimeMs;
+        if (boundaryByTime || boundaryBySize || boundaryByNeighborJump) {
+            groupStart = i;
+            groupStartTs = currTs;
+            entries.push({ index: i, groupCount: 0 });
+        }
+    }
+
+    // Fill each group's item count based on boundary start indices.
+    for (let i = 0; i < entries.length; i++) {
+        const start = entries[i].index;
+        const end = i < entries.length - 1 ? entries[i + 1].index : effectiveLength;
+        entries[i].groupCount = Math.max(1, end - start);
+    }
+
+    return entries;
+}
+
+function updateGalleryJumpIndexSummary(preferredBoundaryIndex = null) {
+    if (!galleryJumpIndexSummaryEl) return;
+    if (!galleryJumpIndexEntries || galleryJumpIndexEntries.length === 0) {
+        galleryJumpIndexSummaryEl.textContent = 'No jump boundaries';
+        return;
+    }
+    const currentIndex = getCurrentGalleryAnchorIndex();
+    const hasHover = Number.isFinite(galleryJumpIndexHoveredBoundaryIndex);
+    let targetBoundary = null;
+    if (Number.isFinite(preferredBoundaryIndex)) {
+        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index === preferredBoundaryIndex) || null;
+    } else if (hasHover) {
+        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index === galleryJumpIndexHoveredBoundaryIndex) || null;
+    }
+    if (!targetBoundary) {
+        targetBoundary = galleryJumpIndexEntries.find((entry) => entry.index > currentIndex) || galleryJumpIndexEntries[galleryJumpIndexEntries.length - 1];
+    }
+
+    // Default header text (no hover): current boundary information.
+    if (!hasHover && !Number.isFinite(preferredBoundaryIndex)) {
+        const currentBoundary = galleryJumpIndexEntries.reduce((best, entry) => {
+            if (!best || Math.abs(entry.index - currentIndex) < Math.abs(best.index - currentIndex)) return entry;
+            return best;
+        }, null);
+        if (currentBoundary) {
+            const boundaryTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(currentBoundary.index));
+            if (Number.isFinite(boundaryTs)) {
+                const absolute = new Date(boundaryTs).toLocaleString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                });
+                galleryJumpIndexSummaryEl.textContent = `${absolute} (${currentBoundary.groupCount} images)`;
+            } else {
+                galleryJumpIndexSummaryEl.textContent = `Boundary #${currentBoundary.index + 1} (${currentBoundary.groupCount} images)`;
+            }
+            return;
+        }
+    }
+
+    const rawDistance = targetBoundary.index - currentIndex;
+    const sign = rawDistance >= 0 ? '+' : '-';
+    const distance = Math.abs(rawDistance);
+    const currentTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(currentIndex));
+    const targetTs = getGalleryImageTimestampMs(getGalleryImageAtFilteredIndex(targetBoundary.index));
+    const jumpDetails = formatGalleryTimeJumpDetails(currentTs, targetTs);
+    if (jumpDetails) {
+        galleryJumpIndexSummaryEl.textContent = `${sign}${distance} images . ${jumpDetails.relativeLabel} (${jumpDetails.absoluteLabel})`;
+    } else {
+        galleryJumpIndexSummaryEl.textContent = `${sign}${distance} images`;
+    }
+}
+
+function updateGalleryJumpIndexActiveCard() {
+    if (!galleryJumpIndexListEl || !galleryJumpIndexEntries || galleryJumpIndexEntries.length === 0) return;
+    const currentIndex = getCurrentGalleryAnchorIndex();
+    let activeEntry = null;
+    let nearestDistance = Infinity;
+    galleryJumpIndexEntries.forEach((entry) => {
+        const d = Math.abs(entry.index - currentIndex);
+        if (d < nearestDistance) {
+            nearestDistance = d;
+            activeEntry = entry;
+        }
+    });
+    const cards = galleryJumpIndexListEl.querySelectorAll('.gallery-jump-index-card');
+    cards.forEach((card) => {
+        const idx = parseInt(card.dataset.index, 10);
+        card.classList.toggle('active-boundary', !!activeEntry && idx === activeEntry.index);
+    });
+
+    if (activeEntry && galleryJumpIndexActiveBoundaryIndex !== activeEntry.index) {
+        galleryJumpIndexActiveBoundaryIndex = activeEntry.index;
+        const activeCard = galleryJumpIndexListEl.querySelector(`.gallery-jump-index-card[data-index="${activeEntry.index}"]`);
+        if (activeCard && activeCard.scrollIntoView) {
+            activeCard.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+}
+
+async function waitForGalleryDataStableForJumpIndex(timeoutMs = 9000) {
+    const startedAt = Date.now();
+    while ((Date.now() - startedAt) < timeoutMs) {
+        const stable = !isLoadingMore && !isJumpingToPosition && !isGalleryResetting && Array.isArray(allImages) && allImages.length > 0;
+        if (stable) return true;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    return !isLoadingMore && !isJumpingToPosition && !isGalleryResetting;
+}
+
+async function regenerateGalleryJumpIndex() {
+    if (!galleryJumpIndexToolEl || galleryJumpIndexToolEl.classList.contains('hidden')) return;
+    if (galleryJumpIndexRegenerating) {
+        galleryJumpIndexRegenPending = true;
+        return;
+    }
+    galleryJumpIndexRegenerating = true;
+    try {
+        const ready = await waitForGalleryDataStableForJumpIndex();
+        if (!ready || !galleryJumpIndexListEl) return;
+        const minTimeMs = getGalleryJumpIndexSelectedThresholdMs();
+        const maxGroupImages = getGalleryJumpIndexSelectedMaxGroupImages();
+        galleryJumpIndexEntries = buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages);
+        galleryJumpIndexActiveBoundaryIndex = null;
+        galleryJumpIndexListEl.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        galleryJumpIndexEntries.forEach((entry) => {
+            const image = getGalleryImageAtFilteredIndex(entry.index);
+            if (!image) return;
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'gallery-jump-index-card';
+            card.dataset.index = String(entry.index);
+            const previewSrc = getGalleryPreviewSrcForImage(image);
+            card.innerHTML = `
+                <img src="${previewSrc}" alt="" loading="lazy" />
+                <div class="gallery-jump-index-card-meta">${entry.groupCount} images</div>
+            `;
+            card.addEventListener('click', async () => {
+                updateGalleryJumpIndexSummary(entry.index);
+                await displayGalleryFromStartIndex(entry.index, true);
+                refreshGalleryJumpIndexUI();
+            });
+            card.addEventListener('mouseenter', () => {
+                galleryJumpIndexHoveredBoundaryIndex = entry.index;
+                updateGalleryJumpIndexSummary(entry.index);
+            });
+            card.addEventListener('mouseleave', () => {
+                galleryJumpIndexHoveredBoundaryIndex = null;
+                updateGalleryJumpIndexSummary();
+            });
+            fragment.appendChild(card);
+        });
+        galleryJumpIndexListEl.appendChild(fragment);
+        updateGalleryJumpIndexActiveCard();
+        updateGalleryJumpIndexSummary();
+
+        // Scroll the index list to the nearest boundary for current gallery position.
+        const currentIndex = getCurrentGalleryAnchorIndex();
+        let nearest = null;
+        let nearestDistance = Infinity;
+        galleryJumpIndexEntries.forEach((entry) => {
+            const d = Math.abs(entry.index - currentIndex);
+            if (d < nearestDistance) {
+                nearestDistance = d;
+                nearest = entry;
+            }
+        });
+        if (nearest) {
+            const nearestEl = galleryJumpIndexListEl.querySelector(`.gallery-jump-index-card[data-index="${nearest.index}"]`);
+            if (nearestEl && nearestEl.scrollIntoView) {
+                nearestEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+            }
+        }
+    } finally {
+        galleryJumpIndexRegenerating = false;
+        if (galleryJumpIndexRegenPending) {
+            galleryJumpIndexRegenPending = false;
+            regenerateGalleryJumpIndex();
+        }
+    }
+}
+
+function ensureGalleryJumpIndexToolWindow() {
+    if (galleryJumpIndexToolEl) return galleryJumpIndexToolEl;
+    const el = document.getElementById('galleryJumpIndexTool');
+    if (!el) return null;
+    galleryJumpIndexToolEl = el;
+    galleryJumpIndexListEl = el.querySelector('#galleryJumpIndexGrid');
+    galleryJumpIndexSummaryEl = el.querySelector('#galleryJumpIndexSummary');
+    galleryJumpIndexMinTimeSelectedEl = el.querySelector('#galleryJumpIndexMinTimeSelected');
+    galleryJumpIndexMaxGroupSelectedEl = el.querySelector('#galleryJumpIndexMaxGroupSelected');
+
+    if (!galleryJumpIndexListenersInitialized) {
+        const closeBtn = el.querySelector('.close-btn');
+        if (closeBtn) closeBtn.addEventListener('click', () => closeModal(el));
+        document.addEventListener('galleryUpdated', () => {
+            if (galleryJumpIndexToolEl && !galleryJumpIndexToolEl.classList.contains('hidden')) {
+                regenerateGalleryJumpIndex();
+            }
+        });
+        galleryJumpIndexListenersInitialized = true;
+    }
+
+    if (!galleryJumpIndexDropdownsInitialized
+        && typeof setupDropdown === 'function'
+        && typeof renderSimpleDropdown === 'function') {
+        const minDrop = document.getElementById('galleryJumpIndexMinTimeDropdown');
+        const minBtn = document.getElementById('galleryJumpIndexMinTimeDropdownBtn');
+        const minMenu = document.getElementById('galleryJumpIndexMinTimeDropdownMenu');
+        const maxDrop = document.getElementById('galleryJumpIndexMaxGroupDropdown');
+        const maxBtn = document.getElementById('galleryJumpIndexMaxGroupDropdownBtn');
+        const maxMenu = document.getElementById('galleryJumpIndexMaxGroupDropdownMenu');
+
+        const closeMin = () => closeDropdown(minMenu, minBtn);
+        const closeMax = () => closeDropdown(maxMenu, maxBtn);
+        const selectMin = (value) => {
+            selectedGalleryJumpIndexMinTimeMs = Number(value);
+            if (galleryJumpIndexMinTimeSelectedEl) {
+                const selected = GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS.find((o) => String(o.value) === String(value));
+                galleryJumpIndexMinTimeSelectedEl.textContent = selected ? selected.name : `${value}`;
+            }
+            regenerateGalleryJumpIndex();
+        };
+        const selectMax = (value) => {
+            selectedGalleryJumpIndexMaxGroupImages = value === 'none' ? Infinity : Number(value);
+            if (galleryJumpIndexMaxGroupSelectedEl) {
+                const selected = GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS.find((o) => String(o.value) === String(value));
+                galleryJumpIndexMaxGroupSelectedEl.textContent = selected ? selected.name : `${value}`;
+            }
+            regenerateGalleryJumpIndex();
+        };
+        const renderMin = (selectedVal) => renderSimpleDropdown(
+            minMenu,
+            GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS,
+            'value',
+            'name',
+            selectMin,
+            closeMin,
+            selectedVal,
+            { preventFocusTransfer: true }
+        );
+        const renderMax = (selectedVal) => renderSimpleDropdown(
+            maxMenu,
+            GALLERY_JUMP_INDEX_MAX_GROUP_OPTIONS,
+            'value',
+            'name',
+            selectMax,
+            closeMax,
+            selectedVal,
+            { preventFocusTransfer: true }
+        );
+
+        setupDropdown(minDrop, minBtn, minMenu, renderMin, () => selectedGalleryJumpIndexMinTimeMs, { preventFocusTransfer: true });
+        setupDropdown(maxDrop, maxBtn, maxMenu, renderMax, () => (selectedGalleryJumpIndexMaxGroupImages === Infinity ? 'none' : selectedGalleryJumpIndexMaxGroupImages), { preventFocusTransfer: true });
+        galleryJumpIndexDropdownsInitialized = true;
+    }
+
+    if (galleryJumpIndexMinTimeSelectedEl) {
+        const selected = GALLERY_JUMP_INDEX_MIN_TIME_OPTIONS.find((o) => o.value === selectedGalleryJumpIndexMinTimeMs);
+        galleryJumpIndexMinTimeSelectedEl.textContent = selected ? selected.name : '30m';
+    }
+    if (galleryJumpIndexMaxGroupSelectedEl) {
+        if (selectedGalleryJumpIndexMaxGroupImages === Infinity) {
+            galleryJumpIndexMaxGroupSelectedEl.textContent = 'No max';
+        } else {
+            galleryJumpIndexMaxGroupSelectedEl.textContent = String(selectedGalleryJumpIndexMaxGroupImages);
+        }
+    }
+    return el;
+}
+
+function positionGalleryJumpIndexToolWindow() {
+    if (!galleryJumpIndexToolEl) return;
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (!galleryWindow || galleryWindow.classList.contains('hidden')) return;
+
+    const gRect = galleryWindow.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const margin = 12;
+
+    const currentWidth = Math.round(galleryJumpIndexToolEl.getBoundingClientRect().width || 420);
+    const targetWidth = Math.max(320, Math.min(560, currentWidth));
+    const targetHeight = Math.max(280, Math.min(viewportHeight - (margin * 2), Math.round(gRect.height)));
+
+    // Prefer left side; if insufficient space, use right side.
+    const leftSpace = gRect.left - margin;
+    const rightSpace = viewportWidth - gRect.right - margin;
+    const useLeft = leftSpace >= targetWidth || leftSpace >= rightSpace;
+    let left = useLeft ? (gRect.left - targetWidth - margin) : (gRect.right + margin);
+
+    // Clamp to viewport bounds.
+    left = Math.max(margin, Math.min(left, viewportWidth - targetWidth - margin));
+    const top = Math.max(margin, Math.min(gRect.top, viewportHeight - targetHeight - margin));
+
+    galleryJumpIndexToolEl.style.width = `${targetWidth}px`;
+    galleryJumpIndexToolEl.style.height = `${targetHeight}px`;
+    galleryJumpIndexToolEl.style.setProperty('--modal-offset-x', `${Math.round((left + (targetWidth / 2)) - (viewportWidth / 2))}px`);
+    galleryJumpIndexToolEl.style.setProperty('--modal-offset-y', `${Math.round((top + (targetHeight / 2)) - (viewportHeight / 2))}px`);
+}
+
+function enforceGalleryJumpIndexVerticalResizeOnly() {
+    if (!galleryJumpIndexToolEl) return;
+    const handles = galleryJumpIndexToolEl.querySelectorAll('.resize-handle');
+    handles.forEach((handle) => {
+        const keep = handle.classList.contains('n') || handle.classList.contains('s');
+        if (!keep) handle.remove();
+    });
+}
+
+function openGalleryJumpIndexToolWindow() {
+    const tool = ensureGalleryJumpIndexToolWindow();
+    if (!tool) return;
+    const galleryWindow = document.getElementById('galleryWindow');
+    if (galleryWindow && typeof linkToolWindowToParent === 'function') {
+        linkToolWindowToParent(tool, galleryWindow);
+    }
+    openModal(tool);
+    positionGalleryJumpIndexToolWindow();
+    enforceGalleryJumpIndexVerticalResizeOnly();
+    regenerateGalleryJumpIndex();
+}
+
+window.openGalleryJumpIndexToolWindow = openGalleryJumpIndexToolWindow;
+
+async function waitForGalleryReadyForTimeJump(timeoutMs = GALLERY_TIME_JUMP_READY_WAIT_MS) {
+    const startedAt = Date.now();
+    while ((Date.now() - startedAt) < timeoutMs) {
+        if (isGalleryReadyForTimeJump()) return true;
+        await new Promise((resolve) => setTimeout(resolve, 45));
+    }
+    return isGalleryReadyForTimeJump();
+}
+
+async function waitForGalleryHighlightComplete(timeoutMs = GALLERY_TIME_JUMP_HIGHLIGHT_WAIT_MS) {
+    if (!gallery) return true;
+    const startedAt = Date.now();
+    while ((Date.now() - startedAt) < timeoutMs) {
+        const hasHighlight = gallery.classList.contains('highlighting') || !!gallery.querySelector('.gallery-item.highlighted');
+        if (!hasHighlight) return true;
+        await new Promise((resolve) => setTimeout(resolve, 45));
+    }
+    return !gallery.classList.contains('highlighting') && !gallery.querySelector('.gallery-item.highlighted');
+}
+
+async function jumpToNextGalleryTimeBoundary(direction, optionsOrThreshold = GALLERY_TIME_JUMP_THRESHOLD_MS) {
+    const now = Date.now();
+    if (galleryTimeJumpInFlight || now < galleryTimeJumpDebounceUntil) return false;
+    if (!isGalleryReadyForTimeJump()) return false;
+    galleryTimeJumpInFlight = true;
+    let didRunTimeJump = false;
+
+    try {
+    const opts = (typeof optionsOrThreshold === 'object' && optionsOrThreshold !== null)
+        ? optionsOrThreshold
+        : { thresholdMs: optionsOrThreshold };
+    const providedThresholdMs = Number.isFinite(opts.thresholdMs) ? Math.floor(opts.thresholdMs) : GALLERY_TIME_JUMP_THRESHOLD_MS;
+    const customScanWindow = opts.scanWindow === null
+        ? null
+        : (Number.isFinite(opts.scanWindow) ? Math.max(1, Math.floor(opts.scanWindow)) : Math.max(1, Math.floor(GALLERY_TIME_JUMP_ADAPT_WINDOW_ITEMS)));
+    const dir = direction >= 0 ? 1 : -1;
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    if (!effectiveLength) return false;
+    const visibleRange = getVisibleGalleryIndexRange();
+    const currentAnchorIndex = Number.isFinite(lastHintIndex) && lastHintIndex >= 0
+        ? Math.max(0, Math.min(effectiveLength - 1, lastHintIndex))
+        : (visibleRange
+            ? (dir > 0 ? visibleRange.max : visibleRange.min)
+            : Math.max(0, Math.min(effectiveLength - 1, getFirstVisibleRowIndex())));
+    const startIndex = getGalleryJumpSearchStartIndex(dir, effectiveLength);
+    const baseThreshold = Math.max(
+        GALLERY_TIME_JUMP_MIN_THRESHOLD_MS,
+        providedThresholdMs
+    );
+    const minThreshold = Math.max(1, Math.floor(GALLERY_TIME_JUMP_MIN_THRESHOLD_MS));
+    const scanWindow = customScanWindow;
+    const reductionSteps = [1, 0.75, 0.5, 0.35, 0.25];
+    let jumpIndex = null;
+    let chosenThreshold = baseThreshold;
+
+    for (const factor of reductionSteps) {
+        chosenThreshold = Math.max(minThreshold, Math.floor(baseThreshold * factor));
+        jumpIndex = findNextTimeJumpFilteredIndex(dir, chosenThreshold, startIndex, scanWindow);
+        if (jumpIndex !== null) break;
+        if (chosenThreshold === minThreshold) break;
+    }
+    if (jumpIndex === null) {
+        jumpIndex = findNextTimeJumpFilteredIndex(dir, minThreshold, startIndex, null);
+        chosenThreshold = minThreshold;
+    }
+    if (jumpIndex === null) return false;
+
+    const fileIndex = window.filteredImageIndices && window.filteredImageIndices[jumpIndex] !== undefined
+        ? window.filteredImageIndices[jumpIndex]
+        : jumpIndex;
+    const targetTs = getGalleryImageTimestampMs(allImages[fileIndex]);
+    const anchorCompareIndex = dir > 0 ? Math.max(0, jumpIndex - 1) : Math.min(effectiveLength - 1, jumpIndex + 1);
+    const anchorFileIndex = window.filteredImageIndices && window.filteredImageIndices[anchorCompareIndex] !== undefined
+        ? window.filteredImageIndices[anchorCompareIndex]
+        : anchorCompareIndex;
+    const anchorTs = getGalleryImageTimestampMs(allImages[anchorFileIndex]);
+
+    await displayGalleryFromStartIndex(jumpIndex, true);
+    didRunTimeJump = true;
+
+    const jumpDetails = formatGalleryTimeJumpDetails(anchorTs, targetTs);
+    if (jumpDetails && window.showShortcutActionToast) {
+        const galleryWindow = document.querySelector('#galleryWindow');
+        const distance = Math.max(1, Math.abs(jumpIndex - currentAnchorIndex));
+        const directionLabel = dir > 0 ? 'ahead' : 'back';
+        window.showShortcutActionToast(
+            `Jumping ${directionLabel} ${distance} images\n${jumpDetails.relativeLabel} (${jumpDetails.absoluteLabel})`,
+            { centerOn: galleryWindow }
+        );
+    }
+    return true;
+    } finally {
+        await waitForGalleryHighlightComplete();
+        await waitForGalleryReadyForTimeJump();
+        if (didRunTimeJump) refreshGalleryJumpIndexUI();
+        galleryTimeJumpDebounceUntil = Date.now() + GALLERY_TIME_JUMP_RELEASE_DEBOUNCE_MS;
+        galleryTimeJumpInFlight = false;
+    }
+}
+
+/** Filtered index of first cell in the same grid row (keeps placeholders / infinite scroll row-aligned). */
+function snapGalleryFilteredIndexToRowStart(filteredIndex, cols, effectiveLength) {
+    const c = Math.max(1, Math.floor(Number(cols)) || 1);
+    const eff = Math.max(0, Math.floor(Number(effectiveLength)) || 0);
+    if (eff === 0) return 0;
+    let i = Math.max(0, Math.min(eff - 1, Math.floor(Number(filteredIndex)) || 0));
+    const lastRowStart = Math.floor((eff - 1) / c) * c;
+    return Math.min(Math.floor(i / c) * c, lastRowStart);
+}
+
+function resolveRestoredGalleryScrollIndex(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (!allImages || allImages.length === 0) return null;
+    if (isGallerySearchModeActive()) return null;
+
+    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    if (effectiveLength === 0) return null;
+
+    const cols = realGalleryColumns > 0 ? realGalleryColumns : 5;
+
+    if (entry.anchorFilename && typeof entry.anchorFilename === 'string') {
+        const af = entry.anchorFilename;
+        const fileIdx = allImages.findIndex(img => {
+            const f = img.filename || img.original || img.upscaled;
+            return f === af;
+        });
+        if (fileIdx !== -1) {
+            if (window.filteredImageIndices && window.filteredImageIndices.length) {
+                const fp = window.filteredImageIndices.indexOf(fileIdx);
+                if (fp !== -1) return snapGalleryFilteredIndexToRowStart(fp, cols, effectiveLength);
+            }
+            return snapGalleryFilteredIndexToRowStart(fileIdx, cols, effectiveLength);
+        }
+    }
+
+    if (typeof entry.index === 'number' && Number.isFinite(entry.index)) {
+        const clamped = Math.max(0, Math.min(effectiveLength - 1, Math.floor(entry.index)));
+        return snapGalleryFilteredIndexToRowStart(clamped, cols, effectiveLength);
+    }
+    return null;
+}
+
+function peekPendingGalleryScrollIndex() {
+    if (isGallerySearchModeActive()) return null;
+    const map = window.galleryScrollStateFromSession;
+    if (!map || typeof map !== 'object') return null;
+    const entry = map[galleryScrollRestoreKey()];
+    return resolveRestoredGalleryScrollIndex(entry);
+}
+
+function consumePendingGalleryScrollRestore() {
+    // Never consume while searching; keep the saved position for post-search restore.
+    if (isGallerySearchModeActive()) return null;
+    const map = window.galleryScrollStateFromSession;
+    if (!map || typeof map !== 'object') return null;
+    const key = galleryScrollRestoreKey();
+    const entry = map[key];
+    if (!entry || typeof entry !== 'object') return null;
+    const idx = resolveRestoredGalleryScrollIndex(entry);
+    delete map[key];
+    return idx;
+}
+
+function displayGalleryInitialPageOrRestored() {
+    if (isGalleryWindowHidden() || isJumpingToPosition) return;
+    const idx = consumePendingGalleryScrollRestore();
+    if (idx !== null) {
+        displayGalleryFromStartIndex(idx, false);
+    } else {
+        displayCurrentPageOptimized();
+    }
+}
+
+// Late gallery_scroll_state (race with loadGallery): public/scripts/websocket.js
+function displayGalleryApplyLateSessionRestore() {
+    if (isGalleryWindowHidden() || isJumpingToPosition) return;
+    if (!gallery || !allImages || !allImages.length) return;
+    if (isGallerySearchModeActive()) return;
+    const key = galleryScrollRestoreKey();
+    window._galleryScrollLateRestoreDone = window._galleryScrollLateRestoreDone || {};
+    if (window._galleryScrollLateRestoreDone[key]) return;
+    const idx = peekPendingGalleryScrollIndex();
+    if (idx === null) return;
+    window._galleryScrollLateRestoreDone[key] = true;
+    delete window.galleryScrollStateFromSession[key];
+    displayGalleryFromStartIndex(idx, false);
+}
+window.applyGallerySessionRestoreIfReady = displayGalleryApplyLateSessionRestore;
 
 // Apply a provided image list to the gallery without fetching from server (used by search)
 // IMPORTANT: allImages should ALWAYS be the full array, never filtered
@@ -798,10 +1781,12 @@ function updateGalleryProgress(progress) {
 
         const statusSpan = galleryProgressTextElement.querySelector('span:last-child');
         if (statusSpan) {
+            const detail = formatGalleryBlocksProgressLabel(progress);
+            const suffix = detail ? ` (${detail})` : '';
             if (progress.phase === 'initial') {
-                statusSpan.textContent = `Loading Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+                statusSpan.textContent = `Loading Gallery${suffix}`;
             } else {
-                statusSpan.textContent = `Please Wait (${progress.loaded}/${progress.total || 'unknown'})`;
+                statusSpan.textContent = `Please Wait${suffix}`;
             }
         }
     } else {
@@ -826,10 +1811,12 @@ function updateGalleryProgress(progress) {
 
             const statusSpan = progressText.querySelector('span:last-child');
             if (statusSpan) {
+                const detail = formatGalleryBlocksProgressLabel(progress);
+                const suffix = detail ? ` (${detail})` : '';
                 if (progress.phase === 'initial') {
-                    statusSpan.textContent = `Loading Gallery (${progress.loaded}/${progress.total || 'unknown'})`;
+                    statusSpan.textContent = `Loading Gallery${suffix}`;
                 } else {
-                    statusSpan.textContent = `Please Wait (${progress.loaded}/${progress.total || 'unknown'})`;
+                    statusSpan.textContent = `Please Wait${suffix}`;
                 }
             }
         }
@@ -857,7 +1844,7 @@ function updateGalleryLoadingProgress(progress) {
 
         const statusSpan = galleryProgressTextElement.querySelector('span:last-child');
         if (statusSpan) {
-            statusSpan.textContent = `Loading (${progress.loaded}/${progress.total || 'unknown'})`;
+            statusSpan.textContent = formatGalleryBlocksProgressLabel(progress);
         }
     } else {
         // Fallback: try to find elements if not stored yet
@@ -881,7 +1868,7 @@ function updateGalleryLoadingProgress(progress) {
 
             const statusSpan = progressText.querySelector('span:last-child');
             if (statusSpan) {
-                statusSpan.textContent = `Loading (${progress.loaded}/${progress.total || 'unknown'})`;
+                statusSpan.textContent = formatGalleryBlocksProgressLabel(progress);
             }
         }
     }
@@ -1013,7 +2000,7 @@ async function loadScraps(progressCallback = null) {
             }
 
             if (!isJumpingToPosition) {
-                displayCurrentPageOptimized();
+                displayGalleryInitialPageOrRestored();
             }
         } else {
             throw new Error('WebSocket not connected');
@@ -1024,7 +2011,7 @@ async function loadScraps(progressCallback = null) {
         allImages = [];
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
-            displayCurrentPageOptimized();
+            displayGalleryInitialPageOrRestored();
         }
     }
 }
@@ -1043,7 +2030,7 @@ async function loadPinned(progressCallback = null) {
             buildGalleryNavigationCache(allImages);
 
             if (!isJumpingToPosition) {
-                displayCurrentPageOptimized();
+                displayGalleryInitialPageOrRestored();
             }
         } else {
             throw new Error('WebSocket not connected');
@@ -1054,7 +2041,7 @@ async function loadPinned(progressCallback = null) {
         allImages = [];
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
-            displayCurrentPageOptimized();
+            displayGalleryInitialPageOrRestored();
         }
     }
 }
@@ -1073,7 +2060,7 @@ async function loadUpscaled(progressCallback = null) {
             buildGalleryNavigationCache(allImages);
 
             if (!isJumpingToPosition) {
-                displayCurrentPageOptimized();
+                displayGalleryInitialPageOrRestored();
             }
         } else {
             throw new Error('WebSocket not connected');
@@ -1084,7 +2071,7 @@ async function loadUpscaled(progressCallback = null) {
         allImages = [];
         if (!isJumpingToPosition) {
             resetInfiniteScroll();
-            displayCurrentPageOptimized();
+            displayGalleryInitialPageOrRestored();
         }
     }
 }
@@ -1287,7 +2274,7 @@ async function loadGallery(addLatest, progressCallback = null) {
                     // Reset infinite scroll state and display initial batch
                     clearSelection(); // Clear selection when reloading gallery
                     resetInfiniteScroll();
-                    displayCurrentPageOptimized();
+                    displayGalleryInitialPageOrRestored();
                 }
             }
 
@@ -1327,7 +2314,7 @@ async function loadGallery(addLatest, progressCallback = null) {
 
         // Only update gallery display if manual modal is not open and gallery is not hidden
         if (!isGalleryHidden) {
-            displayCurrentPageOptimized();
+            displayGalleryInitialPageOrRestored();
         }
 
         // Call workspace completion callback if it exists (for workspace switching)
@@ -1344,10 +2331,14 @@ async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
     });
 
     const { gallery: chunk, pagination } = result.data || result;
+    const payload = result.data || result;
     return {
         chunk: chunk || [],
         hasMore: pagination?.hasMore || false,
-        total: pagination?.totalItems || 0
+        total: pagination?.totalItems || 0,
+        galleryHash: payload.galleryHash || null,
+        lastGalleryDestructiveAt: Number(payload.lastGalleryDestructiveAt) || 0,
+        workspaceId: payload.workspaceId || ((typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default')
     };
 }
 
@@ -1362,10 +2353,62 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         const chunkSize = 750; // Larger chunks for efficiency
         let chunkCount = 0;
         let totalItems = 0;
+        const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+        let probe = null;
+        let galleryHash = null;
+        let serverDestructiveAt = 0;
+
+        // Probe gallery hash first so we can serve the full array from IndexedDB when unchanged.
+        if (viewType === 'images') {
+            // Force-clear stale gallery ticker/pagination state before hash-probe requests.
+            if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+                window.wsClient.completeGalleryLoading();
+            }
+            if (progressCallback) {
+                progressCallback({
+                    loaded: 0,
+                    total: 0,
+                    offset: 0,
+                    progress: 0.02,
+                    phase: 'hash_probe',
+                    suppressBlocks: true
+                });
+            }
+            await galleryMetadataCache.initPromise;
+            probe = await loadGalleryChunk(viewType, 0, 0);
+            galleryHash = probe.galleryHash || null;
+            totalItems = probe.total || 0;
+            serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
+
+            if (galleryHash) {
+                const snapshot = await galleryMetadataCache.getGallerySnapshot(workspaceId, viewType, galleryHash);
+                if (snapshot && Array.isArray(snapshot.gallery)) {
+                    allImages = snapshot.gallery;
+                    if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+                        window.wsClient.completeGalleryLoading();
+                    }
+                    if (progressCallback) {
+                        progressCallback({
+                            loaded: allImages.length,
+                            total: allImages.length,
+                            offset: allImages.length,
+                            progress: 1,
+                            phase: 'remaining',
+                            blocksLeft: 0
+                        });
+                    }
+                    return;
+                }
+            }
+
+        }
 
         // First pass: determine total items count for progress calculation
-        if (progressCallback) {
+        const needFirstChunkForProgress = progressCallback && totalItems === 0 && !(viewType === 'images' && probe);
+        if (needFirstChunkForProgress) {
             const firstChunk = await loadGalleryChunk(viewType, 0, 1);
+            galleryHash = galleryHash || firstChunk.galleryHash || null;
+            serverDestructiveAt = serverDestructiveAt || firstChunk.lastGalleryDestructiveAt || 0;
             if (firstChunk.total > 0) {
                 totalItems = firstChunk.total;
             } else if (firstChunk.chunk && firstChunk.chunk.length > 0) {
@@ -1381,11 +2424,18 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         while (true) {
             chunkCount++;
 
-            const { chunk, hasMore, total } = await loadGalleryChunk(viewType, offset, chunkSize);
+            const { chunk, hasMore, total, galleryHash: chunkHash, lastGalleryDestructiveAt: chunkDestructive } = await loadGalleryChunk(viewType, offset, chunkSize);
 
             // Update total if we got it from this chunk
             if (total > 0 && totalItems === 0) {
                 totalItems = total;
+            }
+
+            if (chunkHash) {
+                galleryHash = chunkHash;
+            }
+            if (typeof chunkDestructive === 'number' && !Number.isNaN(chunkDestructive)) {
+                serverDestructiveAt = chunkDestructive;
             }
 
             if (!chunk || chunk.length === 0) {
@@ -1404,12 +2454,15 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
             // Report progress if callback provided
             if (progressCallback && totalItems > 0) {
                 const progressRatio = loadedItems / totalItems;
+                const totalChunkRequests = Math.ceil(totalItems / chunkSize);
+                const blocksLeft = Math.max(0, totalChunkRequests - chunkCount);
                 progressCallback({
                     loaded: loadedItems,
                     total: totalItems,
                     offset: offset,
                     progress: progressRatio,
-                    phase: progressRatio < 0.75 ? 'initial' : 'remaining'
+                    phase: progressRatio < 0.75 ? 'initial' : 'remaining',
+                    blocksLeft: blocksLeft
                 });
             }
 
@@ -1424,7 +2477,20 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         // Set up gallery state with loaded data
         allImages = dataItems;
 
+        // Save latest full images gallery snapshot for workspace/hash reuse.
+        if (viewType === 'images' && galleryHash) {
+            await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, dataItems, {
+                lastGalleryDestructiveAt: serverDestructiveAt
+            });
+        }
+        if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+            window.wsClient.completeGalleryLoading();
+        }
+
     } catch (error) {
+        if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
+            window.wsClient.completeGalleryLoading();
+        }
         console.error('Error loading complete gallery:', error);
         throw error;
     }
@@ -2055,6 +3121,11 @@ function createGalleryItem(image, index, skipImgElement = false) {
                             }
                         },
                         {
+                            icon: 'fas fa-up-to-dotted-line',
+                            tooltip: 'Select All Before',
+                            action: 'select-all-before-item'
+                        },
+                        {
                             icon: 'fa-regular fa-star', // Default icon, will be updated by loadfn
                             tooltip: 'Favorite', // Default text, will be updated by loadfn
                             action: 'toggle-favorite',
@@ -2242,6 +3313,17 @@ function createGalleryItem(image, index, skipImgElement = false) {
             return;
         }
 
+        if (isSelectionMode) {
+            e.preventDefault();
+            e.stopPropagation();
+            const cb = item.querySelector('.gallery-item-checkbox');
+            if (cb) {
+                cb.checked = !cb.checked;
+                handleImageSelection(image, cb.checked, { target: cb, altKey: false });
+            }
+            return;
+        }
+
         // Pass the element itself - showLightbox will extract index at click time (not cached)
         showLightbox({ element: item });
     });
@@ -2426,7 +3508,8 @@ function scheduleDeferredPlaceholderAddition(direction) {
 // Unified placeholder buffer size calculation
 function calculatePlaceholderBufferSize(scrollVelocity = 0, rows = galleryRows, isJumpOperation = false) {
     const isMobile = window.innerWidth <= infiniteScrollConfig.smallScreenThreshold;
-    const absScrollVelocity = Math.abs(scrollVelocity || 0);
+    // Velocity spikes (logs: ~100+) can explode buffer and trigger tail overfill/reflow; clamp for stable buffer math.
+    const absScrollVelocity = Math.min(12, Math.abs(scrollVelocity || 0));
     let placeholderMultiplier = isJumpOperation ? 2.0 : 1.5; // Higher default for jump operations
 
     if (absScrollVelocity > 0) {
@@ -2449,6 +3532,10 @@ function calculatePlaceholderBufferSize(scrollVelocity = 0, rows = galleryRows, 
     // Ensure minimum 2 pages worth during fast scrolling (2 * rows * realGalleryColumns)
     const minTwoPagesBuffer = 2 * rows * realGalleryColumns;
     bufferSize = Math.max(bufferSize, minTwoPagesBuffer);
+    // Hard cap prevents reflow spikes from giant buffers (e.g. buf 477 in logs).
+    const maxRowsCap = isMobile ? 30 : 24;
+    const maxBufferSize = Math.max(minTwoPagesBuffer, maxRowsCap * realGalleryColumns);
+    bufferSize = Math.min(bufferSize, maxBufferSize);
 
     // Mobile-specific buffer size adjustment
     const adjustedBufferSize = isMobile ? Math.max(bufferSize, realGalleryColumns * 4) : bufferSize;
@@ -2772,6 +3859,10 @@ function handleInfiniteScroll() {
 
     // Don't handle infinite scroll if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
+
+    // Post-restore stabilization: virtual scroll / load-more must not mutate the DOM window
+    // until explicit user input lifts suppression (otherwise saved position hints drift).
+    if (suppressGalleryPositionHintUntilInteraction) return;
 
     // Detect if we're scrolling in a container or window
     const galleryWindow = document.querySelector('#galleryWindow');
@@ -3184,18 +4275,29 @@ function updateVisibleItems() {
         }
 
         if (isVisible) {
-            visibleItems.add(index);
-            // Track first visible index
-            if (firstVisibleIndex === null) {
-                firstVisibleIndex = index;
+            const galleryIndex = parseInt(item.dataset.index, 10);
+            if (!isNaN(galleryIndex)) {
+                visibleItems.add(galleryIndex);
+                if (firstVisibleIndex === null) {
+                    firstVisibleIndex = galleryIndex;
+                }
             }
         }
     });
 
-    // Update current visible index for title bar
+    // Update current visible index for title bar (row-aligned index, same as position hints / restore)
     if (firstVisibleIndex !== null) {
-        currentVisibleIndex = firstVisibleIndex;
+        const eff = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+        const c = realGalleryColumns || 5;
+        currentVisibleIndex = snapGalleryFilteredIndexToRowStart(firstVisibleIndex, c, eff);
         updateGalleryTitleBar();
+    }
+
+    if (galleryJumpIndexToolEl && !galleryJumpIndexToolEl.classList.contains('hidden')) {
+        updateGalleryJumpIndexActiveCard();
+        if (!Number.isFinite(galleryJumpIndexHoveredBoundaryIndex)) {
+            updateGalleryJumpIndexSummary();
+        }
     }
 }
 
@@ -3263,26 +4365,69 @@ function getFirstVisibleRowIndex() {
         viewportTop = window.pageYOffset || document.documentElement.scrollTop;
     }
 
-    // Find the first item that's visible (at least partially)
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const rect = item.getBoundingClientRect();
+    const viewportHeight = isContainerScroll && galleryContainer ? galleryContainer.clientHeight : window.innerHeight;
+    const viewportBottom = viewportTop + viewportHeight;
+    const edgeTolerance = 100;
+    // Ignore cells only barely peeking into view (typical off-by-one row: previous row's sliver at top).
+    const minVisibleHeightFraction = 0.22;
 
-        let itemTop;
+    const itemScrollBounds = (item) => {
+        const rect = item.getBoundingClientRect();
         if (isContainerScroll && galleryContainer) {
             const containerRect = galleryContainer.getBoundingClientRect();
-            itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
-        } else {
-            itemTop = rect.top + window.pageYOffset;
+            return {
+                itemTop: rect.top - containerRect.top + galleryContainer.scrollTop,
+                itemBottom: rect.bottom - containerRect.top + galleryContainer.scrollTop
+            };
         }
+        return {
+            itemTop: rect.top + window.pageYOffset,
+            itemBottom: rect.bottom + window.pageYOffset
+        };
+    };
 
-        // Check if item is at least partially visible
-        if (itemTop < viewportTop + 100) { // 100px tolerance
-            const index = parseInt(item.dataset.index);
-            if (!isNaN(index)) {
+    const pickFirstRowIndex = (useMinVisibleFraction) => {
+        let placeholderFallbackIndex = null;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const { itemTop, itemBottom } = itemScrollBounds(item);
+
+            const intersectsViewport = itemBottom > viewportTop && itemTop < viewportBottom;
+            if (!intersectsViewport) continue;
+
+            if (useMinVisibleFraction) {
+                const rowH = itemBottom - itemTop;
+                if (rowH <= 0) continue;
+                const visTop = Math.max(itemTop, viewportTop);
+                const visBottom = Math.min(itemBottom, viewportBottom);
+                const visH = visBottom - visTop;
+                if (visH < rowH * minVisibleHeightFraction) continue;
+            } else if (!(itemBottom > (viewportTop - edgeTolerance) && itemTop < viewportBottom)) {
+                continue;
+            }
+
+            const index = parseInt(item.dataset.index, 10);
+            if (isNaN(index)) continue;
+
+            if (!item.classList.contains('gallery-placeholder')) {
                 return index;
             }
+
+            if (placeholderFallbackIndex === null) {
+                placeholderFallbackIndex = index;
+            }
         }
+        return placeholderFallbackIndex;
+    };
+
+    let chosen = pickFirstRowIndex(true);
+    if (chosen != null) {
+        return chosen;
+    }
+
+    chosen = pickFirstRowIndex(false);
+    if (chosen != null) {
+        return chosen;
     }
 
     // Fallback: return index of first item
@@ -3441,11 +4586,15 @@ function processPlaceholderCleanup() {
         placeholdersByRow.get(rowKey).push(element);
     }
 
-    // Collect only complete rows in a single pass
+    // Collect only complete rows, but cap per cleanup pass to avoid rapid reflow jumps.
+    const maxRowsPerCleanup = isIOS ? 3 : 6;
     const placeholdersToRemove = [];
+    let rowsQueuedForRemoval = 0;
     for (const placeholdersInRow of placeholdersByRow.values()) {
         if (placeholdersInRow.length >= currentItemsPerRow) {
-            placeholdersToRemove.push(...placeholdersInRow);
+            placeholdersToRemove.push(...placeholdersInRow.slice(0, currentItemsPerRow));
+            rowsQueuedForRemoval++;
+            if (rowsQueuedForRemoval >= maxRowsPerCleanup) break;
         }
     }
 
@@ -3509,34 +4658,41 @@ function resolveVisiblePlaceholders() {
     const placeholders = gallery.querySelectorAll('.gallery-placeholder');
     if (placeholders.length === 0) return;
 
-    // Update visible items first to get current state
+    // Update visible items first (title bar / tracking); visibility uses same scroll root as updateVisibleItems
     updateVisibleItems();
 
-    // Get viewport bounds for prioritization
-    const viewportTop = window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
+    const galleryWindow = document.querySelector('#galleryWindow');
+    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
 
-    let queuedCount = 0;
+    let viewportTop;
+    let viewportBottom;
+    if (isContainerScroll && galleryContainer) {
+        viewportTop = galleryContainer.scrollTop;
+        viewportBottom = viewportTop + galleryContainer.clientHeight;
+    } else {
+        const trueInsetTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
+        viewportTop = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTop;
+        viewportBottom = viewportTop + (window.innerHeight - trueInsetTop);
+    }
+
     placeholders.forEach(placeholder => {
-        const itemIndex = parseInt(placeholder.dataset.index || '0');
+        const rect = placeholder.getBoundingClientRect();
+        let itemTop;
+        let itemBottom;
+        if (isContainerScroll && galleryContainer) {
+            const containerRect = galleryContainer.getBoundingClientRect();
+            itemTop = rect.top - containerRect.top + galleryContainer.scrollTop;
+            itemBottom = rect.bottom - containerRect.top + galleryContainer.scrollTop;
+        } else {
+            itemTop = rect.top + window.pageYOffset;
+            itemBottom = rect.bottom + window.pageYOffset;
+        }
 
-        // Only queue placeholders that are actually visible in the viewport
-        if (visibleItems.has(itemIndex)) {
-            const rect = placeholder.getBoundingClientRect();
-            const elementTop = viewportTop + rect.top;
-            const elementBottom = viewportTop + rect.bottom;
-
-            // Prioritize placeholders that are actually in viewport
-            const isInViewport = elementTop < viewportBottom && elementBottom > viewportTop;
-
-            if (isInViewport) {
-                const fileIndex = parseInt(placeholder.dataset.fileIndex);
-                const filteredIndex = itemIndex; // Use the display index
-
-                // Add to the existing placeholder resolution queue
-                queuePlaceholderResolution(placeholder, fileIndex, filteredIndex);
-                queuedCount++;
-            }
+        if (itemBottom > viewportTop && itemTop < viewportBottom) {
+            const fileIndex = parseInt(placeholder.dataset.fileIndex, 10);
+            const filteredIndex = parseInt(placeholder.dataset.index || '0', 10);
+            queuePlaceholderResolution(placeholder, fileIndex, filteredIndex);
         }
     });
 }
@@ -3554,13 +4710,47 @@ function updateScrollVelocity(scrollTarget = null) {
     }
 
     if (lastScrollTime > 0) {
-        const timeDelta = now - lastScrollTime;
+        const timeDeltaMs = now - lastScrollTime;
         const scrollDelta = currentScrollTop - lastScrollTop;
-        scrollVelocity = scrollDelta / timeDelta;
+        const safeDeltaMs = Math.max(12, timeDeltaMs);
+        const rawVelocity = scrollDelta / safeDeltaMs;
+        // Smooth noisy wheel/touch bursts; unstable sign flips were causing buffer/skip churn.
+        scrollVelocity = (scrollVelocity * 0.6) + (rawVelocity * 0.4);
+        if (Math.abs(scrollDelta) < 2 && safeDeltaMs < 50) {
+            scrollVelocity *= 0.5;
+        }
     }
 
     lastScrollTime = now;
     lastScrollTop = currentScrollTop;
+
+    // Jump lifecycle owns layout/positioning; ignore momentum updates here to avoid first-jump drift.
+    if (isJumpingToPosition) {
+        scrollVelocity = 0;
+        isScrolling = false;
+        return;
+    }
+
+    // Top-edge nudge (container mode): if we're at 0px but gallery still has indices above,
+    // nudge down 5% of item height so the next upward gesture can emit a scroll event.
+    if (scrollTarget && scrollTarget.scrollTop <= 0) {
+        const firstChild = gallery ? gallery.firstChild : null;
+        const firstIndex = firstChild && firstChild.dataset && firstChild.dataset.index !== undefined
+            ? parseInt(firstChild.dataset.index, 10)
+            : 0;
+        if (firstIndex > 0) {
+            const sample = gallery ? gallery.querySelector('.gallery-item, .gallery-placeholder') : null;
+            const sampleRect = sample ? sample.getBoundingClientRect() : null;
+            const baseItemHeight = sampleRect && sampleRect.height > 0
+                ? sampleRect.height
+                : (window.innerHeight / Math.max(3, galleryRows || 5));
+            const nudgePx = Math.max(6, Math.round(baseItemHeight * 0.05));
+            if (!suppressGalleryPositionHintUntilInteraction) {
+                scrollTarget.scrollTop = nudgePx;
+                updateVirtualScroll();
+            }
+        }
+    }
 
     // Track fast scrolling state for placeholder resolution pause
     const currentAbsVelocity = Math.abs(scrollVelocity);
@@ -3623,6 +4813,7 @@ function updateScrollVelocity(scrollTarget = null) {
             fastScrollTimeout = null;
         }
     }
+
 }
 
 // Initialize intersection observer for better performance
@@ -3673,6 +4864,9 @@ function updateVirtualScroll() {
     // Don't update virtual scroll during jump operations (prevents placeholder creation during jump)
     if (isJumpingToPosition) return;
 
+    // Same as post-restore hint suppression: keep virtual DOM stable until user input.
+    if (suppressGalleryPositionHintUntilInteraction) return;
+
     // Don't update virtual scroll if manual modal is open and maximized
     if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
 
@@ -3697,8 +4891,14 @@ function updateVirtualScrollInternal() {
     // Early return if no items to process
     if (total === 0) return;
 
+    if (suppressGalleryPositionHintUntilInteraction) return;
+
     // First, update visible items tracking
     updateVisibleItems();
+
+    const galleryWindowVs = document.querySelector('#galleryWindow');
+    const galleryContainerVs = galleryWindowVs ? galleryWindowVs.querySelector('.gallery-container') : null;
+    const isContainerScrollVs = galleryContainerVs && document.body.classList.contains('desktop-mode');
 
     // Detect fast scrolling and adjust buffer size accordingly
     const isRapidScrolling = Math.abs(scrollVelocity) > 3; // Increased threshold for rapid scrolling
@@ -3738,29 +4938,56 @@ function updateVirtualScrollInternal() {
         bufferRows = Math.max(2, Math.floor(rowsOnScreen * 0.4)); // Moderate cleanup
     }
 
-    const minVisible = Math.min(...visibleIndices);
-    const maxVisible = Math.max(...visibleIndices);
+    const minVisibleGallery = Math.min(...visibleIndices);
+    const maxVisibleGallery = Math.max(...visibleIndices);
+    const effectiveMaxGalleryIndex = (window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length) - 1;
 
     // Adjust buffer based on scroll velocity - use larger buffer to prevent flickering
     // Increased buffer: 2-4 rows instead of 0.5-1 rows
     const bufferMultiplier = isRapidScrolling ? 2 : 6;
-    const minKeep = Math.max(0, minVisible - Math.floor(realGalleryColumns * bufferMultiplier));
-    const maxKeep = Math.min(total - 1, maxVisible + Math.floor(realGalleryColumns * bufferMultiplier));
+    const indexPad = Math.floor(realGalleryColumns * bufferMultiplier);
+    const minKeep = Math.max(0, minVisibleGallery - indexPad);
+    const maxKeep = Math.min(Math.max(0, effectiveMaxGalleryIndex), maxVisibleGallery + indexPad);
+    // Viewport band drives placeholder add/remove counts (phAbove/phBelow vs bufferSize). Do not widen minKeep/maxKeep to full DOM — that pins phBelow < bufferSize and causes runaway inserts (post-fix logs: total 48→990, stCont flat).
+    let loadMinG = Infinity;
+    let loadMaxG = -Infinity;
+    if (gallery.firstChild && gallery.firstChild.dataset && gallery.firstChild.dataset.index !== undefined) {
+        const fi = parseInt(gallery.firstChild.dataset.index, 10);
+        const la = gallery.lastChild && gallery.lastChild.dataset && gallery.lastChild.dataset.index !== undefined
+            ? parseInt(gallery.lastChild.dataset.index, 10)
+            : NaN;
+        if (!isNaN(fi) && !isNaN(la)) {
+            loadMinG = Math.min(fi, la);
+            loadMaxG = Math.max(fi, la);
+        }
+    }
+    let stripMin = minKeep;
+    let stripMax = maxKeep;
+    if (loadMinG !== Infinity) {
+        stripMin = Math.min(stripMin, Math.max(0, loadMinG - indexPad));
+        stripMax = Math.max(stripMax, Math.min(effectiveMaxGalleryIndex, loadMaxG + indexPad));
+    }
 
     // Use unified buffer size calculation
     const bufferSize = calculatePlaceholderBufferSize(scrollVelocity, rowsOnScreen);
 
     // Track items that need placeholder state - keep as gallery-item elements, just add/remove placeholder class
+    // Always prioritize truly visible placeholders with a small per-pass direct-resolve budget.
+    let immediateVisibleResolved = 0;
+    const immediateVisibleResolveBudget = isRapidScrolling ? 4 : 8;
     // Use data-index instead of DOM position for accurate index tracking after reindexing
     for (let i = 0; i < total; i++) {
         const el = items[i];
         const isGalleryItem = el.classList.contains('gallery-item');
         const hasPlaceholderClass = el.classList.contains('gallery-placeholder');
 
-        // Get the actual index from data-index attribute (not DOM position)
-        const itemIndex = parseInt(el.dataset.index || i.toString());
+        // Gallery list index (must align minKeep/maxKeep and visibleItems — all gallery-index space)
+        const itemIndex = parseInt(el.dataset.index || i.toString(), 10);
+        if (isNaN(itemIndex)) {
+            continue;
+        }
 
-        if (i < minKeep || i > maxKeep) {
+        if (itemIndex < stripMin || itemIndex > stripMax) {
             // Items far from viewport - add placeholder class for tracking, but keep as gallery-item
             // Don't convert items created during jump operations (they should stay as real items)
             if (isGalleryItem && !hasPlaceholderClass) {
@@ -3770,7 +4997,7 @@ function updateVirtualScrollInternal() {
             }
         } else {
             // Items near viewport - remove placeholder class and resolve
-            const isItemVisible = visibleItems.has(i);
+            const isItemVisible = visibleItems.has(itemIndex);
 
             // Check for predictive loading: items near viewport but not fully visible
             let isItemNearViewport = isItemVisible;
@@ -3826,6 +5053,17 @@ function updateVirtualScrollInternal() {
                 multiplexingLevel >= 2; // Require higher multiplexing for observer resolution
 
             if (hasPlaceholderClass && isGalleryItem && isItemNearViewport) {
+                // Visible placeholder rows should never wait behind background queue work.
+                if (isItemVisible && immediateVisibleResolved < immediateVisibleResolveBudget) {
+                    const fileIndex = parseInt(el.dataset.fileIndex, 10);
+                    const image = allImages[fileIndex];
+                    if (image && !el.querySelector('img')) {
+                        el.classList.remove('gallery-placeholder');
+                        addImgToGalleryItemAsync(el, image);
+                        immediateVisibleResolved++;
+                        continue;
+                    }
+                }
                 if (allowObserverResolution) {
                     // Fast connection: resolve directly via observer with throttling
                     const now = Date.now();
@@ -3849,6 +5087,12 @@ function updateVirtualScrollInternal() {
                 }
             } else if (hasPlaceholderClass && !isGalleryItem && isItemNearViewport) {
                 // Standalone placeholder (not a gallery-item) - resolve directly
+                if (isItemVisible && immediateVisibleResolved < immediateVisibleResolveBudget) {
+                    el.classList.remove('gallery-placeholder');
+                    el.classList.add('gallery-item');
+                    immediateVisibleResolved++;
+                    continue;
+                }
                 if (allowObserverResolution) {
                     // Fast connection: resolve standalone placeholders directly with throttling
                     const now = Date.now();
@@ -3913,12 +5157,21 @@ function updateVirtualScrollInternal() {
     const isScrollingDown = scrollVelocity > 0;
     const isScrollingUp = scrollVelocity < 0;
 
-    // Check if user is near the bottom and might want to scroll further down
-    const isNearBottom = window.pageYOffset + window.innerHeight > document.documentElement.scrollHeight - 200;
+    // Check if user is near the bottom and might want to scroll further down (match scroll root: window vs gallery container)
+    const isNearBottom = isContainerScrollVs && galleryContainerVs
+        ? galleryContainerVs.scrollTop + galleryContainerVs.clientHeight > galleryContainerVs.scrollHeight - 200
+        : window.pageYOffset + window.innerHeight > document.documentElement.scrollHeight - 200;
 
     allPlaceholders.forEach(placeholder => {
         // Use data-index instead of DOM position for accurate index tracking after reindexing
         const idx = parseInt(placeholder.dataset.index || '0');
+        // When viewport indices desync from the loaded DOM floor/ceiling, protect mounted range from cleanup.
+        const desyncTol = Math.max(realGalleryColumns * 2, 8);
+        const galleryFloorDesync = loadMinG !== Infinity && loadMinG - minVisibleGallery > desyncTol;
+        const galleryCeilingDesync = loadMinG !== Infinity && maxVisibleGallery - loadMaxG > desyncTol;
+        if ((galleryFloorDesync || galleryCeilingDesync) && idx >= loadMinG && idx <= loadMaxG) {
+            return;
+        }
 
         // iOS: NEVER remove placeholders above the viewport to prevent screen flashing
         // Only remove placeholders below the viewport when safe
@@ -3989,9 +5242,29 @@ function updateVirtualScrollInternal() {
         schedulePlaceholderCleanup(placeholdersToRemove);
     }
 
-    // During fast scrolling, only add placeholders in the scroll direction
-    const skipAddingAbove = isFastScrolling && fastScrollDirection === 1; // Scrolling down = don't add above
-    const skipAddingBelow = isFastScrolling && fastScrollDirection === -1; // Scrolling up = don't add below
+    // During fast scrolling, only add placeholders in the current direction.
+    // Direction lock must follow current velocity; stale fastScrollDirection can block add-above at top.
+    let skipAddingAbove = isFastScrolling && fastScrollDirection === 1 && scrollVelocity > 0; // Scrolling down fast = don't add above
+    const skipAddingBelow = (isScrolling && scrollVelocity < 0) || (isFastScrolling && fastScrollDirection === -1);
+
+    // Backpressure: don't expand upward while near-viewport placeholders are still unresolved.
+    // This prevents "add-above outruns resolve" behavior and row catch-up churn.
+    let unresolvedNearViewportCount = 0;
+    if (scrollVelocity < 0) {
+        const checkTop = minVisibleGallery - (realGalleryColumns * 2);
+        const checkBottom = maxVisibleGallery + realGalleryColumns;
+        for (let i = 0; i < total; i++) {
+            const el = items[i];
+            if (!el.classList.contains('gallery-placeholder')) continue;
+            const idx = parseInt(el.dataset.index || '-1', 10);
+            if (isNaN(idx) || idx < checkTop || idx > checkBottom) continue;
+            if (!el.querySelector('img')) unresolvedNearViewportCount++;
+        }
+    }
+    const shouldHoldAboveForResolve = scrollVelocity < 0 && unresolvedNearViewportCount >= Math.max(realGalleryColumns, 6);
+    if (shouldHoldAboveForResolve) {
+        skipAddingAbove = true;
+    }
 
     // Add missing placeholders above (in full row batches, only for missing indices)
     while (placeholdersAbove < bufferSize && !skipAddingAbove) {
@@ -4193,15 +5466,31 @@ function updateVirtualScrollInternal() {
     // Recompute visible/buffered range after any placeholder changes
     const updatedItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
     const updatedTotal = updatedItems.length;
-    // Recompute visible indices
-    const viewportTop = window.pageYOffset;
-    const viewportBottom = viewportTop + window.innerHeight;
+    // Recompute visible indices (same scroll root as updateVisibleItems: window vs gallery-container)
+    let viewportTopVs;
+    let viewportBottomVs;
+    if (isContainerScrollVs && galleryContainerVs) {
+        viewportTopVs = galleryContainerVs.scrollTop;
+        viewportBottomVs = viewportTopVs + galleryContainerVs.clientHeight;
+    } else {
+        const trueInsetTopVs = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--true-inset-top')) || 0;
+        viewportTopVs = (window.pageYOffset || document.documentElement.scrollTop) + trueInsetTopVs;
+        viewportBottomVs = viewportTopVs + (window.innerHeight - trueInsetTopVs);
+    }
     let updatedVisible = new Set();
     updatedItems.forEach((item, index) => {
         const rect = item.getBoundingClientRect();
-        const itemTop = rect.top + window.pageYOffset;
-        const itemBottom = rect.bottom + window.pageYOffset;
-        if (itemBottom > viewportTop && itemTop < viewportBottom) {
+        let itemTop;
+        let itemBottom;
+        if (isContainerScrollVs && galleryContainerVs) {
+            const containerRectVs = galleryContainerVs.getBoundingClientRect();
+            itemTop = rect.top - containerRectVs.top + galleryContainerVs.scrollTop;
+            itemBottom = rect.bottom - containerRectVs.top + galleryContainerVs.scrollTop;
+        } else {
+            itemTop = rect.top + window.pageYOffset;
+            itemBottom = rect.bottom + window.pageYOffset;
+        }
+        if (itemBottom > viewportTopVs && itemTop < viewportBottomVs) {
             updatedVisible.add(index);
         }
     });
@@ -4432,6 +5721,8 @@ function removeImageFromGallery(image) {
         // This ensures all items and placeholders have correct indices and removes duplicates
         reindexGallery();
 
+        triggerBuildGalleryNavigationCache();
+
         // Trigger virtual scroll update to refresh placeholder states after reindexing
         // This ensures the virtual scroll system uses the correct indices
         requestAnimationFrame(() => {
@@ -4652,6 +5943,8 @@ function removeMultipleImagesFromGallery(images) {
         // Reindex the entire gallery after array changes using the dedicated function
         // This ensures all items and placeholders have correct indices and removes duplicates
         reindexGallery();
+
+        triggerBuildGalleryNavigationCache();
 
         // Trigger virtual scroll update to refresh placeholder states after reindexing
         // This ensures the virtual scroll system uses the correct indices
@@ -4977,6 +6270,7 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
             if (placeholderResolutionQueue.length > 0) {
                 processNextPlaceholders();
             }
+            sendGalleryPositionHint();
         }, scrollEndDelay);
 
 
@@ -5132,375 +6426,435 @@ document.addEventListener('workspaceImageAdded', async (event) => {
 
 // Display gallery starting from a specific index
 function displayGalleryFromStartIndex(startIndex, highlightTargetItem = false) {
-    if (!gallery) return;
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            resolve();
+        };
 
-    // Don't update gallery if gallery is hidden in desktop mode
-    if (isGalleryWindowHidden()) return;
+        if (!gallery) {
+            isJumpingToPosition = false;
+            isGalleryResetting = false;
+            finish();
+            return;
+        }
 
-    // Get effective length and validate index
-    const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
-    if (startIndex < 0 || startIndex >= effectiveLength) {
-        console.warn(`Invalid index ${startIndex}, using 0 instead`);
-        startIndex = 0;
-    }
+        // Don't update gallery if gallery is hidden in desktop mode
+        if (isGalleryWindowHidden()) {
+            isJumpingToPosition = false;
+            isGalleryResetting = false;
+            finish();
+            return;
+        }
 
-    // Detect scroll container (gallery-container is always used when available)
-    const galleryWindow = document.querySelector('#galleryWindow');
-    const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
-    const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+        // Get effective length and validate index
+        const effectiveLength = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+        if (startIndex < 0 || startIndex >= effectiveLength) {
+            console.warn(`Invalid index ${startIndex}, using 0 instead`);
+            startIndex = 0;
+        }
 
-    // Set flags to disable virtual scroll and hide gallery during jump operation
-    isJumpingToPosition = true;
-    isGalleryResetting = true;
+        // Detect scroll container (gallery-container is always used when available)
+        const galleryWindow = document.querySelector('#galleryWindow');
+        const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+        const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
 
-    // Clear any pending placeholder additions to prevent them from executing during/after jump
-    if (deferredPlaceholderTimeout) {
-        clearTimeout(deferredPlaceholderTimeout);
-        deferredPlaceholderTimeout = null;
-    }
-    pendingPlaceholderAdditions.above = false;
-    pendingPlaceholderAdditions.below = false;
+        // Set flags to disable virtual scroll and hide gallery during jump operation
+        isJumpingToPosition = true;
+        suppressGalleryPositionHintUntilInteraction = true;
+        isGalleryResetting = true;
+        // Reset momentum state so previous scroll bursts cannot distort first jump placement.
+        scrollVelocity = 0;
+        isScrolling = false;
+        isFastScrolling = false;
+        pendingPlaceholderResolution = false;
+        if (fastScrollTimeout) {
+            clearTimeout(fastScrollTimeout);
+            fastScrollTimeout = null;
+        }
 
-    // Hide gallery with visibility hidden (maintains layout) and opacity 0 for fade-in
-    gallery.style.visibility = 'hidden';
-    gallery.style.opacity = '0';
+        // Clear any pending placeholder additions to prevent them from executing during/after jump
+        if (deferredPlaceholderTimeout) {
+            clearTimeout(deferredPlaceholderTimeout);
+            deferredPlaceholderTimeout = null;
+        }
+        pendingPlaceholderAdditions.above = false;
+        pendingPlaceholderAdditions.below = false;
 
-    // Clear gallery
-    clearGallery();
+        // Hide gallery with visibility hidden (maintains layout) and opacity 0 for fade-in
+        gallery.style.visibility = 'hidden';
+        gallery.style.opacity = '0';
 
-    // Reset scroll to top (use container if in windowed mode, otherwise use window)
-    if (isContainerScroll && galleryContainer) {
-        galleryContainer.scrollTop = 0;
-    } else {
-        window.scrollTo({ top: 0, behavior: 'instant' });
-    }
+        // Clear gallery
+        clearGallery();
 
-    // If no images, show empty state
-    if (allImages.length === 0) {
-        return;
-    }
+        // Reset scroll to top (use container if in windowed mode, otherwise use window)
+        if (isContainerScroll && galleryContainer) {
+            galleryContainer.scrollTop = 0;
+        } else {
+            window.scrollTo({ top: 0, behavior: 'instant' });
+        }
 
-    // Get item height for scroll calculations
-    const itemHeight = itemSizePx;
-    const cols = realGalleryColumns || 5;
-    const targetRow = Math.floor(startIndex / cols);
+        // If no images, show empty state
+        if (allImages.length === 0) {
+            gallery.style.visibility = '';
+            gallery.style.opacity = '';
+            isJumpingToPosition = false;
+            isGalleryResetting = false;
+            finish();
+            return;
+        }
 
-    // Calculate which row to start displaying from
-    // Include the row before as actual gallery items (not placeholders) to show half of it when scrolling
-    let displayStartRow = targetRow;
-    if (targetRow > 0) {
-        displayStartRow = targetRow - 1; // Include row before as actual items
-    }
-    const displayStartIndex = displayStartRow * cols;
+        // Refresh column count on empty gallery, then snap jump index to row start (grid row alignment).
+        updateGalleryGrid(true, true);
+        const colsForSnap = realGalleryColumns || 5;
+        startIndex = snapGalleryFilteredIndexToRowStart(startIndex, colsForSnap, effectiveLength);
 
-    // Calculate how many items to display
-    const buffer = Math.ceil(cols * 0.15);
-    const totalItemsToDisplay = (cols + buffer) * cols;
-    const displayEndIndex = Math.min(displayStartIndex + totalItemsToDisplay, effectiveLength);
+        // Get item height for scroll calculations
+        const itemHeight = itemSizePx;
+        const cols = realGalleryColumns || 5;
+        const targetRow = Math.floor(startIndex / cols);
 
-    // Update gallery grid first to ensure calculations are correct
-    updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
+        // Calculate which row to start displaying from
+        // Include the row before as actual gallery items (not placeholders) to show half of it when scrolling
+        let displayStartRow = targetRow;
+        if (targetRow > 0) {
+            displayStartRow = targetRow - 1; // Include row before as actual items
+        }
+        const displayStartIndex = displayStartRow * cols;
 
-    // IMPORTANT: Add placeholders ABOVE first, before adding target items
-    // This ensures target items are positioned correctly from the start
+        // Calculate how many items to display
+        const buffer = Math.ceil(cols * 0.15);
+        const totalItemsToDisplay = (cols + buffer) * cols;
+        const displayEndIndex = Math.min(displayStartIndex + totalItemsToDisplay, effectiveLength);
 
-    // Add placeholders above in complete rows only
-    // Use unified buffer size calculation
-    const adjustedBufferSize = calculatePlaceholderBufferSize(scrollVelocity, undefined, true);
+        // IMPORTANT: Add placeholders ABOVE first, before adding target items
+        // This ensures target items are positioned correctly from the start
 
-    // Calculate how many placeholders to add above (in complete rows)
-    const placeholdersAboveCount = Math.min(adjustedBufferSize, displayStartIndex);
-    const placeholdersAboveStart = Math.max(0, displayStartIndex - placeholdersAboveCount);
+        // Add placeholders above in complete rows only
+        // Use unified buffer size calculation
+        // Jump rendering must ignore transient scroll velocity spikes from previous interactions.
+        const adjustedBufferSize = calculatePlaceholderBufferSize(0, undefined, true);
 
-    // Add placeholders above in complete row batches (ensures gallery alignment)
-    if (placeholdersAboveCount > 0) {
-        const fragmentAbove = document.createDocumentFragment();
-        // Calculate start row for placeholders
-        const startRowForPlaceholders = Math.floor(placeholdersAboveStart / realGalleryColumns);
-        const endRowForPlaceholders = Math.floor((displayStartIndex - 1) / realGalleryColumns);
+        // Calculate how many placeholders to add above (in complete rows)
+        const placeholdersAboveCount = Math.min(adjustedBufferSize, displayStartIndex);
+        const placeholdersAboveStart = Math.max(0, displayStartIndex - placeholdersAboveCount);
 
-        // Add placeholders row by row to ensure complete rows
-        for (let row = startRowForPlaceholders; row <= endRowForPlaceholders; row++) {
-            const rowStartIndex = row * realGalleryColumns;
-            const rowEndIndex = Math.min((row + 1) * realGalleryColumns, displayStartIndex);
+        // Add placeholders above in complete row batches (ensures gallery alignment)
+        if (placeholdersAboveCount > 0) {
+            const fragmentAbove = document.createDocumentFragment();
+            // Calculate start row for placeholders
+            const startRowForPlaceholders = Math.floor(placeholdersAboveStart / realGalleryColumns);
+            const endRowForPlaceholders = Math.floor((displayStartIndex - 1) / realGalleryColumns);
 
-            for (let i = rowStartIndex; i < rowEndIndex; i++) {
-                const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
-                    ? window.filteredImageIndices[i]
-                    : i;
-                const image = allImages[fileIndex];
-                if (image) {
-                    const item = getOrCreateGalleryItem(image, i, true); // Skip img element for placeholders
-                    item.classList.add('gallery-placeholder');
-                    fragmentAbove.appendChild(item);
+            // Add placeholders row by row to ensure complete rows
+            for (let row = startRowForPlaceholders; row <= endRowForPlaceholders; row++) {
+                const rowStartIndex = row * realGalleryColumns;
+                const rowEndIndex = Math.min((row + 1) * realGalleryColumns, displayStartIndex);
+
+                for (let i = rowStartIndex; i < rowEndIndex; i++) {
+                    const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
+                        ? window.filteredImageIndices[i]
+                        : i;
+                    const image = allImages[fileIndex];
+                    if (image) {
+                        const item = getOrCreateGalleryItem(image, i, true); // Skip img element for placeholders
+                        item.classList.add('gallery-placeholder');
+                        fragmentAbove.appendChild(item);
+                    }
                 }
             }
+            gallery.appendChild(fragmentAbove);
         }
-        gallery.appendChild(fragmentAbove);
-    }
 
-    // Now add the actual gallery items (includes row before + target row + visible range)
-    // This ensures the row before is resolved (not left as placeholders)
-    const fragment = document.createDocumentFragment();
-    for (let i = displayStartIndex; i < displayEndIndex; i++) {
-        // i is filtered position, get file index from filteredImageIndices to access allImages
-        const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
-            ? window.filteredImageIndices[i]
-            : i;
-        const image = allImages[fileIndex];
-        if (image) {
-            const galleryItem = createGalleryItem(image, i); // i is filtered position for data-index
-            // Only add fade-in to items at or after startIndex (target row)
-            if (i >= startIndex) {
-                galleryItem.classList.add('fade-in');
-            }
-            // Mark items in the visible range (including row before) so they don't get converted to placeholders
-            // This prevents flickering when virtual scroll re-enables
-            galleryItem.dataset.jumpCreated = 'true';
-            fragment.appendChild(galleryItem);
-        }
-    }
-    gallery.appendChild(fragment);
-
-    // Fade in items one by one
-    const items = gallery.querySelectorAll('.gallery-item.fade-in');
-    items.forEach((el, idx) => {
-        setTimeout(() => {
-            el.classList.add('fade-in');
-            el.addEventListener('animationend', function handler() {
-                el.classList.remove('fade-in');
-                el.removeEventListener('animationend', handler);
-            });
-        }, idx * 60);
-    });
-
-    // Initialize intersection observer
-    initIntersectionObserver();
-
-    // Observe all gallery items and placeholders for intersection changes
-    if (intersectionObserver) {
-        const allItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-        allItems.forEach(item => {
-            intersectionObserver.observe(item);
-        });
-    }
-
-    // Update displayed indices (use actual display range, not just target range)
-    displayedStartIndex = displayStartIndex;
-    displayedEndIndex = displayEndIndex;
-    isLoadingMore = false;
-    hasMoreImages = displayedEndIndex < effectiveLength;
-    hasMoreImagesBefore = displayedStartIndex > 0;
-
-    // Send gallery position hint for prefetching (throttled)
-    sendGalleryPositionHint();
-
-    // Now add placeholders below in complete rows (manually, since addPlaceholdersBelow() returns early during jump)
-    // Calculate how many placeholders to add below
-    const placeholdersBelowCount = Math.min(adjustedBufferSize, effectiveLength - displayEndIndex);
-    const placeholdersBelowEnd = Math.min(displayEndIndex + placeholdersBelowCount, effectiveLength);
-
-    // Add placeholders below in complete row batches (ensures gallery alignment)
-    if (placeholdersBelowCount > 0) {
-        const fragmentBelow = document.createDocumentFragment();
-        // Calculate start/end rows for placeholders
-        const startRowForPlaceholders = Math.floor(displayEndIndex / realGalleryColumns);
-        const endRowForPlaceholders = Math.floor((placeholdersBelowEnd - 1) / realGalleryColumns);
-
-        // Add placeholders row by row to ensure complete rows
-        for (let row = startRowForPlaceholders; row <= endRowForPlaceholders; row++) {
-            const rowStartIndex = Math.max(displayEndIndex, row * realGalleryColumns);
-            const rowEndIndex = Math.min((row + 1) * realGalleryColumns, placeholdersBelowEnd);
-
-            for (let i = rowStartIndex; i < rowEndIndex; i++) {
-                const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
-                    ? window.filteredImageIndices[i]
-                    : i;
-                const image = allImages[fileIndex];
-                if (image) {
-                    const item = getOrCreateGalleryItem(image, i, true); // Skip img element for placeholders
-                    item.classList.add('gallery-placeholder');
-                    fragmentBelow.appendChild(item);
+        // Now add the actual gallery items (includes row before + target row + visible range)
+        // This ensures the row before is resolved (not left as placeholders)
+        const fragment = document.createDocumentFragment();
+        for (let i = displayStartIndex; i < displayEndIndex; i++) {
+            // i is filtered position, get file index from filteredImageIndices to access allImages
+            const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
+                ? window.filteredImageIndices[i]
+                : i;
+            const image = allImages[fileIndex];
+            if (image) {
+                const galleryItem = createGalleryItem(image, i); // i is filtered position for data-index
+                // Only add fade-in to items at or after startIndex (target row)
+                if (i >= startIndex) {
+                    galleryItem.classList.add('fade-in');
                 }
+                // Mark items in the visible range (including row before) so they don't get converted to placeholders
+                // This prevents flickering when virtual scroll re-enables
+                galleryItem.dataset.jumpCreated = 'true';
+                fragment.appendChild(galleryItem);
             }
         }
-        gallery.appendChild(fragmentBelow);
-    }
+        gallery.appendChild(fragment);
 
-    // Clear resetting flag but keep jumping flag active
-    isGalleryResetting = false;
-
-    // Scroll to target item position while gallery is still hidden
-    // Use requestAnimationFrame to ensure layout is calculated
-    requestAnimationFrame(() => {
-        // Wait for layout recalculation
-        requestAnimationFrame(() => {
-            // Find target item and calculate scroll position based on its actual DOM position
-            const targetItem = gallery.querySelector(`[data-index="${startIndex}"]`);
-
-            if (targetItem) {
-                // Calculate scroll offset: if past first row, show half of the row before
-                let scrollOffset = 0;
-                if (targetRow > 0) {
-                    scrollOffset = itemHeight / 2;
-                }
-
-                if (isContainerScroll && galleryContainer) {
-                    // Scroll inside the gallery container (windowed mode)
-                    const galleryRect = gallery.getBoundingClientRect();
-                    const itemRect = targetItem.getBoundingClientRect();
-                    const itemTopRelativeToGallery = itemRect.top - galleryRect.top;
-                    const targetScrollTop = itemTopRelativeToGallery - scrollOffset;
-                    galleryContainer.scrollTop = Math.max(0, targetScrollTop);
-                } else {
-                    // Scroll the window (normal/maximized mode)
-                    const targetScrollTop = targetItem.offsetTop - scrollOffset;
-                    window.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'instant' });
-                }
-
-                // Verify position after layout settles
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        const targetItem = gallery.querySelector(`[data-index="${startIndex}"]`);
-
-                        if (targetItem) {
-                            // Verify scroll position using getBoundingClientRect now that layout is settled
-                            let scrollOffset = 0;
-                            if (targetRow > 0) {
-                                scrollOffset = itemHeight / 2;
-                            }
-
-                            let needsAdjustment = false;
-                            if (isContainerScroll && galleryContainer) {
-                                const galleryRect = gallery.getBoundingClientRect();
-                                const itemRect = targetItem.getBoundingClientRect();
-                                const itemTopRelativeToGallery = itemRect.top - galleryRect.top;
-                                const targetScrollTop = itemTopRelativeToGallery - scrollOffset;
-                                const currentScrollTop = galleryContainer.scrollTop;
-
-                                if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
-                                    galleryContainer.scrollTop = Math.max(0, targetScrollTop);
-                                    needsAdjustment = true;
-                                }
-                            } else {
-                                // Use offsetTop for more reliable positioning
-                                const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                                const targetScrollTop = targetItem.offsetTop - scrollOffset;
-
-                                if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
-                                    window.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'instant' });
-                                    needsAdjustment = true;
-                                }
-                            }
-
-                            // Wait for target item's image to resolve before fading in
-                            const waitForTargetImage = () => {
-                                return new Promise((resolve) => {
-                                    const targetItemImg = targetItem.querySelector('img');
-
-                                    if (!targetItemImg) {
-                                        // No image element, resolve immediately
-                                        resolve();
-                                        return;
-                                    }
-
-                                    // Check if image is already loaded
-                                    if (targetItemImg.complete && targetItemImg.naturalWidth > 0) {
-                                        // Image already loaded, resolve immediately
-                                        resolve();
-                                        return;
-                                    }
-
-                                    // Wait for image to load
-                                    const onLoad = () => {
-                                        targetItemImg.removeEventListener('load', onLoad);
-                                        targetItemImg.removeEventListener('error', onError);
-                                        resolve();
-                                    };
-
-                                    const onError = () => {
-                                        // Even if image fails to load, proceed with fade-in
-                                        targetItemImg.removeEventListener('load', onLoad);
-                                        targetItemImg.removeEventListener('error', onError);
-                                        resolve();
-                                    };
-
-                                    targetItemImg.addEventListener('load', onLoad);
-                                    targetItemImg.addEventListener('error', onError);
-
-                                    // Timeout after 2 seconds to prevent indefinite waiting
-                                    setTimeout(() => {
-                                        targetItemImg.removeEventListener('load', onLoad);
-                                        targetItemImg.removeEventListener('error', onError);
-                                        resolve();
-                                    }, 5000);
-                                });
-                            };
-
-                            // Wait for target image to resolve, then fade in
-                            waitForTargetImage().then(() => {
-                                // Now that target item is resolved, fade in the gallery
-                                gallery.style.visibility = '';
-                                gallery.style.opacity = '';
-                                requestAnimationFrame(() => {
-                                    if (highlightTargetItem && targetItem) {
-                                        gallery.classList.add('highlighting');
-                                        targetItem.classList.add('highlighted');
-
-                                        // Remove highlight effect after 2.5 seconds
-                                        setTimeout(() => {
-                                            targetItem.classList.remove('highlighted');
-                                            gallery.classList.remove('highlighting');
-                                        }, 2500);
-                                    }
-                                });
-                            });
-
-                            // Re-enable virtual scroll after user interaction (scroll, click, touch, etc.)
-                            // This ensures virtual scroll doesn't interfere until user starts interacting
-                            const reenableVirtualScroll = () => {
-
-                                // Delay virtual scroll update to prevent immediate placeholder additions
-                                // This prevents flickering from multiple placeholder additions
-                                setTimeout(() => {
-                                    updateVirtualScroll();
-                                }, 200);
-
-                                // Remove event listeners after first interaction
-                                if (isContainerScroll && galleryContainer) {
-                                    galleryContainer.removeEventListener('scroll', reenableVirtualScroll, { once: true });
-                                } else {
-                                    window.removeEventListener('scroll', reenableVirtualScroll, { once: true });
-                                }
-                                gallery.removeEventListener('click', reenableVirtualScroll, { once: true });
-                                gallery.removeEventListener('touchstart', reenableVirtualScroll, { once: true });
-                            };
-
-                            // Wait a short delay before enabling interaction listeners
-                            // This prevents immediate re-enabling from the scroll we just did
-                            setTimeout(() => {
-                                requestAnimationFrame(() => {
-                                    isJumpingToPosition = false;
-                                    resolveVisiblePlaceholders();
-                                });
-                                if (isContainerScroll && galleryContainer) {
-                                    galleryContainer.addEventListener('scroll', reenableVirtualScroll, { once: true });
-                                } else {
-                                    window.addEventListener('scroll', reenableVirtualScroll, { once: true });
-                                }
-                                gallery.addEventListener('click', reenableVirtualScroll, { once: true });
-                                gallery.addEventListener('touchstart', reenableVirtualScroll, { once: true });
-                            }, 100);
-                        } else {
-                            // Target item not found, re-enable virtual scroll anyway
-                            isJumpingToPosition = false;
-                        }
-                    });
+        // Fade in items one by one
+        const items = gallery.querySelectorAll('.gallery-item.fade-in');
+        items.forEach((el, idx) => {
+            setTimeout(() => {
+                el.classList.add('fade-in');
+                el.addEventListener('animationend', function handler() {
+                    el.classList.remove('fade-in');
+                    el.removeEventListener('animationend', handler);
                 });
-            } else {
-                // Target item not found in first RAF, re-enable virtual scroll anyway
-                isJumpingToPosition = false;
+            }, idx * 60);
+        });
+
+        // Initialize intersection observer
+        initIntersectionObserver();
+
+        // Observe all gallery items and placeholders for intersection changes
+        if (intersectionObserver) {
+            const allItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
+            allItems.forEach(item => {
+                intersectionObserver.observe(item);
+            });
+        }
+
+        // Update displayed indices (use actual display range, not just target range)
+        displayedStartIndex = displayStartIndex;
+        displayedEndIndex = displayEndIndex;
+        isLoadingMore = false;
+        hasMoreImages = displayedEndIndex < effectiveLength;
+        hasMoreImagesBefore = displayedStartIndex > 0;
+
+        // Send gallery position hint for prefetching (throttled)
+        sendGalleryPositionHint();
+
+        // Now add placeholders below in complete rows (manually, since addPlaceholdersBelow() returns early during jump)
+        // Calculate how many placeholders to add below
+        const placeholdersBelowCount = Math.min(adjustedBufferSize, effectiveLength - displayEndIndex);
+        const placeholdersBelowEnd = Math.min(displayEndIndex + placeholdersBelowCount, effectiveLength);
+
+        // Add placeholders below in complete row batches (ensures gallery alignment)
+        if (placeholdersBelowCount > 0) {
+            const fragmentBelow = document.createDocumentFragment();
+            // Calculate start/end rows for placeholders
+            const startRowForPlaceholders = Math.floor(displayEndIndex / realGalleryColumns);
+            const endRowForPlaceholders = Math.floor((placeholdersBelowEnd - 1) / realGalleryColumns);
+
+            // Add placeholders row by row to ensure complete rows
+            for (let row = startRowForPlaceholders; row <= endRowForPlaceholders; row++) {
+                const rowStartIndex = Math.max(displayEndIndex, row * realGalleryColumns);
+                const rowEndIndex = Math.min((row + 1) * realGalleryColumns, placeholdersBelowEnd);
+
+                for (let i = rowStartIndex; i < rowEndIndex; i++) {
+                    const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
+                        ? window.filteredImageIndices[i]
+                        : i;
+                    const image = allImages[fileIndex];
+                    if (image) {
+                        const item = getOrCreateGalleryItem(image, i, true); // Skip img element for placeholders
+                        item.classList.add('gallery-placeholder');
+                        fragmentBelow.appendChild(item);
+                    }
+                }
             }
+            gallery.appendChild(fragmentBelow);
+        }
+
+        // Clear resetting flag but keep jumping flag active
+        isGalleryResetting = false;
+
+        // Scroll to target item position while gallery is still hidden
+        // Use requestAnimationFrame to ensure layout is calculated
+        let lockedTargetScrollTop = null;
+        requestAnimationFrame(() => {
+            // Wait for layout recalculation
+            requestAnimationFrame(() => {
+                // Find target item and calculate scroll position based on its actual DOM position
+                const targetItem = gallery.querySelector(`[data-index="${startIndex}"]`);
+
+                if (targetItem) {
+                    // Calculate scroll offset: if past first row, show half of the row before
+                    let scrollOffset = 0;
+                    if (targetRow > 0) {
+                        scrollOffset = itemHeight / 2;
+                    }
+
+                    if (isContainerScroll && galleryContainer) {
+                        // Scroll inside the gallery container — use same content-Y basis as getFirstVisibleRowIndex
+                        // (item vs gallery rect omits gallery offset inside the container and skews by ~1 row).
+                        const containerRect = galleryContainer.getBoundingClientRect();
+                        const itemRect = targetItem.getBoundingClientRect();
+                        const targetScrollTop = Math.max(0, galleryContainer.scrollTop + (itemRect.top - containerRect.top) - scrollOffset);
+                        lockedTargetScrollTop = targetScrollTop;
+                        galleryContainer.scrollTop = lockedTargetScrollTop;
+                    } else {
+                        // Scroll the window (normal/maximized mode)
+                        const targetScrollTop = targetItem.offsetTop - scrollOffset;
+                        lockedTargetScrollTop = Math.max(0, targetScrollTop);
+                        window.scrollTo({ top: lockedTargetScrollTop, behavior: 'instant' });
+                    }
+
+                    // Verify position after layout settles
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            const targetItem = gallery.querySelector(`[data-index="${startIndex}"]`);
+
+                            if (targetItem) {
+                                // Verify scroll position using getBoundingClientRect now that layout is settled
+                                let scrollOffset = 0;
+                                if (targetRow > 0) {
+                                    scrollOffset = itemHeight / 2;
+                                }
+
+                                let needsAdjustment = false;
+                                if (isContainerScroll && galleryContainer) {
+                                    const containerRect = galleryContainer.getBoundingClientRect();
+                                    const itemRect = targetItem.getBoundingClientRect();
+                                    const targetScrollTop = Math.max(0, galleryContainer.scrollTop + (itemRect.top - containerRect.top) - scrollOffset);
+                                    const currentScrollTop = galleryContainer.scrollTop;
+
+                                    if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
+                                        galleryContainer.scrollTop = Math.max(0, targetScrollTop);
+                                        needsAdjustment = true;
+                                    }
+                                    lockedTargetScrollTop = Math.max(0, targetScrollTop);
+                                } else {
+                                    // Use offsetTop for more reliable positioning
+                                    const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+                                    const targetScrollTop = targetItem.offsetTop - scrollOffset;
+
+                                    if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
+                                        window.scrollTo({ top: Math.max(0, targetScrollTop), behavior: 'instant' });
+                                        needsAdjustment = true;
+                                    }
+                                    lockedTargetScrollTop = Math.max(0, targetScrollTop);
+                                }
+
+                                // Wait for target item's image to resolve before fading in
+                                const waitForTargetImage = () => {
+                                    return new Promise((resolve) => {
+                                        const targetItemImg = targetItem.querySelector('img');
+
+                                        if (!targetItemImg) {
+                                            // No image element, resolve immediately
+                                            resolve();
+                                            return;
+                                        }
+
+                                        // Check if image is already loaded
+                                        if (targetItemImg.complete && targetItemImg.naturalWidth > 0) {
+                                            // Image already loaded, resolve immediately
+                                            resolve();
+                                            return;
+                                        }
+
+                                        // Wait for image to load
+                                        const onLoad = () => {
+                                            targetItemImg.removeEventListener('load', onLoad);
+                                            targetItemImg.removeEventListener('error', onError);
+                                            resolve();
+                                        };
+
+                                        const onError = () => {
+                                            // Even if image fails to load, proceed with fade-in
+                                            targetItemImg.removeEventListener('load', onLoad);
+                                            targetItemImg.removeEventListener('error', onError);
+                                            resolve();
+                                        };
+
+                                        targetItemImg.addEventListener('load', onLoad);
+                                        targetItemImg.addEventListener('error', onError);
+
+                                        // Timeout after 2 seconds to prevent indefinite waiting
+                                        setTimeout(() => {
+                                            targetItemImg.removeEventListener('load', onLoad);
+                                            targetItemImg.removeEventListener('error', onError);
+                                            resolve();
+                                        }, 5000);
+                                    });
+                                };
+
+                                // Wait for target image to resolve, then fade in
+                                waitForTargetImage().then(() => {
+                                    if (lockedTargetScrollTop !== null) {
+                                        if (isContainerScroll && galleryContainer) {
+                                            galleryContainer.scrollTop = lockedTargetScrollTop;
+                                        } else {
+                                            window.scrollTo({ top: lockedTargetScrollTop, behavior: 'instant' });
+                                        }
+                                    }
+                                    // Now that target item is resolved, fade in the gallery
+                                    gallery.style.visibility = '';
+                                    gallery.style.opacity = '';
+                                    requestAnimationFrame(() => {
+                                        if (highlightTargetItem && targetItem) {
+                                            gallery.classList.add('highlighting');
+                                            targetItem.classList.add('highlighted');
+
+                                            // Remove highlight effect after 2.5 seconds
+                                            setTimeout(() => {
+                                                targetItem.classList.remove('highlighted');
+                                                gallery.classList.remove('highlighting');
+                                            }, 2500);
+                                        }
+                                    });
+                                });
+
+                                // Re-enable virtual scroll only after explicit user input.
+                                // Scroll events can be triggered programmatically during restore and must not lift suppression.
+                                const reenableVirtualScroll = (event) => {
+                                    suppressGalleryPositionHintUntilInteraction = false;
+
+                                    // Delay virtual scroll update to prevent immediate placeholder additions
+                                    // This prevents flickering from multiple placeholder additions
+                                    setTimeout(() => {
+                                        updateVirtualScroll();
+                                    }, 200);
+
+                                    // Remove event listeners after first interaction
+                                    if (isContainerScroll && galleryContainer) {
+                                        galleryContainer.removeEventListener('wheel', reenableVirtualScroll);
+                                        galleryContainer.removeEventListener('touchstart', reenableVirtualScroll);
+                                        galleryContainer.removeEventListener('pointerdown', reenableVirtualScroll);
+                                    } else {
+                                        window.removeEventListener('wheel', reenableVirtualScroll);
+                                        window.removeEventListener('touchstart', reenableVirtualScroll);
+                                        window.removeEventListener('pointerdown', reenableVirtualScroll);
+                                    }
+                                    gallery.removeEventListener('click', reenableVirtualScroll);
+                                };
+
+                                // Wait a short delay before enabling interaction listeners
+                                // This prevents immediate re-enabling from the scroll we just did
+                                setTimeout(() => {
+                                    requestAnimationFrame(() => {
+                                        isJumpingToPosition = false;
+                                        resolveVisiblePlaceholders();
+                                        finish();
+                                    });
+                                    if (isContainerScroll && galleryContainer) {
+                                        galleryContainer.addEventListener('wheel', reenableVirtualScroll, { once: true, passive: true });
+                                        galleryContainer.addEventListener('touchstart', reenableVirtualScroll, { once: true, passive: true });
+                                        galleryContainer.addEventListener('pointerdown', reenableVirtualScroll, { once: true });
+                                    } else {
+                                        window.addEventListener('wheel', reenableVirtualScroll, { once: true, passive: true });
+                                        window.addEventListener('touchstart', reenableVirtualScroll, { once: true, passive: true });
+                                        window.addEventListener('pointerdown', reenableVirtualScroll, { once: true });
+                                    }
+                                    gallery.addEventListener('click', reenableVirtualScroll, { once: true });
+                                }, 100);
+                            } else {
+                                // Target item not found, re-enable virtual scroll anyway
+                                isJumpingToPosition = false;
+                                suppressGalleryPositionHintUntilInteraction = false;
+                                finish();
+                            }
+                        });
+                    });
+                } else {
+                    // Target item not found in first RAF, re-enable virtual scroll anyway
+                    isJumpingToPosition = false;
+                    suppressGalleryPositionHintUntilInteraction = false;
+                    finish();
+                }
+            });
         });
     });
 }
@@ -5556,6 +6910,12 @@ function handleGalleryContextMenuAction(event) {
                 handleImageSelection(image, checkboxCheckbox.checked, { target: checkboxCheckbox, altKey: false });
             }
             break;
+
+        case 'select-all-before-item': {
+            const beforeIdx = findImageArrayIndex(filename);
+            if (beforeIdx !== -1) bulkSelectFilteredIndexRange(0, beforeIdx);
+            break;
+        }
 
         case 'toggle-favorite':
             // Toggle pin status directly
@@ -5665,11 +7025,21 @@ function handleGalleryContextMenuAction(event) {
                 isJumpingToPosition = true;
                 isGalleryResetting = true;
 
+                const resetJumpFlagsAndGalleryOpacity = () => {
+                    isJumpingToPosition = false;
+                    isGalleryResetting = false;
+                    if (gallery) {
+                        gallery.style.visibility = '';
+                        gallery.style.opacity = '';
+                    }
+                };
+
                 try {
                     // Get the filename from the gallery item (more reliable than stored index)
                     const filename = galleryItem.dataset.filename;
                     if (!filename) {
                         console.error('Could not determine filename for jump-to-image');
+                        resetJumpFlagsAndGalleryOpacity();
                         return;
                     }
 
@@ -5688,19 +7058,45 @@ function handleGalleryContextMenuAction(event) {
                     if (trueIndex === -1) {
                         console.error('Could not find image in loaded gallery data:', filename);
                         showGlassToast('error', 'Jump Failed', 'Image not found in gallery', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                        resetJumpFlagsAndGalleryOpacity();
                         return;
                     }
 
-                    // Jump to the image at the true index with highlight
-                    displayGalleryFromStartIndex(trueIndex, true);
+                    // displayGalleryFromStartIndex expects filtered list position when a narrow filter is active
+                    let displayIndex = trueIndex;
+                    if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
+                        const filteredPos = window.filteredImageIndices.indexOf(trueIndex);
+                        if (filteredPos !== -1) {
+                            displayIndex = filteredPos;
+                        }
+                    }
+
+                    // Jump to the image at the resolved index with highlight (owns isJumpingToPosition / visibility lifecycle)
+                    await displayGalleryFromStartIndex(displayIndex, true);
+
+                    // Verify jump visibility once; if the target is still off-screen, perform one automatic retry.
+                    const isTargetVisible = () => {
+                        const target = gallery ? gallery.querySelector(`[data-index="${displayIndex}"]`) : null;
+                        if (!target) return false;
+                        const rect = target.getBoundingClientRect();
+                        const galleryWindow = document.querySelector('#galleryWindow');
+                        const galleryContainer = galleryWindow ? galleryWindow.querySelector('.gallery-container') : null;
+                        const isContainerScroll = galleryContainer && document.body.classList.contains('desktop-mode');
+                        if (isContainerScroll && galleryContainer) {
+                            const cRect = galleryContainer.getBoundingClientRect();
+                            return rect.bottom > cRect.top && rect.top < cRect.bottom;
+                        }
+                        return rect.bottom > 0 && rect.top < window.innerHeight;
+                    };
+
+                    if (!isTargetVisible()) {
+                        await displayGalleryFromStartIndex(displayIndex, true);
+                    }
 
                 } catch (error) {
                     console.error('Failed to jump to image:', error);
                     showGlassToast('error', 'Jump Failed', 'Could not jump to the selected image', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-                } finally {
-                    // Always reset flags
-                    isJumpingToPosition = false;
-                    isGalleryResetting = false;
+                    resetJumpFlagsAndGalleryOpacity();
                 }
             })();
             break;
@@ -5999,43 +7395,13 @@ async function handleMoveToWorkspace(image, workspaceId, workspaceName) {
 }
 
 function createReferenceFromImage(image) {
-    // Get the image URL
-    const filename = image.upscaled || image.original;
-    const imageUrl = `/images/${filename}`;
-
-    // Show unified upload modal in reference mode
-    // Set the image URL in the modal
-    const urlInput = document.getElementById('unifiedUploadUrlInput');
-    if (urlInput) {
-        urlInput.value = imageUrl;
-    }
-
-    // Trigger the modal to open in reference mode
-    showUnifiedUploadModal();
-
-    // Set the mode to reference
-    unifiedUploadCurrentMode = 'reference';
-    updateUnifiedUploadMode();
+    // See public/scripts/comp/galleryToolbar.js:addImageAsReference
+    void addImageAsReference(image);
 }
 
 function createVibeEncodingFromImage(image) {
-    // Get the image URL
-    const filename = image.upscaled || image.original;
-    const imageUrl = `/images/${filename}`;
-
-    // Show unified upload modal in vibe mode
-    // Set the image URL in the modal
-    const urlInput = document.getElementById('unifiedUploadUrlInput');
-    if (urlInput) {
-        urlInput.value = imageUrl;
-    }
-
-    // Trigger the modal to open in vibe mode
-    showUnifiedUploadModal();
-
-    // Set the mode to vibe
-    unifiedUploadCurrentMode = 'vibe';
-    updateUnifiedUploadMode();
+    // See public/scripts/comp/galleryToolbar.js:addImageAsVibeTransfer
+    void addImageAsVibeTransfer(image);
 }
 
 // Get move workspace options for submenu (works for both single and bulk operations)
@@ -6232,6 +7598,124 @@ async function handleMoveWorkspaceAction(subItem, target) {
                     showError(`Failed to move images to ${workspaceName}: ${error.message}`);
                 }
             }
+        }
+    }
+}
+
+// Select a contiguous index range in the current filtered gallery order (merges with existing selection unless was "all selected")
+function bulkSelectFilteredIndexRange(startIndex, endIndex) {
+    const imagesToProcess = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
+        ? window.filteredImageIndices.map(idx => allImages[idx])
+        : allImages;
+    if (!imagesToProcess.length || startIndex > endIndex) return;
+
+    const cappedStart = Math.max(0, startIndex);
+    const cappedEnd = Math.min(endIndex, imagesToProcess.length - 1);
+    if (cappedStart > cappedEnd) return;
+
+    if (isAllSelected) {
+        selectedImages.clear();
+    }
+    isAllSelected = false;
+
+    const domItemsMap = new Map();
+    document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]').forEach(el => {
+        const fn = el.dataset.filename;
+        if (fn) domItemsMap.set(fn, el);
+    });
+
+    for (let i = cappedStart; i <= cappedEnd; i++) {
+        const image = imagesToProcess[i];
+        if (!image) continue;
+        const fname = image.filename || image.original || image.upscaled;
+        if (!fname) continue;
+        selectedImages.add(fname);
+        const domItem = domItemsMap.get(fname);
+        if (domItem) {
+            domItem.dataset.selected = 'true';
+            domItem.classList.add('selected');
+            const checkbox = domItem.querySelector('.gallery-item-checkbox');
+            if (checkbox) checkbox.checked = true;
+        }
+    }
+    updateBulkActionsBar();
+}
+
+function onGalleryBatchSelectionKeydown(e) {
+    const galleryEl = document.getElementById('gallery');
+    if (!galleryEl || !galleryEl.classList.contains('selection-mode')) return;
+
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+
+    if (e.key === 'Escape') {
+        if (contextMenu && contextMenu.isOpen) {
+            galleryBatchEscapePrevTs = 0;
+            return;
+        }
+        const now = Date.now();
+        if (galleryBatchEscapePrevTs > 0 && now - galleryBatchEscapePrevTs < 420) {
+            e.preventDefault();
+            e.stopPropagation();
+            clearSelection();
+            galleryBatchEscapePrevTs = 0;
+        } else {
+            galleryBatchEscapePrevTs = now;
+        }
+        return;
+    }
+
+    const mod = e.ctrlKey || e.metaKey;
+    if (e.code === 'KeyA' && mod) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.dispatchEvent(new CustomEvent('contextMenuAction', {
+            detail: { action: 'bulk-select-all', target: galleryEl }
+        }));
+        return;
+    }
+
+    if (e.code === 'KeyX' && mod) {
+        if (getSelectedCount() === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // public/scripts/comp/contextMenu.js — openBulkActionsMoveSubmenuCentered
+        contextMenu.openBulkActionsMoveSubmenuCentered(galleryEl);
+        return;
+    }
+
+    if ((e.code === 'Comma' || e.code === 'Period') && e.ctrlKey && !e.metaKey) {
+        let anchor;
+        if (lastSelectedGalleryIndex !== null && lastSelectedGalleryIndex >= 0) {
+            const n = window.filteredImageIndices && window.filteredImageIndices.length > 0
+                ? window.filteredImageIndices.length
+                : allImages.length;
+            if (lastSelectedGalleryIndex < n) anchor = lastSelectedGalleryIndex;
+        }
+        if (typeof anchor === 'undefined') {
+            if (isAllSelected) {
+                anchor = -1;
+            } else {
+                anchor = -1;
+                getSelectedFilenames().forEach((fname) => {
+                    const idx = findImageArrayIndex(fname);
+                    if (idx > anchor) anchor = idx;
+                });
+            }
+        }
+        const last = (window.filteredImageIndices && window.filteredImageIndices.length > 0
+            ? window.filteredImageIndices.length
+            : allImages.length) - 1;
+        if (e.code === 'Comma') {
+            if (anchor < 1) return;
+            e.preventDefault();
+            e.stopPropagation();
+            bulkSelectFilteredIndexRange(0, anchor - 1);
+        } else {
+            if (anchor < 0 || anchor >= last) return;
+            e.preventDefault();
+            e.stopPropagation();
+            bulkSelectFilteredIndexRange(anchor + 1, last);
         }
     }
 }
@@ -6472,87 +7956,25 @@ function handleBulkActionsContextMenu(event) {
             break;
         case 'bulk-select-all-above':
         case 'bulk-select-all-after': {
-            // Get the clicked gallery item
             const clickedItem = target.closest('.gallery-item, .gallery-placeholder');
             if (!clickedItem) break;
 
-            // Get the clicked item's filename and find its index in the actual image array
             const clickedFilename = clickedItem.dataset.filename;
             if (!clickedFilename) break;
 
-            // Get all images (respecting filters)
+            const clickedImageIndex = findImageArrayIndex(clickedFilename);
+            if (clickedImageIndex === -1) break;
+
+            if (action === 'bulk-select-all-above') {
+                bulkSelectFilteredIndexRange(0, clickedImageIndex);
+                break;
+            }
+
             const imagesToProcess = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
                 ? window.filteredImageIndices.map(idx => allImages[idx])
                 : allImages;
 
-            // Find the clicked image's index
-            const clickedImageIndex = imagesToProcess.findIndex(img => {
-                if (!img) return false;
-                const filename = img.filename || img.original || img.upscaled;
-                return filename === clickedFilename;
-            });
-
-            if (clickedImageIndex === -1) break;
-
-            // Clear "all selected" flag
-            isAllSelected = false;
-
-            // Determine range based on action
-            let startIndex, endIndex;
-            if (action === 'bulk-select-all-above') {
-                startIndex = 0;
-                endIndex = clickedImageIndex - 1; // Exclude the clicked item itself
-            } else {
-                startIndex = clickedImageIndex + 1; // Exclude the clicked item itself
-                endIndex = imagesToProcess.length - 1;
-            }
-
-            // Cache DOM items for efficient lookup
-            const domItemsMap = new Map();
-            const allDomItems = document.querySelectorAll('.gallery-item[data-filename], .gallery-placeholder[data-filename]');
-            allDomItems.forEach(item => {
-                const filename = item.dataset.filename;
-                if (filename) {
-                    domItemsMap.set(filename, item);
-                }
-            });
-
-            // Ensure clicked item is not selected (explicitly select it)
-            if (isImageSelected(clickedFilename)) {
-                selectedImages.delete(clickedFilename);
-                const clickedDomItem = domItemsMap.get(clickedFilename);
-                if (clickedDomItem) {
-                    clickedDomItem.dataset.selected = 'true';
-                    clickedDomItem.classList.remove('selected');
-                    const clickedCheckbox = clickedDomItem.querySelector('.gallery-item-checkbox');
-                    if (clickedCheckbox) {
-                        clickedCheckbox.checked = true;
-                    }
-                }
-            }
-
-            // Select items in range (including those not yet rendered)
-            for (let i = startIndex; i <= endIndex; i++) {
-                const image = imagesToProcess[i];
-                if (!image) continue;
-                const filename = image.filename || image.original || image.upscaled;
-                if (!filename) continue;
-
-                selectedImages.add(filename);
-
-                // Update DOM if item exists
-                const domItem = domItemsMap.get(filename);
-                if (domItem) {
-                    domItem.dataset.selected = 'true';
-                    domItem.classList.add('selected');
-                    const checkbox = domItem.querySelector('.gallery-item-checkbox');
-                    if (checkbox) {
-                        checkbox.checked = true;
-                    }
-                }
-            }
-
-            updateBulkActionsBar();
+            bulkSelectFilteredIndexRange(clickedImageIndex + 1, imagesToProcess.length - 1);
             break;
         }
         case 'bulk-invert-selection': {
@@ -6627,44 +8049,60 @@ function clearGallery() {
     clearSelection();
 }
 
-// Send gallery position hint to server for metadata prefetching
+// Send first-visible row index + anchor filename to server (session restore + optional prefetch)
 function sendGalleryPositionHint() {
-    // Throttle hints to avoid sending too frequently
     if (galleryPositionHintThrottle) return;
 
     galleryPositionHintThrottle = setTimeout(() => {
         galleryPositionHintThrottle = null;
 
-        // Only send if WebSocket is connected
         if (!window.wsClient || !window.wsClient.isConnected()) {
             return;
         }
 
-        // Calculate current center index (approximate)
-        const centerIndex = Math.floor((displayedStartIndex + displayedEndIndex) / 2);
+        if (!gallery || isJumpingToPosition) return;
+        if (suppressGalleryPositionHintUntilInteraction) {
+            return;
+        }
+        if (isGallerySearchModeActive()) return;
 
-        // Only send if index changed significantly (avoid duplicate sends)
-        if (Math.abs(centerIndex - lastHintIndex) < 10) {
+        const effectiveLen = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+        const colsHint = realGalleryColumns || 5;
+        const firstIdx = snapGalleryFilteredIndexToRowStart(getFirstVisibleRowIndex(), colsHint, effectiveLen);
+        let anchorFilename;
+        const elAt = gallery.querySelector(`[data-index="${firstIdx}"]`);
+        if (elAt && elAt.dataset.filename) {
+            anchorFilename = elAt.dataset.filename;
+        }
+        if (!anchorFilename) {
+            const real = gallery.querySelector('.gallery-item:not(.gallery-placeholder)');
+            if (real && real.dataset.filename) anchorFilename = real.dataset.filename;
+        }
+
+        if (Math.abs(firstIdx - lastHintIndex) < 5 && anchorFilename === lastHintAnchorFilename) {
             return;
         }
 
-        lastHintIndex = centerIndex;
+        lastHintIndex = firstIdx;
+        lastHintAnchorFilename = anchorFilename;
 
-        // Send non-ack message for prefetching
+        const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default';
+
         try {
             window.wsClient.sendAcklessMessage('gallery_position_hint', {
-                index: centerIndex,
+                index: firstIdx,
                 viewType: currentGalleryView,
-                prefetchRange: 50 // Prefetch 50 images before and after
+                workspaceId,
+                anchorFilename,
+                prefetchRange: 50
             });
         } catch (error) {
-            // Silently ignore errors (non-critical)
             console.debug('Failed to send gallery position hint:', error);
         }
-    }, 500); // Throttle to max once per 500ms
+    }, 500);
 }
 
 // Add context menu event listener
 document.addEventListener('contextMenuAction', handleGalleryContextMenuAction);
 document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
-document.addEventListener('contextMenuAction', handleBulkActionsContextMenu);
+document.addEventListener('keydown', onGalleryBatchSelectionKeydown, true);

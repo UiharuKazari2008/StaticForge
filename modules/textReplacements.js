@@ -120,6 +120,38 @@ class TextReplacements {
         return currentIndex;
     }
 
+    /**
+     * Sticky variant key for !PREFIX~#: same random row stays until invalidated or merging keys change.
+     * global.incrementingTildePickByPattern / preset.incrementing_tilde_pick — see modules/textReplacements.js
+     */
+    ensureStickyTildePickKey(patternMatch, matchingKeys, presetName) {
+        if (!matchingKeys.length) throw new Error('ensureStickyTildePickKey: empty matchingKeys');
+
+        let chosenKey = null;
+        const cfg = this.globalResources ? this.globalResources.getPromptConfig({ clone: true }) : null;
+        if (presetName && cfg?.presets?.[presetName]?.incrementing_tilde_pick) {
+            chosenKey = cfg.presets[presetName].incrementing_tilde_pick[patternMatch];
+        }
+        if (!chosenKey && global.incrementingTildePickByPattern) {
+            chosenKey = global.incrementingTildePickByPattern[patternMatch];
+        }
+        if (!chosenKey || !matchingKeys.includes(chosenKey)) {
+            chosenKey = matchingKeys[Math.floor(Math.random() * matchingKeys.length)];
+            if (presetName && this.globalResources) {
+                this.globalResources.modifyConfig('promptConfig').assign(
+                    ['presets', presetName, 'incrementing_tilde_pick', patternMatch],
+                    chosenKey
+                );
+            } else {
+                if (!global.incrementingTildePickByPattern) {
+                    global.incrementingTildePickByPattern = {};
+                }
+                global.incrementingTildePickByPattern[patternMatch] = chosenKey;
+            }
+        }
+        return chosenKey;
+    }
+
     // Helper function to get array length for a key
     getArrayLengthForKey(key, config) {
         const value = config.text_replacements[key];
@@ -171,6 +203,20 @@ class TextReplacements {
         }
 
         const replacements = [];
+        // Mutable copy so duplicate placeholders (same !key~) consume distinct locks in order
+        const lockPool = (lockedReplacements && lockedReplacements.length > 0)
+            ? lockedReplacements.slice()
+            : null;
+
+        const takeTildePoolLock = (matchingKeys, name, suffix) => {
+            if (!lockPool?.length) return null;
+            const expectedPat = `!${name}${suffix}`;
+            const i = lockPool.findIndex(lr =>
+                matchingKeys.includes(lr.key) && lr.pattern === expectedPat
+            );
+            if (i === -1) return null;
+            return lockPool.splice(i, 1)[0];
+        };
 
         const stageDataForBlocks = stageData || { stageIndex: 0, pipelineStageGeneration: false };
         // Slash-delimited blocks first: avoids !PRESET_NAME eating "!PRESET_NAME/..." and matches the rule that "/" in the token means not a plain expander
@@ -509,12 +555,17 @@ class TextReplacements {
 
                 // Select one item from the combined pool (maintains seeding across all expanded keys)
                 let selectedItem;
-                if (lockedReplacements) {
-                    const lockedMatch = combinedPool.find(item =>
-                        lockedReplacements.some(lr => lr.key === item.key && lr.index === item.index)
-                    );
-                    if (lockedMatch) {
-                        selectedItem = lockedMatch;
+                let consumedBracketCombineLock = false;
+                if (lockPool?.length) {
+                    for (let pi = 0; pi < combinedPool.length; pi++) {
+                        const cand = combinedPool[pi];
+                        const li = lockPool.findIndex(lr => lr.key === cand.key && lr.index === cand.index);
+                        if (li !== -1) {
+                            lockPool.splice(li, 1);
+                            selectedItem = cand;
+                            consumedBracketCombineLock = true;
+                            break;
+                        }
                     }
                 }
 
@@ -522,7 +573,7 @@ class TextReplacements {
                     selectedItem = combinedPool[Math.floor(Math.random() * combinedPool.length)];
                 }
 
-                const isLocked = lockedReplacements && lockedReplacements.some(lr => lr.key === selectedItem.key && lr.index === selectedItem.index);
+                const isLocked = consumedBracketCombineLock;
                 replacements.push({
                     key: selectedItem.key,
                     value: selectedItem.value,
@@ -539,6 +590,145 @@ class TextReplacements {
             }
 
             return match; // Should not reach here
+        });
+
+        // Combined pool with sequential advance (!NAME~+#): same pool as ~+, cycles like !KEY#
+        result = result.replace(/!([a-zA-Z0-9_]+)~\+#/g, (match, name) => {
+            const matchingKeys = Object.keys(textReplacements).filter(key =>
+                key.startsWith(name) || key === name
+            );
+            if (matchingKeys.length === 0) throw new Error(`No text replacements found starting with: ${name}`);
+
+            const combinedPool = [];
+            matchingKeys.forEach(key => {
+                const replacementValue = textReplacements[key];
+                if (Array.isArray(replacementValue)) {
+                    replacementValue.forEach((item, index) => {
+                        combinedPool.push({ key, index, value: item });
+                    });
+                } else {
+                    combinedPool.push({ key, index: 0, value: replacementValue });
+                }
+            });
+
+            if (combinedPool.length === 0) throw new Error(`No items found for combined incrementing replacement: ${name}`);
+
+            const itemLocked = combinedPool.find(item =>
+                lockedReplacements?.some(lr => lr.key === item.key && lr.index === item.index)
+            );
+            const patternLocked = lockedReplacements?.find(lr => lr.pattern === match);
+
+            let currentIndex;
+            let isLocked;
+            let selectedItem;
+
+            if (itemLocked) {
+                selectedItem = itemLocked;
+                currentIndex = combinedPool.indexOf(itemLocked);
+                isLocked = true;
+            } else if (
+                patternLocked &&
+                patternLocked.pool_index !== undefined &&
+                patternLocked.pool_index !== null
+            ) {
+                currentIndex = patternLocked.pool_index % combinedPool.length;
+                selectedItem = combinedPool[currentIndex];
+                isLocked = true;
+            } else {
+                const freezePoolIndex = !!patternLocked;
+                currentIndex = this.getIncrementingIndex(match, presetName, freezePoolIndex, combinedPool.length);
+                selectedItem = combinedPool[currentIndex % combinedPool.length];
+                isLocked = freezePoolIndex;
+            }
+
+            const nextIndex = isLocked ? currentIndex : (currentIndex + 1) % combinedPool.length;
+
+            replacements.push({
+                key: selectedItem.key,
+                value: selectedItem.value,
+                presetName: presetName,
+                index: selectedItem.index,
+                type: 'combine_incrementing',
+                pattern: match,
+                pool_index: currentIndex % combinedPool.length,
+                next_index: nextIndex,
+                locked: isLocked,
+                can_lock: true
+            });
+
+            return selectedItem.value;
+        });
+
+        // PREFIX pick + sequential within chosen row (!NAME~#): sticky key like ~ scope, then # on that key
+        result = result.replace(/!([a-zA-Z0-9_]+)~#/g, (match, name) => {
+            const matchingKeys = Object.keys(textReplacements).filter(key =>
+                key.startsWith(name) || key === name
+            );
+            if (matchingKeys.length === 0) throw new Error(`No text replacements found starting with: ${name}`);
+
+            let selectedKey;
+            let selectedValue;
+            let replacementIndex = null;
+            const patternLocked = lockedReplacements?.find(lr => lr.pattern === match);
+
+            if (lockedReplacements) {
+                const lockedMatch = lockedReplacements.find(lr => lr.key === name || matchingKeys.includes(lr.key));
+                if (lockedMatch && matchingKeys.includes(lockedMatch.key)) {
+                    selectedKey = lockedMatch.key;
+                    const replacementValue = textReplacements[selectedKey];
+                    if (replacementValue) {
+                        if (Array.isArray(replacementValue)) {
+                            selectedValue = replacementValue[lockedMatch.index] || replacementValue[0];
+                            replacementIndex = lockedMatch.index;
+                        } else {
+                            selectedValue = replacementValue;
+                            replacementIndex = 0;
+                        }
+                    }
+                }
+            }
+
+            if (!selectedKey) {
+                selectedKey = this.ensureStickyTildePickKey(match, matchingKeys, presetName);
+                const replacementValue = textReplacements[selectedKey];
+                const arrayLen = Array.isArray(replacementValue) ? replacementValue.length : 1;
+                let slot;
+                if (patternLocked && patternLocked.pool_index !== undefined && patternLocked.pool_index !== null) {
+                    slot = patternLocked.pool_index % arrayLen;
+                } else {
+                    slot = this.getIncrementingIndex(`${match}::${selectedKey}`, presetName, !!patternLocked, arrayLen);
+                }
+                if (Array.isArray(replacementValue)) {
+                    selectedValue = replacementValue[slot % arrayLen];
+                    replacementIndex = slot % arrayLen;
+                } else {
+                    selectedValue = replacementValue;
+                    replacementIndex = 0;
+                }
+            }
+
+            const arrayLenForNext = Array.isArray(textReplacements[selectedKey])
+                ? textReplacements[selectedKey].length
+                : 1;
+            const isLocked = !!(
+                patternLocked ||
+                (lockedReplacements && lockedReplacements.some(lr => lr.key === selectedKey && lr.index === replacementIndex))
+            );
+            const nextIndex = isLocked ? replacementIndex : (replacementIndex + 1) % arrayLenForNext;
+
+            replacements.push({
+                key: selectedKey,
+                value: selectedValue,
+                presetName: presetName,
+                index: replacementIndex,
+                type: 'pick_incrementing',
+                pattern: match,
+                next_index: nextIndex,
+                locked: isLocked,
+                can_lock: true
+            });
+
+            return selectedValue;
         });
 
         // Handle PICK replacements (using ~ and ~+ suffixes)
@@ -574,13 +764,17 @@ class TextReplacements {
 
                 // Select one item from the combined pool (respecting locked preferences)
                 let selectedItem;
-                if (lockedReplacements) {
-                    // Find if any item in the pool matches a locked replacement
-                    const lockedMatch = combinedPool.find(item =>
-                        lockedReplacements.some(lr => lr.key === item.key && lr.index === item.index)
-                    );
-                    if (lockedMatch) {
-                        selectedItem = lockedMatch;
+                let consumedCombineLock = false;
+                if (lockPool?.length) {
+                    for (let pi = 0; pi < combinedPool.length; pi++) {
+                        const cand = combinedPool[pi];
+                        const li = lockPool.findIndex(lr => lr.key === cand.key && lr.index === cand.index);
+                        if (li !== -1) {
+                            lockPool.splice(li, 1);
+                            selectedItem = cand;
+                            consumedCombineLock = true;
+                            break;
+                        }
                     }
                 }
 
@@ -590,7 +784,7 @@ class TextReplacements {
                 }
 
                 // Track only the selected item
-                const isLocked = lockedReplacements && lockedReplacements.some(lr => lr.key === selectedItem.key && lr.index === selectedItem.index);
+                const isLocked = consumedCombineLock;
                 replacements.push({
                     key: selectedItem.key,
                     value: selectedItem.value,
@@ -607,23 +801,19 @@ class TextReplacements {
                 // Regular ~ behavior - pick one value (use locked replacement if available)
                 let selectedKey, selectedValue, replacementIndex = null;
 
-                // Check if we have a locked replacement for this key
-                if (lockedReplacements) {
-                    const lockedMatch = lockedReplacements.find(lr => lr.key === name || matchingKeys.includes(lr.key));
-                    if (lockedMatch) {
-                        selectedKey = lockedMatch.key;
-                        const replacementValue = textReplacements[selectedKey];
-                        if (replacementValue) {
-                            // Use the specified index if it's an array, otherwise use the single value
-                            if (Array.isArray(replacementValue)) {
-                                selectedValue = replacementValue[lockedMatch.index] || replacementValue[0];
-                                replacementIndex = lockedMatch.index;
-                            } else {
-                                selectedValue = replacementValue;
-                                replacementIndex = 0;
-                            }
-                            console.log(`🔒 Using locked replacement: ${selectedKey}[${replacementIndex}] = ${selectedValue}`);
+                const lockedMatch = takeTildePoolLock(matchingKeys, name, '~');
+                if (lockedMatch) {
+                    selectedKey = lockedMatch.key;
+                    const replacementValue = textReplacements[selectedKey];
+                    if (replacementValue) {
+                        if (Array.isArray(replacementValue)) {
+                            selectedValue = replacementValue[lockedMatch.index] || replacementValue[0];
+                            replacementIndex = lockedMatch.index;
+                        } else {
+                            selectedValue = replacementValue;
+                            replacementIndex = 0;
                         }
+                        console.log(`🔒 Using locked replacement: ${selectedKey}[${replacementIndex}] = ${selectedValue}`);
                     }
                 }
 
@@ -652,7 +842,7 @@ class TextReplacements {
                     index: replacementIndex,
                     type: 'pick',
                     pattern: `!${name}~`, // Store original pattern for display
-                    locked: !!selectedKey && lockedReplacements && lockedReplacements.some(lr => lr.key === selectedKey && lr.index === replacementIndex),
+                    locked: !!lockedMatch,
                     can_lock: true
                 });
 
@@ -837,6 +1027,52 @@ class TextReplacements {
                     });
                 });
             }
+            return Array.from(optionsMap.values());
+        }
+
+        // Handle ~+# (same option list as ~+)
+        if (pattern.endsWith('~+#')) {
+            const baseKey = pattern.slice(1, -3);
+
+            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
+                key.startsWith(baseKey) || key === baseKey
+            );
+
+            matchingKeys.forEach(key => {
+                const replacementValue = currentPromptConfig.text_replacements[key];
+                if (Array.isArray(replacementValue)) {
+                    replacementValue.forEach((value, index) => {
+                        const compositeKey = `${value}|${key}|${index}`;
+                        optionsMap.set(compositeKey, { value, key, index });
+                    });
+                } else {
+                    const compositeKey = `${replacementValue}|${key}`;
+                    optionsMap.set(compositeKey, { value: replacementValue, key });
+                }
+            });
+            return Array.from(optionsMap.values());
+        }
+
+        // Handle ~# (same option list as ~)
+        if (pattern.endsWith('~#')) {
+            const baseKey = pattern.slice(1, -2);
+
+            const matchingKeys = Object.keys(currentPromptConfig.text_replacements).filter(key =>
+                key.startsWith(baseKey) || key === baseKey
+            );
+
+            matchingKeys.forEach(key => {
+                const replacementValue = currentPromptConfig.text_replacements[key];
+                if (Array.isArray(replacementValue)) {
+                    replacementValue.forEach((value, index) => {
+                        const compositeKey = `${value}|${key}|${index}`;
+                        optionsMap.set(compositeKey, { value, key, index });
+                    });
+                } else {
+                    const compositeKey = `${replacementValue}|${key}`;
+                    optionsMap.set(compositeKey, { value: replacementValue, key });
+                }
+            });
             return Array.from(optionsMap.values());
         }
 

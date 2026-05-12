@@ -157,6 +157,35 @@ Access at `http://localhost:9220`
 3. **Organize Content**: Use the gallery views to organize your images
 4. **Advanced Features**: Explore the various tools and utilities for enhanced workflow
 
+## Troubleshooting
+
+### `SQLITE_ERROR: no such table: worldcities` (or “Failed to get location metadata”)
+
+Reverse geolocation uses the **`geo2city`** dependency, which ships a zipped SQLite database and runs a **`postinstall`** script to extract it and build a full-text search index. If that script never runs or stops halfway, `worldcities.db` can be missing, empty, or incomplete, and you will see SQLite errors or a warning when enriching location context.
+
+**Check the database file (pnpm layout):**
+
+```bash
+ls -la node_modules/.pnpm/geo2city@*/node_modules/geo2city/worldcities.db
+```
+
+A healthy install is several megabytes (not `0` bytes).
+
+**Fix (usual order):**
+
+1. **Install with lifecycle scripts enabled** — This repo sets `ignore-scripts=false` in `.npmrc` and includes `geo2city` in `pnpm.onlyBuiltDependencies` so pnpm is allowed to run its `postinstall`. Do not use `pnpm install --ignore-scripts` here unless you know you must bypass scripts globally.
+2. **Re-run the package setup:**
+   ```bash
+   pnpm install
+   pnpm rebuild geo2city
+   ```
+3. **If the file is still wrong or missing**, force a fresh copy of the package from the registry (then install again):
+   ```bash
+   pnpm install geo2city --force
+   ```
+
+The repo also applies a **pnpm patch** for `geo2city@0.5.0` (`patches/geo2city@0.5.0.patch`) so `pnpm rebuild geo2city` remains usable after the first successful install (upstream deletes `worldcities.db.zip` after extract, which otherwise breaks rebuilds). If you fork or drop the patch, a broken DB may require `--force` reinstall instead of rebuild.
+
 ## 🔌 API Endpoints
 
 ### Preset Generation Endpoint

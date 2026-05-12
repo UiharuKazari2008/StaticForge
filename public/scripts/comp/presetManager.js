@@ -1257,10 +1257,13 @@ function getUpdatePresetFormData() {
 async function deletePreset(presetName) {
     // Use confirmation dialog instead of confirm()
     const confirmed = await showConfirmationDialog(
-        'Delete Preset',
         `Are you sure you want to delete preset "${presetName}"?`,
-        'Delete',
-        'Cancel'
+        [
+            { text: 'Delete', value: true, className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        { title: 'Delete Preset', icon: 'fas fa-trash' }
     );
 
     if (!confirmed) {

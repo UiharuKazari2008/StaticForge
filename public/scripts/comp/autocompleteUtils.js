@@ -18,6 +18,95 @@ let spellCheckNavigationMode = false;
 let selectedSpellCheckWordIndex = -1;
 let selectedSpellCheckSuggestionIndex = -1;
 
+// Hover/wheel UX state (for popup overlay interaction)
+let autocompleteWheelAccumulator = 0;
+let isAutocompleteOverlayHovered = false;
+const AUTOCOMPLETE_WHEEL_STEP_PX = 80;
+const AUTOCOMPLETE_WHEEL_MAX_STEPS_PER_EVENT = 4;
+
+function isCharacterAutocompleteOverlayOpen() {
+    return characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
+}
+
+function handleAutocompleteOverlayWheel(e) {
+    if (!isCharacterAutocompleteOverlayOpen()) return;
+    if (!characterAutocompleteList) return;
+    if (!isAutocompleteOverlayHovered) return;
+
+    // Per UX request: wheel navigates only the main results list.
+    // If spell-check navigation is active, switch back to the main list.
+    if (spellCheckNavigationMode) {
+        spellCheckNavigationMode = false;
+        selectedSpellCheckWordIndex = -1;
+        selectedSpellCheckSuggestionIndex = -1;
+        updateSpellCheckSelection();
+    }
+
+    const deltaY = typeof e.deltaY === 'number' ? e.deltaY : 0;
+    const deltaX = typeof e.deltaX === 'number' ? e.deltaX : 0;
+    if (Math.abs(deltaY) < 1 || Math.abs(deltaY) < Math.abs(deltaX)) return;
+
+    // Prevent the page/container from scrolling; we will drive list scrolling via selection updates.
+    e.preventDefault();
+    e.stopPropagation();
+
+    autocompleteWheelAccumulator += deltaY;
+    let steps = 0;
+
+    while (Math.abs(autocompleteWheelAccumulator) >= AUTOCOMPLETE_WHEEL_STEP_PX && steps < AUTOCOMPLETE_WHEEL_MAX_STEPS_PER_EVENT) {
+        const isDown = autocompleteWheelAccumulator > 0;
+        autocompleteWheelAccumulator = isDown
+            ? autocompleteWheelAccumulator - AUTOCOMPLETE_WHEEL_STEP_PX
+            : autocompleteWheelAccumulator + AUTOCOMPLETE_WHEEL_STEP_PX;
+
+        steps++;
+
+        // Mirror ArrowDown/ArrowUp behavior for main list navigation.
+        autocompleteNavigationMode = true;
+        userActivelyNavigating = true;
+
+        const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+        if (!items || items.length === 0) continue;
+
+        if (isDown) {
+            if (selectedCharacterAutocompleteIndex === -1) {
+                expandAutocompleteInstantly();
+
+                // Re-query after rebuild
+                const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
+            } else {
+                selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
+            }
+
+            updateCharacterAutocompleteSelection();
+            updateEmphasisTooltipVisibility();
+        } else {
+            if (selectedCharacterAutocompleteIndex === -1) continue;
+            selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
+            updateCharacterAutocompleteSelection();
+            updateEmphasisTooltipVisibility();
+        }
+
+        clearTimeout(window.navigationTimeout);
+        window.navigationTimeout = setTimeout(() => {
+            userActivelyNavigating = false;
+        }, 500);
+    }
+}
+
+// Wire up UX handlers for the popup overlay.
+if (characterAutocompleteOverlay) {
+    characterAutocompleteOverlay.addEventListener('mouseenter', () => {
+        isAutocompleteOverlayHovered = true;
+    });
+    characterAutocompleteOverlay.addEventListener('mouseleave', () => {
+        isAutocompleteOverlayHovered = false;
+        autocompleteWheelAccumulator = 0;
+    });
+    characterAutocompleteOverlay.addEventListener('wheel', handleAutocompleteOverlayWheel, { passive: false });
+}
+
 // Realtime search state
 let searchServices = new Map(); // Track service status
 let searchResultsByService = new Map(); // Track results by service
@@ -34,6 +123,11 @@ let serviceStatuses = new Map(); // Store status per service (stalled/completed/
 
 // Global handler for ack-less search responses
 window.handleSearchResponse = function (message) {
+    if (currentSearchRequestId && shouldAbortAutocompleteSearchSession()) {
+        abortAutocompleteSearchSession();
+        return;
+    }
+
     if (message.type === 'search_characters_response') {
         if (!currentSearchRequestId) {
             return;
@@ -219,6 +313,7 @@ let searchCompletionStatus = {
 // Search request tracking to prevent multiple simultaneous searches
 let currentSearchQuery = '';
 let currentSearchTimeout = null;
+let currentSearchSessionBounds = null;
 
 // Persistent results storage for stable autocomplete
 let persistentSpellCheckData = null; // Current spell check data
@@ -229,6 +324,91 @@ let lastSearchQuery = '';
 
 // Track whether services have been initialized for the current autofill session
 let servicesInitialized = false;
+
+function getAutocompleteSearchBounds(target) {
+    if (!target || typeof target.value !== 'string') return null;
+    if (typeof target.selectionStart !== 'number') return null;
+
+    const value = target.value;
+    const cursorPosition = target.selectionStart;
+    const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
+    const textBeforeCursor = value.substring(0, safeCursor);
+
+    const textPrefixIndex = textBeforeCursor.lastIndexOf('Text:');
+    if (textPrefixIndex >= 0) {
+        const tokenStart = textPrefixIndex + 5;
+        return {
+            tokenStart,
+            tokenEnd: value.length,
+            query: 'Text:' + value.substring(tokenStart, safeCursor).trim(),
+            isTextPrefix: true
+        };
+    }
+
+    const lastDelimiterIndex = Math.max(
+        textBeforeCursor.lastIndexOf('{'),
+        textBeforeCursor.lastIndexOf('}'),
+        textBeforeCursor.lastIndexOf('['),
+        textBeforeCursor.lastIndexOf(']'),
+        textBeforeCursor.lastIndexOf(':'),
+        textBeforeCursor.lastIndexOf('|'),
+        textBeforeCursor.lastIndexOf(','),
+        textBeforeCursor.lastIndexOf('.')
+    );
+
+    const tokenStart = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const textAfterCursor = value.substring(safeCursor);
+    const nextDelimiterOffset = textAfterCursor.search(/[{}\[\]:|,.]/);
+    const tokenEnd = nextDelimiterOffset >= 0 ? safeCursor + nextDelimiterOffset : value.length;
+    let query = value.substring(tokenStart, safeCursor).trim();
+
+    if (query.startsWith('<')) {
+        // Keep < for replacement lookups.
+    } else {
+        const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
+        if (lastLessThanIndex > lastDelimiterIndex) {
+            query = value.substring(lastLessThanIndex, safeCursor).trim();
+        }
+    }
+
+    const searchWords = query.split(/\s+/).filter(function (w) { return w.length > 0; });
+    if (searchWords.length > 8) {
+        query = searchWords.slice(-8).join(' ');
+    }
+
+    return {
+        tokenStart,
+        tokenEnd,
+        query,
+        isTextPrefix: false
+    };
+}
+
+function shouldAbortAutocompleteSearchSession() {
+    if (!currentSearchSessionBounds || !currentCharacterAutocompleteTarget) return false;
+    const target = currentCharacterAutocompleteTarget;
+    if (document.activeElement !== target) return true;
+    if (typeof target.selectionStart !== 'number') return true;
+
+    const liveBounds = getAutocompleteSearchBounds(target);
+    if (!liveBounds) return true;
+
+    const cursorPosition = target.selectionStart;
+    const withinTrackedToken = cursorPosition >= currentSearchSessionBounds.tokenStart &&
+        cursorPosition <= liveBounds.tokenEnd &&
+        liveBounds.tokenStart === currentSearchSessionBounds.tokenStart;
+
+    return !withinTrackedToken;
+}
+
+function abortAutocompleteSearchSession() {
+    currentSearchRequestId = null;
+    currentSearchQuery = '';
+    currentSearchTimestamp = null;
+    currentSearchSessionBounds = null;
+    isSearching = false;
+    hideCharacterAutocomplete();
+}
 
 // Selection persistence for tag listings
 let lastSelectedItemData = null; // Store data about the last selected item for restoration
@@ -1322,6 +1502,221 @@ function handleCharacterAutocompleteInput(e) {
 
 }
 
+/** Strip prompt syntax so wiki / search sees plain tag-like text (see handleCharacterAutocompleteKeydown Alt+Q/W). */
+function sanitizePromptFragmentForWikiSearch(s) {
+    if (!s || typeof s !== 'string') return '';
+    let t = s.trim();
+    if (!t) return '';
+    t = t.replace(/\b\d+(?:\.\d+)?::/g, '');
+    t = t.replace(/::+/g, ' ');
+    t = t.replace(/[{}[\]]/g, '');
+    t = t.replace(/[()]/g, '');
+    t = t.replace(/[<>]/g, '');
+    t = t.replace(/\s+/g, ' ').trim();
+    const words = t.split(/\s+/).filter(function (w) { return w.length > 0; });
+    if (words.length > 8) {
+        t = words.slice(-8).join(' ');
+    }
+    return t.trim();
+}
+
+/** Selection if any; else text from previous "," to caret; then sanitize (comma path per Alt+Q/W when autofill closed). */
+function getWikiTermFromPromptTextareaForKeyboard(textarea) {
+    if (!textarea || typeof textarea.value !== 'string') return '';
+    const value = textarea.value;
+    const start = typeof textarea.selectionStart === 'number' ? textarea.selectionStart : 0;
+    const end = typeof textarea.selectionEnd === 'number' ? textarea.selectionEnd : 0;
+    let raw;
+    if (start !== end) {
+        const a = Math.min(start, end);
+        const b = Math.max(start, end);
+        raw = value.substring(a, b);
+    } else {
+        const textBefore = value.substring(0, start);
+        const lastComma = textBefore.lastIndexOf(',');
+        raw = lastComma >= 0 ? value.substring(lastComma + 1, start) : value.substring(0, start);
+    }
+    let t = sanitizePromptFragmentForWikiSearch(raw);
+    if (t.toLowerCase().startsWith('text:')) {
+        t = sanitizePromptFragmentForWikiSearch(t.slice(5));
+    }
+    return t;
+}
+
+/** Immediate autofill search at caret (Alt+Space); forceRefresh re-runs same query when overlay already open. */
+function triggerCharacterAutofillSearchAtCaret(target, forceRefresh) {
+    if (!target || !autofillEnabled) return;
+    if (characterAutocompleteTimeout) {
+        clearTimeout(characterAutocompleteTimeout);
+        characterAutocompleteTimeout = null;
+    }
+    selectedCharacterAutocompleteIndex = -1;
+    autocompleteNavigationMode = false;
+    spellCheckNavigationMode = false;
+    selectedSpellCheckWordIndex = -1;
+    selectedSpellCheckSuggestionIndex = -1;
+    autocompleteExpanded = false;
+
+    const bounds = getAutocompleteSearchBounds(target);
+    const searchText = bounds && typeof bounds.query === 'string' ? bounds.query : '';
+    if (!searchText || (!searchText.startsWith('<') && searchText.length < 1)) {
+        hideCharacterAutocomplete();
+        return;
+    }
+    if (!searchText.startsWith('<') && searchText.length < 2 && !forceRefresh) {
+        hideCharacterAutocomplete();
+        return;
+    }
+    searchCharacters(searchText, target, forceRefresh);
+}
+
+function getWikiSearchTermFromAutocompleteItem(selectedItem) {
+    if (!selectedItem || !selectedItem.dataset) return '';
+    const type = selectedItem.dataset.type;
+    if (type === 'character') {
+        try {
+            const characterData = JSON.parse(selectedItem.dataset.characterData);
+            return String(characterData.name || '').trim();
+        } catch (err) {
+            return '';
+        }
+    }
+    if (type === 'tag') {
+        return String(selectedItem.dataset.tagName || '').trim();
+    }
+    if (type === 'textReplacement' || type === 'dynamicPlaceholder') {
+        return String(selectedItem.dataset.placeholder || '').trim();
+    }
+    return '';
+}
+
+function getTagInsertStringForAutocomplete(tagName, category) {
+    if (!tagName) return '';
+    if (category && category.toLowerCase() === 'artist') {
+        if (tagName.includes(' ')) {
+            return 'art by ' + tagName;
+        }
+        return 'artist:' + tagName;
+    }
+    return tagName;
+}
+
+function getAutocompleteRightArrowInsertText(selectedItem) {
+    if (!selectedItem || !selectedItem.dataset) return '';
+    const type = selectedItem.dataset.type;
+    if (type === 'character') {
+        try {
+            const characterData = JSON.parse(selectedItem.dataset.characterData);
+            return characterData.name || '';
+        } catch (err) {
+            return '';
+        }
+    }
+    if (type === 'tag') {
+        return getTagInsertStringForAutocomplete(selectedItem.dataset.tagName, selectedItem.dataset.category);
+    }
+    if (type === 'textReplacement') {
+        return '!' + selectedItem.dataset.placeholder;
+    }
+    if (type === 'dynamicPlaceholder') {
+        return selectedItem.dataset.placeholder;
+    }
+    return '';
+}
+
+/** Resolved expander body for Genso items (see createAutocompleteItem dataset.replacementValue). */
+function getTextReplacementExpandTextFromItem(item) {
+    if (!item || !item.dataset || item.dataset.type !== 'textReplacement') return '';
+    const raw = item.dataset.replacementValue;
+    if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+        return String(raw);
+    }
+    const ph = String(item.dataset.placeholder || '').trim();
+    if (!ph) return '';
+    const map = window.optionsData && window.optionsData.textReplacements;
+    if (map && Object.prototype.hasOwnProperty.call(map, ph) && map[ph] !== undefined && map[ph] !== null) {
+        return String(map[ph]);
+    }
+    return '';
+}
+
+/**
+ * Longest k where a suffix of typedSeg matches a prefix of insertText (case-insensitive).
+ * Used for right-arrow autofill (not for ! text expander queries — those use query/last-word only).
+ */
+function longestTypedSuffixInsertPrefixOverlap(typedSeg, insertText) {
+    if (!typedSeg || !insertText) return 0;
+    const a = typedSeg.toLowerCase();
+    const b = insertText.toLowerCase();
+    const maxLen = Math.min(a.length, b.length);
+    for (let k = maxLen; k >= 1; k--) {
+        if (a.slice(-k) === b.slice(0, k)) {
+            return k;
+        }
+    }
+    return 0;
+}
+
+function injectAutocompleteSuggestionAtCursor(target, insertText) {
+    if (!target || insertText === undefined || insertText === null || insertText === '') return;
+
+    const value = target.value;
+    const cursor = typeof target.selectionStart === 'number' ? target.selectionStart : value.length;
+    const charBefore = cursor > 0 ? value[cursor - 1] : '';
+    const spaceBefore = /\s/.test(charBefore);
+
+    if (spaceBefore) {
+        const before = value.substring(0, cursor).replace(/\s+$/, '');
+        const after = value.substring(cursor);
+        const newVal = before + ', ' + insertText + after;
+        const newCursor = before.length + 2 + insertText.length;
+        target.value = newVal;
+        target.setSelectionRange(newCursor, newCursor);
+    } else {
+        const bounds = getAutocompleteSearchBounds(target);
+        if (!bounds) return;
+        const sliceToCursor = value.substring(bounds.tokenStart, cursor);
+        const trimmedSlice = sliceToCursor.trimEnd();
+        const q = bounds.query;
+        const isTextExpanderQuery = typeof q === 'string' && q.startsWith('!');
+        let replaceStart = cursor;
+
+        if (q && trimmedSlice.length >= q.length) {
+            const ts = trimmedSlice;
+            if (ts.slice(-q.length) === q) {
+                replaceStart = bounds.tokenStart + ts.length - q.length;
+            } else if (ts.slice(-q.length).toLowerCase() === q.toLowerCase()) {
+                replaceStart = bounds.tokenStart + ts.length - q.length;
+            }
+        }
+
+        // Partial tail match (tags/characters): skip for ! Genso expanders — keep query + last-word fallback only.
+        if (replaceStart === cursor && !isTextExpanderQuery) {
+            const k = longestTypedSuffixInsertPrefixOverlap(trimmedSlice, insertText);
+            if (k >= 2 || (k === 1 && trimmedSlice.length === 1 && insertText.length >= 1)) {
+                replaceStart = bounds.tokenStart + trimmedSlice.length - k;
+            }
+        }
+
+        if (replaceStart === cursor) {
+            replaceStart = cursor;
+            while (replaceStart > bounds.tokenStart && /\s/.test(value[replaceStart - 1])) {
+                replaceStart--;
+            }
+            while (replaceStart > bounds.tokenStart && !/\s/.test(value[replaceStart - 1])) {
+                replaceStart--;
+            }
+        }
+        const newVal = value.substring(0, replaceStart) + insertText + value.substring(cursor);
+        const newCursor = replaceStart + insertText.length;
+        target.value = newVal;
+        target.setSelectionRange(newCursor, newCursor);
+    }
+
+    autoResizeTextarea(target);
+    updateEmphasisHighlighting(target);
+}
+
 function handleCharacterAutocompleteKeydown(e) {
     // Handle emphasis editing popup (but not when toolbar is in emphasis mode)
     if (window.emphasisEditingActive && !e.target.closest('.prompt-textarea-toolbar.emphasis-mode')) {
@@ -1359,21 +1754,29 @@ function handleCharacterAutocompleteKeydown(e) {
         return;
     }
 
+    const characterAutocompleteOverlayOpen = characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
+
     // Handle autocomplete navigation - only when autocomplete is visible
-    if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+    if (characterAutocompleteOverlayOpen) {
         // Check if we're in character detail view (enhancers list)
         const characterDetailContent = characterAutocompleteList?.querySelector('.character-detail-content');
         if (characterDetailContent) {
-            e.preventDefault();
-            e.stopPropagation();
-            // Handle character detail navigation (enhancers list)
+            // Only stop keys we handle — blanket stopPropagation hid all keydowns from document (F3/F4 global shortcuts: public/scripts/comp/keyboardShortcuts.js)
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                e.stopPropagation();
                 handleCharacterDetailArrowKeys(e.key);
                 return;
-            } else if (e.key === 'Enter') {
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
                 handleCharacterDetailEnter();
                 return;
-            } else if (e.key === 'Escape') {
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
                 hideCharacterDetail();
                 return;
             }
@@ -1704,15 +2107,41 @@ function handleCharacterAutocompleteKeydown(e) {
                         return;
                     }
 
-                    // Handle text replacement insertion with right arrow
+                    // Inject suggestion: comma + suffix if space before cursor, else replace query span.
+                    // Genso (!) expanders: insert expanded text (same as insertTextReplacement), not literal !placeholder.
                     if (selectedCharacterAutocompleteIndex >= 0 && items && items.length > 0) {
                         const selectedItem = items[selectedCharacterAutocompleteIndex];
-                        if (selectedItem && selectedItem.dataset.type === 'textReplacement') {
-                            const replacementValue = selectedItem.dataset.replacementValue;
-                            if (replacementValue) {
-                                insertTextReplacement(replacementValue);
+                        if (selectedItem.dataset.type === 'textReplacement') {
+                            const expandText = getTextReplacementExpandTextFromItem(selectedItem);
+                            if (expandText && currentCharacterAutocompleteTarget) {
+                                insertTextReplacement(expandText);
                                 return;
                             }
+                        }
+                        const insertText = getAutocompleteRightArrowInsertText(selectedItem);
+                        if (insertText && currentCharacterAutocompleteTarget) {
+                            const originalValue = currentCharacterAutocompleteTarget.value || '';
+                            const originalCursorPosition = typeof currentCharacterAutocompleteTarget.selectionStart === 'number'
+                                ? currentCharacterAutocompleteTarget.selectionStart
+                                : originalValue.length;
+                            const hadWhitespaceBeforeCursor = /\s/.test(
+                                originalCursorPosition > 0 ? originalValue[originalCursorPosition - 1] : ''
+                            );
+                            injectAutocompleteSuggestionAtCursor(currentCharacterAutocompleteTarget, insertText);
+                            let restoredCursorPosition = Math.min(
+                                originalCursorPosition,
+                                currentCharacterAutocompleteTarget.value.length
+                            );
+                            if (hadWhitespaceBeforeCursor) {
+                                const expectedInsertStart = originalValue.substring(0, originalCursorPosition).replace(/\s+$/, '').length;
+                                const expectedInsertPrefix = ', ' + insertText;
+                                if (currentCharacterAutocompleteTarget.value.substring(expectedInsertStart, expectedInsertStart + expectedInsertPrefix.length) === expectedInsertPrefix) {
+                                    restoredCursorPosition = expectedInsertStart;
+                                }
+                            }
+                            currentCharacterAutocompleteTarget.setSelectionRange(restoredCursorPosition, restoredCursorPosition);
+                            currentCharacterAutocompleteTarget.focus();
+                            return;
                         }
                     }
                 }
@@ -1801,6 +2230,50 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
 
+            case 'q':
+            case 'Q':
+                if (e.altKey && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
+                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                        const wikiTerm = getWikiSearchTermFromAutocompleteItem(selectedItem);
+                        if (wikiTerm && window.tagWikiSearchModal) {
+                            hideCharacterAutocomplete();
+                            autocompleteNavigationMode = false;
+                            autocompleteExpanded = false;
+                            window.tagWikiSearchModal.openSearchForTerm(wikiTerm);
+                        }
+                    }
+                }
+                break;
+
+            case 'w':
+            case 'W':
+                if (e.altKey && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
+                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                        const wikiTerm = getWikiSearchTermFromAutocompleteItem(selectedItem);
+                        if (wikiTerm && window.tagWikiSearchModal) {
+                            window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm);
+                        }
+                    }
+                }
+                break;
+
+            case ' ':
+                if (e.altKey && !e.ctrlKey && !e.metaKey && (e.code === 'Space' || e.key === ' ')) {
+                    if (!autofillEnabled) break;
+                    e.preventDefault();
+                    const promptTarget = (currentCharacterAutocompleteTarget && currentCharacterAutocompleteTarget === e.target)
+                        ? currentCharacterAutocompleteTarget
+                        : (e.target && e.target.type === 'textarea' ? e.target : currentCharacterAutocompleteTarget);
+                    if (promptTarget && (promptTarget.classList.contains('prompt-textarea') || promptTarget.classList.contains('character-prompt-textarea'))) {
+                        triggerCharacterAutofillSearchAtCaret(promptTarget, true);
+                    }
+                }
+                break;
+
             case 'f':
             case 'F':
                 if (e.altKey) {
@@ -1842,36 +2315,63 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
         }
-    } else if (!manualModal.classList.contains('hidden')) {
-        switch (e.key) {
-            case 'Tab':
-                if (document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
-                    if (e.metaKey || e.ctrlKey || e.altKey)
-                        return;
+    } else {
+        const t = e.target;
+        const isPromptTextarea = t && t.type === 'textarea' &&
+            (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'));
+        if (isPromptTextarea && e.altKey && !e.ctrlKey && !e.metaKey) {
+            if (e.code === 'Space' || e.key === ' ') {
+                if (!autofillEnabled) {
+                    // no-op: allow default when autofill is off
+                } else {
                     e.preventDefault();
-                    handlePromptTabCycling(e);
+                    triggerCharacterAutofillSearchAtCaret(t, true);
                 }
-                break;
-            case 'Backspace':
-                if (e.shiftKey && document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
+            } else if (e.key === 'q' || e.key === 'Q') {
+                const wikiTerm = getWikiTermFromPromptTextareaForKeyboard(t);
+                if (wikiTerm && window.tagWikiSearchModal) {
                     e.preventDefault();
-                    deleteTagBehindCursor(document.activeElement);
+                    window.tagWikiSearchModal.openSearchForTerm(wikiTerm);
                 }
-                break;
-
-            case 'f':
-            case 'F':
-                if (e.altKey && document.activeElement.type === 'textarea' &&
-                    (document.activeElement.classList.contains('prompt-textarea') ||
-                        document.activeElement.classList.contains('character-prompt-textarea'))) {
-
-                    const selectedText = getSelectedTextFromTextarea(document.activeElement);
-                    if (selectedText && selectedText.trim()) {
+            } else if (e.key === 'w' || e.key === 'W') {
+                const wikiTerm = getWikiTermFromPromptTextareaForKeyboard(t);
+                if (wikiTerm && window.tagWikiSearchModal) {
+                    e.preventDefault();
+                    window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm);
+                }
+            }
+        }
+        if (!manualModal.classList.contains('hidden')) {
+            switch (e.key) {
+                case 'Tab':
+                    if (document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
+                        if (e.metaKey || e.ctrlKey || e.altKey)
+                            return;
                         e.preventDefault();
-                        showAddToFavoritesDialog(selectedText.trim());
+                        handlePromptTabCycling(e);
                     }
-                }
-                break;
+                    break;
+                case 'Backspace':
+                    if (e.shiftKey && document.activeElement.type === 'textarea' && (document.activeElement.classList.contains('prompt-textarea') || document.activeElement.classList.contains('character-prompt-textarea'))) {
+                        e.preventDefault();
+                        deleteTagBehindCursor(document.activeElement);
+                    }
+                    break;
+
+                case 'f':
+                case 'F':
+                    if (e.altKey && document.activeElement.type === 'textarea' &&
+                        (document.activeElement.classList.contains('prompt-textarea') ||
+                            document.activeElement.classList.contains('character-prompt-textarea'))) {
+
+                        const selectedText = getSelectedTextFromTextarea(document.activeElement);
+                        if (selectedText && selectedText.trim()) {
+                            e.preventDefault();
+                            showAddToFavoritesDialog(selectedText.trim());
+                        }
+                    }
+                    break;
+            }
         }
     }
 }
@@ -1881,10 +2381,10 @@ function handleCharacterAutocompleteKeydown(e) {
 // Note: performSpellCheck function removed to prevent duplicate requests
 // All spellcheck functionality is now handled by triggerSpellCheck only
 
-async function searchCharacters(query, target) {
+async function searchCharacters(query, target, forceRefresh) {
     try {
         // Prevent duplicate searches for the same query
-        if (currentSearchQuery === query && isSearching) {
+        if (!forceRefresh && currentSearchQuery === query && isSearching) {
             console.log(`🔄 Skipping duplicate search for query: "${query}"`);
             console.log(`🔍 Current search state: query="${currentSearchQuery}", isSearching=${isSearching}`);
             return;
@@ -1905,9 +2405,9 @@ async function searchCharacters(query, target) {
 
         // Only clear results if this is a completely new search query
         // But don't clear searchServices - we want to preserve service status
-        if (lastSearchQuery !== query) {
+        if (forceRefresh || lastSearchQuery !== query) {
             // Check if this is a continuation of the same search (just more characters)
-            const isContinuation = lastSearchQuery && query.startsWith(lastSearchQuery);
+            const isContinuation = !forceRefresh && lastSearchQuery && query.startsWith(lastSearchQuery);
 
             if (!isContinuation) {
                 // This is a completely different search, clear results but preserve services
@@ -1944,6 +2444,12 @@ async function searchCharacters(query, target) {
 
         // Set the current target for autocomplete
         currentCharacterAutocompleteTarget = target;
+        currentSearchSessionBounds = getAutocompleteSearchBounds(target);
+
+        if (shouldAbortAutocompleteSearchSession()) {
+            abortAutocompleteSearchSession();
+            return;
+        }
 
         // Initialize services if this is the first time in this autofill session
         if (!servicesInitialized) {
@@ -1993,6 +2499,10 @@ async function searchCharacters(query, target) {
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
                         isSearching = false;
+                        return;
+                    }
+                    if (shouldAbortAutocompleteSearchSession()) {
+                        abortAutocompleteSearchSession();
                         return;
                     }
 
@@ -2054,6 +2564,10 @@ async function searchCharacters(query, target) {
                         isSearching = false;
                         return;
                     }
+                    if (shouldAbortAutocompleteSearchSession()) {
+                        abortAutocompleteSearchSession();
+                        return;
+                    }
                 } catch (wsError) {
                     console.error('WebSocket text replacement search failed:', wsError);
                     searchServices.set('textReplacements', 'error');
@@ -2087,6 +2601,10 @@ async function searchCharacters(query, target) {
                         isSearching = false;
                         return;
                     }
+                    if (shouldAbortAutocompleteSearchSession()) {
+                        abortAutocompleteSearchSession();
+                        return;
+                    }
 
                     // For "Text:" searches, we only want spell check results
                     // Clear any other search results
@@ -2111,6 +2629,10 @@ async function searchCharacters(query, target) {
 
         if (currentSearchRequestId !== thisSearchRequestId) {
             isSearching = false;
+            return;
+        }
+        if (shouldAbortAutocompleteSearchSession()) {
+            abortAutocompleteSearchSession();
             return;
         }
         if (!shouldApplyAutocompleteUI(target)) {
@@ -2972,6 +3494,36 @@ function showSpellCheckSuggestions(spellCheckData, target) {
 
     // Insert spell check section at the top of the autocomplete list
     characterAutocompleteList.insertBefore(spellCheckSection, characterAutocompleteList.firstChild);
+
+    // If spell-check navigation is active, clamp and re-apply selection on rebuilt DOM.
+    // This keeps the highlighted suggestion visible when result updates refresh the list.
+    if (spellCheckNavigationMode) {
+        const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
+        if (!wordSections || wordSections.length === 0) {
+            selectedSpellCheckWordIndex = -1;
+            selectedSpellCheckSuggestionIndex = -1;
+            spellCheckNavigationMode = false;
+            return;
+        }
+
+        if (selectedSpellCheckWordIndex < 0) {
+            selectedSpellCheckWordIndex = 0;
+        } else if (selectedSpellCheckWordIndex >= wordSections.length) {
+            selectedSpellCheckWordIndex = wordSections.length - 1;
+        }
+
+        const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
+        const suggestionBtns = selectedWordSection.querySelectorAll('.suggestion-btn');
+        if (!suggestionBtns || suggestionBtns.length === 0) {
+            selectedSpellCheckSuggestionIndex = -1;
+        } else if (selectedSpellCheckSuggestionIndex < 0) {
+            selectedSpellCheckSuggestionIndex = 0;
+        } else if (selectedSpellCheckSuggestionIndex >= suggestionBtns.length) {
+            selectedSpellCheckSuggestionIndex = suggestionBtns.length - 1;
+        }
+
+        updateSpellCheckSelection();
+    }
 }
 
 function applySpellCorrection(target, originalWord, suggestion) {
@@ -4296,8 +4848,11 @@ function hideCharacterAutocomplete() {
         characterAutocompleteOverlay.classList.add('hidden');
         characterAutocompleteOverlay.classList.remove('expanded');
     }
+    isAutocompleteOverlayHovered = false;
+    autocompleteWheelAccumulator = 0;
     currentCharacterAutocompleteTarget = null;
     currentSearchRequestId = null;
+    currentSearchSessionBounds = null;
 
     if (updateDisplayTimeout) {
         clearTimeout(updateDisplayTimeout);
@@ -4317,6 +4872,9 @@ function hideCharacterAutocomplete() {
     selectedCharacterAutocompleteIndex = -1;
     characterSearchResults = [];
     autocompleteNavigationMode = false;
+    spellCheckNavigationMode = false;
+    selectedSpellCheckWordIndex = -1;
+    selectedSpellCheckSuggestionIndex = -1;
     autocompleteExpanded = false;
     lastSearchText = ''; // Clear last search text so retyping works
 
@@ -5123,6 +5681,7 @@ function mergeTagResults(result1, result2) {
 function handlePromptTabCycling(e) {
     const manualPrompt = document.getElementById('manualPrompt');
     const manualUc = document.getElementById('manualUc');
+    const manualPromptNegative = document.getElementById('manualPromptNegative');
     const characterPromptsContainer = document.getElementById('characterPromptsContainer');
     const promptTabs = document.querySelector('.prompt-tabs');
 
@@ -5138,7 +5697,7 @@ function handlePromptTabCycling(e) {
 
     if (isShowingBoth) {
         // Show both mode: prompt → uc → character prompt → character uc → next character prompt → next character uc...
-        cycleOrder = [manualPrompt, manualUc];
+        cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
 
         // Add each character's prompt and UC textareas
         characterItemsArray.forEach(characterItem => {
@@ -5161,15 +5720,15 @@ function handlePromptTabCycling(e) {
                 if (promptTextarea) cycleOrder.push(promptTextarea);
             });
         } else if (mainActiveTab === 'uc') {
-            // UC tab is active - cycle through UC and character UC textareas
-            cycleOrder = [manualUc];
+            // UC tab is active - cycle through UC, inline negative, and character UC textareas
+            cycleOrder = [manualUc, manualPromptNegative].filter(Boolean);
             characterItemsArray.forEach(characterItem => {
                 const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
                 if (ucTextarea) cycleOrder.push(ucTextarea);
             });
         } else {
             // Fallback - include both main prompts
-            cycleOrder = [manualPrompt, manualUc];
+            cycleOrder = [manualPrompt, manualUc, manualPromptNegative].filter(Boolean);
             characterItemsArray.forEach(characterItem => {
                 const promptTextarea = characterItem.querySelector(`#${characterItem.id}_prompt`);
                 const ucTextarea = characterItem.querySelector(`#${characterItem.id}_uc`);
@@ -5182,7 +5741,7 @@ function handlePromptTabCycling(e) {
 
     // Find current position in cycle
     let currentIndex = -1;
-    if (currentlyFocused === manualPrompt || currentlyFocused === manualUc) {
+    if (currentlyFocused === manualPrompt || currentlyFocused === manualUc || currentlyFocused === manualPromptNegative) {
         currentIndex = cycleOrder.indexOf(currentlyFocused);
     } else {
         // In a character textarea
@@ -5239,6 +5798,16 @@ function handlePromptTabCycling(e) {
         }
         manualUc.focus();
         scrollToCenter(manualUc);
+    } else if (manualPromptNegative && targetElement === manualPromptNegative) {
+        if (currentlyFocused.closest('.character-prompt-item')) {
+            const currentCharacterItem = currentlyFocused.closest('.character-prompt-item');
+            if (!currentCharacterItem.classList.contains('collapsed')) {
+                currentCharacterItem.classList.add('collapsed');
+                updateCharacterPromptCollapseButton(currentCharacterItem.id, true);
+            }
+        }
+        manualPromptNegative.focus();
+        scrollToCenter(manualPromptNegative);
     } else if (targetElement.classList.contains('character-prompt-textarea')) {
         // Moving to a character textarea
         const targetCharacterItem = targetElement.closest('.character-prompt-item');

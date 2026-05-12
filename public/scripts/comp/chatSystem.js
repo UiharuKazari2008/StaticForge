@@ -1642,9 +1642,11 @@ class ChatSystem {
         const restartConfirmed = await showConfirmationDialog(
             'Are you sure you want to restart this chat? This will clear all messages.',
             [
-                { text: 'Restart Chat', value: true, className: 'btn-primary' },
+                { text: 'Restart Chat', value: true, className: 'btn-danger' },
                 { text: 'Cancel', value: false, className: 'btn-secondary' }
-            ]
+            ],
+            null,
+            { title: 'Restart Chat', icon: 'fas fa-redo' }
         );
         
         if (restartConfirmed) {

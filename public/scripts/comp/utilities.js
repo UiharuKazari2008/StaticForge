@@ -382,6 +382,19 @@ function createAnimationAwareDebounce(func, wait) {
     };
 }
 
+/**
+ * Normalize prompt newlines while preserving intentional blank lines.
+ * Allows at most one blank line between text blocks (two consecutive \n chars).
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizePromptNewlines(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/\r\n?/g, '\n')
+        .replace(/\n{3,}/g, '\n\n');
+}
+
 
 /**
  * Helper function to safely add event listeners without duplicates
@@ -1148,6 +1161,43 @@ function calculateCreditCost(requestBody) {
 }
 
 /**
+ * Sizes .prompt-textarea-container height from all direct stacked .prompt-textarea children plus visible toolbar (flow height).
+ */
+function syncPromptTextareaContainerMeasurements(container, extraContainerHeight = 0) {
+    if (!container) return;
+
+    const wraps = container.querySelectorAll(':scope > .prompt-textarea-emphasis-wrap');
+    let sum = 0;
+
+    if (wraps.length) {
+        wraps.forEach((wrap, idx) => {
+            sum += wrap.offsetHeight;
+            if (idx < wraps.length - 1) {
+                const next = wraps[idx + 1];
+                sum += parseFloat(getComputedStyle(next).marginTop) || 0;
+            }
+        });
+    } else {
+        const stacked = container.querySelectorAll(':scope > textarea.prompt-textarea');
+        if (!stacked.length) return;
+        stacked.forEach((ta, idx) => {
+            sum += ta.offsetHeight;
+            if (idx < stacked.length - 1) {
+                sum += parseFloat(getComputedStyle(stacked[idx + 1]).marginTop) || 0;
+            }
+        });
+    }
+
+    const toolbar = container.querySelector('.prompt-textarea-toolbar');
+    if (toolbar && !toolbar.classList.contains('hidden')) {
+        const cs = getComputedStyle(toolbar);
+        sum += toolbar.offsetHeight + (parseFloat(cs.marginTop) || 0);
+    }
+    container.style.setProperty('--textarea-height', `${sum}px`);
+    container.style.setProperty('--extra-height', `${extraContainerHeight || 0}px`);
+}
+
+/**
  * Auto-resize textarea to fit content
  * @param {HTMLTextAreaElement} textarea
  */
@@ -1186,7 +1236,7 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0)
                 // Update container height if it exists
                 const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
                 if (container) {
-                    container.style.setProperty('--textarea-height', newHeight + 'px');
+                    syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
                 }
             }
         }, 5);
@@ -1200,15 +1250,10 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0)
     // Set the new height
     textarea.style.height = newHeight + 'px';
 
-    // Update container height if it exists
+    // Update container: sum all stacked prompt textareas + toolbar (covers UC tab twin fields)
     const container = textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container');
     if (container) {
-        const toolbar = container.querySelector('.prompt-textarea-toolbar');
-        const toolbarHeight = toolbar && !toolbar.classList.contains('hidden') ? 50 : 0; // 10px for margin-top
-
-        // Set CSS variables for calc() to use
-        container.style.setProperty('--textarea-height', (newHeight + toolbarHeight) + 'px');
-        container.style.setProperty('--extra-height', (extraContainerHeight || 0) + 'px');
+        syncPromptTextareaContainerMeasurements(container, extraContainerHeight);
     }
 }
 
@@ -1627,7 +1672,10 @@ function applyFormattedText(textarea, lostFocus) {
     // Store cursor position if textarea is in focus
     const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
 
-    let text = textarea.value;
+    let text = normalizePromptNewlines(textarea.value);
+    const newlinePlaceholder = '__PROMPT_NEWLINE__';
+    // Preserve user newlines during comma/whitespace formatting logic.
+    text = text.replace(/\n/g, newlinePlaceholder);
     
     // Step 1: Protect special blocks from processing
     const protectedBlocks = [];
@@ -1744,6 +1792,8 @@ function applyFormattedText(textarea, lostFocus) {
         });
     }
 
+    text = text.replace(new RegExp(newlinePlaceholder, 'g'), '\n');
+    text = normalizePromptNewlines(text);
     textarea.value = text;
 
     // Restore cursor position if textarea was in focus

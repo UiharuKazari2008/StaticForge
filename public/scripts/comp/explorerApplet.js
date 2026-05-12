@@ -37,6 +37,7 @@ class ExplorerApplet {
         if (minimizeBtn) {
             minimizeBtn.addEventListener('click', () => {
                 this.modal.classList.add('minimised');
+                updateBackdropVisibility(); // public/scripts/comp/modalUtils.js
             });
         }
 

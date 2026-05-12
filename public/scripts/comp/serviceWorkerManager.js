@@ -1354,6 +1354,27 @@ class ServiceWorkerManager {
         // Clear heartbeat time
         this.lastHeartbeatTime = null;
     }
+
+    async syncImageCacheRules(favoriteUrls = [], lockedPreviewUrls = [], policy = null) {
+        try {
+            const worker = this.swRegistration?.active || navigator.serviceWorker?.controller;
+            if (!worker) {
+                return false;
+            }
+
+            worker.postMessage({
+                type: 'SYNC_IMAGE_CACHE_RULES',
+                favoriteUrls: Array.isArray(favoriteUrls) ? favoriteUrls : [],
+                lockedPreviewUrls: Array.isArray(lockedPreviewUrls) ? lockedPreviewUrls : [],
+                policy: policy && typeof policy === 'object' ? policy : undefined
+            });
+
+            return true;
+        } catch (error) {
+            console.error('Failed to sync image cache rules:', error);
+            return false;
+        }
+    }
     
     async checkForWaiting() {
         if (this.swRegistration && this.swRegistration.waiting) {

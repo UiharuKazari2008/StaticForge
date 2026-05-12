@@ -193,6 +193,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         const confirmBtn = document.createElement('button');
         confirmBtn.className = 'credit-cost-confirm-btn btn-primary';
         confirmBtn.type = 'button';
+        confirmBtn.setAttribute('data-dialog-primary', '1');
 
         if (isUpscaling) {
             // Button text depends on selected upscaler
@@ -250,16 +251,24 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
             resolve(false);
         };
 
-        const handleEscape = (e) => {
-            if (e.key === 'Escape' && creditCostDialogActive) {
-                cleanupCreditCostDialog(dialog);
-                resolve(false);
+        const creditCostKeyHandler = (e) => {
+            if (!creditCostDialogActive) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                handleCancel(e);
+            } else if (e.key === 'Enter') {
+                if (e.target.closest('.credit-cost-buttons') && e.target.tagName === 'BUTTON') {
+                    return;
+                }
+                e.preventDefault();
+                handleConfirm(e);
             }
         };
 
         confirmBtn.addEventListener('click', handleConfirm);
         cancelBtn.addEventListener('click', handleCancel);
-        document.addEventListener('keydown', handleEscape);
+        dialog._creditCostKeyHandler = creditCostKeyHandler;
+        document.addEventListener('keydown', creditCostKeyHandler);
 
         // Position dialog near mouse or button
         positionCreditCostDialog(event, dialog);
@@ -267,22 +276,15 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         // Show dialog
         dialog.classList.remove('hidden');
         creditCostDialogActive = true;
-
-        // Debug: Log dialog state and ensure it's visible
-        console.log('🎯 Credit cost dialog shown:', {
-            dialog: dialog,
-            isVisible: !dialog.classList.contains('hidden'),
-            position: {
-                left: dialog.style.left,
-                top: dialog.style.top
-            },
-            event: event ? { clientX: event.clientX, clientY: event.clientY } : 'no event'
-        });
     });
 }
 
 // Clean up and remove credit cost dialog
 function cleanupCreditCostDialog(dialog) {
+    if (dialog && dialog._creditCostKeyHandler) {
+        document.removeEventListener('keydown', dialog._creditCostKeyHandler);
+        delete dialog._creditCostKeyHandler;
+    }
     if (dialog && dialog.parentNode) {
         dialog.parentNode.removeChild(dialog);
     }

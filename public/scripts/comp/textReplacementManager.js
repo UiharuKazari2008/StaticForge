@@ -1634,12 +1634,25 @@ function applyDynamicReplacementClientSide(replacement) {
 
     let result = textarea.value;
     const selectText = (replacement?.select_text || '').trim();
-    const replaceText = replacement.replace_text || '';
+    let replaceText = replacement.replace_text || '';
     const fallbackSelectText = replacement.fallback_select_text ? replacement.fallback_select_text.trim() : null;
     const alternativeText = replacement.alternative_text || null;
     const isCritical = replacement.is_critical !== false; // Default to true
     const count = replacement.count;
     const anchorText = (replacement.anchor_text || '').trim();
+
+    // Match server behavior: apply emphasis bias to replacement text when available.
+    if (replaceText && (action === 'replace' || action === 'append')) {
+        let biasToApply = null;
+        if (replacement.segment_emphasis !== null && replacement.segment_emphasis !== undefined) {
+            biasToApply = replacement.segment_emphasis;
+        } else if (selectText) {
+            biasToApply = extractBiasFromTextForDisplay(selectText);
+        }
+        if (biasToApply !== null && !hasEmphasisGroupForDisplay(replaceText)) {
+            replaceText = applyBiasToText(replaceText, biasToApply);
+        }
+    }
 
     let method = 'direct';
     let appliedSuccessfully = false;
@@ -2278,6 +2291,175 @@ function applyDynamicReplacementFromLockModal(globalIndex) {
         showGlassToast('success', null, `Applied replacement${result.method !== 'direct' ? ` (using ${result.method})` : ''} and removed from list`, false, 3000, '<i class="fas fa-check"></i>');
     } else {
         showGlassToast('error', null, result.error || 'Failed to apply replacement', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+    }
+}
+
+// Compile all Rentan modifications (Tendai) into prompt fields and disable dynamic generation
+function compileAllTendaiReplacements() {
+    if (!window.dynamicGenerationData?.compiled_prompt?.text_replacements) {
+        showGlassToast('warning', null, 'No Tendai Modifications available to compile', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const textReplacements = window.dynamicGenerationData.compiled_prompt.text_replacements;
+    const replacementQueue = [];
+
+    if (Array.isArray(textReplacements.prompt)) {
+        textReplacements.prompt.forEach((replacement) => {
+            replacementQueue.push({
+                replacement,
+                targetType: 'prompt',
+                targetSource: 'base'
+            });
+        });
+    }
+
+    if (Array.isArray(textReplacements.uc)) {
+        textReplacements.uc.forEach((replacement) => {
+            replacementQueue.push({
+                replacement,
+                targetType: 'uc',
+                targetSource: 'base'
+            });
+        });
+    }
+
+    if (Array.isArray(textReplacements.character_prompts)) {
+        textReplacements.character_prompts.forEach((characterPrompt, characterIndex) => {
+            if (Array.isArray(characterPrompt?.prompt)) {
+                characterPrompt.prompt.forEach((replacement) => {
+                    replacementQueue.push({
+                        replacement,
+                        targetType: 'character',
+                        targetSource: characterIndex,
+                        targetField: 'prompt'
+                    });
+                });
+            }
+
+            if (Array.isArray(characterPrompt?.uc)) {
+                characterPrompt.uc.forEach((replacement) => {
+                    replacementQueue.push({
+                        replacement,
+                        targetType: 'character',
+                        targetSource: characterIndex,
+                        targetField: 'uc'
+                    });
+                });
+            }
+        });
+    }
+
+    if (replacementQueue.length === 0) {
+        showGlassToast('warning', null, 'No Tendai Modifications available to compile', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    // Match server behavior: apply replaces/deletes first, then appends (per target stream).
+    // Applying appends too early can shift replacement anchors and cause output divergence.
+    const replacementStreams = new Map();
+    replacementQueue.forEach((entry) => {
+        const streamKey = `${entry.targetType}:${entry.targetSource ?? 'base'}:${entry.targetField ?? 'none'}`;
+        if (!replacementStreams.has(streamKey)) {
+            replacementStreams.set(streamKey, []);
+        }
+        replacementStreams.get(streamKey).push(entry);
+    });
+
+    const orderedQueue = [];
+    replacementStreams.forEach((entries) => {
+        const phaseReplaceDelete = entries.filter(({ replacement }) => {
+            const action = (replacement?.action || 'replace').toLowerCase();
+            return action !== 'append';
+        });
+        const phaseAppend = entries.filter(({ replacement }) => {
+            const action = (replacement?.action || 'replace').toLowerCase();
+            return action === 'append';
+        });
+        orderedQueue.push(...phaseReplaceDelete, ...phaseAppend);
+    });
+
+    let successCount = 0;
+    let failedCount = 0;
+
+    orderedQueue.forEach(({ replacement, targetType, targetSource, targetField }) => {
+        const preparedReplacement = {
+            ...replacement,
+            // Server translates <br> to newlines before applying replacements.
+            replace_text: typeof replacement?.replace_text === 'string'
+                ? replacement.replace_text.replace(/<br\s*\/?>/gi, '\n')
+                : replacement?.replace_text,
+            alternative_text: typeof replacement?.alternative_text === 'string'
+                ? replacement.alternative_text.replace(/<br\s*\/?>/gi, '\n')
+                : replacement?.alternative_text,
+            targetType,
+            targetSource,
+            targetField
+        };
+
+        const result = applyDynamicReplacementClientSide(preparedReplacement);
+
+        if (result.success) {
+            successCount++;
+        } else {
+            failedCount++;
+        }
+    });
+
+    // Clear compiled dynamic replacements and disable dynamic generation for upcoming requests.
+    delete window.dynamicGenerationData;
+
+    const dynamicGenerationToggle = document.getElementById('dynamicGenerationToggleBtn');
+    const dynamicGenerationSection = document.getElementById('dynamicGenerationGroup');
+    const dynamicCarouselElement = document.getElementById('dynamicCarousel');
+
+    if (dynamicGenerationToggle) {
+        dynamicGenerationToggle.setAttribute('data-state', 'off');
+    }
+    if (dynamicGenerationSection) {
+        dynamicGenerationSection.classList.add('hidden');
+    }
+    if (dynamicCarouselElement) {
+        dynamicCarouselElement.setAttribute('data-state', 'off');
+        dynamicCarouselElement.setAttribute('data-use-cache', 'false');
+    }
+
+    if (window.updateDynamicGenerationToggleBtn) {
+        window.updateDynamicGenerationToggleBtn();
+    }
+    if (window.updateCarouselIndicators) {
+        window.updateCarouselIndicators();
+    }
+
+    if (window.lockedDynamicReplacements) {
+        window.lockedDynamicReplacements = [];
+    }
+
+    if (window.renderTextReplacementLockList) {
+        window.renderTextReplacementLockList();
+    }
+    if (window.updateMainLockButtonState) {
+        window.updateMainLockButtonState();
+    }
+
+    if (failedCount > 0) {
+        showGlassToast(
+            'warning',
+            null,
+            `Compiled ${successCount} Tendai replacement${successCount === 1 ? '' : 's'}; ${failedCount} could not be applied`,
+            false,
+            4500,
+            '<i class="fas fa-triangle-exclamation"></i>'
+        );
+    } else {
+        showGlassToast(
+            'success',
+            null,
+            `Compiled and applied ${successCount} Tendai replacement${successCount === 1 ? '' : 's'}. Dynamic generation disabled for next request.`,
+            false,
+            3500,
+            '<i class="fas fa-check"></i>'
+        );
     }
 }
 

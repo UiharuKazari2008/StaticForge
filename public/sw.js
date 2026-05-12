@@ -11,6 +11,40 @@ const { strategies, expiration, cacheableResponse } = workbox;
 const STATIC_CACHE = 'static-cache-v1';
 const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
+const IMAGE_CACHE = 'image-cache-v1';
+const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
+
+const IMAGE_CACHE_POLICY = {
+  maxEntries: 5000,
+  maxSizeBytes: 2 * 1024 * 1024 * 1024, // 2GB
+  maxIdleMs: 24 * 60 * 60 * 1000, // 24 hours since last access
+  lockedPreviewCount: 500
+};
+
+// Enforcing cache policy on every image hit can thrash the cache.
+// Debounce and rate-limit enforcement to keep the cache warm.
+const IMAGE_POLICY_ENFORCE_DEBOUNCE_MS = 2000;
+const IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS = 30000;
+let imagePolicyEnforceTimer = null;
+let imagePolicyLastEnforcedAt = 0;
+
+function scheduleImageCachePolicyEnforcement() {
+  const now = Date.now();
+  if (now - imagePolicyLastEnforcedAt < IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS) {
+    return;
+  }
+  if (imagePolicyEnforceTimer) {
+    clearTimeout(imagePolicyEnforceTimer);
+  }
+  imagePolicyEnforceTimer = setTimeout(async () => {
+    imagePolicyEnforceTimer = null;
+    try {
+      await enforceImageCachePolicy();
+    } finally {
+      imagePolicyLastEnforcedAt = Date.now();
+    }
+  }, IMAGE_POLICY_ENFORCE_DEBOUNCE_MS);
+}
 
 // Download state tracking
 let downloadState = {
@@ -26,6 +60,11 @@ let downloadState = {
 
 // Helper function to add cache-busting headers to responses
 function addCacheBustingHeaders(response) {
+  // Opaque/opaqueredirect responses use status 0 and cannot be reconstructed.
+  if (!response || response.status < 200 || response.status > 599) {
+    return response;
+  }
+
   const headers = new Headers(response.headers);
   headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   headers.set('Pragma', 'no-cache');
@@ -34,11 +73,16 @@ function addCacheBustingHeaders(response) {
   headers.set('Last-Modified', new Date().toUTCString());
   headers.set('ETag', `"${Date.now()}"`);
 
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: headers
-  });
+  try {
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: headers
+    });
+  } catch (error) {
+    // Fall back to the original response when rewrapping is not allowed.
+    return response;
+  }
 }
 
 
@@ -89,27 +133,224 @@ const dynamicStrategy = new strategies.CacheFirst({
 });
 
 // Image strategy - cache first with network fallback and immediate expiry
-const imageStrategy = new strategies.CacheFirst({
-  cacheName: DYNAMIC_CACHE,
-  matchOptions: {
-    ignoreSearch: true
-  },
-  plugins: [
-    new cacheableResponse.CacheableResponsePlugin({
-      statuses: [0, 200],
-    }),
-    new expiration.ExpirationPlugin({
-      maxEntries: 200,
-      maxAgeSeconds: 7 * 24 * 60 * 60, // 1 week
-    }),
-    {
-      cacheKeyWillBeUsed: async ({ request }) => {
-        // Strip query parameters from cache key
-        return request.url.split('?')[0];
+const imageStrategy = null;
+
+function getCanonicalUrl(input) {
+  const url = typeof input === 'string' ? input : input.url;
+  return url.split('?')[0];
+}
+
+function getApproximateResponseSize(response) {
+  const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+  return Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0;
+}
+
+async function readImageMetadata() {
+  const cache = await caches.open(INTERNAL_CACHE);
+  const response = await cache.match(IMAGE_METADATA_KEY);
+  if (!response) {
+    return {
+      sequence: 0,
+      rules: {
+        favoriteUrls: [],
+        lockedPreviewUrls: []
       },
-    },
-  ],
-});
+      entries: {}
+    };
+  }
+
+  try {
+    const data = await response.json();
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid metadata');
+    }
+    return {
+      sequence: Number.isFinite(data.sequence) ? data.sequence : 0,
+      rules: {
+        favoriteUrls: Array.isArray(data.rules?.favoriteUrls) ? data.rules.favoriteUrls : [],
+        lockedPreviewUrls: Array.isArray(data.rules?.lockedPreviewUrls) ? data.rules.lockedPreviewUrls : []
+      },
+      entries: data.entries && typeof data.entries === 'object' ? data.entries : {}
+    };
+  } catch (error) {
+    return {
+      sequence: 0,
+      rules: {
+        favoriteUrls: [],
+        lockedPreviewUrls: []
+      },
+      entries: {}
+    };
+  }
+}
+
+async function writeImageMetadata(metadata) {
+  const cache = await caches.open(INTERNAL_CACHE);
+  await cache.put(
+    IMAGE_METADATA_KEY,
+    new Response(JSON.stringify(metadata), {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  );
+}
+
+function isPinnedImageUrl(url, metadata) {
+  const favoriteSet = new Set(metadata.rules.favoriteUrls || []);
+  const lockedPreviewSet = new Set(metadata.rules.lockedPreviewUrls || []);
+  return favoriteSet.has(url) || lockedPreviewSet.has(url);
+}
+
+async function updateImageMetadataForHit(url) {
+  const metadata = await readImageMetadata();
+  const entry = metadata.entries[url];
+  if (!entry) {
+    return;
+  }
+  metadata.sequence += 1;
+  entry.lastAccess = Date.now();
+  entry.seq = metadata.sequence;
+  entry.pinned = isPinnedImageUrl(url, metadata);
+  await writeImageMetadata(metadata);
+}
+
+async function upsertImageMetadata(url, response) {
+  const metadata = await readImageMetadata();
+  metadata.sequence += 1;
+  metadata.entries[url] = {
+    size: getApproximateResponseSize(response),
+    lastAccess: Date.now(),
+    cachedAt: Date.now(),
+    seq: metadata.sequence,
+    pinned: isPinnedImageUrl(url, metadata)
+  };
+  await writeImageMetadata(metadata);
+}
+
+async function deleteImageMetadata(urls) {
+  const metadata = await readImageMetadata();
+  for (const url of urls) {
+    delete metadata.entries[url];
+  }
+  await writeImageMetadata(metadata);
+}
+
+async function enforceImageCachePolicy() {
+  const metadata = await readImageMetadata();
+  const cache = await caches.open(IMAGE_CACHE);
+  const keys = await cache.keys();
+  const now = Date.now();
+  const keySet = new Set(keys.map(key => getCanonicalUrl(key.url)));
+
+  // Cleanup metadata entries no longer present in cache.
+  for (const url of Object.keys(metadata.entries)) {
+    if (!keySet.has(url)) {
+      delete metadata.entries[url];
+    }
+  }
+
+  const removable = [];
+  let totalEntries = 0;
+  let totalSize = 0;
+
+  for (const key of keys) {
+    const url = getCanonicalUrl(key.url);
+    if (!url.includes('/images/') && !url.includes('/previews/')) {
+      continue;
+    }
+
+    const entry = metadata.entries[url];
+    if (!entry) {
+      continue;
+    }
+
+    const pinned = isPinnedImageUrl(url, metadata);
+    entry.pinned = pinned;
+    totalEntries += 1;
+    totalSize += entry.size || 0;
+
+    const isExpired = now - (entry.lastAccess || entry.cachedAt || now) > IMAGE_CACHE_POLICY.maxIdleMs;
+    if (!pinned && isExpired) {
+      removable.push({ url, seq: entry.seq || 0, reason: 'expired', size: entry.size || 0 });
+    }
+  }
+
+  removable.sort((a, b) => a.seq - b.seq);
+  const evictQueue = [...removable];
+
+  // FIFO-like eviction by earliest sequence for non-pinned items.
+  if (totalEntries > IMAGE_CACHE_POLICY.maxEntries || totalSize > IMAGE_CACHE_POLICY.maxSizeBytes) {
+    const candidates = Object.entries(metadata.entries)
+      .filter(([url, entry]) => {
+        if (!url.includes('/images/') && !url.includes('/previews/')) return false;
+        return !isPinnedImageUrl(url, metadata);
+      })
+      .map(([url, entry]) => ({ url, seq: entry.seq || 0, size: entry.size || 0 }))
+      .sort((a, b) => a.seq - b.seq);
+
+    for (const candidate of candidates) {
+      if (totalEntries <= IMAGE_CACHE_POLICY.maxEntries && totalSize <= IMAGE_CACHE_POLICY.maxSizeBytes) {
+        break;
+      }
+      if (!evictQueue.find(item => item.url === candidate.url)) {
+        evictQueue.push({ ...candidate, reason: 'capacity' });
+      }
+      totalEntries -= 1;
+      totalSize -= candidate.size || 0;
+    }
+  }
+
+  if (evictQueue.length > 0) {
+    const removed = [];
+    for (const item of evictQueue) {
+      const deleted = await cache.delete(item.url);
+      if (deleted) {
+        removed.push(item.url);
+      }
+    }
+    if (removed.length > 0) {
+      for (const url of removed) {
+        delete metadata.entries[url];
+      }
+    }
+  }
+
+  await writeImageMetadata(metadata);
+}
+
+async function handleImageRequest(event) {
+  const { request } = event;
+  const canonicalUrl = getCanonicalUrl(request.url);
+  const cache = await caches.open(IMAGE_CACHE);
+  const cachedResponse = await cache.match(canonicalUrl);
+
+  if (cachedResponse) {
+    event.waitUntil(updateImageMetadataForHit(canonicalUrl));
+    event.waitUntil((async () => {
+      scheduleImageCachePolicyEnforcement();
+    })());
+    return cachedResponse;
+  }
+
+  const networkResponse = await fetch(request, {
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+  });
+  if (networkResponse && networkResponse.ok && networkResponse.status >= 200 && networkResponse.status < 300 && shouldCacheResponse(networkResponse)) {
+    await cache.put(canonicalUrl, networkResponse.clone());
+    await upsertImageMetadata(canonicalUrl, networkResponse);
+    event.waitUntil((async () => {
+      scheduleImageCachePolicyEnforcement();
+    })());
+  }
+
+  return networkResponse;
+}
 
 // Internal strategy - only return cached data, never fetch from network
 const internalStrategy = {
@@ -207,18 +448,12 @@ function createCacheBustingStrategy(strategy) {
 }
 
 // Custom strategy wrapper for images that disables client-side caching but allows service worker caching
-function createImageStrategy(strategy) {
+function createImageStrategy() {
   return {
     async handle({ request, event }) {
       try {
-        const reqUrl = new URL(request.url);
-        const response = await strategy.handle({ request, event });
+        const response = await handleImageRequest(event);
         if (response) {
-          // Previews: keep origin cache headers (server sends max-age) so the browser HTTP cache
-          // complements Workbox; busting here forced no-store on every preview and removed that layer.
-          const isPreviewPath = reqUrl.pathname.startsWith('/previews/');
-          const finalResponse = isPreviewPath ? response : addCacheBustingHeaders(response);
-
           // Emit receive event for successful responses
           notifyClientsOfNetworkActivity('receive', {
             url: request.url,
@@ -226,8 +461,7 @@ function createImageStrategy(strategy) {
             status: response.status,
             timestamp: Date.now()
           });
-
-          return finalResponse;
+          return response;
         }
         return response;
       } catch (error) {
@@ -307,17 +541,11 @@ workbox.routing.registerRoute(
             });
             
             if (fetchResponse.ok && fetchResponse.status >= 200 && fetchResponse.status < 300 && shouldCacheResponse(fetchResponse)) {
-              // Add cache-busting headers
-              const headers = new Headers(fetchResponse.headers);
-              headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-              headers.set('Pragma', 'no-cache');
-              headers.set('Expires', '0');
-              headers.set('Surrogate-Control', 'no-store');
-              
+              // Keep original server headers in storage; cache-busting is only for fetch mode.
               const responseWithHeaders = new Response(fetchResponse.body, {
                 status: fetchResponse.status,
                 statusText: fetchResponse.statusText,
-                headers: headers
+                headers: fetchResponse.headers
               });
               
               // Cache at route path
@@ -336,7 +564,7 @@ workbox.routing.registerRoute(
       // Note: Image variants (like @blur.webp) are in the path, not query params,
       // so they're naturally cached separately. Query params are stripped for cache-busting.
       else if (url.pathname.startsWith('/previews/')) {
-        response = await createImageStrategy(imageStrategy).handle(event);
+        response = await createImageStrategy().handle(event);
       }
       // Handle cache with dynamic strategy
       else if (url.pathname.startsWith('/cache/')) {
@@ -344,7 +572,7 @@ workbox.routing.registerRoute(
       }
       // Handle images with image strategy
       else if (url.pathname.startsWith('/images/')) {
-        response = await createImageStrategy(imageStrategy).handle(event);
+        response = await createImageStrategy().handle(event);
       }
       // Handle all other static files with static strategy
       else {
@@ -518,6 +746,26 @@ self.addEventListener('message', (event) => {
                 });
             })
         );
+    } else if (event.data && event.data.type === 'SYNC_IMAGE_CACHE_RULES') {
+        const favoriteUrls = Array.isArray(event.data.favoriteUrls) ? event.data.favoriteUrls.map(getCanonicalUrl) : [];
+        const lockedPreviewUrls = Array.isArray(event.data.lockedPreviewUrls) ? event.data.lockedPreviewUrls.map(getCanonicalUrl) : [];
+        event.waitUntil((async () => {
+            const policy = event.data.policy || {};
+            if (Number.isFinite(policy.maxEntries) && policy.maxEntries > 0) {
+              IMAGE_CACHE_POLICY.maxEntries = Math.floor(policy.maxEntries);
+            }
+            if (Number.isFinite(policy.maxSizeBytes) && policy.maxSizeBytes > 0) {
+              IMAGE_CACHE_POLICY.maxSizeBytes = Math.floor(policy.maxSizeBytes);
+            }
+            if (Number.isFinite(policy.maxIdleMs) && policy.maxIdleMs > 0) {
+              IMAGE_CACHE_POLICY.maxIdleMs = Math.floor(policy.maxIdleMs);
+            }
+            const metadata = await readImageMetadata();
+            metadata.rules.favoriteUrls = Array.from(new Set(favoriteUrls));
+            metadata.rules.lockedPreviewUrls = Array.from(new Set(lockedPreviewUrls.slice(0, IMAGE_CACHE_POLICY.lockedPreviewCount)));
+            await writeImageMetadata(metadata);
+            scheduleImageCachePolicyEnforcement();
+        })());
     }
 });
 
@@ -814,12 +1062,6 @@ async function cacheStaticFiles(files) {
                         const headers = new Headers(response.headers);
                         headers.set('x-file-hash', file.hash);
 
-                        // Add comprehensive cache-busting headers to the cached response
-                        headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-                        headers.set('Pragma', 'no-cache');
-                        headers.set('Expires', '0');
-                        headers.set('Surrogate-Control', 'no-store');
-
                         const responseWithHash = new Response(response.body, {
                             status: response.status,
                             statusText: response.statusText,
@@ -1046,10 +1288,12 @@ async function getCacheStatus(requestId) {
     const staticCache = await caches.open(STATIC_CACHE);
     const dynamicCache = await caches.open(DYNAMIC_CACHE);
     const internalCache = await caches.open(INTERNAL_CACHE);
+    const imageCache = await caches.open(IMAGE_CACHE);
     
     const staticKeys = await staticCache.keys();
     const dynamicKeys = await dynamicCache.keys();
     const internalKeys = await internalCache.keys();
+    const imageKeys = await imageCache.keys();
     
     self.clients.matchAll().then(clients => {
       clients.forEach(client => {
@@ -1058,7 +1302,8 @@ async function getCacheStatus(requestId) {
           requestId: requestId,
           static: staticKeys.length,
           dynamic: dynamicKeys.length,
-          internal: internalKeys.length
+          internal: internalKeys.length,
+          images: imageKeys.length
         });
       });
     });
@@ -1070,16 +1315,25 @@ async function getCacheStatus(requestId) {
 // Delete from cache and precache a file
 async function deleteAndPrecache(url, requestId) {
   try {
-    const cache = await caches.open(DYNAMIC_CACHE);
     const urlWithoutQuery = url.split('?')[0];
+    const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
+    const targetCacheName = isImageOrPreview ? IMAGE_CACHE : DYNAMIC_CACHE;
+    const cache = await caches.open(targetCacheName);
     const keys = await cache.keys();
+    const removedUrls = [];
     
     // Delete all cache entries that match this URL (with or without query params)
     for (const key of keys) {
       const keyUrl = key.url.split('?')[0];
       if (keyUrl === urlWithoutQuery) {
-        await cache.delete(key);
+        const deleted = await cache.delete(key);
+        if (deleted) {
+          removedUrls.push(keyUrl);
+        }
       }
+    }
+    if (removedUrls.length > 0) {
+      await deleteImageMetadata(removedUrls);
     }
     
     // Fetch the file to precache it (with timestamp to force fresh fetch)
@@ -1094,21 +1348,12 @@ async function deleteAndPrecache(url, requestId) {
     });
     
     if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
-      // Add cache-busting headers
-      const headers = new Headers(response.headers);
-      headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-      headers.set('Pragma', 'no-cache');
-      headers.set('Expires', '0');
-      headers.set('Surrogate-Control', 'no-store');
-      
-      const responseWithHeaders = new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: headers
-      });
-      
       // Cache the file without query parameters (strategies will strip queries)
-      await cache.put(urlWithoutQuery, responseWithHeaders);
+      await cache.put(urlWithoutQuery, response.clone());
+      if (isImageOrPreview) {
+        await upsertImageMetadata(urlWithoutQuery, response);
+        await enforceImageCachePolicy();
+      }
     }
     
     // Notify client of completion
@@ -1161,17 +1406,11 @@ self.addEventListener('install', (event) => {
           });
           
           if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
-            // Add cache-busting headers
-            const headers = new Headers(response.headers);
-            headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-            headers.set('Pragma', 'no-cache');
-            headers.set('Expires', '0');
-            headers.set('Surrogate-Control', 'no-store');
-            
+            // Keep original response headers in cache.
             const responseWithHeaders = new Response(response.body, {
               status: response.status,
               statusText: response.statusText,
-              headers: headers
+              headers: response.headers
             });
             
             // Cache at the route path
@@ -1196,12 +1435,14 @@ self.addEventListener('activate', (event) => {
         cacheNames.map(cacheName => {
           if (cacheName !== STATIC_CACHE && 
               cacheName !== DYNAMIC_CACHE && 
+              cacheName !== IMAGE_CACHE &&
               cacheName !== INTERNAL_CACHE) {
             return caches.delete(cacheName);
           }
         })
       );
-    }).then(() => {
+    }).then(async () => {
+      await enforceImageCachePolicy();
       return self.clients.claim();
     })
   );

@@ -92,7 +92,7 @@ class PromptTextareaToolbar {
             
             // Add direct emphasis keyboard listener if not already added
             if (!toolbar.hasAttribute('data-direct-emphasis-listener-added')) {
-                this.addDirectEmphasisKeyboardListener(textarea, toolbar);
+                this.addDirectEmphasisKeyboardListener(toolbar);
                 toolbar.setAttribute('data-direct-emphasis-listener-added', 'true');
             }
             
@@ -147,7 +147,14 @@ class PromptTextareaToolbar {
 
     getTextareaFromToolbar(button) {
         const container = button.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-        return container ? container.querySelector('.prompt-textarea, .character-prompt-textarea') : null;
+        if (!container) return null;
+
+        // UC tab stacks manualUc + manualPromptNegative; querySelector would always return the first.
+        if (this.activeTextarea && container.contains(this.activeTextarea)) {
+            return this.activeTextarea;
+        }
+
+        return container.querySelector('.prompt-textarea, .character-prompt-textarea');
     }
 
     getActiveSearchToolbar() {
@@ -243,6 +250,8 @@ class PromptTextareaToolbar {
         
         if (manualPrompt) promptTextareas.push(manualPrompt);
         if (manualUc) ucTextareas.push(manualUc);
+        const manualPromptNegative = document.getElementById('manualPromptNegative');
+        if (manualPromptNegative) promptTextareas.push(manualPromptNegative);
         
         // Collect character prompts
         const characterPrompts = document.querySelectorAll('[id$="_prompt"].character-prompt-textarea');
@@ -824,10 +833,9 @@ class PromptTextareaToolbar {
 
         // Create or update highlight overlay
         if (!searchState.highlightOverlay) {
-            searchState.highlightOverlay = document.createElement('div');
-            searchState.highlightOverlay.className = 'search-highlight-overlay';
-            textarea.parentElement.appendChild(searchState.highlightOverlay);
+            searchState.highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
         }
+        if (!searchState.highlightOverlay) return;
 
         const text = textarea.value;
         
@@ -890,12 +898,8 @@ class PromptTextareaToolbar {
         const { textarea, start, end } = result;
         
         // Create or update highlight overlay for this textarea
-        let highlightOverlay = textarea.parentElement.querySelector('.search-highlight-overlay');
-        if (!highlightOverlay) {
-            highlightOverlay = document.createElement('div');
-            highlightOverlay.className = 'search-highlight-overlay';
-            textarea.parentElement.appendChild(highlightOverlay);
-        }
+        let highlightOverlay = ensurePromptSearchHighlightOverlay(textarea);
+        if (!highlightOverlay) return;
 
         const text = textarea.value;
         
@@ -939,7 +943,8 @@ class PromptTextareaToolbar {
         // Clear highlights from all textareas
         const allTextareas = document.querySelectorAll('.prompt-textarea, .character-prompt-textarea');
         allTextareas.forEach(textarea => {
-            const highlightOverlay = textarea.parentElement.querySelector('.search-highlight-overlay');
+            const host = getPromptTextareaOverlayHost(textarea);
+            const highlightOverlay = host && host.querySelector(':scope > .search-highlight-overlay');
             if (highlightOverlay) {
                 highlightOverlay.remove();
             }
@@ -1071,10 +1076,10 @@ class PromptTextareaToolbar {
         // Handle main textareas based on view mode
         if (viewMode === 'both') {
             // Show both mode: include both prompt and UC
-            return textareaId === 'manualPrompt' || textareaId === 'manualUc';
+            return textareaId === 'manualPrompt' || textareaId === 'manualUc' || textareaId === 'manualPromptNegative';
         } else if (viewMode === 'uc') {
-            // UC mode: only include UC textarea
-            return textareaId === 'manualUc';
+            // UC mode: include UC and inline negative textareas
+            return textareaId === 'manualUc' || textareaId === 'manualPromptNegative';
         } else {
             // Prompt mode (default): only include prompt textarea
             return textareaId === 'manualPrompt';
@@ -1425,7 +1430,7 @@ class PromptTextareaToolbar {
         }
 
         // Add keyboard event listener for emphasis mode
-        this.addEmphasisKeyboardListener(textarea, toolbar);
+        this.addEmphasisKeyboardListener(toolbar);
         
         // Update emphasis display
         this.updateEmphasisDisplay(toolbar);
@@ -1519,10 +1524,27 @@ class PromptTextareaToolbar {
         }
     }
 
-    addEmphasisKeyboardListener(textarea, toolbar) {        
+    addEmphasisKeyboardListener(toolbar) {
+        const container = toolbar.parentElement;
+        if (!container) return;
+
+        if (toolbar.emphasisKeydownHandler && toolbar.emphasisKeydownContainer) {
+            toolbar.emphasisKeydownContainer.removeEventListener('keydown', toolbar.emphasisKeydownHandler);
+            delete toolbar.emphasisKeydownHandler;
+            toolbar.emphasisKeydownContainer = null;
+        }
+
         const keydownHandler = (e) => {
             // Only handle keys when in emphasis mode
             if (!toolbar.classList.contains('emphasis-mode')) {
+                return;
+            }
+
+            const t = e.target;
+            if (!t || !t.matches('textarea.prompt-textarea, textarea.character-prompt-textarea')) {
+                return;
+            }
+            if (!container.contains(t)) {
                 return;
             }
 
@@ -1583,24 +1605,36 @@ class PromptTextareaToolbar {
             }
         };
 
-        // Store the handler reference for cleanup
         toolbar.emphasisKeydownHandler = keydownHandler;
-        textarea.addEventListener('keydown', keydownHandler);
+        toolbar.emphasisKeydownContainer = container;
+        container.addEventListener('keydown', keydownHandler);
     }
-    
-    addDirectEmphasisKeyboardListener(textarea, toolbar) {        
-        // Add a separate listener for direct emphasis application when NOT in emphasis mode
+
+    addDirectEmphasisKeyboardListener(toolbar) {
+        const container = toolbar.parentElement;
+        if (!container) return;
+
+        const resolveTargetTextarea = (eventTarget) => {
+            const t = eventTarget;
+            if (!t || !t.matches('textarea.prompt-textarea, textarea.character-prompt-textarea')) {
+                return null;
+            }
+            return container.contains(t) ? t : null;
+        };
+
+        // Delegated: UC tab has two stacked fields sharing one toolbar — listeners must run for whichever textarea is focused.
         const directEmphasisHandler = (e) => {
+            const textarea = resolveTargetTextarea(e.target);
+            if (!textarea) return;
+
             // Handle ALT + S for splitting emphasis blocks
             if (e.altKey && e.key === 's') {
                 e.preventDefault();
-                
-                // Check if cursor is inside an emphasis block
+
                 const emphasisInfo = isCursorInsideEmphasisBlock(textarea);
                 if (emphasisInfo) {
                     const success = splitEmphasisBlock(textarea);
                     if (success) {
-                        // Update emphasis highlighting
                         if (window.updateEmphasisHighlighting) {
                             window.updateEmphasisHighlighting(textarea);
                         }
@@ -1609,19 +1643,40 @@ class PromptTextareaToolbar {
                 }
                 return;
             }
-            
+
+            // Wrap selection with {} or [] (same path as digit → applyEmphasisDirectly; weights match one brace level)
+            if ((e.key === '{' || e.key === '[') && !e.altKey && !e.ctrlKey && !e.metaKey) {
+                if (!toolbar.classList.contains('emphasis-mode') && document.activeElement === textarea) {
+                    if (textarea.selectionStart !== textarea.selectionEnd) {
+                        const weight = e.key === '{' ? 1.5 : 0.5;
+                        const result = applyEmphasisDirectly(textarea, weight, 'brace');
+                        if (result && result.success) {
+                            window.emphasisEditingValue = weight;
+                            this.updateEmphasisDisplay(toolbar);
+                            setTimeout(() => {
+                                if (result.start !== undefined && result.end !== undefined) {
+                                    textarea.setSelectionRange(result.start, result.end);
+                                }
+                            }, 10);
+                            e.preventDefault();
+                        }
+                    }
+                }
+                return;
+            }
+
             // Early return for non-numeric keys to improve efficiency
             if (e.key < '0' || e.key > '9' || (e.altKey && (e.key === '™' || e.key === '¡'))) {
                 return;
             }
-            
+
             // Only handle when NOT in emphasis mode and textarea is focused
             if (toolbar.classList.contains('emphasis-mode') || document.activeElement !== textarea) {
                 return;
             }
-            
+
             // Check if there's selected text and apply emphasis directly
-            if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+            if (textarea.selectionStart !== textarea.selectionEnd) {
                 // Handle alt + number for negative values
                 const isAltPressed = e.altKey;
                 
@@ -1679,18 +1734,37 @@ class PromptTextareaToolbar {
             // If no text selected, don't prevent default - allow normal typing
         };
         
-        // Store the handler reference for cleanup
         toolbar.directEmphasisKeydownHandler = directEmphasisHandler;
-        textarea.addEventListener('keydown', directEmphasisHandler);
+        toolbar.directEmphasisDelegatedContainer = container;
+        container.addEventListener('keydown', directEmphasisHandler);
 
         // Android virtual keyboard often does not fire keydown for number keys; it fires beforeinput.
-        // Handle insertText of a single digit with selection the same as keydown (apply emphasis).
         const directEmphasisBeforeinputHandler = (e) => {
+            const textarea = resolveTargetTextarea(e.target);
+            if (!textarea) return;
             if (e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
             const char = e.data;
-            if (char < '0' || char > '9') return;
+            const isDigit = char >= '0' && char <= '9';
+            const isBraceWrap = char === '{' || char === '[';
+            if (!isDigit && !isBraceWrap) return;
             if (toolbar.classList.contains('emphasis-mode') || document.activeElement !== textarea) return;
             if (textarea.selectionStart === textarea.selectionEnd) return;
+
+            if (isBraceWrap) {
+                const weight = char === '{' ? 1.5 : 0.5;
+                const result = applyEmphasisDirectly(textarea, weight, 'brace');
+                if (result && result.success) {
+                    e.preventDefault();
+                    window.emphasisEditingValue = weight;
+                    this.updateEmphasisDisplay(toolbar);
+                    setTimeout(() => {
+                        if (result.start !== undefined && result.end !== undefined) {
+                            textarea.setSelectionRange(result.start, result.end);
+                        }
+                    }, 10);
+                }
+                return;
+            }
 
             e.preventDefault();
             const numericValue = parseInt(char, 10);
@@ -1708,7 +1782,7 @@ class PromptTextareaToolbar {
             }
         };
         toolbar.directEmphasisBeforeinputHandler = directEmphasisBeforeinputHandler;
-        textarea.addEventListener('beforeinput', directEmphasisBeforeinputHandler);
+        container.addEventListener('beforeinput', directEmphasisBeforeinputHandler);
     }
     
     detectEmphasisMode(textarea, selectionStart, selectionEnd) {
@@ -1812,13 +1886,10 @@ class PromptTextareaToolbar {
         // Remove emphasis mode class
         toolbar.classList.remove('emphasis-mode');
         
-        // Remove emphasis mode keyboard listener only
-        if (toolbar.emphasisKeydownHandler) {
-            const textarea = this.getTextareaFromToolbar(toolbar);
-            if (textarea) {
-                textarea.removeEventListener('keydown', toolbar.emphasisKeydownHandler);
-            }
+        if (toolbar.emphasisKeydownHandler && toolbar.emphasisKeydownContainer) {
+            toolbar.emphasisKeydownContainer.removeEventListener('keydown', toolbar.emphasisKeydownHandler);
             delete toolbar.emphasisKeydownHandler;
+            toolbar.emphasisKeydownContainer = null;
         }
         
         // Refresh emphasis highlighting on the textarea

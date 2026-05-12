@@ -1300,7 +1300,7 @@ class NotepadManager {
             'Do you want to save changes before continuing?',
             [
                 { text: 'Save', value: 'save', className: 'btn-primary' },
-                { text: 'Discard', value: 'discard', className: 'btn-secondary' },
+                { text: 'Discard', value: 'discard', className: 'btn-danger' },
                 { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
             ]
         );
@@ -1782,7 +1782,7 @@ class Notepad {
                 'Do you want to save changes before closing?',
                 [
                     { text: 'Save', value: 'save', className: 'btn-primary' },
-                    { text: 'Discard', value: 'discard', className: 'btn-secondary' },
+                    { text: 'Discard', value: 'discard', className: 'btn-danger' },
                     { text: 'Cancel', value: 'cancel', className: 'btn-secondary' }
                 ]
             );

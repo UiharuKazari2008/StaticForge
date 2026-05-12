@@ -957,14 +957,13 @@ window.openGalleryImageInViewer = function (imageData) {
     return imageViewerManager.createViewer(imageSrc, title, imageData);
 };
 
-// Helper for opening reference images
+// Helper for opening reference images (in-app image viewer window; public/scripts/comp/referenceManager.js)
 window.openReferenceImageInViewer = function (cacheImage) {
     if (!cacheImage) return null;
 
     // Use the same logic as the reference browser preview function
     let imageSrc;
     if (cacheImage.isStandalone) {
-        // For standalone vibes, use the vibe's preview or fallback
         if (cacheImage.type === 'base64' && cacheImage.source) {
             imageSrc = `data:image/png;base64,${cacheImage.source}`;
         } else if (cacheImage.type === 'vibe' && cacheImage.source) {
@@ -973,7 +972,6 @@ window.openReferenceImageInViewer = function (cacheImage) {
             imageSrc = `/cache/preview/${cacheImage.hasPreview}`;
         }
     } else {
-        // For cache images - prefer original upload, then preview, then fallback
         if (cacheImage.hash) {
             imageSrc = `/cache/upload/${cacheImage.hash}`;
         } else if (cacheImage.hasPreview) {
@@ -981,7 +979,6 @@ window.openReferenceImageInViewer = function (cacheImage) {
         }
     }
 
-    // Fallback if no source found
     if (!imageSrc) {
         imageSrc = '/static_images/background.jpg';
     }
