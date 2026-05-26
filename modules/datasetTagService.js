@@ -17,9 +17,9 @@ class DatasetTagService {
         }
         this.globalResources = globalResources;
         this.datasetTagGroups = null;
-        this.datasetTagGroupsPath = path.join(__dirname, '../dataset_tag_groups.json');
+        this.datasetTagGroupsPath = globalResources.getPath('datasetTagGroups');
         this.tagToPathIndex = null;
-        this.tagToPathIndexPath = path.join(__dirname, '../.cache/tag_to_path_index.json');
+        this.tagToPathIndexPath = globalResources.getPath('tagToPathIndex');
     }
 
     /**

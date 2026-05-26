@@ -12,17 +12,18 @@ class AnimeTagSearch {
         this.searchIndex = null;
         this.lastModified = 0;
         this.indexFiles = {
-            searchIndex: path.join(__dirname, '../.cache/anime_search_index.json'),
-            wordIndex: path.join(__dirname, '../.cache/anime_word_index.json'),
-            prefixIndex: path.join(__dirname, '../.cache/anime_prefix_index.json'),
-            suffixIndex: path.join(__dirname, '../.cache/anime_suffix_index.json'),
-            wordsIndex: path.join(__dirname, '../.cache/anime_words_index.json')
+            searchIndex: globalResources.getPath('animeSearchIndex'),
+            wordIndex: globalResources.getPath('animeWordIndex'),
+            prefixIndex: globalResources.getPath('animePrefixIndex'),
+            suffixIndex: globalResources.getPath('animeSuffixIndex'),
+            wordsIndex: globalResources.getPath('animeWordsIndex')
         };
+        this.datasetTagsPath = globalResources.getPath('datasetTags');
         this.loadTagData();
     }
 
     loadTagData() {
-        const filePath = path.join(__dirname, '../dataset_tags.json');
+        const filePath = this.datasetTagsPath;
         
         try {
             const stats = fs.statSync(filePath);
@@ -76,7 +77,7 @@ class AnimeTagSearch {
             }
 
             // Check if index files are newer than the data file
-            const dataFilePath = path.join(__dirname, '../dataset_tags.json');
+            const dataFilePath = this.datasetTagsPath;
             const dataStats = fs.statSync(dataFilePath);
             
             for (const [name, filePath] of Object.entries(this.indexFiles)) {

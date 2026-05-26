@@ -138,7 +138,8 @@ function splitEmphasisBlock(target) {
     const afterText = value.substring(cursorPosition);
     const newValue = beforeText + emphasisInsert + afterText;
     
-    target.value = newValue;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
     
     // Position cursor after the inserted emphasis syntax
     const newCursorPosition = cursorPosition + emphasisInsert.length;
@@ -406,7 +407,8 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
         newValue: newValue.substring(0, 100) + '...'
     });
     
-    target.value = newValue;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
     
     // Set cursor position after the emphasized text
     const newCursorPosition = selectionStart + emphasizedText.length;
@@ -935,7 +937,8 @@ function applyEmphasisEditing() {
         const afterText = value.substring(emphasisEditingSelection.end);
         const newValue = beforeText + emphasizedText + afterText;
         
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
         
         // Set cursor position after the cleaned text
         const newCursorPosition = emphasisEditingSelection.start + emphasizedText.length;
@@ -1098,7 +1101,8 @@ function applyEmphasisEditing() {
             let newValue = beforeText + emphasizedText + afterText;
             // Add space after comma if needed
             newValue = newValue.replace(/,([^\s])/g, ', $1');
-            target.value = newValue;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
             // Set cursor position after the emphasized text
             const newCursorPosition = emphasisEditingSelection.start + emphasizedText.length;
             target.setSelectionRange(newCursorPosition, newCursorPosition);
@@ -1155,7 +1159,8 @@ function applyEmphasisEditing() {
             let newValue = beforeTag + emphasizedText + afterTag;
             // Add space after comma if needed
             newValue = newValue.replace(/,([^\s])/g, ', $1');
-            target.value = newValue;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
             // Set cursor position after the emphasized text
             const newCursorPosition = newValue.indexOf(emphasizedText) + emphasizedText.length;
             target.setSelectionRange(newCursorPosition, newCursorPosition);
@@ -1205,7 +1210,8 @@ function applyEmphasisEditing() {
         // Add space after comma if needed
         newValue = newValue.replace(/,([^\s])/g, ', $1');
 
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
 
         // Set cursor position after the emphasized text
         const newCursorPosition = processedBefore.length + prefix.length + emphasizedText.length;
@@ -1323,8 +1329,8 @@ function handleNsfwTagDetection(textarea, currentValue) {
         // Clean up extra spaces and commas
         cleanedValue = cleanedValue.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '');
 
-        // Update the textarea value
-        textarea.value = cleanedValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(textarea, cleanedValue);
 
         // Determine NSFW mode based on textarea type
         let nsfwMode = 1; // Default for prompts
@@ -1343,6 +1349,8 @@ function handleNsfwTagDetection(textarea, currentValue) {
 
         // Set the NSFW value
         selectNsfwValue(nsfwMode);
+        previousTextareaValues.set(textarea, cleanedValue);
+        return;
     }
 
     // Store current value for next comparison
@@ -1857,7 +1865,8 @@ function cleanupEmphasisGroupsAndCopyValue(target, selection, currentValue) {
     }
 
     // Update the target value
-    target.value = cleanedValue;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, cleanedValue);
 
     return {
         newSelection,
@@ -2626,7 +2635,8 @@ function removeAllEmphasisFromSelection(target) {
     
     // Replace the selected text with cleaned text
     const newValue = value.substring(0, start) + cleanedText + value.substring(end);
-    target.value = newValue;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
     
     // Update selection to cover the cleaned text
     const newEnd = start + cleanedText.length;
@@ -2690,7 +2700,8 @@ function toggleDisableSyntax(target) {
         const afterText = value.substring(disableInfo.end);
         const newValue = beforeText + disableInfo.content + afterText;
         
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
         
         // Set cursor position after the content
         const newCursorPosition = disableInfo.start + disableInfo.content.length;
@@ -2726,7 +2737,8 @@ function toggleDisableSyntax(target) {
         const afterText = value.substring(selectionEnd);
         const newValue = beforeText + disabledText + afterText;
         
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
         
         // Cursor after "!" and before first "/" so a stage index can be typed (!0/, !1+/, !-2/, or leave empty for !/…/)
         const newCursorPosition = selectionStart + 1;

@@ -5,8 +5,10 @@ const sharp = require('sharp');
 const { createCanvas, loadImage } = require('canvas');
 const { z } = require('zod');
 
+let __runtimeGr = null;
+function bindRuntimeGlobalResources(globalResources) { __runtimeGr = globalResources; }
+
 // Import modules
-const globalResources = require('./globalResources');
 const { expandShorthandTags, cleanupPromptSyntax, applyDynamicReplacements, generatePromptHash, generateRequestHash, generateDirectiveHash, processDynamicGenerationCore, calculateDynamicExpiration, compileContext, formatContextForCarousel } = require('./dynamicGenerationHandlers');
 
 const { 
@@ -447,6 +449,53 @@ function invertNumericEmphasisPrefixes(input) {
 }
 
 /**
+ * Build -1::...:: block from processed inline prompt-negative fragment.
+ */
+function buildPromptNegativeBlock(processedFragment) {
+    const invertedFrag = invertNumericEmphasisPrefixes(processedFragment || '').trim();
+    if (!invertedFrag) return null;
+    if (/^-?\d+(\.\d*)?::/.test(invertedFrag)) {
+        return invertedFrag;
+    }
+    return `-1::${invertedFrag}::`;
+}
+
+function getCharacterInputPromptNegative(char) {
+    if (!char || typeof char !== 'object') return '';
+    return char.input_prompt_negative ?? char.prompt_negative ?? '';
+}
+
+function ensurePromptNegativeBlockMerged(prompt, block) {
+    if (!block) return prompt || '';
+    const base = prompt || '';
+    if (base.includes(block)) return base;
+    return mergePromptNegativeFragmentIntoPrompt(base, block);
+}
+
+/** Merge inline prompt-negative fragments into positive prompts (idempotent). */
+function applyAllInputPromptNegativeMerges(processedPrompt, processedPromptNegativeFragment, processedCharacterPrompts) {
+    let prompt = processedPrompt;
+    const baseBlock = buildPromptNegativeBlock(processedPromptNegativeFragment);
+    if (baseBlock) {
+        prompt = ensurePromptNegativeBlockMerged(prompt, baseBlock);
+    }
+
+    let chars = processedCharacterPrompts;
+    if (Array.isArray(chars)) {
+        chars = chars.map((char) => {
+            const block = buildPromptNegativeBlock(getCharacterInputPromptNegative(char));
+            if (!block) return char;
+            return {
+                ...char,
+                prompt: ensurePromptNegativeBlockMerged(char.prompt || '', block)
+            };
+        });
+    }
+
+    return { processedPrompt: prompt, processedCharacterPrompts: chars };
+}
+
+/**
  * Merge processed inline negative fragment into positive prompt before first `Text:` (same boundary rules as quality preset).
  */
 function mergePromptNegativeFragmentIntoPrompt(processedPrompt, addition) {
@@ -484,7 +533,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
 
         switch (type) {
             case 'cache':
-                const cachedImagePath = path.join(globalResources.getPath('uploadCache'), identifier);
+                const cachedImagePath = path.join(__runtimeGr.getPath('uploadCache'), identifier);
                 if (!fs.existsSync(cachedImagePath)) {
                     console.warn(`⚠️ Character reference cache image not found: ${identifier}`);
                     return null;
@@ -492,7 +541,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
                 imageBuffer = fs.readFileSync(cachedImagePath);
                 break;
             case 'file':
-                const filePath = path.join(globalResources.getPath('images'), identifier);
+                const filePath = path.join(__runtimeGr.getPath('images'), identifier);
                 if (!fs.existsSync(filePath)) {
                     console.warn(`⚠️ Character reference file not found: ${identifier}`);
                     return null;
@@ -507,7 +556,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
         if (!imageBuffer) return null;
 
         // Strip PNG text chunks to avoid issues
-        imageBuffer = globalResources.getPngMetadata().stripPngTextChunks(imageBuffer);
+        imageBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(imageBuffer);
 
         // Get image metadata to calculate aspect ratio
         const metadata = await sharp(imageBuffer).metadata();
@@ -600,7 +649,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
 // Ensure preset source cache directory exists (called when needed, not at module load)
 function ensurePresetSourceCacheDir() {
     try {
-        const presetSourceCacheDir = globalResources.getPath('presetSourceCache');
+        const presetSourceCacheDir = __runtimeGr.getPath('presetSourceCache');
         if (!fs.existsSync(presetSourceCacheDir)) {
             fs.mkdirSync(presetSourceCacheDir, { recursive: true });
         }
@@ -610,7 +659,8 @@ function ensurePresetSourceCacheDir() {
 }
 
 // Function to generate preset source image
-async function generatePresetSourceImage(presetName, seed, resolution, model) {
+async function generatePresetSourceImage(globalResources, presetName, seed, resolution, model) {
+    bindRuntimeGlobalResources(globalResources);
     // Validate input parameters
     if (!presetName || typeof presetName !== 'string') {
         throw new Error('Preset name must be a non-empty string');
@@ -625,7 +675,7 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     }
     let currentPromptConfig;
     try {
-        currentPromptConfig = globalResources.getPromptConfig();
+        currentPromptConfig = __runtimeGr.getPromptConfig();
     } catch (error) {
         throw new Error(`Failed to load prompt configuration: ${error.message}`);
     }
@@ -646,7 +696,7 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Create cache filename
     const presetHash = crypto.createHash('md5').update(presetName).digest('hex');
     const cacheFilename = `${presetHash}_${seed}.png`;
-    const presetSourceCacheDir = globalResources.getPath('presetSourceCache');
+    const presetSourceCacheDir = __runtimeGr.getPath('presetSourceCache');
     const cachePath = path.join(presetSourceCacheDir, cacheFilename);
     
     // Ensure cache directory exists
@@ -690,8 +740,8 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
             } else {
                 throw new Error(`Failed to get dimensions for xlarge resolution: ${resolution}`);
             }
-        } else if (globalResources.getNekoAiService('Resolution')[resolution.toUpperCase()]) {
-            presetOptions.resPreset = globalResources.getNekoAiService('Resolution')[resolution.toUpperCase()];
+        } else if (__runtimeGr.getNekoAiService('Resolution')[resolution.toUpperCase()]) {
+            presetOptions.resPreset = __runtimeGr.getNekoAiService('Resolution')[resolution.toUpperCase()];
         } else {
             // Parse custom dimensions
             try {
@@ -718,7 +768,7 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Generate Request Options
     let opts;
     try {
-        opts = await buildOptions(presetOptions, null, {}, null, null);
+        opts = await buildOptions(globalResources, presetOptions, null, {}, null, null);
     } catch (error) {
         throw new Error(`Failed to build options for preset "${presetName}": ${error.message}`);
     }
@@ -726,7 +776,7 @@ async function generatePresetSourceImage(presetName, seed, resolution, model) {
     // Generate the preset image
     let result;
     try {
-        result = await handleGeneration(opts, true, presetName);
+        result = await handleGeneration(globalResources, opts, true, presetName);
     } catch (error) {
         throw new Error(`Failed to generate preset image for "${presetName}": ${error.message}`);
     }
@@ -1255,8 +1305,8 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
 
     // Log what was removed if anything was cleaned
     if (removedPhrases.length > 0) {
-        globalResources.getLogger().detailed(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s)`);
-        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
+        __runtimeGr.getLogger().detailed(`🧹 Auto-cleaned UC: Removed ${removedPhrases.length} phrase(s)`);
+        if (__runtimeGr.getLogger().shouldLog(__runtimeGr.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
             removedPhrases.forEach(phrase => {
                 const coreText = stripEmphasisSyntax(phrase);
                 console.log(`   - "${phrase}" (core: "${coreText}")`);
@@ -1268,7 +1318,6 @@ function autoCleanUCPrompt(prompt, ucPrompt) {
     return cleanedPhrases.join(', ');
 }
 
-const tracing = require('./tracing');
 
 /**
  * Apply cached text replacements to prompts
@@ -1284,14 +1333,14 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
     try {
         // Apply replacements to prompt
         if (compiledPrompt.text_replacements.prompt?.length > 0) {
-            const result = applyDynamicReplacements(processedPrompt, compiledPrompt.text_replacements, 'prompt');
+            const result = applyDynamicReplacements(__runtimeGr, processedPrompt, compiledPrompt.text_replacements, 'prompt');
             if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
             processedPrompt = result.result;
         }
         
         // Apply replacements to negative prompt
         if (compiledPrompt.text_replacements.uc?.length > 0) {
-            const result = applyDynamicReplacements(processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
+            const result = applyDynamicReplacements(__runtimeGr, processedNegativePrompt, compiledPrompt.text_replacements, 'uc');
             if (!result.success) throw new Error(`Failed: ${result.failedReplacements.join(', ')}`);
             processedNegativePrompt = result.result;
         }
@@ -1304,13 +1353,13 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
                 let updatedChar = { ...char };
                 
                 if (charReplacements.prompt?.length > 0) {
-                    const result = applyDynamicReplacements(char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
+                    const result = applyDynamicReplacements(__runtimeGr, char.prompt || '', compiledPrompt.text_replacements, 'character', index, 'prompt');
                     if (!result.success) throw new Error(`Failed character ${index} prompt`);
                     updatedChar.prompt = result.result;
                 }
                 
                 if (charReplacements.uc?.length > 0) {
-                    const result = applyDynamicReplacements(char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
+                    const result = applyDynamicReplacements(__runtimeGr, char.uc || '', compiledPrompt.text_replacements, 'character', index, 'uc');
                     if (!result.success) throw new Error(`Failed character ${index} UC`);
                     updatedChar.uc = result.result;
                 }
@@ -1336,11 +1385,12 @@ const applyCachedTextReplacements = (compiledPrompt, processedPrompt, processedN
     }
 };
 
-const buildOptions = async (body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
-    const referenceMetadataDb = globalResources.getReferenceMetadataDatabase();
+const buildOptions = async (globalResources, body, preset = null, queryParams = {}, ws = null, handler = null, wsServer = null, stageData = null) => {
+    bindRuntimeGlobalResources(globalResources);
+    const referenceMetadataDb = __runtimeGr.getReferenceMetadataDatabase();
     const allowPaid = body.allow_paid ? body.allow_paid : preset?.allow_paid;
     
-    const currentPromptConfig = globalResources.getPromptConfig({ clone: true });
+    const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
     const presetName = preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null;
     const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : preset?.prompt;
     const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : preset?.uc;
@@ -1367,7 +1417,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
     let stepsValue = queryParams?.steps !== undefined ? parseInt(queryParams?.steps) : body.steps || preset?.steps || 24;
     let guidanceValue = queryParams?.guidance !== undefined ? parseFloat(queryParams?.guidance) : body.guidance || preset?.guidance || 5.5;
     let rescaleValue = queryParams?.rescale !== undefined ? parseFloat(queryParams?.rescale) : body.rescale || preset?.rescale || 0.0;
-    let resolutionValue = queryParams?.resolution !== undefined ? globalResources.getNekoAiService('Resolution')[queryParams?.resolution?.toUpperCase()] : body.resolution || preset?.resolution;
+    let resolutionValue = queryParams?.resolution !== undefined ? __runtimeGr.getNekoAiService('Resolution')[queryParams?.resolution?.toUpperCase()] : body.resolution || preset?.resolution;
     let seedValue = queryParams?.seed !== undefined ? parseInt(queryParams?.seed) : body.seed || preset?.seed;
     let varietyValue = queryParams?.variety !== undefined ? Boolean(queryParams?.variety) : body.variety || preset?.variety || false;
     
@@ -1383,10 +1433,10 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         let lockedReplacements = null;
         if (body.text_replacements_seed && Array.isArray(body.text_replacements_seed)) {
             lockedReplacements = body.text_replacements_seed;
-            globalResources.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements`);
+            __runtimeGr.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements`);
         } else if (preset?.text_replacements_seed && Array.isArray(preset.text_replacements_seed)) {
             lockedReplacements = preset.text_replacements_seed;
-            globalResources.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
+            __runtimeGr.getLogger().detailed(`🔒 Using ${lockedReplacements.length} locked text replacements from preset`);
         }
 
         // Create stageData for request body replacements (stub for stage 0 - base generation)
@@ -1399,9 +1449,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             ...(stageData || {})
         };
 
-        let processedPromptResult = globalResources.textReplacements.applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
-        let processedNegativePromptResult = globalResources.textReplacements.applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
-        let processedPromptNegativeFragmentResult = globalResources.textReplacements.applyTextReplacements(
+        let processedPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawPrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+        let processedNegativePromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawNegativePrompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+        let processedPromptNegativeFragmentResult = __runtimeGr.getTextReplacements().applyTextReplacements(
             rawInputPromptNegative || '',
             presetName,
             body.model,
@@ -1475,20 +1525,30 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         let characterTextReplacementSeeds = [];
         if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
             processedCharacterPrompts = processedCharacterPrompts.map((char, charIndex) => {
-                // Apply text replacements to character prompt and UC
-                const processedPromptResult = globalResources.textReplacements.applyTextReplacements(char.prompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
-                const processedUCResult = globalResources.textReplacements.applyTextReplacements(char.uc, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+                // Apply text replacements to character prompt, UC, and inline prompt-negative
+                const processedPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(char.prompt, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+                const processedUCResult = __runtimeGr.getTextReplacements().applyTextReplacements(char.uc, presetName, body.model, periodKey, lockedReplacements, currentStageData);
+                const processedCharPromptNegativeResult = __runtimeGr.getTextReplacements().applyTextReplacements(
+                    getCharacterInputPromptNegative(char),
+                    presetName,
+                    body.model,
+                    periodKey,
+                    lockedReplacements,
+                    currentStageData
+                );
 
                 // Collect replacement seeds with character index
                 characterTextReplacementSeeds.push(
                     ...processedPromptResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_prompt` })),
-                    ...processedUCResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_uc` }))
+                    ...processedUCResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_uc` })),
+                    ...processedCharPromptNegativeResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_input_prompt_negative` }))
                 );
 
                 return {
                     ...char,
                     prompt: processedPromptResult.text,
-                    uc: processedUCResult.text
+                    uc: processedUCResult.text,
+                    input_prompt_negative: processedCharPromptNegativeResult.text
                 };
             });
 
@@ -1509,7 +1569,8 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             processedCharacterPrompts = processedCharacterPrompts.map(char => ({
                 ...char,
                 prompt: expandShorthandTags(char.prompt || ''),
-                uc: expandShorthandTags(char.uc || '')
+                uc: expandShorthandTags(char.uc || ''),
+                input_prompt_negative: expandShorthandTags(char.input_prompt_negative || '')
             }));
         }
 
@@ -1766,7 +1827,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                 }
                 
-                globalResources.getLogger().detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
+                __runtimeGr.getLogger().detailed(`🗂️ Dataset preset appends: ${datasetAppendString.substring(0, 100)}${datasetAppendString.length > 100 ? '...' : ''}`);
                 
                 // Track this modification
                 appliedPresetControls.prompt.push({
@@ -1819,7 +1880,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                 }
                 selectedQualityId = selectedQuality.id;
-                globalResources.getLogger().detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
+                __runtimeGr.getLogger().detailed(`🎨 Quality preset: ${qualityText.substring(0, 60)}${qualityText.length > 60 ? '...' : ''} (ID: ${selectedQuality.id})`);
                 
                 // Track this modification
                 appliedPresetControls.prompt.push({
@@ -1830,20 +1891,16 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
         }
 
-        // Inline prompt-negative: invert emphases, wrap as -1::...:: (or preserve leading NUM::), merge into positive prompt before "Text:"
+        // Inline prompt-negative: merge into positive prompts before dynamic generation / final API
         {
-            const invertedFrag = invertNumericEmphasisPrefixes(processedPromptNegativeFragment || '').trim();
-            if (invertedFrag) {
-                let block;
-                if (/^-?\d+(\.\d*)?::/.test(invertedFrag)) {
-                    block = invertedFrag;
-                } else {
-                    block = `-1::${invertedFrag}::`;
-                }
-                processedPrompt = mergePromptNegativeFragmentIntoPrompt(processedPrompt, block);
+            const merged = applyAllInputPromptNegativeMerges(processedPrompt, processedPromptNegativeFragment, processedCharacterPrompts);
+            processedPrompt = merged.processedPrompt;
+            processedCharacterPrompts = merged.processedCharacterPrompts;
+            const baseBlock = buildPromptNegativeBlock(processedPromptNegativeFragment);
+            if (baseBlock) {
                 appliedPresetControls.prompt.push({
                     action: 'input_prompt_negative',
-                    text: block
+                    text: baseBlock
                 });
             }
         }
@@ -1858,7 +1915,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Add UC preset to the start of the UC and separate the original UC with ", "
                 processedNegativePrompt = selectedUc.value + (processedNegativePrompt ? ', ' + processedNegativePrompt : '');
                 selectedUcId = selectedUc.id;
-                globalResources.getLogger().detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
+                __runtimeGr.getLogger().detailed(`🚫 UC preset: ${selectedUc.value.substring(0, 80)}${selectedUc.value.length > 80 ? '...' : ''} (ID: ${selectedUc.id})`);
                 
                 // Track this modification
                 appliedPresetControls.uc.push({
@@ -1920,9 +1977,9 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Log when applying overlay
                 const pipelineDisabledNote = pipelinesDisabled && (isAllStages || hasBaseStage00) ? ' (pipelines disabled, applying always)' : '';
                 if (isAllStages) {
-                    globalResources.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (All Stages)${pipelineDisabledNote}`);
+                    __runtimeGr.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (All Stages)${pipelineDisabledNote}`);
                 } else if (overlayStages.length > 0) {
-                    globalResources.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (${overlayStages.join(', ')})${pipelineDisabledNote}`);
+                    __runtimeGr.getLogger().detailed(`📝 Text overlay "${text.substring(0, 40)}..." to stage ${currentStageHexId} (${overlayStages.join(', ')})${pipelineDisabledNote}`);
                 }
                 if (!text.trim()) {
                     if (body.dynamic_generation !== undefined) {
@@ -1963,7 +2020,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 
                 // Build the text append string
                 const textAppend = `, ${emphasizedTags}, Text: ${text}`;
-                globalResources.getLogger().verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
+                __runtimeGr.getLogger().verbose(`📝 Text overlay append (emphasis ${tagEmphasis}): "${textAppend.substring(0, 60)}${textAppend.length > 60 ? '...' : ''}"`);
                 
                 // Determine which prompt to append to
                 if (targetIndex === 0) {
@@ -1973,7 +2030,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         //processedPrompt = processedPrompt.replace(/\bno\s+text\b/gi, '').replace(/,\s*,/g, ',').trim();
                         // Append text overlay at the very end
                         processedPrompt += textAppend;
-                        globalResources.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
+                        __runtimeGr.getLogger().detailed(`📝 Applied overlay: "${text.substring(0, 40)}${text.length > 40 ? '...' : ''}" (type: ${type})`);
                     }
                 } else {
                     // Apply to character prompt (targetIndex - 1 gives array index)
@@ -2157,7 +2214,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 // Generate context for AI processing
                 const clientInfo = wsServer?.clients?.get(ws);
                 const clientIP = clientInfo?.clientIP || null;
-                contextForAI = await compileContext(dynaRequest, clientIP);
+                contextForAI = await compileContext(__runtimeGr, dynaRequest, clientIP);
                 
                 // Send context phase progress update when context is freshly compiled
                 if (ws && handler && contextForAI) {
@@ -2228,6 +2285,11 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                             processedPrompt = replacementResult.processedPrompt;
                             processedNegativePrompt = replacementResult.processedNegativePrompt;
                             processedCharacterPrompts = replacementResult.processedCharacterPrompts;
+                            ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                                processedPrompt,
+                                processedPromptNegativeFragment,
+                                processedCharacterPrompts
+                            ));
                         } else {
                             console.error('❌ Error applying cached text replacements:', replacementResult.error);
                             hasValidCache = false;
@@ -2259,7 +2321,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                     console.log('  ✅ Context unchanged - keeping cache and updating expiration');
                                     // Update the context and recalculate expiration
                                     compiledPrompt.context = contextForAI;
-                                    compiledPrompt.expiresAt = calculateDynamicExpiration(contextForAI, 30 * 60 * 1000);;
+                                    compiledPrompt.expiresAt = calculateDynamicExpiration(__runtimeGr, contextForAI, 30 * 60 * 1000);;
                                     compiledPrompt.timestamp = now;
                                     
                                     const msUntil = compiledPrompt.expiresAt - now;
@@ -2280,6 +2342,11 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                         processedPrompt = replacementResult.processedPrompt;
                                         processedNegativePrompt = replacementResult.processedNegativePrompt;
                                         processedCharacterPrompts = replacementResult.processedCharacterPrompts;
+                                        ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                                            processedPrompt,
+                                            processedPromptNegativeFragment,
+                                            processedCharacterPrompts
+                                        ));
                                         hasValidCache = true;
                                     } else {
                                         console.error('❌ Error applying cached replacements:', replacementResult.error);
@@ -2330,7 +2397,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             }
 
             if (hasValidCache) {
-                globalResources.getLogger().detailed('✅ Using cached prompt');
+                __runtimeGr.getLogger().detailed('✅ Using cached prompt');
 
                 // Send context phase progress update even when using cache, so overlay shows correctly
                 if (ws && handler && contextForAI) {
@@ -2378,7 +2445,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 let hasValidPreview = false;
                 if (body.dynamic_generation?.compiled_prompt?.preview_image_hash) {
                     // Check if the preview file actually exists on disk
-                    const dynGenPreviewDir = path.join(globalResources.getPath('cache'), 'dynGenPreview');
+                    const dynGenPreviewDir = path.join(__runtimeGr.getPath('cache'), 'dynGenPreview');
                     const previewFilePath = path.join(dynGenPreviewDir, `${body.dynamic_generation.compiled_prompt.preview_image_hash}.png`);
                     hasValidPreview = fs.existsSync(previewFilePath);
                     if (!hasValidPreview) {
@@ -2450,18 +2517,18 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     delete previewBody.resolution;
                     
                     // Generate preview
-                    const previewOptions = await buildOptions(previewBody, null, {}, ws, handler, wsServer);
+                    const previewOptions = await buildOptions(globalResources, previewBody, null, {}, ws, handler, wsServer);
                     // Ensure preview streams by providing a streaming callback
                     const streamCb = () => {};
-                    const previewResult = await handleGeneration(previewOptions, true, null, body.workspace, null, streamCb, ws, handler);
+                    const previewResult = await handleGeneration(globalResources, previewOptions, true, null, body.workspace, null, streamCb, ws, handler);
                     
                     if (previewResult && previewResult.buffer) {
-                        globalResources.getLogger().detailed('✅ Preview generated');
+                        __runtimeGr.getLogger().detailed('✅ Preview generated');
                         
                         // Trace: attach generated preview (use actual requestId)
                         try {
                             if (body.requestId && previewResult.buffer) {
-                                tracing.addImageAttachment(body.requestId, 'initial_preview_generated', previewResult.buffer, 'png', {
+                                __runtimeGr.getTracing().addImageAttachment(body.requestId, 'initial_preview_generated', previewResult.buffer, 'png', {
                                     width: previewWidth,
                                     height: previewHeight,
                                     stage: 'preview'
@@ -2473,7 +2540,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         const previewHash = crypto.createHash('sha256').update(previewResult.buffer).digest('hex');
                         
                         // Save preview to .cache/dynGenPreview/ directory
-                        const dynGenPreviewDir = path.join(globalResources.getPath('cache'), 'dynGenPreview');
+                        const dynGenPreviewDir = path.join(__runtimeGr.getPath('cache'), 'dynGenPreview');
                         if (!fs.existsSync(dynGenPreviewDir)) {
                             fs.mkdirSync(dynGenPreviewDir, { recursive: true });
                         }
@@ -2523,6 +2590,11 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         .replace(/\s{2,}/g, ' ')
                         .trim();
                 };
+                ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                    processedPrompt,
+                    processedPromptNegativeFragment,
+                    processedCharacterPrompts
+                ));
                 const promptForAI = stripAppendMarker(processedPrompt);
                 const ucForAI = stripAppendMarker(processedNegativePrompt);
                 const characterPromptsForAI = (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) 
@@ -2535,7 +2607,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 
                 while (chainRetries < maxChainRetries) {
                     try {
-                        dynamicResult = await processDynamicGenerationCore(
+                        dynamicResult = await processDynamicGenerationCore(__runtimeGr, 
                             dynaRequest,
                             contextForAI,
                             promptForAI,
@@ -2687,7 +2759,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                             // Apply replacements to prompt
                             if (reusedTextReplacements.prompt && reusedTextReplacements.prompt.length > 0) {
                                 console.log(`🔄 Applying ${reusedTextReplacements.prompt.length} reused prompt replacements`);
-                                const result = applyDynamicReplacements(processedPrompt, reusedTextReplacements, 'prompt');
+                                const result = applyDynamicReplacements(__runtimeGr, processedPrompt, reusedTextReplacements, 'prompt');
                                 if (result.success) {
                                     processedPrompt = result.result;
                                 } else {
@@ -2698,7 +2770,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                             // Apply replacements to negative prompt
                             if (reusedTextReplacements.uc && reusedTextReplacements.uc.length > 0) {
                                 console.log(`🔄 Applying ${reusedTextReplacements.uc.length} reused UC replacements`);
-                                const result = applyDynamicReplacements(processedNegativePrompt, reusedTextReplacements, 'uc');
+                                const result = applyDynamicReplacements(__runtimeGr, processedNegativePrompt, reusedTextReplacements, 'uc');
                                 if (result.success) {
                                     processedNegativePrompt = result.result;
                                 } else {
@@ -2717,7 +2789,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                                     if (charReplacements.prompt && charReplacements.prompt.length > 0) {
                                         console.log(`🔄 Applying ${charReplacements.prompt.length} reused prompt replacements to character ${index}`);
-                                        const result = applyDynamicReplacements(char.prompt || '', reusedTextReplacements, 'character', index, 'prompt');
+                                        const result = applyDynamicReplacements(__runtimeGr, char.prompt || '', reusedTextReplacements, 'character', index, 'prompt');
                                         if (result.success) {
                                             updatedChar.prompt = result.result;
                                         }
@@ -2725,7 +2797,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
 
                                     if (charReplacements.uc && charReplacements.uc.length > 0) {
                                         console.log(`🔄 Applying ${charReplacements.uc.length} reused UC replacements to character ${index}`);
-                                        const result = applyDynamicReplacements(char.uc || '', reusedTextReplacements, 'character', index, 'uc');
+                                        const result = applyDynamicReplacements(__runtimeGr, char.uc || '', reusedTextReplacements, 'character', index, 'uc');
                                         if (result.success) {
                                             updatedChar.uc = result.result;
                                         }
@@ -2734,6 +2806,11 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                     return updatedChar;
                                 });
                             }
+                            ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                                processedPrompt,
+                                processedPromptNegativeFragment,
+                                processedCharacterPrompts
+                            ));
                         } catch (error) {
                             console.error('❌ Error applying reused text replacements:', error);
                         }
@@ -2772,7 +2849,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 } else {
                     // Store the compiled result
                     const now = Date.now();
-                    const expiresAt = calculateDynamicExpiration(dynamicResult.context, 30 * 60 * 1000); // Default 30 minutes fallback
+                    const expiresAt = calculateDynamicExpiration(__runtimeGr, dynamicResult.context, 30 * 60 * 1000); // Default 30 minutes fallback
                     
                     const compiledPrompt = {
                         success: true,
@@ -2808,7 +2885,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         if (dynamicResult.text_replacements.prompt && dynamicResult.text_replacements.prompt.length > 0) {
                             console.log(`🔄 Applying ${dynamicResult.text_replacements.prompt.length} prompt replacements`);
                             try {
-                                const result = applyDynamicReplacements(processedPrompt, dynamicResult.text_replacements, 'prompt');
+                                const result = applyDynamicReplacements(__runtimeGr, processedPrompt, dynamicResult.text_replacements, 'prompt');
                                 if (!result.success) {
                                     console.error(`❌ Failed to apply prompt replacements: ${result.failedReplacements.join(', ')}`);
                                 } else {
@@ -2823,7 +2900,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         if (dynamicResult.text_replacements.uc && dynamicResult.text_replacements.uc.length > 0) {
                             console.log(`🔄 Applying ${dynamicResult.text_replacements.uc.length} UC replacements`);
                             try {
-                                const result = applyDynamicReplacements(processedNegativePrompt, dynamicResult.text_replacements, 'uc');
+                                const result = applyDynamicReplacements(__runtimeGr, processedNegativePrompt, dynamicResult.text_replacements, 'uc');
                                 if (!result.success) {
                                     console.error(`❌ Failed to apply UC replacements: ${result.failedReplacements.join(', ')}`);
                                 } else {
@@ -2843,7 +2920,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                         if (processedCharacterPrompts[index]) {
                                             if (charReplacements.prompt && charReplacements.prompt.length > 0) {
                                                 try {
-                                                    const result = applyDynamicReplacements(
+                                                    const result = applyDynamicReplacements(__runtimeGr, 
                                                         processedCharacterPrompts[index].prompt || '',
                                                         dynamicResult.text_replacements,
                                                         'character',
@@ -2863,7 +2940,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                             if (charReplacements.uc && charReplacements.uc.length > 0) {
                                                 console.log(`🔄 Applying ${charReplacements.uc.length} UC replacements to character ${index}`);
                                                 try {
-                                                    const result = applyDynamicReplacements(
+                                                    const result = applyDynamicReplacements(__runtimeGr, 
                                                         processedCharacterPrompts[index].uc || '',
                                                         dynamicResult.text_replacements,
                                                         'character',
@@ -2899,11 +2976,16 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                                 });
                             }
                         }
+                        ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                            processedPrompt,
+                            processedPromptNegativeFragment,
+                            processedCharacterPrompts
+                        ));
                         const totalReplacements = (dynamicResult.text_replacements.prompt?.length || 0) +
                                                     (dynamicResult.text_replacements.uc?.length || 0) +
                                                     (dynamicResult.text_replacements.character_prompts?.reduce((sum, char) =>
                                                         (char.prompt?.length || 0) + (char.uc?.length || 0), 0) || 0);
-                        globalResources.getLogger().normal(`🔄 Applied ${totalReplacements} text replacements`);
+                        __runtimeGr.getLogger().normal(`🔄 Applied ${totalReplacements} text replacements`);
                     } else {
                         // No text replacements provided - this should have been caught earlier and restarted
                         // But if we reach here, all retries are exhausted, so fall back to compiled prompt
@@ -2911,23 +2993,28 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                         processedPrompt = compiledPrompt.prompt;
                         processedNegativePrompt = compiledPrompt.uc;
                         processedCharacterPrompts = compiledPrompt.characterPrompts;
+                        ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+                            processedPrompt,
+                            processedPromptNegativeFragment,
+                            processedCharacterPrompts
+                        ));
                     }
 
                     // Store in the dynamic_generation object for caching
                     dynamic_generation.compiled_prompt = compiledPrompt;
-                    globalResources.getLogger().verbose('💾 Stored compiled prompt');
+                    __runtimeGr.getLogger().verbose('💾 Stored compiled prompt');
 
                     // If this is a preset generation, save the compiled prompt directly to the preset
                     if (!!preset &&body.presetName) {
                         try {
-                            const currentPromptConfig = globalResources.getPromptConfig({ clone: true });
+                            const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
 
                             if (currentPromptConfig.presets[body.presetName]) {
                                 if (!currentPromptConfig.presets[body.presetName].dynamic_generation) {
                                     currentPromptConfig.presets[body.presetName].dynamic_generation = {};
                                 }
 
-                                const success = globalResources.modifyConfig('promptConfig').assign(['presets', body.presetName, 'dynamic_generation', 'compiled_prompt'], compiledPrompt);
+                                const success = __runtimeGr.modifyConfig('promptConfig').assign(['presets', body.presetName, 'dynamic_generation', 'compiled_prompt'], compiledPrompt);
                                 if (success) {
                                     console.log(`💾 Saved compiled prompt directly to preset: ${body.presetName}`);
                                 } else {
@@ -2946,6 +3033,13 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 hasDynamicGen: false
             });
         }
+
+        // Re-apply inline prompt-negative merges after dynamic replacements (idempotent)
+        ({ processedPrompt, processedCharacterPrompts } = applyAllInputPromptNegativeMerges(
+            processedPrompt,
+            processedPromptNegativeFragment,
+            processedCharacterPrompts
+        ));
 
         // Clean up prompt syntax (remove % % wrappers and unreplaced placeholders)
         processedPrompt = cleanupPromptSyntax(processedPrompt);
@@ -2977,13 +3071,13 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             input_prompt: rawPrompt,
             input_uc: rawNegativePrompt,
             input_prompt_negative: rawInputPromptNegative,
-            model: globalResources.getNekoAiService('Model')[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
+            model: __runtimeGr.getNekoAiService('Model')[body.model.toUpperCase() + ((body.mask || body.mask_compressed) && body.image && !body.model.toUpperCase().includes('_INP') ? '_INP' : '')],
             steps: parseInt(stepsValue),
             scale: parseFloat(guidanceValue.toString()),
             cfg_rescale: parseFloat(rescaleValue.toString()),
             skip_cfg_above_sigma: varietyValue ? 58 : undefined,
-            sampler: body.sampler ? globalResources.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? globalResources.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : globalResources.getNekoAiService('Sampler').EULER_ANC),
-            noise_schedule: body.noiseScheduler ? globalResources.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? globalResources.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : globalResources.getNekoAiService('Noise').KARRAS),
+            sampler: body.sampler ? __runtimeGr.getNekoAiService('Sampler')[body.sampler.toUpperCase()] : (preset?.sampler ? __runtimeGr.getNekoAiService('Sampler')[preset.sampler.toUpperCase()] : __runtimeGr.getNekoAiService('Sampler').EULER_ANC),
+            noise_schedule: body.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[body.noiseScheduler.toUpperCase()] : (preset?.noiseScheduler ? __runtimeGr.getNekoAiService('Noise')[preset.noiseScheduler.toUpperCase()] : __runtimeGr.getNekoAiService('Noise').KARRAS),
             no_save: body.no_save !== undefined ? body.no_save : preset?.no_save,
             qualityToggle: false,
             ucPreset: 4,
@@ -3021,14 +3115,14 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
             } else {
                 // Fallback to large if xlarge dimensions not found
                 const fallbackResolution = resolutionValue.toLowerCase().replace('xlarge_', 'large_');
-                if (globalResources.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()]) {
-                    baseOptions.resPreset = globalResources.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()];
+                if (__runtimeGr.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()]) {
+                    baseOptions.resPreset = __runtimeGr.getNekoAiService('Resolution')[fallbackResolution.toUpperCase()];
                 } else {
                     baseOptions.resPreset = "NORMAL_SQUARE";
                 }
             }
-        } else if (resolutionValue && globalResources.getNekoAiService('Resolution')[resolutionValue.toUpperCase()]) {
-            baseOptions.resPreset = globalResources.getNekoAiService('Resolution')[resolutionValue.toUpperCase()];
+        } else if (resolutionValue && __runtimeGr.getNekoAiService('Resolution')[resolutionValue.toUpperCase()]) {
+            baseOptions.resPreset = __runtimeGr.getNekoAiService('Resolution')[resolutionValue.toUpperCase()];
         } else {
             baseOptions.resPreset = "NORMAL_SQUARE";
         }
@@ -3112,7 +3206,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                     
                     try {
-                        const presetResult = await generatePresetSourceImage(presetName, seed, resolution, body.model);
+                        const presetResult = await generatePresetSourceImage(globalResources, presetName, seed, resolution, body.model);
                         
                         // Validate the generated image buffer
                         if (!presetResult.buffer || !Buffer.isBuffer(presetResult.buffer)) {
@@ -3133,12 +3227,12 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     }
                     break;
                 case 'cache':
-                    const cachedImagePath = path.join(globalResources.getPath('uploadCache'), imageIdentifier);
+                    const cachedImagePath = path.join(__runtimeGr.getPath('uploadCache'), imageIdentifier);
                     if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
                     imageBuffer = fs.readFileSync(cachedImagePath);
                     break;
                 case 'file':
-                    const filePath = path.join(globalResources.getPath('images'), imageIdentifier);
+                    const filePath = path.join(__runtimeGr.getPath('images'), imageIdentifier);
                     if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
                     imageBuffer = fs.readFileSync(filePath);
                     break;
@@ -3149,7 +3243,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 default:
                     throw new Error(`Unsupported image type: ${imageType}`);
             }
-            imageBuffer = globalResources.getPngMetadata().stripPngTextChunks(imageBuffer);
+            imageBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(imageBuffer);
             let targetDims = { width: baseOptions.width, height: baseOptions.height };
             if (!targetDims.width || !targetDims.height) {
                 const dims = getDimensionsFromResolution(baseOptions.resPreset?.toLowerCase() || "");
@@ -3176,7 +3270,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                 }
             }
 
-            baseOptions.action = (body.mask || body.mask_compressed) ? globalResources.getNekoAiService('Action').INPAINT : globalResources.getNekoAiService('Action').IMG2IMG;
+            baseOptions.action = (body.mask || body.mask_compressed) ? __runtimeGr.getNekoAiService('Action').INPAINT : __runtimeGr.getNekoAiService('Action').IMG2IMG;
             baseOptions.color_correct = false;
             if (body.mask_compressed && targetDims.width && targetDims.height) {
                 try {
@@ -3282,7 +3376,7 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
                     // Load vibe references from database
                     const referenceImageMultiple = [];
                     const referenceStrengthMultiple = [];
-                    const refDb = globalResources.getReferenceMetadataDatabase();
+                    const refDb = __runtimeGr.getReferenceMetadataDatabase();
                     
                     for (const vibeTransfer of baseOptions.vibe_transfer) {
                         try {
@@ -3421,10 +3515,22 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
         baseOptions.allCharacterPrompts = sanitizeMarkerFromCharacterPrompts(baseOptions.allCharacterPrompts);
         baseOptions.input_character_prompts = sanitizeMarkerFromCharacterPrompts(baseOptions.input_character_prompts);
 
+        // compiled_prompt is written earlier (before this pass); strip internal append markers so they never reach client/metadata.
+        const compiledPromptRef = baseOptions.dynamic_generation?.compiled_prompt;
+        if (compiledPromptRef) {
+            if (compiledPromptRef.prompt != null) {
+                compiledPromptRef.prompt = sanitizeAndNormalizeText(compiledPromptRef.prompt);
+            }
+            if (compiledPromptRef.uc != null) {
+                compiledPromptRef.uc = sanitizeAndNormalizeText(compiledPromptRef.uc);
+            }
+            compiledPromptRef.characterPrompts = sanitizeMarkerFromCharacterPrompts(compiledPromptRef.characterPrompts);
+        }
+
         // Trace: store full buildOptions output (no sanitization per user request)
         try {
             if (body.requestId) {
-                tracing.addEvent(body.requestId, {
+                __runtimeGr.getTracing().addEvent(body.requestId, {
                     type: 'build_options',
                     options: baseOptions,
                     stageData: stageData || null
@@ -3438,20 +3544,21 @@ const buildOptions = async (body, preset = null, queryParams = {}, ws = null, ha
     }
 };
 
-async function handleGeneration(opts, returnImage = false, presetName = null, workspaceId = null, req = null, streamingCallback = null, ws = null, handler = null, baseMetadata = null, stageSeeds = null) {
+async function handleGeneration(globalResources, opts, returnImage = false, presetName = null, workspaceId = null, req = null, streamingCallback = null, ws = null, handler = null, baseMetadata = null, stageSeeds = null) {
+    bindRuntimeGlobalResources(globalResources);
     const seed = opts.seed || Math.floor(0x100000000 * Math.random() - 1);
     const layer1Seed = opts.layer1Seed || null;
     
     opts.n_samples = 1;
     opts.seed = seed;
-    if (opts.action === globalResources.getNekoAiService('Action').INPAINT) {
+    if (opts.action === __runtimeGr.getNekoAiService('Action').INPAINT) {
         opts.add_original_image = false;
         opts.extra_noise_seed = seed;
-    } else if (opts.action === globalResources.getNekoAiService('Action').IMG2IMG) {
+    } else if (opts.action === __runtimeGr.getNekoAiService('Action').IMG2IMG) {
         opts.color_correct = false;
     }
-    globalResources.getLogger().normal(`🚀 Generating (seed: ${seed})`);
-    globalResources.getLogger().detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
+    __runtimeGr.getLogger().normal(`🚀 Generating (seed: ${seed})`);
+    __runtimeGr.getLogger().detailed(`🎬 Streaming callback: ${streamingCallback !== null && typeof streamingCallback === 'function'}`);
 
     let img;
     
@@ -3520,11 +3627,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     let creditUsage;
     
     try {
-        globalResources.getImageCounter().logGeneration();
+        __runtimeGr.getImageCounter().logGeneration();
 
-        if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== globalResources.getNekoAiService('Action').IMG2IMG) {
+        if (streamingCallback !== undefined && typeof streamingCallback === 'function' && opts.action !== __runtimeGr.getNekoAiService('Action').IMG2IMG) {
             // Streaming generation with callback
-            const client = globalResources.getNovelAiClient();
+            const client = __runtimeGr.getNovelAiClient();
             if (!client) {
                 throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
             }
@@ -3532,9 +3639,9 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 
             // Check if response is an AsyncGenerator (streaming)
             if (streamingResponse && typeof streamingResponse[Symbol.asyncIterator] === "function") {
-                globalResources.getLogger().detailed("🎬 Streaming generation started");
+                __runtimeGr.getLogger().detailed("🎬 Streaming generation started");
                 for await (const event of streamingResponse) {
-                    if (event.event_type === globalResources.getNekoAiService('EventType').INTERMEDIATE) {
+                    if (event.event_type === __runtimeGr.getNekoAiService('EventType').INTERMEDIATE) {
                         // Send unified progress update
                         if (ws && handler) {
                             const progressData = {
@@ -3563,7 +3670,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                             timestamp: Date.now()
                         });
                         
-                    } else if (event.event_type === globalResources.getNekoAiService('EventType').FINAL) {
+                    } else if (event.event_type === __runtimeGr.getNekoAiService('EventType').FINAL) {
                         img = event.image;
                         break
                     }
@@ -3571,7 +3678,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             } else {
                 // Fallback to regular generation if streaming not available
                 console.log("⚠️ Streaming not available, falling back to regular generation");
-                const client = globalResources.getNovelAiClient();
+                const client = __runtimeGr.getNovelAiClient();
                 if (!client) {
                     throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
                 }
@@ -3579,7 +3686,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             }
         } else {
             // Regular non-streaming generation
-            const client = globalResources.getNovelAiClient();
+            const client = __runtimeGr.getNovelAiClient();
             if (!client) {
                 throw new Error('NovelAI client is not available. Please configure API key in secure.config.json.');
             }
@@ -3588,7 +3695,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
         
         // Get new balance and calculate credit usage
-        creditUsage = await globalResources.calculateCreditUsage();
+        creditUsage = await __runtimeGr.calculateCreditUsage();
         
         if (creditUsage.totalUsage > 0) {
             console.log(`💰 Image Generation Cost: ${creditUsage.totalUsage} ${creditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
@@ -3678,7 +3785,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         }
 
         // Add image source info if applicable
-        if ((opts.action === globalResources.getNekoAiService('Action').IMG2IMG || opts.action === globalResources.getNekoAiService('Action').INPAINT) && opts.image) {
+        if ((opts.action === __runtimeGr.getNekoAiService('Action').IMG2IMG || opts.action === __runtimeGr.getNekoAiService('Action').INPAINT) && opts.image) {
             forgeData.generation_type = 'img2img';
             if (opts.image_source) {
                 forgeData.image_source = opts.image_source;
@@ -3790,7 +3897,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
         if (baseMetadata) {
             metadata = JSON.parse(baseMetadata.tEXt.Comment);
             // Stage mode: preserve base metadata, update only specific forge_data fields
-            finalBuffer = globalResources.getPngMetadata().stripPngTextChunks(buffer);
+            finalBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(buffer);
             
             forgeData = metadata.forge_data || {};
             
@@ -3821,27 +3928,27 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             metadata.forge_data = { ...forgeData };
             
             // Re-inject complete metadata structure directly
-            finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
+            finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Comment', JSON.stringify(metadata));
             
             // Preserve Source and Software from base metadata if they exist
             if (baseMetadata.tEXt?.Source) {
-                finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
+                finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Source', baseMetadata.tEXt.Source);
             }
             if (baseMetadata.tEXt?.Software) {
-                finalBuffer = globalResources.getPngMetadata().insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
+                finalBuffer = __runtimeGr.getPngMetadata().insertTextChunk(finalBuffer, 'Software', baseMetadata.tEXt.Software);
             }
             
             console.log(`📝 Stage metadata: preserved base, updated forge_data`);
         } else {
             // Normal mode: create new metadata
-            finalBuffer = globalResources.getPngMetadata().updateMetadata(buffer, forgeData);
+            finalBuffer = __runtimeGr.getPngMetadata().updateMetadata(buffer, forgeData);
 
             // Extract the metadata that was just embedded into the buffer
-            const rawMetadata = globalResources.getPngMetadata().readMetadata(finalBuffer);
+            const rawMetadata = __runtimeGr.getPngMetadata().readMetadata(finalBuffer);
             metadata = rawMetadata?.tEXt?.Comment ? JSON.parse(rawMetadata.tEXt.Comment) : null;
         }
         
-        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
+        const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
         
         // Always send receipt notification when there's a cost, regardless of whether image is saved
         if (creditUsage.totalUsage > 0) {
@@ -3852,16 +3959,16 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 date: Date.now().valueOf()
             };
             
-            const plumbing = globalResources.getDataPlumbing();
+            const plumbing = __runtimeGr.getDataPlumbing();
             plumbing.publish('ws:broadcast:receipt', receiptData);
         }
         
         if (shouldSave) {
-            fs.writeFileSync(path.join(globalResources.getPath('images'), name), finalBuffer);
-            globalResources.getLogger().normal(`💾 Saved: ${name}`);
+            fs.writeFileSync(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
+            __runtimeGr.getLogger().normal(`💾 Saved: ${name}`);
             
             // Add file to workspace
-            globalResources.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
+            __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', name, targetWorkspaceId);
             
             // Register image in metadata DB (always); receipt row only when credits were charged
             const generationReceiptData = creditUsage.totalUsage > 0 ? {
@@ -3870,7 +3977,7 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             } : null;
-            await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), generationReceiptData, forgeData);
+            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -3891,11 +3998,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             }
 
             // Generate preview
-            const baseName = globalResources.getPngMetadata().getBaseName(name);
+            const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
 
             // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(globalResources.getPath('images'), name), baseName);
-            globalResources.getLogger().detailed(`📸 Generated previews for ${baseName}`);
+            await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
 
             // Send completion progress update
             if (ws && handler) {
@@ -3940,10 +4047,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
             await new Promise(resolve => setTimeout(resolve, 2000));
             
             const { width: upscaleWidth, height: upscaleHeight } = await getImageDimensions(finalBuffer);
-            const scaledBuffer = await upscaleImageCore(finalBuffer, scale, upscaleWidth, upscaleHeight);
+            const scaledBuffer = await upscaleImageCore(globalResources, finalBuffer, scale, upscaleWidth, upscaleHeight);
             
             // Get new balance and calculate credit usage for upscaling
-            const upscaleCreditUsage = await globalResources.calculateCreditUsage();
+            const upscaleCreditUsage = await __runtimeGr.calculateCreditUsage();
             
             if (upscaleCreditUsage.totalUsage > 0) {
                 console.log(`💰 Upscaling Cost: ${upscaleCreditUsage.totalUsage} ${upscaleCreditUsage.usageType === 'paid' ? 'paid' : 'fixed'}`);
@@ -3955,15 +4062,15 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                 upscaled_at: Date.now(),
                 generation_type: 'upscaled'
             };
-            const updatedScaledBuffer = globalResources.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
+            const updatedScaledBuffer = __runtimeGr.getPngMetadata().updateMetadata(scaledBuffer, upscaledForgeData);
         
             if (shouldSave) {
                 const upscaledName = name.replace('.png', '_upscaled.png');
-                fs.writeFileSync(path.join(globalResources.getPath('images'), upscaledName), updatedScaledBuffer);
+                fs.writeFileSync(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
                 
                 // Add upscaled file to workspace
-                globalResources.getWorkspaceManager().addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
+                __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', upscaledName, targetWorkspaceId);
                 
                 // Update metadata cache for upscaled image
                 const upscaledReceiptData = {
@@ -3973,11 +4080,11 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
                     date: Date.now().valueOf()
                 };
                 // Attach receipt to parent image instead of upscaled image
-                await globalResources.getMetadataDatabase().addReceiptMetadata(name, globalResources.getPath('images'), upscaledReceiptData, upscaledForgeData);
+                await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
                 
-                await generateMobilePreviews(path.join(globalResources.getPath('images'), upscaledName), upscaledBaseName);
+                await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
                 
-                const plumbing = globalResources.getDataPlumbing();
+                const plumbing = __runtimeGr.getDataPlumbing();
                 plumbing.publish('ws:broadcast:receipt', upscaledReceiptData);
             }
 
@@ -4027,16 +4134,16 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
     } else {
         // Save image and return filename only (legacy behavior)
         if (shouldSave) {
-            const filePath = path.join(globalResources.getPath('images'), name);
+            const filePath = path.join(__runtimeGr.getPath('images'), name);
             await img.save(filePath);
             console.log(`💾 Saved: ${name}`);
             
             // Generate preview
-            const baseName = globalResources.getPngMetadata().getBaseName(name);
+            const baseName = __runtimeGr.getPngMetadata().getBaseName(name);
             
             // Generate both main and @2x previews for mobile devices
-            await generateMobilePreviews(path.join(globalResources.getPath('images'), name), baseName);
-            globalResources.getLogger().detailed(`📸 Generated previews for ${baseName}`);
+            await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), name), baseName);
+            __runtimeGr.getLogger().detailed(`📸 Generated previews for ${baseName}`);
         }
         
         // Return result with appropriate seed information
@@ -4051,9 +4158,10 @@ async function handleGeneration(opts, returnImage = false, presetName = null, wo
 }
 
 // Helper function for common endpoint logic
-const handleImageRequest = async (req, res, opts, presetName = null) => {
+const handleImageRequest = async (globalResources, req, res, opts, presetName = null) => {
+    bindRuntimeGlobalResources(globalResources);
     const workspaceId = req.body.workspace || req.query.workspace || null;
-    const result = await handleGeneration(opts, true, presetName, workspaceId, req);
+    const result = await handleGeneration(globalResources, opts, true, presetName, workspaceId, req);
     
     // Check if optimization is requested
     const optimize = req.query.optimize === 'true';
@@ -4094,7 +4202,8 @@ const handleImageRequest = async (req, res, opts, presetName = null) => {
 };
 
 // WebSocket-native image generation function
-async function generateImageWebSocket(body, userType, sessionId, streamingCallback = null, ws = null, handler = null, wsServer = null) {
+async function generateImageWebSocket(globalResources, body, userType, sessionId, streamingCallback = null, ws = null, handler = null, wsServer = null) {
+    bindRuntimeGlobalResources(globalResources);
     // Check if user is read-only
     if (userType === 'readonly') {
         throw new Error('Non-Administrator Login: This operation is not allowed for read-only users');
@@ -4114,11 +4223,11 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
         if (!body.requestId) body.requestId = `gen-${Date.now()}`;
         // Start a trace for single generations (pipelines handled separately)
         try {
-            tracing.startTrace(body.requestId, { type: 'single_generation', workspace: body.workspace || null });
-            tracing.addEvent(body.requestId, { type: 'request_body', body });
+            __runtimeGr.getTracing().startTrace(body.requestId, { type: 'single_generation', workspace: body.workspace || null });
+            __runtimeGr.getTracing().addEvent(body.requestId, { type: 'request_body', body });
         } catch {}
 
-        const model = globalResources.getNekoAiService('Model')[body.model.toUpperCase()];
+        const model = __runtimeGr.getNekoAiService('Model')[body.model.toUpperCase()];
         if (!model) {
             throw new Error('Invalid model');
         }
@@ -4129,15 +4238,15 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
         // Check if this is a staged generation
         if (body.pipeline && Array.isArray(body.pipeline) && body.pipeline.length > 0 && body.skip_pipeline_stages !== true) {
             console.log(`🎬 Starting staged generation with ${body.pipeline.length} stages`);
-            return await handleStagedGeneration(bodyData, sessionId, streamingCallback, ws, handler, wsServer);
+            return await handleStagedGeneration(globalResources, bodyData, sessionId, streamingCallback, ws, handler, wsServer);
         } else {
-            globalResources.getLogger().detailed(`🎬 Pipeline stages disabled - running base only`);
+            __runtimeGr.getLogger().detailed(`🎬 Pipeline stages disabled - running base only`);
             // Continue to regular single generation below
         }
 
         // Regular single generation - ensure requestId is preserved
         const requestId = body.requestId;
-        const opts = await buildOptions(bodyData, null, {}, ws, handler, wsServer);
+        const opts = await buildOptions(globalResources, bodyData, null, {}, ws, handler, wsServer);
         // Preserve requestId in opts for handleGeneration
         if (requestId) opts.requestId = requestId;
         // Add original filename for metadata tracking if this is img2img and not a frontend upload
@@ -4149,39 +4258,40 @@ async function generateImageWebSocket(body, userType, sessionId, streamingCallba
         const mockReq = { session: { id: sessionId } };
 
         // Call handleGeneration directly and return the result
-        const result = await handleGeneration(opts, true, body?.preset || body?.presetName, body?.workspace, mockReq, streamingCallback, ws, handler);
+        const result = await handleGeneration(globalResources, opts, true, body?.preset || body?.presetName, body?.workspace, mockReq, streamingCallback, ws, handler);
 
         // Trace: add final generated image
         try {
             if (result && result.buffer && requestId) {
-                tracing.addImageAttachment(requestId, 'final_generated_image', result.buffer, 'png', {
+                __runtimeGr.getTracing().addImageAttachment(requestId, 'final_generated_image', result.buffer, 'png', {
                     seed: result.seed,
                     filename: result.filename
                 });
             }
         } catch {}
         
-        try { tracing.finalizeTrace(requestId, 'completed', { seed: result.seed, filename: result.filename }); } catch {}
+        try { __runtimeGr.getTracing().finalizeTrace(requestId, 'completed', { seed: result.seed, filename: result.filename }); } catch {}
         return result;
     } catch(e) {
         console.error('❌ WebSocket image generation error:', e);
-        try { if (body && body.requestId) tracing.finalizeTrace(body.requestId, 'failed', { error: String(e && e.message || e) }); } catch {}
+        try { if (body && body.requestId) __runtimeGr.getTracing().finalizeTrace(body.requestId, 'failed', { error: String(e && e.message || e) }); } catch {}
         throw e;
     }
 }
 
 // Handle staged generation with multiple stages
-async function handleStagedGeneration(bodyData, sessionId, streamingCallback = null, ws = null, handler = null, wsServer = null) {
+async function handleStagedGeneration(globalResources, bodyData, sessionId, streamingCallback, ws, handler, wsServer) {
+    bindRuntimeGlobalResources(globalResources);
     // Ensure a consistent requestId
     if (!bodyData.requestId) bodyData.requestId = `staged-${Date.now()}`;
     try {
-        tracing.startTrace(bodyData.requestId, {
+        __runtimeGr.getTracing().startTrace(bodyData.requestId, {
             type: 'staged_generation',
             pipelineLength: Array.isArray(bodyData.pipeline) ? bodyData.pipeline.length : 0,
             workspace: bodyData.workspace || null
         });
         // Log full body (no sanitization per request)
-        tracing.addEvent(bodyData.requestId, { type: 'request_body', body: bodyData });
+        __runtimeGr.getTracing().addEvent(bodyData.requestId, { type: 'request_body', body: bodyData });
     } catch {}
     try {
         const pipeline = bodyData.pipeline;
@@ -4263,7 +4373,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
             pipelineStageGeneration: pipeline.length > 0
         };
 
-        const baseOpts = await buildOptions(previousStageBody, null, {}, ws, handler, wsServer, baseStageData);
+        const baseOpts = await buildOptions(globalResources, previousStageBody, null, {}, ws, handler, wsServer, baseStageData);
 
         // Create a mock req object for context functions that need it
         const mockReq = { session: { id: sessionId } };
@@ -4274,12 +4384,12 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         }
 
         // Generate base image
-        const baseResult = await handleGeneration(baseOpts, true, bodyData?.preset || bodyData?.presetName, bodyData?.workspace, mockReq, streamingCallback, ws, handler);
+        const baseResult = await handleGeneration(globalResources, baseOpts, true, bodyData?.preset || bodyData?.presetName, bodyData?.workspace, mockReq, streamingCallback, ws, handler);
         
         // Trace: attach base stage image
         try {
             if (bodyData.requestId && baseResult.buffer) {
-                tracing.addImageAttachment(bodyData.requestId, 'stage-0-base', baseResult.buffer, 'png', { stageIndex: 0, stageType: 'base' });
+                __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, 'stage-0-base', baseResult.buffer, 'png', { stageIndex: 0, stageType: 'base' });
             }
         } catch {}
         
@@ -4287,7 +4397,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         const baseSeed = baseResult.seed;
         
         // Extract base metadata for all stages
-        const baseMetadata = globalResources.getPngMetadata().readMetadata(baseResult.buffer);
+        const baseMetadata = __runtimeGr.getPngMetadata().readMetadata(baseResult.buffer);
         if (!baseMetadata?.tEXt?.Comment) {
             throw new Error('Failed to extract base metadata');
         }
@@ -4517,7 +4627,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 }
 
                 // Strip TEXt metadata from current buffer before using as image
-                currentBuffer = globalResources.getPngMetadata().stripPngTextChunks(currentBuffer);
+                currentBuffer = __runtimeGr.getPngMetadata().stripPngTextChunks(currentBuffer);
 
                 // Build stage request body by inheriting from previous stage
                 let stageRequestBody = { ...previousStageBody };
@@ -4876,7 +4986,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                     // Trace: attach letterboxed image
                     try {
                         if (bodyData.requestId && letterboxedBuffer) {
-                            tracing.addImageAttachment(bodyData.requestId, `stage-${stageIndex}-letterboxed`, letterboxedBuffer, 'png', { stageIndex });
+                            __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, `stage-${stageIndex}-letterboxed`, letterboxedBuffer, 'png', { stageIndex });
                         }
                     } catch {}
                     
@@ -4936,11 +5046,11 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 };
 
                 // Build options and generate
-                const stageOpts = await buildOptions(stageRequestBody, null, {}, ws, handler, wsServer, currentStageData);
-                stageOpts.action = stage.type === 'expand-canvas' ? globalResources.getNekoAiService('Action').INPAINT : globalResources.getNekoAiService('Action').IMG2IMG;
+                const stageOpts = await buildOptions(globalResources, stageRequestBody, null, {}, ws, handler, wsServer, currentStageData);
+                stageOpts.action = stage.type === 'expand-canvas' ? __runtimeGr.getNekoAiService('Action').INPAINT : __runtimeGr.getNekoAiService('Action').IMG2IMG;
 
                 // Generate stage image using the unified approach
-                const stageResult = await handleGeneration(stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
+                const stageResult = await handleGeneration(globalResources, stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
                 
                 // Update locked replacements pool with new replacements from this stage
                 if (stageResult.text_replacements_seed && Array.isArray(stageResult.text_replacements_seed)) {
@@ -5032,7 +5142,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
                 // Trace: attach final stage image
                 try {
                     if (bodyData.requestId && stageResult.buffer) {
-                        tracing.addImageAttachment(bodyData.requestId, `stage-${stageIndex}-final`, stageResult.buffer, 'png', { stageIndex });
+                        __runtimeGr.getTracing().addImageAttachment(bodyData.requestId, `stage-${stageIndex}-final`, stageResult.buffer, 'png', { stageIndex });
                     }
                 } catch {}
                 
@@ -5138,7 +5248,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         // Finalize trace for pipeline
         try {
             if (bodyData.requestId) {
-                tracing.finalizeTrace(bodyData.requestId, 'completed', {
+                __runtimeGr.getTracing().finalizeTrace(bodyData.requestId, 'completed', {
                     totalStages: totalStages,
                     savedStages: savedFilenames.length,
                     seeds: { base: baseSeed, stages: stageSeeds }
@@ -5162,7 +5272,7 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
         console.error('❌ Staged generation error:', error);
         try {
             if (bodyData.requestId) {
-                tracing.finalizeTrace(bodyData.requestId, 'failed', { error: String(error && error.message || error) });
+                __runtimeGr.getTracing().finalizeTrace(bodyData.requestId, 'failed', { error: String(error && error.message || error) });
             }
         } catch {}
         throw error;
@@ -5170,7 +5280,8 @@ async function handleStagedGeneration(bodyData, sessionId, streamingCallback = n
 }
 
 // Function to convert image metadata to request format for rerolling
-async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
+async function convertMetadataToRequestFormat(globalResources, metadata, allowPaid = false) {
+    bindRuntimeGlobalResources(globalResources);
     if (!metadata) {
         throw new Error('No metadata provided for conversion');
     }
@@ -5179,7 +5290,7 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
     const actualMetadata = metadata.metadata || metadata;
 
     // Use the existing extractRelevantFields function to get properly formatted metadata
-    const extractedMetadata = await globalResources.getPngMetadata().extractRelevantFields(actualMetadata, metadata.filename);
+    const extractedMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields(actualMetadata, metadata.filename);
 
     if (!extractedMetadata) {
         throw new Error('Failed to extract relevant metadata fields');
@@ -5353,11 +5464,12 @@ async function convertMetadataToRequestFormat(metadata, allowPaid = false) {
 }
 
 // Function to handle reroll generation from metadata
-async function handleRerollGeneration(metadata, sessionId, workspaceId = null, allowPaid = false) {
+async function handleRerollGeneration(globalResources, metadata, sessionId, workspaceId, allowPaid = false) {
+    bindRuntimeGlobalResources(globalResources);
 
     try {
         // Convert metadata to request format with allow_paid flag
-        const requestBody = await convertMetadataToRequestFormat(metadata, allowPaid);
+        const requestBody = await convertMetadataToRequestFormat(globalResources, metadata, allowPaid);
 
         // Override workspace if provided
         if (workspaceId) {
@@ -5369,18 +5481,18 @@ async function handleRerollGeneration(metadata, sessionId, workspaceId = null, a
             console.log(`🎬 Reroll: Starting staged generation with ${requestBody.pipeline.length} stages`);
             // Call handleStagedGeneration directly for pipeline stages
             // Pass null for ws, handler, wsServer since this is HTTP reroll (no WebSocket streaming)
-            return await handleStagedGeneration(requestBody, sessionId, null, null, null, null);
+            return await handleStagedGeneration(globalResources, requestBody, sessionId, null, null, null, null);
         }
 
         // Regular single generation
         // Build options for generation
-        const opts = await buildOptions(requestBody, null, {}, null, null);
+        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
 
         // Create a mock req object for context functions that need it
         const mockReq = { session: { id: sessionId } };
 
         // Call handleGeneration and return the result
-        const result = await handleGeneration(opts, true, metadata.preset_name || null, workspaceId, mockReq);
+        const result = await handleGeneration(globalResources, opts, true, metadata.preset_name || null, workspaceId, mockReq);
 
         return result;
     } catch (error) {
@@ -5544,7 +5656,8 @@ async function compressMask(maskBuffer) {
 }
 
 // Process expand canvas stage - reusable function for both manual and staged expansion
-async function processExpandCanvas(imageBuffer, params, streamingCallback = null, ws = null, handler = null) {
+async function processExpandCanvas(globalResources, stage, body, baseMetadata, generationParams, workspaceId, ws, handler, requestId) {
+    bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Processing expand canvas stage with resolution: ${params.resolution}, bias: ${params.bias}`);
         
@@ -5866,7 +5979,7 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
         }
         
         // Build options for generation
-        const opts = await buildOptions(requestBody, null, {}, null, null);
+        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
         
         // Set no_save flag if specified
         if (params.no_save) {
@@ -5885,7 +5998,7 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
         
         // Generate expanded image
         console.log(`🎨 Generating expanded image...`);
-        const result = await handleGeneration(opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
+        const result = await handleGeneration(globalResources, opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
         
         // Create metadata for the expansion
         const expansionMetadata = {
@@ -5921,7 +6034,8 @@ async function processExpandCanvas(imageBuffer, params, streamingCallback = null
 }
 
 // Process enhance stage - img2img with strength/noise
-async function processEnhanceStage(imageBuffer, params, streamingCallback = null, ws = null, handler = null) {
+async function processEnhanceStage(globalResources, stage, body, baseMetadata, generationParams, workspaceId, ws, handler, requestId) {
+    bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Processing enhance stage with strength: ${params.strength}, noise: ${params.noise}`);
         
@@ -5965,7 +6079,7 @@ async function processEnhanceStage(imageBuffer, params, streamingCallback = null
         }
         
         // Build options for generation
-        const opts = await buildOptions(requestBody, null, {}, null, null);
+        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
         
         // Set no_save flag if specified
         if (params.no_save) {
@@ -5984,7 +6098,7 @@ async function processEnhanceStage(imageBuffer, params, streamingCallback = null
         
         // Generate enhanced image
         console.log(`🎨 Generating enhanced image...`);
-        const result = await handleGeneration(opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
+        const result = await handleGeneration(globalResources, opts, true, null, params.workspaceId, null, streamingCallback, ws, handler);
         
         // Create metadata for the enhancement
         const enhanceMetadata = {
@@ -6146,8 +6260,8 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
 
         console.log(`🤖 Starting Grok expansion AI call with requestId: ${requestId}`);
         const expansionAttemptId = `image-expansion-${requestId || 'unknown'}-${Date.now()}`;
-        const grokResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(messages, {
-            model: globalResources.getGrokService().getDefaultGrokModel(),
+        const grokResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(messages, {
+            model: __runtimeGr.getGrokService().getDefaultGrokModel(),
             timeout: 120000,
             store: false,
             responseSchema: ExpansionPromptSchema,
@@ -6214,6 +6328,7 @@ CRITICAL: Preserve all artist/style references and environment tags from the ori
 
 /** Preview-only: same prompt/UC as expand would use (runs Grok when enableAI). */
 async function previewExpandImagePrompt(
+    globalResources,
     filename,
     resolution,
     imageBias,
@@ -6224,11 +6339,12 @@ async function previewExpandImagePrompt(
     handler = null,
     requestId = null
 ) {
-    const filePath = path.join(globalResources.getPath('images'), filename);
+    bindRuntimeGlobalResources(globalResources);
+    const filePath = path.join(__runtimeGr.getPath('images'), filename);
     if (!fs.existsSync(filePath)) {
         throw new Error('Image not found');
     }
-    const sourceFilePath = sourceFilename ? path.join(globalResources.getPath('images'), sourceFilename) : null;
+    const sourceFilePath = sourceFilename ? path.join(__runtimeGr.getPath('images'), sourceFilename) : null;
     if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
         throw new Error('Source image not found');
     }
@@ -6241,7 +6357,7 @@ async function previewExpandImagePrompt(
     let originalUc = '';
     let originalCharacters = [];
     try {
-        const metadata = globalResources.getPngMetadata().readMetadata(sourceImageBuffer);
+        const metadata = __runtimeGr.getPngMetadata().readMetadata(sourceImageBuffer);
         if (metadata?.tEXt?.Comment) {
             const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
             originalPrompt = parsedMetadata.prompt || '';
@@ -6280,18 +6396,19 @@ async function previewExpandImagePrompt(
 }
 
 // Image expansion function - expands image to new resolution using AI-powered inpainting
-async function expandImage(filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false) {
+async function expandImage(globalResources, filename, resolution, imageBias, upscaleAfterComplete = false, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null, sourceFilename = null, enableAI = false) {
+    bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔍 Starting image expansion: ${filename} to ${resolution} with bias ${imageBias}`);
         const inset = overrideParams?.inset === true || overrideParams?.inset === 'true' || overrideParams?.inset === 1;
         console.log(`📌 Expansion inset (native-scale letterbox padding): ${inset}`);
         
         // Load original image
-        const filePath = path.join(globalResources.getPath('images'), filename);
+        const filePath = path.join(__runtimeGr.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
         }
-        const sourceFilePath = sourceFilename ? path.join(globalResources.getPath('images'), sourceFilename) : null;
+        const sourceFilePath = sourceFilename ? path.join(__runtimeGr.getPath('images'), sourceFilename) : null;
         if (sourceFilePath && !fs.existsSync(sourceFilePath)) {
             throw new Error('Source image not found');
         }
@@ -6306,7 +6423,7 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         let originalUc = '';
         let originalCharacters = [];
         try {
-            const metadata = globalResources.getPngMetadata().readMetadata(sourceImageBuffer);
+            const metadata = __runtimeGr.getPngMetadata().readMetadata(sourceImageBuffer);
             if (metadata?.tEXt?.Comment) {
                 const parsedMetadata = JSON.parse(metadata.tEXt.Comment);
                 originalPrompt = parsedMetadata.prompt || '';
@@ -6539,7 +6656,7 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         }
         
         // Build options for generation
-        const opts = await buildOptions(requestBody, null, {}, null, null);
+        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
         
         // Create mock req for session tracking
         const mockReq = { session: { id: sessionId } };
@@ -6557,7 +6674,7 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         console.log(`🎨 Generating expanded image...`);
         // Set the requestId in opts so handleGeneration uses it for progress updates
         opts.requestId = requestId;
-        const result = await handleGeneration(opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
+        const result = await handleGeneration(globalResources, opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
         
         // Add expansion metadata to result buffer
         const expansionMetadata = {
@@ -6583,15 +6700,15 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
             expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
         }
         
-        const expandedBuffer = globalResources.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
+        const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
         // Save with "_expanded" suffix and fresh timestamp
-        const baseName = globalResources.getPngMetadata().getBaseName(sourceFilename);
+        const baseName = __runtimeGr.getPngMetadata().getBaseName(sourceFilename);
         // Remove old timestamp from basename (format: timestamp_name)
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
-        const expandedPath = path.join(globalResources.getPath('images'), expandedFilename);
+        const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
         
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
@@ -6607,27 +6724,27 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
         }
         
         // Add to workspace
-        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
+        const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
         console.log(`📂 Target workspace ID: ${targetWorkspaceId}`);
         
         if (targetWorkspaceId) {
-            globalResources.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
+            __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename} -> ${targetWorkspaceId}`);
         } else {
             console.warn(`⚠️ No workspace ID available, file not added to workspace`);
         }
         
         // Generate preview
-        const expandedBaseName = globalResources.getPngMetadata().getBaseName(expandedFilename);
+        const expandedBaseName = __runtimeGr.getPngMetadata().getBaseName(expandedFilename);
         await generateMobilePreviews(expandedPath, expandedBaseName);
 
         // Get metadata for the response
         let responseMetadata = null;
         try {
-            const metadataDatabase = globalResources.getMetadataDatabase();
-            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, globalResources.getPath('images'));
+            const metadataDatabase = __runtimeGr.getMetadataDatabase();
+            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, __runtimeGr.getPath('images'));
             if (responseMetadata) {
-                responseMetadata = globalResources.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
+                responseMetadata = __runtimeGr.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
             }
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for expanded image:', metadataError);
@@ -6649,18 +6766,19 @@ async function expandImage(filename, resolution, imageBias, upscaleAfterComplete
 }
 
 // Image expansion reroll function - regenerates expanded image without AI call
-async function rerollExpandedImage(filename, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+async function rerollExpandedImage(globalResources, filename, overrideParams = {}, sessionId, workspaceId = null, streamingCallback = null, ws = null, handler = null, requestId = null) {
+    bindRuntimeGlobalResources(globalResources);
     try {
         console.log(`🔄 Starting image expansion reroll: ${filename}`);
         
         // 1. Load image and extract metadata
-        const filePath = path.join(globalResources.getPath('images'), filename);
+        const filePath = path.join(__runtimeGr.getPath('images'), filename);
         if (!fs.existsSync(filePath)) {
             throw new Error('Image not found');
         }
         
         const imageBuffer = fs.readFileSync(filePath);
-        const metadata = globalResources.getPngMetadata().readMetadata(imageBuffer);
+        const metadata = __runtimeGr.getPngMetadata().readMetadata(imageBuffer);
         
         // 2. Validate expansion metadata exists
         if (!metadata?.tEXt?.Comment) {
@@ -6689,7 +6807,7 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         console.log(`🔗 Maintaining expansion source: ${expansion_source}`);
         
         // Load the SOURCE image for letterboxing (not the expanded image)
-        const sourceFilePath = path.join(globalResources.getPath('images'), expansion_source);
+        const sourceFilePath = path.join(__runtimeGr.getPath('images'), expansion_source);
         if (!fs.existsSync(sourceFilePath)) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
@@ -6866,7 +6984,7 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         }
         
         // 6. Build options and generate
-        const opts = await buildOptions(requestBody, null, {}, null, null);
+        const opts = await buildOptions(globalResources, requestBody, null, {}, null, null);
         const mockReq = { session: { id: sessionId } };
         
         if (ws && handler) {
@@ -6879,7 +6997,7 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         }
         
         console.log(`🎨 Generating rerolled expanded image...`);
-        const result = await handleGeneration(opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
+        const result = await handleGeneration(globalResources, opts, true, null, workspaceId, mockReq, streamingCallback, ws, handler);
         
         // 7. Save with new filename, PRESERVE expansion_source
         const expansionMetadata = {
@@ -6899,14 +7017,14 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
             expansionMetadata.expansion_requested_content = overrideParams.requestedContent;
         }
         
-        const expandedBuffer = globalResources.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
+        const expandedBuffer = __runtimeGr.getPngMetadata().updateMetadata(result.buffer, expansionMetadata);
         
         // Save file
-        const baseName = globalResources.getPngMetadata().getBaseName(expansion_source);
+        const baseName = __runtimeGr.getPngMetadata().getBaseName(expansion_source);
         const nameWithoutTimestamp = baseName.replace(/^\d+_/, '');
         const timestamp = Date.now();
         const expandedFilename = `${timestamp}_${nameWithoutTimestamp}_expanded.png`;
-        const expandedPath = path.join(globalResources.getPath('images'), expandedFilename);
+        const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
         
         console.log(`💾 Saving: ${expandedFilename}`);
         fs.writeFileSync(expandedPath, expandedBuffer);
@@ -6917,22 +7035,22 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
         }
         
         // Add to workspace
-        const targetWorkspaceId = workspaceId || globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
+        const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(sessionId);
         if (targetWorkspaceId) {
-            globalResources.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
+            __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename}`);
         }
         
         // Generate preview
-        await generateMobilePreviews(expandedPath, globalResources.getPngMetadata().getBaseName(expandedFilename));
+        await generateMobilePreviews(expandedPath, __runtimeGr.getPngMetadata().getBaseName(expandedFilename));
 
         // Get metadata for the response
         let responseMetadata = null;
         try {
-            const metadataDatabase = globalResources.getMetadataDatabase();
-            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, globalResources.getPath('images'));
+            const metadataDatabase = __runtimeGr.getMetadataDatabase();
+            responseMetadata = await metadataDatabase.getImageMetadata(expandedFilename, __runtimeGr.getPath('images'));
             if (responseMetadata) {
-                responseMetadata = globalResources.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
+                responseMetadata = __runtimeGr.getPngMetadata().extractRelevantFields(responseMetadata, expandedFilename);
             }
         } catch (metadataError) {
             console.warn('⚠️ Failed to get metadata for rerolled expanded image:', metadataError);
@@ -6952,6 +7070,86 @@ async function rerollExpandedImage(filename, overrideParams = {}, sessionId, wor
     }
 }
 
+/** Scan body/preset for text-replacement seeds (websocket scan_text_replacements). */
+function collectTextReplacementSeeds(globalResources, body, preset = null) {
+    bindRuntimeGlobalResources(globalResources);
+    const currentPromptConfig = __runtimeGr.getPromptConfig({ clone: true });
+    const presetName = body.presetName || body.preset
+        || (preset ? Object.keys(currentPromptConfig.presets).find(key => currentPromptConfig.presets[key] === preset) : null);
+    const effectivePreset = preset || (presetName ? currentPromptConfig.presets[presetName] : null);
+    const model = body.model || effectivePreset?.model;
+    if (!model) {
+        return [];
+    }
+
+    const rawPrompt = (body.prompt !== undefined && body.prompt !== null) ? body.prompt : effectivePreset?.prompt;
+    const rawNegativePrompt = (body.uc !== undefined && body.uc !== null) ? body.uc : effectivePreset?.uc;
+    const rawInputPromptNegative = (body.input_prompt_negative !== undefined && body.input_prompt_negative !== null)
+        ? body.input_prompt_negative
+        : (body.prompt_negative !== undefined && body.prompt_negative !== null
+            ? body.prompt_negative
+            : (effectivePreset?.input_prompt_negative ?? effectivePreset?.prompt_negative ?? ''));
+
+    let periodKey = body.dynamic_generation?.compiled_prompt?.context?.time?.periodKey || getCurrentPeriodKey();
+    if (periodKey) {
+        periodKey = normalizePeriodKey(periodKey);
+    }
+
+    let lockedReplacements = null;
+    if (body.text_replacements_seed && Array.isArray(body.text_replacements_seed)) {
+        lockedReplacements = body.text_replacements_seed;
+    } else if (effectivePreset?.text_replacements_seed && Array.isArray(effectivePreset.text_replacements_seed)) {
+        lockedReplacements = effectivePreset.text_replacements_seed;
+    }
+
+    const currentStageData = {
+        stageIndex: 0,
+        stageType: 'base',
+        text_replacements: body.text_replacements || [],
+        pipelineStageGeneration: Array.isArray(body.pipeline) && body.pipeline.length > 0,
+    };
+
+    const processedPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawPrompt, presetName, model, periodKey, lockedReplacements, currentStageData);
+    const processedNegativePromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(rawNegativePrompt, presetName, model, periodKey, lockedReplacements, currentStageData);
+    const processedPromptNegativeFragmentResult = __runtimeGr.getTextReplacements().applyTextReplacements(
+        rawInputPromptNegative || '',
+        presetName,
+        model,
+        periodKey,
+        lockedReplacements,
+        currentStageData
+    );
+
+    const allTextReplacementSeeds = [
+        ...processedPromptResult.replacements.map(r => ({ ...r, source: 'prompt' })),
+        ...processedNegativePromptResult.replacements.map(r => ({ ...r, source: 'negative_prompt' })),
+        ...processedPromptNegativeFragmentResult.replacements.map(r => ({ ...r, source: 'input_prompt_negative' }))
+    ];
+
+    const characterPrompts = body.allCharacterPrompts || effectivePreset?.allCharacterPrompts;
+    if (characterPrompts && Array.isArray(characterPrompts)) {
+        characterPrompts.forEach((char, charIndex) => {
+            const charPromptResult = __runtimeGr.getTextReplacements().applyTextReplacements(char.prompt, presetName, model, periodKey, lockedReplacements, currentStageData);
+            const charUcResult = __runtimeGr.getTextReplacements().applyTextReplacements(char.uc, presetName, model, periodKey, lockedReplacements, currentStageData);
+            const charPromptNegativeResult = __runtimeGr.getTextReplacements().applyTextReplacements(
+                char.input_prompt_negative || '',
+                presetName,
+                model,
+                periodKey,
+                lockedReplacements,
+                currentStageData
+            );
+            allTextReplacementSeeds.push(
+                ...charPromptResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_prompt` })),
+                ...charUcResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_uc` })),
+                ...charPromptNegativeResult.replacements.map(r => ({ ...r, source: `character_${charIndex}_input_prompt_negative` }))
+            );
+        });
+    }
+
+    return allTextReplacementSeeds;
+}
+
 module.exports = {
     generateImageWebSocket,
     buildOptions,
@@ -6967,5 +7165,6 @@ module.exports = {
     processEnhanceStage,
     handleStagedGeneration,
     previewExpandImagePrompt,
+    collectTextReplacementSeeds,
 };
 

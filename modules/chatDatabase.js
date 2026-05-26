@@ -3,10 +3,7 @@ const path = require('path');
 const logger = require('./logger');
 const { asyncSQLiteManager } = require('./sqliteAsyncWrapper');
 
-// Database file path
-const dbPath = path.join(__dirname, '..', '.cache', 'chat.db');
-
-// Get database instance from async manager
+let dbPath = null;
 let db = null;
 
 // Track message count for periodic checkpointing
@@ -16,9 +13,9 @@ const CHECKPOINT_INTERVAL = 10; // Create checkpoint every N messages
 /**
  * Initialize the SQLite database for chat system
  */
-async function initializeChatDatabase() {
+async function initializeChatDatabase(databasesPath) {
     try {
-        // Get database instance from async manager with checkpointing enabled
+        dbPath = path.join(databasesPath, 'chat.db');
         db = asyncSQLiteManager.getDatabase(dbPath, {
             idleTimeoutMinutes: 30,
             maxCheckpoints: 5,

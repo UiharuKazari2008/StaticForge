@@ -42,6 +42,87 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+// Integer desktop title-band bias (CSS uses 18px; was calc(0.5 * 35px) = 17.5px)
+const MODAL_DESKTOP_TOP_BIAS_PX = 18;
+
+function getDesktopModalTopBias() {
+    return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
+}
+
+function clearModalPixelAnchor(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.remove('modal-pixel-settled');
+    modal.style.removeProperty('--modal-pixel-left');
+    modal.style.removeProperty('--modal-pixel-top');
+}
+
+function snapModalOffsetsToDevicePixels(modal) {
+    if (!modal || modal.classList.contains('modal-pixel-settled')) {
+        return;
+    }
+
+    const rect = modal.getBoundingClientRect();
+    const targetLeft = roundToDevicePixel(rect.left);
+    const targetTop = roundToDevicePixel(rect.top);
+    const deltaX = targetLeft - rect.left;
+    const deltaY = targetTop - rect.top;
+
+    if (Math.abs(deltaX) < 0.0005 && Math.abs(deltaY) < 0.0005) {
+        return;
+    }
+
+    const computedStyle = getComputedStyle(modal);
+    const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+    const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+
+    modal.style.setProperty('--modal-offset-x', `${roundCssPixel(offsetX + deltaX)}px`);
+    modal.style.setProperty('--modal-offset-y', `${roundCssPixel(offsetY + deltaY)}px`);
+}
+
+function setModalOffsetPx(modal, offsetX, offsetY, options) {
+    if (!modal) {
+        return;
+    }
+
+    const opts = options || {};
+
+    modal.style.setProperty('--modal-offset-x', `${roundCssPixel(offsetX)}px`);
+    modal.style.setProperty('--modal-offset-y', `${roundCssPixel(offsetY)}px`);
+
+    if (opts.snap !== false) {
+        void modal.offsetHeight;
+        snapModalOffsetsToDevicePixels(modal);
+    }
+
+    if (opts.settle) {
+        settleModalPixelAnchor(modal);
+    }
+}
+
+function settleModalPixelAnchor(modal) {
+    if (!modal) {
+        return;
+    }
+
+    if (modal.classList.contains('hidden') ||
+        modal.classList.contains('opening') ||
+        modal.classList.contains('closing') ||
+        modal.classList.contains('minimising') ||
+        modal.classList.contains('unminimising')) {
+        return;
+    }
+
+    snapModalOffsetsToDevicePixels(modal);
+    void modal.offsetHeight;
+
+    const rect = modal.getBoundingClientRect();
+    modal.style.setProperty('--modal-pixel-left', `${roundToDevicePixel(rect.left)}px`);
+    modal.style.setProperty('--modal-pixel-top', `${roundToDevicePixel(rect.top)}px`);
+    modal.classList.add('modal-pixel-settled');
+}
+
 // Debounced updateTaskbarWindows - only called max every 250ms
 let updateTaskbarWindowsTimer = null;
 const UPDATE_TASKBAR_DEBOUNCE = 250; // 250ms debounce
@@ -85,6 +166,409 @@ function getLinkedToolWindows(parentModal) {
         modal.getAttribute('data-parent-modal-id') === parentElement.id &&
         !modal.classList.contains('hidden')
     );
+}
+
+function getModalTrueInsetTop() {
+    const tempEl = document.createElement('div');
+    tempEl.style.position = 'absolute';
+    tempEl.style.top = 'var(--true-inset-top, 0px)';
+    tempEl.style.visibility = 'hidden';
+    tempEl.style.pointerEvents = 'none';
+    document.body.appendChild(tempEl);
+    const trueInsetTop = tempEl.offsetTop || 0;
+    document.body.removeChild(tempEl);
+    return trueInsetTop;
+}
+
+function getModalMinDimensions(modal) {
+    return {
+        minWidth: modal.dataset.windowMinWidth ? parseInt(modal.dataset.windowMinWidth, 10) : 200,
+        minHeight: modal.dataset.windowMinHeight ? parseInt(modal.dataset.windowMinHeight, 10) : 150
+    };
+}
+
+function parseCssPixelLength(value, containerPx) {
+    if (!value || value === 'auto' || value === 'none') {
+        return 0;
+    }
+    if (value.includes('px')) {
+        return parseFloat(value);
+    }
+    if (value.includes('%')) {
+        return (parseFloat(value) / 100) * containerPx;
+    }
+    const num = parseFloat(value);
+    return Number.isFinite(num) ? num : 0;
+}
+
+function beginModalLayoutMeasure(modal) {
+    const state = {
+        wasHidden: modal.classList.contains('hidden'),
+        wasHiddenAlt: modal.classList.contains('hidden-alt'),
+        visibility: modal.style.visibility,
+        pointerEvents: modal.style.pointerEvents
+    };
+
+    if (state.wasHidden || state.wasHiddenAlt) {
+        modal.style.visibility = 'hidden';
+        modal.style.pointerEvents = 'none';
+        if (state.wasHidden) {
+            modal.classList.remove('hidden');
+        }
+        if (state.wasHiddenAlt) {
+            modal.classList.remove('hidden-alt');
+        }
+        void modal.offsetHeight;
+    }
+
+    return state;
+}
+
+function endModalLayoutMeasure(modal, state) {
+    if (!state || (!state.wasHidden && !state.wasHiddenAlt)) {
+        return;
+    }
+
+    modal.style.visibility = state.visibility;
+    modal.style.pointerEvents = state.pointerEvents;
+    if (state.wasHidden) {
+        modal.classList.add('hidden');
+    }
+    if (state.wasHiddenAlt) {
+        modal.classList.add('hidden-alt');
+    }
+}
+
+function getModalLayoutDimensions(modal) {
+    const { minWidth, minHeight } = getModalMinDimensions(modal);
+    const measureState = beginModalLayoutMeasure(modal);
+
+    try {
+        void modal.offsetHeight;
+        const rect = modal.getBoundingClientRect();
+        const computed = getComputedStyle(modal);
+        let width = rect.width;
+        let height = rect.height;
+
+        if (!width || width < 1) {
+            width = parseCssPixelLength(modal.style.width, window.innerWidth)
+                || parseCssPixelLength(computed.width, window.innerWidth);
+        }
+        if (!height || height < 1) {
+            height = parseCssPixelLength(modal.style.height, window.innerHeight)
+                || parseCssPixelLength(computed.height, window.innerHeight);
+        }
+
+        const content = modal.querySelector('.modal-content');
+        if (content) {
+            const contentRect = content.getBoundingClientRect();
+            const contentStyle = getComputedStyle(content);
+            const contentWidth = contentRect.width || parseCssPixelLength(contentStyle.width, window.innerWidth);
+            const contentHeight = contentRect.height || parseCssPixelLength(contentStyle.height, window.innerHeight);
+            if (contentWidth > width) {
+                width = contentWidth;
+            }
+            if (contentHeight > height) {
+                height = contentHeight;
+            }
+        }
+
+        return {
+            width: Math.max(minWidth, Math.round(width) || minWidth),
+            height: Math.max(minHeight, Math.round(height) || minHeight)
+        };
+    } finally {
+        endModalLayoutMeasure(modal, measureState);
+    }
+}
+
+function clampModalOffsetsForRect(offsetX, offsetY, width, height) {
+    const containerWidth = window.innerWidth;
+    const containerHeight = window.innerHeight;
+    const trueInsetTop = getModalTrueInsetTop();
+    const minVisible = 85;
+
+    const actualCenterX = containerWidth / 2 + offsetX;
+    const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - getDesktopModalTopBias();
+
+    const leftEdge = actualCenterX - width / 2;
+    const rightEdge = actualCenterX + width / 2;
+    const topEdge = actualCenterY - height / 2;
+    const bottomEdge = actualCenterY + height / 2;
+
+    let constrainedX = offsetX;
+    let constrainedY = offsetY;
+
+    if (leftEdge < -width + minVisible) {
+        const desiredCenterX = (-width + minVisible) + width / 2;
+        constrainedX = desiredCenterX - containerWidth / 2;
+    } else if (rightEdge > containerWidth - minVisible) {
+        const desiredCenterX = (containerWidth - minVisible) - width / 2;
+        constrainedX = desiredCenterX - containerWidth / 2;
+    }
+
+    const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - getDesktopModalTopBias();
+    const recalculatedTopEdge = recalculatedCenterY - height / 2;
+    const recalculatedBottomEdge = recalculatedCenterY + height / 2;
+
+    if (recalculatedTopEdge < 0) {
+        const desiredCenterY = height / 2;
+        constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+    } else if (recalculatedBottomEdge > containerHeight - minVisible) {
+        const desiredCenterY = (containerHeight - minVisible) - height / 2;
+        constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+    }
+
+    return { offsetX: constrainedX, offsetY: constrainedY };
+}
+
+function isModalTopAnchored(modal) {
+    return modal && modal.dataset.windowContentAnchor === 'top';
+}
+
+function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height) {
+    const containerWidth = window.innerWidth;
+    const containerHeight = window.innerHeight;
+    const trueInsetTop = getModalTrueInsetTop();
+    const minVisible = 85;
+
+    let constrainedX = offsetX;
+    let constrainedY = offsetY;
+
+    const actualCenterX = containerWidth / 2 + offsetX;
+    const leftEdge = actualCenterX - width / 2;
+    const rightEdge = actualCenterX + width / 2;
+
+    if (leftEdge < -width + minVisible) {
+        const desiredCenterX = (-width + minVisible) + width / 2;
+        constrainedX = desiredCenterX - containerWidth / 2;
+    } else if (rightEdge > containerWidth - minVisible) {
+        const desiredCenterX = (containerWidth - minVisible) - width / 2;
+        constrainedX = desiredCenterX - containerWidth / 2;
+    }
+
+    const topEdge = trueInsetTop + offsetY;
+    const bottomEdge = topEdge + height;
+
+    if (topEdge < 0) {
+        constrainedY = -trueInsetTop;
+    } else if (bottomEdge > containerHeight - minVisible) {
+        constrainedY = containerHeight - minVisible - height - trueInsetTop;
+    }
+
+    return { offsetX: constrainedX, offsetY: constrainedY };
+}
+
+function setModalPositionFromViewportRect(modal, rect) {
+    if (!modal || !rect) {
+        return;
+    }
+
+    const width = roundCssPixel(rect.width);
+    const height = roundCssPixel(rect.height);
+    const left = roundToDevicePixel(rect.left);
+    const top = roundToDevicePixel(rect.top);
+
+    modal.style.width = `${width}px`;
+    modal.style.height = `${height}px`;
+
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    const trueInsetTop = getModalTrueInsetTop();
+
+    let offsetX = centerX - window.innerWidth / 2;
+    let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+
+    const clamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+    setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
+    modal.setAttribute('data-modal-moved', 'true');
+}
+
+// Position a child modal offset from its parent (cascade), keeping the child on-screen.
+function positionModalCascadeFromParent(childModal, parentModal, options = {}) {
+    if (!childModal || !parentModal || parentModal.classList.contains('hidden')) {
+        return;
+    }
+
+    const cascadeX = options.offsetX != null ? options.offsetX : 28;
+    const cascadeY = options.offsetY != null ? options.offsetY : 28;
+    const cascadeMode = options.cascadeMode || 'beside';
+
+    const parentRect = parentModal.getBoundingClientRect();
+    const childLayout = getModalLayoutDimensions(childModal);
+    let childWidth = childLayout.width;
+    let childHeight = childLayout.height;
+
+    let left;
+    let top;
+    if (cascadeMode === 'overlap') {
+        left = parentRect.left + cascadeX;
+        top = parentRect.top + cascadeY;
+    } else {
+        left = parentRect.right + cascadeX;
+        top = parentRect.top;
+        if (left + childWidth > window.innerWidth - 85) {
+            left = parentRect.left + cascadeX;
+            top = parentRect.top + cascadeY;
+        }
+    }
+
+    const minVisible = 85;
+    if (left + childWidth > window.innerWidth - minVisible) {
+        left = Math.max(-childWidth + minVisible, window.innerWidth - minVisible - childWidth);
+    }
+    if (left < -childWidth + minVisible) {
+        left = -childWidth + minVisible;
+    }
+    if (top + childHeight > window.innerHeight - minVisible) {
+        top = Math.max(0, window.innerHeight - minVisible - childHeight);
+    }
+    if (top < 0) {
+        top = 0;
+    }
+
+    if (options.lockSize === false) {
+        setModalOffsetsFromViewportTopLeft(childModal, left, top);
+    } else {
+        setModalPositionFromViewportRect(childModal, {
+            left,
+            top,
+            width: childWidth,
+            height: childHeight
+        });
+    }
+}
+
+function setModalOffsetsFromViewportTopLeft(modal, left, top) {
+    if (!modal) {
+        return;
+    }
+
+    const rect = modal.getBoundingClientRect();
+    let width = rect.width || modal.offsetWidth;
+    let height = rect.height || modal.offsetHeight;
+    if (!width || !height) {
+        const layout = getModalLayoutDimensions(modal);
+        width = layout.width;
+        height = layout.height;
+    }
+    const trueInsetTop = getModalTrueInsetTop();
+
+    if (isModalTopAnchored(modal)) {
+        const centerX = left + width / 2;
+        let offsetX = centerX - window.innerWidth / 2;
+        let offsetY = top - trueInsetTop;
+        const clamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
+        setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
+        modal.setAttribute('data-modal-moved', 'true');
+        return;
+    }
+
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    let offsetX = centerX - window.innerWidth / 2;
+    let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+
+    const clamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+    setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
+    modal.setAttribute('data-modal-moved', 'true');
+}
+
+function cascadeModalFromParentIfConfigured(modal) {
+    if (!modal || modal.dataset.windowPositionMode !== 'cascade-parent') {
+        return;
+    }
+
+    const parentId = modal.getAttribute('data-parent-modal-id');
+    const parentModal = parentId ? document.getElementById(parentId) : null;
+    if (!parentModal || parentModal.classList.contains('hidden')) {
+        return;
+    }
+
+    if (!isModalWithinViewportBounds(parentModal)) {
+        resetModalToViewportCenter(parentModal);
+    }
+
+    const alignAttr = (modal.dataset.windowCascadeAlign || '').toLowerCase();
+    let cascadeMode = 'beside';
+    if (alignAttr === 'overlap' || alignAttr === 'stack' || alignAttr === 'top' || alignAttr === 'center') {
+        cascadeMode = 'overlap';
+    }
+    positionModalCascadeFromParent(modal, parentModal, { cascadeMode, lockSize: false });
+    ensureModalWithinViewport(modal);
+}
+
+function isModalWithinViewportBounds(modal, minVisible = 85) {
+    if (!modal || modal.classList.contains('hidden')) {
+        return true;
+    }
+
+    const rect = modal.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    if (!width || !height) {
+        return false;
+    }
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const visibleLeft = Math.max(0, rect.left);
+    const visibleRight = Math.min(viewportWidth, rect.right);
+    const visibleTop = Math.max(0, rect.top);
+    const visibleBottom = Math.min(viewportHeight, rect.bottom);
+    const visibleWidth = Math.max(0, visibleRight - visibleLeft);
+    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+
+    return visibleWidth >= minVisible && visibleHeight >= minVisible;
+}
+
+function resetModalToViewportCenter(modal) {
+    if (!modal) {
+        return;
+    }
+
+    clearModalPixelAnchor(modal);
+    modal.style.removeProperty('width');
+    modal.style.removeProperty('height');
+
+    const rect = modal.getBoundingClientRect();
+    const layout = getModalLayoutDimensions(modal);
+    const width = layout.width;
+    const height = layout.height;
+    const margin = 12;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    const left = Math.min(maxLeft, Math.max(margin, (window.innerWidth - width) / 2));
+    const top = Math.min(maxTop, Math.max(margin, (window.innerHeight - height) / 2));
+
+    if (isModalTopAnchored(modal)) {
+        setModalOffsetsFromViewportTopLeft(modal, left, top);
+        return;
+    }
+
+    setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
+    modal.removeAttribute('data-modal-moved');
+}
+
+function ensureModalWithinViewport(modal) {
+    if (!modal || modal.classList.contains('hidden')) {
+        return;
+    }
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            if (!isModalWithinViewportBounds(modal)) {
+                const rect = modal.getBoundingClientRect();
+                if (rect.width && rect.height) {
+                    setModalOffsetsFromViewportTopLeft(modal, rect.left, rect.top);
+                } else {
+                    resetModalToViewportCenter(modal);
+                }
+            } else {
+                settleModalPixelAnchor(modal);
+            }
+        });
+    });
 }
 
 // Update window usage stack - add modal to top of stack (most recent at end)
@@ -136,7 +620,7 @@ function setActiveWindow(modalId) {
             // Regular window - remove active-window class from all modals (including tool windows)
             // But preserve active-window class on on-top modals
             document.querySelectorAll('.modal').forEach(m => {
-                if (m.id === 'windowsStartupModal' || m.id === 'windowsUpdateModal') return;
+                if (m.id === 'windowsStartupModal' || m.id === 'windowsUpdateModal' || m.id === 'connectionDialModal') return;
                 // Don't remove active-window from on-top modals
                 if (!m.classList.contains('on-top')) {
                     m.classList.remove('active-window');
@@ -311,6 +795,8 @@ function handleModalDragStart(e) {
 
     e.preventDefault();
 
+    clearModalPixelAnchor(modal);
+
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -417,13 +903,17 @@ function handleModalDrag(e, draggedModal) {
         // offsetY <= window.innerHeight/2 - 85 + modalRect.height
         const maxOffsetY = window.innerHeight / 2 - 85 + modalRect.height / 2;
 
-        newOffsetX = Math.max(minOffsetX, Math.min(maxOffsetX, newOffsetX));
-        newOffsetY = Math.max(minOffsetY, Math.min(maxOffsetY, newOffsetY));
+        if (isModalTopAnchored(draggedModal)) {
+            const clamped = clampModalOffsetsForTopAnchor(newOffsetX, newOffsetY, modalRect.width, modalRect.height);
+            newOffsetX = clamped.offsetX;
+            newOffsetY = clamped.offsetY;
+        } else {
+            newOffsetX = Math.max(minOffsetX, Math.min(maxOffsetX, newOffsetX));
+            newOffsetY = Math.max(minOffsetY, Math.min(maxOffsetY, newOffsetY));
+        }
     }
 
-    // Apply the new offsets (rounded to whole numbers)
-    draggedModal.style.setProperty('--modal-offset-x', `${Math.round(newOffsetX)}px`);
-    draggedModal.style.setProperty('--modal-offset-y', `${Math.round(newOffsetY)}px`);
+    setModalOffsetPx(draggedModal, newOffsetX, newOffsetY, { snap: false, settle: false });
 }
 
 function handleModalDragEnd(e, draggedModal) {
@@ -440,6 +930,11 @@ function handleModalDragEnd(e, draggedModal) {
     draggedModal.removeAttribute('data-drag-start-y');
     draggedModal.removeAttribute('data-modal-start-offset-x');
     draggedModal.removeAttribute('data-modal-start-offset-y');
+
+    const computedStyle = getComputedStyle(draggedModal);
+    const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+    const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+    setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: true, settle: true });
 
     // Check backdrop when stopping drag
     updateBackdropVisibility();
@@ -465,6 +960,8 @@ function handleModalResizeStart(e) {
     }
 
     e.preventDefault();
+
+    clearModalPixelAnchor(modal);
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -580,23 +1077,44 @@ function handleModalResize(e, resizedModal) {
     newWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
     newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
 
-    // Apply new dimensions (rounded to whole numbers)
-    resizedModal.style.width = `${Math.round(newWidth)}px`;
-    resizedModal.style.height = `${Math.round(newHeight)}px`;
+    newWidth = roundCssPixel(newWidth);
+    newHeight = roundCssPixel(newHeight);
+
+    resizedModal.style.width = `${newWidth}px`;
+    resizedModal.style.height = `${newHeight}px`;
+
+    const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
+    if (resizeAnchor === 'top') {
+        let anchorLeft = resizeStartLeft;
+        if (resizeDirection.includes('w')) {
+            anchorLeft = resizeStartLeft + resizeStartWidth - newWidth;
+        }
+        setModalPositionFromViewportRect(resizedModal, {
+            left: anchorLeft,
+            top: resizeStartTop,
+            width: newWidth,
+            height: newHeight
+        });
+        return;
+    }
 
     // Only update position if we actually moved the window (left/top edge resize)
     if (shouldUpdatePosition) {
-        // Convert viewport coordinates back to modal offset coordinates
-        const offsetX = (newLeft + newWidth / 2) - (window.innerWidth / 2);
-        const offsetY = (newTop + newHeight / 2) - (window.innerHeight / 2);
-
-        resizedModal.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
-        resizedModal.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
+        const trueInsetTop = getModalTrueInsetTop();
+        let offsetX = (newLeft + newWidth / 2) - (window.innerWidth / 2);
+        let offsetY = (newTop + newHeight / 2) - (window.innerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+        const clamped = clampModalOffsetsForRect(offsetX, offsetY, newWidth, newHeight);
+        setModalOffsetPx(resizedModal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
     }
 }
 
 function handleModalResizeEnd(e, resizedModal) {
     if (!resizedModal) return;
+
+    const computedStyle = getComputedStyle(resizedModal);
+    const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+    const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+    setModalOffsetPx(resizedModal, offsetX, offsetY, { snap: true, settle: true });
 
     // Check backdrop when stopping resize
     updateBackdropVisibility();
@@ -649,8 +1167,9 @@ function openModal(modal) {
     // This ensures the position is set before the opening animation starts
     // Restore for non-transient windows, or transient windows with dataset identifier
     if (isMoveable && window.isDesktop) {
+        const skipRestore = modal.dataset.windowPositionMode === 'cascade-parent';
         const isTransient = modal.classList.contains('transient');
-        if (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier))) {
+        if (!skipRestore && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
             restoreWindowPosition(modal);
         }
     }
@@ -699,6 +1218,8 @@ function openModal(modal) {
         addResizeHandles(modal);
     }
 
+    clearModalPixelAnchor(modal);
+
     // Add opening class to trigger animation
     modal.classList.add('opening');
     // Remove hidden class to show modal (if it exists, hidden-alt was already removed above)
@@ -735,12 +1256,21 @@ function openModal(modal) {
     // Remove opening class after animation completes
     const openingAnimationHandler = (e) => {
         // Only handle animations on this modal while it has the opening class
-        if (e.target === modal && e.animationName === 'modalSlideIn' && modal.classList.contains('opening')) {
+        if (e.target === modal && (e.animationName === 'modalSlideIn' || e.animationName === 'modalSlideInTopAnchor') && modal.classList.contains('opening')) {
             modal.removeEventListener('animationend', openingAnimationHandler);
             modal.classList.remove('opening');
+            if (isMoveable && !modal.classList.contains('hidden')) {
+                settleModalPixelAnchor(modal);
+            }
         }
     };
     modal.addEventListener('animationend', openingAnimationHandler);
+
+    if (modal.dataset.windowPositionMode === 'cascade-parent') {
+        requestAnimationFrame(() => requestAnimationFrame(() => cascadeModalFromParentIfConfigured(modal)));
+    } else if (isMoveable) {
+        ensureModalWithinViewport(modal);
+    }
 }
 
 async function closeModal(modal) {
@@ -820,6 +1350,15 @@ function closeMainModal(modal) {
         modal.removeAttribute('data-resize-start-left');
         modal.removeAttribute('data-resize-start-top');
         modal.removeAttribute('data-resize-direction');
+        modal.removeAttribute('data-dragging');
+        modal.removeAttribute('data-drag-start-x');
+        modal.removeAttribute('data-drag-start-y');
+        modal.removeAttribute('data-modal-start-offset-x');
+        modal.removeAttribute('data-modal-start-offset-y');
+        const dragTitleBar = modal.querySelector('.modal-window-title.dragging');
+        if (dragTitleBar) {
+            dragTitleBar.classList.remove('dragging');
+        }
 
         // Remove modal from stack and update z-indexes
         const modalIndex = modalStack.indexOf(modal);
@@ -926,7 +1465,7 @@ function closeMainModal(modal) {
         // Wait for animation to complete using animationend event
         const animationEndHandler = (e) => {
             // Only handle closing animations on this modal
-            if (e.target === modal && e.animationName === 'modalSlideOut' && modal.classList.contains('closing')) {
+            if (e.target === modal && (e.animationName === 'modalSlideOut' || e.animationName === 'modalSlideOutTopAnchor') && modal.classList.contains('closing')) {
                 modal.removeEventListener('animationend', animationEndHandler);
                 cleanup();
                 resolve();
@@ -1065,8 +1604,10 @@ function addResizeHandles(modal) {
     // Check if handles already exist
     if (modal.querySelector('.resize-handle')) return;
 
-    // Create resize handles
-    const handles = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
+    // Create resize handles (top-anchored windows omit north handles)
+    const handles = modal.dataset.windowResizeAnchor === 'top'
+        ? ['w', 'e', 'sw', 's', 'se']
+        : ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
     handles.forEach(direction => {
         const handle = document.createElement('div');
         handle.className = `resize-handle ${direction}`;
@@ -1933,7 +2474,7 @@ function updateTaskbarWindows() {
             } else {
                 // Create new group item
                 const { icon, imageIcon } = getModalIcons(modals[0]);
-                const typeName = groupType === 'imageViewer' ? 'Image Viewer' :
+                const typeName = groupType === 'imageViewer' ? 'Glancewell' :
                     groupType === 'notepad' ? 'Notepad' : groupType;
 
                 groupItem = document.createElement('div');
@@ -2431,7 +2972,7 @@ function isModalActiveForTaskbar(modal) {
 }
 
 function getNonRootTaskbarWindowEntries() {
-    const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'windowsUpdateModal']);
+    const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'windowsUpdateModal', 'connectionDialModal']);
     const openModals = Array.from(document.querySelectorAll('.modal:not(.hidden)'))
         .filter((modal) => !modal.classList.contains('closing') && !rootWindowIds.has(modal.id));
 
@@ -3073,15 +3614,15 @@ document.addEventListener('contextMenuAction', (e) => {
 
     switch (action) {
         case 'taskbar-window-maximize':
+            clearModalPixelAnchor(modal);
             modal.style.width = '90vw';
             modal.style.height = '90vh';
-            modal.style.setProperty('--modal-offset-x', '0px');
-            modal.style.setProperty('--modal-offset-y', '0px');
+            setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
             break;
 
         case 'taskbar-window-center':
-            modal.style.setProperty('--modal-offset-x', '0px');
-            modal.style.setProperty('--modal-offset-y', '0px');
+            clearModalPixelAnchor(modal);
+            setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
             modal.removeAttribute('data-modal-moved');
             break;
 
@@ -3160,10 +3701,12 @@ const startMenuConfig = [
     { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
     {
-        launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notebook', action: () => { window.notepadManager.openNotebook(); },
+        launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', action: () => { window.notepadManager.openNotebook(); },
         rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } }
     },
-    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Encyclopedia', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
+    { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
+    { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
+    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'studio.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
     { separator: true },
     {
@@ -3199,9 +3742,11 @@ const startMenuSubmenus = {
         { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', action: () => { showWorkspaceManagementModal(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'stencil.png', text: 'Spellbook', action: () => { showPresetManager(); } },
+        { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', action: () => { showTextReplacementManager(); } },
         { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', action: () => { showFavoritesManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', action: () => { openKnowledgeMemoriesModal(); } },
+        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
         { launchId: 'rules', icon: 'fas fa-book-law', imageIcon: 'rules.png', text: 'Rules', action: () => { showDirectorRulesManager(); } },
         { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', action: () => { window.chatSystem.openPersonaSettingsModal() } },
         { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
@@ -3246,6 +3791,48 @@ function getFilteredStartMenuConfig(options) {
     }
     while (out.length && out[0].separator) out.shift();
     while (out.length && out[out.length - 1].separator) out.pop();
+    return out;
+}
+
+/**
+ * Flat list of start-menu launchables for Run applet search.
+ * collectStartMenuLaunchables: public/scripts/comp/modalUtils.js
+ */
+function collectStartMenuLaunchables() {
+    const out = [];
+    const items = getFilteredStartMenuConfig({ excludeAppRootOnly: false });
+    items.forEach((item) => {
+        if (!item || item.separator) return;
+        if (item.hasSubmenu && item.submenu && startMenuSubmenus[item.submenu]) {
+            if (item.submenu === 'planets') return;
+            const submenuSource = startMenuSubmenus[item.submenu];
+            const submenuItems = typeof submenuSource === 'function' ? submenuSource() : submenuSource;
+            if (!Array.isArray(submenuItems)) return;
+            submenuItems.forEach((subItem) => {
+                if (!subItem || typeof subItem.action !== 'function') return;
+                const label = subItem.text || 'Item';
+                out.push({
+                    launchId: subItem.launchId || `${item.submenu}-${label}`,
+                    label,
+                    subtitle: item.text || 'Application',
+                    icon: subItem.icon || item.icon,
+                    keywords: [label, item.text, subItem.launchId].filter(Boolean),
+                    execute: () => subItem.action()
+                });
+            });
+            return;
+        }
+        if (typeof item.action === 'function') {
+            out.push({
+                launchId: item.launchId,
+                label: item.fullName || item.text || 'Application',
+                subtitle: 'Application',
+                icon: item.icon,
+                keywords: [item.text, item.fullName, item.launchId].filter(Boolean),
+                execute: () => item.action()
+            });
+        }
+    });
     return out;
 }
 
@@ -4718,198 +5305,34 @@ function restoreWindowPosition(modal) {
         // Convert top-left quadrant position to pixel position
         const topLeftPixel = quadrantToPixelPosition(savedPosition.topLeft, containerWidth, containerHeight);
 
-        // Get modal dimensions for centering calculation
-        // If modal is hidden, getBoundingClientRect() may return incorrect dimensions
-        // So we'll calculate from saved size if available, or use computed/default dimensions
-        const modalRect = modal.getBoundingClientRect();
-        const currentWidth = modalRect.width;
-        const currentHeight = modalRect.height;
+        const measureState = beginModalLayoutMeasure(modal);
 
-        // Calculate size from bottom-right corner if available
-        let targetWidth = currentWidth;
-        let targetHeight = currentHeight;
+        try {
+            if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
+                const bottomRightPixel = quadrantToPixelPosition(savedPosition.bottomRight, containerWidth, containerHeight);
+                const { minWidth, minHeight } = getModalMinDimensions(modal);
+                let targetWidth = Math.max(minWidth, bottomRightPixel.x - topLeftPixel.x);
+                let targetHeight = Math.max(minHeight, bottomRightPixel.y - topLeftPixel.y);
 
-        if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
-            const bottomRightPixel = quadrantToPixelPosition(savedPosition.bottomRight, containerWidth, containerHeight);
-            targetWidth = Math.max(200, bottomRightPixel.x - topLeftPixel.x);
-            targetHeight = Math.max(150, bottomRightPixel.y - topLeftPixel.y);
+                const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth, 10) : Infinity;
+                const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight, 10) : Infinity;
 
-            // Apply constraints
-            const maxWidth = modal.dataset.windowMaxWidth ? parseInt(modal.dataset.windowMaxWidth) : Infinity;
-            const maxHeight = modal.dataset.windowMaxHeight ? parseInt(modal.dataset.windowMaxHeight) : Infinity;
-            const minWidth = modal.dataset.windowMinWidth ? parseInt(modal.dataset.windowMinWidth) : 200;
-            const minHeight = modal.dataset.windowMinHeight ? parseInt(modal.dataset.windowMinHeight) : 150;
+                targetWidth = Math.min(targetWidth, maxWidth);
+                targetHeight = Math.min(targetHeight, maxHeight);
 
-            targetWidth = Math.max(minWidth, Math.min(targetWidth, maxWidth));
-            targetHeight = Math.max(minHeight, Math.min(targetHeight, maxHeight));
-        }
-
-        // We have the saved topLeft pixel position from quadrant system (index, x%, y%)
-        // The modal CSS positions the center, then transform: translate(-50%, -50%) moves it
-        // So we need to calculate what center position would put the topLeft at the saved position
-
-        // Calculate where the center needs to be for topLeft to be at saved position
-        const requiredCenterX = topLeftPixel.x + targetWidth / 2;
-        const requiredCenterY = topLeftPixel.y + targetHeight / 2;
-
-        // Get CSS variables that affect positioning
-        // --true-inset-top is a calc() expression, so we need to get the computed pixel value
-        const tempEl = document.createElement('div');
-        tempEl.style.position = 'absolute';
-        tempEl.style.top = 'var(--true-inset-top, 0px)';
-        tempEl.style.visibility = 'hidden';
-        tempEl.style.pointerEvents = 'none';
-        document.body.appendChild(tempEl);
-        const trueInsetTop = tempEl.offsetTop || 0;
-        document.body.removeChild(tempEl);
-
-        // CSS formula for modal positioning:
-        // left: calc(50% + var(--modal-offset-x))
-        // Normal top: calc(50% + calc(0.5 * var(--true-inset-top)) + var(--modal-offset-y))
-        // Desktop top: calc(calc(50% + calc(0.5 * var(--true-inset-top)) + var(--modal-offset-y)) - calc(0.5 * 35px))
-        // With transform: translate(-50%, -50%), the center is at that calculated position
-        // 
-        // So the center is at:
-        // centerX = window.innerWidth/2 + offsetX
-        // centerY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
-        //
-        // We want: requiredCenterY = centerY
-        // So: requiredCenterY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
-        // Therefore: offsetY = requiredCenterY - window.innerHeight/2 - 0.5*trueInsetTop + (desktopMode ? 17.5 : 0)
-
-        let offsetX = requiredCenterX - containerWidth / 2;
-        let offsetY = requiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
-
-        // Bounds checking: ensure window stays on screen (at least 85px visible)
-        // Use the same formula as CSS to calculate actual rendered position
-        const minVisible = 85;
-
-        // Calculate actual center position (same as CSS formula)
-        const actualCenterX = containerWidth / 2 + offsetX;
-        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - (window.isDesktop ? 17.5 : 0);
-
-        // Calculate window edges from center
-        const leftEdge = actualCenterX - targetWidth / 2;
-        const rightEdge = actualCenterX + targetWidth / 2;
-        const topEdge = actualCenterY - targetHeight / 2;
-        const bottomEdge = actualCenterY + targetHeight / 2;
-
-        // Debug bounds checking
-        console.log(`[RESTORE-BOUNDS-CHECK] ${windowKey}:`, {
-            actualCenter: { x: actualCenterX, y: actualCenterY },
-            edges: { left: leftEdge, right: rightEdge, top: topEdge, bottom: bottomEdge },
-            containerSize: { width: containerWidth, height: containerHeight },
-            targetSize: { width: targetWidth, height: targetHeight },
-            thresholds: {
-                leftThreshold: -targetWidth + minVisible,
-                rightThreshold: containerWidth - minVisible,
-                topThreshold: 0,
-                bottomThreshold: containerHeight - minVisible
+                modal.style.width = `${roundCssPixel(targetWidth)}px`;
+                modal.style.height = `${roundCssPixel(targetHeight)}px`;
+                void modal.offsetHeight;
             }
-        });
 
-        // Only constrain if window is actually off-screen (with tolerance for minVisible)
-        let constrainedX = offsetX;
-        let constrainedY = offsetY;
-
-        if (leftEdge < -targetWidth + minVisible) {
-            // Window too far left - adjust so left edge is at -targetWidth + minVisible
-            const desiredLeftEdge = -targetWidth + minVisible;
-            const desiredCenterX = desiredLeftEdge + targetWidth / 2;
-            constrainedX = desiredCenterX - containerWidth / 2;
-        } else if (rightEdge > containerWidth - minVisible) {
-            // Window too far right - adjust so right edge is at containerWidth - minVisible
-            const desiredRightEdge = containerWidth - minVisible;
-            const desiredCenterX = desiredRightEdge - targetWidth / 2;
-            constrainedX = desiredCenterX - containerWidth / 2;
+            setModalOffsetsFromViewportTopLeft(modal, topLeftPixel.x, topLeftPixel.y);
+            modal.setAttribute('data-modal-moved', 'true');
+        } finally {
+            endModalLayoutMeasure(modal, measureState);
         }
 
-        // Recalculate centerY with potentially constrained offsetX
-        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - (window.isDesktop ? 17.5 : 0);
-        const recalculatedTopEdge = recalculatedCenterY - targetHeight / 2;
-        const recalculatedBottomEdge = recalculatedCenterY + targetHeight / 2;
-
-        if (recalculatedTopEdge < 0) {
-            // Window too far up - adjust so top edge is at 0
-            const desiredTopEdge = 0;
-            const desiredCenterY = desiredTopEdge + targetHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
-        } else if (recalculatedBottomEdge > containerHeight - minVisible) {
-            // Window too far down - adjust so bottom edge is at containerHeight - minVisible
-            const desiredBottomEdge = containerHeight - minVisible;
-            const desiredCenterY = desiredBottomEdge - targetHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
-        }
-
-        // Only apply constraints if they actually changed the offsets
-        if (constrainedX !== offsetX || constrainedY !== offsetY) {
-            console.log(`[RESTORE-BOUNDS] ${windowKey}:`, {
-                originalOffsets: { x: offsetX, y: offsetY },
-                constrainedOffsets: { x: constrainedX, y: constrainedY },
-                edges: { left: leftEdge, right: rightEdge, top: topEdge, bottom: bottomEdge }
-            });
-            offsetX = constrainedX;
-            offsetY = constrainedY;
-        }
-
-        // Apply position while modal is still hidden
-        // Use visibility: hidden to keep it in layout but invisible, so position can be calculated and applied
-        const wasHidden = modal.classList.contains('hidden');
-        const wasHiddenAlt = modal.classList.contains('hidden-alt');
-
-        // If modal is hidden, temporarily use visibility: hidden instead of display: none
-        // This keeps it in the layout so position calculations work correctly
-        if (wasHidden || wasHiddenAlt) {
-            modal.style.visibility = 'hidden';
-            if (wasHidden) {
-                modal.classList.remove('hidden'); // Remove hidden class temporarily to allow layout
-            }
-            if (wasHiddenAlt) {
-                modal.classList.remove('hidden-alt'); // Remove hidden-alt class temporarily
-            }
-        }
-
-        // Apply position (rounded to whole numbers)
-        modal.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
-        modal.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
-
-        // Apply size if window is resizable and we have a saved size (rounded to whole numbers)
-        if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
-            modal.style.width = `${Math.round(targetWidth)}px`;
-            modal.style.height = `${Math.round(targetHeight)}px`;
-        }
-
-        // Mark as moved so backdrop behavior is correct
-        modal.setAttribute('data-modal-moved', 'true');
-
-        // Force a layout recalculation to ensure position is applied before showing
-        // Access offsetHeight to trigger reflow - this ensures CSS is calculated
-        void modal.offsetHeight;
-
-        // Restore visibility state - openModal will handle showing it properly with animation
-        if (wasHidden || wasHiddenAlt) {
-            modal.style.visibility = '';
-            if (wasHidden) {
-                modal.classList.add('hidden'); // Re-add hidden class - openModal will remove it
-            }
-            if (wasHiddenAlt) {
-                modal.classList.add('hidden-alt'); // Re-add hidden-alt class - openModal will handle it
-            }
-        }
-
-        // After applying, check actual rendered position (wait for next frame)
         requestAnimationFrame(() => {
-            const actualRect = modal.getBoundingClientRect();
-            console.log(`[RESTORE-AFTER] ${windowKey}:`, {
-                actualTopLeft: { x: actualRect.left, y: actualRect.top },
-                savedTopLeft: topLeftPixel,
-                difference: {
-                    x: actualRect.left - topLeftPixel.x,
-                    y: actualRect.top - topLeftPixel.y
-                },
-                appliedOffsets: { x: offsetX, y: offsetY },
-                appliedSize: { width: targetWidth, height: targetHeight }
-            });
+            settleModalPixelAnchor(modal);
         });
     }
 }

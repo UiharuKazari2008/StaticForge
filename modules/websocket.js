@@ -11,8 +11,6 @@ class WebSocketServer {
         
         this.wss = new WebSocket.Server({ server });
         this.clients = new Map(); // Map to store client connections with user info
-        /** @type {Map<string, Set<import('ws')>>} */
-        this.sessionLinkGroups = new Map(); // sessionLinkId -> WebSocket peers (same browser workflow)
         this.pingInterval = null;
         this.queueStatusInterval = null;
         this.indexingSyncInterval = null;
@@ -98,26 +96,16 @@ class WebSocketServer {
 
             // Allow connection even without authentication for critical messages
             // Store client information (may be unauthenticated initially)
-            const sessionLinkId = this.parseSessionLinkId(req);
-
             let clientInfo = {
                 sessionId: sessionResult?.sessionId || null,
                 authenticated: !!(sessionResult && sessionResult.session),
                 userType: sessionResult?.userType || null,
                 clientIP: clientIP,
                 connectedAt: new Date(),
-                lastActivity: new Date(),
-                sessionLinkId: sessionLinkId || null
+                lastActivity: new Date()
             };
 
             this.clients.set(ws, clientInfo);
-
-            if (sessionLinkId) {
-                if (!this.sessionLinkGroups.has(sessionLinkId)) {
-                    this.sessionLinkGroups.set(sessionLinkId, new Set());
-                }
-                this.sessionLinkGroups.get(sessionLinkId).add(ws);
-            }
 
             if (clientInfo.authenticated) {
                 console.log(`✅ WebSocket connected (authenticated): Session ${clientInfo.sessionId}`);
@@ -141,16 +129,11 @@ class WebSocketServer {
             });
 
             // Send welcome message
-            const linkPeerCount = sessionLinkId
-                ? (this.sessionLinkGroups.get(sessionLinkId)?.size || 0)
-                : 0;
             this.sendToClient(ws, {
                 type: 'connection',
                 status: 'connected',
                 message: 'WebSocket connection established',
                 authenticated: clientInfo.authenticated,
-                sessionLinkId: sessionLinkId || undefined,
-                sessionLinkPeerCount: linkPeerCount,
                 timestamp: new Date().toISOString()
             });
 
@@ -180,8 +163,6 @@ class WebSocketServer {
                 if (clientInfo) {
                     console.log(`🔌 WebSocket disconnected: Session ${clientInfo.sessionId} - Code: ${code}, Reason: ${reason}`);
 
-                    this.removeSessionLinkPeer(ws, clientInfo);
-                    
                     // Clean up session workspace
                     this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
                     
@@ -200,10 +181,6 @@ class WebSocketServer {
                 const clientInfo = this.clients.get(ws);
                 console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
 
-                if (clientInfo) {
-                    this.removeSessionLinkPeer(ws, clientInfo);
-                }
-                
                 // Clean up metadata cache for this client if we have session info
                 if (clientInfo && clientInfo.sessionId) {
                     const handlers = this.globalResources.getWebSocketMessageHandlers();
@@ -329,55 +306,6 @@ class WebSocketServer {
         } catch (error) {
             console.error('❌ WebSocket session extraction error:', error);
             return null;
-        }
-    }
-
-    /**
-     * Optional query on WebSocket URL: ?sessionLinkId=<uuid> links multiple tabs for the same workflow.
-     */
-    parseSessionLinkId(req) {
-        try {
-            const u = new URL(req.url, 'http://localhost');
-            const id = u.searchParams.get('sessionLinkId');
-            return id && id.length > 0 ? id : null;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    removeSessionLinkPeer(ws, clientInfo) {
-        const linkId = clientInfo && clientInfo.sessionLinkId;
-        if (!linkId) {
-            return;
-        }
-        const set = this.sessionLinkGroups.get(linkId);
-        if (!set) {
-            return;
-        }
-        set.delete(ws);
-        if (set.size === 0) {
-            this.sessionLinkGroups.delete(linkId);
-        }
-    }
-
-    /**
-     * Send a JSON message to every WebSocket in the same session link group (optional exclude).
-     */
-    broadcastToSessionLink(sessionLinkId, message, excludeWs = null) {
-        if (!sessionLinkId) {
-            return;
-        }
-        const set = this.sessionLinkGroups.get(sessionLinkId);
-        if (!set) {
-            return;
-        }
-        for (const client of set) {
-            if (client === excludeWs) {
-                continue;
-            }
-            if (client.readyState === WebSocket.OPEN) {
-                this.sendToClient(client, message);
-            }
         }
     }
 

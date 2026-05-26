@@ -5,6 +5,12 @@
             "driver": "SQLite",
             "database": "${workspaceFolder:staticforge}/.cache/tag_wiki.db",
             "name": "Tag Wiki"
+        },
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:staticforge}/.cache/nax_tags.db",
+            "name": "NAX Tags"
         }
     ],
     "sqltools.useNodeRuntime": true,

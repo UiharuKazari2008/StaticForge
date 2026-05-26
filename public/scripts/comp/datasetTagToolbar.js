@@ -878,23 +878,33 @@ function insertTagDirect(target, tagName) {
     // Determine prefix - add comma if there's content before cursor
     let prefix = '';
     if (textBefore.trim().length > 0) {
-        // Add comma if the text before doesn't end with a comma or space
-        if (!textBefore.trim().endsWith(',')) {
-            prefix = ', ';
-        } else if (textBefore.endsWith(',') && !textBefore.endsWith(', ')) {
-            prefix = ' ';
+        // autocompleteUtils.js
+        const atEmphasisStart = typeof isAtStartOfEmphasisGroup === 'function'
+            && isAtStartOfEmphasisGroup(currentValue, cursorPosition);
+        if (!atEmphasisStart) {
+            // Add comma if the text before doesn't end with a comma or space
+            if (!textBefore.trim().endsWith(',')) {
+                prefix = ', ';
+            } else if (textBefore.endsWith(',') && !textBefore.endsWith(', ')) {
+                prefix = ' ';
+            }
         }
     }
 
     // Determine suffix - add comma for safety if there's content after
     let suffix = '';
     if (textAfter.trim().length > 0) {
-        suffix = ', ';
+        const beforeClosingEmphasis = typeof isAtEndOfEmphasisGroupBefore === 'function'
+            && isAtEndOfEmphasisGroupBefore(currentValue, cursorPosition);
+        if (!beforeClosingEmphasis) {
+            suffix = ', ';
+        }
     }
     
     // Build new value
     const newValue = textBefore + prefix + tagName + suffix + textAfter;
-    target.value = newValue;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newValue);
 
     // Position cursor after the inserted tag and suffix
     const newCursorPosition = cursorPosition + prefix.length + tagName.length + suffix.length;
@@ -916,85 +926,6 @@ function insertTagDirect(target, tagName) {
     if (typeof updateEmphasisHighlighting === 'function') {
         updateEmphasisHighlighting(target);
     }
-}
-
-// Helper functions for comma placement (copied from autocompleteUtils.js)
-function shouldAddCommaBefore(text, cursorPosition) {
-    const textBeforeCursor = text.substring(0, cursorPosition);
-    const trimmed = textBeforeCursor.trim();
-    
-    // Don't add comma if:
-    // 1. We're at the start of text
-    if (trimmed === '') return false;
-    
-    // 2. We're at the start of an emphasis group (right after opening ::)
-    if (isAtStartOfEmphasisGroup(text, cursorPosition)) return false;
-    
-    // 3. We're at the end of a line with : or |
-    if (trimmed.endsWith(':') && !trimmed.endsWith('::')) return false;
-    if (trimmed.endsWith('|')) return false;
-    
-    // Add comma in all other cases (including inside emphasis groups and at the end of emphasis groups)
-    return true;
-}
-
-function shouldAddCommaAfter(text, cursorPosition) {
-    const textAfterCursor = text.substring(cursorPosition);
-    const trimmed = textAfterCursor.trim();
-    
-    // Don't add comma if:
-    // 1. We're at the end of text
-    if (trimmed === '') return false;
-    
-    // 2. We're at the end of an emphasis group (right before closing ::)
-    if (isAtEndOfEmphasisGroupBefore(text, cursorPosition)) {
-        return false;
-    }
-    
-    // Add comma in all other cases (including inside emphasis groups)
-    return true;
-}
-
-function isAtStartOfEmphasisGroup(text, cursorPosition) {
-    const textBeforeCursor = text.substring(0, cursorPosition);
-    const trimmed = textBeforeCursor.trim();
-    
-    // Look for the pattern: weight:: at the end of text before cursor
-    const emphasisStartPattern = /(-?\d+\.?\d*)::$/;
-    const result = emphasisStartPattern.test(trimmed);
-    
-    // If the pattern doesn't match at the end, check if we're right after a weight:: pattern
-    if (!result) {
-        // Look for the last occurrence of weight:: in the text before cursor
-        const lastWeightPattern = trimmed.match(/(-?\d+\.?\d*)::/g);
-        if (lastWeightPattern) {
-            const lastMatch = lastWeightPattern[lastWeightPattern.length - 1];
-            const lastMatchIndex = trimmed.lastIndexOf(lastMatch);
-            
-            // Check if the cursor is right after this weight:: pattern
-            if (lastMatchIndex + lastMatch.length === trimmed.length) {
-                return true;
-    } else {
-                // Check if we're inside an emphasis group and at the start of its content
-                const textAfterWeight = trimmed.substring(lastMatchIndex + lastMatch.length);
-                
-                // If the text after the weight:: is just whitespace or very short, 
-                // we might be at the start of the emphasis group content
-                if (textAfterWeight.trim().length <= 10) { // Allow for some short content
-                    return true;
-                }
-            }
-        }
-    }
-    
-    return result;
-}
-
-function isAtEndOfEmphasisGroupBefore(text, cursorPosition) {
-    const textAfterCursor = text.substring(cursorPosition);
-    
-    // Look for the pattern: :: right after cursor
-    return textAfterCursor.trim().startsWith('::');
 }
 
 // Auto-navigate to the tag before cursor if it exists on the server

@@ -4,7 +4,10 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 const { z } = require('zod');
-const globalResources = require('./globalResources');
+
+function directorDb(globalResources) {
+    return globalResources.getDirectorDatabase();
+}
 
 /**
  * Normalizes legacy period keys to new period key names
@@ -55,22 +58,6 @@ function getCurrentPeriodKey() {
     // Late night/early morning before dawn
     return 'midnight';
 }
-
-const {
-    createDirectorSession,
-    getDirectorSession,
-    getAllDirectorSessions,
-    updateDirectorSession,
-    deleteDirectorSession,
-    addDirectorMessage,
-    getDirectorMessages,
-    getDirectorMessageCount,
-    getLastDirectorMessage,
-    getLastDirectorMessageId,
-    getDirectorDatabaseStats,
-    extractAssistantData,
-    deleteDirectorMessagesFrom
-} = require('./directorDatabase');
 
 // Director structured output schema using Zod (xAI recommended)
 const DirectorResponseSchema = z.object({
@@ -827,7 +814,7 @@ function generateDirectorSystemMessage(presetConfig = null, model = null, enable
     }];
 }
 
-async function compileDirectorPrompts(inputPrompt) {
+async function compileDirectorPrompts(globalResources, inputPrompt) {
     // Get periodKey from dynamic generation context if available, otherwise current time
     let periodKey = inputPrompt?.context?.time?.periodKey || getCurrentPeriodKey();
     // Normalize legacy period keys
@@ -836,8 +823,9 @@ async function compileDirectorPrompts(inputPrompt) {
     }
 
     // Apply text replacements to base prompts
-    const processedPromptResult = globalResources.textReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
-    const processedNegativePromptResult = globalResources.textReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
+    const textReplacements = globalResources.getTextReplacements();
+    const processedPromptResult = textReplacements.applyTextReplacements(inputPrompt.base_input, null, inputPrompt.model, periodKey);
+    const processedNegativePromptResult = textReplacements.applyTextReplacements(inputPrompt.base_uc, null, inputPrompt.model, periodKey);
     let processedPrompt = processedPromptResult.text || '';
     let processedNegativePrompt = processedNegativePromptResult.text || '';
 
@@ -846,8 +834,8 @@ async function compileDirectorPrompts(inputPrompt) {
     if (processedCharacterPrompts && Array.isArray(processedCharacterPrompts)) {
         processedCharacterPrompts = processedCharacterPrompts.map(char => {
             // Apply text replacements to character prompt and UC
-            const processedCharPromptResult = globalResources.textReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
-            const processedCharUCResult = globalResources.textReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
+            const processedCharPromptResult = textReplacements.applyTextReplacements(char.input, null, inputPrompt.model, periodKey);
+            const processedCharUCResult = textReplacements.applyTextReplacements(char.uc, null, inputPrompt.model, periodKey);
 
             return {
                 ...char,
@@ -868,7 +856,7 @@ async function compileDirectorPrompts(inputPrompt) {
 
 async function handleDirectorGetSessions(handler, ws, message, clientInfo, wsServer) {
     try {
-        const sessions = await getAllDirectorSessions();
+        const sessions = await directorDb(handler.globalResources).getAllDirectorSessions();
         
         handler.sendToClient(ws, {
             type: 'director_get_sessions_response',
@@ -886,6 +874,7 @@ async function handleDirectorGetSessions(handler, ws, message, clientInfo, wsSer
 }
 
 async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const {
             name, 
@@ -962,13 +951,13 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         if (sessionMode === 'analyse' && selectedImageData) {
             try {
                 // Create sessions images directory if it doesn't exist
-                const sessionsImagesDir = path.join(globalResources.getPath("cache"), 'sessions', 'images');
+                const sessionsImagesDir = path.join(handler.globalResources.getPath("cache"), 'sessions', 'images');
                 if (!fs.existsSync(sessionsImagesDir)) {
                     fs.mkdirSync(sessionsImagesDir, { recursive: true });
                 }
 
                 // Create preview directory if it doesn't exist
-                const previewDir = path.join(globalResources.getPath("cache"), 'preview');
+                const previewDir = path.join(handler.globalResources.getPath("cache"), 'preview');
                 if (!fs.existsSync(previewDir)) {
                     fs.mkdirSync(previewDir, { recursive: true });
                 }
@@ -1026,7 +1015,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
             characterReference: characterReference || null
         };
         
-        const sessionId = await createDirectorSession(sessionData);
+        const sessionId = await db.createDirectorSession(sessionData);
         
         if (!sessionId) {
             handler.sendError(ws, 'Failed to create session', 'CREATE_FAILED', message.requestId);
@@ -1043,13 +1032,13 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
                 let imagePath;
                 if (imageType === 'cache') {
                     // For cache images, look in upload cache directory
-                    imagePath = path.join(globalResources.getPath("uploadCache"), parsedFilename);
+                    imagePath = path.join(handler.globalResources.getPath("uploadCache"), parsedFilename);
                 } else if (imageType === 'sessions') {
                     // For session images, look in sessions/images directory
-                    imagePath = path.join(globalResources.getPath("cache"), 'sessions', 'images', parsedFilename);
+                    imagePath = path.join(handler.globalResources.getPath("cache"), 'sessions', 'images', parsedFilename);
                 } else {
                     // For generated images, look in images directory
-                    imagePath = path.join(globalResources.getPath("images"), parsedFilename);
+                    imagePath = path.join(handler.globalResources.getPath("images"), parsedFilename);
                 }
             
                 if (fs.existsSync(imagePath)) {
@@ -1159,7 +1148,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         }
 
         // Get the session to determine the mode
-        const session = await getDirectorSession(sessionId);
+        const session = await db.getDirectorSession(sessionId);
         const isEfficiencyMode = session?.session_mode === 'efficiency';
         const isCreateMode = session?.session_mode === 'create';
         const userIntent = session?.user_intent || '';
@@ -1278,7 +1267,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
         }
         
         const initialMessageText = isCreateMode ? 'Create creative prompt from text input' : 'Analyze this image';
-        await addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', initialMessageText);
+        await db.addDirectorMessage(sessionId, 'user', initialUserContent, null, 'initial', initialMessageText);
         
         // Send session creation response first
         handler.sendToClient(ws, {
@@ -1310,10 +1299,11 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
 }
 
 async function processInitialDirectorRequest(handler, sessionId, ws, inputPromptForAI, highReason, dryrun = false) {
+    const db = directorDb(handler.globalResources);
     try {
         console.log('🔄 Processing initial Director AI request for session:', sessionId);
         // Get session data to access user intent
-        const session = await getDirectorSession(sessionId);
+        const session = await db.getDirectorSession(sessionId);
         if (!session) {
             throw new Error('Session not found');
         }
@@ -1333,13 +1323,13 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
         
         // Store the assistant response
         const assistantContent = aiResponse.content || aiResponse.message || 'No content';
-        const assistantMessageId = await addDirectorMessage(sessionId, 'assistant', [{
+        const assistantMessageId = await db.addDirectorMessage(sessionId, 'assistant', [{
             type: "text",
             text: assistantContent
         }]);
         
         // Process response for client using the same extraction logic
-        const extractionResult = extractAssistantData(assistantContent);
+        const extractionResult = db.extractAssistantData(assistantContent);
         let clientResponse;
         if (extractionResult.type === 'structured') {
             clientResponse = extractionResult.data;
@@ -1348,7 +1338,7 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
             if (clientResponse.SuggestedName && clientResponse.SuggestedName.trim()) {
                 const suggestedName = clientResponse.SuggestedName.trim();
                 console.log(`📝 Updating session name to: ${suggestedName}`);
-                await updateDirectorSession(sessionId, { name: suggestedName });
+                await db.updateDirectorSession(sessionId, { name: suggestedName });
             }
         } else {
             // Error case - return error structure
@@ -1408,6 +1398,7 @@ async function processInitialDirectorRequest(handler, sessionId, ws, inputPrompt
 }
 
 async function handleDirectorGetSession(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const { sessionId } = message;
         
@@ -1416,7 +1407,7 @@ async function handleDirectorGetSession(handler, ws, message, clientInfo, wsServ
             return;
         }
         
-        const session = await getDirectorSession(sessionId);
+        const session = await db.getDirectorSession(sessionId);
         
         if (!session) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -1439,6 +1430,7 @@ async function handleDirectorGetSession(handler, ws, message, clientInfo, wsServ
 }
 
 async function handleDirectorDeleteSession(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const { sessionId } = message;
         
@@ -1447,7 +1439,7 @@ async function handleDirectorDeleteSession(handler, ws, message, clientInfo, wsS
             return;
         }
         
-        const success = await deleteDirectorSession(sessionId);
+        const success = await db.deleteDirectorSession(sessionId);
         
         if (!success) {
             handler.sendError(ws, 'Failed to delete session', 'DELETE_FAILED', message.requestId);
@@ -1469,6 +1461,7 @@ async function handleDirectorDeleteSession(handler, ws, message, clientInfo, wsS
 }
 
 async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const { 
             sessionId, 
@@ -1490,15 +1483,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         }
         
         // Get session
-        const session = await getDirectorSession(sessionId);
+        const session = await db.getDirectorSession(sessionId);
         if (!session) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
             return;
         }
         
         // Get the last message ID for conversation continuity
-        const lastMessageId = await getLastDirectorMessageId(sessionId);
-        const userMessageId = await addDirectorMessage(sessionId, 'user', [{
+        const lastMessageId = await db.getLastDirectorMessageId(sessionId);
+        const userMessageId = await db.addDirectorMessage(sessionId, 'user', [{
             type: "text",
             text: content
         }], lastMessageId, messageType, content);
@@ -1529,13 +1522,13 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             
             // Store the assistant response
             const assistantContent = aiResponse.content || aiResponse.message || 'No content';
-            assistantMessageId = addDirectorMessage(sessionId, 'assistant', [{
+            assistantMessageId = await db.addDirectorMessage(sessionId, 'assistant', [{
                 type: "text",
                 text: assistantContent
             }], userMessageId);
             
             // Process response for client using the same extraction logic as database
-            const extractionResult = extractAssistantData(assistantContent);
+            const extractionResult = db.extractAssistantData(assistantContent);
             if (extractionResult.type === 'structured') {
                 clientResponse = extractionResult.data;
             } else {
@@ -1577,6 +1570,8 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
 }
 
 async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
+    const gr = handler.globalResources;
+    const db = directorDb(gr);
     try {
         // Extract options with defaults
         const {
@@ -1596,7 +1591,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
         let compiledInputPrompt = inputPrompt;
         if (inputPrompt && typeof inputPrompt === 'object' && inputPrompt.base_input !== undefined) {
             try {
-                compiledInputPrompt = await compileDirectorPrompts(inputPrompt);
+                compiledInputPrompt = await compileDirectorPrompts(handler.globalResources, inputPrompt);
                 console.log('🎨 Director prompts compiled for AI context', compiledInputPrompt);
             } catch (error) {
                 console.warn('⚠️ Failed to compile director prompts, using raw prompts:', error.message);
@@ -1605,16 +1600,16 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
         }
         
         // Get session
-        const session = await getDirectorSession(sessionId);
+        const session = await db.getDirectorSession(sessionId);
         if (!session) {
             throw new Error('Session not found');
         }
         
         // Load current prompt config for dynamic preset content
-        const currentPromptConfig = globalResources.getPromptConfig();
+        const currentPromptConfig = gr.getPromptConfig();
         
         // Get conversation history in OpenAI format
-        const dbMessages = await getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
+        const dbMessages = await db.getDirectorMessages(sessionId, 50, 0, false, false); // Exclude system messages from database, exclude extra fields
 
         // Ensure all message content is properly stringified
         const sanitizedMessages = dbMessages.map(msg => ({
@@ -1849,7 +1844,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             
                             switch (imageType) {
                                 case 'file':
-                                    const filePath = path.join(globalResources.getPath("images"), imageIdentifier);
+                                    const filePath = path.join(handler.globalResources.getPath("images"), imageIdentifier);
                                     if (fs.existsSync(filePath)) {
                                         baseImageBuffer = fs.readFileSync(filePath);
                                     } else {
@@ -1857,7 +1852,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                     }
                                     break;
                                 case 'cache':
-                                    const cachedImagePath = path.join(globalResources.getPath("uploadCache"), imageIdentifier);
+                                    const cachedImagePath = path.join(handler.globalResources.getPath("uploadCache"), imageIdentifier);
                                     if (fs.existsSync(cachedImagePath)) {
                                         baseImageBuffer = fs.readFileSync(cachedImagePath);
                                     } else {
@@ -1881,7 +1876,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             // Apply bias if provided (from bias_settings)
                             if (baseImageData.bias_settings) {
                                 // For bias processing, use original dimensions first
-                                const session = await getDirectorSession(sessionId);
+                                const session = await db.getDirectorSession(sessionId);
                                 const baseDims = session?.maxResolution ? 
                                     { width: 1024, height: 1024 } : 
                                     { width: 512, height: 512 };
@@ -1975,7 +1970,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                 // Process vibe transfers if provided (efficiency only)
                 if (vibeTransfers && Array.isArray(vibeTransfers) && vibeTransfers.length > 0) {
                     try {
-                        const refDb = globalResources.getReferenceMetadataDatabase();
+                        const refDb = handler.globalResources.getReferenceMetadataDatabase();
                         
                         for (let i = 0; i < vibeTransfers.length; i++) {
                             const vibeTransfer = vibeTransfers[i];
@@ -1990,7 +1985,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                                     vibeImageBuffer = Buffer.from(vibeData.imageSource, 'base64');
                                 } else if (vibeData.type === 'cache' && vibeData.imageSource) {
                                     // Image is stored in cache directory with hash as filename
-                                    const cacheImagePath = path.join(globalResources.getPath("uploadCache"), vibeData.imageSource);
+                                    const cacheImagePath = path.join(handler.globalResources.getPath("uploadCache"), vibeData.imageSource);
                                     if (fs.existsSync(cacheImagePath)) {
                                         vibeImageBuffer = fs.readFileSync(cacheImagePath);
                                     } else {
@@ -2051,7 +2046,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
 
                     switch (charaRefData.type) {
                         case 'cache':
-                            charaImagePath = path.join(globalResources.getPath("uploadCache"), charaRefData.id);
+                            charaImagePath = path.join(handler.globalResources.getPath("uploadCache"), charaRefData.id);
                             if (fs.existsSync(charaImagePath)) {
                                 charaImageBuffer = fs.readFileSync(charaImagePath);
                             } else {
@@ -2059,7 +2054,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                             }
                             break;
                         case 'file':
-                            charaImagePath = path.join(globalResources.getPath("images"), charaRefData.filename || charaRefData.id);
+                            charaImagePath = path.join(handler.globalResources.getPath("images"), charaRefData.filename || charaRefData.id);
                             if (fs.existsSync(charaImagePath)) {
                                 charaImageBuffer = fs.readFileSync(charaImagePath);
                             } else {
@@ -2069,14 +2064,14 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                         case 'vibe':
                             // For vibe type, load from database
                             try {
-                                const refDb = globalResources.getReferenceMetadataDatabase();
+                                const refDb = handler.globalResources.getReferenceMetadataDatabase();
                                 const vibe = refDb.getVibeMetadata(charaRefData.id);
                                 
                                 if (vibe) {
                                     if (vibe.type === 'base64' && vibe.imageSource) {
                                         charaImageBuffer = Buffer.from(vibe.imageSource, 'base64');
                                     } else if (vibe.type === 'cache' && vibe.imageSource) {
-                                        const cacheImagePath = path.join(globalResources.getPath("uploadCache"), vibe.imageSource);
+                                        const cacheImagePath = path.join(handler.globalResources.getPath("uploadCache"), vibe.imageSource);
                                         if (fs.existsSync(cacheImagePath)) {
                                             charaImageBuffer = fs.readFileSync(cacheImagePath);
                                         } else {
@@ -2137,7 +2132,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
         }
         
         // Simple model selection based on image parameters
-        const selectedModel = highReason ? 'grok-4' : (globalResources.getGrokService().getDefaultGrokModel());
+        const selectedModel = highReason ? 'grok-4' : (gr.getGrokService().getDefaultGrokModel());
         const provider = 'grok';
 
         // Handle image processing based on model
@@ -2250,7 +2245,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
                         };
                     })(ws, handler, sessionId);
 
-                    aiResponse = await globalResources.getGrokService().callDirectorAIWithCompletion(conversationMessages, {
+                    aiResponse = await gr.getGrokService().callDirectorAIWithCompletion(conversationMessages, {
                         model: selectedModel,
                         reasoningEffort,
                         timeout,
@@ -2285,6 +2280,7 @@ async function callDirectorAIWithContext(handler, ws, sessionId, options = {}) {
 }
 
 async function handleDirectorGetMessages(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const { sessionId, limit = 100, offset = 0 } = message;
         
@@ -2293,7 +2289,7 @@ async function handleDirectorGetMessages(handler, ws, message, clientInfo, wsSer
             return;
         }
         
-        const messages = await getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
+        const messages = await db.getDirectorMessages(sessionId, limit, offset, false, true); // Exclude system messages for client display, include extra fields
         
         handler.sendToClient(ws, {
             type: 'director_get_messages_response',
@@ -2311,6 +2307,7 @@ async function handleDirectorGetMessages(handler, ws, message, clientInfo, wsSer
 }
 
 async function handleDirectorRollbackMessage(handler, ws, message, clientInfo, wsServer) {
+    const db = directorDb(handler.globalResources);
     try {
         const { sessionId, messageId } = message;
 
@@ -2325,7 +2322,7 @@ async function handleDirectorRollbackMessage(handler, ws, message, clientInfo, w
         }
 
         // Get all messages for the session to find the target message
-        const messages = await getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
+        const messages = await db.getDirectorMessages(sessionId, 1000, 0, true, true); // Include system messages for rollback
         const targetMessageIndex = messages.findIndex(msg => msg.id === messageId || msg.timestamp === messageId);
 
         if (targetMessageIndex === -1) {
@@ -2344,7 +2341,7 @@ async function handleDirectorRollbackMessage(handler, ws, message, clientInfo, w
         console.log(`🗑️ Deleting ${messagesToDelete.length} messages from session ${sessionId}`);
 
         // Delete messages from database for this specific session
-        const success = await deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
+        const success = await db.deleteDirectorMessagesFrom(sessionId, messages[targetMessageIndex].id);
 
         if (!success) {
             handler.sendError(ws, 'Failed to delete messages from database', 'DATABASE_ERROR', message.requestId);

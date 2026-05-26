@@ -1,4 +1,3 @@
-const { computeTagSuggestionRankScore } = require('./metadataDatabase');
 const geo2city = require('geo2city');
 const { WebSocketServer } = require('./websocket');
 const {
@@ -11,16 +10,15 @@ const {
     handleDirectorRollbackMessage
 } = require('./directorHandlers');
 const { isImageLarge, matchOriginalResolution } = require('./imageTools');
-const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt } = require('./imageGeneration');
+const { generateImageWebSocket, handleRerollGeneration, expandImage, rerollExpandedImage, previewExpandImagePrompt, collectTextReplacementSeeds } = require('./imageGeneration');
 const { upscaleImageWebSocket } = require('./imageUpscaling');
 const { generateMobilePreviews } = require('./previewUtils');
-const { getTimezoneByCoordinates } = require('./dynamicGenerationHandlers');
+const { getTimezoneByCoordinates, resolveDynamicContext } = require('./dynamicGenerationHandlers');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const https = require('https');
-
 /** Merge optional top-level inset flags into overrideParams (some clients send inset only at root). */
 function normalizeExpansionOverrideParams(data) {
     let op = data.overrideParams;
@@ -364,6 +362,7 @@ class WebSocketMessageHandlers {
             'create_text_replacement',
             'delete_text_replacement',
             'get_text_replacement_options',
+            'scan_text_replacements',
             'spellcheck_add_word',
             'generate_image',
             'upscale_image',
@@ -406,6 +405,9 @@ class WebSocketMessageHandlers {
             'delete_chat_message',
             'unblock_ip',
             'export_ip_to_gateway',
+            'generate_nax_custom_tag',
+            'delete_nax_custom_tag',
+            'config_editor_save',
         ];
         return destructiveOperations.includes(messageType);
     }
@@ -489,6 +491,54 @@ class WebSocketMessageHandlers {
                 await this.handleRefreshTagWikiPage(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'get_wiki_home':
+                await this.handleGetWikiHome(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_static_wiki_site_index':
+                await this.handleGetStaticWikiSiteIndex(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_static_wiki_page':
+                await this.handleGetStaticWikiPage(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_nax_galleries':
+                await this.handleGetNaxGalleries(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_nax_tags':
+                await this.handleGetNaxTags(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'set_nax_favorite':
+                await this.handleSetNaxFavorite(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'set_nax_try':
+                await this.handleSetNaxTry(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'generate_nax_custom_tag':
+                await this.handleGenerateNaxCustomTag(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'delete_nax_custom_tag':
+                await this.handleDeleteNaxCustomTag(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'config_editor_list':
+                await this.handleConfigEditorList(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'config_editor_get_node':
+                await this.handleConfigEditorGetNode(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'config_editor_save':
+                await this.handleConfigEditorSave(ws, message, clientInfo, wsServer);
+                break;
+
             case 'search_files':
                 await this.handleFileSearch(ws, message, clientInfo, wsServer);
                 break;
@@ -546,6 +596,10 @@ class WebSocketMessageHandlers {
 
             case 'get_text_replacement_options':
                 await this.handleGetTextReplacementOptions(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'scan_text_replacements':
+                await this.handleScanTextReplacements(ws, message, clientInfo, wsServer);
                 break;
 
             case 'delete_text_replacement':
@@ -1285,7 +1339,7 @@ class WebSocketMessageHandlers {
 
             if (presetUuid) {
                 // Try to resolve by UUID (supports both presets and chapters)
-                const resolution = this.globalResources.textReplacements.resolvePresetOrGroup(presetUuid);
+                const resolution = this.globalResources.getTextReplacements().resolvePresetOrGroup(presetUuid);
                 if (!resolution) {
                     this.sendError(ws, 'Preset or preset group not found', `Preset or preset group with UUID "${presetUuid}" does not exist`, message.requestId);
                     return;
@@ -1815,7 +1869,7 @@ class WebSocketMessageHandlers {
             }
 
             // Generate image using the preset
-            const result = await generateImageWebSocket({
+            const result = await generateImageWebSocket(this.globalResources, {
                 ...preset,
                 workspace: targetWorkspace,
                 presetName: presetName,
@@ -2273,6 +2327,273 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleGetWikiHome(ws, message, clientInfo, wsServer) {
+        try {
+            const data = this.globalResources.getStaticWiki().getWikiHomeData(this.globalResources);
+            this.sendToClient(ws, {
+                type: 'get_wiki_home_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_wiki_home:', error);
+            this.sendError(ws, 'Failed to load wiki home', error.message, message.requestId);
+        }
+    }
+
+    async handleGetStaticWikiSiteIndex(ws, message, clientInfo, wsServer) {
+        const { siteId } = message;
+        if (!siteId) {
+            this.sendError(ws, 'Missing siteId parameter', 'get_static_wiki_site_index', message.requestId);
+            return;
+        }
+        try {
+            const data = this.globalResources.getStaticWiki().getSiteIndex(this.globalResources, siteId);
+            if (!data) {
+                this.sendError(ws, 'Wiki site not found', 'get_static_wiki_site_index', message.requestId);
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'get_static_wiki_site_index_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_static_wiki_site_index:', error);
+            this.sendError(ws, 'Failed to load wiki site index', error.message, message.requestId);
+        }
+    }
+
+    async handleGetStaticWikiPage(ws, message, clientInfo, wsServer) {
+        const { siteId, pageId } = message;
+        if (!siteId || !pageId) {
+            this.sendError(ws, 'Missing siteId or pageId parameter', 'get_static_wiki_page', message.requestId);
+            return;
+        }
+        try {
+            const data = this.globalResources.getStaticWiki().getPageHtml(this.globalResources, siteId, pageId);
+            if (!data) {
+                this.sendError(ws, 'Wiki page not found', 'get_static_wiki_page', message.requestId);
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'get_static_wiki_page_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_static_wiki_page:', error);
+            this.sendError(ws, 'Failed to load wiki page', error.message, message.requestId);
+        }
+    }
+
+    async handleGetNaxGalleries(ws, message, clientInfo, wsServer) {
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const naxTagGeneration = this.globalResources.getNaxTagGeneration();
+            const generationSlugs = new Set(naxTagGeneration.getGenerationSlugs());
+            const galleries = naxTagsDatabase.getGalleries().map((g) => ({
+                ...g,
+                generationEnabled: generationSlugs.has(g.slug)
+            }));
+            this.sendToClient(ws, {
+                type: 'get_nax_galleries_response',
+                requestId: message.requestId,
+                data: { galleries },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_nax_galleries:', error);
+            this.sendError(ws, 'Failed to list NAX galleries', error.message, message.requestId);
+        }
+    }
+
+    async handleGetNaxTags(ws, message, clientInfo, wsServer) {
+        const {
+            gallerySlug,
+            query = '',
+            sort = 'score',
+            invert = false,
+            minUp,
+            maxUp,
+            minDown,
+            maxDown,
+            minScore,
+            maxScore,
+            minRatio,
+            maxRatio,
+            randomSeed,
+            markFilter = 'all',
+            offset = 0,
+            limit = 50
+        } = message;
+
+        if (!gallerySlug) {
+            this.sendError(ws, 'Missing gallerySlug', 'get_nax_tags', message.requestId);
+            return;
+        }
+
+        const sortKey = ['score', 'name', 'date', 'ratio', 'random'].includes(sort) ? sort : 'score';
+        const markKey = ['all', 'favorites', 'try', 'unmarked'].includes(markFilter) ? markFilter : 'all';
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const result = naxTagsDatabase.queryTags({
+                gallerySlug,
+                query,
+                sort: sortKey,
+                invert: !!invert,
+                minUp,
+                maxUp,
+                minDown,
+                maxDown,
+                minScore,
+                maxScore,
+                minRatio,
+                maxRatio,
+                randomSeed: sortKey === 'random' ? randomSeed : null,
+                markFilter: markKey,
+                offset,
+                limit
+            });
+            this.sendToClient(ws, {
+                type: 'get_nax_tags_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_nax_tags:', error);
+            this.sendError(ws, 'Failed to load NAX tags', error.message, message.requestId);
+        }
+    }
+
+    async handleSetNaxFavorite(ws, message, clientInfo, wsServer) {
+        const { gallerySlug, tag, favorite } = message;
+        if (!gallerySlug || !tag) {
+            this.sendError(ws, 'Missing gallerySlug or tag', 'set_nax_favorite', message.requestId);
+            return;
+        }
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const out = naxTagsDatabase.setFavorite(gallerySlug, tag, !!favorite);
+            this.sendToClient(ws, {
+                type: 'set_nax_favorite_response',
+                requestId: message.requestId,
+                data: { success: true, favorite: out.favorite },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('set_nax_favorite:', error);
+            this.sendError(ws, 'Failed to update favorite', error.message, message.requestId);
+        }
+    }
+
+    async handleSetNaxTry(ws, message, clientInfo, wsServer) {
+        const { gallerySlug, tag, tryMark } = message;
+        if (!gallerySlug || !tag) {
+            this.sendError(ws, 'Missing gallerySlug or tag', 'set_nax_try', message.requestId);
+            return;
+        }
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const out = naxTagsDatabase.setTryMark(gallerySlug, tag, !!tryMark);
+            this.sendToClient(ws, {
+                type: 'set_nax_try_response',
+                requestId: message.requestId,
+                data: { success: true, tryMark: out.tryMark },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('set_nax_try:', error);
+            this.sendError(ws, 'Failed to update try mark', error.message, message.requestId);
+        }
+    }
+
+    async handleGenerateNaxCustomTag(ws, message, clientInfo, wsServer) {
+        const { gallerySlug, tag } = message;
+        if (!gallerySlug || !tag) {
+            this.sendError(ws, 'Missing gallerySlug or tag', 'generate_nax_custom_tag', message.requestId);
+            return;
+        }
+
+        const naxTagGeneration = this.globalResources.getNaxTagGeneration();
+        const fs = require('fs');
+
+        if (!naxTagGeneration.isValidCustomTag(tag)) {
+            this.sendError(ws, 'Invalid tag', 'generate_nax_custom_tag', message.requestId);
+            return;
+        }
+
+        const tagValue = naxTagGeneration.prepareTagInput(tag);
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            if (!naxTagsDatabase.slugExists(gallerySlug)) {
+                this.sendError(ws, 'Unknown gallery', 'generate_nax_custom_tag', message.requestId);
+                return;
+            }
+            if (naxTagsDatabase.tagExists(gallerySlug, tagValue)) {
+                this.sendError(ws, 'Tag already exists in this gallery', 'generate_nax_custom_tag', message.requestId);
+                return;
+            }
+
+            const { filename, absPath } = await naxTagGeneration.generateNaxTagImage(gallerySlug, tagValue);
+
+            let item;
+            try {
+                item = naxTagsDatabase.insertCustomTag(gallerySlug, tagValue, filename);
+            } catch (dbErr) {
+                try {
+                    if (fs.existsSync(absPath)) fs.unlinkSync(absPath);
+                } catch {
+                    /* */
+                }
+                throw dbErr;
+            }
+
+            this.sendToClient(ws, {
+                type: 'generate_nax_custom_tag_response',
+                requestId: message.requestId,
+                data: { success: true, item },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('generate_nax_custom_tag:', error);
+            this.sendError(ws, 'Failed to generate custom NAX tag', error.message, message.requestId);
+        }
+    }
+
+    async handleDeleteNaxCustomTag(ws, message, clientInfo, wsServer) {
+        const { gallerySlug, tag } = message;
+        if (!gallerySlug || !tag) {
+            this.sendError(ws, 'Missing gallerySlug or tag', 'delete_nax_custom_tag', message.requestId);
+            return;
+        }
+
+        const naxTagGeneration = this.globalResources.getNaxTagGeneration();
+        const tagValue = naxTagGeneration.prepareTagInput(tag);
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const out = naxTagsDatabase.deleteCustomTag(gallerySlug, tagValue);
+            this.sendToClient(ws, {
+                type: 'delete_nax_custom_tag_response',
+                requestId: message.requestId,
+                data: { success: true, ...out },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('delete_nax_custom_tag:', error);
+            this.sendError(ws, 'Failed to delete custom NAX tag', error.message, message.requestId);
+        }
+    }
+
     // Convert wiki markup directly to HTML
     async convertWikiMarkupToHtml(wikiText, wikiId = null, sourceId = null) {
         if (!wikiText) return '';
@@ -2534,14 +2855,7 @@ class WebSocketMessageHandlers {
             }
 
             const wm = this.globalResources.getWorkspaceManager();
-            const activeWsRecord = wm.getWorkspace(wm.getActiveWorkspace(clientInfo.sessionId)) || {};
-            const unionForPrune = [...new Set([
-                ...(activeWsRecord.files || []),
-                ...(activeWsRecord.scraps || []),
-                ...(activeWsRecord.pinned || []),
-                ...files
-            ])];
-            const existingOnDisk = wm.pruneAbsentImageFilenamesFromWorkspaces(unionForPrune);
+            const existingOnDisk = wm.filterFilenamesExistingOnDisk(files, pinnedFiles);
             files = files.filter(f => existingOnDisk.has(f));
             if (includePinnedStatus) {
                 pinnedFiles = pinnedFiles.filter(f => existingOnDisk.has(f));
@@ -2867,14 +3181,7 @@ class WebSocketMessageHandlers {
         }
 
         const wm = this.globalResources.getWorkspaceManager();
-        const activeWsRecord = wm.getWorkspace(wm.getActiveWorkspace(sessionId)) || {};
-        const unionForPrune = [...new Set([
-            ...(activeWsRecord.files || []),
-            ...(activeWsRecord.scraps || []),
-            ...(activeWsRecord.pinned || []),
-            ...files
-        ])];
-        const existingOnDisk = wm.pruneAbsentImageFilenamesFromWorkspaces(unionForPrune);
+        const existingOnDisk = wm.filterFilenamesExistingOnDisk(files);
         files = files.filter(f => existingOnDisk.has(f));
 
         const baseMap = {};
@@ -3206,6 +3513,7 @@ class WebSocketMessageHandlers {
                 quality_presets: currentPromptConfig.quality_presets || {},
                 uc_presets: currentPromptConfig.uc_presets || {},
                 nsfw_presets: currentPromptConfig.nsfw_presets || {},
+                preset_token_counts: this.globalResources.getPresetTokenCounts(),
                 activeWorkspace: activeWorkspaceData ? {
                     id: activeWorkspaceId,
                     data: activeWorkspaceData
@@ -5262,7 +5570,7 @@ class WebSocketMessageHandlers {
                     // Get the base name to find related files
                     const baseName = filename.replace(/\.(png|jpg|jpeg)$/i, '').replace(/_upscaled$/, '');
                     const previewFile = `${baseName}_preview.png`;
-                    const previewPath = path.join(__dirname, '..', 'previews', previewFile);
+                    const previewPath = path.join(this.globalResources.getPath('previews'), previewFile);
 
                     // Define all preview files that may exist
                     const previewFiles = [
@@ -7945,6 +8253,8 @@ class WebSocketMessageHandlers {
             const success = this.globalResources.modifyConfig('promptConfig').merge('text_replacements', textReplacements);
 
             if (success) {
+                this.globalResources.rebuildPresetTokenCounts();
+
                 this.sendToClient(ws, {
                     type: 'save_text_replacements_response',
                     data: {
@@ -8101,6 +8411,38 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleScanTextReplacements(ws, message, clientInfo, wsServer) {
+        try {
+            const body = message.data || message;
+            const currentPromptConfig = this.globalResources.getPromptConfig({ clone: true });
+            let preset = null;
+            if (body.presetName && currentPromptConfig.presets[body.presetName]) {
+                preset = currentPromptConfig.presets[body.presetName];
+            }
+
+            const text_replacements_seed = collectTextReplacementSeeds(this.globalResources, body, preset);
+
+            this.sendToClient(ws, {
+                type: 'scan_text_replacements_response',
+                data: {
+                    success: true,
+                    text_replacements_seed
+                },
+                requestId: message.requestId
+            });
+        } catch (error) {
+            console.error('Error scanning text replacements:', error);
+            this.sendToClient(ws, {
+                type: 'scan_text_replacements_response',
+                data: {
+                    success: false,
+                    error: error.message
+                },
+                requestId: message.requestId
+            });
+        }
+    }
+
     async handleGetTextReplacementOptions(ws, message, clientInfo, wsServer) {
         try {
             const { pattern, presetName, model, periodKey } = message;
@@ -8111,7 +8453,7 @@ class WebSocketMessageHandlers {
             }
 
             // Use the TextReplacements module to get all options for the pattern
-            const options = this.globalResources.textReplacements.getTextReplacementOptions(pattern, presetName, model, periodKey);
+            const options = this.globalResources.getTextReplacements().getTextReplacementOptions(pattern, presetName, model, periodKey);
 
             this.sendToClient(ws, {
                 type: 'get_text_replacement_options_response',
@@ -9801,15 +10143,15 @@ class WebSocketMessageHandlers {
 
                     // Boost score for context-relevant suggestions (base rank matches non-context suggestions)
                     suggestion.contextScore = contextScore;
-                    suggestion.boostedScore = computeTagSuggestionRankScore(suggestion, workspaceFiles.length) + (contextScore * 10);
+                    suggestion.boostedScore = this.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(suggestion, workspaceFiles.length) + (contextScore * 10);
                 }
 
                 console.log('🔍 Backend: Context scores applied, sorting by boosted scores');
 
                 // Sort by boosted score (context relevance + diversity-aware base rank)
                 suggestions.sort((a, b) => {
-                    const scoreA = a.boostedScore != null ? a.boostedScore : computeTagSuggestionRankScore(a, workspaceFiles.length);
-                    const scoreB = b.boostedScore != null ? b.boostedScore : computeTagSuggestionRankScore(b, workspaceFiles.length);
+                    const scoreA = a.boostedScore != null ? a.boostedScore : this.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(a, workspaceFiles.length);
+                    const scoreB = b.boostedScore != null ? b.boostedScore : this.globalResources.getMetadataDatabase().computeTagSuggestionRankScore(b, workspaceFiles.length);
                     if (scoreA !== scoreB) return scoreB - scoreA;
                     return (a.originalTag || a.tag).localeCompare(b.originalTag || b.tag);
                 });
@@ -10142,7 +10484,7 @@ class WebSocketMessageHandlers {
                 };
 
                 // Call generateImageWebSocket with streaming callback
-                const result = await generateImageWebSocket(
+                const result = await generateImageWebSocket(this.globalResources, 
                     data,
                     clientInfo.userType,
                     clientInfo.sessionId,
@@ -10187,7 +10529,7 @@ class WebSocketMessageHandlers {
 
             } else {
                 // Handle regular (non-streaming) generation
-                const result = await generateImageWebSocket(
+                const result = await generateImageWebSocket(this.globalResources, 
                     data,
                     clientInfo.userType,
                     clientInfo.sessionId,
@@ -10272,7 +10614,7 @@ class WebSocketMessageHandlers {
             console.log('🎲 Retrieved metadata for reroll:', metadata);
 
             // Call the reroll generation function with allow_paid flag
-            const result = await handleRerollGeneration(
+            const result = await handleRerollGeneration(this.globalResources, 
                 metadata,
                 clientInfo.sessionId,
                 workspace || null,
@@ -10317,7 +10659,7 @@ class WebSocketMessageHandlers {
             this.startKeepAliveInterval(ws, requestId, 15000); // Every 15 seconds
 
             // Call the WebSocket-native upscaling function directly
-            const result = await upscaleImageWebSocket(
+            const result = await upscaleImageWebSocket(this.globalResources, 
                 data.filename,
                 data.workspace,
                 clientInfo.userType,
@@ -10386,7 +10728,7 @@ class WebSocketMessageHandlers {
 
             this.startKeepAliveInterval(ws, requestId, 15000);
 
-            const result = await previewExpandImagePrompt(
+            const result = await previewExpandImagePrompt(this.globalResources, 
                 data.filename,
                 data.resolution,
                 data.imageBias,
@@ -10467,7 +10809,7 @@ class WebSocketMessageHandlers {
             }
 
             // Call the expansion function
-            const result = await expandImage(
+            const result = await expandImage(this.globalResources, 
                 data.filename, // The image to actually expand (target)
                 data.resolution,
                 data.imageBias,
@@ -10548,7 +10890,7 @@ class WebSocketMessageHandlers {
             }
 
             // Call the reroll function
-            const result = await rerollExpandedImage(
+            const result = await rerollExpandedImage(this.globalResources, 
                 data.filename,
                 overrideParams,
                 clientInfo.sessionId,
@@ -11929,7 +12271,7 @@ class WebSocketMessageHandlers {
             }
 
             // Create export directory if it doesn't exist
-            const exportDir = path.join(__dirname, '../.cache', 'ip_exports');
+            const exportDir = this.globalResources.getPath('ipExports');
             if (!fs.existsSync(exportDir)) {
                 fs.mkdirSync(exportDir, { recursive: true });
             }
@@ -12378,10 +12720,8 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            const { resolveDynamicContext } = require('./dynamicGenerationHandlers');
-
             // Resolve the dynamic context
-            const resolvedContext = await resolveDynamicContext(dynamicConfig, clientInfo.ip);
+            const resolvedContext = await resolveDynamicContext(this.globalResources, dynamicConfig, clientInfo.ip);
 
             // Send response back to client
             this.sendToClient(ws, {
@@ -12892,6 +13232,61 @@ class WebSocketMessageHandlers {
                 },
                 timestamp: new Date().toISOString()
             });
+        }
+    }
+
+    async handleConfigEditorList(ws, message, clientInfo, wsServer) {
+        try {
+            const configs = this.globalResources.getConfigEditorService().listConfigs();
+            this.sendToClient(ws, {
+                type: 'config_editor_list_response',
+                requestId: message.requestId,
+                data: { configs },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('config_editor_list:', error);
+            this.sendError(ws, 'Failed to list configs', error.message, message.requestId);
+        }
+    }
+
+    async handleConfigEditorGetNode(ws, message, clientInfo, wsServer) {
+        const { configId, path } = message;
+        if (!configId) {
+            this.sendError(ws, 'Missing configId', 'config_editor_get_node', message.requestId);
+            return;
+        }
+        try {
+            const data = this.globalResources.getConfigEditorService().getNode(configId, path || []);
+            this.sendToClient(ws, {
+                type: 'config_editor_get_node_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('config_editor_get_node:', error);
+            this.sendError(ws, 'Failed to load config node', error.message, message.requestId);
+        }
+    }
+
+    async handleConfigEditorSave(ws, message, clientInfo, wsServer) {
+        const { patches } = message;
+        if (!patches || typeof patches !== 'object') {
+            this.sendError(ws, 'Missing patches', 'config_editor_save', message.requestId);
+            return;
+        }
+        try {
+            const result = this.globalResources.getConfigEditorService().applyPatches(patches);
+            this.sendToClient(ws, {
+                type: 'config_editor_save_response',
+                requestId: message.requestId,
+                data: result,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('config_editor_save:', error);
+            this.sendError(ws, 'Failed to save config', error.message, message.requestId);
         }
     }
 

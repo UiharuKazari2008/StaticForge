@@ -163,9 +163,6 @@
     <script src="/scripts/comp/tagSets.js"></script>
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
-    <script src="/scripts/sessionLink.js"></script>
-    <script src="/scripts/tabMesh.js"></script>
-    <script src="/scripts/sessionBootstrap.js"></script>
     <script src="/scripts/utils/touchSlopUtils.js"></script>
     <link rel="stylesheet" href="/dist/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
@@ -353,13 +350,6 @@
 
     <!-- Windows Startup Modal (Desktop Mode Only) -->
     <div id="windowsStartupModal" class="modal hidden on-top">
-        <script>
-            const _modal = document.getElementById('windowsStartupModal');
-            if (window.isDesktop) {
-                _modal.classList.add('active-window');
-                _modal.classList.remove('hidden');
-            }
-        </script>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <!-- <i class="fa-light fa-cube"></i> -->
@@ -419,6 +409,100 @@
             </div>
         </div>
     </div>
+
+    <!-- Melaton Network Connection (connect / reconnect / link status) -->
+    <div id="connectionDialModal" class="modal hidden on-top connection-dial-modal dialing">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-network-wired"></i>
+                <span>Melaton Connection Manager</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small connection-dial-close-btn" title="Close"
+                disabled>
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content connection-dial-content">
+            <div class="connection-dial-layout">
+                <div class="connection-dial-art">
+                    <img src="/static_images/web-banner.png" alt="" class="connection-dial-art-image">
+                </div>
+                <div class="connection-dial-main">
+                    <div class="modal-body connection-dial-body">
+                        <div class="connection-dial-upper">
+                            <div id="connectionDialStatus" class="connection-dial-status">Initializing…</div>
+                            <div id="connectionDialAttempt" class="connection-dial-attempt hidden"></div>
+                            <div class="connection-dial-details" id="connectionDialDetails">
+                                <div class="connection-dial-detail">
+                                    <span class="connection-dial-detail-label">Phone number</span>
+                                    <span class="connection-dial-detail-value" id="connectionDialDetailPhone">—</span>
+                                </div>
+                                <div class="connection-dial-detail">
+                                    <span class="connection-dial-detail-label">Server name</span>
+                                    <span class="connection-dial-detail-value" id="connectionDialDetailServer">—</span>
+                                </div>
+                                <div class="connection-dial-detail">
+                                    <span class="connection-dial-detail-label">Encryption</span>
+                                    <span class="connection-dial-detail-value" id="connectionDialDetailEncryption">—</span>
+                                </div>
+                                <div class="connection-dial-detail">
+                                    <span class="connection-dial-detail-label">Username</span>
+                                    <span class="connection-dial-detail-value" id="connectionDialDetailUsername">—</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="connectionDialProgressWrap" class="connection-dial-progress-wrap">
+                            <div id="connectionDialProgressBar" class="connection-dial-progress hidden" role="progressbar"
+                                aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                                <div id="connectionDialProgressFill" class="connection-dial-progress-fill"></div>
+                            </div>
+                        </div>
+                        <div id="connectionDialStats" class="connection-dial-stats hidden">
+                            <div class="connection-dial-stat">
+                                <span class="connection-dial-stat-label">Uptime</span>
+                                <span id="connectionDialStatUptime" class="connection-dial-stat-value">—</span>
+                            </div>
+                            <div class="connection-dial-stat">
+                                <span class="connection-dial-stat-label">Sent</span>
+                                <span class="connection-dial-stat-value connection-dial-stat-value-row">
+                                    <i class="fas fa-arrow-up websocket-arrow-up" id="connectionTrafficUp"></i>
+                                    <span id="connectionDialStatOut">0</span>
+                                </span>
+                            </div>
+                            <div class="connection-dial-stat">
+                                <span class="connection-dial-stat-label">Received</span>
+                                <span class="connection-dial-stat-value connection-dial-stat-value-row">
+                                    <i class="fas fa-arrow-down websocket-arrow-down" id="connectionTrafficDown"></i>
+                                    <span id="connectionDialStatIn">0</span>
+                                </span>
+                            </div>
+                            <div class="connection-dial-stat">
+                                <span class="connection-dial-stat-label">Ping</span>
+                                <span id="connectionDialStatPing" class="connection-dial-stat-value">—</span>
+                            </div>
+                            <div class="connection-dial-stat">
+                                <span class="connection-dial-stat-label">Variation</span>
+                                <span id="connectionDialStatVariability" class="connection-dial-stat-value">—</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="connection-dial-footer-sep"></div>
+            <div class="connection-dial-footer">
+                <div id="connectionDialActions" class="connection-dial-actions hidden">
+                    <button type="button" class="btn-standard" id="connectionDialRedialBtn">Redial</button>
+                    <button type="button" class="btn-standard" id="connectionDialReloadBtn">Reload Page</button>
+                </div>
+                <div id="connectionDialStatusActions" class="connection-dial-actions hidden">
+                    <button type="button" class="btn-standard" id="connectionDialDisconnectBtn">Disconnect</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Gallery Window (Modal for desktop > 1200px) -->
     <div id="galleryWindow" class="gallery-window resizeable-window hidden" data-window-min-width="350"
         data-window-min-height="400" data-window-max-width="2500" data-window-max-height="2500">
@@ -543,6 +627,34 @@
         </div>
     </div>
 
+    <!-- PhotoSwipe viewer window (desktop mode only; wired from public/scripts/comp/lightbox.js) -->
+    <div id="photoSwipeWindow"
+        class="modal photo-swipe-window resizeable-window transient hidden windowed"
+        data-window-identifier="photoSwipeShell"
+        data-window-min-width="320" data-window-min-height="240" data-window-max-width="2500"
+        data-window-max-height="2500">
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-title photo-swipe-window-title">
+            <div class="modal-window-title-main">
+                <i class="fa-light fa-images icon-fa"></i>
+                <img src="/static_images/app_icons/art.png" alt="" class="icon-image" />
+                <span>Glancewell</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button id="maximizePhotoSwipeBtn" class="btn-secondary btn-small" type="button" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div id="photoSwipeMount"></div>
+    </div>
+
     <!-- Visual Index Tool Window -->
     <div id="galleryJumpIndexTool" class="modal hidden transient tool-window resizeable-window gallery-jump-index-tool"
         data-parent-modal-id="galleryWindow" data-window-min-width="420" data-window-min-height="320" data-window-max-width="420" data-window-max-height="1400">
@@ -584,6 +696,39 @@
                 <div class="gallery-jump-index-grid-shell" data-custom-scrollbar data-scrollable-wrapper-class="gallery-jump-index-grid-scrollable">
                     <div id="galleryJumpIndexGrid" class="gallery-jump-index-grid"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Run Applet (Application Finder) -->
+    <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
+        data-window-max-width="520" data-window-min-width="420" data-window-min-height="120"
+        data-window-max-height="600">
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-magnifying-glass icon-fa"></i>
+                <img src="/static_images/app_icons/studio.png" alt="" class="icon-image" />
+                <span>Run</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark run-applet-content">
+            <div class="run-applet-search-row">
+                <i class="fas fa-magnifying-glass run-applet-search-icon"></i>
+                <input type="text" id="runAppletInput" class="form-control run-applet-input"
+                    placeholder="Type to search…" autocomplete="off" spellcheck="false" />
+            </div>
+            <div id="runAppletSuggestions" class="character-autocomplete-list run-applet-suggestions hidden"></div>
+            <div class="run-applet-footer">
+                <button type="button" id="runAppletLaunchBtn" class="btn-standard primary run-applet-launch-btn" disabled>
+                    <i class="fas fa-play"></i>
+                    <span>Launch</span>
+                </button>
             </div>
         </div>
     </div>
@@ -888,7 +1033,7 @@
                                                     <div class="prompt-token-progress">
                                                         <div class="token-progress-bar">
                                                             <div class="token-progress-fill prompt-total">
-                                                                <div class="token-progress-inner"></div>
+                                                                <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -954,7 +1099,7 @@
                                                             </div>
                                                             <div class="token-progress-bar">
                                                                 <div class="token-progress-fill">
-                                                                    <div class="token-progress-inner"></div>
+                                                                    <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1002,6 +1147,28 @@
                                                                 <i class="ri-pencil-ai-2-fill"></i>
                                                             </button>
                                                             <div class="divider"></div>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="split-emphasis" title="Split Emphasis">
+                                                                <i class="fas fa-scissors"></i>
+                                                            </button>
+                                                            <button type="button" id="keepNewlinesBtn"
+                                                                class="btn-secondary btn-small toolbar-btn toggle-btn"
+                                                                data-action="keep-newlines" data-state="off"
+                                                                title="Keep Newlines">
+                                                                <i class="fas fa-paragraph"></i>
+                                                            </button>
+                                                            <div class="divider toolbar-wide-divider"></div>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="quick-access" title="Quick Access">
+                                                                <i class="fas fa-book-atlas"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="search" title="Search">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
                                                             <button type="button"
                                                                 class="btn-secondary btn-small toolbar-btn toggle-btn"
                                                                 id="showBothBtn" data-state="off"
@@ -1071,6 +1238,22 @@
                                                     </div>
                                                     <div class="toolbar-right">
                                                         <div class="toolbar-regular-buttons">
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="split-emphasis" title="Split Emphasis">
+                                                                <i class="fas fa-scissors"></i>
+                                                            </button>
+                                                            <div class="divider toolbar-wide-divider"></div>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="quick-access" title="Quick Access">
+                                                                <i class="fas fa-book-atlas"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="search" title="Search">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
                                                             <button type="button" id="creativeTabShowBothBtn"
                                                                 class="btn-secondary btn-small toolbar-btn toggle-btn"
                                                                 data-state="off" title="Show Both Prompt and UC Panes">
@@ -1132,7 +1315,7 @@
                                                     <div class="prompt-token-progress">
                                                         <div class="token-progress-bar">
                                                             <div class="token-progress-fill uc-total">
-                                                                <div class="token-progress-inner"></div>
+                                                                <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1198,7 +1381,7 @@
                                                             </div>
                                                             <div class="token-progress-bar">
                                                                 <div class="token-progress-fill">
-                                                                    <div class="token-progress-inner"></div>
+                                                                    <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -1220,9 +1403,9 @@
                                                                 class="custom-dropdown dark dropright">
                                                                 <button type="button" id="ucPresetsDropdownBtn"
                                                                     class="btn-secondary btn-small indicator toolbar-btn"
-                                                                    data-state="off" data-auto-clean="on"
+                                                                    data-state="on" data-auto-clean="on"
                                                                     title="UC Presets">
-                                                                    <div class="uc-boxes">
+                                                                    <div class="uc-boxes" data-uc-level="3">
                                                                         <div class="uc-box" data-level="1"></div>
                                                                         <div class="uc-box" data-level="2"></div>
                                                                         <div class="uc-box" data-level="3"></div>
@@ -1244,6 +1427,22 @@
                                                                     class="custom-dropdown-menu hidden"></div>
                                                             </div>
                                                             <div class="divider"></div>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="split-emphasis" title="Split Emphasis">
+                                                                <i class="fas fa-scissors"></i>
+                                                            </button>
+                                                            <div class="divider toolbar-wide-divider"></div>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="quick-access" title="Quick Access">
+                                                                <i class="fas fa-book-atlas"></i>
+                                                            </button>
+                                                            <button type="button"
+                                                                class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                                data-action="search" title="Search">
+                                                                <i class="fas fa-search"></i>
+                                                            </button>
                                                             <button type="button"
                                                                 class="btn-secondary btn-small toolbar-btn toggle-btn toolbar-btn"
                                                                 data-action="autofill" data-state="on"
@@ -1492,7 +1691,7 @@
                                         <img id="directorReferenceImage" src="" alt="Director Reference"
                                             class="variation-image">
                                         <div class="overlay-icon-container">
-                                            <i class="nai-image-tool-line-art"></i>
+                                            <i class="nai-precise-reference"></i>
                                         </div>
                                     </div>
 
@@ -1814,7 +2013,7 @@
                                         <i class="nai-vibe-transfer"></i>
                                     </button>
                                     <button type="button" class="mode-slider-btn" data-mode="character">
-                                        <i class="nai-image-tool-line-art"></i>
+                                        <i class="nai-precise-reference-style-and-character"></i>
                                     </button>
                                     <div class="mode-slider-track"></div>
                                 </div>
@@ -2139,6 +2338,10 @@
             <button type="button" id="toggleCompiledPromptsSectionBtn" class="btn-secondary btn-small"
                 title="Compiled Prompts">
                 <i class="fa-regular fa-subtitles"></i>
+            </button>
+            <button type="button" id="refreshInspectorTextReplacementsBtn" class="btn-secondary btn-small"
+                title="Refresh expanders from prompts">
+                <i class="fas fa-rotate"></i>
             </button>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
@@ -2471,7 +2674,7 @@
                                 <i class="nai-upscale"></i>
                             </button>
                             <button type="button" id="expansionInsetToggle" class="btn-secondary indicator"
-                                data-state="off" title="Inset source when output is larger (transparent padding for inpaint)">
+                                data-state="on" title="Inset source when output is larger (transparent padding for inpaint)">
                                 <i class="fas fa-border-outer"></i>
                             </button>
                         </div>
@@ -2600,14 +2803,6 @@
                     </div>
                 </div>
 
-                <div id="expansionPromptReviewPanel" class="form-group hidden" data-loaded="false">
-                    <label for="expansionFinalPromptTextarea">Prompt sent to the model</label>
-                    <textarea id="expansionFinalPromptTextarea" class="form-control" rows="5"
-                        placeholder="Load prompts with the button below, then edit before generating."></textarea>
-                    <label for="expansionFinalUcTextarea">Undesired content (UC)</label>
-                    <textarea id="expansionFinalUcTextarea" class="form-control" rows="2"></textarea>
-                </div>
-
                 <!-- Actions -->
                 <div class="modal-footer">
                     <div class="controls-flex-left">
@@ -2615,10 +2810,9 @@
                             title="Enable AI prompt enhancement">
                             <i class="mdi mdi-brain"></i>
                         </button>
-                        <button type="button" id="expansionLoadPromptBtn" class="btn-secondary"
-                            title="Load the full prompt (and UC) that will be sent; refine with AI if enabled">
+                        <button type="button" id="expansionEditCompiledPromptBtn" class="btn-secondary indicator"
+                            data-state="off" title="Edit compiled prompt (optional)">
                             <i class="fas fa-align-left"></i>
-                            <span>Review prompt</span>
                         </button>
                     </div>
                     <div class="controls-flex-right">
@@ -2634,6 +2828,233 @@
                             <i class="fas fa-sparkles"></i>
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expansion compiled prompt editor -->
+    <div id="expansionCompiledPromptDialog" class="modal hidden resizeable-window tool-window"
+        data-parent-modal-id="imageExpansionDialog" data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top" data-window-cascade-align="top" data-window-min-width="480"
+        data-window-min-height="380" data-window-max-width="1200" data-window-max-height="1000">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-align-left icon-fa"></i>
+                <span>Expand Canvas - Prompt</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeExpansionCompiledPromptBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content text-replacement-lock-modal-content dark">
+            <div class="modal-body">
+                <div class="prompt-tabs text-replacement-lock-list-container">
+                    <div class="tab-header modal-padding">
+                        <div id="expansionCompiledPromptTabButtons" class="gallery-toggle-group" data-active="prompt">
+                            <button type="button" class="gallery-toggle-btn active" data-tab="prompt"
+                                title="Compiled prompt">
+                                <i class="ri-code-block"></i>
+                            </button>
+                            <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Compiled UC">
+                                <i class="ri-eraser-fill"></i>
+                            </button>
+                            <div class="gallery-toggle-slider"></div>
+                        </div>
+                    </div>
+                    <div class="tab-content">
+                        <div class="tab-pane active form-section-scroll" id="expansionCompiledPrompt-tab">
+                            <div class="compiled-prompts-content">
+                            <div class="compiled-prompt-field-container">
+                                <label class="compiled-prompt-label"><i class="ri-code-block"></i> Base Prompt</label>
+                                <div class="prompt-textarea-container">
+                                    <div class="prompt-textarea-background"></div>
+                                    <textarea id="expansionCompiledPromptInput"
+                                        class="form-control prompt-textarea textarea-inset" rows="10"
+                                        placeholder="Compiled prompt sent to generation…" autocapitalize="false"
+                                        autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                                    <div class="prompt-textarea-toolbar hidden">
+                                        <div class="toolbar-left">
+                                            <div class="token-info-container">
+                                                <div class="token-info-top">
+                                                    <span class="token-count">0 tokens</span>
+                                                </div>
+                                                <div class="token-progress-bar">
+                                                    <div class="token-progress-fill">
+                                                                    <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="toolbar-search-elements">
+                                                <div class="text-search-label">Search</div>
+                                                <div class="text-search-input-container">
+                                                    <input type="text" class="text-search-input"
+                                                        placeholder="Enter search term..." />
+                                                </div>
+                                                <div class="text-search-match-count">0</div>
+                                            </div>
+                                        </div>
+                                        <div class="toolbar-right">
+                                            <div class="toolbar-regular-buttons">
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="split-emphasis" title="Split Emphasis">
+                                                    <i class="fas fa-scissors"></i>
+                                                </button>
+                                                <div class="divider toolbar-wide-divider"></div>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="quick-access" title="Quick Access">
+                                                    <i class="fas fa-book-atlas"></i>
+                                                </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="search" title="Search">
+                                                    <i class="fas fa-search"></i>
+                                                </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toggle-btn"
+                                                    data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                    <i class="fas fa-lightbulb"></i>
+                                                </button>
+                                                <div id="expansionCompiledPromptActionsDropdown"
+                                                    class="custom-dropdown dark dropright">
+                                                    <button type="button" id="expansionCompiledPromptActionsDropdownBtn"
+                                                        class="btn-secondary btn-small toolbar-btn">
+                                                        <i class="fas fa-toolbox"></i>
+                                                    </button>
+                                                    <div id="expansionCompiledPromptActionsDropdownMenu"
+                                                        class="custom-dropdown-menu hidden" tabindex="0"></div>
+                                                </div>
+                                            </div>
+                                            <div class="toolbar-search-buttons">
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-prev"
+                                                    data-action="search-prev" title="Previous"><i
+                                                        class="fas fa-chevron-up"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-next"
+                                                    data-action="search-next" title="Next"><i
+                                                        class="fas fa-chevron-down"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-select"
+                                                    data-action="search-select" title="Select (Enter)"><i
+                                                        class="fas fa-arrow-right-long-to-line"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-close"
+                                                    data-action="search-close" title="Close"><i
+                                                        class="fas fa-times"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="expansionCompiledCharacterPromptsContainer" class="compiled-prompts-content"></div>
+                            </div>
+                        </div>
+                        <div class="tab-pane form-section-scroll" id="expansionCompiledUc-tab">
+                            <div class="compiled-prompts-content">
+                            <div class="compiled-prompt-field-container">
+                                <label class="compiled-prompt-label"><i class="ri-eraser-fill"></i> Negative</label>
+                                <div class="prompt-textarea-container">
+                                    <div class="prompt-textarea-background"></div>
+                                    <textarea id="expansionCompiledUcInput"
+                                        class="form-control prompt-textarea textarea-inset" rows="10"
+                                        placeholder="Compiled undesired content…" autocapitalize="false"
+                                        autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                                    <div class="prompt-textarea-toolbar hidden">
+                                        <div class="toolbar-left">
+                                            <div class="token-info-container">
+                                                <div class="token-info-top">
+                                                    <span class="token-count">0 tokens</span>
+                                                </div>
+                                                <div class="token-progress-bar">
+                                                    <div class="token-progress-fill">
+                                                                    <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="toolbar-search-elements">
+                                                <div class="text-search-label">Search</div>
+                                                <div class="text-search-input-container">
+                                                    <input type="text" class="text-search-input"
+                                                        placeholder="Enter search term..." />
+                                                </div>
+                                                <div class="text-search-match-count">0</div>
+                                            </div>
+                                        </div>
+                                        <div class="toolbar-right">
+                                            <div class="toolbar-regular-buttons">
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="split-emphasis" title="Split Emphasis">
+                                                    <i class="fas fa-scissors"></i>
+                                                </button>
+                                                <div class="divider toolbar-wide-divider"></div>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="quick-access" title="Quick Access">
+                                                    <i class="fas fa-book-atlas"></i>
+                                                </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                                    data-action="search" title="Search">
+                                                    <i class="fas fa-search"></i>
+                                                </button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn toggle-btn"
+                                                    data-action="autofill" data-state="on" title="Toggle Autofill">
+                                                    <i class="fas fa-lightbulb"></i>
+                                                </button>
+                                                <div id="expansionCompiledUcActionsDropdown"
+                                                    class="custom-dropdown dark dropright">
+                                                    <button type="button" id="expansionCompiledUcActionsDropdownBtn"
+                                                        class="btn-secondary btn-small toolbar-btn">
+                                                        <i class="fas fa-toolbox"></i>
+                                                    </button>
+                                                    <div id="expansionCompiledUcActionsDropdownMenu"
+                                                        class="custom-dropdown-menu hidden" tabindex="0"></div>
+                                                </div>
+                                            </div>
+                                            <div class="toolbar-search-buttons">
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-prev"
+                                                    data-action="search-prev" title="Previous"><i
+                                                        class="fas fa-chevron-up"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-next"
+                                                    data-action="search-next" title="Next"><i
+                                                        class="fas fa-chevron-down"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-select"
+                                                    data-action="search-select" title="Select (Enter)"><i
+                                                        class="fas fa-arrow-right-long-to-line"></i></button>
+                                                <button type="button"
+                                                    class="btn-secondary btn-small toolbar-btn text-search-close"
+                                                    data-action="search-close" title="Close"><i
+                                                        class="fas fa-times"></i></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="expansionCompiledCharacterUcContainer" class="compiled-prompts-content"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer modal-footer-padded">
+                <div class="modal-actions">
+                    <button type="button" id="saveExpansionCompiledPromptBtn" class="btn-primary">
+                        <i class="fas fa-save"></i> Save
+                    </button>
                 </div>
             </div>
         </div>
@@ -3218,7 +3639,8 @@
 
     <!-- Compiled Prompt Modal -->
     <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top"
-        data-parent-modal-id="manualModal">
+        data-parent-modal-id="manualModal" data-window-min-width="400" data-window-min-height="280"
+        data-window-max-width="1200" data-window-max-height="1000">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-magic"></i>
@@ -3242,7 +3664,8 @@
 
     <!-- Director Feedback Modal -->
     <div id="directorFeedbackModal" class="modal resizeable-window hidden tool-window on-top"
-        data-parent-modal-id="textReplacementLockModal">
+        data-parent-modal-id="textReplacementLockModal" data-window-min-width="400" data-window-min-height="280"
+        data-window-max-width="900" data-window-max-height="900">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-flag"></i>
@@ -3332,7 +3755,8 @@ Examples:
     </div>
 
     <!-- Genso Manager Modal -->
-    <div id="textReplacementManagerModal" class="modal resizeable-window hidden">
+    <div id="textReplacementManagerModal" class="modal resizeable-window hidden" data-window-min-width="500"
+        data-window-min-height="400" data-window-max-width="1200" data-window-max-height="1200">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-font icon-fa"></i>
@@ -3441,7 +3865,8 @@ Examples:
     </div>
 
     <!-- Favorites Manager Modal -->
-    <div id="favoritesManagerModal" class="modal resizeable-window hidden">
+    <div id="favoritesManagerModal" class="modal resizeable-window hidden" data-window-min-width="400"
+        data-window-min-height="320" data-window-max-width="1000" data-window-max-height="900">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-star icon-fa"></i>
@@ -3474,7 +3899,8 @@ Examples:
     </div>
 
     <!-- Request Body Text Replacements Modal -->
-    <div id="requestBodyReplacementsModal" class="modal resizeable-window hidden">
+    <div id="requestBodyReplacementsModal" class="modal resizeable-window hidden" data-window-min-width="500"
+        data-window-min-height="400" data-window-max-width="1200" data-window-max-height="1200">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-notebook icon-fa"></i>
@@ -3984,8 +4410,8 @@ Examples:
     </div>
 
     <!-- Reference Manager Modal -->
-    <div id="cacheManagerModal" class="modal resizeable-window hidden" data-window-min-height="400"
-        data-window-max-width="2500" data-window-max-height="2500">
+    <div id="cacheManagerModal" class="modal resizeable-window hidden" data-window-min-width="500"
+        data-window-min-height="400" data-window-max-width="2500" data-window-max-height="2500">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -4041,7 +4467,7 @@ Examples:
                                     <i class="nai-vibe-transfer"></i>
                                 </button>
                                 <button type="button" class="mode-slider-btn" data-mode="character">
-                                    <i class="nai-image-tool-line-art"></i>
+                                    <i class="nai-precise-reference-style-and-character"></i>
                                 </button>
                                 <div class="mode-slider-track"></div>
                             </div>
@@ -4053,7 +4479,8 @@ Examples:
     </div>
 
     <!-- Unified Upload Modal -->
-    <div id="unifiedUploadModal" class="modal hidden tool-window on-top">
+    <div id="unifiedUploadModal" class="modal hidden tool-window on-top" data-window-min-width="480"
+        data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900">
         <div class="modal-window-controls">
             <button id="closeUnifiedUploadBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
@@ -4102,7 +4529,7 @@ Examples:
                                 <i class="mdi mdi-data-matrix-scan"></i> Vibe
                             </button>
                             <button type="button" class="mode-slider-btn" data-mode="character">
-                                <i class="nai-image-tool-line-art"></i> Character
+                                <i class="nai-precise-reference"></i> Precise
                             </button>
                             <div class="mode-slider-track"></div>
                         </div>
@@ -4433,7 +4860,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-notebook icon-fa"></i>
                 <img src="/static_images/app_icons/notebook.png" alt="" class="icon-image" />
-                <span id="notebookCurrentNoteTitle">Notebook</span>
+                <span id="notebookCurrentNoteTitle">Notion</span>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -4532,7 +4959,8 @@ Examples:
     </div>
 
     <!-- Combined Vibe Encoding Modal -->
-    <div id="vibeEncodingModal" class="modal hidden tool-window on-top">
+    <div id="vibeEncodingModal" class="modal hidden tool-window on-top" data-window-min-width="480"
+        data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900">
         <div class="modal-window-controls">
             <button id="closeVibeEncodingBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
@@ -4768,7 +5196,8 @@ Examples:
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Cache Metadata Editing Modal -->
-    <div id="cacheMetadataModal" class="modal hidden tool-window on-top" data-parent-modal-id="referenceManagerModal">
+    <div id="cacheMetadataModal" class="modal hidden tool-window on-top" data-parent-modal-id="cacheManagerModal"
+        data-window-min-width="480" data-window-min-height="320" data-window-max-width="900" data-window-max-height="900">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-swatchbook icon-fa"></i>
@@ -4831,6 +5260,17 @@ Examples:
                                             class="btn-secondary indicator btn-small toolbar-btn" data-state="off"
                                             title="Prepend instead of append">
                                             <i class="fas fa-arrow-left-to-line"></i>
+                                        </button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button"
+                                            class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                            data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-atlas"></i>
+                                        </button>
+                                        <button type="button"
+                                            class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                            data-action="search" title="Search">
+                                            <i class="fas fa-search"></i>
                                         </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn"
                                             data-action="autofill" data-state="on" title="Toggle Autofill">
@@ -4899,6 +5339,17 @@ Examples:
                                             title="Prepend instead of append">
                                             <i class="fas fa-arrow-left-to-line"></i>
                                         </button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button"
+                                            class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                            data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-atlas"></i>
+                                        </button>
+                                        <button type="button"
+                                            class="btn-secondary btn-small toolbar-btn toolbar-wide-btn"
+                                            data-action="search" title="Search">
+                                            <i class="fas fa-search"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn"
                                             data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
@@ -4939,11 +5390,23 @@ Examples:
                 </div>
             </div>
             <div class="modal-footer">
-                <div class="modal-actions btn-group">
-                    <button type="button" id="characterReferenceToggle" class="btn-secondary indicator" data-state="off"
-                        title="Mark as character reference only" style="width: 51px;">
-                        <i class="nai-image-tool-line-art"></i>
+                <div class="modal-actions btn-group cache-metadata-precise-actions">
+                    <button type="button" id="preciseReferenceToggle" class="btn-secondary indicator" data-state="off"
+                        title="Mark as precise reference only" style="width: 51px;">
+                        <i class="nai-precise-reference"></i>
                     </button>
+                    <div id="cachePreciseReferenceTypeGroup" class="precise-reference-type-toggles hidden">
+                        <button type="button" id="cachePreciseRefTypeCharacterBtn"
+                            class="toggle-btn btn-secondary blur" data-precise-type="character"
+                            data-state="on" title="Character">
+                            <i class="nai-person"></i>
+                        </button>
+                        <button type="button" id="cachePreciseRefTypeStyleBtn"
+                            class="toggle-btn btn-secondary blur" data-precise-type="style"
+                            data-state="on" title="Style">
+                            <i class="nai-precise-reference-style"></i>
+                        </button>
+                    </div>
                     <button type="button" class="btn-primary" id="saveCacheMetadataBtn">
                         Save <i class="nai-save"></i>
                     </button>
@@ -5445,7 +5908,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-image icon-fa"></i>
                 <img src="/static_images/app_icons/glasses.png" alt="" class="icon-image" />
-                <span id="imageViewerTitle">Image Viewer</span>
+                <span id="imageViewerTitle">Glancewell</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -5566,6 +6029,31 @@ Examples:
         </div>
     </div>
 
+    <!-- Application fatal error window (cloned by scripts/comp/fatalErrorBootstrap.js) -->
+    <div id="dreamscapeAppErrorWindowTemplate" class="modal hidden transient resizeable-window dreamscape-app-error-window dark"
+        data-window-max-width="960" data-window-max-height="900" data-window-min-width="360"
+        data-window-min-height="280">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-triangle-exclamation icon-fa"></i>
+                <span>Application error</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small dreamscape-app-error-close-btn" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dreamscape-app-error-modal-content">
+            <div class="dreamscape-app-error-scroll form-section-scroll">
+                <div class="dreamscape-app-error-body"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Tag Wiki Search Modal -->
     <div id="tagWikiSearchModal" class="modal hidden resizeable-window" data-window-max-width="1800"
         data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
@@ -5573,7 +6061,7 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-book icon-fa"></i>
                 <img src="/static_images/app_icons/books.png" alt="" class="icon-image" />
-                <span>Encyclopedia</span>
+                <span>Grimoire</span>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -5640,14 +6128,189 @@ Examples:
         </div>
     </div>
 
-    <!-- WebSocket Requests Modal -->
+    <!-- NAXT: NAX community tag browser -->
+    <div id="naxtModal" class="modal hidden resizeable-window" data-window-max-width="1800"
+        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-flask icon-fa"></i>
+                <img src="/static_images/app_icons/test_tube.png" alt="" class="icon-image" />
+                <span id="naxtModalTitleLabel">Atelier</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary btn-small" id="naxtBackBtn" title="Back">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small" id="naxtForwardBtn" title="Forward">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small" id="naxtHomeBtn" title="Home">
+                <i class="fas fa-home"></i>
+            </button>
+            <div id="naxtDatasetDropdown" class="custom-dropdown">
+                <button type="button" id="naxtDatasetDropdownBtn" class="btn-secondary">
+                    <span id="naxtDatasetSelected">Dataset</span>
+                    <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                </button>
+                <div id="naxtDatasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            </div>
+            <div id="naxtBagDropdown" class="custom-dropdown">
+                <button type="button" id="naxtBagDropdownBtn" class="btn-secondary btn-small indicator" data-state="off"
+                    title="Tag bag">
+                    <i class="fas fa-shopping-bag"></i>
+                    <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
+                </button>
+                <div id="naxtBagDropdownMenu" class="custom-dropdown-menu hidden naxt-bag-dropdown-menu"></div>
+            </div>
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" id="closeNaxtModalBtn" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content naxt-modal-content dark">
+            <div class="naxt-search-header">
+                <div class="naxt-search-controls">
+                    <input type="text" id="naxtSearchInput" class="form-control hover-show colored naxt-search-input"
+                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
+                    <button type="button" id="naxtFilterToggleBtn" class="btn-secondary indicator" data-state="off"
+                        data-filters-active="false"
+                        title="Filters">
+                        <i class="fas fa-sliders"></i>
+                    </button>
+                    <div id="naxtSortDropdown" class="custom-dropdown dark dropright">
+                        <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
+                            title="Date sorts by position in the NAX export (not calendar date)">
+                            <span id="naxtSortSelected">Score</span>
+                            <i class="fas fa-sort"></i>
+                        </button>
+                        <div id="naxtSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <div id="naxtMarkFilterDropdown" class="custom-dropdown dark dropright">
+                        <button type="button" id="naxtMarkFilterDropdownBtn" class="btn-secondary" title="Filter by mark">
+                            <span id="naxtMarkFilterSelected">All</span>
+                            <i class="fas fa-bookmark"></i>
+                        </button>
+                        <div id="naxtMarkFilterDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
+                        title="Invert order">
+                        <i class="fas fa-arrow-down-arrow-up"></i>
+                    </button>
+                    <button type="button" id="naxtOpenCustomTagBtn" class="btn-secondary hidden"
+                        title="Add custom tag (generate preview)">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+                <div id="naxtFilterRow" class="naxt-filter-row hidden">
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinUp">Min up</label>
+                        <input type="number" id="naxtMinUp" class="form-control hover-show colored" min="0" value=""
+                            placeholder="0">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxUp">Max up</label>
+                        <input type="number" id="naxtMaxUp" class="form-control hover-show colored" min="0" value=""
+                            placeholder="∞">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinDown">Min down</label>
+                        <input type="number" id="naxtMinDown" class="form-control hover-show colored" min="0" value=""
+                            placeholder="0">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxDown">Max down</label>
+                        <input type="number" id="naxtMaxDown" class="form-control hover-show colored" min="0" value=""
+                            placeholder="∞">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinScore">Min score</label>
+                        <input type="number" id="naxtMinScore" class="form-control hover-show colored" min="-100"
+                            max="100" value="" placeholder="-100">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxScore">Max score</label>
+                        <input type="number" id="naxtMaxScore" class="form-control hover-show colored" min="-100"
+                            max="100" value="" placeholder="100">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtCellSizeInput">Size</label>
+                        <input type="number" id="naxtCellSizeInput" class="form-control hover-show colored" min="96"
+                            max="280" step="4" value="140" title="Thumbnail column width (px)">
+                    </div>
+                    <input type="hidden" id="naxtMinRatio" value="">
+                    <input type="hidden" id="naxtMaxRatio" value="">
+                </div>
+            </div>
+            <div class="naxt-body form-section-scroll">
+                <div id="naxtGrid" class="naxt-grid"></div>
+                <div id="naxtLoadSentinel" class="naxt-load-sentinel" aria-hidden="true"></div>
+                <div id="naxtEmptyState" class="naxt-empty-state hidden">
+                    <i class="fas fa-database"></i>
+                    <p>No tags loaded. Pick a dataset or run <code>node scripts/import-nax-tags.js</code>.</p>
+                </div>
+            </div>
+            <footer id="naxtStatusBar" class="naxt-status-bar" aria-live="polite">0 tags</footer>
+        </div>
+    </div>
+
+    <!-- NAXT: add custom tag (attached tool window) -->
+    <div id="naxtCustomTagModal" class="modal hidden tool-window on-top"
+        data-parent-modal-id="naxtModal" data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top" data-window-cascade-align="top">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-plus icon-fa"></i>
+                <img src="/static_images/app_icons/test_tube.png" alt="" class="icon-image" />
+                <span id="naxtCustomTagModalTitle">Add Tag</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeNaxtCustomTagModalBtn" class="btn-danger close-btn btn-small"
+                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+        </div>
+        <div class="modal-content modal-padding weather-location-modal-content dark">
+            <div class="modal-body weather-location-modal-body">
+                <div class="form-group">
+                    <label for="naxtCustomTagInput">Tag</label>
+                    <input type="text" id="naxtCustomTagInput" class="form-control hover-show colored"
+                        placeholder="artist tag name" autocapitalize="off" autocorrect="off" spellcheck="false"
+                        maxlength="120">
+                </div>
+                <div class="form-group naxt-custom-tag-preview-group">
+                    <label>Preview</label>
+                    <div id="naxtCustomTagPreview" class="weather-location-match naxt-custom-tag-preview">
+                        Enter a tag and click Generate to preview.
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-actions btn-group">
+                    <button type="button" id="naxtCustomTagGenerateBtn" class="btn-primary">
+                        <i class="nai-sparkles"></i> Generate
+                    </button>
+                    <button type="button" id="naxtCustomTagDeleteBtn" class="btn-danger hidden" disabled>
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button type="button" id="naxtCustomTagAcceptBtn" class="btn-primary hidden" disabled>
+                        <i class="fas fa-check"></i> Accept
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Manager (WebSocket requests) -->
     <div id="websocketRequestsModal" class="modal hidden resizeable-window tool-window on-top"
         data-window-max-width="300" data-window-max-height="800" data-window-min-width="300"
         data-window-min-height="400">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-bars-progress"></i>
-                <span>Connection Status</span>
+                <span>Task Manager</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -5661,34 +6324,6 @@ Examples:
         </div>
         <div class="modal-content dark">
             <div class="websocket-requests-content">
-                <!-- Connection Status Section -->
-                <div class="websocket-connection-status-section">
-                    <div class="connection-status-line" id="connectionStatusLine">
-                        <div class="connection-status-badge" id="connectionStatusBadge" title="Connection Status">
-                            <div class="connection-status-badge-content">
-                                <i class="fas fa-lock connection-status-badge-icon" id="connectionSecurityIcon"></i>
-                                <span class="connection-status-badge-text"
-                                    id="connectionStatusValue">Disconnected</span>
-                            </div>
-                        </div>
-                        <div class="connection-status-indicator websocket-indicator" title="Network Traffic">
-                            <i class="fas fa-arrow-up websocket-arrow-up" id="connectionTrafficUp"></i>
-                            <i class="fas fa-arrow-down websocket-arrow-down" id="connectionTrafficDown"></i>
-                        </div>
-                        <div class="connection-status-indicator" title="Service Worker">
-                            <i class="fas fa-cog" id="serviceWorkerIcon"></i>
-                        </div>
-                        <div class="connection-status-indicator" title="Ping (RTT)">
-                            <i class="fas fa-tachometer-alt"></i>
-                            <span id="connectionRttValue">-</span>
-                        </div>
-                        <div class="connection-status-indicator" title="Variability">
-                            <i class="fas fa-chart-line"></i>
-                            <span id="connectionVariabilityValue">-</span>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Active Requests Section -->
                 <div class="websocket-requests-list active-requests scrollbar-padding" data-custom-scrollbar
                     data-scrollable-wrapper-class="websocket-requests-list-wrapper">
@@ -5934,6 +6569,160 @@ Examples:
         </div>
     </div>
 
+    <!-- Phasewalker -->
+    <div id="bracketGenerationModal" class="modal hidden resizeable-window"
+        data-window-max-width="1600" data-window-max-height="1000"
+        data-window-min-width="360" data-window-min-height="280">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-layer-group icon-fa"></i>
+                <img src="/static_images/app_icons/stack.png" alt="" class="icon-image" />
+                <span id="bracketGenTitleLabel">Phasewalker</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <div id="bracketGenKeywordDropdown" class="custom-dropdown dark">
+                <button type="button" id="bracketGenKeywordDropdownBtn" class="btn-secondary" title="Select keyword (Alt+K to add)">
+                    <span id="bracketGenKeywordSelected">No keywords</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div id="bracketGenKeywordDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            </div>
+            <div id="bracketGenGearDropdown" class="custom-dropdown dark dropright">
+                <button type="button" id="bracketGenGearDropdownBtn" class="btn-secondary" title="Settings">
+                    <i class="fas fa-gear"></i>
+                </button>
+                <div id="bracketGenGearDropdownMenu" class="custom-dropdown-menu hidden"></div>
+            </div>
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeBracketGenerationBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content bracket-generation-modal-content dark">
+            <div class="bracket-gen-header character-prompts-header">
+                <div id="bracketGenTabButtons" class="gallery-toggle-group two-tabs" data-active="prompt">
+                    <button type="button" class="gallery-toggle-btn active" data-tab="prompt" title="Prompt (F1)">
+                        <i class="ri-code-block"></i>
+                    </button>
+                    <button type="button" class="gallery-toggle-btn" data-tab="uc" title="Undesired Content (F2)">
+                        <i class="ri-eraser-fill"></i>
+                    </button>
+                    <div class="gallery-toggle-slider"></div>
+                </div>
+                <div class="bracket-gen-header-right character-prompts-controls">
+                    <button type="button" id="bracketGenAddStepBtn" class="btn-secondary" title="Add stage (Alt+A)">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button type="button" id="bracketGenCompileBtn" class="btn-primary" title="Compile stages (F8)">
+                        Compile <i class="fas fa-hammer"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="form-section form-section-scroll bracket-generation-steps-scroll" data-custom-scrollbar>
+                <div id="bracketStepsContainer" class="character-prompts-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Editor Applet (registry-style) -->
+    <div id="configEditorModal" class="modal hidden resizeable-window"
+        data-window-max-width="1600" data-window-max-height="1000"
+        data-window-min-width="800" data-window-min-height="500">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-gears icon-fa"></i>
+                <img src="/static_images/app_icons/slider.png" alt="" class="icon-image" />
+                <span>Config Editor</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" id="configEditorSaveBtn" class="btn-secondary btn-small" title="Save">
+                <i class="fas fa-save"></i>
+            </button>
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeConfigEditorBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content config-editor-modal-content dark">
+            <div class="config-editor-layout">
+                <div class="config-editor-tree-panel form-section-scroll">
+                    <div id="configEditorTree" class="config-editor-tree"></div>
+                </div>
+                <div class="config-editor-values-panel form-section-scroll">
+                    <table class="config-editor-values-table">
+                        <thead>
+                            <tr>
+                                <th class="config-editor-col-name">Name</th>
+                                <th class="config-editor-col-type">Type</th>
+                                <th class="config-editor-col-value">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="configEditorValuesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="configEditorStatus" class="config-editor-status-bar"></div>
+        </div>
+    </div>
+
+    <!-- Config Editor: edit value (tool window) -->
+    <div id="configEditorValueModal" class="modal hidden resizeable-window tool-window on-top"
+        data-parent-modal-id="configEditorModal"
+        data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top"
+        data-window-cascade-align="top"
+        data-window-max-width="560" data-window-max-height="720"
+        data-window-min-width="320" data-window-min-height="220">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-pen-to-square icon-fa"></i>
+                <span id="configEditorValueModalTitle">Edit Value</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeConfigEditorValueBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content modal-padding config-editor-value-modal-content dark">
+            <div class="modal-body config-editor-value-modal-body form-section-scroll">
+                <p id="configEditorValuePath" class="config-editor-value-path"></p>
+                <div class="form-group">
+                    <label for="configEditorValueType">Type</label>
+                    <input type="text" id="configEditorValueType" class="form-control" readonly tabindex="-1">
+                </div>
+                <div id="configEditorValueFieldWrap" class="form-group">
+                    <label for="configEditorValueInput" id="configEditorValueInputLabel">Value</label>
+                    <input type="text" id="configEditorValueInput" class="form-control hover-show colored hidden">
+                    <input type="number" id="configEditorValueNumber" class="form-control hover-show colored hidden">
+                    <input type="text" id="configEditorValueSecret" class="form-control colored config-editor-secret-input hidden"
+                        autocomplete="off" spellcheck="false" placeholder="Enter new value (unchanged if empty)">
+                    <textarea id="configEditorValueTextarea" class="form-control hover-show colored hidden" rows="6" spellcheck="false"></textarea>
+                    <button type="button" id="configEditorValueBoolToggle" class="btn-secondary toggle-btn hidden" data-state="off">false</button>
+                    <select id="configEditorValueEnum" class="form-control hover-show colored hidden"></select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-actions btn-group">
+                    <button type="button" id="configEditorValueApplyBtn" class="btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                    <button type="button" id="configEditorValueCancelBtn" class="btn-secondary">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Explorer Applet Modal (Windows Vista-style) -->
     <div id="explorerModal" class="modal resizeable-window hidden" data-window-min-width="600"
         data-window-min-height="400">
@@ -6034,6 +6823,15 @@ Examples:
                 <div class="workspace-tray-icon taskbar-tray-icon" id="workspaceTrayIcon" title="Workspace">
                     <i class="fa-duotone fa-clone"></i>
                 </div>
+                <!-- Service Worker Indicator -->
+                <div class="service-worker-tray-icon taskbar-tray-icon" id="serviceWorkerTrayIcon"
+                    title="Service Worker">
+                    <i class="fas fa-hard-drive" id="serviceWorkerTrayIconGlyph"></i>
+                </div>
+                <!-- Modem / Network Connection -->
+                <div class="modem-tray-icon taskbar-tray-icon" id="modemTrayIcon" title="Melaton Network Connection">
+                    <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>
+                </div>
                 <!-- Ping Warning Indicator -->
                 <div class="ping-warning-indicator taskbar-tray-icon" id="pingWarningIndicator" title="">
                     <i class="fas fa-satellite"></i>
@@ -6082,6 +6880,8 @@ Examples:
     <script src="scripts/comp/promptStageBlocks.js"></script>
     <script src="scripts/comp/emphasisManager.js"></script>
     <script src="scripts/comp/tagWikiSearchModal.js"></script>
+    <script src="scripts/comp/naxtApplet.js"></script>
+    <script src="scripts/comp/configEditorApplet.js"></script>
     <script src="scripts/comp/characterSearchModal.js"></script>
     <script src="scripts/comp/websocketRequestsModal.js"></script>
     <script src="scripts/comp/confirmationDialog.js"></script>
@@ -6089,8 +6889,11 @@ Examples:
     <script src="scripts/comp/galleryToolbar.js"></script>
     <script src="scripts/comp/customScrollbar.js"></script>
     <script src="scripts/comp/pinModal.js"></script>
+    <script src="scripts/comp/runCommandIndex.js"></script>
+    <script src="scripts/comp/runApplet.js"></script>
     <script src="scripts/comp/keyboardShortcuts.js"></script>
     <script src="scripts/comp/datasetTagToolbar.js"></script>
+    <script src="scripts/comp/presetTokenCount.js"></script>
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
     <script src="scripts/comp/galleryView.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
@@ -6101,6 +6904,7 @@ Examples:
     <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/utilities.js"></script>
     <script src="scripts/comp/manualDropdownManager.js"></script>
+    <script src="scripts/comp/bracketGenerationApplet.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

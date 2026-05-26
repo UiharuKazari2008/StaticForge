@@ -1,0 +1,21 @@
+{
+  "configId": "config",
+  "label": "Application Config",
+  "rules": [
+    { "path": ["port"], "type": "number", "label": "HTTP Port", "restartRequired": true },
+    { "path": ["defaultGrokModel"], "type": "string", "label": "Default Grok Model" },
+    { "path": ["chat_streaming_enabled"], "type": "boolean", "label": "Chat Streaming" },
+    { "path": ["debugNovelAI"], "type": "boolean", "label": "Debug NovelAI" },
+    { "path": ["log_verbosity"], "type": "string", "label": "Log Verbosity" },
+    { "path": ["preloadTags"], "type": "boolean", "label": "Preload Tags" },
+    { "path": ["lruCache"], "type": "object", "label": "LRU Cache" },
+    { "path": ["lruCache", "*"], "type": "number" },
+    { "path": ["selectedApiKeys"], "type": "object", "label": "API Key Selection" },
+    { "path": ["selectedApiKeys", "*"], "type": "number", "label": "Key Index" },
+    { "path": ["devLoginKey"], "type": "string", "secret": true },
+    { "path": ["loginKey"], "type": "string", "secret": true },
+    { "path": ["loginPin"], "type": "string", "secret": true },
+    { "path": ["readOnlyPin"], "type": "string", "secret": true },
+    { "path": ["sessionSecret"], "type": "string", "secret": true }
+  ]
+}

@@ -1,108 +1,95 @@
 const fs = require('fs');
-const globalResources = require('./globalResources');
 
-// Authentication middleware
-const authMiddleware = (req, res, next) => {
-    // Set cache control headers to prevent any caching of authenticated responses
-    res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Last-Modified', new Date().toUTCString());
-    res.setHeader('ETag', `"${Date.now()}"`);
-    
-    // Check if authentication is required
-    const loginKey = globalResources.getConfig({ path: 'loginKey' });
-    if (loginKey === null) {
-        return next();
-    }
+function createAuthMiddleware(globalResources) {
+    return (req, res, next) => {
+        res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Last-Modified', new Date().toUTCString());
+        res.setHeader('ETag', `"${Date.now()}"`);
 
-    // REST API: Bearer or ?auth=...
-    const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
-    if (authToken) {
-        if (authToken !== config.loginKey) {
-            return res.status(403).json({ error: 'Invalid authentication token' });
+        const loginKey = globalResources.getConfig({ path: 'loginKey' });
+        if (loginKey === null) {
+            return next();
         }
-        // For API tokens, assume admin access and set session
-        req.userType = 'admin';
-        if (req.session) {
-            req.session.authenticated = true;
-            req.session.userType = 'admin';
+
+        const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
+        if (authToken) {
+            if (authToken !== loginKey) {
+                return res.status(403).json({ error: 'Invalid authentication token' });
+            }
+            req.userType = 'admin';
+            if (req.session) {
+                req.session.authenticated = true;
+                req.session.userType = 'admin';
+            }
+            return next();
         }
-        return next();
-    }
 
-    // Browser: session-based
-    if (req.session && req.session.authenticated) {
-        req.userType = req.session.userType || 'admin'; // Default to admin for backward compatibility
-        req.sessionId = req.session.id; // Add session ID for per-session workspace management
-        return next();
-    }
-
-    // Not authenticated
-    return res.status(401).json({ error: 'Authentication required' });
-};
-
-// Helper function to check if user is read-only
-const isReadOnlyUser = (req) => {
-    return req.userType === 'readonly';
-};
-
-// Helper function to check if user is admin
-const isAdminUser = (req) => {
-    return req.userType === 'admin';
-};
-
-// Development-specific authentication middleware
-const devAuthMiddleware = (req, res, next) => {
-    // Set cache control headers to prevent any caching of authenticated responses
-    res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    res.setHeader('Last-Modified', new Date().toUTCString());
-    res.setHeader('ETag', `"${Date.now()}"`);
-    
-    // Check if development mode is enabled
-    const enableDev = globalResources.getConfig({ path: 'enable_dev' });
-    if (!enableDev) {
-        return res.status(404).json({ error: 'Development mode not enabled' });
-    }
-    
-    // Check if dev login key is configured
-    if (!config.devLoginKey) {
-        return res.status(500).json({ error: 'Development login key not configured' });
-    }
-
-    // REST API: Bearer or ?auth=...
-    const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
-    if (authToken) {
-        if (authToken !== config.devLoginKey) {
-            return res.status(403).json({ error: 'Invalid development authentication token' });
-        }
-        // For dev API tokens, set as dev admin
-        req.userType = 'dev_admin';
-        if (req.session) {
-            req.session.authenticated = true;
-            req.session.userType = 'dev_admin';
-        }
-        return next();
-    }
-
-    // Browser: session-based (check both regular admin and dev admin)
-    if (req.session && req.session.authenticated) {
-        if (req.session.userType === 'admin' || req.session.userType === 'dev_admin') {
-            req.userType = req.session.userType;
+        if (req.session && req.session.authenticated) {
+            req.userType = req.session.userType || 'admin';
             req.sessionId = req.session.id;
             return next();
         }
-    }
 
-    // Not authenticated
-    return res.status(401).json({ error: 'Development authentication required' });
-};
+        return res.status(401).json({ error: 'Authentication required' });
+    };
+}
+
+function createDevAuthMiddleware(globalResources) {
+    return (req, res, next) => {
+        res.setHeader('Cache-Control', 'blocked, no-store, no-cache, must-revalidate, private, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Last-Modified', new Date().toUTCString());
+        res.setHeader('ETag', `"${Date.now()}"`);
+
+        const enableDev = globalResources.getConfig({ path: 'enable_dev' });
+        if (!enableDev) {
+            return res.status(404).json({ error: 'Development mode not enabled' });
+        }
+
+        const devLoginKey = globalResources.getSecureConfig({ path: 'devLoginKey' });
+        if (!devLoginKey) {
+            return res.status(500).json({ error: 'Development login key not configured' });
+        }
+
+        const authToken = req.query.auth || req.headers.authorization?.replace('Bearer ', '');
+        if (authToken) {
+            if (authToken !== devLoginKey) {
+                return res.status(403).json({ error: 'Invalid development authentication token' });
+            }
+            req.userType = 'dev_admin';
+            if (req.session) {
+                req.session.authenticated = true;
+                req.session.userType = 'dev_admin';
+            }
+            return next();
+        }
+
+        if (req.session && req.session.authenticated) {
+            if (req.session.userType === 'admin' || req.session.userType === 'dev_admin') {
+                req.userType = req.session.userType;
+                req.sessionId = req.session.id;
+                return next();
+            }
+        }
+
+        return res.status(401).json({ error: 'Development authentication required' });
+    };
+}
+
+function isReadOnlyUser(req) {
+    return req.userType === 'readonly';
+}
+
+function isAdminUser(req) {
+    return req.userType === 'admin';
+}
 
 module.exports = {
-    authMiddleware,
-    devAuthMiddleware,
+    createAuthMiddleware,
+    createDevAuthMiddleware,
     isReadOnlyUser,
     isAdminUser
-}; 
+};

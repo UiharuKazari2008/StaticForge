@@ -23,13 +23,13 @@ let lastScheduledCompletion = 0; // Timestamp of last scheduled request completi
 // Import modules
 const globalResources = require('./modules/globalResources');
 globalResources.prepare();
-const { authMiddleware, devAuthMiddleware } = require('./modules/auth');
-const { tagSuggestionsCache } = require('./modules/cache');
+const authMiddleware = globalResources.getAuthMiddleware();
+const devAuthMiddleware = globalResources.getDevAuthMiddleware();
 const { processDynamicImage } = require('./modules/imageTools');
-const tracing = require('./modules/tracing');
 const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('./modules/cacheDirExpiry');
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
+const { handleNaxImageRequest } = require('./modules/naxImageServer');
 
 // Server readiness tracking
 const serverReadiness = {
@@ -306,6 +306,10 @@ function isProtectedResource(url) {
         return true;
     }
 
+    if (url.startsWith('/private/wiki/')) {
+        return true;
+    }
+
     // Don't require auth for basic HTML pages and static assets
     return false;
 }
@@ -528,7 +532,7 @@ const limiter = rateLimit({
         
         // Skip rate limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app', '/editor'];
+            const allowedPaths = ['/', '/app'];
             return allowedPaths.includes(req.path);
         }
         
@@ -563,7 +567,7 @@ const speedLimiter = slowDown({
         
         // Skip speed limiting for OPTIONS requests to specific routes only
         if (req.method === 'OPTIONS') {
-            const allowedPaths = ['/', '/app', '/editor'];
+            const allowedPaths = ['/', '/app'];
             return allowedPaths.includes(req.path);
         }
         
@@ -1029,10 +1033,18 @@ app.use('/previews/:preview', authMiddleware, (req, res) => {
     res.setHeader('Cache-Control', 'private, max-age=259200');
     res.sendFile(previewFile, { root: previewsDir });
 });
+app.get('/naxCache/:gallerySlug/:filename', authMiddleware, (req, res) => {
+    handleNaxImageRequest(globalResources, req, res, cacheDir);
+});
 app.use('/cache', authMiddleware, (req, res, next) => {
     res.setHeader('Cache-Control', 'public, max-age=259200');
     next();
 }, express.static(cacheDir));
+app.use('/private/wiki', authMiddleware, express.static(path.join(cacheDir, 'wiki'), {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true
+}));
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -1258,7 +1270,6 @@ app.options('/', (req, res) => {
         const routeFiles = [
             { url: '/', name: '/index.html' },
             { url: '/app', name: '/app.html' },
-            { url: '/editor', name: '/editor.html' },
             { url: '/launch', name: '/launch.html' }
         ];
 
@@ -1453,10 +1464,6 @@ app.get('/app', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'app.html'));
 });
 
-app.get('/editor', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'editor.html'));
-});
-
 // Android WebView: JSON probe for AndroidBackgroundRefresh manifest (session cookies, same as WebView)
 app.get('/android/background-notification', serverReadinessMiddleware, authMiddleware, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -1496,7 +1503,7 @@ app.get('/traces', authMiddleware, (req, res) => {
 // Traces API
 app.get('/traces/list', authMiddleware, (req, res) => {
     try {
-        const list = tracing.listTraces();
+        const list = globalResources.getTracing().listTraces();
         console.log(`📋 listTraces() returned ${list.length} traces`);
         res.json({ success: true, traces: list });
     } catch (e) {
@@ -1507,7 +1514,7 @@ app.get('/traces/list', authMiddleware, (req, res) => {
 
 app.get('/traces/:id', authMiddleware, (req, res) => {
     try {
-        const trace = tracing.loadTrace(req.params.id);
+        const trace = globalResources.getTracing().loadTrace(req.params.id);
         if (!trace) return res.status(404).json({ success: false, error: 'Trace not found' });
         res.json({ success: true, trace });
     } catch (e) {
@@ -1519,7 +1526,7 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
 app.use('/traces/files', authMiddleware, (req, res, next) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     next();
-}, express.static(tracing.tracesDir));
+}, express.static(globalResources.getTracing().tracesDir));
 app.get('/launch', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'launch.html'));
 });
@@ -1531,7 +1538,7 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
 
         const currentPromptConfig = globalResources.getPromptConfig();
         // Resolve preset or preset group by UUID (transparently handles chapters)
-        const resolution = globalResources.textReplacements.resolvePresetOrGroup(req.params.uuid);
+        const resolution = globalResources.getTextReplacements().resolvePresetOrGroup(req.params.uuid);
         if (!resolution) {
             return res.status(404).json({ success: false, error: 'Preset or preset group not found' });
         }
@@ -1574,13 +1581,13 @@ app.get('/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, async (r
             
             // Call handleStagedGeneration with a mock session ID
             const sessionId = crypto.randomUUID();
-            result = await handleStagedGeneration(bodyData, sessionId, null, null, null, null);
+            result = await handleStagedGeneration(globalResources, bodyData, sessionId, null, null, null, null);
         } else {
             // Regular single generation
-            const opts = await buildOptions(p, null, req.query);
+            const opts = await buildOptions(globalResources, p, null, req.query);
             // Use target_workspace from preset if no workspace specified (for REST API calls)
             const workspaceId = req?.query?.workspace || p?.target_workspace || 'default';
-            result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
+            result = await handleGeneration(globalResources, opts, true, p.name || 'unknown', workspaceId);
         }
         
         // Handle staged generation results with multiple saved images
@@ -1665,7 +1672,7 @@ app.get('/pending/preset/:uuid', serverReadinessMiddleware, getQueueMiddleware, 
 
         const currentPromptConfig = globalResources.getPromptConfig();
         // Resolve preset or preset group by UUID (transparently handles chapters)
-        const resolution = globalResources.textReplacements.resolvePresetOrGroup(req.params.uuid);
+        const resolution = globalResources.getTextReplacements().resolvePresetOrGroup(req.params.uuid);
         if (!resolution) {
             return res.status(401).json({ success: 'not_possible', error: 'Invalid preset or preset group UUID' });
         }
@@ -1992,6 +1999,7 @@ app.get('/reroll/:filename', serverReadinessMiddleware, authMiddleware, getQueue
 
         // Call the reroll generation function
         const result = await handleRerollGeneration(
+            globalResources,
             metadata, 
             req.session.id, 
             workspace,
@@ -2258,11 +2266,11 @@ async function processScheduledRequest(requestId) {
             
             // Call handleStagedGeneration with a mock session ID
             const sessionId = crypto.randomUUID();
-            result = await handleStagedGeneration(bodyData, sessionId, null, null, null, null);
+            result = await handleStagedGeneration(globalResources, bodyData, sessionId, null, null, null, null);
         } else {
             // Regular single generation
-            const opts = await buildOptions(p, null, request.queryParams);
-            result = await handleGeneration(opts, true, p.name || 'unknown', workspaceId);
+            const opts = await buildOptions(globalResources, p, null, request.queryParams);
+            result = await handleGeneration(globalResources, opts, true, p.name || 'unknown', workspaceId);
         }
 
         // Update request with successful result
@@ -3018,9 +3026,10 @@ async function gracefulShutdown() {
     }
     
     // Save tag cache immediately if dirty
-    if (tagSuggestionsCache.isDirty) {
+    const tagCache = globalResources.getTagSuggestionsCache();
+    if (tagCache.isDirty) {
         globalResources.logger.info('Saving tag cache before shutdown');
-        tagSuggestionsCache.saveCache();
+        tagCache.saveCache();
     }
 
     // Flush all pending config saves

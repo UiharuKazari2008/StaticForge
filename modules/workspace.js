@@ -12,10 +12,10 @@ class WorkspaceManager {
         this.globalResources = globalResources;
 
         // Workspace configuration
-        this.WORKSPACE_FILE = path.resolve(__dirname, '../.cache/workspace.json');
-        this.IMAGES_DIR = path.resolve(__dirname, '../images');
-        this.CACHE_DIR = path.resolve(__dirname, '../.cache');
-        this.UPLOAD_CACHE_DIR = path.join(this.CACHE_DIR, 'upload');
+        this.WORKSPACE_FILE = globalResources.getPath('workspaceFile');
+        this.IMAGES_DIR = globalResources.getPath('images');
+        this.CACHE_DIR = globalResources.getPath('cache');
+        this.UPLOAD_CACHE_DIR = globalResources.getPath('uploadCache');
 
         // Default workspace colors
         this.DEFAULT_WORKSPACE_COLORS = [
@@ -993,6 +993,7 @@ class WorkspaceManager {
 
         this.sortAllWorkspaceFiles(); // Sort existing files by timestamp
         this.organizeOrphanedFiles(); // Organize orphaned upscaled files
+        this.pruneAllAbsentImageFilenamesOnBoot();
 
         if (this.globalResources && this.globalResources.getLogger) {
             const finalWorkspaces = this.globalResources.getWorkspacesConfig();
@@ -1025,6 +1026,35 @@ class WorkspaceManager {
     }
 
     /**
+     * Collect every files/scraps/pinned basename from all workspaces and prune missing images once at boot.
+     */
+    pruneAllAbsentImageFilenamesOnBoot() {
+        const workspaces = this.globalResources.getWorkspacesConfig();
+        const allFilenames = [];
+        Object.values(workspaces).forEach(workspace => {
+            if (!workspace) {
+                return;
+            }
+            allFilenames.push(...(workspace.files || []));
+            allFilenames.push(...(workspace.scraps || []));
+            allFilenames.push(...(workspace.pinned || []));
+        });
+        this.pruneAbsentImageFilenamesFromWorkspaces(allFilenames);
+    }
+
+    /**
+     * Read-only: return filenames from the given lists that still exist under IMAGES_DIR.
+     * @param {...string[]} filenameLists One or more arrays of image basenames
+     */
+    filterFilenamesExistingOnDisk(...filenameLists) {
+        const dir = this.IMAGES_DIR;
+        const merged = [...new Set(
+            filenameLists.flat().filter(f => typeof f === 'string' && f.length > 0)
+        )];
+        return new Set(merged.filter(f => fs.existsSync(path.join(dir, f))));
+    }
+
+    /**
      * Remove filenames that no longer exist on disk from files/scraps/pinned everywhere.
      * Returns a Set of filenames that still exist under IMAGES_DIR (from the merged candidate lists).
      * @param {...string[]} filenameLists One or more arrays of image basenames (e.g. workspace files + pinned)
@@ -1039,8 +1069,10 @@ class WorkspaceManager {
         }
         const missing = merged.filter(f => !fs.existsSync(path.join(dir, f)));
         if (missing.length > 0) {
-            this.removeFilesFromWorkspaces(missing);
-            console.log(`🧹 Dropped ${missing.length} workspace reference(s) to missing images on disk`);
+            const totalRemoved = this.removeFilesFromWorkspaces(missing);
+            if (totalRemoved > 0) {
+                console.log(`🧹 Dropped ${missing.length} missing image(s) from workspaces (${totalRemoved} reference(s) removed)`);
+            }
         }
         return new Set(merged.filter(f => fs.existsSync(path.join(dir, f))));
     }
@@ -1220,16 +1252,19 @@ class WorkspaceManager {
                 if (!workspaces[targetId].scraps) {
                     workspaces[targetId].scraps = [];
                 }
-                const originalScrapsLength = workspaces[targetId].scraps.length;
-                workspaces[targetId].scraps = workspaces[targetId].scraps.filter(item => !validItems.includes(item));
-                removedCount = originalScrapsLength - workspaces[targetId].scraps.length;
+                const scrapsBefore = workspaces[targetId].scraps;
+                workspaces[targetId].scraps = scrapsBefore.filter(item => !validItems.includes(item));
+                removedCount = scrapsBefore.length - workspaces[targetId].scraps.length;
 
                 // For scraps, move removed items back to files of the target workspace
-                validItems.forEach(item => {
-                    if (!workspaces[targetId].files.includes(item)) {
-                        workspaces[targetId].files.push(item);
-                    }
-                });
+                if (removedCount > 0) {
+                    const removedFromScraps = scrapsBefore.filter(item => validItems.includes(item));
+                    removedFromScraps.forEach(item => {
+                        if (!workspaces[targetId].files.includes(item)) {
+                            workspaces[targetId].files.push(item);
+                        }
+                    });
+                }
 
                 // Also remove from default workspace scraps if not the default workspace (scraps are shared)
                 if (targetId !== 'default' && workspaces.default && workspaces.default.scraps) {

@@ -17,7 +17,7 @@ class ImageViewerManager {
     }
 
     // Create a new image viewer instance
-    createViewer(imageSrc, title = 'Image Viewer', metadata = {}) {
+    createViewer(imageSrc, title = 'Glancewell', metadata = {}) {
         const viewerId = `imageViewer_${this.nextId++}`;
         const viewerElement = this.template.cloneNode(true);
         viewerElement.id = viewerId;
@@ -200,10 +200,10 @@ class ImageViewer {
     }
 
     init() {
-        // Set title with "Preview [name]" format
+        // Set title with "Lumen [name]" format
         const titleElement = this.element.querySelector(`#imageViewerTitle_${this.id}`);
         if (titleElement) {
-            titleElement.textContent = `Preview [${this.title}]`;
+            titleElement.textContent = `Lumen [${this.title}]`;
         }
 
         // Open modal
@@ -394,14 +394,15 @@ class ImageViewer {
         };
 
         // Icon actions section (always available)
+        const isNax = this.isNaxImage();
         contextMenuConfig.sections.push({
             type: 'icons',
             position: 'outer',
             icons: [
                 {
-                    icon: 'fas fa-clipboard',
-                    tooltip: 'Copy',
-                    action: 'image-viewer-copy'
+                    icon: isNax ? 'nai-clipboard' : 'fas fa-clipboard',
+                    tooltip: isNax ? 'Copy tag' : 'Copy',
+                    action: isNax ? 'image-viewer-copy-tag' : 'image-viewer-copy'
                 },
                 {
                     icon: 'fas fa-download',
@@ -425,6 +426,60 @@ class ImageViewer {
                         menuItem.tooltip = isPinned ? 'Unfavorite' : 'Favorite';
                     }
                 }
+            });
+        }
+
+        // Atelier / NAX tag previews (public/scripts/comp/naxtApplet.js)
+        if (isNax) {
+            contextMenuConfig.sections[0].icons.push(
+                {
+                    icon: 'fa-regular fa-star',
+                    tooltip: 'Favorite',
+                    action: 'image-viewer-nax-fav',
+                    loadfn: (menuItem) => {
+                        const fav = !!(this.metadata && this.metadata.naxFavorite);
+                        menuItem.icon = fav ? 'fas fa-star' : 'fa-regular fa-star';
+                        menuItem.tooltip = fav ? 'Unfavorite' : 'Favorite';
+                    }
+                },
+                {
+                    icon: 'far fa-flask',
+                    tooltip: 'Try',
+                    action: 'image-viewer-nax-try',
+                    loadfn: (menuItem) => {
+                        const on = !!(this.metadata && this.metadata.naxTryMark);
+                        menuItem.icon = on ? 'fas fa-flask' : 'far fa-flask';
+                        menuItem.tooltip = on ? 'Remove try mark' : 'Mark to try';
+                    }
+                }
+            );
+            contextMenuConfig.sections.push({
+                type: 'list',
+                items: [
+                    {
+                        icon: 'fas fa-plus',
+                        text: 'Add to Prompt',
+                        action: 'image-viewer-add-to-prompt',
+                        disabled: () => {
+                            const manualModal = document.getElementById('manualModal');
+                            return manualModal && manualModal.classList.contains('hidden');
+                        }
+                    },
+                    {
+                        icon: 'fas fa-arrows-rotate',
+                        text: 'Replace in Prompt',
+                        action: 'image-viewer-replace-prompt',
+                        disabled: () => {
+                            const manualModal = document.getElementById('manualModal');
+                            return manualModal && manualModal.classList.contains('hidden');
+                        }
+                    },
+                    {
+                        icon: 'fas fa-shopping-bag',
+                        text: 'Add to bag',
+                        action: 'image-viewer-add-to-bag'
+                    }
+                ]
             });
         }
 
@@ -539,11 +594,66 @@ class ImageViewer {
             case 'image-viewer-incinerate':
                 this.incinerate();
                 break;
+            case 'image-viewer-copy-tag':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    window.naxtApplet.copyTag(this.title);
+                }
+                break;
+            case 'image-viewer-add-to-prompt':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    window.naxtApplet.addToPrompt(this.title, this.metadata.naxGallerySlug, 'add');
+                }
+                break;
+            case 'image-viewer-replace-prompt':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    window.naxtApplet.addToPrompt(this.title, this.metadata.naxGallerySlug, 'replace');
+                }
+                break;
+            case 'image-viewer-add-to-bag':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    void window.naxtApplet.addToBag(
+                        this.title,
+                        this.metadata.naxGallerySlug,
+                        this.metadata.naxFilename
+                    );
+                }
+                break;
+            case 'image-viewer-nax-fav':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    const nextFav = !this.metadata.naxFavorite;
+                    void window.naxtApplet.setFavoriteForTag(
+                        this.metadata.naxGallerySlug,
+                        this.title,
+                        nextFav
+                    ).then(() => {
+                        this.metadata.naxFavorite = nextFav;
+                    });
+                }
+                break;
+            case 'image-viewer-nax-try':
+                if (this.isNaxImage() && window.naxtApplet) {
+                    const nextTry = !this.metadata.naxTryMark;
+                    void window.naxtApplet.setTryMarkForTag(
+                        this.metadata.naxGallerySlug,
+                        this.title,
+                        nextTry
+                    ).then(() => {
+                        this.metadata.naxTryMark = nextTry;
+                    });
+                }
+                break;
         }
     }
 
+    isNaxImage() {
+        return !!(this.metadata && this.metadata.naxGallerySlug && this.metadata.naxFilename);
+    }
+
     hasValidMetadata() {
-        return this.metadata && (this.metadata.filename || this.metadata.base || this.metadata.original);
+        if (!this.metadata) return false;
+        // NAX tag wiki / arbitrary URL previews: not workspace gallery images (no Reroll, Scrap, pin, etc.)
+        if (this.metadata.genericExternalImage) return false;
+        return !!(this.metadata.filename || this.metadata.base || this.metadata.original);
     }
 
     zoomIn() {
@@ -934,7 +1044,7 @@ if (document.readyState === 'loading') {
 }
 
 // Helper functions for opening images from different sources
-window.openImageInViewer = function (imageSrc, title = 'Image Viewer', metadata = {}) {
+window.openImageInViewer = function (imageSrc, title = 'Glancewell', metadata = {}) {
     return imageViewerManager.createViewer(imageSrc, title, metadata);
 };
 

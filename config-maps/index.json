@@ -1,0 +1,52 @@
+{
+  "configs": [
+    {
+      "id": "config",
+      "label": "Application Config",
+      "configType": "config",
+      "mapFile": "config.map.json"
+    },
+    {
+      "id": "secureConfig",
+      "label": "Secure Config",
+      "configType": "secureConfig",
+      "mapFile": "secureConfig.map.json"
+    },
+    {
+      "id": "promptConfig",
+      "label": "Prompt Config",
+      "configType": "promptConfig",
+      "mapFile": "promptConfig.map.json"
+    },
+    {
+      "id": "directorConfig",
+      "label": "Director Config",
+      "configType": "directorConfig",
+      "mapFile": "directorConfig.map.json"
+    },
+    {
+      "id": "favorites",
+      "label": "Favorites",
+      "configType": "favorites",
+      "mapFile": "favorites.map.json"
+    },
+    {
+      "id": "workspaces",
+      "label": "Workspaces",
+      "configType": "workspaces",
+      "mapFile": "workspaces.map.json"
+    },
+    {
+      "id": "workspaceDesktop",
+      "label": "Desktop Layout",
+      "configType": "workspaceDesktop",
+      "mapFile": "workspaceDesktop.map.json"
+    },
+    {
+      "id": "naxGeneration",
+      "label": "NAX Generation",
+      "configType": "naxGeneration",
+      "mapFile": "naxGeneration.map.json"
+    }
+  ]
+}

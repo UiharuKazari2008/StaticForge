@@ -4,7 +4,11 @@ const logger = require('./logger');
 
 // Tag suggestions cache system with new format
 class TagSuggestionsCache {
-    constructor() {
+    constructor(globalResources) {
+        if (!globalResources) {
+            throw new Error('TagSuggestionsCache requires globalResources');
+        }
+        this.globalResources = globalResources;
         this.cache = {
             query_idx: {},      // query_idx: { "MODEL_query": [tag_id...] }
             tags: {},           // tags: { "MODEL": { tag_id: { data... } } }
@@ -12,7 +16,7 @@ class TagSuggestionsCache {
             n_idx: {},          // n_idx: { "MODEL": next_tag_id }
         };
         
-        this.cachePath = path.join(__dirname, '..', '.cache', 'tag_cache.json');
+        this.cachePath = globalResources.getPath('tagCacheFile');
         this.isDirty = false;
         this.saveTimer = null;
         this.lastSaveTime = 0;
@@ -328,38 +332,6 @@ class TagSuggestionsCache {
     }
 }
 
-// Create and export cache instance
-const tagSuggestionsCache = new TagSuggestionsCache();
-
-// Start cleanup timer (every hour)
-setInterval(() => {
-    tagSuggestionsCache.cleanupOldEntries();
-}, 60 * 60 * 1000);
-
-// Handle graceful shutdown
-process.on('SIGINT', () => {
-    console.log('🛑 SIGINT received, saving tag cache...');
-    tagSuggestionsCache.saveCache();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    console.log('🛑 SIGTERM received, saving tag cache...');
-    tagSuggestionsCache.saveCache();
-    process.exit(0);
-});
-
-process.on('exit', () => {
-    if (tagSuggestionsCache.isDirty) {
-        console.log('💾 Tag cache dirty on exit, attempting to save...');
-        try {
-            tagSuggestionsCache.saveCache();
-        } catch (error) {
-            console.error('Failed to save tag cache on exit:', error);
-        }
-    }
-});
-
 module.exports = {
-    tagSuggestionsCache
+    TagSuggestionsCache
 }; 

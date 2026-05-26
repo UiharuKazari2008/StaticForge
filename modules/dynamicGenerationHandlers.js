@@ -11,11 +11,14 @@ const tzLookup = require('tz-lookup');
 const geo2city = require('geo2city');
 
 const { determineTimePeriod, getSunriseSunset } = require('./dynamicGenerationHandlers.timeCalc');
-const globalResources = require('./globalResources');
-const localPromptOptimizer = require('./localPromptOptimizer');
 const { createDynamicGenerationResponseSchema, getZodSchemaKeyCount } = require('./dynamicGenerationSchema');
 const ClothingDatabase = require('./clothingDatabase');
 const { stripPromptBlocksForEffectivePrompt } = require('./promptStageBlocks');
+
+let __runtimeGr = null;
+function bindRuntimeGlobalResources(globalResources) {
+    __runtimeGr = globalResources;
+}
 
 /**
  * Strip stage-conditional blocks (!N/, !N+/, !-N/) and disabled text blocks (!/.../).
@@ -61,7 +64,7 @@ function normalizePeriodKey(periodKey) {
 function getSessionIdFromWs(ws) {
     if (!ws) return null;
     try {
-        const wsServer = globalResources.getWebSocketServer();
+        const wsServer = __runtimeGr.getWebSocketServer();
         if (wsServer && wsServer.clients) {
             const clientInfo = wsServer.clients.get(ws);
             return clientInfo ? clientInfo.sessionId : null;
@@ -79,7 +82,7 @@ function getSessionIdFromWs(ws) {
  */
 function sendProgressUpdate(requestId, updateData, ws = null, sessionId = null) {
     try {
-        const plumbing = globalResources.getDataPlumbing();
+        const plumbing = __runtimeGr.getDataPlumbing();
         
         // Extract sessionId from ws if not provided
         if (!sessionId && ws) {
@@ -259,13 +262,14 @@ function generateSystemMessageHashFromText(systemMessageText) {
 }
 
 // System message cache management
-const SYSTEM_MESSAGE_CACHE_FILE = path.join(__dirname, '../.cache/system_message_cache.json');
+// path resolved via __runtimeGr.getPath('systemMessageCacheFile') in functions that need it
 const CACHE_EXPIRY_DAYS = 30;
 
-function loadSystemMessageCache() {
+function loadSystemMessageCache(globalResources) {
     try {
-        if (fs.existsSync(SYSTEM_MESSAGE_CACHE_FILE)) {
-            const data = fs.readFileSync(SYSTEM_MESSAGE_CACHE_FILE, 'utf8');
+        const cacheFile = globalResources.getPath('systemMessageCacheFile');
+        if (fs.existsSync(cacheFile)) {
+            const data = fs.readFileSync(cacheFile, 'utf8');
             return JSON.parse(data);
         }
     } catch (error) {
@@ -274,20 +278,21 @@ function loadSystemMessageCache() {
     return {};
 }
 
-function saveSystemMessageCache(cache) {
+function saveSystemMessageCache(globalResources, cache) {
     try {
-        const dir = path.dirname(SYSTEM_MESSAGE_CACHE_FILE);
+        const cacheFile = globalResources.getPath('systemMessageCacheFile');
+        const dir = path.dirname(cacheFile);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(SYSTEM_MESSAGE_CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8');
+        fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 2), 'utf8');
     } catch (error) {
         console.error('❌ Error saving system message cache:', error);
     }
 }
 
-function getCachedSystemMessageResponseId(systemMessageHash) {
-    const cache = loadSystemMessageCache();
+function getCachedSystemMessageResponseId(globalResources, systemMessageHash) {
+    const cache = loadSystemMessageCache(globalResources);
     const cacheKey = systemMessageHash;
     const cached = cache[cacheKey];
 
@@ -302,15 +307,15 @@ function getCachedSystemMessageResponseId(systemMessageHash) {
         } else {
             console.log(`⏰ Cached system message expired (age: ${Math.floor(cacheAge / (24 * 60 * 60 * 1000))} days > ${CACHE_EXPIRY_DAYS} days)`);
             delete cache[cacheKey];
-            saveSystemMessageCache(cache);
+            saveSystemMessageCache(globalResources, cache);
         }
     }
 
     return null;
 }
 
-function saveCachedSystemMessageResponseId(systemMessageHash, responseId) {
-    const cache = loadSystemMessageCache();
+function saveCachedSystemMessageResponseId(globalResources, systemMessageHash, responseId) {
+    const cache = loadSystemMessageCache(globalResources);
     const cacheKey = systemMessageHash;
 
     cache[cacheKey] = {
@@ -319,7 +324,7 @@ function saveCachedSystemMessageResponseId(systemMessageHash, responseId) {
         systemMessageHash
     };
 
-    saveSystemMessageCache(cache);
+    saveSystemMessageCache(globalResources, cache);
     console.log(`💾 Saved system message cache: ${cacheKey.substring(0, 16)}... → ${responseId}`);
 }
 
@@ -1385,7 +1390,7 @@ function transformOpenMeteoData(rawData, options) {
     };
 
     // Log timezone information for debugging
-    globalResources.getLogger().verbose(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone}, coords: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
+    __runtimeGr.getLogger().verbose(`🌍 Weather timezone (${timezoneSource}): ${result.location.timezone}, coords: (${rawData.latitude.toFixed(4)}, ${rawData.longitude.toFixed(4)})`);
 
     // Process current weather if available
     if (rawData.current) {
@@ -2078,7 +2083,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         pastHours = 2
     } = options;
 
-    globalResources.getLogger().detailed('🌤️ Retrieving weather analysis...');
+    __runtimeGr.getLogger().detailed('🌤️ Retrieving weather analysis...');
 
     const results = {
         timestamp: Date.now(),
@@ -2097,7 +2102,7 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
     try {
         // 1. Get current weather with temporal context
         if (!customDate && customTimeOffset === null) {
-            globalResources.getLogger().verbose(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
+            __runtimeGr.getLogger().verbose(`📊 Getting current weather with ${pastHours}hr past + ${forecastHours}hr future...`);
             results.temporal = await getEnhancedWeatherData(location, {
                 pastHours: pastHours,
                 forecastHours: forecastHours,
@@ -2138,10 +2143,10 @@ async function getComprehensiveWeatherAnalysis(location, options = {}) {
         }
 
         // 4. Generate comprehensive analysis
-        globalResources.getLogger().verbose('🔍 Generating comprehensive weather analysis...');
+        __runtimeGr.getLogger().verbose('🔍 Generating comprehensive weather analysis...');
         results.analysis = generateComprehensiveAnalysis(results);
 
-        globalResources.getLogger().verbose('✅ Weather analysis complete');
+        __runtimeGr.getLogger().verbose('✅ Weather analysis complete');
         return results;
 
     } catch (error) {
@@ -3848,7 +3853,7 @@ function deconflictOverlappingReplacement(selectText, workingContent, replacemen
 
 /**
  * Extract bias value from text if it has an emphasis group
- * Uses localPromptOptimizer.parseEmphasis() which already exists
+ * Uses __runtimeGr.getLocalPromptOptimizer().parseEmphasis() which already exists
  * @param {string} text - The text to extract bias from
  * @returns {number|null} The bias value if found, null otherwise
  */
@@ -3881,7 +3886,7 @@ function extractBiasFromText(text) {
     }
     
     // Fallback: try parsing with localPromptOptimizer for edge cases
-    const parsed = localPromptOptimizer.parseEmphasis(text);
+    const parsed = __runtimeGr.getLocalPromptOptimizer().parseEmphasis(text);
     return parsed.weight;
 }
 
@@ -3921,7 +3926,8 @@ function hasEmphasisGroup(text) {
  * @param {string} characterField - Character field ('prompt' or 'uc') if targetType is 'character'
  * @returns {Object} { success: boolean, result: string, failedReplacements: string[] }
  */
-function applyDynamicReplacements(originalContent, replacements, targetType = 'prompt', characterIndex = null, characterField = null) {
+function applyDynamicReplacements(globalResources, originalContent, replacements, targetType = 'prompt', characterIndex = null, characterField = null) {
+    bindRuntimeGlobalResources(globalResources);
     let result = originalContent || '';
     
     // Define the append marker constant (must match imageGeneration.js)
@@ -4267,7 +4273,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                 }
             }
         } else if (action === 'replace') {
-            globalResources.getLogger().verbose(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
+            __runtimeGr.getLogger().verbose(`🔄 Attempting replacement: "${trimmedSelectText}" → "${replace_text}"`);
 
             let index = -1;
             let textToReplace = trimmedSelectText;
@@ -4497,7 +4503,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                         // Reconstruct result with boundary protection
                         result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
                         appliedReplacements.add(replacementKey);
-                        globalResources.getLogger().verbose(`✅ Appended alternative text instead of replacing`);
+                        __runtimeGr.getLogger().verbose(`✅ Appended alternative text instead of replacing`);
                         // Record metadata
                         metadata.used_alternative = true;
                         metadata.actual_text_used = alternative_text;
@@ -4768,7 +4774,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
         }
         
         if (action === 'append') {
-            globalResources.getLogger().verbose(`📎 Attempting append: insert "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"${select_text ? ` after "${trimmedSelectText.substring(0, 30)}${trimmedSelectText.length > 30 ? '...' : ''}"` : ' at end'}`);
+            __runtimeGr.getLogger().verbose(`📎 Attempting append: insert "${replace_text.substring(0, 50)}${replace_text.length > 50 ? '...' : ''}"${select_text ? ` after "${trimmedSelectText.substring(0, 30)}${trimmedSelectText.length > 30 ? '...' : ''}"` : ' at end'}`);
 
             let insertPosition;
             let usedFallback = false;
@@ -4896,7 +4902,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
                     if (insertPosition > 2 && workingContent.substring(insertPosition - 2, insertPosition) === ', ') {
                         insertPosition -= 2; // Remove the comma and space before marker
                     }
-                    globalResources.getLogger().verbose(`📍 Found append marker, inserting before presets`);
+                    __runtimeGr.getLogger().verbose(`📍 Found append marker, inserting before presets`);
                 } else {
                     // No marker found, append to end (fallback)
                     insertPosition = workingContent.length;
@@ -4914,7 +4920,7 @@ function applyDynamicReplacements(originalContent, replacements, targetType = 'p
             result = hasBoundary ? workingContent + contentAfterBoundary : workingContent;
 
             appliedReplacements.add(replacementKey);
-            globalResources.getLogger().verbose(`✅ Appended "${textToAppend.substring(0, 50)}${textToAppend.length > 50 ? '...' : ''}"${select_text ? (positionFound ? (usedFallback ? ' after fallback' : ` after "${trimmedSelectText.substring(0, 30)}..."`) : ' at end (fallback)') : ' at end'}`);
+            __runtimeGr.getLogger().verbose(`✅ Appended "${textToAppend.substring(0, 50)}${textToAppend.length > 50 ? '...' : ''}"${select_text ? (positionFound ? (usedFallback ? ' after fallback' : ` after "${trimmedSelectText.substring(0, 30)}..."`) : ' at end (fallback)') : ' at end'}`);
             
             // Set application_method if not already set
             if (!replacement.application_method) {
@@ -5263,7 +5269,7 @@ function initializeHolidayData() {
     });
 
     if (invalidHolidays > 0) {
-        globalResources.getLogger().warn(`Holiday data validation: ${validHolidays} valid, ${invalidHolidays} invalid`);
+        __runtimeGr.getLogger().warn(`Holiday data validation: ${validHolidays} valid, ${invalidHolidays} invalid`);
     }
     return invalidHolidays === 0;
 }
@@ -5290,7 +5296,7 @@ async function makeHttpsRequest(url, options = {}, maxRetries = 3, baseDelay = 1
             const result = await new Promise((resolve, reject) => {
                 const requestOptions = {
                     headers: {
-                        'User-Agent': globalResources.getConfig()?.userAgent || 'StaticForge/1.1a (https://staticforge.app)',
+                        'User-Agent': __runtimeGr.getConfig()?.userAgent || 'StaticForge/1.1a (https://staticforge.app)',
                         ...options.headers
                     },
                     timeout: 5000 // 10 second timeout
@@ -5360,8 +5366,8 @@ async function makeHttpsRequest(url, options = {}, maxRetries = 3, baseDelay = 1
  * @returns {Promise<Object>} Location data
  */
 async function getCachedLocation(fetchFunction) {
-    const locationCache = globalResources.getLocationCache();
-    const lruCache = globalResources.getConfig({ path: 'lruCache' }) || {};
+    const locationCache = __runtimeGr.getLocationCache();
+    const lruCache = __runtimeGr.getConfig({ path: 'lruCache' }) || {};
     const LOCATION_CACHE_DURATION = lruCache.locationDuration || 24 * 60 * 60 * 1000; // 24 hours
     const cacheKey = 'user_location';
     const cached = locationCache.get(cacheKey);
@@ -5388,8 +5394,8 @@ async function getCachedLocation(fetchFunction) {
  * @returns {Promise<Object>} Weather data
  */
 async function getCachedWeatherData(cacheKey, fetchFunction) {
-    const weatherCache = globalResources.getWeatherCache();
-    const lruCache = globalResources.getConfig({ path: 'lruCache' }) || {};
+    const weatherCache = __runtimeGr.getWeatherCache();
+    const lruCache = __runtimeGr.getConfig({ path: 'lruCache' }) || {};
     const WEATHER_CACHE_DURATION = lruCache.weatherDuration || 3 * 60 * 1000; // 3 minutes
     const WEATHER_FAILURE_CACHE_DURATION = lruCache.weatherFailureDuration || 15 * 60 * 1000; // 15 minutes
     
@@ -5435,7 +5441,7 @@ async function getCachedWeatherData(cacheKey, fetchFunction) {
 async function getCurrentLocation() {
     // Check for configured latitude/longitude first
     try {
-        const location = globalResources.getSecureConfig({ path: 'location' });
+        const location = __runtimeGr.getSecureConfig({ path: 'location' });
         if (location && location.latitude !== null && location.longitude !== null) {
             const lat = parseFloat(location.latitude);
             const lon = parseFloat(location.longitude);
@@ -7160,7 +7166,8 @@ function selectRelevantMemories(availableMemories, prompt = '', uc = '', directi
     return scoredMemories.slice(0, 5);
 }
 
-async function generateDynamicGenerationSystemMessage_Modular(context, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+async function generateDynamicGenerationSystemMessage_Modular(globalResources, context, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+    bindRuntimeGlobalResources(globalResources);
     const { buildSystemMessage } = require('./systemMessageBuilder');
     
     const { time, weather, timePeriod, clothing, creative, optimize, weatherHistoryReport } = context;
@@ -7232,7 +7239,7 @@ async function generateDynamicGenerationSystemMessage_Modular(context, backgroun
         // Continue without memories - not critical
     }
     
-    const systemMessageText = await buildSystemMessage(context, {
+    const systemMessageText = await buildSystemMessage(globalResources, context, {
         backgroundFocus,
         stageContext,
         directive,
@@ -7693,7 +7700,7 @@ async function getClientIPLocation(clientIP) {
         // Use IP-API service for server-side IP geolocation
         const response = await fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,regionName,city,lat,lon,timezone`, {
             headers: {
-                'User-Agent': globalResources.getConfig({ path: 'userAgent' }) || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': __runtimeGr.getConfig({ path: 'userAgent' }) || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
         });
 
@@ -7823,7 +7830,8 @@ function isMajorWeatherChange(currentCondition, nextCondition, currentCloudCover
  * @returns {Object} Filtered context object
  */
 
-async function compileContext(dynamicConfig, clientIP = null) {
+async function compileContext(globalResources, dynamicConfig, clientIP = null) {
+    bindRuntimeGlobalResources(globalResources);
     // Extract parameters from dynamic config
     const {
         optimize,
@@ -7933,11 +7941,11 @@ async function compileContext(dynamicConfig, clientIP = null) {
 
                             // If current time is before sunrise, "tomorrow" means later today
                             if (currentHour < sunriseHour) {
-                                globalResources.getLogger().verbose(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
+                                __runtimeGr.getLogger().verbose(`🌅 Before sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to today`);
                                 tomorrow = new Date(now);
                             } else {
                                 // After sunrise, "tomorrow" means next calendar day
-                                globalResources.getLogger().verbose(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
+                                __runtimeGr.getLogger().verbose(`🌅 After sunrise (${sunriseHour.toFixed(2)}h), "tomorrow" refers to next day`);
                                 tomorrow = new Date(now);
                                 tomorrow.setDate(tomorrow.getDate() + 1);
                             }
@@ -8076,7 +8084,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
                 if (requestedTimeToday < today) {
                     targetDateTime = new Date(requestedTimeToday);
                     targetDateTime.setDate(targetDateTime.getDate() + 1); // Move to next calendar day
-                    globalResources.getLogger().verbose(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
+                    __runtimeGr.getLogger().verbose(`🌅 "${normalizedTimeToProcess}" has passed today, scheduling for tomorrow (next day): ${targetDateTime.getHours()}:${targetDateTime.getMinutes().toString().padStart(2, '0')}`);
                 }
 
                 // Use getCurrentTime to create the proper time object for the custom astronomical time
@@ -8715,7 +8723,7 @@ async function compileContext(dynamicConfig, clientIP = null) {
             baseTime = getCurrentTime(timezone, null, null, new Date(baseTime.year, baseTime.month, baseTime.dayOfMonth));
         }
 
-        globalResources.getLogger().detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
+        __runtimeGr.getLogger().detailed(`⏰ Local time: ${baseTime.hour}:${String(baseTime.minute).padStart(2, '0')} (${timezone}) | ${baseTime.month + 1}/${baseTime.dayOfMonth}`);
     }
 
     // Determine time period (only if time is available)
@@ -9025,7 +9033,7 @@ function calculateNextWeatherConditionChange(weatherData, enhancedWeatherData, c
  * @param {number} defaultExpirationMs - Default expiration in milliseconds if unable to calculate (default: 15 minutes)
  * @returns {number} Expiration timestamp in milliseconds
  */
-function calculateDynamicExpiration(context, defaultExpirationMs = 15 * 60 * 1000) {
+function calculateDynamicExpiration(globalResources, context, defaultExpirationMs = 15 * 60 * 1000) {
     const now = Date.now();
     const expirationTimes = [];
     let timeTransition = null;
@@ -9480,7 +9488,7 @@ function autoSaveInsightMemories(insightMemories, phase = '') {
     console.log(`🧠 ${phaseLabel}Auto-saving ${insightMemories.length} insight memor${insightMemories.length === 1 ? 'y' : 'ies'} to global knowledge database...`);
     
     try {
-        const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+        const knowledgeMemoryDb = __runtimeGr.getKnowledgeMemoryDb();
         let savedCount = 0;
         let skippedCount = 0;
         
@@ -9539,7 +9547,7 @@ function autoSaveInsightMemories(insightMemories, phase = '') {
             }
         }
         
-        globalResources.getLogger().detailed(`🧠 ${phaseLabel}Memory save: ${savedCount} saved, ${skippedCount} skipped`);
+        __runtimeGr.getLogger().detailed(`🧠 ${phaseLabel}Memory save: ${savedCount} saved, ${skippedCount} skipped`);
     } catch (error) {
         console.error(`❌ Error processing ${phase ? phase + ' ' : ''}insight memories:`, error);
         // Continue even if saving fails - don't block generation
@@ -9699,6 +9707,7 @@ function validateStartQuizAnswers(answers) {
  */
 async function initializeSystemMessageConversation(params) {
     const {
+        globalResources,
         dynamicConfig,
         prompt,
         uc,
@@ -9712,6 +9721,11 @@ async function initializeSystemMessageConversation(params) {
         attemptId = null
     } = params;
 
+    if (!globalResources) {
+        throw new Error('initializeSystemMessageConversation requires globalResources');
+    }
+    bindRuntimeGlobalResources(globalResources);
+
     if (!attemptId) {
         throw new Error('initializeSystemMessageConversation requires an attemptId from the caller');
     }
@@ -9721,6 +9735,7 @@ async function initializeSystemMessageConversation(params) {
 
     // Generate system message first    
     const systemMessageResult = await generateDynamicGenerationSystemMessage_Modular(
+        globalResources,
         context,
         backgroundFocus,
         dynamicConfig?.pipelineAware,
@@ -9748,7 +9763,7 @@ async function initializeSystemMessageConversation(params) {
     const systemMessageHash = generateSystemMessageHashFromText(systemMessageText);
 
     // Check cache using the generated system message hash
-    const cachedResponseId = getCachedSystemMessageResponseId(systemMessageHash);
+    const cachedResponseId = getCachedSystemMessageResponseId(globalResources, systemMessageHash);
 
     if (cachedResponseId) {
         console.log(`✅ Using cached system message response ID: ${cachedResponseId}`);
@@ -9937,7 +9952,7 @@ async function initializeSystemMessageConversation(params) {
 
     // Cache the response ID with date (only on success)
     if (responseId) {
-        saveCachedSystemMessageResponseId(systemMessageHash, responseId);
+        saveCachedSystemMessageResponseId(globalResources, systemMessageHash, responseId);
 
         console.log(`💾 Cached system message response ID: ${responseId}`);
     }
@@ -9946,9 +9961,9 @@ async function initializeSystemMessageConversation(params) {
 }
 
 // Generalized dynamic generation processing function - extracts core AI logic from WebSocket handler
-const tracing = require('./tracing');
 
-async function processDynamicGenerationCore(dynamicConfig, context = null, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
+async function processDynamicGenerationCore(globalResources, dynamicConfig, context = null, prompt, uc, characterPrompts = [], requestId = 'core', ws = null, handler = null, wsServer = null, backgroundFocus = false, lastGeneratedImage = null, stageContext = null, datasetConfig = null, appliedPresetControls = null, preCalculatedHashes = null) {
+    bindRuntimeGlobalResources(globalResources);
     // Declare apiCalls at function scope so it's accessible in catch block
     let apiCalls = [];
     // Declare allPhase1AttemptIds at function scope so it's accessible in catch block for cleanup
@@ -9960,10 +9975,10 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             : null;
 
         // Summarized console output
-        globalResources.getLogger().normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
+        __runtimeGr.getLogger().normal(`🎭 Dynamic generation: ${requestId}${backgroundFocus ? ' [BG]' : ''}${dynamicConfig.directive ? ' | directive' : ''}`);
         
         // Detailed file logging
-        globalResources.getLogger().logGeneration('DYNAMIC_GENERATION_START', {
+        __runtimeGr.getLogger().logGeneration('DYNAMIC_GENERATION_START', {
             requestId,
             backgroundFocus,
             hasDirective: !!dynamicConfig.directive,
@@ -10013,6 +10028,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 // Get system message response ID from cache or new initialization
                 // Use the context we already compiled above
                 const systemMessageResponseId = await initializeSystemMessageConversation({
+                    globalResources,
                     dynamicConfig,
                     prompt,
                     uc,
@@ -10179,7 +10195,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Strip stage blocks and disabled blocks (!/.../) so they are not counted
         if (tokenCountEnabled) {
             try {
-                const t5TokenizerService = globalResources.getT5Tokenizer();
+                const t5TokenizerService = __runtimeGr.getT5Tokenizer();
                 const promptTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(prompt || '', stageDataForStrip));
                 const ucTokenCount = t5TokenizerService.countTokens(stripDisabledBlocks(uc || '', stageDataForStrip));
                 
@@ -10224,11 +10240,11 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // if (optimizeEnabled && tokenCountEnabled) {
         //     try {
         //         // Initialize optimizer if not already done
-        //         if (!localPromptOptimizer.initialized) {
-        //             await localPromptOptimizer.initialize();
+        //         if (!__runtimeGr.getLocalPromptOptimizer().initialized) {
+        //             await __runtimeGr.getLocalPromptOptimizer().initialize();
         //         }
 
-        //         if (localPromptOptimizer.initialized) {
+        //         if (__runtimeGr.getLocalPromptOptimizer().initialized) {
         //             // Determine warning levels
         //             const getWarningLevel = (tokenCount, limit = 512) => {
         //                 if (tokenCount > limit) return 'critical';
@@ -10241,26 +10257,26 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                     
         //             // Generate tree-formatted analysis for all prompts with token info
         //             const analyses = {
-        //                 basePrompt: prompt ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                 basePrompt: prompt ? __runtimeGr.getLocalPromptOptimizer().formatPromptAnalysisTree(
         //                     prompt, 
         //                     context.tokenCounts?.prompt, 
         //                     512, 
         //                     promptWarning
         //                 ) : null,
-        //                 baseUC: uc ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                 baseUC: uc ? __runtimeGr.getLocalPromptOptimizer().formatPromptAnalysisTree(
         //                     uc, 
         //                     context.tokenCounts?.uc, 
         //                     512, 
         //                     ucWarning
         //                 ) : null,
         //                 characterPrompts: characterPrompts.map((char, idx) => ({
-        //                     prompt: char.prompt ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                     prompt: char.prompt ? __runtimeGr.getLocalPromptOptimizer().formatPromptAnalysisTree(
         //                         char.prompt,
         //                         context.tokenCounts?.characterPrompts?.[idx]?.prompt,
         //                         512,
         //                         promptWarning
         //                     ) : null,
-        //                     uc: char.uc ? localPromptOptimizer.formatPromptAnalysisTree(
+        //                     uc: char.uc ? __runtimeGr.getLocalPromptOptimizer().formatPromptAnalysisTree(
         //                         char.uc,
         //                         context.tokenCounts?.characterPrompts?.[idx]?.uc,
         //                         512,
@@ -10289,10 +10305,10 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Detailed logging of gathered data
         // Summarized console output
         const seasonDisplay = context.season?.name || 'N/A';
-        globalResources.getLogger().normal('📊 Context compiled:', context.location ? `${context.location.city}, ${seasonDisplay}, ${normalizePeriodKey(context.timePeriod?.periodKey || 'N/A')}` : 'Location unavailable');
+        __runtimeGr.getLogger().normal('📊 Context compiled:', context.location ? `${context.location.city}, ${seasonDisplay}, ${normalizePeriodKey(context.timePeriod?.periodKey || 'N/A')}` : 'Location unavailable');
         
         // Detailed file logging
-        globalResources.getLogger().logGeneration('GATHERED_CONTEXT_DATA', {
+        __runtimeGr.getLogger().logGeneration('GATHERED_CONTEXT_DATA', {
             time: context.time,
             timePeriod: context.timePeriod,
             weather: context.weather,
@@ -10306,7 +10322,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         }, requestId);
         
         // Verbose console output
-        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
+        if (__runtimeGr.getLogger().shouldLog(__runtimeGr.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
             console.log('  📅 Time Data     :', context.time || 'No time data');
             console.log('  ⏰ Time Period   :', context.timePeriod || 'No time period data');
             console.log('  🌤️ Weather Data  :', context.weather || 'No weather data');
@@ -10330,6 +10346,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         let messageResult;
         try {
             messageResult = await generateDynamicGenerationSystemMessage_Modular(
+                globalResources,
                 context,
                 backgroundFocus,
                 pipelineAware,
@@ -10401,7 +10418,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
 
         // Get topRelevantMemories for user message (already loaded during system message generation)
         try {
-            const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+            const knowledgeMemoryDb = __runtimeGr.getKnowledgeMemoryDb();
             const availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
             if (availableMemories.length > 0) {
                 topRelevantMemories = selectRelevantMemories(
@@ -10758,7 +10775,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 // Check if we have the new hash-based format or old base64 format
                 if (compiled_prompt.preview_image_hash) {
                     // Load preview from file system using hash
-                    const dynGenPreviewDir = path.join(globalResources.getPath("cache"), 'dynGenPreview');
+                    const dynGenPreviewDir = path.join(__runtimeGr.getPath("cache"), 'dynGenPreview');
                     const previewFilePath = path.join(dynGenPreviewDir, `${compiled_prompt.preview_image_hash}.png`);
                     
                     if (fs.existsSync(previewFilePath)) {
@@ -10827,7 +10844,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Trace: record AI input messages
         try {
             if (requestId && requestId !== 'dynamic' && requestId !== 'buildOptions') {
-                tracing.addEvent(requestId, { type: 'ai_messages_pre', messages });
+                __runtimeGr.getTracing().addEvent(requestId, { type: 'ai_messages_pre', messages });
             }
         } catch {}
 
@@ -10880,9 +10897,9 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             if (attempt === 0) {
-                globalResources.getLogger().normal(`🤖 Calling AI for dynamic generation`);
+                __runtimeGr.getLogger().normal(`🤖 Calling AI for dynamic generation`);
             } else {
-                globalResources.getLogger().normal(`🤖 Retry attempt ${attempt + 1}/${maxAttempts}`);
+                __runtimeGr.getLogger().normal(`🤖 Retry attempt ${attempt + 1}/${maxAttempts}`);
             }
 
             // Send retry progress update if this is a retry attempt
@@ -10917,7 +10934,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 // No analysis yet - must do analysis first
                 workflowStep = 'analysis';
             }
-            const toolsForThisRequest = globalResources.getGrokService().getAllToolDefinitions(dynamicConfig, workflowStep);
+            const toolsForThisRequest = __runtimeGr.getGrokService().getAllToolDefinitions(dynamicConfig, workflowStep);
             
             // Generate attempt UUID for Kaze system
             const attemptId = attempt === 0
@@ -10944,7 +10961,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 _requestId: requestId,
                 _attemptId: attemptId
             };
-            globalResources.getDataPlumbing().set(`${attemptId}:buildOptions`, buildOptionsData, {
+            __runtimeGr.getDataPlumbing().set(`${attemptId}:buildOptions`, buildOptionsData, {
                 temporary: true,
                 category: 'build_options',
                 tags: ['workflow']
@@ -10952,7 +10969,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             
             // Prepare AI options with temperature from dynamic config
             const aiOptions = {
-                model: globalResources.getGrokService().getDefaultGrokModel(),
+                model: __runtimeGr.getGrokService().getDefaultGrokModel(),
                 timeout: 30000, // 30 seconds
                 liveSearch: true,
                 store: true,
@@ -10977,15 +10994,15 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             if (cachedResponseId && attempt === 0) {
                 aiOptions.previous_response_id = cachedResponseId;
                 previousResponseId = cachedResponseId; // Initialize for potential retries
-                globalResources.getLogger().verbose(`🔗 Using cached previous_response_id: ${cachedResponseId}`);
+                __runtimeGr.getLogger().verbose(`🔗 Using cached previous_response_id: ${cachedResponseId}`);
             } else if (attempt > 0 && previousResponseId) {
                 aiOptions.previous_response_id = previousResponseId;
-                globalResources.getLogger().verbose(`🔗 Using previous_response_id for retry: ${previousResponseId}`);
+                __runtimeGr.getLogger().verbose(`🔗 Using previous_response_id for retry: ${previousResponseId}`);
                 // On retry with previous_response_id, ONLY send the new retry message, not entire history
                 messagesToSend = messages.slice(-1); // Only send the last message (retry request)
             }
             
-            const aiResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
+            const aiResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(
                 messagesToSend,
                 aiOptions,
                 // Add streaming callback for reasoning updates
@@ -11010,10 +11027,10 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             );
             
             // Retrieve data from Kaze mailboxes (sent back from callDirectorAIWithStructuredOutput)
-            const retrievedPublishedAnalysis = globalResources.getDataPlumbing().getMailbox(`${attemptId}:publishedAnalysis`, true);
-            const retrievedReplacementPlan = globalResources.getDataPlumbing().getMailbox(`${attemptId}:replacementPlan`, true);
-            const retrievedApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${attemptId}:apiCalls`, false) || [];
-            const retrievedResponseId = globalResources.getDataPlumbing().getMailbox(`${attemptId}:responseId`, true);
+            const retrievedPublishedAnalysis = __runtimeGr.getDataPlumbing().getMailbox(`${attemptId}:publishedAnalysis`, true);
+            const retrievedReplacementPlan = __runtimeGr.getDataPlumbing().getMailbox(`${attemptId}:replacementPlan`, true);
+            const retrievedApiCalls = __runtimeGr.getDataPlumbing().getMailboxAll(`${attemptId}:apiCalls`, false) || [];
+            const retrievedResponseId = __runtimeGr.getDataPlumbing().getMailbox(`${attemptId}:responseId`, true);
 
             const selectLatestResponseId = (value) => {
                 if (!value) return null;
@@ -11028,7 +11045,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 }
                 return typeof value === 'string' && value.trim() ? value.trim() : null;
             };
-            const retrievedChainRejected = globalResources.getDataPlumbing().getMailbox(`${attemptId}:chainRejected`, true);
+            const retrievedChainRejected = __runtimeGr.getDataPlumbing().getMailbox(`${attemptId}:chainRejected`, true);
             
             if (retrievedPublishedAnalysis) {
                 publishedAnalysis = retrievedPublishedAnalysis;
@@ -11052,12 +11069,12 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             const responseIdToUse = selectLatestResponseId(retrievedResponseId) || selectLatestResponseId(aiResponse.responseId);
             if (responseIdToUse) {
                 previousResponseId = responseIdToUse;
-                globalResources.getLogger().verbose(`✅ Captured response ID: ${previousResponseId}`);
+                __runtimeGr.getLogger().verbose(`✅ Captured response ID: ${previousResponseId}`);
                 
                 // If this is an initial full request and we don't have an initial response ID yet, capture it
                 if (isInitialRequest && !initialResponseId && attempt === 0) {
                     initialResponseId = responseIdToUse;
-                    globalResources.getLogger().verbose(`🆕 Initial response ID: ${initialResponseId}`);
+                    __runtimeGr.getLogger().verbose(`🆕 Initial response ID: ${initialResponseId}`);
                 }
             }
 
@@ -11094,7 +11111,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 const lastCall = retrievedApiCalls[retrievedApiCalls.length - 1];
                 if (lastCall && lastCall.usage && requestId) {
                     const usageData = lastCall.usage;
-                    globalResources.getLogger().logGeneration('AI_CALL_ATTEMPT_USAGE', {
+                    __runtimeGr.getLogger().logGeneration('AI_CALL_ATTEMPT_USAGE', {
                         attempt: attempt + 1,
                         total: usageData.total || 0,
                         input: usageData.input || 0,
@@ -11109,7 +11126,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             // Trace: record full AI response payload
             try {
                 if (requestId && requestId !== 'dynamic' && requestId !== 'buildOptions') {
-                    tracing.addEvent(requestId, {
+                    __runtimeGr.getTracing().addEvent(requestId, {
                         type: 'ai_response',
                         raw: aiResponse,
                         usage: aiResponse?.usage || null
@@ -11124,7 +11141,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             // Trace: record parsed candidate data
             try {
                 if (requestId && requestId !== 'dynamic' && requestId !== 'buildOptions') {
-                    tracing.addEvent(requestId, {
+                    __runtimeGr.getTracing().addEvent(requestId, {
                         type: 'ai_candidate_data',
                         data: candidateData
                     });
@@ -11208,7 +11225,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
 
             // Validate prompt replacements
             if (candidateData.text_replacements?.prompt && candidateData.text_replacements.prompt.length > 0) {
-                const result = applyDynamicReplacements(prompt, candidateData.text_replacements, 'prompt');
+                const result = applyDynamicReplacements(__runtimeGr, prompt, candidateData.text_replacements, 'prompt');
                 validationResults.prompt = result;
                 if (!result.success) {
                     allReplacementsValid = false;
@@ -11217,7 +11234,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
 
             // Validate UC replacements
             if (candidateData.text_replacements?.uc && candidateData.text_replacements.uc.length > 0) {
-                const result = applyDynamicReplacements(uc, candidateData.text_replacements, 'uc');
+                const result = applyDynamicReplacements(__runtimeGr, uc, candidateData.text_replacements, 'uc');
                 validationResults.uc = result;
                 if (!result.success) {
                     allReplacementsValid = false;
@@ -11231,7 +11248,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                     let charResult = { prompt: { success: true, failedReplacements: [] }, uc: { success: true, failedReplacements: [] } };
                     
                     if (charReplacements?.prompt && charReplacements.prompt.length > 0) {
-                        const result = applyDynamicReplacements(char.prompt || '', candidateData.text_replacements, 'character', index, 'prompt');
+                        const result = applyDynamicReplacements(__runtimeGr, char.prompt || '', candidateData.text_replacements, 'character', index, 'prompt');
                         charResult.prompt = result;
                         if (!result.success) {
                             allReplacementsValid = false;
@@ -11239,7 +11256,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                     }
                     
                     if (charReplacements?.uc && charReplacements.uc.length > 0) {
-                        const result = applyDynamicReplacements(char.uc || '', candidateData.text_replacements, 'character', index, 'uc');
+                        const result = applyDynamicReplacements(__runtimeGr, char.uc || '', candidateData.text_replacements, 'character', index, 'uc');
                         charResult.uc = result;
                         if (!result.success) {
                             allReplacementsValid = false;
@@ -11260,8 +11277,8 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             
             // If all replacements are valid, check token limits
             if (allReplacementsValid) {
-                globalResources.getLogger().normal('✅ Replacements validated');
-                globalResources.getLogger().logGeneration('VALIDATION_SUCCESS', { replacementCount: candidateData.text_replacements ? 
+                __runtimeGr.getLogger().normal('✅ Replacements validated');
+                __runtimeGr.getLogger().logGeneration('VALIDATION_SUCCESS', { replacementCount: candidateData.text_replacements ? 
                     (candidateData.text_replacements.prompt?.length || 0) + (candidateData.text_replacements.uc?.length || 0) : 0 
                 }, requestId);
                 
@@ -11303,7 +11320,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                 // (finalPrompt/finalUC already have disabled blocks stripped by text replacement step; strip again for consistency)
                 if (tokenCountEnabled) {
                     try {
-                        const t5TokenizerService = globalResources.getT5Tokenizer();
+                        const t5TokenizerService = __runtimeGr.getT5Tokenizer();
                         const finalPromptTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalPrompt, stageDataForStrip));
                         const finalUCTokens = t5TokenizerService.countTokens(stripDisabledBlocks(finalUC, stageDataForStrip));
                         
@@ -11316,10 +11333,10 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                         const finalTotalUCTokens = finalUCTokens + finalCharacterTokenCounts.reduce((sum, char) => sum + char.uc, 0);
                         
                         // Summarized console output
-                        globalResources.getLogger().normal(`📊 Tokens: ${finalTotalPromptTokens}/512 prompt (${Math.round((finalTotalPromptTokens / 512) * 100)}%) | ${finalTotalUCTokens}/512 UC (${Math.round((finalTotalUCTokens / 512) * 100)}%)`);
+                        __runtimeGr.getLogger().normal(`📊 Tokens: ${finalTotalPromptTokens}/512 prompt (${Math.round((finalTotalPromptTokens / 512) * 100)}%) | ${finalTotalUCTokens}/512 UC (${Math.round((finalTotalUCTokens / 512) * 100)}%)`);
                         
                         // Detailed file logging
-                        globalResources.getLogger().logGeneration('FINAL_TOKEN_COUNTS', {
+                        __runtimeGr.getLogger().logGeneration('FINAL_TOKEN_COUNTS', {
                             basePrompt: finalPromptTokens,
                             negativePrompt: finalUCTokens,
                             characterPrompts: finalCharacterTokenCounts,
@@ -11332,7 +11349,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                         }, requestId);
                         
                         // Verbose console output
-                        if (globalResources.getLogger().shouldLog(globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
+                        if (__runtimeGr.getLogger().shouldLog(__runtimeGr.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
                             console.log(`   Base Prompt: ${finalPromptTokens} tokens`);
                             console.log(`   Negative Prompt: ${finalUCTokens} tokens`);
                             if (finalCharacterPrompts.length > 0) {
@@ -11665,8 +11682,8 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             };
         }
 
-        globalResources.getLogger().normal('✅ Dynamic generation Phase 1 completed');
-        globalResources.getLogger().logGeneration('PHASE_1_COMPLETE', modifiedData, requestId);
+        __runtimeGr.getLogger().normal('✅ Dynamic generation Phase 1 completed');
+        __runtimeGr.getLogger().logGeneration('PHASE_1_COMPLETE', modifiedData, requestId);
 
 
         // Prepare Phase 1 results
@@ -11688,7 +11705,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             prompt_hash: currentPromptHash, // Include prompt hash for cache validation
             directive_hash: currentDirectiveHash, // Include directive hash for separate tracking
             timestamp: Date.now(), // Add timestamp for cache expiration checks
-            expiresAt: calculateDynamicExpiration(context, 15 * 60 * 1000), // Dynamic expiration based on time/weather changes
+            expiresAt: calculateDynamicExpiration(__runtimeGr, context, 15 * 60 * 1000), // Dynamic expiration based on time/weather changes
             generation_chain: generationChainNumber, // Current generation in chain
             errors: modifiedData.errors || [], // AI-registered errors
             warnings: modifiedData.warnings || [], // AI-registered warnings
@@ -11718,7 +11735,9 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                     handler,
                     wsServer,
                     context,
-                    datasetConfig
+                    datasetConfig,
+                    backgroundFocus,
+                    randomSeed
                 );
                 
                 console.log('✅ Phase 2 optimization completed successfully');
@@ -11760,7 +11779,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         let allApiCalls = [];
         if (lastAttemptId) {
             // Open phase1 mailbox and get all letters (sorted by index)
-            const phase1ApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${lastAttemptId}:apiCalls`, false) || [];
+            const phase1ApiCalls = __runtimeGr.getDataPlumbing().getMailboxAll(`${lastAttemptId}:apiCalls`, false) || [];
             allApiCalls = [...phase1ApiCalls];
         }
         
@@ -11769,7 +11788,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         if (finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
             finalResults.phase2AttemptIds.forEach(phase2AttemptId => {
                 // Open phase2 mailbox and get all letters (sorted by index)
-                const phase2ApiCalls = globalResources.getDataPlumbing().getMailboxAll(`${phase2AttemptId}:apiCalls`, false) || [];
+                const phase2ApiCalls = __runtimeGr.getDataPlumbing().getMailboxAll(`${phase2AttemptId}:apiCalls`, false) || [];
                 allApiCalls = [...allApiCalls, ...phase2ApiCalls];
             });
         }
@@ -11781,7 +11800,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         }
 
         // Debug: Log apiCalls state
-        globalResources.getLogger().detailed(`💾 Accumulating usage data: allApiCalls.length=${allApiCalls.length}, phase1=${allApiCalls.filter(c => c.phase === 'phase1').length}, phase2=${allApiCalls.filter(c => c.phase === 'phase2').length}`);
+        __runtimeGr.getLogger().detailed(`💾 Accumulating usage data: allApiCalls.length=${allApiCalls.length}, phase1=${allApiCalls.filter(c => c.phase === 'phase1').length}, phase2=${allApiCalls.filter(c => c.phase === 'phase2').length}`);
         
         let totalUsageData = null;
         
@@ -11803,7 +11822,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
                     totalUsageData.cache += call.usage.cache || 0;
                     totalUsageData.reasoning += call.usage.reasoning || 0;
                 } else {
-                    globalResources.getLogger().detailed(`⚠️ Phase 1 call missing usage data: ${JSON.stringify(call)}`);
+                    __runtimeGr.getLogger().detailed(`⚠️ Phase 1 call missing usage data: ${JSON.stringify(call)}`);
                 }
             });
         }
@@ -11823,7 +11842,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         finalResults.totalUsage = totalUsageData || null;
         
         // Debug: Log what we calculated
-        globalResources.getLogger().detailed(`💾 Calculated totalUsage: ${totalUsageData ? JSON.stringify(totalUsageData) : 'null'}`);
+        __runtimeGr.getLogger().detailed(`💾 Calculated totalUsage: ${totalUsageData ? JSON.stringify(totalUsageData) : 'null'}`);
         
         // Structure usage data with phase1 and phase2 objects
         // Retrieve usage data from mailboxes instead of calculating from allApiCalls
@@ -11840,7 +11859,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         
         // Retrieve Phase 1 usage from mailbox
         if (lastAttemptId) {
-            const phase1UsageData = globalResources.getDataPlumbing().getMailbox(`${lastAttemptId}:usageData`, false);
+            const phase1UsageData = __runtimeGr.getDataPlumbing().getMailbox(`${lastAttemptId}:usageData`, false);
             if (phase1UsageData) {
                 // Usage data from mailbox should already be in the correct format
                 structuredUsage.phase1.total = phase1UsageData;
@@ -11851,7 +11870,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         if (finalResults.phase2AttemptIds && Array.isArray(finalResults.phase2AttemptIds)) {
             // Get the last phase2 usage (most recent attempt)
             const lastPhase2AttemptId = finalResults.phase2AttemptIds[finalResults.phase2AttemptIds.length - 1];
-            const phase2UsageData = globalResources.getDataPlumbing().getMailbox(`${lastPhase2AttemptId}:usageData`, false);
+            const phase2UsageData = __runtimeGr.getDataPlumbing().getMailbox(`${lastPhase2AttemptId}:usageData`, false);
             if (phase2UsageData) {
                 structuredUsage.phase2.total = phase2UsageData;
             }
@@ -11875,7 +11894,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // If both phases are empty, set usage to null
         if (Object.keys(structuredUsage).length === 0 || (!structuredUsage.phase1 && !structuredUsage.phase2)) {
             finalResults.usage = null;
-            globalResources.getLogger().detailed(`⚠️ No structured usage data - both phases empty or no data`);
+            __runtimeGr.getLogger().detailed(`⚠️ No structured usage data - both phases empty or no data`);
         } else {
             finalResults.usage = structuredUsage;
         }
@@ -11884,7 +11903,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Log total usage to detailed generation log
         if (totalUsageData && requestId) {
             const totalTokens = totalUsageData.total || 0;
-            globalResources.getLogger().logGeneration('DYNAMIC_GENERATION_TOTAL_USAGE', {
+            __runtimeGr.getLogger().logGeneration('DYNAMIC_GENERATION_TOTAL_USAGE', {
                 phase1Usage: structuredUsage.phase1?.total || null,
                 phase1TotalUsage: structuredUsage.phase1?.total || null, // Retrieved from mailbox
                 phase2Usage: structuredUsage.phase2?.total || null,
@@ -11923,30 +11942,30 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
         // Cleanup all mailboxes and data for each attempt
         for (const attemptId of allAttemptIds) {
             // Remove apiCalls mailbox
-            if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
-                globalResources.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
+            if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
+                __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
             }
             
             // Remove usageData mailbox
-            if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
-                globalResources.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
+            if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
+                __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
             }
             
             // Remove other tool result mailboxes (should be empty if removeAfterRead: true, but clean up anyway)
             const mailboxTypes = ['publishedAnalysis', 'replacementPlan', 'responseId', 'chainRejected'];
             for (const mailboxType of mailboxTypes) {
-                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
-                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
+                if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
+                    __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
                 }
             }
             
             // Remove buildOptions data
-            if (globalResources.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
-                globalResources.getDataPlumbing().remove(`${attemptId}:buildOptions`);
+            if (__runtimeGr.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
+                __runtimeGr.getDataPlumbing().remove(`${attemptId}:buildOptions`);
             }
         }
         
-        globalResources.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${allAttemptIds.length} attempt(s)`);
+        __runtimeGr.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${allAttemptIds.length} attempt(s)`);
 
         // Return processed results (same structure as WebSocket response)
         // Note: text replacement application is now handled in buildOptions
@@ -11964,24 +11983,24 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
             }
             
             for (const attemptId of errorAttemptIds) {
-                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
-                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
+                if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:apiCalls`)) {
+                    __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:apiCalls`);
                 }
-                if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
-                    globalResources.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
+                if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:usageData`)) {
+                    __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:usageData`);
                 }
                 const mailboxTypes = ['publishedAnalysis', 'replacementPlan', 'responseId', 'chainRejected'];
                 for (const mailboxType of mailboxTypes) {
-                    if (globalResources.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
-                        globalResources.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
+                    if (__runtimeGr.getDataPlumbing().hasMailbox(`${attemptId}:${mailboxType}`)) {
+                        __runtimeGr.getDataPlumbing().removeMailbox(`${attemptId}:${mailboxType}`);
                     }
                 }
-                if (globalResources.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
-                    globalResources.getDataPlumbing().remove(`${attemptId}:buildOptions`);
+                if (__runtimeGr.getDataPlumbing().has(`${attemptId}:buildOptions`)) {
+                    __runtimeGr.getDataPlumbing().remove(`${attemptId}:buildOptions`);
                 }
             }
             if (errorAttemptIds.length > 0) {
-                globalResources.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${errorAttemptIds.length} attempt(s) (error case)`);
+                __runtimeGr.getLogger().detailed(`🧹 Cleaned up mailboxes and data for ${errorAttemptIds.length} attempt(s) (error case)`);
             }
         } catch (cleanupError) {
             console.warn('⚠️ Error during cleanup in error handler:', cleanupError);
@@ -12063,7 +12082,7 @@ async function processDynamicGenerationCore(dynamicConfig, context = null, promp
  * @param {Object} datasetConfig - Dataset configuration
  * @returns {Object} Optimized results
  */
-async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prompt, uc, characterPrompts, requestId, ws, handler, wsServer, context, datasetConfig) {
+async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prompt, uc, characterPrompts, requestId, ws, handler, wsServer, context, datasetConfig, backgroundFocus = false, randomSeed = null) {
     const maxAttempts = 3;
     let previousResponseId = phase1Results.previousResponseId;
     const generationChainNumber = (dynamicConfig.compiled_prompt?.generation_chain || 0) + 1;
@@ -12239,7 +12258,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             
             // Create mailbox for phase 2 apiCalls (will accumulate all calls)
             const phase2ApiCallsMailboxId = `${phase2AttemptId}:apiCalls`;
-            globalResources.getDataPlumbing().createMailbox(phase2ApiCallsMailboxId, {
+            __runtimeGr.getDataPlumbing().createMailbox(phase2ApiCallsMailboxId, {
                 removeAfterRead: false, // Keep all attempts - they cost money
                 category: 'tool_results',
                 tags: ['api_calls', 'phase2']
@@ -12258,18 +12277,18 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                 _attemptId: phase2AttemptId,
                 phase: 'phase2'
             };
-            globalResources.getDataPlumbing().set(`${phase2AttemptId}:buildOptions`, buildOptionsData, {
+            __runtimeGr.getDataPlumbing().set(`${phase2AttemptId}:buildOptions`, buildOptionsData, {
                 temporary: true,
                 category: 'build_options',
                 tags: ['workflow', 'phase2']
             });
             
-            const toolsList = globalResources.getGrokService().getAllToolDefinitions(dynamicConfig);
+            const toolsList = __runtimeGr.getGrokService().getAllToolDefinitions(dynamicConfig);
             const dialogsCount = dynamicConfig.dialogs_count;
             const schema = createDynamicGenerationResponseSchema(characterPrompts?.length || 0, characterPrompts, dialogsCount);
             // Prepare AI options for Phase 2
             const aiOptions = {
-                model: globalResources.getGrokService().getDefaultGrokModel(),
+                model: __runtimeGr.getGrokService().getDefaultGrokModel(),
                 timeout: 30000,
                 liveSearch: true,
                 store: true,
@@ -12290,7 +12309,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             // Call AI for Phase 2
             console.log(`🤖 Calling AI for Phase 2 optimization (attempt ${attempt + 1}, continuation of ${previousResponseId})...`);
 
-            const aiResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
+            const aiResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(
                 [{ role: 'user', content: [phase2Message] }], // Only send the Phase 2 message
                 aiOptions,
                 // Streaming callback
@@ -12344,12 +12363,12 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
             };
 
             if (phase2Data.text_replacements?.prompt && phase2Data.text_replacements.prompt.length > 0) {
-                const result = applyDynamicReplacements(prompt, phase2Data.text_replacements, 'prompt');
+                const result = applyDynamicReplacements(__runtimeGr, prompt, phase2Data.text_replacements, 'prompt');
                 validationResults.prompt = result;
             }
 
             if (phase2Data.text_replacements?.uc && phase2Data.text_replacements.uc.length > 0) {
-                const result = applyDynamicReplacements(uc, phase2Data.text_replacements, 'uc');
+                const result = applyDynamicReplacements(__runtimeGr, uc, phase2Data.text_replacements, 'uc');
                 validationResults.uc = result;
             }
 
@@ -12360,12 +12379,12 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
                         const charValidation = { prompt: { success: true, failedReplacements: [] }, uc: { success: true, failedReplacements: [] } };
 
                         if (charReplacements.prompt) {
-                            const result = applyDynamicReplacements(characterPrompts[i].prompt, charReplacements, 'character', i, 'prompt');
+                            const result = applyDynamicReplacements(__runtimeGr, characterPrompts[i].prompt, charReplacements, 'character', i, 'prompt');
                             charValidation.prompt = result;
                         }
 
                         if (charReplacements.uc) {
-                            const result = applyDynamicReplacements(characterPrompts[i].uc, charReplacements, 'character', i, 'uc');
+                            const result = applyDynamicReplacements(__runtimeGr, characterPrompts[i].uc, charReplacements, 'character', i, 'uc');
                             charValidation.uc = result;
                         }
 
@@ -12546,9 +12565,10 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
  * Returns the actual values that would be used for generation
  * Uses compileContext to avoid duplicating resolution logic
  */
-async function resolveDynamicContext(dynamicConfig, clientIP = null) {
+async function resolveDynamicContext(globalResources, dynamicConfig, clientIP = null) {
+    bindRuntimeGlobalResources(globalResources);
     try {
-        const context = await compileContext(dynamicConfig, clientIP);
+        const context = await compileContext(globalResources, dynamicConfig, clientIP);
         const result = formatContextForCarousel(context);
         return result;
     } catch (error) {

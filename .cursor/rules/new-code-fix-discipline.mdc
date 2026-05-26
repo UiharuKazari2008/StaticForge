@@ -1,0 +1,47 @@
+---
+description: Fix bugs in new code; do not change legacy code without explicit approval
+alwaysApply: true
+---
+
+# New Code Fix Discipline
+
+When editing or fixing issues after introducing changes, treat **existing (pre-change) code as the baseline**. Assume newly added or recently modified code is at fault until proven otherwise.
+
+## Default behavior
+
+- **Fix the new code** so it conforms to existing patterns, APIs, naming, styles, and behavior.
+- **Do not edit older/unchanged code** to resolve a regression or integration issue unless:
+  - The user **explicitly** asks to change that older code, or
+  - You have obtained **user approval** after explaining why legacy code must change.
+
+## When a fix seems to require legacy changes
+
+1. First try to adapt the new change (call sites, wrappers, guards, matching conventions).
+2. If legacy change is truly necessary, **stop and ask** — briefly state what broke, why new code cannot comply alone, and what you propose to change in existing code.
+3. Only proceed with legacy edits after approval or an explicit request.
+
+## Examples
+
+```javascript
+// ❌ BAD — regression after adding helper; "fix" by changing stable util used everywhere
+function legacyNormalize(x) { return x.trim().toLowerCase(); } // edited without approval
+
+// ✅ GOOD — adjust the new helper to match legacy contract
+function newHelper(input) {
+  return legacyNormalize(input);
+}
+```
+
+```javascript
+// ❌ BAD — new feature breaks old handler; rewrite old handler
+onLegacyClick() { /* rewritten */ }
+
+// ✅ GOOD — fix new registration/wiring so old handler stays unchanged
+wireNewFeatureWithoutTouching(onLegacyClick);
+```
+
+## Scope of "new code"
+
+- Lines or blocks you added in the current task or recent session.
+- Refactors that moved logic but did not exist before the change.
+- Not: pre-existing files/functions the user asked you to fix directly.

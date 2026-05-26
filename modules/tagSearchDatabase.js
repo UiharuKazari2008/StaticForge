@@ -9,23 +9,19 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 
-// Database file path
-const dbPath = path.join(__dirname, '..', '.cache', 'tag_search.db');
-
-// Ensure cache directory exists
-const cacheDir = path.dirname(dbPath);
-if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-}
-
+let dbPath = null;
 let db = null;
 
 /**
  * Initialize the SQLite database for tag search caching
  */
-function initializeTagSearchDatabase() {
+function initializeTagSearchDatabase(databasesPath) {
     try {
-        // First, check if database file exists and is corrupted
+        dbPath = path.join(databasesPath, 'tag_search.db');
+        const cacheDir = path.dirname(dbPath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
         if (fs.existsSync(dbPath)) {
             try {
                 // Try to open and run a simple query to test integrity
@@ -383,14 +379,7 @@ function clearAllCache() {
     }
 }
 
-// Initialize on load
-try {
-    if (!db) {
-        initializeTagSearchDatabase();
-    }
-} catch (error) {
-    logger.error('Failed to initialize tag search database:', error.message);
-}
+// Initialized by globalResources.initializeTagSearchDatabase(databasesPath) at server startup
 
 // Graceful shutdown
 process.on('SIGINT', () => {

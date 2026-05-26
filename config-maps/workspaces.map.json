@@ -1,0 +1,16 @@
+{
+  "configId": "workspaces",
+  "label": "Workspaces",
+  "rules": [
+    { "path": ["*"], "type": "object", "label": "Workspace" },
+    { "path": ["*", "name"], "type": "string", "label": "Name" },
+    { "path": ["*", "color"], "type": "string", "label": "Color" },
+    { "path": ["*", "backgroundColor"], "type": "string", "label": "Background Color" },
+    { "path": ["*", "sort"], "type": "number", "label": "Sort Order" },
+    { "path": ["*", "files"], "type": "array", "label": "Files" },
+    { "path": ["*", "scraps"], "type": "array", "label": "Scraps" },
+    { "path": ["*", "pinned"], "type": "array", "label": "Pinned" },
+    { "path": ["*", "presets"], "type": "array", "label": "Presets" },
+    { "path": ["*", "groups"], "type": "object", "label": "Groups" }
+  ]
+}

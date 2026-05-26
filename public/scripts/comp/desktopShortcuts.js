@@ -66,6 +66,21 @@ class DesktopShortcutsManager {
                 icon: this.createWikiPageIcon,
                 contextMenu: this.getWikiPageContextMenu,
                 onClick: this.handleWikiPageClick
+            },
+            'static-wiki-page': {
+                icon: this.createStaticWikiPageIcon,
+                contextMenu: this.getStaticWikiPageContextMenu,
+                onClick: this.handleStaticWikiPageClick
+            },
+            'nax-tag': {
+                icon: this.createNaxTagIcon,
+                contextMenu: this.getNaxTagContextMenu,
+                onClick: this.handleNaxTagClick
+            },
+            'bracket-generation': {
+                icon: this.createBracketGenerationIcon,
+                contextMenu: this.getBracketGenerationContextMenu,
+                onClick: this.handleBracketGenerationClick
             }
             // More types can be added here (folder, app, etc.)
         };
@@ -581,7 +596,7 @@ class DesktopShortcutsManager {
                         },
                         {
                             icon: 'fas fa-book',
-                            text: 'Open in Notebook',
+                            text: 'Open in Notion',
                             action: 'open-note-in-notebook'
                         },
                         { separator: true },
@@ -677,7 +692,7 @@ class DesktopShortcutsManager {
                 refIcon.className = 'nai-vibe-transfer desktop-shortcut-image-icon';
                 break;
             case 'character':
-                refIcon.className = 'nai-image-tool-line-art desktop-shortcut-image-icon';
+                refIcon.className = 'nai-precise-reference desktop-shortcut-image-icon';
                 break;
             case 'base':
             default:
@@ -843,6 +858,73 @@ class DesktopShortcutsManager {
         }
     }
 
+    createBracketGenerationIcon(shortcut) {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon';
+
+        const faIcon = document.createElement('i');
+        faIcon.className = 'fas fa-layer-group icon-fa';
+        icon.appendChild(faIcon);
+
+        const imageIcon = document.createElement('img');
+        imageIcon.src = '/static_images/app_icons/stack.png';
+        imageIcon.className = 'icon-image';
+        imageIcon.alt = '';
+        icon.appendChild(imageIcon);
+
+        return icon;
+    }
+
+    getBracketGenerationContextMenu(shortcut) {
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'fas fa-pen',
+                            text: 'Rename',
+                            action: 'rename-shortcut'
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: () => this.getWorkspaceSubmenuItems(),
+                            loadfn: (item) => {
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
+                        },
+                        {
+                            icon: 'fas fa-trash',
+                            text: 'Remove',
+                            action: 'remove-shortcut',
+                            className: 'context-menu-item-danger'
+                        }
+                    ]
+                }
+            ]
+        };
+    }
+
+    handleBracketGenerationClick(shortcut) {
+        if (!shortcut.data || !shortcut.data.state) {
+            showGlassToast('error', null, 'Phasewalker shortcut has no saved state', false, 4000);
+            return;
+        }
+        const manualModal = document.getElementById('manualModal');
+        const editorOpen = manualModal && !manualModal.classList.contains('hidden');
+        if (window.bracketGenerationApplet) {
+            window.bracketGenerationApplet.open({
+                state: shortcut.data.state,
+                autoCompile: editorOpen,
+                desktopShortcut: { id: shortcut.id, name: shortcut.name }
+            });
+        } else {
+            showGlassToast('error', null, 'Phasewalker not available', false, 4000);
+        }
+    }
+
     // Find applet by launch ID
     findAppletById(launchId) {
         // Search in main start menu config
@@ -960,6 +1042,8 @@ class DesktopShortcutsManager {
                 normalize_vibes: requestBody.normalize_vibes,
                 dynamic_generation: requestBody.dynamic_generation,
                 chara_reference_source: requestBody.chara_reference_source,
+                chara_reference_type: requestBody.chara_reference_type,
+                chara_reference_strength: requestBody.chara_reference_strength,
                 chara_reference_with_style: requestBody.chara_reference_with_style,
                 chara_reference_fidelity: requestBody.chara_reference_fidelity,
                 text_replacements: requestBody.text_replacements,
@@ -1128,19 +1212,16 @@ class DesktopShortcutsManager {
         const tagName = shortcut.data.tagName;
 
         try {
-            // Check if wikiWindowManager is available
             if (!wikiWindowManager) {
                 showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
 
-            // Check if WebSocket is connected
             if (!wsClient || !wsClient.isConnected()) {
                 showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
             }
 
-            // Fetch the wiki page
             const result = await wsClient.sendMessage('get_tag_wiki_page', {
                 tagName: tagName,
                 source: 'both',
@@ -1148,7 +1229,6 @@ class DesktopShortcutsManager {
             });
 
             if (result) {
-                // Create a standalone window with the wiki page
                 wikiWindowManager.createWindow(result, { title: tagName, name: tagName });
             } else {
                 showGlassToast('error', 'Error', 'Failed to load wiki page', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -1157,6 +1237,73 @@ class DesktopShortcutsManager {
             console.error('Failed to open wiki page:', error);
             showGlassToast('error', 'Error', 'Failed to open wiki page: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
         }
+    }
+
+    createStaticWikiPageIcon(shortcut) {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-wiki';
+        const iconPath = shortcut.data && shortcut.data.siteId
+            ? `/private/wiki/${shortcut.data.siteId}/assets/icon.png`
+            : null;
+        if (iconPath) {
+            const img = document.createElement('img');
+            img.className = 'desktop-shortcut-wiki-site-icon';
+            img.src = iconPath;
+            img.alt = '';
+            icon.appendChild(img);
+        } else {
+            const wikiIcon = document.createElement('i');
+            wikiIcon.className = 'fas fa-file-doc';
+            icon.appendChild(wikiIcon);
+        }
+        return icon;
+    }
+
+    async handleStaticWikiPageClick(shortcut) {
+        if (!shortcut.data || !shortcut.data.siteId || !shortcut.data.pageId) {
+            showGlassToast('error', 'Error', 'Documentation shortcut is incomplete', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        const { siteId, pageId, title } = shortcut.data;
+
+        try {
+            if (!wikiWindowManager) {
+                showGlassToast('error', 'Error', 'Wiki window manager not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                return;
+            }
+
+            if (!wsClient || !wsClient.isConnected()) {
+                showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                return;
+            }
+
+            const result = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
+            if (result) {
+                const content = {
+                    title: result.title || title || pageId,
+                    tagName: result.title || title || pageId,
+                    html: result.html || '',
+                    staticWiki: true,
+                    siteId,
+                    pageId,
+                    siteIcon: result.siteIcon || null
+                };
+                wikiWindowManager.createWindow(content, {
+                    title: content.title,
+                    name: content.title
+                });
+            } else {
+                showGlassToast('error', 'Error', 'Failed to load documentation page', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+        } catch (error) {
+            console.error('Failed to open static wiki page:', error);
+            showGlassToast('error', 'Error', 'Failed to open page: ' + error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+        }
+    }
+
+    getStaticWikiPageContextMenu(shortcut) {
+        return this.getWikiPageContextMenu(shortcut);
     }
 
     // Get wiki page context menu
@@ -1179,6 +1326,115 @@ class DesktopShortcutsManager {
                             },
                             loadfn: (item) => {
                                 // Disable if there are no other workspaces
+                                const otherWorkspaces = this.getWorkspaceSubmenuItems();
+                                item.disabled = otherWorkspaces.length === 0;
+                            }
+                        },
+                        {
+                            icon: 'fas fa-trash',
+                            text: 'Remove',
+                            action: 'remove-shortcut',
+                            className: 'context-menu-item-danger'
+                        }
+                    ]
+                }
+            ]
+        };
+    }
+
+    naxTagImageUrl(data) {
+        if (!data || !data.gallerySlug || !data.filename) return '';
+        const slug = encodeURIComponent(data.gallerySlug);
+        const file = encodeURIComponent(data.filename);
+        return `/naxCache/${slug}/${file}`;
+    }
+
+    createNaxTagIcon(shortcut) {
+        const frame = document.createElement('div');
+        frame.className = 'desktop-shortcut-icon desktop-shortcut-icon-image';
+
+        const imagePreview = document.createElement('div');
+        imagePreview.className = 'desktop-shortcut-image-preview';
+
+        if (shortcut.data) {
+            const previewUrl = this.naxTagImageUrl(shortcut.data);
+            if (previewUrl) {
+                imagePreview.style.backgroundImage = `url('${previewUrl}')`;
+            }
+        }
+
+        const flareHolder = document.createElement('div');
+        flareHolder.className = 'desktop-shortcut-flare-holder';
+
+        const tagIcon = document.createElement('i');
+        tagIcon.className = 'fas fa-flask desktop-shortcut-image-icon';
+
+        flareHolder.appendChild(tagIcon);
+        imagePreview.appendChild(flareHolder);
+        frame.appendChild(imagePreview);
+
+        return frame;
+    }
+
+    handleNaxTagClick(shortcut) {
+        if (!shortcut.data || !shortcut.data.tag || !shortcut.data.gallerySlug || !shortcut.data.filename) {
+            console.error('NAX tag shortcut missing data');
+            showGlassToast('error', 'Error', 'Tag shortcut data not found', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        const item = {
+            tag: shortcut.data.tag,
+            gallerySlug: shortcut.data.gallerySlug,
+            filename: shortcut.data.filename
+        };
+
+        if (window.naxtApplet && typeof window.naxtApplet.openNaxItemInViewer === 'function') {
+            window.naxtApplet.openNaxItemInViewer(item);
+            return;
+        }
+
+        const src = this.naxTagImageUrl(item);
+        if (src && typeof openImageInViewer === 'function') {
+            openImageInViewer(src, item.tag, {
+                url: src,
+                genericExternalImage: true,
+                naxFilename: item.filename,
+                naxGallerySlug: item.gallerySlug
+            });
+        }
+    }
+
+    getNaxTagContextMenu(shortcut) {
+        const manualModal = document.getElementById('manualModal');
+
+        return {
+            sections: [
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            icon: 'nai-clipboard',
+                            text: 'Copy Tag',
+                            action: 'nax-tag-copy'
+                        },
+                        {
+                            icon: 'fas fa-plus',
+                            text: 'Add to Prompt',
+                            action: 'nax-tag-add-to-prompt',
+                            disabled: () => manualModal && manualModal.classList.contains('hidden')
+                        },
+                        { separator: true },
+                        {
+                            icon: 'fas fa-pen',
+                            text: 'Rename',
+                            action: 'rename-shortcut'
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            text: 'Move to...',
+                            optionsfn: () => this.getWorkspaceSubmenuItems(),
+                            loadfn: (item) => {
                                 const otherWorkspaces = this.getWorkspaceSubmenuItems();
                                 item.disabled = otherWorkspaces.length === 0;
                             }
@@ -1311,7 +1567,7 @@ class DesktopShortcutsManager {
                     // Replace or add character reference
                     if (typeof addAsCharacterReference === 'function') {
                         await addAsCharacterReference(cacheImage);
-                        showGlassToast('success', null, 'Character reference added', false, 3000, '<i class="nai-image-tool-line-art"></i>');
+                        showGlassToast('success', null, 'Precise reference added', false, 3000, '<i class="nai-precise-reference"></i>');
                     }
                     break;
             }
@@ -2179,6 +2435,9 @@ class DesktopShortcutsManager {
 
             // Update name locally
             shortcut.name = newName;
+            if (shortcut.type === 'bracket-generation' && shortcut.data) {
+                shortcut.data.label = newName;
+            }
             
             // Mark as modified if not new
             if (!shortcut._isNew) {
@@ -2370,6 +2629,18 @@ document.addEventListener('contextMenuAction', async (event) => {
                 link.click();
                 document.body.removeChild(link);
                 showGlassToast('success', null, 'Download started', false, 3000, '<i class="fas fa-download"></i>');
+            }
+            break;
+
+        case 'nax-tag-copy':
+            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag && window.naxtApplet) {
+                window.naxtApplet.copyTag(shortcut.data.tag);
+            }
+            break;
+
+        case 'nax-tag-add-to-prompt':
+            if (shortcut.type === 'nax-tag' && shortcut.data && shortcut.data.tag && window.naxtApplet) {
+                window.naxtApplet.addToPrompt(shortcut.data.tag, shortcut.data.gallerySlug);
             }
             break;
             

@@ -1,11 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 
-const COUNTER_FILE = path.resolve(__dirname, '../.cache/image_counter.json');
-const IMAGE_DIR = path.resolve(__dirname, '../images');
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+let counterFile = null;
+let imageDir = null;
 let timestamps = [];
+let initialized = false;
+
+function initializeImageCounter(globalResources) {
+    if (!globalResources) {
+        throw new Error('initializeImageCounter requires globalResources');
+    }
+    counterFile = globalResources.getPath('imageCounterFile');
+    imageDir = globalResources.getPath('images');
+    initialized = true;
+    loadCounter();
+}
 
 async function pruneOld(now = Date.now()) {
     timestamps = timestamps.filter(ts => now - ts < ROLLING_WINDOW_MS);
@@ -13,16 +24,17 @@ async function pruneOld(now = Date.now()) {
 
 function saveCounter() {
     try {
-        fs.writeFileSync(COUNTER_FILE, JSON.stringify(timestamps), 'utf-8');
+        fs.writeFileSync(counterFile, JSON.stringify(timestamps), 'utf-8');
     } catch (e) {
         console.error('Failed to save image counter:', e);
     }
 }
 
 function loadCounter() {
-    if (fs.existsSync(COUNTER_FILE)) {
+    if (!initialized || !counterFile) return;
+    if (fs.existsSync(counterFile)) {
         try {
-            const data = fs.readFileSync(COUNTER_FILE, 'utf-8');
+            const data = fs.readFileSync(counterFile, 'utf-8');
             timestamps = JSON.parse(data);
             pruneOld();
         } catch (e) {
@@ -33,7 +45,7 @@ function loadCounter() {
         // Fallback: scan images dir for recent images
         try {
             const now = Date.now();
-            const files = fs.readdirSync(IMAGE_DIR);
+            const files = fs.readdirSync(imageDir);
             timestamps = files
                 .map(f => {
                     const match = f.match(/^(\d+)_/);
@@ -62,10 +74,8 @@ function getTimestamps() {
     return [...timestamps];
 }
 
-// Load on startup
-loadCounter();
-
 module.exports = {
+    initializeImageCounter,
     logGeneration,
     getCount,
     getTimestamps,

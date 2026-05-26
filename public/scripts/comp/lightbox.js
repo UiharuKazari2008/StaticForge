@@ -2,6 +2,258 @@
 let lightbox = null;
 let currentImageIndex = 0;
 
+const PHOTO_SWIPE_WINDOW_MODE_KEY = 'photoSwipeWindowMode';
+
+function getPhotoSwipeShell() {
+    return document.getElementById('photoSwipeWindow');
+}
+
+function getPhotoSwipeMount() {
+    return document.getElementById('photoSwipeMount');
+}
+
+/** Viewport size for PhotoSwipe when rooted in #photoSwipeMount (public/dist/photoswipe) */
+function getPhotoSwipeMountViewportSize() {
+    const mount = getPhotoSwipeMount();
+    if (!mount) {
+        return { x: document.documentElement.clientWidth, y: window.innerHeight };
+    }
+    return {
+        x: Math.max(1, Math.round(mount.clientWidth)),
+        y: Math.max(1, Math.round(mount.clientHeight))
+    };
+}
+
+/** Thumb bounds from dist are viewport-absolute; opener math uses mount-sized viewport — translate into mount space */
+function adjustThumbBoundsForPhotoSwipeMount(thumbBounds) {
+    if (!thumbBounds || !document.body.classList.contains('desktop-mode')) {
+        return thumbBounds;
+    }
+    const mount = getPhotoSwipeMount();
+    if (!mount) {
+        return thumbBounds;
+    }
+    const mr = mount.getBoundingClientRect();
+    const inner = thumbBounds.innerRect;
+    return {
+        x: thumbBounds.x - mr.left,
+        y: thumbBounds.y - mr.top,
+        w: thumbBounds.w,
+        innerRect: inner
+            ? { w: inner.w, h: inner.h, x: inner.x, y: inner.y }
+            : undefined
+    };
+}
+
+/** public/dist/photoswipe — _convertEventPosToPoint uses pageX/Y minus offset; align with mount position */
+function syncPhotoSwipeContainedScrollOffset(pswp) {
+    if (!pswp || pswp.isDestroying || !document.body.classList.contains('desktop-mode')) {
+        return;
+    }
+    const mount = getPhotoSwipeMount();
+    if (!mount || !pswp.element || !mount.contains(pswp.element)) {
+        return;
+    }
+    const r = mount.getBoundingClientRect();
+    pswp.setScrollOffset(window.scrollX + r.left, window.scrollY + r.top);
+}
+
+let photoSwipeMountResizeObserver = null;
+
+function ensurePhotoSwipeMountResizeObserver() {
+    const mount = getPhotoSwipeMount();
+    if (!mount || photoSwipeMountResizeObserver) {
+        return;
+    }
+    photoSwipeMountResizeObserver = new ResizeObserver(() => {
+        const p = window.pswp;
+        if (!p || !p.isOpen || p.isDestroying) {
+            return;
+        }
+        requestAnimationFrame(() => {
+            if (!p.isOpen || p.isDestroying) {
+                return;
+            }
+            syncPhotoSwipeContainedScrollOffset(p);
+            p.updateSize(true);
+        });
+    });
+    photoSwipeMountResizeObserver.observe(mount);
+}
+
+function syncPhotoSwipeShellWindowedClassFromStorage() {
+    const shell = getPhotoSwipeShell();
+    if (!shell) return;
+    const mode = localStorage.getItem(PHOTO_SWIPE_WINDOW_MODE_KEY);
+    if (mode === 'maximized') {
+        shell.classList.remove('windowed');
+        clearPhotoSwipeShellInlineLayoutForFullMode(shell);
+    } else {
+        shell.classList.add('windowed');
+    }
+    updatePhotoSwipeMaximizeButtonIcon();
+}
+
+function updatePhotoSwipeMaximizeButtonIcon() {
+    const btn = document.getElementById('maximizePhotoSwipeBtn');
+    const shell = getPhotoSwipeShell();
+    if (!btn || !shell) return;
+    const icon = btn.querySelector('i');
+    if (!icon) return;
+    if (shell.classList.contains('windowed')) {
+        icon.className = 'fa-regular fa-window-maximize';
+        btn.title = 'Maximize';
+    } else {
+        icon.className = 'fa-regular fa-window-restore';
+        btn.title = 'Restore window';
+    }
+}
+
+function notifyPhotoSwipeShellResized() {
+    const shell = getPhotoSwipeShell();
+    if (shell && !shell.classList.contains('hidden')) {
+        shell.dispatchEvent(new CustomEvent('modalResized', {
+            bubbles: true,
+            detail: { modal: shell }
+        }));
+    }
+    syncPhotoSwipeShellRestoreStripVisibility();
+    const p = window.pswp;
+    if (p && p.isOpen) {
+        // Layout + getViewportSizeFn need a painted frame; force=true so PhotoSwipe recalculates zoom/fit after shell class changes
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (p.isDestroying) return;
+                syncPhotoSwipeContainedScrollOffset(p);
+                p.updateSize(true);
+            });
+        });
+    }
+}
+
+function syncPhotoSwipeShellRestoreStripVisibility() {
+    const shell = getPhotoSwipeShell();
+    if (!shell) return;
+    const hideStrip = !document.body.classList.contains('desktop-mode')
+        || shell.classList.contains('hidden')
+        || shell.classList.contains('windowed');
+    document.querySelectorAll('#photoSwipeMount .pswp__shell-restore-strip').forEach((el) => {
+        el.classList.toggle('hidden', hideStrip);
+    });
+}
+
+function restorePhotoSwipeShellWindowed() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || !document.body.classList.contains('desktop-mode')) return;
+    shell.classList.add('windowed');
+    localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'windowed');
+    updatePhotoSwipeMaximizeButtonIcon();
+    notifyPhotoSwipeShellResized();
+}
+
+function clearPhotoSwipeShellInlineLayoutForFullMode(shell) {
+    // public/scripts/comp/modalUtils.js — drag/resize uses inline size and offset; strip so full-screen CSS can take over
+    shell.style.removeProperty('--modal-offset-x');
+    shell.style.removeProperty('--modal-offset-y');
+    shell.style.removeProperty('width');
+    shell.style.removeProperty('height');
+}
+
+function togglePhotoSwipeShellWindowed() {
+    const shell = getPhotoSwipeShell();
+    if (!shell) return;
+    if (shell.classList.contains('windowed')) {
+        shell.classList.remove('windowed');
+        localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'maximized');
+        clearPhotoSwipeShellInlineLayoutForFullMode(shell);
+    } else {
+        shell.classList.add('windowed');
+        localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'windowed');
+    }
+    updatePhotoSwipeMaximizeButtonIcon();
+    notifyPhotoSwipeShellResized();
+}
+
+function wirePhotoSwipeShellControlsOnce() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || shell.dataset.photoswipeShellWired === 'true') return;
+    shell.dataset.photoswipeShellWired = 'true';
+
+    shell.addEventListener('modalResized', () => {
+        if (window.pswp && window.pswp.isOpen && !window.pswp.isDestroying) {
+            syncPhotoSwipeContainedScrollOffset(window.pswp);
+            window.pswp.updateSize(true);
+        }
+    });
+
+    const closeBtn = shell.querySelector('.modal-window-controls .close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (window.pswp && window.pswp.isOpen) {
+                window.pswp.close();
+            }
+        });
+    }
+
+    const maxBtn = document.getElementById('maximizePhotoSwipeBtn');
+    if (maxBtn) {
+        maxBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            togglePhotoSwipeShellWindowed();
+        });
+    }
+
+    ensurePhotoSwipeMountResizeObserver();
+}
+
+function preparePhotoSwipeDesktopShellBeforeOpen() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || !document.body.classList.contains('desktop-mode')) return;
+    syncPhotoSwipeShellWindowedClassFromStorage();
+    wirePhotoSwipeShellControlsOnce();
+    openModal(shell);
+    updatePhotoSwipeMaximizeButtonIcon();
+    requestAnimationFrame(() => syncPhotoSwipeShellRestoreStripVisibility());
+}
+
+function teardownPhotoSwipeDesktopShell() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || shell.classList.contains('hidden')) return;
+    if (!document.body.classList.contains('desktop-mode')) return;
+    closeModal(shell);
+}
+
+function attachStandalonePhotoSwipeShellRestoreUi(pswp) {
+    if (!document.body.classList.contains('desktop-mode')) return;
+    pswp.on('uiRegister', () => {
+        pswp.ui.registerElement({
+            name: 'photo-swipe-shell-restore',
+            order: 9,
+            isButton: false,
+            appendTo: 'wrapper',
+            html: '<div class="pswp__custom-bottom-bar pswp__shell-restore-strip"><div class="pswp__custom-bottom-bar"></div></div>',
+            onInit: (el) => {
+                const inner = el.firstElementChild;
+                if (!inner) return;
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'pswp__button--custom round-button pswp__button--restore-desktop-shell-btn';
+                btn.setAttribute('aria-label', 'Restore window');
+                btn.innerHTML = '<i class="fa-regular fa-window-restore"></i>';
+                btn.addEventListener('click', (ev) => {
+                    ev.preventDefault();
+                    restorePhotoSwipeShellWindowed();
+                });
+                inner.appendChild(btn);
+                requestAnimationFrame(() => syncPhotoSwipeShellRestoreStripVisibility());
+            }
+        });
+    });
+}
+
 // Helper function to get image data that works with both normal gallery and search results
 function getImageFromLightboxIndex(imageIndex) {
     // When search results are displayed, we need to use the original image array
@@ -100,6 +352,18 @@ async function initializePhotoSwipe() {
             shareTitle: 'Share',
             toggleThumbnailsTitle: 'Toggle thumbnails',
             downloadTitle: 'Download',
+            openPromise: () => {
+                if (!document.body.classList.contains('desktop-mode')) {
+                    delete lightbox.options.appendToEl;
+                    delete lightbox.options.getViewportSizeFn;
+                    return Promise.resolve();
+                }
+                preparePhotoSwipeDesktopShellBeforeOpen();
+                const mount = getPhotoSwipeMount();
+                lightbox.options.appendToEl = mount;
+                lightbox.options.getViewportSizeFn = () => getPhotoSwipeMountViewportSize();
+                return new Promise((resolve) => requestAnimationFrame(resolve));
+            },
         });
 
         // Add thumbEl filter for zoom animation from thumbnails
@@ -221,20 +485,41 @@ async function initializePhotoSwipe() {
             return placeholderSrc;
         });
 
+        // Mount-contained PhotoSwipe: opener + placeholder zoom use viewport-sized coords; thumb bounds must be mount-relative
+        lightbox.addFilter('thumbBounds', (thumbBounds) => {
+            const mount = getPhotoSwipeMount();
+            if (!thumbBounds || !mount || lightbox.options.appendToEl !== mount) {
+                return thumbBounds;
+            }
+            return adjustThumbBoundsForPhotoSwipeMount(thumbBounds);
+        });
+
         // Function to update button visibility based on current slide
         const updateButtonVisibility = (bottomBar, pswp) => {
             if (!bottomBar || !pswp) return;
-            
+
             const currentItem = pswp.currSlide;
+            const shell = getPhotoSwipeShell();
+            const desktopFull = document.body.classList.contains('desktop-mode') && shell && !shell.classList.contains('windowed') && !shell.classList.contains('hidden');
+
             if (currentItem && currentItem.data) {
-                // Hide bottom bar for standalone images
                 if (currentItem.data.isStandalone) {
+                    if (desktopFull) {
+                        bottomBar.classList.remove('hidden');
+                        bottomBar.querySelectorAll('.pswp__button--custom').forEach((btn) => {
+                            if (btn.classList.contains('pswp__button--restore-desktop-shell-btn')) {
+                                btn.classList.remove('hidden');
+                            } else {
+                                btn.classList.add('hidden');
+                            }
+                        });
+                        return;
+                    }
                     bottomBar.classList.add('hidden');
                     return;
-                } else {
-                    bottomBar.classList.remove('hidden');
                 }
-                
+                bottomBar.classList.remove('hidden');
+
                 // Update upscale button visibility based on image dimensions
                 const upscaleButton = bottomBar.querySelector('.pswp__button--upscale-button');
                 if (upscaleButton) {
@@ -260,6 +545,14 @@ async function initializePhotoSwipe() {
                     
                     // Create all buttons
                     const buttons = [
+                        {
+                            className: 'restore-desktop-shell-btn',
+                            icon: '<i class="fa-regular fa-window-restore"></i>',
+                            label: 'Restore window',
+                            onClick: () => {
+                                restorePhotoSwipeShellWindowed();
+                            }
+                        },
                         {
                             className: 'download-button',
                             icon: '<i class="fa-light fa-download"></i>',
@@ -462,7 +755,10 @@ async function initializePhotoSwipe() {
                     // Add all buttons to the bottom bar
                     buttons.forEach(buttonData => {
                         const button = document.createElement('button');
-                        button.classList = `pswp__button--custom round-button pswp__button--${buttonData.className}`;
+                        button.className = `pswp__button--custom round-button pswp__button--${buttonData.className}`;
+                        if (buttonData.className === 'restore-desktop-shell-btn') {
+                            button.classList.add('pswp__button--restore-desktop-shell-btn');
+                        }
                         button.setAttribute('aria-label', buttonData.label);
                         button.innerHTML = buttonData.icon;
                         button.onclick = buttonData.onClick;
@@ -540,6 +836,27 @@ async function initializePhotoSwipe() {
             });
         });
 
+        lightbox.on('close', () => {
+            teardownPhotoSwipeDesktopShell();
+        });
+
+        lightbox.on('openingAnimationEnd', () => {
+            if (document.body.classList.contains('desktop-mode') && window.pswp && window.pswp.isOpen) {
+                requestAnimationFrame(() => {
+                    if (!window.pswp || window.pswp.isDestroying) return;
+                    syncPhotoSwipeContainedScrollOffset(window.pswp);
+                    window.pswp.updateSize(true);
+                });
+            }
+            syncPhotoSwipeShellRestoreStripVisibility();
+        });
+
+        lightbox.on('viewportSize', () => {
+            if (lightbox.pswp) {
+                syncPhotoSwipeContainedScrollOffset(lightbox.pswp);
+            }
+        });
+
         // Initialize the lightbox
         lightbox.init();
     } catch (error) {
@@ -552,9 +869,11 @@ async function initializePhotoSwipe() {
 async function openStandalonePhotoSwipe(dataSource) {
     try {
         const PhotoSwipe = await import('/dist/photoswipe/photoswipe.esm.js');
-        
-        // Create PhotoSwipe instance with custom options
-        const pswp = new PhotoSwipe.default({
+
+        const useDesktopShell = document.body.classList.contains('desktop-mode');
+        const mount = getPhotoSwipeMount();
+
+        const opts = {
             dataSource: dataSource,
             showHideAnimationType: 'zoom',
             showAnimationDuration: 300,
@@ -581,16 +900,41 @@ async function openStandalonePhotoSwipe(dataSource) {
             errorMsg: '<div class="pswp__error-msg">Image not found</div>',
             closeTitle: 'Close (Esc)',
             zoomTitle: 'Zoom in/out'
-        });
+        };
 
-        // Initialize and open
-        pswp.init();
-        
-        // Listen for close event to clean up
+        if (useDesktopShell && mount) {
+            preparePhotoSwipeDesktopShellBeforeOpen();
+            opts.appendToEl = mount;
+            opts.getViewportSizeFn = () => getPhotoSwipeMountViewportSize();
+        }
+
+        const pswp = new PhotoSwipe.default(opts);
+
+        if (useDesktopShell) {
+            pswp.addFilter('thumbBounds', (thumbBounds) => adjustThumbBoundsForPhotoSwipeMount(thumbBounds));
+            pswp.on('viewportSize', () => syncPhotoSwipeContainedScrollOffset(pswp));
+            ensurePhotoSwipeMountResizeObserver();
+            attachStandalonePhotoSwipeShellRestoreUi(pswp);
+        }
+
         pswp.on('close', () => {
+            if (useDesktopShell) {
+                teardownPhotoSwipeDesktopShell();
+            }
             pswp.destroy();
         });
-        
+
+        pswp.init();
+
+        if (useDesktopShell) {
+            requestAnimationFrame(() => {
+                if (pswp.isDestroying) return;
+                syncPhotoSwipeContainedScrollOffset(pswp);
+                pswp.updateSize(true);
+                syncPhotoSwipeShellRestoreStripVisibility();
+            });
+        }
+
     } catch (error) {
         console.error('Failed to open standalone PhotoSwipe:', error);
     }

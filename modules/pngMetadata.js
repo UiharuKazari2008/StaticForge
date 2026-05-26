@@ -364,6 +364,8 @@ class PngMetadata {
                     'characterNames',
                     'chara_reference_source',
                     'chara_reference_with_style',
+                    'chara_reference_type',
+                    'chara_reference_strength',
                     'chara_reference_fidelity',
                     'chara_reference_image',
                     'director_session_id',
@@ -756,10 +758,22 @@ class PngMetadata {
         result.append_uc_id = forgeData.append_uc_id || null;
         result.dataset_config = forgeData.dataset_config || { include: [] }; // Default to empty array
 
-        // Add character reference fields
+        // Add precise reference fields
         if (forgeData.chara_reference_source) {
             result.chara_reference_source = forgeData.chara_reference_source;
-            result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
+            if (Array.isArray(forgeData.chara_reference_source)) {
+                if (forgeData.chara_reference_type !== undefined) {
+                    result.chara_reference_type = forgeData.chara_reference_type;
+                }
+                if (forgeData.chara_reference_strength !== undefined) {
+                    result.chara_reference_strength = forgeData.chara_reference_strength;
+                }
+                if (forgeData.chara_reference_fidelity !== undefined) {
+                    result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
+                }
+            } else {
+                result.chara_reference_with_style = forgeData.chara_reference_with_style || false;
+            }
         }
 
         // Add director session and message IDs
@@ -785,9 +799,12 @@ class PngMetadata {
             result.text_replacements_seed = forgeData.text_replacements_seed;
         }
 
-        // Add character reference fidelity data
-        if (forgeData.chara_reference_fidelity !== undefined) {
+        // Add precise reference strength/fidelity (v1 scalar handled above when not array source)
+        if (forgeData.chara_reference_fidelity !== undefined && !result.chara_reference_fidelity) {
             result.chara_reference_fidelity = forgeData.chara_reference_fidelity;
+        }
+        if (forgeData.chara_reference_strength !== undefined && result.chara_reference_strength === undefined) {
+            result.chara_reference_strength = forgeData.chara_reference_strength;
         }
         
         // Add expansion data if present

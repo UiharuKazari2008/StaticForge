@@ -168,14 +168,6 @@ class GalleryMetadataCache {
 
     async cleanupLegacySnapshotEntries() {
         if (!this.db) return;
-        const knownWorkspaceIds = new Set(['default']);
-        const workspacesData = workspaces || window.workspaces || {};
-        for (const workspace of Object.values(workspacesData)) {
-            if (workspace && workspace.id) {
-                knownWorkspaceIds.add(workspace.id);
-            }
-        }
-
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['gallerySnapshots'], 'readwrite');
             const store = transaction.objectStore('gallerySnapshots');
@@ -194,9 +186,8 @@ class GalleryMetadataCache {
                 const viewType = record.viewType || 'images';
                 const expectedKey = this.buildSnapshotKey(workspaceId, viewType);
                 const isLegacyKeyFormat = key !== expectedKey;
-                const hasUnknownWorkspace = knownWorkspaceIds instanceof Set && !knownWorkspaceIds.has(workspaceId);
 
-                if (isLegacyKeyFormat || hasUnknownWorkspace) {
+                if (isLegacyKeyFormat) {
                     cursor.delete();
                 }
                 cursor.continue();
@@ -281,9 +272,10 @@ class GalleryMetadataCache {
         });
     }
 
-    async getGallerySnapshot(workspaceId, viewType, hash) {
+    async getGallerySnapshot(workspaceId, viewType, hash, lastGalleryDestructiveAt = 0) {
         if (!this.db || !hash) return null;
         const key = this.buildSnapshotKey(workspaceId, viewType);
+        const serverDestructiveAt = Number(lastGalleryDestructiveAt) || 0;
 
         return new Promise((resolve) => {
             const transaction = this.db.transaction(['gallerySnapshots'], 'readonly');
@@ -297,7 +289,16 @@ class GalleryMetadataCache {
                     return;
                 }
                 const snapshotHash = snapshot.galleryHash || snapshot.hash || null;
-                resolve(snapshotHash === hash ? snapshot : null);
+                if (snapshotHash !== hash) {
+                    resolve(null);
+                    return;
+                }
+                const snapshotDestructiveAt = Number(snapshot.lastGalleryDestructiveAt) || 0;
+                if (serverDestructiveAt > snapshotDestructiveAt) {
+                    resolve(null);
+                    return;
+                }
+                resolve(snapshot);
             };
             request.onerror = () => resolve(null);
         });
@@ -2209,7 +2210,8 @@ async function loadGallery(addLatest, progressCallback = null) {
             const result = await window.wsClient.requestGallery('images', true, {
                 offset: 0,
                 limit: 1,
-                light: false
+                light: false,
+                skipGalleryPagination: true
             });
             const { gallery: latestItems } = result.data || result;
 
@@ -2232,6 +2234,19 @@ async function loadGallery(addLatest, progressCallback = null) {
 
             if (window.workspaceLoadingCompleteCallback) {
                 window.workspaceLoadingCompleteCallback();
+            }
+
+            // Clear stale full-gallery ticker rows when no chunk load is in flight (public/scripts/websocket.js)
+            if (window.wsClient) {
+                const hasActiveGalleryPagination = window.wsClient.pendingRequests &&
+                    [...window.wsClient.pendingRequests.values()].some(
+                        (r) => r.isGalleryPaginationRequest || r.isPaginationRequest
+                    );
+                if (!hasActiveGalleryPagination) {
+                    window.wsClient.completeGalleryLoading();
+                } else {
+                    window.wsClient.updateTickerDisplay();
+                }
             }
 
             spinner.classList.add('hidden');
@@ -2326,17 +2341,23 @@ async function loadGallery(addLatest, progressCallback = null) {
 
 // Load gallery chunk with metadata
 async function loadGalleryChunk(viewType = 'images', offset = 0, limit = 100) {
-    const result = await window.wsClient.requestGallery(viewType, true, {
-        offset: offset, limit: limit, light: false
-    });
+    const requestOptions = {
+        offset: offset,
+        limit: limit,
+        light: false
+    };
+    if (limit === 0) {
+        requestOptions.skipGalleryPagination = true;
+    }
+    const result = await window.wsClient.requestGallery(viewType, true, requestOptions);
 
-    const { gallery: chunk, pagination } = result.data || result;
-    const payload = result.data || result;
+    const payload = (result && result.data) ? result.data : result;
+    const { gallery: chunk, pagination } = payload || {};
     return {
         chunk: chunk || [],
         hasMore: pagination?.hasMore || false,
         total: pagination?.totalItems || 0,
-        galleryHash: payload.galleryHash || null,
+        galleryHash: payload.galleryHash || payload.hash || null,
         lastGalleryDestructiveAt: Number(payload.lastGalleryDestructiveAt) || 0,
         workspaceId: payload.workspaceId || ((typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default')
     };
@@ -2381,7 +2402,13 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
             serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
 
             if (galleryHash) {
-                const snapshot = await galleryMetadataCache.getGallerySnapshot(workspaceId, viewType, galleryHash);
+                const snapshotWorkspaceId = probe.workspaceId || workspaceId;
+                const snapshot = await galleryMetadataCache.getGallerySnapshot(
+                    snapshotWorkspaceId,
+                    viewType,
+                    galleryHash,
+                    serverDestructiveAt
+                );
                 if (snapshot && Array.isArray(snapshot.gallery)) {
                     allImages = snapshot.gallery;
                     if (window.wsClient && typeof window.wsClient.completeGalleryLoading === 'function') {
@@ -2479,6 +2506,7 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
 
         // Save latest full images gallery snapshot for workspace/hash reuse.
         if (viewType === 'images' && galleryHash) {
+            await galleryMetadataCache.initPromise;
             await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, dataItems, {
                 lastGalleryDestructiveAt: serverDestructiveAt
             });

@@ -15,7 +15,7 @@ class SpellChecker {
 
     loadCustomWords() {
         try {
-            const customWordsPath = path.join(__dirname, '/../.cache/customWords.json');
+            const customWordsPath = this.globalResources.getPath('customWords');
             if (fs.existsSync(customWordsPath)) {
                 const data = fs.readFileSync(customWordsPath, 'utf8');
                 const customWordsData = JSON.parse(data);
@@ -108,11 +108,11 @@ class SpellChecker {
 
     saveCustomWords() {
         try {
-            const cacheDir = path.join(__dirname, '/../.cache');
+            const cacheDir = this.globalResources.getPath('cache');
             if (!fs.existsSync(cacheDir)) {
                 fs.mkdirSync(cacheDir, { recursive: true });
             }
-            const customWordsPath = path.join(__dirname, '/../.cache/customWords.json');
+            const customWordsPath = this.globalResources.getPath('customWords');
             const data = {
                 words: Array.from(this.customWords).sort(),
                 lastUpdated: new Date().toISOString()

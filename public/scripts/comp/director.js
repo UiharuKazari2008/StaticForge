@@ -1899,19 +1899,22 @@ class Director {
         }
     }
 
-    // Get character reference data for director messages
+    // Get precise reference data for director messages
     getCharacterReferenceData() {
-        if (!directorReferenceData) {
-            return null;
+        // collectPreciseReferenceData: referenceManager.js
+        if (typeof collectPreciseReferenceData === 'function') {
+            const data = collectPreciseReferenceData();
+            if (data && data.chara_reference_source && data.chara_reference_source.length) {
+                const first = data.chara_reference_source[0];
+                const [type, id] = first.split(':', 2);
+                return {
+                    type,
+                    id,
+                    with_style: data.chara_reference_type ? data.chara_reference_type[0] === 1 : true
+                };
+            }
         }
-
-        const styleEnabled = directorReferenceStyleBtn && directorReferenceStyleBtn.getAttribute('data-state') === 'on';
-
-        return {
-            type: directorReferenceData.type,
-            id: directorReferenceData.id,
-            with_style: styleEnabled
-        };
+        return null;
     }
 
     showTypingIndicator(content = null) {

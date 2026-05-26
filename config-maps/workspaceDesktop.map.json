@@ -1,0 +1,11 @@
+{
+  "configId": "workspaceDesktop",
+  "label": "Desktop Layout",
+  "rules": [
+    { "path": ["*"], "type": "object", "label": "Workspace Desktop" },
+    { "path": ["*", "shortcuts"], "type": "array", "label": "Shortcuts" },
+    { "path": ["*", "shortcuts", "*"], "type": "object" },
+    { "path": ["windowPositions"], "type": "object", "label": "Window Positions" },
+    { "path": ["windowPositions", "*"], "type": "object" }
+  ]
+}

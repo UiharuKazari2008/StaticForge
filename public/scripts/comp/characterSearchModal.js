@@ -266,18 +266,21 @@ class CharacterSearchModal extends WikiDisplayBase {
             if (tagToRemove) {
                 // Simple replacement logic for now
                 const regex = new RegExp(`,?\\s*${tagToRemove.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*,?`, 'gi');
-                manualPrompt.value = currentValue.replace(regex, (match) => {
+                let updated = currentValue.replace(regex, (match) => {
                     if (match.startsWith(',') && match.endsWith(',')) return ', ';
                     return '';
                 }).trim();
 
                 // Clean up leading/trailing commas
-                manualPrompt.value = manualPrompt.value.replace(/^,|,$/g, '').replace(/,\s*,/g, ', ').trim();
+                updated = updated.replace(/^,|,$/g, '').replace(/,\s*,/g, ', ').trim();
+                // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+                setTextareaValuePreservingUndo(manualPrompt, updated);
             }
         } else {
             // Handle addition
             const separator = currentValue.trim() && !currentValue.trim().endsWith(',') ? ', ' : '';
-            manualPrompt.value = currentValue + separator + text;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+            setTextareaValuePreservingUndo(manualPrompt, currentValue + separator + text);
         }
 
         manualPrompt.dispatchEvent(new Event('input', { bubbles: true }));

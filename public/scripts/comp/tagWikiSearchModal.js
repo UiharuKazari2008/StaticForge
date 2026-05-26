@@ -39,6 +39,7 @@ class WikiDisplayBase {
         this.contextMenuElements = [];
         this.currentFetchedOnline = false;
         this.currentTagName = null;
+        this.currentStaticWiki = null;
     }
     
     getDisplayText() {
@@ -177,7 +178,8 @@ class WikiDisplayBase {
         // Add text to prompt
         const currentValue = manualPrompt.value || '';
         const separator = currentValue.trim() && !currentValue.trim().endsWith(',') ? ', ' : '';
-        manualPrompt.value = currentValue + separator + tagName;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(manualPrompt, currentValue + separator + tagName);
         
         // Trigger input event to update any listeners
         manualPrompt.dispatchEvent(new Event('input', { bubbles: true }));
@@ -213,6 +215,31 @@ class WikiDisplayBase {
     }
     
     async addWikiPageToDesktop(tagName = null) {
+        if (this.currentStaticWiki) {
+            const sw = this.currentStaticWiki;
+            const label = sw.title || sw.pageId || 'Documentation';
+            try {
+                if (desktopShortcuts && desktopShortcuts.addShortcut) {
+                    await desktopShortcuts.addShortcut({
+                        name: label,
+                        type: 'static-wiki-page',
+                        data: {
+                            siteId: sw.siteId,
+                            pageId: sw.pageId,
+                            title: sw.title || label
+                        }
+                    });
+                    showGlassToast('success', null, 'Documentation page added to desktop', false, 3000, '<i class="fas fa-arrow-down-left"></i>');
+                } else {
+                    showGlassToast('error', 'Error', 'Desktop shortcuts not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            } catch (error) {
+                console.error('Failed to add static wiki page to desktop:', error);
+                showGlassToast('error', 'Error', 'Failed to add shortcut', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+            return;
+        }
+
         const targetTagName = tagName || this.getCurrentTagName();
         if (!targetTagName) {
             showGlassToast('info', null, 'No tag selected', false, 3000, '<i class="fas fa-info-circle"></i>');
@@ -220,7 +247,7 @@ class WikiDisplayBase {
         }
         
         try {
-            if (typeof desktopShortcuts !== 'undefined' && desktopShortcuts.addShortcut) {
+            if (desktopShortcuts && desktopShortcuts.addShortcut) {
                 const shortcut = {
                     name: targetTagName,
                     type: 'wiki-page',
@@ -338,6 +365,23 @@ class WikiDisplayBase {
         if (!pageElement) return null;
         
         // Reconstruct content object from displayed HTML
+        if (this.currentStaticWiki) {
+            const sw = this.currentStaticWiki;
+            const title = sw.title || sw.pageId || 'Documentation';
+            const bodyEl = pageElement.querySelector('.tag-wiki-body-content') || pageElement;
+            const html = bodyEl.innerHTML;
+            return {
+                tagName: title,
+                title,
+                html,
+                body: html,
+                staticWiki: true,
+                siteId: sw.siteId,
+                pageId: sw.pageId,
+                siteIcon: sw.siteIcon || null
+            };
+        }
+
         const title = this.currentSelectedTag ? (this.currentSelectedTag.title || this.currentSelectedTag.name) : 'Unknown';
         const html = pageElement.innerHTML;
         
@@ -347,6 +391,156 @@ class WikiDisplayBase {
             html: html,
             body: html
         };
+    }
+
+    setupStaticWikiIndexLinks(container) {
+        if (!container) return;
+        container.querySelectorAll('.wiki-static-index-link').forEach((link) => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const siteId = link.getAttribute('data-wiki-site');
+                const pageId = link.getAttribute('data-wiki-page');
+                if (siteId && pageId) {
+                    this.openStaticWikiPage(siteId, pageId);
+                }
+            });
+        });
+    }
+
+    async loadStaticWikiHomeSites() {
+        const wrap = this.displayArea && this.displayArea.querySelector('.dreamwiki-static-wiki-sites');
+        if (!wrap) return;
+
+        if (!wsClient || !wsClient.isConnected()) {
+            wrap.innerHTML = '<span class="dreamwiki-docs-empty">Offline</span>';
+            return;
+        }
+
+        try {
+            const result = await wsClient.sendMessage('get_wiki_home', {});
+            const sites = (result && result.sites) ? result.sites : [];
+            if (!sites.length) {
+                wrap.innerHTML = '<span class="dreamwiki-docs-empty">No docs imported</span>';
+                return;
+            }
+            wrap.innerHTML = sites.map((site) => {
+                const name = this.escapeHtml(site.name || site.id);
+                const id = this.escapeHtml(site.id);
+                const icon = site.icon ? this.escapeHtml(site.icon) : '';
+                const iconHtml = icon
+                    ? `<img src="${icon}" alt="" class="dreamwiki-site-btn-icon" aria-hidden="true">`
+                    : '';
+                return `<button type="button" class="btn-secondary btn-small dreamwiki-start-row dreamwiki-site-btn" data-static-wiki-site="${id}">${iconHtml}<span>${name}</span></button>`;
+            }).join('');
+            wrap.querySelectorAll('[data-static-wiki-site]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const siteId = btn.getAttribute('data-static-wiki-site');
+                    if (siteId) {
+                        this.showStaticWikiSiteIndex(siteId);
+                    }
+                });
+            });
+        } catch (err) {
+            console.error('loadStaticWikiHomeSites:', err);
+            wrap.innerHTML = '<span class="dreamwiki-docs-empty">Failed to load</span>';
+        }
+    }
+
+    async showStaticWikiSiteIndex(siteId) {
+        if (!this.displayArea || !siteId) return;
+        if (!wsClient || !wsClient.isConnected()) {
+            this.displayArea.innerHTML = '<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> WebSocket not connected</div>';
+            return;
+        }
+
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        this.currentStaticWiki = null;
+
+        this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+
+        try {
+            const data = await wsClient.sendMessage('get_static_wiki_site_index', { siteId });
+            const siteName = this.escapeHtml(data.name || siteId);
+            const headerHtml = this.staticWikiPageHeaderHtml(data.name || siteId, siteId, data.icon);
+            const groups = data.groups || [];
+            let groupsHtml = '';
+            if (!groups.length) {
+                groupsHtml = '<p class="dreamwiki-recent-empty">No pages imported yet.</p>';
+            } else {
+                groupsHtml = groups.map((group) => {
+                    const groupName = this.escapeHtml(group.name || 'Other');
+                    const pages = (group.pages || []).map((page) => {
+                        const title = this.escapeHtml(page.title || page.id);
+                        const encSite = this.escapeHtml(siteId);
+                        const encPage = this.escapeHtml(page.id);
+                        return `<li><a href="#" class="wiki-static-index-link" data-wiki-site="${encSite}" data-wiki-page="${encPage}">${title}</a></li>`;
+                    }).join('');
+                    return `<h5 class="static-wiki-index-group-title">${groupName}</h5><ul class="tag-wiki-list static-wiki-index-page-list">${pages}</ul>`;
+                }).join('');
+            }
+
+            this.displayArea.innerHTML = `
+<div class="tag-wiki-page static-wiki-index">
+    ${headerHtml}
+    <div class="tag-wiki-body-content tag-wiki-page-content">
+        ${groupsHtml}
+    </div>
+</div>`;
+
+            this.setupStaticWikiIndexLinks(this.displayArea);
+
+            this.addToHistory({
+                type: 'static-wiki-index',
+                siteId,
+                siteName: data.name || siteId,
+                icon: data.icon || null
+            });
+        } catch (err) {
+            console.error('showStaticWikiSiteIndex:', err);
+            this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Failed to load index')}</div>`;
+        }
+    }
+
+    async openStaticWikiPage(siteId, pageId) {
+        if (!siteId || !pageId) return;
+        if (!wsClient || !wsClient.isConnected()) {
+            if (this.displayArea) {
+                this.displayArea.innerHTML = '<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> WebSocket not connected</div>';
+            }
+            return;
+        }
+
+        if (this.displayArea) {
+            this.displayArea.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading...</div>';
+        }
+
+        try {
+            const data = await wsClient.sendMessage('get_static_wiki_page', { siteId, pageId });
+            const content = {
+                title: data.title || pageId,
+                tagName: data.title || pageId,
+                html: data.html || '',
+                staticWiki: true,
+                siteId,
+                pageId,
+                siteIcon: data.siteIcon || null
+            };
+            this.renderWikiPage(content);
+            this.addToHistory({
+                type: 'static-wiki-page',
+                siteId,
+                pageId,
+                title: content.title,
+                content
+            });
+        } catch (err) {
+            console.error('openStaticWikiPage:', err);
+            if (this.displayArea) {
+                this.displayArea.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> ${this.escapeHtml(err.message || 'Page not found')}</div>`;
+            }
+        }
     }
     
     async getTagWikiPage(tag) {
@@ -407,6 +601,19 @@ class WikiDisplayBase {
         }
         
         const title = content.tagName || content.title || 'Unknown';
+
+        if (content.staticWiki && content.siteId && content.pageId) {
+            this.currentStaticWiki = {
+                siteId: content.siteId,
+                pageId: content.pageId,
+                title,
+                siteIcon: content.siteIcon || null
+            };
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+        } else {
+            this.currentStaticWiki = null;
+        }
         
         // Update window title if this is a WikiWindowInstance
         if (this.modal && this.modal.classList.contains('wiki-page-viewer-modal')) {
@@ -462,6 +669,8 @@ class WikiDisplayBase {
                 } else {
                     bodiesHtml = `<div class="tag-wiki-body-content">${html}</div>`;
                 }
+            } else if (content.staticWiki) {
+                bodiesHtml = `<div class="tag-wiki-body-content tag-wiki-page-content wiki-static-doc">${html}</div>`;
             } else {
                 // Normal case: wrap the HTML in body-content div
                 bodiesHtml = `<div class="tag-wiki-body-content">${html}</div>`;
@@ -474,7 +683,12 @@ class WikiDisplayBase {
         const onlineIcon = anyFetchedOnline 
             ? ' <i class="fas fa-cloud-download-alt tag-wiki-online-icon" title="Fetched from online"></i>' 
             : '';
-        const titleHtml = `<div class="tag-wiki-page-title">${this.escapeHtml(title)}${onlineIcon}</div>`;
+        let titleHtml;
+        if (content.staticWiki) {
+            titleHtml = this.staticWikiPageHeaderHtml(title, content.siteId, content.siteIcon);
+        } else {
+            titleHtml = `<div class="tag-wiki-page-title">${this.escapeHtml(title)}${onlineIcon}</div>`;
+        }
         
         // Store fetched online status for context menu use
         this.currentFetchedOnline = anyFetchedOnline;
@@ -722,6 +936,19 @@ class WikiDisplayBase {
             this.setupLinkContextMenu(link);
         });
         
+        const staticLinks = this.displayArea.querySelectorAll('.wiki-static-link');
+        staticLinks.forEach((link) => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const siteId = link.dataset.wikiSite;
+                const pageId = link.dataset.wikiPage;
+                if (siteId && pageId) {
+                    this.openStaticWikiPage(siteId, pageId);
+                }
+            });
+        });
+
         // Handle anchor links
         const anchorLinks = this.displayArea.querySelectorAll('.tag-wiki-anchor-link');
         anchorLinks.forEach(link => {
@@ -1052,13 +1279,38 @@ class WikiDisplayBase {
         div.textContent = text;
         return div.innerHTML;
     }
+
+    staticWikiSiteIconUrl(siteId, iconFromApi) {
+        if (iconFromApi) {
+            return iconFromApi;
+        }
+        if (siteId) {
+            return `/private/wiki/${siteId}/assets/icon.png`;
+        }
+        return '';
+    }
+
+    staticWikiPageHeaderHtml(title, siteId, iconFromApi) {
+        const safeTitle = this.escapeHtml(title);
+        const iconUrl = this.staticWikiSiteIconUrl(siteId, iconFromApi);
+        const iconHtml = iconUrl
+            ? `<img src="${this.escapeHtml(iconUrl)}" alt="" class="static-wiki-index-site-icon">`
+            : '';
+        return `<div class="tag-wiki-page-title static-wiki-index-header"><span class="static-wiki-index-title-text">${safeTitle}</span>${iconHtml}</div><div class="form-section-separator tag-wiki-page-header-sep"></div>`;
+    }
     
     // History navigation methods - shared by WikiWindowInstance and TagWikiSearchModal
     getHistoryEntryDisplayText(entry, index) {
         if (!entry) return `Entry ${index + 1}`;
         
         if (entry.type === 'home') {
-            return 'Encyclopedia';
+            return 'Grimoire';
+        }
+        if (entry.type === 'static-wiki-index') {
+            return entry.siteName || entry.siteId || 'Documentation';
+        }
+        if (entry.type === 'static-wiki-page') {
+            return entry.title || entry.pageId || `Doc ${index + 1}`;
         }
         if (entry.type === 'wiki' && entry.tag) {
             return entry.tag.title || entry.tag.name || `Wiki Page ${index + 1}`;
@@ -1072,6 +1324,8 @@ class WikiDisplayBase {
     getHistoryEntryMenuIcon(entry) {
         if (!entry) return 'fas fa-circle';
         if (entry.type === 'home') return 'fas fa-home';
+        if (entry.type === 'static-wiki-index') return 'fas fa-book';
+        if (entry.type === 'static-wiki-page') return 'fas fa-file-alt';
         if (entry.type === 'wiki') return 'fas fa-file-alt';
         return 'fas fa-search';
     }
@@ -1177,7 +1431,6 @@ class WikiWindowManager {
             return null;
         }
         
-        let windowIdentifier = `wikiWindow:${initialTag.name}`;
         const windowId = `wikiWindow_${this.nextId++}`;
         const windowElement = this.template.cloneNode(true);
         windowElement.id = windowId;
@@ -1186,7 +1439,6 @@ class WikiWindowManager {
         this.updateElementIds(windowElement, windowId);
         
         // Set stable identifier for position restoration (based on tag name)
-        // For transient windows, we need a stable ID that persists across window recreations
         let tagName = null;
         if (initialTag) {
             if (typeof initialTag === 'string') {
@@ -1196,11 +1448,15 @@ class WikiWindowManager {
             } else if (typeof initialTag === 'object' && initialTag.title) {
                 tagName = initialTag.title;
             }
+        } else if (initialContent && initialContent.staticWiki && initialContent.siteId && initialContent.pageId) {
+            tagName = `${initialContent.siteId}:${initialContent.pageId}`;
+        } else if (initialContent && (initialContent.tagName || initialContent.title)) {
+            tagName = initialContent.tagName || initialContent.title;
         }
-        
+
+        let windowIdentifier = tagName ? `wikiWindow:${tagName}` : `wikiWindow:${windowId}`;
         if (tagName) {
             windowElement.dataset.windowIdentifier = windowIdentifier;
-            windowIdentifier = `wikiWindow:${tagName}`;
         }
         
         // If clone has scrollbar structure from template, register it in map BEFORE inserting into DOM
@@ -1469,13 +1725,22 @@ class WikiWindowInstance extends WikiDisplayBase {
         // Render initial content
         if (this.initialContent) {
             this.renderWikiPage(this.initialContent);
-            // Only add to history if we didn't copy history (if we copied, it's already added in constructor)
             if (this.history.length === 0) {
-                this.addToHistory({
-                    type: 'wiki',
-                    tag: this.initialTag,
-                    content: this.initialContent
-                });
+                if (this.initialContent.staticWiki) {
+                    this.addToHistory({
+                        type: 'static-wiki-page',
+                        siteId: this.initialContent.siteId,
+                        pageId: this.initialContent.pageId,
+                        title: this.initialContent.title || this.initialContent.pageId,
+                        content: this.initialContent
+                    });
+                } else {
+                    this.addToHistory({
+                        type: 'wiki',
+                        tag: this.initialTag,
+                        content: this.initialContent
+                    });
+                }
             } else {
                 // History was copied, just update navigation buttons
                 this.updateNavigationButtons();
@@ -1509,29 +1774,60 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     goHome() {
-        // Navigate to the initial page
         if (this.initialContent) {
             this.renderWikiPage(this.initialContent);
-            this.currentSelectedTag = this.initialTag;
-            this.history = [{
-                type: 'wiki',
-                tag: this.initialTag,
-                content: this.initialContent
-            }];
+            if (this.initialContent.staticWiki) {
+                this.currentSelectedTag = null;
+                this.history = [{
+                    type: 'static-wiki-page',
+                    siteId: this.initialContent.siteId,
+                    pageId: this.initialContent.pageId,
+                    title: this.initialContent.title,
+                    content: this.initialContent
+                }];
+            } else {
+                this.currentSelectedTag = this.initialTag;
+                this.history = [{
+                    type: 'wiki',
+                    tag: this.initialTag,
+                    content: this.initialContent
+                }];
+            }
             this.historyIndex = 0;
             this.updateNavigationButtons();
-        } else {
-            // Fallback to "tag groups"
-            this.getTagWikiPageDirectly('tag groups');
+        } else if (tagWikiSearchModal) {
+            tagWikiSearchModal.getTagWikiPageDirectly('tag groups');
         }
     }
     
     restoreHistoryEntry(entry) {
         if (!entry) return;
+
+        if (entry.type === 'static-wiki-index') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.currentStaticWiki = null;
+            this.showStaticWikiSiteIndex(entry.siteId);
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'static-wiki-page') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            if (entry.content) {
+                this.renderWikiPage(entry.content);
+            } else {
+                this.openStaticWikiPage(entry.siteId, entry.pageId);
+            }
+            this.updateNavigationButtons();
+            return;
+        }
         
         if (entry.type === 'wiki') {
             if (entry.tag) {
                 this.currentSelectedTag = entry.tag;
+                this.currentStaticWiki = null;
                 if (entry.content) {
                     this.renderWikiPage(entry.content);
                 } else {
@@ -2086,6 +2382,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         this.currentSelectedTag = null;
         this.currentTagName = null;
+        this.currentStaticWiki = null;
 
         const recents = dreamWikiRecentRead();
         const recentRows = recents.length
@@ -2100,46 +2397,53 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         this.displayArea.innerHTML = `
 <div class="dreamwiki-home">
-    <div class="form-row center-align">
+    <div class="dreamwiki-home-hero form-row center-align">
         <div class="about-logo-container">
             <img src="/static_images/logo_icon.png" alt="Dreamscape Logo" class="about-logo">
             <h2 class="logo-text">Dreamscape</h2>
         </div>
     </div>
-    <div class="form-section-separator"></div>
-    <div class="dreamwiki-recent-panel">
-        <div class="dreamwiki-home-main-row">
-            <div class="dreamwiki-home-col dreamwiki-home-col-start">
-                <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Tag Groups</div>
-                <div class="dreamwiki-starting-points dreamwiki-starting-points-inline">
-                    <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">Anime</button>
-                    <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">Furry</button>
-                </div>
+    <p class="dreamwiki-home-subtitle">The central home of Knowledge, The Grimoire</p>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
+    <div class="dreamwiki-home-border-dotted"></div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
+    <div class="dreamwiki-home-actions-center">
+        <div class="dreamwiki-home-actions-block">
+            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Tag Groups</div>
+            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack">
+                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">Anime</button>
+                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">Furry</button>
             </div>
-            <div class="dreamwiki-home-col dreamwiki-home-col-direct">
-                <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Open wiki page</div>
-                <input type="text" class="form-control hover-show colored dreamwiki-direct-page-input" placeholder="Exact page name (Enter to open)" autocapitalize="false" autocorrect="false" spellcheck="false">
+        </div>
+        <div class="dreamwiki-home-actions-block">
+            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Documentation</div>
+            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack dreamwiki-static-wiki-sites">
+                <span class="dreamwiki-docs-loading"><i class="fas fa-spinner-third fa-spin"></i></span>
             </div>
         </div>
     </div>
-    <div class="dreamwiki-home-small-sep"><div class="form-section-separator"></div></div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
+    <div class="dreamwiki-home-direct-wrap">
+        <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Open wiki page</div>
+        <input type="text" class="form-control hover-show colored dreamwiki-direct-page-input" placeholder="Exact page name (Enter to open)" autocapitalize="false" autocorrect="false" spellcheck="false">
+    </div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
     <div class="dreamwiki-recent-panel">
         <div class="tag-wiki-no-wiki-header">Recently visited</div>
-        <div class="dreamwiki-recent-list">${recentRows}</div>
+        <div class="dreamwiki-recent-list dreamwiki-recent-list-cols-3">${recentRows}</div>
     </div>
 </div>`;
 
-        const startWrap = this.displayArea.querySelector('.dreamwiki-starting-points');
-        if (startWrap) {
-            startWrap.querySelectorAll('[data-dreamwiki-page]').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    const page = btn.getAttribute('data-dreamwiki-page');
-                    if (page) {
-                        this.getTagWikiPageDirectly(page);
-                    }
-                });
+        this.displayArea.querySelectorAll('[data-dreamwiki-page]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const page = btn.getAttribute('data-dreamwiki-page');
+                if (page) {
+                    this.getTagWikiPageDirectly(page);
+                }
             });
-        }
+        });
+
+        this.loadStaticWikiHomeSites();
 
         const directInput = this.displayArea.querySelector('.dreamwiki-direct-page-input');
         if (directInput) {
@@ -2180,7 +2484,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             });
         }
     }
-    
+
     open(initialQuery = '', options = {}) {
         if (!this.modal) return;
         const wasClosed = this.modal.classList.contains('hidden');
@@ -2641,22 +2945,40 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     openInNewWindow() {
         if (!this.displayArea) {
-            console.warn('TagWikiSearchModal.openInNewWindow: displayArea is null');
+            console.warn('openInNewWindow: displayArea is null');
             return;
         }
         
-        if (!window.wikiWindowManager) {
-            console.error('TagWikiSearchModal.openInNewWindow: wikiWindowManager is not available');
+        if (!wikiWindowManager) {
+            console.error('openInNewWindow: wikiWindowManager is not available');
             return;
         }
         
         const currentContent = this.getCurrentPageContent();
         if (!currentContent) {
-            console.warn('TagWikiSearchModal.openInNewWindow: No page content available to open');
+            console.warn('openInNewWindow: No page content available to open');
             return;
         }
-        
-        window.wikiWindowManager.createWindow(currentContent, this.currentSelectedTag);
+
+        let initialTag = this.currentSelectedTag;
+        if (!initialTag && this.currentStaticWiki) {
+            const sw = this.currentStaticWiki;
+            initialTag = {
+                title: sw.title,
+                name: `${sw.siteId}:${sw.pageId}`
+            };
+        } else if (!initialTag && currentContent.staticWiki) {
+            initialTag = {
+                title: currentContent.title || currentContent.tagName,
+                name: `${currentContent.siteId}:${currentContent.pageId}`
+            };
+        }
+
+        const historyToCopy = this.history && this.history.length > 0
+            ? this.history.slice(0, this.historyIndex + 1)
+            : null;
+
+        wikiWindowManager.createWindow(currentContent, initialTag, historyToCopy);
     }
     
     clearResults() {
@@ -2708,6 +3030,26 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.currentSelectedTag = null;
             this.currentTagName = null;
             this.showDreamWikiHomepage();
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'static-wiki-index') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showStaticWikiSiteIndex(entry.siteId);
+            this.updateNavigationButtons();
+            return;
+        }
+
+        if (entry.type === 'static-wiki-page') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            if (entry.content) {
+                this.renderWikiPage(entry.content);
+            } else {
+                this.openStaticWikiPage(entry.siteId, entry.pageId);
+            }
             this.updateNavigationButtons();
             return;
         }

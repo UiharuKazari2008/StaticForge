@@ -3,16 +3,8 @@ const path = require('path');
 const logger = require('./logger');
 const SQLiteAsyncWrapper = require('./sqliteAsyncWrapper');
 
-// Database file path
-const dbPath = path.join(__dirname, '..', '.cache', 'director.db');
-
-// Ensure cache directory exists
-const cacheDir = path.dirname(dbPath);
-if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-}
-
-let db = null; // Now an instance of SQLiteAsyncWrapper
+let dbPath = null;
+let db = null;
 
 /**
  * Get checkpoint manager for director database
@@ -24,9 +16,13 @@ function getCheckpointManager() {
 /**
  * Initialize the SQLite database for Director system
  */
-async function initializeDirectorDatabase() {
+async function initializeDirectorDatabase(databasesPath) {
     try {
-        // Initialize async wrapper (checkpoint manager is automatically connected)
+        dbPath = path.join(databasesPath, 'director.db');
+        const cacheDir = path.dirname(dbPath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
         db = new SQLiteAsyncWrapper(dbPath, 'director', 30); // 30 minute idle timeout
         
         // Initialize database (opens connection and creates tables)

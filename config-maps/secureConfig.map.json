@@ -1,0 +1,14 @@
+{
+  "configId": "secureConfig",
+  "label": "Secure Config",
+  "rules": [
+    { "path": ["location"], "type": "object", "label": "Location" },
+    { "path": ["location", "latitude"], "type": "number", "label": "Latitude" },
+    { "path": ["location", "longitude"], "type": "number", "label": "Longitude" },
+    { "path": ["*", "keys"], "type": "array", "label": "API Keys" },
+    { "path": ["*", "keys", "*"], "type": "object" },
+    { "path": ["*", "keys", "*", "name"], "type": "string", "label": "Key Name" },
+    { "path": ["*", "keys", "*", "apiKey"], "type": "string", "secret": true, "label": "API Key" },
+    { "path": ["grok", "useWebSearch"], "type": "boolean", "label": "Grok Web Search" }
+  ]
+}

@@ -854,16 +854,23 @@ function renderRequestBodyReplacementsList() {
 // Create a request body replacement item element
 function createRequestBodyReplacementItem(replacement, index) {
     const item = document.createElement('div');
-    item.className = 'text-replacement-item';
+    item.className = 'text-replacement-item' + (replacement.managed ? ' managed-expander' : '');
     item.dataset.index = index;
+    if (replacement.managed) {
+        item.dataset.managed = 'true';
+    }
     
     const isArray = Array.isArray(replacement.value);
     const stagesText = getStagesDisplayText(replacement.stages);
+    const managedLock = replacement.managed
+        ? '<span class="text-replacement-managed-lock" title="Managed by Phasewalker"><i class="fas fa-lock"></i></span>'
+        : '';
     
     item.innerHTML = `
         <div class="text-replacement-header">
             <div class="text-replacement-name-container">
                 <div class="text-replacement-name">${escapeHtml(replacement.name)}</div>
+                ${managedLock}
                 <div class="text-replacement-extend ${replacement.extend ? 'extend' : 'replace'}" title="${replacement.extend ? 'Extend Mode' : 'Replace Mode'}">
                     <i class="fas ${replacement.extend ? 'fa-square-dashed-circle-plus' : 'fa-square-dashed'}"></i>
                 </div>
@@ -871,12 +878,12 @@ function createRequestBodyReplacementItem(replacement, index) {
             <div class="text-replacement-actions">
                 <div class="text-replacement-type ${isArray ? 'random' : ''}">${isArray ? '<i class="fas fa-dice"></i>' : '<i class="fas fa-input-text"></i>'}</div>
                 <div class="text-replacement-stages">${stagesText}</div>
-                <button type="button" class="btn-small btn-secondary edit-btn" title="Edit">
+                ${replacement.managed ? '' : `<button type="button" class="btn-small btn-secondary edit-btn" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
                 <button type="button" class="btn-small btn-danger delete-btn" title="Delete">
                     <i class="fas fa-trash"></i>
-                </button>
+                </button>`}
             </div>
         </div>
         <div class="text-replacement-content">
@@ -906,6 +913,15 @@ function createRequestBodyReplacementItem(replacement, index) {
 }
 
 // Get stages display text
+function hasReplacementStageConfiguration(stages) {
+    if (stages == null) return false;
+    if (Array.isArray(stages)) return stages.length > 0;
+    if (typeof stages === 'object') {
+        return stages.start !== undefined || stages.end !== undefined;
+    }
+    return false;
+}
+
 function getStagesDisplayText(stages) {
     if (!stages) return '<span class="stages-all">All</span>';
     
@@ -961,6 +977,10 @@ function editRequestBodyReplacement(index) {
     const replacement = requestBodyReplacements[index];
     if (!replacement) {
         console.error('Replacement not found at index:', index);
+        return;
+    }
+    if (replacement.managed) {
+        showGlassToast('warning', null, 'Managed by Phasewalker', false, 4000, '<i class="fas fa-lock"></i>');
         return;
     }
     
@@ -1426,6 +1446,11 @@ function removeRequestBodyArrayItem(index, valueIndex) {
 async function deleteRequestBodyReplacement(index) {
     const replacement = requestBodyReplacements[index];
     if (!replacement) return;
+
+    if (replacement.managed) {
+        showGlassToast('warning', null, 'Managed by Phasewalker', false, 4000, '<i class="fas fa-lock"></i>');
+        return;
+    }
     
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to delete the request body replacement "${replacement.name}"?`,

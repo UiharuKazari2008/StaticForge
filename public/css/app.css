@@ -1,4 +1,4 @@
-/* CSS Variables for Design System */
+ /* CSS Variables for Design System */
 :root {
     /* Window Controls Overlay API Variables */
     /* Fallback chain: native env() → caption-bar CSS vars → safe default */
@@ -20,6 +20,20 @@
 
     --true-inset-top: calc(env(titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
     --true-window-inset-top: calc(env(titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
+
+    /*
+     * Window Controls Overlay: regions outside titlebar-area-x / (x + width) are reserved by the OS for
+     * traffic lights / system buttons. Horizontal modal centering uses full 100vw by default but must
+     * anchor to inner width [gutterLeft, vw - gutterRight] so stacked windows avoid that band.
+     */
+    --titlebar-wco-drag-left-gutter: max(0px, var(--titlebar-area-x));
+    --titlebar-wco-drag-right-gutter: max(0px, calc(100vw - var(--titlebar-area-x) - var(--titlebar-area-width)));
+
+    --modal-window-layout-gutter-left: max(var(--inset-left), var(--titlebar-wco-drag-left-gutter));
+    --modal-window-layout-gutter-right: max(var(--inset-right), var(--titlebar-wco-drag-right-gutter));
+
+    --modal-viewport-anchor-offset-x: calc(0.5 * (var(--modal-window-layout-gutter-left) - var(--modal-window-layout-gutter-right)));
+    --modal-usable-inner-width: calc(100vw - var(--modal-window-layout-gutter-left) - var(--modal-window-layout-gutter-right));
 
     /* Primary Colors */
     --primary-color: #ff4500;
@@ -995,6 +1009,20 @@ body.editor-open #titlebar-grab-area-container {
     overflow: hidden;
 }
 
+/* Full-screen black overlay for classic/glass theme switch (1 frame) */
+#theme-switch-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    z-index: calc(var(--z-fullscreen-system) + 1);
+    display: none;
+    pointer-events: none;
+}
+
+#theme-switch-overlay.active {
+    display: block;
+}
+
 /* Focus overlay to prevent accidental interactions when window loses focus */
 #focus-overlay {
     position: fixed;
@@ -1065,6 +1093,14 @@ body.desktop-mode .modal-focus-overlay {
 }
 
 .pswp.pswp--ui-visible .pswp__top-bar {
+    margin-top: 0;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Safe-area insets on top bar only for full-screen viewer, not desktop windowed image shell */
+body:not(.desktop-mode) .pswp.pswp--ui-visible .pswp__top-bar,
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) #photoSwipeMount .pswp.pswp--ui-visible .pswp__top-bar {
     margin-top: var(--true-inset-top, 0px);
     margin-left: calc(var(--inset-left, 0px));
     margin-right: calc(var(--inset-right, 0px));
@@ -3605,10 +3641,66 @@ body.desktop-mode .modal-backdrop {
 }
 
 body.desktop-mode .modal {
-    top: calc(calc(50% + calc(0.5 * var(--true-inset-top, 0px)) + var(--modal-offset-y, 0px)) - calc(0.5 * 35px));
+    top: calc(calc(50% + calc(0.5 * var(--true-inset-top, 0px)) + var(--modal-offset-y, 0px)) - var(--modal-desktop-top-bias, 18px));
     max-width: calc(90vw - calc(2 * var(--spacing-md)));
-    max-height: calc(calc(calc(100vh - calc(2 * var(--spacing-md))) - var(--true-inset-top, 0px)) - calc(0.5 * 35px));
+    max-height: calc(calc(calc(100vh - calc(2 * var(--spacing-md))) - var(--true-inset-top, 0px)) - var(--modal-desktop-top-bias, 18px));
     contain: layout;
+}
+
+/* Settled windows: pixel top/left instead of translate(-50%, -50%) to reduce subpixel fringe */
+.modal.modal-pixel-settled:not(.opening):not(.closing):not(.minimising):not(.unminimising) {
+    left: var(--modal-pixel-left);
+    top: var(--modal-pixel-top);
+    transform: translateZ(0);
+    margin: 0;
+}
+
+.modal[data-window-content-anchor="top"].modal-pixel-settled:not(.opening):not(.closing):not(.minimising):not(.unminimising) {
+    transform: translateZ(0);
+}
+
+/* Drag/resize: hide heavy content via visibility (preserves layout), show window shell only (perf) */
+.modal > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle) {
+    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+}
+
+.modal[data-dragging="true"] > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle),
+.modal[data-resizing="true"] > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle) {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    animation-play-state: paused!important;
+    transition: none;
+}
+
+.modal[data-dragging="true"],
+.modal[data-resizing="true"] {
+    backdrop-filter: saturate(1.25) var(--glass-blur-1, blur(2px));
+    -webkit-backdrop-filter: saturate(1.25) var(--glass-blur-1, blur(2px));
+}
+
+body.windows-classic-theme .modal[data-dragging="true"],
+body.windows-classic-theme .modal[data-resizing="true"] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* Top-anchored modals: horizontal center via offset-x, vertical grows downward from top edge */
+.modal[data-window-content-anchor="top"] {
+    top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 0px));
+    transform: translateZ(0) translate(-50%, 0) scale(1);
+}
+
+body.desktop-mode .modal[data-window-content-anchor="top"] {
+    top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 0px));
+}
+
+.modal[data-window-content-anchor="top"].opening {
+    animation: modalSlideInTopAnchor 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.modal[data-window-content-anchor="top"].closing {
+    animation: modalSlideOutTopAnchor 0.2s cubic-bezier(0.55, 0.06, 0.68, 0.19);
 }
 
 /* Modal minimized state */
@@ -3833,6 +3925,110 @@ div#bulkMoveToWorkspaceModal:not(.hidden) {
     height: 100%;
     overflow-y: auto;
     overflow-x: hidden;
+}
+
+/* PhotoSwipe viewer shell (desktop mode only; mount is appendToEl target) */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window {
+    display: flex;
+    flex-direction: column;
+    padding: 27px 0 0;
+    box-sizing: border-box;
+}
+
+/* Beats rule above (and matches other modals): #id + .classes outrank .modal.minimised alone */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.minimised {
+    display: none;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window #photoSwipeMount {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed {
+    width: 85vw;
+    height: 85vh;
+    max-width: calc(min(1800px, 90vw) - calc(2 * var(--spacing-md)));
+    max-height: calc(calc(min(1400px, 90vh) - calc(2 * var(--spacing-md))) - var(--true-inset-top, 0px));
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount {
+    border-radius: 0 0 var(--border-radius-xl) var(--border-radius-xl);
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed):not(.hidden) {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    transform: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    z-index: var(--z-modal-top) !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-focus-overlay {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-window-title,
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .modal-window-controls {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) #photoSwipeMount {
+    height: 100%;
+    flex: 1;
+    min-height: 0;
+    border-radius: 0 !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) .resize-handle {
+    display: none !important;
+}
+
+/* Contain PhotoSwipe root inside mount (overrides dist photoswipe.css position:fixed) */
+body.desktop-mode #photoSwipeMount .pswp {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 1;
+    --pswp-root-z-index: 1;
+}
+
+/* Desktop windowed viewer: glass shell provides frame; dim PhotoSwipe backdrop off */
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp {
+    --pswp-bg: #000000ae;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp .pswp__button--close {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window.windowed #photoSwipeMount .pswp .pswp__button--zoom {
+    margin-right: 6px;
+}
+
+/* Restore-window control: only in desktop full-shell mode */
+.pswp .pswp__button--restore-desktop-shell-btn {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed):not(.hidden) .pswp .pswp__button--restore-desktop-shell-btn {
+    display: flex !important;
 }
 
 /* Melaton backdrop in gallery (desktop mode only) */
@@ -5315,14 +5511,17 @@ body.desktop-mode .desktop-icons {
 .desktop-shortcut[data-shortcut-type="applet"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="preset"] .desktop-shortcut-icon,
 .desktop-shortcut[data-shortcut-type="note"] .desktop-shortcut-icon,
-.desktop-shortcut[data-shortcut-type="wiki-page"] .desktop-shortcut-icon {
+.desktop-shortcut[data-shortcut-type="wiki-page"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="static-wiki-page"] .desktop-shortcut-icon,
+.desktop-shortcut[data-shortcut-type="bracket-generation"] .desktop-shortcut-icon {
     box-shadow: none;
     font-size: 2.5rem;
     color: var(--text-accent-tinted);
     filter: drop-shadow(1px 1px 5px #000000a0);
 }
 
-.desktop-shortcut-icon .icon-image {
+.desktop-shortcut-icon .icon-image,
+.desktop-shortcut-icon .desktop-shortcut-wiki-site-icon {
     width: 64px;
     height: 64px;
     object-fit: contain;
@@ -5607,6 +5806,81 @@ body.desktop-mode .desktop-icons {
     width: 500px;
 }
 
+#expansionCompiledPromptDialog {
+    width: 560px;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content > .tab-pane.form-section-scroll {
+    min-height: 0;
+    flex: 1;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-content > .tab-pane.form-section-scroll.active {
+    display: flex;
+    flex-direction: column;
+}
+
+#expansionCompiledPromptDialog .character-prompt-textarea-container {
+    min-height: 1rem;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .tab-header {
+    justify-content: flex-start;
+    margin: var(--spacing-sm) var(--spacing-sm) 0;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    max-width: 200px;
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-slider {
+    transform: translateX(100%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="prompt"] .gallery-toggle-slider {
+    background: rgba(174, 255, 171, 0.3);
+    border-color: rgb(211 255 203 / 30%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="prompt"] .gallery-toggle-btn.active {
+    color: rgb(229, 255, 228);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-slider {
+    background: rgb(255 25 25 / 30%);
+    border-color: rgb(250 82 82 / 30%);
+}
+
+#expansionCompiledPromptDialog .prompt-tabs .gallery-toggle-group[data-active="uc"] .gallery-toggle-btn.active {
+    color: rgb(255 228 228);
+}
+
+#expansionCompiledPromptDialog .prompt-textarea-container {
+    min-height: 12rem;
+}
+
 #presetManagerModal,
 #workspaceManageModal,
 #textReplacementManagerModal {
@@ -5661,6 +5935,11 @@ body.desktop-mode .desktop-icons {
 #tagWikiSearchModal {
     width: 1050px;
     height: 750px;
+}
+
+#naxtModal {
+    width: 1050px;
+    height: 980px;
 }
 
 #desktopSettingsModal {
@@ -5966,6 +6245,76 @@ body.desktop-mode .desktop-icons {
     color: #3b82f6;
 }
 
+#naxtCustomTagModal {
+    display: flex;
+    flex-direction: column;
+    width: 450px;
+    height: 420px;
+    min-width: 450px;
+    max-width: 450px;
+    min-height: 420px;
+    max-height: 420px;
+}
+
+#naxtCustomTagModal .weather-location-modal-content {
+    flex: 1;
+    min-height: 0;
+}
+
+#naxtCustomTagModal .weather-location-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#naxtCustomTagModal .naxt-custom-tag-preview-group {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#naxtCustomTagModal .modal-footer {
+    flex-shrink: 0;
+    margin-top: auto;
+}
+
+#naxtCustomTagModal .modal-actions.btn-group {
+    flex-wrap: nowrap;
+    width: 100%;
+}
+
+.naxt-custom-tag-preview {
+    flex: 1;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 8em;
+    text-align: center;
+}
+
+.naxt-custom-tag-preview-clickable {
+    cursor: pointer;
+}
+
+.naxt-custom-tag-preview-clickable:hover img {
+    opacity: 0.92;
+}
+
+.naxt-custom-tag-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 160px;
+    margin: 0 auto var(--spacing-xs);
+    object-fit: contain;
+    border-radius: var(--border-radius-sm);
+}
+
+.naxt-custom-tag-preview-caption {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    opacity: 0.9;
+}
+
 /* Genso Lock Modal Content */
 .text-replacement-lock-modal-content .modal-body {
     flex: 1;
@@ -6207,6 +6556,21 @@ body.desktop-mode .desktop-icons {
     display: flex;
     gap: var(--spacing-xs);
     flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.text-replacement-lock-badges .text-replacement-stages {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: 0;
+    background: none;
+    border: none;
 }
 
 .text-replacement-badge {
@@ -9860,7 +10224,7 @@ button::-moz-focus-inner {
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .form-control:hover:not(:disabled) {
+    :not(.hover-show) > .form-control:hover:not(:disabled) {
         background: var(--glass-layer-3);
         border: 1px solid var(--glass-border-3);
     }
@@ -10053,15 +10417,27 @@ button::-moz-focus-inner {
     height: 100%;
     background: var(--btn-hover-bg-primary);
     position: relative;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     transition: width 0.2s ease;
     min-width: 2px;
 }
 
+.token-progress-inner-ne {
+    height: 100%;
+    flex-shrink: 0;
+    background: rgba(200, 160, 80, 0.55);
+    transition: width 0.2s ease;
+    min-width: 0;
+}
+
 .token-progress-inner {
     height: 100%;
+    flex-shrink: 0;
     background: var(--btn-hover-bg-secondary);
     transition: width 0.2s ease;
-    min-width: 2px;
+    min-width: 0;
 }
 
 /* Manual Modal Token Summary */
@@ -10120,6 +10496,10 @@ button::-moz-focus-inner {
 
 .token-info-container.token-mode-active .token-progress-fill {
     background: rgba(100, 150, 255, 0.4);
+}
+
+.token-info-container.token-mode-active .token-progress-inner-ne {
+    background: rgba(180, 140, 60, 0.65);
 }
 
 .token-info-container.token-mode-active .token-progress-inner {
@@ -10562,6 +10942,7 @@ i#carouselCacheIcon {
     display: flex;
     align-items: center;
     justify-content: start;
+    width: 100%
 }
 
 .toolbar-right {
@@ -10612,6 +10993,37 @@ i#carouselCacheIcon {
     border-right: 1px solid var(--glass-inset-bg-1);
     display: block;
     height: 24px;
+}
+
+/* Wide prompt toolbar actions — inline above 768px, toolbox menu below */
+.prompt-textarea-toolbar .toolbar-wide-btn,
+.prompt-textarea-toolbar .toolbar-wide-divider {
+    display: none;
+}
+
+@media (min-width: 768px) {
+    .prompt-textarea-toolbar .toolbar-wide-btn {
+        display: inline-flex;
+    }
+
+    .prompt-textarea-toolbar .toolbar-wide-divider {
+        display: block;
+    }
+
+    .custom-dropdown-menu .toolbar-menu-only {
+        display: none;
+    }
+}
+
+@container manual-modal (max-width: 767px) {
+    #manualModal .prompt-textarea-toolbar .toolbar-wide-btn,
+    #manualModal .prompt-textarea-toolbar .toolbar-wide-divider {
+        display: none !important;
+    }
+
+    #manualModal .custom-dropdown-menu .toolbar-menu-only {
+        display: flex !important;
+    }
 }
 
 /* Prompt textarea specific height */
@@ -10854,11 +11266,20 @@ i#carouselCacheIcon {
     padding: 0.5em;
 }
 
-#transformationRow:not(.display-vibe) #vibeReferencesContainer {
+#transformationRow:not(.display-vibe):not(.display-character) #vibeReferencesContainer {
     display: none;
 }
 
+#directorReferenceSection {
+    display: none !important;
+}
+
 #transformationRow.display-vibe:not(.display-image):not(.display-character) .vibe-references-container {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas: ". . .";
+}
+
+#transformationRow.display-character:not(.display-vibe):not(.display-image) .vibe-references-container {
     grid-template-columns: 1fr 1fr 1fr;
     grid-template-areas: ". . .";
 }
@@ -10872,9 +11293,90 @@ i#carouselCacheIcon {
     display: none;
 }
 
-/* Director Reference Section Visibility */
+/* Director Reference Section Visibility — legacy slot hidden; precise refs use vibeReferencesContainer */
 #transformationRow:not(.display-character) #directorReferenceSection {
     display: none;
+}
+
+.precise-reference-strength-fidelity-pair {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: stretch;
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-input-side {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-input-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair .precise-reference-input-side .precise-reference-ratio-input {
+    transition: opacity var(--transition-normal);
+}
+
+.precise-reference-strength-fidelity-pair .precise-reference-opposite-label {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 1;
+    color: var(--hover-show-colored-text, var(--text-primary));
+}
+
+/* Hover strength: dim fidelity input (right), show its opposite label on top */
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .precise-reference-ratio-input {
+    opacity: 0.15;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-fidelity-side .precise-reference-opposite-label {
+    display: flex;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-strength-side:hover, .precise-reference-strength-side:focus-within) .precise-reference-strength-side .precise-reference-opposite-label {
+    display: none;
+}
+
+/* Hover fidelity: dim strength input (left), show its opposite label on top */
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .percentage-input-overlay,
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .precise-reference-ratio-input {
+    opacity: 0.15;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-strength-side .precise-reference-opposite-label {
+    display: flex;
+}
+
+.precise-reference-strength-fidelity-pair:has(.precise-reference-fidelity-side:hover, .precise-reference-fidelity-side:focus-within) .precise-reference-fidelity-side .precise-reference-opposite-label {
+    display: none;
+}
+
+.precise-reference-preview-clickable {
+    cursor: pointer;
+}
+
+.precise-reference-preview-clickable .overlay-icon-container {
+    pointer-events: none;
+}
+
+.precise-reference-type-toggles {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.precise-reference-type-toggles .toggle-btn {
+    min-width: 42px;
+    min-height: 32px;
 }
 
 
@@ -11043,6 +11545,22 @@ i#carouselCacheIcon {
     }
 }
 
+@keyframes modalSlideInTopAnchor {
+    from {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, 0) scale(0.8);
+        filter: blur(4px);
+        will-change: transform, opacity, filter;
+    }
+
+    to {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, 0) scale(1);
+        filter: blur(0px);
+        will-change: transform, opacity, filter;
+    }
+}
+
 @keyframes modalSlideOut {
     from {
         opacity: 1;
@@ -11054,6 +11572,22 @@ i#carouselCacheIcon {
     to {
         opacity: 0;
         transform: translateZ(0) translate(-50%, -50%) scale(0.9);
+        filter: blur(4px);
+        will-change: transform, opacity, filter;
+    }
+}
+
+@keyframes modalSlideOutTopAnchor {
+    from {
+        opacity: 1;
+        transform: translateZ(0) translate(-50%, 0) scale(1);
+        filter: blur(0px);
+        will-change: transform, opacity, filter;
+    }
+
+    to {
+        opacity: 0;
+        transform: translateZ(0) translate(-50%, 0) scale(0.9);
         filter: blur(4px);
         will-change: transform, opacity, filter;
     }
@@ -14665,6 +15199,31 @@ textarea {
     gap: 5px;
 }
 
+.stage-type-label .stage-name-editable {
+    text-transform: none;
+}
+
+.stage-type-label .stage-display-name-input {
+    font-size: 0.95em;
+    font-weight: 500;
+    text-transform: none;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit {
+    text-transform: none;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .left-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#bracketGenerationModal .bracket-gen-step-item .character-name-editable.inline-name-edit.editing-name .character-name-input {
+    font-size: 0.9em;
+    font-weight: 500;
+    max-width: 220px;
+}
+
 .character-prompts-title-group {
     display: flex;
     flex-direction: row;
@@ -16020,7 +16579,8 @@ div#manualWorkspaceDropdownMenu {
     font-size: 0.85em;
 }
 
-#uc-tab .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap {
+#uc-tab .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap,
+.character-prompt-textarea-container .prompt-textarea-emphasis-wrap + .prompt-textarea-emphasis-wrap {
     margin-top: var(--spacing-xs);
     border-top: 1px solid var(--glass-border-3);
 }
@@ -16128,6 +16688,57 @@ div#manualWorkspaceDropdownMenu {
     color: var(--text-accent-tinted);
 }
 
+/* Inline rename: span label until click (Phasewalker steps, pipeline stage headers) */
+.character-name-editable.inline-name-edit {
+    flex: 0 1 auto;
+    width: auto;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.character-name-editable.inline-name-edit .character-name-input {
+    display: none;
+}
+
+.character-name-editable.inline-name-edit .character-name-input-placeholder {
+    display: inline-block;
+    width: auto;
+    max-width: 100%;
+    cursor: text;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: baseline;
+}
+
+.character-name-editable.inline-name-edit.editing-name {
+    flex: 1 1 6em;
+    min-width: 4em;
+    max-width: min(240px, 45vw);
+}
+
+.character-name-editable.inline-name-edit.editing-name .character-name-input {
+    display: block;
+    width: 100%;
+    min-width: 4em;
+    max-width: 100%;
+}
+
+.character-name-editable.inline-name-edit.editing-name .character-name-input-placeholder {
+    display: none;
+}
+
+.stage-type-label .stage-name-editable.inline-name-edit:not(.editing-name) {
+    flex: 0 1 auto;
+    width: auto;
+}
+
+.stage-type-label .stage-name-editable.inline-name-edit.editing-name {
+    flex: 1 1 6em;
+    min-width: 4em;
+    max-width: min(240px, 40%);
+}
+
 div#manualResolutionDropdownMenu {
     width: 210px;
 }
@@ -16182,6 +16793,24 @@ div#manualResolutionDropdownMenu {
 .nai-variations {
     -webkit-mask: url('/dist/nai-svg/variations.d35c8a3a.svg') no-repeat center;
     mask: url('/dist/nai-svg/variations.d35c8a3a.svg') no-repeat center;
+}
+
+.nai-precise-reference {
+    -webkit-mask: url('/dist/nai-svg/precise_reference_style_and_character.42fc4d5c.svg') no-repeat center;
+    mask: url('/dist/nai-svg/precise_reference.a02ad982.svg') no-repeat center;
+    scale: 1.25;
+}
+
+.nai-precise-reference-style-and-character {
+    -webkit-mask: url('/dist/nai-svg/precise_reference_style_and_character.42fc4d5c.svg') no-repeat center;
+    mask: url('/dist/nai-svg/precise_reference_style_and_character.42fc4d5c.svg') no-repeat center;
+    scale: 1.25;
+}
+
+.nai-precise-reference-style {
+    -webkit-mask: url('/dist/nai-svg/precise_reference_style.51e425f3.svg') no-repeat center;
+    mask: url('/dist/nai-svg/precise_reference_style.51e425f3.svg') no-repeat center;
+    scale: 1.15;
 }
 
 .nai-vibe-transfer {
@@ -16277,6 +16906,7 @@ div#manualResolutionDropdownMenu {
 .nai-person {
     -webkit-mask: url('/dist/nai-svg/person.8fffa0a6.svg') no-repeat center;
     mask: url('/dist/nai-svg/person.8fffa0a6.svg') no-repeat center;
+    scale: 1.25;
 }
 
 .nai-opus {
@@ -21653,6 +22283,32 @@ div#workspaceDropdownMenu {
     box-shadow: 0 0 17px 0px #8b5cf7cf;
 }
 
+.cache-badge.style-reference-badge {
+    background: linear-gradient(135deg, #f59e0bcc, #d97706cc);
+    color: #fff7ed;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 17px 0px #f59e0bcf;
+}
+
+.cache-metadata-precise-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--spacing-sm, 8px);
+}
+
+.cache-metadata-precise-actions > .btn-secondary,
+.cache-metadata-precise-actions > .btn-primary {
+    border-radius: var(--border-radius-md);
+}
+
+.cache-metadata-precise-actions .precise-reference-type-toggles {
+    flex-shrink: 0;
+}
+
 .cache-badge.encoding {
     background: linear-gradient(135deg, #d921f3cc, #1995d2cc);
     display: flex;
@@ -23303,6 +23959,113 @@ body.scraps-grayscale::after {
     border: 1px solid color-mix(in srgb, var(--glass-border-4, rgba(255, 255, 255, 0.12)) 70%, transparent);
     pointer-events: none;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Run Applet (Application Finder) */
+#runModal.run-applet {
+    min-height: auto;
+}
+
+#runModal .run-applet-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px 14px;
+    min-height: 0;
+}
+
+#runModal .run-applet-search-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--color-primary, #5eb8b8) 55%, transparent);
+    border-radius: var(--border-radius-md, 6px);
+    background: color-mix(in srgb, var(--glass-layer-dark-3, rgba(0, 0, 0, 0.45)) 90%, transparent);
+}
+
+#runModal .run-applet-search-icon {
+    color: var(--text-muted, #888);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+#runModal .run-applet-input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    padding: 6px 4px;
+    font-size: 1rem;
+    min-width: 0;
+}
+
+#runModal .run-applet-input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+#runModal .run-applet-suggestions {
+    max-height: 280px;
+    overflow-y: auto;
+    border-radius: var(--border-radius-md, 6px);
+    border: 1px solid var(--glass-border-3, rgba(255, 255, 255, 0.08));
+    background: color-mix(in srgb, var(--glass-layer-dark-4, rgba(0, 0, 0, 0.55)) 95%, transparent);
+}
+
+#runModal .run-applet-suggestions.hidden {
+    display: none;
+}
+
+#runModal .run-applet-item {
+    cursor: pointer;
+    padding: 8px 10px;
+}
+
+#runModal .run-applet-item.keyboard-selected,
+#runModal .run-applet-item:hover {
+    background: color-mix(in srgb, var(--color-primary, #5eb8b8) 18%, transparent);
+}
+
+#runModal .run-applet-item-icon {
+    width: 1.1em;
+    text-align: center;
+    opacity: 0.85;
+    margin-right: 6px;
+}
+
+#runModal .run-applet-category-badge {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.65;
+    white-space: nowrap;
+}
+
+#runModal .run-applet-item-sub {
+    font-size: 0.78rem;
+    opacity: 0.65;
+    padding-left: 1.6em;
+    margin-top: 2px;
+}
+
+#runModal .run-applet-footer {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+#runModal .run-applet-launch-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#runModal .run-applet-launch-btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
 }
 
 @keyframes shortcutActionToastBorderFlash {
@@ -26790,6 +27553,7 @@ html:not(.disable-blur) {
 }
 
 html:has(body.desktop-mode) {
+    --modal-desktop-top-bias: 18px;
     --true-window-inset-top: 0px;
     --true-window-inset-bottom: 0px;
     --true-window-inset-left: 0px;
@@ -27665,7 +28429,7 @@ html:has(body.desktop-mode) {
 /* Window Controls Overlay API - ManualModal Full Page View Adjustments */
 
 @media (min-width: 1101px) {
-    .titlebar-android .form-section-scroll .scrollable-content {
+    .titlebar-android body:not(.desktop-mode) #manualModal .form-section-scroll .scrollable-content {
         padding-top: calc(var(--spacing-md) + var(--titlebar-area-height, 0px));
     }
 
@@ -28198,6 +28962,17 @@ html:has(body.desktop-mode) {
 
 .modal-window-controls .indicator {
     min-width: 38px;
+}
+
+.modal-window-title,
+.modal-window-title-main,
+.modal-window-title-main span,
+.modal-window-controls,
+.modal-window-controls button,
+.modal-window-controls button i {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
 }
 
 .modal-window-title {
@@ -32360,6 +33135,86 @@ div#spellbookCustomPresetDropdown {
     padding: var(--spacing-xs) 0;
 }
 
+.tag-wiki-display-content .dreamwiki-home-hero {
+    justify-content: center;
+}
+
+.tag-wiki-display-content .dreamwiki-home-subtitle {
+    text-align: center;
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+    padding: 0 var(--spacing-md);
+}
+
+.tag-wiki-display-content .dreamwiki-home-pad-sm {
+    min-height: var(--spacing-sm);
+}
+
+.tag-wiki-display-content .dreamwiki-home-pad-md {
+    min-height: var(--spacing-md);
+}
+
+.tag-wiki-display-content .dreamwiki-home-border-dotted {
+    border-bottom: 1px dotted var(--glass-border-4);
+    margin: 0 var(--spacing-sm);
+}
+
+.tag-wiki-display-content .dreamwiki-home-actions-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: 0 var(--spacing-md);
+}
+
+.tag-wiki-display-content .dreamwiki-home-actions-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 280px;
+}
+
+.tag-wiki-display-content .dreamwiki-starting-points-stack {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+}
+
+.tag-wiki-display-content .dreamwiki-starting-points-stack .dreamwiki-start-row,
+.tag-wiki-display-content .dreamwiki-starting-points-stack .dreamwiki-site-btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.tag-wiki-display-content .dreamwiki-site-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.tag-wiki-display-content .dreamwiki-site-btn-icon {
+    width: 1rem;
+    height: 1rem;
+    object-fit: contain;
+}
+
+.tag-wiki-display-content .dreamwiki-home-direct-wrap {
+    padding: 0 var(--spacing-md);
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tag-wiki-display-content .dreamwiki-recent-list-cols-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--spacing-xs);
+}
+
 /* Match #aboutMelatoninModal logo hero (app.html) inside DreamWiki home */
 .tag-wiki-display-content .dreamwiki-home .about-logo-container {
     display: flex;
@@ -32492,6 +33347,83 @@ div#spellbookCustomPresetDropdown {
     font-size: 1rem;
     color: var(--accent-color);
     opacity: 0.7;
+}
+
+/* Offline NovelAI / static wiki docs */
+.tag-wiki-page-content.wiki-static-doc img {
+    max-width: 100%;
+    height: auto;
+}
+
+.tag-wiki-page-content.wiki-static-doc pre,
+.tag-wiki-page-content.wiki-static-doc code {
+    overflow-x: auto;
+}
+
+.tag-wiki-page-title.static-wiki-index-header {
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-md);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tag-wiki-page .tag-wiki-page-header-sep {
+    margin: var(--spacing-xs) 0 var(--spacing-md);
+}
+
+.tag-wiki-page-title.static-wiki-index-header .static-wiki-index-title-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.static-wiki-index-site-icon {
+    width: 2rem;
+    height: 2rem;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+.static-wiki-index-group-title {
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-xs);
+}
+
+.static-wiki-index-page-list {
+    margin-top: 0;
+    margin-bottom: var(--spacing-sm);
+    padding-left: var(--spacing-md);
+}
+
+.tag-wiki-page-content .wiki-static-index-link {
+    color: var(--wiki-link-color);
+    text-decoration: none;
+}
+
+.tag-wiki-page-content .wiki-static-index-link:hover {
+    text-decoration: underline;
+}
+
+.tag-wiki-body-content .tag-wiki-list,
+.tag-wiki-page-content .tag-wiki-list {
+    margin-top: 0;
+    margin-bottom: var(--spacing-xs);
+    padding-left: var(--spacing-md);
+}
+
+.tag-wiki-body-content .tag-wiki-quote,
+.tag-wiki-page-content .tag-wiki-quote {
+    color: var(--wiki-quote-text);
+    margin-top: 0;
+    margin-bottom: var(--spacing-xs);
+    padding-left: var(--spacing-xs);
+    border-left: 4px solid var(--wiki-quote-border);
+}
+
+.tag-wiki-display-content .dreamwiki-docs-empty,
+.tag-wiki-display-content .dreamwiki-docs-loading {
+    font-size: 0.875rem;
+    color: var(--text-muted);
 }
 
 /* Wiki body content - matching Danbooru exactly */
@@ -34304,7 +35236,7 @@ body.windows-classic-theme .modal {
     color: var(--WindowText);
     border-color: var(--ActiveBorder);
     font-size: 10px;
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonHilight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonLight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonHilight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonLight), 0px 0px 0px 2px var(--ButtonDkShadow);
     border: 1px solid var(--ActiveBorder);
     border-radius: 0;
     backdrop-filter: none;
@@ -34443,7 +35375,7 @@ body.windows-classic-theme .modal.active-window .modal-window-controls button {
     text-shadow: none;
     border-radius: 0;
     border: none;
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -34473,7 +35405,7 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-controls but
     text-shadow: none;
     border-radius: 0;
     border: none;
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -34491,30 +35423,30 @@ body.windows-classic-theme .modal:not(.active-window) .modal-window-controls but
 /* Button Hover State - Active Window */
 body.windows-classic-theme .modal.active-window .modal-window-controls button:hover:not(:disabled) {
     background-color: var(--ButtonLight);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
 }
 
 /* Button Hover State - Inactive Window */
 body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:hover:not(:disabled) {
     background-color: var(--ButtonLight);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
 }
 
 /* Button Active/Pressed State */
 body.windows-classic-theme .modal.active-window .modal-window-controls button:active:not(:disabled) {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -0.5px -0.5px 0px 1.5px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
 }
 
 body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:active:not(:disabled) {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -0.5px -0.5px 0px 1.5px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonDkShadow), 0px 0px 0px 2px var(--ButtonHilight);
 }
 
 /* Button Disabled State - Window Controls */
 body.windows-classic-theme .modal.active-window .modal-window-controls button:disabled {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     opacity: 1;
 }
 
@@ -34525,7 +35457,7 @@ body.windows-classic-theme .modal.active-window .modal-window-controls button:di
 
 body.windows-classic-theme .modal:not(.active-window) .modal-window-controls button:disabled {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     opacity: 1;
 }
 
@@ -34587,7 +35519,7 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button) {
     text-shadow: none;
     border-radius: 0;
     border: none;
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     text-align: center;
     vertical-align: middle;
     max-width: calc(100% - 5px);
@@ -34595,17 +35527,17 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button) {
 
 body.windows-classic-theme .modal button:not(.modal-window-controls button):hover:not(:disabled) {
     background-color: var(--ButtonLight);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
 }
 
 body.windows-classic-theme .modal button:not(.modal-window-controls button):active:not(:disabled) {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
 }
 
 body.windows-classic-theme .modal button:not(.modal-window-controls button):disabled {
     background-color: var(--ButtonFace);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
+    box-shadow: -1px -1px 0px 1px var(--ButtonLight), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--ButtonHilight), 0px 0px 0px 2px var(--ButtonDkShadow);
     color: var(--GrayText);
     opacity: 1;
 }
@@ -34620,7 +35552,7 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button).sele
 body.windows-classic-theme .modal button:not(.modal-window-controls button)[aria-selected="true"] {
     background-color: var(--Hilight);
     color: var(--HilightText);
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -0.5px -0.5px 0px 1.5px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
+    box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
 }
 
 #windowsStartupModal {
@@ -34630,6 +35562,271 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button)[aria
     transform: none;
     width: 320px;
     z-index: var(--z-modal-top) !important;
+}
+
+#connectionDialModal {
+    width: 550px;
+}
+
+.connection-dial-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.connection-dial-layout {
+    display: flex;
+    align-items: stretch;
+    min-height: 200px;
+}
+
+.connection-dial-art {
+    height: 286px;
+    width: 150px;
+    display: flex;
+    align-items: stretch;
+    background: #008080;
+    border-right: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+.connection-dial-art-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+}
+
+.connection-dial-main {
+    flex: 1;
+    min-width: 0;
+    padding: var(--spacing-md);
+    display: flex;
+    flex-direction: column;
+}
+
+.connection-dial-main .modal-body {
+    padding: 0;
+}
+
+.connection-dial-footer-sep {
+    border-top: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+.connection-dial-footer {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md) var(--spacing-md);
+    min-height: 48px;
+}
+
+.connection-dial-body {
+    display: grid;
+    grid-template-rows: 3fr auto 1fr;
+    gap: 8px;
+    min-height: 260px;
+    flex: 1;
+}
+
+.connection-dial-upper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.connection-dial-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.connection-dial-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.connection-dial-detail-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-accent);
+}
+
+.connection-dial-detail-value {
+    font-size: 12px;
+    color: var(--text-accent-tinted);
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+}
+
+.connection-dial-progress-wrap {
+    align-self: stretch;
+    width: 100%;
+}
+
+.connection-dial-progress-wrap.hidden {
+    display: none;
+}
+
+.connection-dial-progress {
+    width: 100%;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.connection-dial-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--btn-hover-bg-primary, #6366f1);
+    transition: width 0.3s ease;
+    min-width: 0;
+}
+
+body.windows-classic-theme .connection-dial-detail-label {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    color: var(--GrayText);
+}
+
+body.windows-classic-theme .connection-dial-detail-value {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+    color: var(--WindowText);
+}
+
+.connection-dial-status {
+    color: var(--text-primary);
+    font-size: 13px;
+    min-height: 18px;
+    line-height: 1.45;
+}
+
+body.windows-classic-theme .connection-dial-status {
+    color: var(--WindowText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
+.connection-dial-attempt {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    min-height: 14px;
+}
+
+body.windows-classic-theme .connection-dial-attempt {
+    color: var(--GrayText);
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+}
+
+.connection-dial-attempt.hidden,
+.connection-dial-actions.hidden {
+    display: none;
+}
+
+.connection-dial-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+}
+
+.connection-dial-modal.failed .connection-dial-actions {
+    display: flex;
+}
+
+.service-worker-tray-icon.sw-unavailable {
+    color: #f44336;
+}
+
+.service-worker-tray-icon.sw-heartbeat-missed {
+    color: #ff9800;
+}
+
+.connection-dial-stats {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px 8px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--glass-border-4, rgba(255, 255, 255, 0.12));
+}
+
+body.windows-classic-theme .connection-dial-stats {
+    border-top-color: var(--ButtonShadow);
+}
+
+.connection-dial-stats.hidden {
+    display: none;
+}
+
+.connection-dial-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.connection-dial-stat-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-accent);
+}
+
+body.windows-classic-theme .connection-dial-stat-label {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    color: var(--GrayText);
+}
+
+.connection-dial-stat-value {
+    font-size: 12px;
+    color: var(--text-accent-tinted);
+    font-variant-numeric: tabular-nums;
+}
+
+.connection-dial-stat-value-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up,
+.connection-dial-stat-value-row .websocket-arrow-down {
+    font-size: 10px;
+    opacity: 0.45;
+    transition: opacity var(--transition-slow), color 0.25s ease;
+    color: var(--text-color, #ffffff);
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up.active {
+    color: #81ff9d;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-down.active {
+    color: #ff8181;
+}
+
+.connection-dial-stat-value-row .websocket-arrow-up.active,
+.connection-dial-stat-value-row .websocket-arrow-down.active {
+    opacity: 1;
+}
+
+body.windows-classic-theme .connection-dial-stat-value {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 10px;
+    color: var(--WindowText);
+}
+
+.connection-dial-modal.status-view .connection-dial-stats:not(.hidden) {
+    display: grid;
 }
 
 .windows-startup-status {
@@ -34656,7 +35853,7 @@ body.windows-classic-theme [role=progressbar] {
     overflow: hidden;
     box-sizing: border-box;
     border-radius: 0px;
-    box-shadow: -0.5px -0.5px 0px 0.5px var(--ButtonDkShadow), 0px 0px 0px 1px var(--ButtonLight), -0.5px -0.5px 0px 1.5px var(--ButtonShadow), 0px 0px 0px 2px var(--ButtonHilight);
+    box-shadow: -1px -1px 0px 1px var(--ButtonDkShadow), 0px 0px 0px 1px var(--ButtonLight), -1px -1px 0px 2px var(--ButtonShadow), 0px 0px 0px 2px var(--ButtonHilight);
     margin: 0 3px;
     max-width: calc(100% - 6px);
 }
@@ -34724,14 +35921,591 @@ body.desktop-mode.windows-startup.boot-from-launch {
     pointer-events: none;
 }
 
-/* Standalone /editor: hide main shell chrome; manual modal is the primary surface */
-body.editor-standalone #titlebar-grab-area-container,
-body.editor-standalone #desktopTaskbar {
+/* NAXT modal (scoped under #naxtModal) */
+#naxtModal .naxt-modal-content {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+#naxtModal .naxt-search-header {
+    padding: var(--spacing-sm);
+    border-bottom: 1px solid var(--glass-border-4);
+    flex-shrink: 0;
+    background: var(--glass-layer-2);
+}
+
+#naxtModal .naxt-search-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+}
+
+#naxtModal .naxt-search-input {
+    flex: 1;
+    min-width: 120px;
+    font-family: inherit;
+}
+
+#naxtModal .naxt-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+    align-items: flex-end;
+}
+
+#naxtModal .naxt-filter-pair {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+#naxtModal .naxt-filter-pair .form-control {
+    width: 4.5rem;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+#naxtModal .naxt-filter-pair label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+#naxtModal .naxt-body {
+    flex: 1;
+    min-height: 0;
+}
+
+#naxtModal .naxt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--naxt-cell, 140px), 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    transition: opacity 0.2s ease;
+}
+
+#naxtModal .naxt-grid.naxt-loading {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+#naxtModal #naxtFilterToggleBtn.indicator[data-filters-active="true"]::after {
+    background: #7eff7e;
+    border: 1px solid #00cd00;
+    box-shadow: 0 0 15px 2px #00ff22;
+}
+
+#naxtModal .naxt-sort-menu-divider {
+    height: 1px;
+    margin: 0.35rem 0.5rem;
+    background: var(--glass-border-4);
+}
+
+#naxtModal .naxt-status-bar {
+    flex-shrink: 0;
+    padding: 0.35rem var(--spacing-sm);
+    border-top: 1px solid var(--glass-border-4);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    background: var(--glass-layer-2);
+}
+
+#naxtModal #naxtDatasetDropdownBtn #naxtDatasetSelected {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#naxtModal #naxtDatasetDropdownBtn .naxt-dataset-btn-icon {
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+#naxtModal #naxtDatasetDropdownBtn .naxt-dataset-chevron {
+    flex-shrink: 0;
+    margin-left: 0.15em;
+    opacity: 0.75;
+}
+
+#naxtModal #naxtDatasetDropdownMenu .custom-dropdown-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+}
+
+#naxtModal #naxtDatasetDropdownMenu .custom-dropdown-option i {
+    flex-shrink: 0;
+    width: 1.1em;
+    text-align: center;
+}
+
+#naxtModal .naxt-card {
+    position: relative;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-4);
+    cursor: pointer;
+}
+
+#naxtModal .naxt-card[data-favorite="1"] {
+    border-color: #e6c200;
+    box-shadow: 0 0 0 1px rgba(230, 194, 0, 0.45);
+}
+
+#naxtModal .naxt-card[data-try="1"] {
+    border-color: #6eb5ff;
+    box-shadow: 0 0 0 1px rgba(110, 181, 255, 0.45);
+}
+
+#naxtModal .naxt-card[data-favorite="1"][data-try="1"] {
+    border-color: #9ad4a0;
+    box-shadow: 0 0 0 1px rgba(154, 212, 160, 0.5);
+}
+
+#naxtModal #naxtBagDropdownBtn {
+    position: relative;
+}
+
+#naxtModal .naxt-bag-count {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0;
+    font-size: 0.55rem;
+    line-height: 14px;
+    text-align: center;
+    border-radius: 5px;
+    background: var(--status-error-dark);
+    color: #fff;
+}
+
+#naxtModal .naxt-bag-count.hidden {
+    display: none;
+}
+
+#naxtModal .naxt-bag-dropdown-menu {
+    max-height: 280px;
+    overflow-y: auto;
+}
+
+#naxtModal .naxt-bag-dropdown-menu .naxt-bag-menu-actions {
+    border-top: 1px solid var(--glass-border-4);
+    margin-top: 4px;
+    padding-top: 4px;
+}
+
+#naxtModal .naxt-card-img-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--glass-layer-dark-5);
+}
+
+#naxtModal .naxt-card-img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#naxtModal .naxt-card-votes {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    display: flex;
+    gap: 6px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: var(--border-radius-sm);
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    pointer-events: none;
+}
+
+#naxtModal .naxt-card-caption {
+    padding: 4px 6px;
+    font-size: 0.75rem;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+#naxtModal .naxt-load-sentinel {
+    height: 4px;
+    margin: var(--spacing-sm);
+}
+
+#naxtModal .naxt-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+    text-align: center;
+}
+
+#naxtModal .naxt-empty-state.hidden {
     display: none !important;
 }
 
-body.editor-standalone #galleryWindow {
-    display: none !important;
+
+
+/* Config Editor Applet */
+body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
+    width: min(1100px, 92vw);
+    height: min(700px, 85vh);
+}
+
+#configEditorModal .config-editor-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+#configEditorModal .config-editor-layout {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    gap: 0;
+}
+
+#configEditorModal .config-editor-tree-panel {
+    flex: 0 0 260px;
+    border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    padding: var(--spacing-sm);
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorModal .config-editor-tree {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#configEditorModal .config-editor-tree-item {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+}
+
+#configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
+    background: rgba(100, 160, 220, 0.25);
+}
+
+#configEditorModal .config-editor-tree-expand {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+#configEditorModal .config-editor-tree-label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+#configEditorModal .config-editor-tree-label:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+#configEditorModal .config-editor-tree-children {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+#configEditorModal .config-editor-values-panel {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--spacing-sm);
+    overflow: hidden;
+}
+
+#configEditorModal .config-editor-value-cell {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+}
+
+#configEditorModal .config-editor-value-display {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    opacity: 0.9;
+}
+
+#configEditorValueModal .config-editor-value-path {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    opacity: 0.75;
+    margin: 0 0 var(--spacing-sm);
+    word-break: break-all;
+}
+
+#configEditorValueModal .config-editor-value-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#configEditorValueModal .config-editor-value-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+#configEditorValueModal .config-editor-secret-input {
+    font-family: var(--font-mono);
+    width: 100%;
+}
+
+#configEditorModal .config-editor-values-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88em;
+}
+
+#configEditorModal .config-editor-values-table th {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--text-accent-tinted, #aac);
+    font-weight: var(--wght-semibold);
+}
+
+#configEditorModal .config-editor-row td {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    vertical-align: middle;
+}
+
+#configEditorModal .config-editor-row.dirty td {
+    background: rgba(255, 200, 80, 0.08);
+}
+
+#configEditorModal .config-editor-col-name {
+    width: 28%;
+    font-family: var(--font-mono);
+}
+
+#configEditorModal .config-editor-col-type {
+    width: 12%;
+    opacity: 0.75;
+}
+
+#configEditorModal .config-editor-col-value {
+    min-width: 140px;
+}
+
+#configEditorModal .config-editor-status-bar {
+    flex: 0 0 auto;
+    padding: 6px var(--spacing-md);
+    font-size: 0.8em;
+    opacity: 0.8;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#configEditorModal .config-editor-loading,
+#configEditorModal .config-editor-empty,
+#configEditorModal .config-editor-error {
+    padding: var(--spacing-md);
+    opacity: 0.7;
+}
+
+.config-editor-summary-table-wrap {
+    max-height: 40vh;
+    overflow: auto;
+    margin-top: var(--spacing-sm);
+}
+
+.config-editor-summary-table {
+    width: 100%;
+    font-size: 0.85em;
+    border-collapse: collapse;
+}
+
+.config-editor-summary-table th,
+.config-editor-summary-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: left;
+}
+
+.config-editor-restart-note {
+    margin-top: var(--spacing-sm);
+    color: #ff8c00;
+}
+
+
+/* Phasewalker */
+#bracketGenerationModal {
+    width: 480px;
+    height: 800px;
+}
+
+#bracketGenerationModal .bracket-gen-header {
+    flex-shrink: 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    gap: var(--spacing-sm);
+    border-bottom: 1px solid var(--glass-border-2);
+    background: var(--glass-layer-2);
+}
+
+#bracketGenerationModal #bracketGenKeywordDropdownBtn #bracketGenKeywordSelected {
+    min-width: 72px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#bracketGenerationModal #bracketGenKeywordDropdownBtn.bracket-gen-keyword-placeholder #bracketGenKeywordSelected {
+    opacity: 0.65;
+    font-style: italic;
+}
+
+#bracketGenerationModal .bracket-gen-header-right {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+#bracketGenerationModal #bracketGenGearDropdownMenu .custom-dropdown-option i,
+#bracketGenerationModal #bracketGenKeywordDropdownMenu .custom-dropdown-option i {
+    width: 1.1em;
+    text-align: center;
+    margin-right: 0.35em;
+}
+
+#bracketGenerationModal #bracketGenTabButtons.gallery-toggle-group {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-width: 72px;
+}
+
+#bracketGenerationModal #bracketGenTabButtons .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#bracketGenerationModal #bracketGenTabButtons[data-active="uc"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+    background: rgb(255 25 25 / 30%);
+    border-color: rgb(250 82 82 / 30%);
+}
+
+#bracketGenerationModal #bracketGenTabButtons[data-active="prompt"] .gallery-toggle-slider {
+    background: rgba(174, 255, 171, 0.3);
+    border-color: rgb(211 255 203 / 30%);
+}
+
+.bracket-generation-modal-content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+.bracket-generation-steps-scroll {
+    flex: 1;
+    min-height: 120px;
+}
+
+.bracket-gen-step-item .tab-content {
+    display: block;
+}
+
+.bracket-gen-step-item .tab-pane.active {
+    display: block;
+}
+
+.bracket-gen-empty-hint {
+    padding: var(--spacing-md);
+    text-align: center;
+}
+
+.bracket-gen-compare-source-btn:disabled,
+.bracket-gen-compare-source-btn.disabled {
+    opacity: 0.35;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* Managed pipeline stages & expanders */
+.pipeline-stage-item.managed-stage .stage-controls .btn-danger {
+    display: none;
+}
+
+.pipeline-stage-item[data-managed="true"] .workspace-drag-handle.managed-drag-disabled,
+.pipeline-stage-item.managed-stage .workspace-drag-handle {
+    opacity: 0.35;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.stage-managed-hammer {
+    margin-left: 0.35em;
+    font-size: 0.82em;
+    color: #ff8c33;
+    opacity: 0.95;
+    vertical-align: middle;
+    filter: drop-shadow(0 0 4px rgb(255 140 51 / 45%));
+}
+
+.pipeline-stage-item.managed-stage .stage-hex-id {
+    opacity: 0.45;
+}
+
+.text-replacement-item.managed-expander .text-replacement-managed-lock {
+    color: var(--primary-color);
+    margin-left: var(--spacing-xs);
+    opacity: 0.85;
+}
+
+.text-replacement-item.managed-expander .text-replacement-value-display {
+    opacity: 0.9;
+}
+
+.scrollable-content>.scrollable-content {
+    padding: 0;
 }
 
 /* Rules for hiding elements and overrides, this must be located at the end of the stylesheet always and no other rules should come after this */
@@ -34760,8 +36534,4 @@ body:not(.desktop-mode) .desktop-only {
 
 body.desktop-mode .singleapp-only {
     display: none!
-}
-
-.scrollable-content>.scrollable-content {
-    padding: 0;
 }

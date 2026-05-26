@@ -843,12 +843,7 @@ class SearchService {
             tagSearchDatabase = this.globalResources.getTagSearchDatabase();
         } catch (e) {
             console.warn('Failed to initialize tagSearchDatabase:', e.message);
-            try {
-                tagSearchDatabase = require('./tagSearchDatabase');
-            } catch (err) {
-                console.error('Critical failure accessing tag search database:', err);
-                return [];
-            }
+            return [];
         }
 
         const makeTagRequest = async (apiModel) => {

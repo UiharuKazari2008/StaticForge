@@ -1,0 +1,11 @@
+{
+  "configId": "favorites",
+  "label": "Favorites",
+  "rules": [
+    { "path": ["tags"], "type": "array", "label": "Tags" },
+    { "path": ["tags", "*"], "type": "object" },
+    { "path": ["tags", "*", "name"], "type": "string", "label": "Tag Name" },
+    { "path": ["textReplacements"], "type": "array", "label": "Text Replacements" },
+    { "path": ["textReplacements", "*"], "type": "object" }
+  ]
+}

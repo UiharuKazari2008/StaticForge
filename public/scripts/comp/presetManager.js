@@ -552,8 +552,8 @@ async function createPresetItem(key, preset) {
     // Character reference
     if (preset.chara_reference_source) {
         const icon = document.createElement('i');
-        icon.className = 'nai-image-tool-line-art';
-        icon.title = `Character Reference`;
+        icon.className = 'nai-precise-reference';
+        icon.title = `Precise Reference`;
         iconsDiv.appendChild(icon);
     } else
     // Inpaint

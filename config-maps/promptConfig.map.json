@@ -1,0 +1,16 @@
+{
+  "configId": "promptConfig",
+  "label": "Prompt Config",
+  "rules": [
+    { "path": ["text_replacements"], "type": "object", "label": "Text Replacements" },
+    { "path": ["text_replacements", "*"], "type": "object" },
+    { "path": ["presets"], "type": "object", "label": "Presets" },
+    { "path": ["presets", "*"], "type": "object", "label": "Preset" },
+    { "path": ["presets", "*", "steps"], "type": "number" },
+    { "path": ["presets", "*", "cfg_scale"], "type": "number" },
+    { "path": ["presets", "*", "sampler"], "type": "string" },
+    { "path": ["presets", "*", "model"], "type": "string" },
+    { "path": ["preset_group"], "type": "object", "label": "Preset Groups" },
+    { "path": ["preset_group", "*"], "type": "object" }
+  ]
+}

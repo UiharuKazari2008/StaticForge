@@ -12,8 +12,11 @@ const FurryTagSearch = require('./furryTagSearch');
 const FastTagSearch = require('./fastTagSearch');
 const SpellChecker = require('./spellChecker');
 const t5TokenizerService = require('./t5-tokenizer-service');
+const { buildPresetTokenCountCache } = require('./presetTokenCountCache');
 const knowledgeMemoryDb = require('./knowledgeMemoryDatabase');
 const tagSearchDatabase = require('./tagSearchDatabase');
+const naxTagsDatabase = require('./naxTagsDatabase');
+const NaxTagGenerationService = require('./naxTagGeneration');
 const apiKeyManager = require('./apiKeyManager');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const DatasetTagService = require('./datasetTagService');
@@ -41,6 +44,11 @@ const tracing = require('./tracing');
 const ParallelPreviewGenerator = require('./parallelPreviewGenerator');
 const PngMetadata = require('./pngMetadata');
 const TextReplacements = require('./textReplacements');
+const LocalPromptOptimizer = require('./localPromptOptimizer');
+const ConfigEditorService = require('./configEditorService');
+const staticWiki = require('./staticWiki');
+const { TagSuggestionsCache } = require('./cache');
+const { createAuthMiddleware, createDevAuthMiddleware } = require('./auth');
 const polymoduleManager = require('./polymoduleManager');
 const { NodeHtmlMarkdown } = require('node-html-markdown');
 
@@ -61,10 +69,19 @@ class GlobalResources {
         // Other services
         this.spellChecker = null;
         this.t5Tokenizer = null;
+        this.presetTokenCounts = null;
         this.searchService = null; // Lazy-loaded to avoid circular dependency
         this.textReplacements = null; // Will be initialized after configs are loaded
+        this.staticWiki = null;
+        this.localPromptOptimizer = null;
+        this.configEditorService = null;
+        this.tagSuggestionsCache = null;
+        this.authMiddleware = null;
+        this.devAuthMiddleware = null;
         this.knowledgeMemoryDb = null;
         this.tagSearchDatabase = null;
+        this.naxTagsDatabase = null;
+        this.naxTagGeneration = null;
         this.referenceMetadataDatabase = null;
         this.datasetTagService = null;
 
@@ -194,6 +211,8 @@ class GlobalResources {
             characterData: false,
             knowledgeMemoryDb: false,
             tagSearchDatabase: false,
+            naxTagsDatabase: false,
+            naxTagGeneration: false,
             referenceMetadataDatabase: false,
             datasetTagService: false,
             memoryManager: false,
@@ -257,7 +276,55 @@ class GlobalResources {
 
             // Dataset files
             datasetTagGroups: path.resolve(rootDir, 'dataset_tag_groups.json'),
-            tagToPathIndex: path.join(rootDir, '.cache', 'tag_to_path_index.json')
+            tagToPathIndex: path.join(rootDir, '.cache', 'tag_to_path_index.json'),
+
+            // NAXT tag galleries SQLite (scripts/import-nax-tags.js)
+            naxTagsDb: path.join(rootDir, '.cache', 'nax_tags.db'),
+            naxImages: path.join(rootDir, '.cache', 'nax_images'),
+            naxGenerationConfig: path.resolve(rootDir, 'nax_generation_config.json'),
+
+            // Tag wiki database (scripts/create-tag-database.js)
+            wiki: path.join(rootDir, '.cache', 'wiki'),
+
+            // Cache files
+            tagCacheFile: path.join(rootDir, '.cache', 'tag_cache.json'),
+            systemMessageCacheFile: path.join(rootDir, '.cache', 'system_message_cache.json'),
+
+            // Config file maps
+            configMaps: path.resolve(rootDir, 'config-maps'),
+
+            // IP exports (scripts/ip-export.js)
+            ipExports: path.join(rootDir, '.cache', 'ip_exports'),
+
+            // Dataset tags (scripts/create-tag-database.js)
+            datasetTags: path.resolve(rootDir, 'dataset_tags.json'),
+            datasetTagsFurry: path.resolve(rootDir, 'dataset_tags_furry.json'),
+
+            // Custom words (scripts/create-custom-words.js)
+            customWords: path.join(rootDir, '.cache', 'customWords.json'),
+
+            // Dev bridge database (scripts/dev-bridge.js)
+            devBridgeDb: path.join(rootDir, '.cache', 'dev_bridge.db'),
+
+            // T5 tokenizer config (public/protected/t5_tokenizer.json)
+            t5TokenizerConfig: path.resolve(rootDir, 'public/protected/t5_tokenizer.json'),
+
+            // T5 vocabulary (securePrompts/t5-vocabulary.json)
+            t5Vocabulary: path.resolve(rootDir, 'securePrompts/t5-vocabulary.json'),
+
+            // Anime search index (scripts/create-anime-search-index.js)
+            animeSearchIndex: path.join(rootDir, '.cache', 'anime_search_index.json'),
+            animeWordIndex: path.join(rootDir, '.cache', 'anime_word_index.json'),
+            animePrefixIndex: path.join(rootDir, '.cache', 'anime_prefix_index.json'),
+            animeSuffixIndex: path.join(rootDir, '.cache', 'anime_suffix_index.json'),
+            animeWordsIndex: path.join(rootDir, '.cache', 'anime_words_index.json'),
+            furrySearchIndex: path.join(rootDir, '.cache', 'furry_search_index.json'),
+            furryWordIndex: path.join(rootDir, '.cache', 'furry_word_index.json'),
+            furryPrefixIndex: path.join(rootDir, '.cache', 'furry_prefix_index.json'),
+            furrySuffixIndex: path.join(rootDir, '.cache', 'furry_suffix_index.json'),
+
+            // Image counter (scripts/image-counter.js)
+            imageCounterFile: path.join(rootDir, '.cache', 'image_counter.json')
         };
     }
 
@@ -576,6 +643,9 @@ class GlobalResources {
             }
             // Initialize TextReplacements instance
             this.textReplacements = new TextReplacements(this);
+            this.staticWiki = staticWiki;
+            this.configEditorService = new ConfigEditorService(this);
+            this.initializeAuthMiddleware();
 
             console.log('✓ Configs loaded and validated');
         } catch (error) {
@@ -656,6 +726,9 @@ class GlobalResources {
             // STEP 5: Initialize spell checker
             await this.initializeSpellChecker();
 
+            // STEP 5b: Auxiliary services (T5 vocabulary, tag cache)
+            await this.initializeAuxiliaryServices();
+
             // STEP 5: Initialize SQLite databases (need logger, needed by managers)
             await this.initializeDatabases();
 
@@ -664,6 +737,12 @@ class GlobalResources {
 
             // STEP 7: Initialize tag search database (no dependencies beyond logger)
             this.initializeTagSearchDatabase();
+
+            // STEP 7b: NAX tags SQLite (optional file; WebSocket + image proxy)
+            this.initializeNaxTagsDatabase();
+
+            // STEP 7c: NAX custom tag generation config (optional)
+            this.initializeNaxTagGeneration();
 
             // STEP 8: Initialize reference metadata database (no dependencies beyond logger)
             this.initializeReferenceMetadataDatabase();
@@ -744,6 +823,7 @@ class GlobalResources {
                 await t5TokenizerService.initialize();
             }
             this.t5Tokenizer = t5TokenizerService;
+            this.rebuildPresetTokenCounts();
             this.initializationProgress.t5Tokenizer = true;
             console.log('✓ T5 Tokenizer ready');
         } catch (error) {
@@ -906,12 +986,43 @@ class GlobalResources {
     }
 
     /**
+     * Auth middleware factories (after configs loaded in initializeConfigs)
+     */
+    initializeAuthMiddleware() {
+        this.authMiddleware = createAuthMiddleware(this);
+        this.devAuthMiddleware = createDevAuthMiddleware(this);
+    }
+
+    /**
+     * Local prompt optimizer and tag suggestions cache
+     */
+    async initializeAuxiliaryServices() {
+        try {
+            this.localPromptOptimizer = new LocalPromptOptimizer(this);
+            await this.localPromptOptimizer.initialize();
+            console.log('✓ LocalPromptOptimizer loaded');
+
+            this.tagSuggestionsCache = new TagSuggestionsCache(this);
+            imageCounter.initializeImageCounter(this);
+            this.registerTimer('tagSuggestionsCacheCleanup', 'interval', () => {
+                if (this.tagSuggestionsCache) {
+                    this.tagSuggestionsCache.cleanupOldEntries();
+                }
+            }, 60 * 60 * 1000);
+            console.log('✓ TagSuggestionsCache loaded');
+        } catch (error) {
+            console.error('  ❌ Failed to initialize auxiliary services:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Load character data for auto-complete
      */
     async loadCharacterData() {
         try {
             const fs = require('fs');
-            const characterDataPath = path.join(__dirname, '../characters.json');
+            const characterDataPath = this.getPath('characters');
 
             if (fs.existsSync(characterDataPath)) {
                 const data = JSON.parse(fs.readFileSync(characterDataPath, 'utf8'));
@@ -937,7 +1048,7 @@ class GlobalResources {
         try {
             // Ensure database is initialized (may have been called in web_server.js, but ensure it's done)
             const { initializeKnowledgeMemoryDatabase } = knowledgeMemoryDb;
-            const initialized = initializeKnowledgeMemoryDatabase();
+            const initialized = initializeKnowledgeMemoryDatabase(this.getPath('databases'));
 
             if (!initialized) {
                 throw new Error('Failed to initialize knowledge memory database');
@@ -959,7 +1070,7 @@ class GlobalResources {
     initializeTagSearchDatabase() {
         try {
             const { initializeTagSearchDatabase } = tagSearchDatabase;
-            const initialized = initializeTagSearchDatabase();
+            const initialized = initializeTagSearchDatabase(this.getPath('databases'));
 
             if (!initialized) {
                 throw new Error('Failed to initialize tag search database');
@@ -970,6 +1081,48 @@ class GlobalResources {
             console.log('✓ Tag search database ready');
         } catch (error) {
             console.error('  ❌ Failed to load tag search database:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize NAX tags database (optional; created by scripts/import-nax-tags.js)
+     */
+    initializeNaxTagsDatabase() {
+        try {
+            const ok = naxTagsDatabase.initializeNaxTagsDatabase(this.getPath('naxTagsDb'));
+            if (!ok) {
+                throw new Error('Failed to initialize NAX tags database');
+            }
+            this.naxTagsDatabase = naxTagsDatabase;
+            this.initializationProgress.naxTagsDatabase = true;
+            console.log('✓ NAX tags database ready');
+        } catch (error) {
+            console.error('  ❌ Failed to load NAX tags database:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize NAX custom tag generation (optional nax_generation_config.json)
+     */
+    initializeNaxTagGeneration() {
+        try {
+            this.naxTagGeneration = new NaxTagGenerationService(this);
+            try {
+                this.naxTagGeneration.loadConfig();
+                console.log('✓ NAX tag generation config loaded');
+            } catch (err) {
+                const msg = err && err.message ? err.message : String(err);
+                if (msg.includes('not found')) {
+                    console.log('   - NAX generation config not found (optional); custom tag previews disabled');
+                } else {
+                    console.warn('   ⚠️ NAX generation config invalid:', msg);
+                }
+            }
+            this.initializationProgress.naxTagGeneration = true;
+        } catch (error) {
+            console.error('  ❌ Failed to initialize NAX tag generation:', error);
             throw error;
         }
     }
@@ -1142,7 +1295,7 @@ class GlobalResources {
 
             // Initialize chat database
             if (chatDatabase.initializeChatDatabase) {
-                const success = await chatDatabase.initializeChatDatabase();
+                const success = await chatDatabase.initializeChatDatabase(databasesPath);
                 if (!success) {
                     throw new Error('Failed to initialize chat database - check logs above for details');
                 }
@@ -1153,7 +1306,7 @@ class GlobalResources {
 
             // Initialize director database
             if (directorDatabase.initializeDirectorDatabase) {
-                const success = await directorDatabase.initializeDirectorDatabase();
+                const success = await directorDatabase.initializeDirectorDatabase(databasesPath);
                 if (!success) {
                     throw new Error('Failed to initialize director database - check logs above for details');
                 }
@@ -1164,7 +1317,7 @@ class GlobalResources {
 
             // Initialize notes database
             if (notesDatabase.initializeNotesDatabase) {
-                const success = await notesDatabase.initializeNotesDatabase();
+                const success = await notesDatabase.initializeNotesDatabase(databasesPath);
                 if (!success) {
                     throw new Error('Failed to initialize notes database - check logs above for details');
                 }
@@ -1786,8 +1939,8 @@ class GlobalResources {
      * Get SpellChecker instance
      */
     getSpellChecker() {
-        if (!this.initialized || !this.spellChecker) {
-            throw new Error('Global resources not initialized - call initialize() first');
+        if (!this.spellChecker) {
+            throw new Error('SpellChecker not initialized - call initializeSpellChecker() first');
         }
         return this.spellChecker;
     }
@@ -1796,10 +1949,35 @@ class GlobalResources {
      * Get T5 Tokenizer instance
      */
     getT5Tokenizer() {
-        if (!this.initialized || !this.t5Tokenizer) {
-            throw new Error('Global resources not initialized - call initialize() first');
+        if (!this.t5Tokenizer) {
+            throw new Error('T5 tokenizer not initialized - call initializeT5Tokenizer() first');
         }
         return this.t5Tokenizer;
+    }
+
+    /**
+     * Cached preset/expander token counts for client token bar (built from full prompt.config).
+     */
+    getPresetTokenCounts() {
+        if (!this.presetTokenCounts) {
+            this.rebuildPresetTokenCounts();
+        }
+        return this.presetTokenCounts || { datasets: [], quality: {}, uc: {}, nsfw: {}, expanders: {} };
+    }
+
+    rebuildPresetTokenCounts() {
+        try {
+            if (!this.t5Tokenizer) {
+                return null;
+            }
+            const promptConfig = this.getPromptConfig({ clone: true });
+            this.presetTokenCounts = buildPresetTokenCountCache(promptConfig, this.t5Tokenizer);
+            return this.presetTokenCounts;
+        } catch (error) {
+            console.error('Failed to rebuild preset token count cache:', error);
+            this.presetTokenCounts = { datasets: [], quality: {}, uc: {}, nsfw: {}, expanders: {} };
+            return this.presetTokenCounts;
+        }
     }
 
     /**
@@ -1830,6 +2008,26 @@ class GlobalResources {
             throw new Error('Global resources not initialized - call initialize() first');
         }
         return this.tagSearchDatabase;
+    }
+
+    /**
+     * Get NAX tags database module (galleries, tag query, favorites; optional DB file on disk)
+     */
+    getNaxTagsDatabase() {
+        if (!this.initialized || !this.naxTagsDatabase) {
+            throw new Error('Global resources not initialized - call initialize() first');
+        }
+        return this.naxTagsDatabase;
+    }
+
+    /**
+     * NAX custom tag preview generation (nax_generation_config.json)
+     */
+    getNaxTagGeneration() {
+        if (!this.initialized || !this.naxTagGeneration) {
+            throw new Error('Global resources not initialized - call initialize() first');
+        }
+        return this.naxTagGeneration;
     }
 
     /**
@@ -1961,6 +2159,76 @@ class GlobalResources {
             throw new Error('Global resources not initialized - call initialize() first');
         }
         return this.tagDatabase;
+    }
+
+    /**
+     * Get TextReplacements instance
+     */
+    getTextReplacements() {
+        if (!this.textReplacements) {
+            throw new Error('TextReplacements not initialized - call initializeConfigs() first');
+        }
+        return this.textReplacements;
+    }
+
+    /**
+     * Get static wiki module (function exports)
+     */
+    getStaticWiki() {
+        if (!this.staticWiki) {
+            throw new Error('StaticWiki not initialized - call initializeConfigs() first');
+        }
+        return this.staticWiki;
+    }
+
+    /**
+     * Get LocalPromptOptimizer instance
+     */
+    getLocalPromptOptimizer() {
+        if (!this.localPromptOptimizer) {
+            throw new Error('LocalPromptOptimizer not initialized - call initialize() first');
+        }
+        return this.localPromptOptimizer;
+    }
+
+    /**
+     * Get ConfigEditorService instance
+     */
+    getConfigEditorService() {
+        if (!this.configEditorService) {
+            throw new Error('ConfigEditorService not initialized - call initializeConfigs() first');
+        }
+        return this.configEditorService;
+    }
+
+    /**
+     * Get TagSuggestionsCache instance
+     */
+    getTagSuggestionsCache() {
+        if (!this.tagSuggestionsCache) {
+            throw new Error('TagSuggestionsCache not initialized - call initialize() first');
+        }
+        return this.tagSuggestionsCache;
+    }
+
+    /**
+     * Get auth middleware (available after initializeConfigs / prepare)
+     */
+    getAuthMiddleware() {
+        if (!this.authMiddleware) {
+            throw new Error('Auth middleware not initialized - call initializeConfigs() first');
+        }
+        return this.authMiddleware;
+    }
+
+    /**
+     * Get dev auth middleware (available after initializeConfigs / prepare)
+     */
+    getDevAuthMiddleware() {
+        if (!this.devAuthMiddleware) {
+            throw new Error('Dev auth middleware not initialized - call initializeConfigs() first');
+        }
+        return this.devAuthMiddleware;
     }
 
     /**
@@ -3590,7 +3858,7 @@ class GlobalResources {
 
         if (SQLiteStore) {
             try {
-                const sessionsDir = path.resolve(__dirname, '..', '.cache', 'sessions');
+                const sessionsDir = this.getPath('sessions');
                 if (!fs.existsSync(sessionsDir)) {
                     fs.mkdirSync(sessionsDir, { recursive: true });
                 }
@@ -3709,6 +3977,15 @@ class GlobalResources {
             this.polymoduleManager.stopAll();
             // Wait a moment for processes to exit gracefully
             await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        if (this.naxTagsDatabase && typeof this.naxTagsDatabase.shutdownNaxTagsDatabase === 'function') {
+            try {
+                this.naxTagsDatabase.shutdownNaxTagsDatabase();
+            } catch (error) {
+                console.warn('⚠️ NAX tags database shutdown:', error.message);
+            }
+            this.naxTagsDatabase = null;
         }
 
         console.log('✓ Global resources shutdown complete');

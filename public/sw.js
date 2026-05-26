@@ -326,11 +326,29 @@ async function handleImageRequest(event) {
   const cachedResponse = await cache.match(canonicalUrl);
 
   if (cachedResponse) {
-    event.waitUntil(updateImageMetadataForHit(canonicalUrl));
-    event.waitUntil((async () => {
-      scheduleImageCachePolicyEnforcement();
-    })());
-    return cachedResponse;
+    let discardCached = !cachedResponse.ok;
+    if (!discardCached) {
+      const contentLengthHdr = cachedResponse.headers.get('content-length');
+      const contentLengthParsed = parseInt(contentLengthHdr || '-1', 10);
+      if (Number.isFinite(contentLengthParsed) && contentLengthParsed === 0) {
+        discardCached = true;
+      }
+      const contentTypeRaw = cachedResponse.headers.get('content-type') || '';
+      const contentTypeLc = contentTypeRaw.toLowerCase();
+      // HTML/error payloads cached under image paths yield permanent broken thumbnails
+      if (contentTypeLc.includes('text/html')) {
+        discardCached = true;
+      }
+    }
+    if (!discardCached) {
+      event.waitUntil(updateImageMetadataForHit(canonicalUrl));
+      event.waitUntil((async () => {
+        scheduleImageCachePolicyEnforcement();
+      })());
+      return cachedResponse;
+    }
+    await cache.delete(canonicalUrl);
+    await deleteImageMetadata([canonicalUrl]);
   }
 
   const networkResponse = await fetch(request, {
@@ -341,12 +359,28 @@ async function handleImageRequest(event) {
       'Expires': '0'
     }
   });
+  // Cache.put() can throw NetworkError (quota, body stream errors). Must not reject the fetch
+  // handler or the browser shows a broken image and logs an uncaught promise rejection.
   if (networkResponse && networkResponse.ok && networkResponse.status >= 200 && networkResponse.status < 300 && shouldCacheResponse(networkResponse)) {
-    await cache.put(canonicalUrl, networkResponse.clone());
-    await upsertImageMetadata(canonicalUrl, networkResponse);
-    event.waitUntil((async () => {
-      scheduleImageCachePolicyEnforcement();
-    })());
+    try {
+      await cache.put(canonicalUrl, networkResponse.clone());
+      await upsertImageMetadata(canonicalUrl, networkResponse);
+      event.waitUntil((async () => {
+        scheduleImageCachePolicyEnforcement();
+      })());
+    } catch (cacheError) {
+      console.warn('[sw] image-cache put failed:', canonicalUrl, cacheError);
+      try {
+        await cache.delete(canonicalUrl);
+      } catch (deleteErr) {
+        console.warn('[sw] image-cache delete after failed put:', canonicalUrl, deleteErr);
+      }
+      try {
+        await deleteImageMetadata([canonicalUrl]);
+      } catch (metaErr) {
+        console.warn('[sw] image metadata cleanup failed:', canonicalUrl, metaErr);
+      }
+    }
   }
 
   return networkResponse;
@@ -731,21 +765,6 @@ self.addEventListener('message', (event) => {
                 });
             });
         });
-    } else if (event.data && event.data.type === 'TAB_MESH_RELAY' && event.data.envelope) {
-        const envelope = event.data.envelope;
-        const senderId = event.source && event.source.id;
-        event.waitUntil(
-            self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-                clients.forEach((client) => {
-                    if (client.id !== senderId) {
-                        client.postMessage({
-                            type: 'TAB_MESH_MESSAGE',
-                            envelope: envelope
-                        });
-                    }
-                });
-            })
-        );
     } else if (event.data && event.data.type === 'SYNC_IMAGE_CACHE_RULES') {
         const favoriteUrls = Array.isArray(event.data.favoriteUrls) ? event.data.favoriteUrls.map(getCanonicalUrl) : [];
         const lockedPreviewUrls = Array.isArray(event.data.lockedPreviewUrls) ? event.data.lockedPreviewUrls.map(getCanonicalUrl) : [];

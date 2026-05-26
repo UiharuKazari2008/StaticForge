@@ -12,16 +12,17 @@ class FurryTagSearch {
         this.searchIndex = null;
         this.lastModified = 0;
         this.indexFiles = {
-            searchIndex: path.join(__dirname, '../.cache/furry_search_index.json'),
-            wordIndex: path.join(__dirname, '../.cache/furry_word_index.json'),
-            prefixIndex: path.join(__dirname, '../.cache/furry_prefix_index.json'),
-            suffixIndex: path.join(__dirname, '../.cache/furry_suffix_index.json')
+            searchIndex: globalResources.getPath('furrySearchIndex'),
+            wordIndex: globalResources.getPath('furryWordIndex'),
+            prefixIndex: globalResources.getPath('furryPrefixIndex'),
+            suffixIndex: globalResources.getPath('furrySuffixIndex')
         };
+        this.datasetTagsPath = globalResources.getPath('datasetTagsFurry');
         this.loadTagData();
     }
 
     loadTagData() {
-        const filePath = path.join(__dirname, '../dataset_tags_furry.json');
+        const filePath = this.datasetTagsPath;
         
         try {
             const stats = fs.statSync(filePath);
@@ -75,7 +76,7 @@ class FurryTagSearch {
             }
 
             // Check if index files are newer than the data file
-            const dataFilePath = path.join(__dirname, '../dataset_tags_furry.json');
+            const dataFilePath = this.datasetTagsPath;
             const dataStats = fs.statSync(dataFilePath);
             
             for (const [name, filePath] of Object.entries(this.indexFiles)) {

@@ -1803,7 +1803,8 @@ function applyDynamicReplacementClientSide(replacement) {
     result = result.replace(new RegExp(`,\\s*${APPEND_MARKER}|${APPEND_MARKER}`, 'g'), '');
 
     // Update the textarea
-    textarea.value = result;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(textarea, result);
 
     // Trigger input event to update any dependent UI
     const inputEvent = new Event('input', { bubbles: true });

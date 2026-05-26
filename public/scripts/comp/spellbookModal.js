@@ -384,8 +384,8 @@ class SpellbookModalManager {
                     // Vibe transfer
                     if (preset.chara_reference_source) {
                         const icon = document.createElement('i');
-                        icon.className = 'nai-image-tool-line-art';
-                        icon.title = `Character Reference`;
+                        icon.className = 'nai-precise-reference';
+                        icon.title = `Precise Reference`;
                         presetIcons.appendChild(icon);
                     } else 
                     // Inpaint

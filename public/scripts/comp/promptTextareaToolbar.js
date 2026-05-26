@@ -62,12 +62,14 @@ class PromptTextareaToolbar {
 
         // Search mode persists until explicitly closed - no auto-close on outside clicks
 
-        // Listen for manual modal close events
+        // Listen for manual modal close events (only when search belongs to manual modal)
         document.addEventListener('click', (e) => {
-            // Check if clicking outside the manual modal
+            const activeToolbar = this.getActiveSearchToolbar();
             const manualModal = document.getElementById('manualModal');
-            if (manualModal && !manualModal.contains(e.target) && !e.target.closest('.prompt-textarea-toolbar')) {
-                // Clicked outside modal and not on toolbar - reset search
+            if (!activeToolbar || !manualModal || !manualModal.contains(activeToolbar)) {
+                return;
+            }
+            if (!manualModal.contains(e.target) && !e.target.closest('.prompt-textarea-toolbar')) {
                 this.resetAllSearchStates();
             }
         });
@@ -208,11 +210,11 @@ class PromptTextareaToolbar {
                     dropdown,
                     dropdownBtn,
                     dropdownMenu,
-                    () => this.renderToolbarActionsDropdown(`${dropdown.id.replace('Dropdown', 'DropdownMenu')}`, [
-                        { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                        { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
-                        { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
-                    ]),
+                    () => this.renderToolbarActionsDropdown(`${dropdown.id.replace('Dropdown', 'DropdownMenu')}`, this.getDreamStudioToolboxOptions({
+                        includeTextExpanders: false,
+                        includeMemoriesRules: false,
+                        includePhasewalker: false
+                    })),
                     () => null,
                     {
                         enableKeyboardNav: false,
@@ -253,101 +255,132 @@ class PromptTextareaToolbar {
         const manualPromptNegative = document.getElementById('manualPromptNegative');
         if (manualPromptNegative) promptTextareas.push(manualPromptNegative);
         
-        // Collect character prompts
+        // Collect character prompts and inline negatives
         const characterPrompts = document.querySelectorAll('[id$="_prompt"].character-prompt-textarea');
         const characterUcs = document.querySelectorAll('[id$="_uc"].character-prompt-textarea');
+        const characterPromptNegatives = document.querySelectorAll('[id$="_promptNegative"].character-prompt-textarea');
         
         promptTextareas.push(...Array.from(characterPrompts));
+        promptTextareas.push(...Array.from(characterPromptNegatives));
         ucTextareas.push(...Array.from(characterUcs));
         
         // Strip stage blocks and disabled blocks (matches server); non-pipeline preview uses stage 0
         const stripForTokens = (s) => stripPromptBlocksForEffectivePrompt(s || '', { stageIndex: 0, pipelineStageGeneration: false });
-        const promptPrefix = (typeof getEffectivePromptPrefixForTokenCount === 'function') ? getEffectivePromptPrefixForTokenCount() : '';
-        const ucPrefix = (typeof getEffectiveUcPrefixForTokenCount === 'function') ? getEffectiveUcPrefixForTokenCount() : '';
-        const promptTexts = promptTextareas.map((ta, i) => {
-            const base = stripForTokens(ta.value || '');
-            return (i === 0 && promptPrefix) ? promptPrefix + base : base;
-        });
-        const ucTexts = ucTextareas.map((ta, i) => {
-            const base = stripForTokens(ta.value || '');
-            return (i === 0 && ucPrefix) ? ucPrefix + base : base;
-        });
-        
+        const promptTexts = promptTextareas.map((ta) => stripForTokens(ta.value || ''));
+        const ucTexts = ucTextareas.map((ta) => stripForTokens(ta.value || ''));
+
         const promptAnalysis = t5Tokenizer.analyzeTexts(promptTexts);
         const ucAnalysis = t5Tokenizer.analyzeTexts(ucTexts);
-        
-        const totalPromptTokens = promptAnalysis.totalTokens;
-        const totalUcTokens = ucAnalysis.totalTokens;
-        
+
+        const editablePromptTotal = promptAnalysis.totalTokens;
+        const editableUcTotal = ucAnalysis.totalTokens;
+
+        const periodKey = window.currentPeriodKey || null;
+        const model = typeof manualSelectedModel !== 'undefined' ? manualSelectedModel : null;
+        const nonEditable = typeof getNonEditableTokenTotals === 'function'
+            ? getNonEditableTokenTotals(promptTexts, ucTexts, periodKey, model)
+            : { prompt: 0, uc: 0 };
+
+        const totalPromptTokens = editablePromptTotal + nonEditable.prompt;
+        const totalUcTokens = editableUcTotal + nonEditable.uc;
+
         const maxTokens = 512;
-        
+
         // Update individual toolbars
         promptTextareas.forEach((textarea, index) => {
             const result = promptAnalysis.results[index];
             if (result) {
-                this.updateToolbarDisplay(textarea, result.tokenCount, totalPromptTokens, maxTokens);
+                this.updateToolbarDisplay(
+                    textarea,
+                    result.tokenCount,
+                    nonEditable.prompt,
+                    totalPromptTokens,
+                    maxTokens
+                );
             }
         });
-        
+
         ucTextareas.forEach((textarea, index) => {
             const result = ucAnalysis.results[index];
             if (result) {
-                this.updateToolbarDisplay(textarea, result.tokenCount, totalUcTokens, maxTokens);
+                this.updateToolbarDisplay(
+                    textarea,
+                    result.tokenCount,
+                    nonEditable.uc,
+                    totalUcTokens,
+                    maxTokens
+                );
             }
         });
-        
+
+        const editorTextareas = new Set([...promptTextareas, ...ucTextareas]);
+        this.updateStandaloneTextareaTokenCounts(editorTextareas, maxTokens);
+
         // Update bottom summary
-        this.updateBottomSummary(totalPromptTokens, totalUcTokens, maxTokens);
+        this.updateBottomSummary(editablePromptTotal, editableUcTotal, nonEditable.prompt, nonEditable.uc, maxTokens);
     }
-    
-    updateToolbarDisplay(textarea, tokenCount, groupTotal, maxTokens) {
+
+    // Textareas outside the manual editor (bracket gen, expanders, etc.) — per-field counts only
+    updateStandaloneTextareaTokenCounts(editorTextareas, maxTokens = 512) {
+        document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((textarea) => {
+            if (editorTextareas.has(textarea)) return;
+            const toolbar = this.getToolbarFromTextarea(textarea);
+            if (!toolbar) return;
+            const tokenCount = this.calculateTokenCount(textarea.value || '');
+            this.updateToolbarDisplay(textarea, tokenCount, 0, tokenCount, maxTokens);
+        });
+    }
+
+    applyTokenProgressWidths(progressFill, editableTokens, nonEditableTokens, groupTotal, maxTokens) {
+        if (!progressFill) return;
+        const progressInner = progressFill.querySelector('.token-progress-inner');
+        const innerNe = progressFill.querySelector('.token-progress-inner-ne');
+
+        const groupPercentage = groupTotal > 0 ? Math.min((groupTotal / maxTokens) * 100, 100) : 0;
+        progressFill.style.width = `${groupPercentage}%`;
+
+        const editablePct = groupTotal > 0 ? (editableTokens / groupTotal) * 100 : 0;
+        const nePct = groupTotal > 0 ? (nonEditableTokens / groupTotal) * 100 : 0;
+
+        if (progressInner) {
+            progressInner.style.width = `${editablePct}%`;
+        }
+        if (innerNe) {
+            innerNe.style.width = `${nePct}%`;
+        }
+    }
+
+    updateToolbarDisplay(textarea, editableTokens, nonEditableTokens, groupTotal, maxTokens) {
         const toolbar = this.getToolbarFromTextarea(textarea);
         if (!toolbar) return;
-        
+
         const tokenCountElement = toolbar.querySelector('.token-count');
         const progressFill = toolbar.querySelector('.token-progress-fill');
-        const progressInner = toolbar.querySelector('.token-progress-inner');
-        
+
         if (tokenCountElement) {
-            tokenCountElement.textContent = `${tokenCount} tokens`;
+            const label = typeof formatTokenCountLabel === 'function'
+                ? formatTokenCountLabel(editableTokens, nonEditableTokens)
+                : `${editableTokens} tokens`;
+            tokenCountElement.textContent = label;
         }
-        
-        if (progressFill && progressInner) {
-            // Outer fill: total group percentage of max
-            const groupPercentage = Math.min((groupTotal / maxTokens) * 100, 100);
-            progressFill.style.width = `${groupPercentage}%`;
-            
-            // Inner fill: this textarea's percentage of group total
-            const innerPercentage = groupTotal > 0 ? (tokenCount / groupTotal) * 100 : 0;
-            progressInner.style.width = `${innerPercentage}%`;
-        }
+
+        this.applyTokenProgressWidths(progressFill, editableTokens, nonEditableTokens, groupTotal, maxTokens);
     }
-    
-    updateBottomSummary(promptTokens, ucTokens, maxTokens) {
-        // Update prompt progress bar (in prompt tab's status icons)
+
+    updateBottomSummary(editablePrompt, editableUc, nePrompt, neUc, maxTokens) {
+        const totalPrompt = editablePrompt + nePrompt;
+        const totalUc = editableUc + neUc;
+
         const promptTab = document.querySelector('#prompt-tab');
         const promptFill = promptTab?.querySelector('.token-progress-fill.prompt-total');
-        const promptInner = promptTab?.querySelector('.token-progress-fill.prompt-total .token-progress-inner');
-        
         if (promptFill) {
-            const percentage = Math.min((promptTokens / maxTokens) * 100, 100);
-            promptFill.style.width = `${percentage}%`;
-            if (promptInner) {
-                promptInner.style.width = '100%';
-            }
+            this.applyTokenProgressWidths(promptFill, editablePrompt, nePrompt, totalPrompt, maxTokens);
         }
-        
-        // Update UC progress bar (in UC tab's status icons)
+
         const ucTab = document.querySelector('#uc-tab');
         const ucFill = ucTab?.querySelector('.token-progress-fill.uc-total');
-        const ucInner = ucTab?.querySelector('.token-progress-fill.uc-total .token-progress-inner');
-        
         if (ucFill) {
-            const percentage = Math.min((ucTokens / maxTokens) * 100, 100);
-            ucFill.style.width = `${percentage}%`;
-            if (ucInner) {
-                ucInner.style.width = '100%';
-            }
+            this.applyTokenProgressWidths(ucFill, editableUc, neUc, totalUc, maxTokens);
         }
     }
 
@@ -363,6 +396,19 @@ class PromptTextareaToolbar {
         return Math.max(1, Math.ceil(words.length * 1.3));
     }
 
+    getDreamStudioToolboxOptions() {
+        const menuOptions = [
+            { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
+            { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas', toolbarWide: true },
+            { value: 'lowercase', display: 'Lowercase', icon: 'fas fa-font' },
+            { value: 'emphasis', display: 'Edit Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+            { value: 'clear-emphasis', display: 'Reset Emphasis', icon: 'fas fa-eraser' },
+            { value: 'split-emphasis', display: 'Split Emphasis', icon: 'fas fa-scissors', toolbarWide: true },
+            { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' }
+        ];
+        return menuOptions;
+    }
+
     initializeDropdowns() {
         // Set up dropdown functionality exactly like the dataset dropdown
         const dropdown = document.getElementById('promptActionsDropdown');
@@ -375,14 +421,7 @@ class PromptTextareaToolbar {
                 dropdown,
                 dropdownBtn,
                 dropdownMenu,
-                () => this.renderToolbarActionsDropdown('promptActionsDropdownMenu', [
-                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
-                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
-                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
-                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
-                ]),
+                () => this.renderToolbarActionsDropdown('promptActionsDropdownMenu', this.getDreamStudioToolboxOptions()),
                 () => null, // No getSelectedValue needed
                 {
                     enableKeyboardNav: false, // Disable keyboard nav to prevent menu focus
@@ -401,14 +440,7 @@ class PromptTextareaToolbar {
                 ucDropdown,
                 ucDropdownBtn,
                 ucDropdownMenu,
-                () => this.renderToolbarActionsDropdown('ucActionsDropdownMenu', [
-                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
-                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
-                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
-                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
-                ]),
+                () => this.renderToolbarActionsDropdown('ucActionsDropdownMenu', this.getDreamStudioToolboxOptions()),
                 () => null,
                 {
                     enableKeyboardNav: false,
@@ -427,14 +459,7 @@ class PromptTextareaToolbar {
                 creativeTabDropdown,
                 creativeTabDropdownBtn,
                 creativeTabDropdownMenu,
-                () => this.renderToolbarActionsDropdown('creativeTabPromptActionsDropdownMenu', [
-                    { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                    { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-atlas' },
-                    { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
-                    { value: 'request-body-replacements', display: 'Text Expanders', icon: 'fas fa-book-font' },
-                    { value: 'manage-director-rules', display: 'Rules', icon: 'fas fa-book-law' },
-                    { value: 'enshutsuka-memories', display: 'Memories', icon: 'fas fa-box-open-full' }
-                ]),
+                () => this.renderToolbarActionsDropdown('creativeTabPromptActionsDropdownMenu', this.getDreamStudioToolboxOptions()),
                 () => null,
                 {
                     enableKeyboardNav: false,
@@ -442,6 +467,40 @@ class PromptTextareaToolbar {
                 }
             );
         }
+
+        this.initializeExpansionCompiledPromptDropdowns();
+    }
+
+    initializeExpansionCompiledPromptDropdowns() {
+        const expansionPromptOptions = this.getDreamStudioToolboxOptions({ includeMemoriesRules: false, includePhasewalker: false });
+        const expansionUcOptions = this.getDreamStudioToolboxOptions({
+            includeTextExpanders: false,
+            includeMemoriesRules: false,
+            includePhasewalker: false
+        });
+
+        const pairs = [
+            ['expansionCompiledPromptActionsDropdown', 'expansionCompiledPromptActionsDropdownBtn', 'expansionCompiledPromptActionsDropdownMenu', expansionPromptOptions],
+            ['expansionCompiledUcActionsDropdown', 'expansionCompiledUcActionsDropdownBtn', 'expansionCompiledUcActionsDropdownMenu', expansionUcOptions]
+        ];
+
+        pairs.forEach(([dropdownId, btnId, menuId, options]) => {
+            const dropdown = document.getElementById(dropdownId);
+            const dropdownBtn = document.getElementById(btnId);
+            const dropdownMenu = document.getElementById(menuId);
+            if (!dropdown || !dropdownBtn || !dropdownMenu || dropdown.hasAttribute('data-dropdown-initialized')) {
+                return;
+            }
+            setupDropdown(
+                dropdown,
+                dropdownBtn,
+                dropdownMenu,
+                () => this.renderToolbarActionsDropdown(menuId, options),
+                () => null,
+                { enableKeyboardNav: false, preventFocusTransfer: true }
+            );
+            dropdown.setAttribute('data-dropdown-initialized', 'true');
+        });
     }
 
     renderToolbarActionsDropdown(dropdownMenuId, options) {
@@ -453,7 +512,7 @@ class PromptTextareaToolbar {
 
         options.forEach(option => {
             const optionElement = document.createElement('div');
-            optionElement.className = 'custom-dropdown-option';
+            optionElement.className = 'custom-dropdown-option' + (option.toolbarWide ? ' toolbar-menu-only' : '');
             optionElement.dataset.value = option.value;
             optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
 
@@ -498,6 +557,25 @@ class PromptTextareaToolbar {
             case 'emphasis':
                 this.openEmphasisMode(textarea, toolbar);
                 break;
+            case 'clear-emphasis':
+                if (removeAllEmphasisFromSelection) {
+                    removeAllEmphasisFromSelection(textarea);
+                    if (window.updateEmphasisHighlighting) {
+                        window.updateEmphasisHighlighting(textarea);
+                    }
+                }
+                break;
+            case 'split-emphasis':
+                if (splitEmphasisBlock) {
+                    const success = splitEmphasisBlock(textarea);
+                    if (success && window.updateEmphasisHighlighting) {
+                        window.updateEmphasisHighlighting(textarea);
+                    }
+                }
+                break;
+            case 'lowercase':
+                this.lowercasePromptText(textarea);
+                break;
             case 'search-prev':
                 this.navigateSearchResult(-1, toolbar);
                 break;
@@ -518,8 +596,20 @@ class PromptTextareaToolbar {
                     openKnowledgeMemoriesModal();
                 }
                 break;
+            case 'phasewalker':
+                // bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
+                if (window.bracketGenerationApplet) {
+                    window.bracketGenerationApplet.open();
+                } else {
+                    const phasewalkerModal = document.getElementById('bracketGenerationModal');
+                    if (phasewalkerModal) openModal(phasewalkerModal);
+                }
+                break;
             case 'autofill':
                 this.toggleAutofill(toolbar);
+                break;
+            case 'keep-newlines':
+                this.toggleKeepNewlines();
                 break;
         }
     }
@@ -531,6 +621,34 @@ class PromptTextareaToolbar {
         }
     }
 
+    lowercasePromptText(textarea) {
+        if (!textarea) return;
+
+        const value = textarea.value;
+        if (!value) return;
+
+        const lowercased = value.split('Text:').map((part, index) => {
+            const lowerPart = part.toLowerCase();
+            return index === 0 ? lowerPart : 'Text:' + lowerPart;
+        }).join('');
+
+        if (lowercased === value) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(textarea, lowercased);
+        textarea.setSelectionRange(
+            Math.min(start, lowercased.length),
+            Math.min(end, lowercased.length)
+        );
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        this.updateTokenCount(textarea);
+        if (window.updateEmphasisHighlighting) {
+            window.updateEmphasisHighlighting(textarea);
+        }
+    }
+
     openSearch(textarea) {
         const toolbar = this.getToolbarFromTextarea(textarea);
         if (!toolbar) return;
@@ -538,8 +656,10 @@ class PromptTextareaToolbar {
         // Add search mode class to show search elements
         toolbar.classList.add('search-mode');
 
-        // Expand all character prompts for better search visibility
-        this.expandAllCharacterPrompts();
+        // Expand character prompts for main editor search only (not isolated modal fields)
+        if (!textarea.closest('#expansionCompiledPromptDialog')) {
+            this.expandAllCharacterPrompts();
+        }
 
         // Initialize search functionality
         this.initializeSearchMode(textarea, toolbar);
@@ -705,11 +825,13 @@ class PromptTextareaToolbar {
         // Get the active textarea associated with this toolbar
         const activeTextarea = this.getTextareaFromToolbar(activeToolbar);
         
-        // Check if the active textarea is in a director-prompt or text-overlay-prompt container
-        const isDirectorOrOverlayPrompt = activeTextarea && activeTextarea.closest('.prompt-textarea-container.director-prompt, .prompt-textarea-container.text-overlay-prompt');
+        // Check if the active textarea is in a single-field prompt container
+        const isSingleFieldPromptSearch = activeTextarea && activeTextarea.closest(
+            '.prompt-textarea-container.director-prompt, .prompt-textarea-container.text-overlay-prompt, #expansionCompiledPromptDialog .prompt-textarea-container'
+        );
         
         // If searching in a director/overlay prompt, only search that specific textarea
-        if (isDirectorOrOverlayPrompt) {
+        if (isSingleFieldPromptSearch) {
             const text = activeTextarea.value;
             let index = 0;
             
@@ -1069,7 +1191,7 @@ class PromptTextareaToolbar {
         const textareaId = textarea.id;
         
         // Always include character prompt textareas
-        if (textareaId.includes('_prompt') || textareaId.includes('_uc')) {
+        if (textareaId.includes('_prompt') || textareaId.includes('_uc') || textareaId.includes('_promptNegative')) {
             return true;
         }
         
@@ -1916,11 +2038,29 @@ class PromptTextareaToolbar {
             }
         });
     }
+
+    toggleKeepNewlines() {
+        const btn = document.getElementById('keepNewlinesBtn');
+        const nextState = btn && btn.getAttribute('data-state') === 'on' ? 'off' : 'on';
+        window.keepPromptNewlines = nextState === 'on';
+        if (btn) {
+            btn.setAttribute('data-state', nextState);
+        }
+    }
+
+    syncKeepNewlinesButtons() {
+        const btn = document.getElementById('keepNewlinesBtn');
+        if (btn) {
+            btn.setAttribute('data-state', window.keepPromptNewlines ? 'on' : 'off');
+        }
+    }
 }
 
 // Initialize the toolbar manager when the DOM is ready
 window.wsClient.registerInitStep(37, 'Initializing Prompt Toolbar', async () => {
+    window.keepPromptNewlines = false;
     window.promptTextareaToolbar = new PromptTextareaToolbar();
+    window.promptTextareaToolbar.syncKeepNewlinesButtons();
     
     // Expose reset method globally for other components to use
     window.resetInlineSearch = () => {

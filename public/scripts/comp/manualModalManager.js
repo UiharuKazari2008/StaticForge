@@ -258,6 +258,58 @@ function addSeedToHistory(seed) {
 }
 
 /**
+ * Creates the context menu configuration for generate button (per-stage generation)
+ */
+function getGenerateButtonContextMenuConfig() {
+    return {
+        sections: [
+            {
+                type: 'list',
+                title: 'Generate Stage',
+                hidden: () => {
+                    const stages = getPipelineStages();
+                    return !stages || stages.length === 0;
+                },
+                initfn: function (section) {
+                    const items = [];
+                    const pipelineStages = getPipelineStages();
+                    const totalCount = pipelineStages.length + 1;
+
+                    for (let stageIndex = 0; stageIndex < totalCount; stageIndex++) {
+                        const label = getPipelineStageMenuLabel(stageIndex);
+                        let subtext = '';
+                        if (stageIndex > 0) {
+                            const stageData = pipelineStages[stageIndex - 1];
+                            if (stageRequiresChaining(stageData)) {
+                                subtext = canUseSavedStageData(stageIndex) ? 'uses saved' : 'runs from base';
+                            } else {
+                                subtext = 'direct';
+                            }
+                        }
+                        items.push({
+                            icon: label.icon,
+                            text: label.text,
+                            subtext: subtext || undefined,
+                            action: `generate-stage-${stageIndex}`,
+                            disabled: !!window.isGenerating
+                        });
+                    }
+                    section.items = items;
+                }
+            }
+        ],
+        onAction: handleGenerateButtonContextMenuAction
+    };
+}
+
+function handleGenerateButtonContextMenuAction(action) {
+    if (!action.startsWith('generate-stage-')) return;
+    const stageIndex = parseInt(action.replace('generate-stage-', ''), 10);
+    if (isNaN(stageIndex)) return;
+    handleManualGeneration(new Event('submit'), { targetStageIndex: stageIndex });
+}
+
+/**
  * Creates the context menu configuration for sprout seed button
  */
 function getSproutSeedContextMenuConfig() {
@@ -1517,6 +1569,11 @@ function clearManualForm() {
     selectUcPreset(3);
     renderUcPresetsDropdown();
 
+    window.keepPromptNewlines = false;
+    if (window.promptTextareaToolbar) {
+        window.promptTextareaToolbar.syncKeepNewlinesButtons();
+    }
+
     // Update prompt status icons after clearing form
     updatePromptStatusIcons();
 
@@ -2003,6 +2060,8 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.auto_clean_uc = ucPresetsDropdownBtn.dataset.autoClean === 'on';
     }
 
+    requestBody.keep_newlines = !!window.keepPromptNewlines;
+
     // Collect dynamic generation data from current button states
     const todBtn = document.getElementById('todBtn');
     const weatherBtn = document.getElementById('weatherBtn');
@@ -2113,16 +2172,9 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         }
     }
 
-    // Add director reference data
-    const directorRefData = getDirectorReferenceForForgeData();
-    if (directorRefData) {
-        requestBody.chara_reference_source = `${directorRefData.type}:${directorRefData.id}`;
-        if (directorRefData.with_style) {
-            requestBody.chara_reference_with_style = true;
-        }
-        if (directorRefData.fidelity) {
-            requestBody.chara_reference_fidelity = directorRefData.fidelity;
-        }
+    // Add precise reference data
+    if (typeof applyPreciseReferenceToRequestBody === 'function') {
+        applyPreciseReferenceToRequestBody(requestBody);
     }
 
     // Add text replacement locks
@@ -2148,9 +2200,14 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         if (saveStage0Btn?.dataset.state === 'on') {
             requestBody.save_base_output = true;
         }
-        // Add skip_pipeline_stages flag
-        if (enableStageGenerationBtn?.dataset.state === 'off') {
+        // Add skip_pipeline_stages flag (overridden when target_stage_index is set)
+        if (enableStageGenerationBtn?.dataset.state === 'off' && requestBody.target_stage_index === undefined) {
             requestBody.skip_pipeline_stages = true;
+        }
+
+        // Send accumulated stage seeds from prior generation / loaded metadata
+        if (window.lastGenerationStageSeeds && Array.isArray(window.lastGenerationStageSeeds) && window.lastGenerationStageSeeds.length > 0) {
+            requestBody.stage_seeds = window.lastGenerationStageSeeds;
         }
 
         // Add compiled prompts array if we have stage seeds loaded
@@ -3495,52 +3552,17 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             manualPresetPlaceholderText.textContent = currentPresetName;
         }
 
-        // Handle director reference data from metadata
+        // Handle precise reference data from metadata
         if (data.chara_reference_source) {
-            try {
-                const [refType, refId] = data.chara_reference_source.split(':', 2);
-
-                // Construct reference data directly from stored metadata
-                let referenceData;
-                if (refType === 'cache') {
-                    referenceData = {
-                        type: 'cache',
-                        id: refId,
-                        hash: refId,
-                        filename: refId,
-                        url: `/cache/preview/${refId}.webp`
-                    };
-                } else if (refType === 'vibe') {
-                    referenceData = {
-                        type: 'vibe',
-                        id: refId,
-                        url: `/cache/preview/${refId}.webp`
-                    };
-                } else if (refType === 'file') {
-                    referenceData = {
-                        type: 'file',
-                        id: refId,
-                        filename: refId,
-                        url: `/images/${refId}`
-                    };
-                }
-
-                if (referenceData) {
-                    setDirectorReference(referenceData);
-                    directorReferenceStyleBtn.setAttribute('data-state', (data.chara_reference_with_style) ? 'on' : 'off');
-                    if (directorReferenceFidelityInput && data.chara_reference_fidelity !== undefined) {
-                        directorReferenceFidelityInput.value = data.chara_reference_fidelity;
-                        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
-                    }
-                } else {
-                    clearDirectorReference();
-                }
-            } catch (error) {
-                console.warn('Failed to load director reference from metadata:', error);
-                clearDirectorReference();
+            if (typeof loadPreciseReferencesFromMetadata === 'function') {
+                await loadPreciseReferencesFromMetadata(data);
             }
         } else {
-            clearDirectorReference();
+            if (typeof clearAllPreciseReferenceItems === 'function') {
+                clearAllPreciseReferenceItems();
+            } else {
+                clearDirectorReference();
+            }
         }
 
         updateSplashScreenStatus('Loading Tendai...');
@@ -3615,6 +3637,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 } else {
                     window.lastGeneratedImageName = null;
                     updateGeneratedImageNameDisplay(null);
+                }
+
+                if (typeof refreshTokenBarCounts === 'function') {
+                    refreshTokenBarCounts();
                 }
             } else {
                 // No dynamic_generation data, clear display
@@ -3767,6 +3793,9 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             if (typeof requestBodyReplacements !== 'undefined') {
                 requestBodyReplacements = data.text_replacements;
             }
+            if (typeof renderRequestBodyReplacementsList === 'function') {
+                renderRequestBodyReplacementsList();
+            }
         } else {
             // Clear request body replacements if no data
             if (typeof requestBodyReplacements !== 'undefined') {
@@ -3777,6 +3806,13 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
         // Load auto-clean UC setting from forge_data
         if (ucPresetsDropdownBtn && data.forge_data && data.forge_data.auto_clean_uc !== undefined) {
             ucPresetsDropdownBtn.dataset.autoClean = data.forge_data.auto_clean_uc ? 'on' : 'off';
+        }
+
+        if (data.forge_data && data.forge_data.keep_newlines !== undefined) {
+            window.keepPromptNewlines = !!data.forge_data.keep_newlines;
+            if (window.promptTextareaToolbar) {
+                window.promptTextareaToolbar.syncKeepNewlinesButtons();
+            }
         }
 
         updateSplashScreenStatus('Loading Pipelines...');
@@ -3925,8 +3961,10 @@ function autoResizeTextareasAfterModalShow() {
  * Handle manual generation - MOVED FROM app.js
  * TODO: Move function implementation from app.js
  */
-async function handleManualGeneration(e) {
+async function handleManualGeneration(e, options = {}) {
     e.preventDefault();
+
+    const { targetStageIndex = null } = options;
 
     // Set generating state
     isGenerating = true;
@@ -3934,6 +3972,9 @@ async function handleManualGeneration(e) {
 
     // Fade out existing dialogs when starting new generation
     clearManualPreviewDialogs();
+
+    // utilities.js — enforce prompt formatting (emphasis "::" spacing) even when fields are focused
+    applyPromptFormattingBeforeGeneration();
 
     const isImg2Img = window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.isVariationEdit);
     const values = collectManualFormValues();
@@ -3960,6 +4001,16 @@ async function handleManualGeneration(e) {
         isGenerating = false;
         updateManualGenerateBtnState();
         return;
+    }
+
+    // Phasewalker placeholder validation — public/scripts/comp/bracketGenerationApplet.js
+    if (typeof validateBracketPlaceholdersBeforeGeneration === 'function') {
+        const bracketOk = await validateBracketPlaceholdersBeforeGeneration(values);
+        if (!bracketOk) {
+            isGenerating = false;
+            updateManualGenerateBtnState();
+            return;
+        }
     }
 
     // Save the last registered editor-loaded/generation baseline before this generation starts.
@@ -4019,6 +4070,24 @@ async function handleManualGeneration(e) {
     addSharedFieldsToRequestBody(requestBody, values);
     if (values.presetName) requestBody.preset = values.presetName;
 
+    if (targetStageIndex !== null && targetStageIndex !== undefined) {
+        requestBody.target_stage_index = targetStageIndex;
+        requestBody.skip_pipeline_stages = false;
+
+        const pipelineStages = getPipelineStages();
+        const targetData = pipelineStages[targetStageIndex - 1];
+        if (targetStageIndex > 0 && targetData && stageRequiresChaining(targetData) && canUseSavedStageData(targetStageIndex)) {
+            const previewFilename = getSavedPipelinePreviewFilename();
+            if (previewFilename) {
+                requestBody.pipeline_input_image = `file:${previewFilename}`;
+                const previewStage = getSavedPreviewStageIndex();
+                if (previewStage !== null && previewStage !== undefined) {
+                    requestBody.pipeline_input_stage_index = previewStage;
+                }
+            }
+        }
+    }
+
     // Check if this requires paid credits and user hasn't already allowed paid
     const cost = calculateCreditCost(requestBody);
     if ((cost.isFree ? cost.opus : cost.list) > 0 && !forcePaidRequest) {
@@ -4050,7 +4119,9 @@ async function handleManualGeneration(e) {
 
     // Initialize stage indicators if this is a staged generation
     if (requestBody.pipeline && Array.isArray(requestBody.pipeline) && requestBody.pipeline.length > 0 && !requestBody.skip_pipeline_stages) {
-        const totalStages = requestBody.pipeline.length + 1; // +1 for base generation
+        const totalStages = requestBody.target_stage_index !== undefined
+            ? estimateTargetedStageCount(requestBody.target_stage_index)
+            : requestBody.pipeline.length + 1;
         console.log(`🎬 Staged generation detected: ${totalStages} stages total`);
         initializeStageIndicators(totalStages);
     } else {
@@ -4112,13 +4183,14 @@ async function handleManualGeneration(e) {
                 metadata.dynamic_generation.compiled_prompt = compiled_prompt;
             }
 
-            // Store text replacement seeds for the lock modal
-            if (text_replacements_seed && Array.isArray(text_replacements_seed)) {
-                window.lastGenerationTextReplacements = text_replacements_seed;
-                // Update the main lock button state
+            // Store text replacement seeds — per-image metadata when present, else generation response pool
+            const metaSeeds = metadata?.text_replacements_seed || metadata?.forge_data?.text_replacements_seed;
+            const seedsForInspector = (Array.isArray(metaSeeds) && metaSeeds.length > 0)
+                ? metaSeeds
+                : text_replacements_seed;
+            if (seedsForInspector && Array.isArray(seedsForInspector)) {
+                window.lastGenerationTextReplacements = seedsForInspector;
                 updateMainLockButtonState();
-
-                // Refresh the text replacement lock modal if it's currently open
                 refreshTextReplacementLockModalIfOpen();
             }
 
@@ -4451,95 +4523,55 @@ async function handleImageResult(imageSrc, clearContextFn, seed = null, response
 
 function setDirectorReference(referenceData) {
     if (!referenceData) return;
-
-    directorReferenceData = referenceData;
-
-    // Set the image source
-    if (directorReferenceImage) {
-        directorReferenceImage.src = referenceData.url;
+    // addPreciseReferenceToContainer: referenceManager.js
+    if (typeof addPreciseReferenceToContainer === 'function') {
+        addPreciseReferenceToContainer(referenceData, { type: 1, strength: 1, fidelity: 1, enabled: true });
     }
-
-    // Reset style toggle to on for new reference
-    if (directorReferenceStyleBtn) {
-        directorReferenceStyleBtn.setAttribute('data-state', 'on');
-    }
-
-    // Reset fidelity to default for new reference
-    if (directorReferenceFidelityInput) {
-        directorReferenceFidelityInput.value = '1.0';
-        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
-    }
-
-    // Show the director reference section and update display classes
-    if (directorReferenceSection) {
-        directorReferenceSection.classList.remove('hidden');
-    }
-
-    // Add display-image class to transformation row (similar to other image sections)
-    if (transformationRow) {
-        transformationRow.classList.add('display-character');
-    }
-
-    // Disable vibe references when director reference is active
-    updateManualPriceDisplay();
-
-    disableVibeReferences();
 }
 
-// Clear the current director reference
 function clearDirectorReference() {
+    // clearAllPreciseReferenceItems: referenceManager.js
+    if (typeof clearAllPreciseReferenceItems === 'function') {
+        clearAllPreciseReferenceItems();
+        return;
+    }
     directorReferenceData = null;
-
-    // Clear the image
     if (directorReferenceImage) {
         directorReferenceImage.src = '';
     }
-
-    // Reset style toggle to on
-    if (directorReferenceStyleBtn) {
-        directorReferenceStyleBtn.setAttribute('data-state', 'on');
-    }
-
-    // Reset fidelity to default
-    if (directorReferenceFidelityInput) {
-        directorReferenceFidelityInput.value = '1.0';
-        updatePercentageOverlay(directorReferenceFidelityInput, directorReferenceFidelityOverlay, 0);
-    }
-
-    // Hide the director reference section and update display classes
     if (directorReferenceSection) {
         directorReferenceSection.classList.add('hidden');
     }
-
-    // Remove display-image class from transformation row
     if (transformationRow) {
         transformationRow.classList.remove('display-character');
     }
-
-    // Re-enable vibe references
     enableVibeReferences();
-
     updateManualPriceDisplay();
 }
 
-// Toggle the director reference style option
 function toggleDirectorReferenceStyle() {
-    if (!directorReferenceStyleBtn) return;
+    // Legacy no-op; per-item type toggles in referenceManager.js
+}
 
-    const currentState = directorReferenceStyleBtn.getAttribute('data-state');
-    const newState = currentState === 'on' ? 'off' : 'on';
-    directorReferenceStyleBtn.setAttribute('data-state', newState);
+function getDirectorReferenceForForgeData() {
+    // collectPreciseReferenceData: referenceManager.js
+    if (typeof collectPreciseReferenceData === 'function') {
+        return collectPreciseReferenceData();
+    }
+    return null;
 }
 
 // Disable vibe references when director reference is active
 function disableVibeReferences() {
     const vibeReferencesContainer = document.getElementById('vibeReferencesContainer');
-    if (vibeReferencesContainer) {
-        vibeReferencesContainer.classList.add('disabled');
-        // Add visual indicator that vibe references are disabled
-        vibeReferencesContainer.style.opacity = '0.5';
-        vibeReferencesContainer.style.pointerEvents = 'none';
+    if (!vibeReferencesContainer) return;
+    // Precise references share this container — block vibes via addVibeReferenceToContainer only
+    if (typeof hasPreciseReferences === 'function' && hasPreciseReferences()) {
+        return;
     }
+    vibeReferencesContainer.classList.add('disabled');
+    vibeReferencesContainer.style.opacity = '0.5';
+    vibeReferencesContainer.style.pointerEvents = 'none';
 }
 
 // Re-enable vibe references when director reference is cleared
@@ -4550,21 +4582,6 @@ function enableVibeReferences() {
         vibeReferencesContainer.style.opacity = '';
         vibeReferencesContainer.style.pointerEvents = '';
     }
-}
-
-// Get the current director reference data for forgeData
-function getDirectorReferenceForForgeData() {
-    if (!directorReferenceData) return null;
-
-    const styleEnabled = directorReferenceStyleBtn.getAttribute('data-state') === 'on';
-    const fidelityLevel = parseFloat(directorReferenceFidelityInput.value) || 0.5;
-
-    return {
-        type: directorReferenceData.type,
-        id: directorReferenceData.id,
-        with_style: styleEnabled,
-        fidelity: fidelityLevel
-    };
 }
 
 // Track if overlay is in completion/hide phase

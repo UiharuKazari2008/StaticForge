@@ -388,11 +388,61 @@ function createAnimationAwareDebounce(func, wait) {
  * @param {string} text
  * @returns {string}
  */
+const PROMPT_NEWLINE_PLACEHOLDER = '__PROMPT_NEWLINE__';
+
 function normalizePromptNewlines(text) {
     if (text === null || text === undefined) return '';
     return String(text)
         .replace(/\r\n?/g, '\n')
         .replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * Step backward over spaces, tabs, and prompt newline placeholders.
+ * @param {string} text
+ * @param {number} index
+ * @returns {number}
+ */
+function skipPromptWhitespaceBackward(text, index) {
+    let j = index;
+    while (j >= 0) {
+        if (/[\s\r\n\t]/.test(text[j])) {
+            j--;
+            continue;
+        }
+        if (j >= PROMPT_NEWLINE_PLACEHOLDER.length - 1) {
+            const phStart = j - PROMPT_NEWLINE_PLACEHOLDER.length + 1;
+            if (phStart >= 0 && text.substring(phStart, phStart + PROMPT_NEWLINE_PLACEHOLDER.length) === PROMPT_NEWLINE_PLACEHOLDER) {
+                j = phStart - 1;
+                continue;
+            }
+        }
+        break;
+    }
+    return j;
+}
+
+/**
+ * True when index is immediately preceded by whitespace or a newline placeholder.
+ * @param {string} text
+ * @param {number} index
+ * @returns {boolean}
+ */
+function hasWhitespaceBeforeIndex(text, index) {
+    if (index <= 0) return false;
+    return skipPromptWhitespaceBackward(text, index - 1) < index - 1;
+}
+
+/**
+ * Ensure every newline (or placeholder) is preceded by a space — e.g. ",\n" -> ", \n".
+ * @param {string} text
+ * @returns {string}
+ */
+function fixNewlinesMissingLeadingSpace(text) {
+    if (!text) return text;
+    let out = text.replace(new RegExp(`(?<![\\s])${PROMPT_NEWLINE_PLACEHOLDER}`, 'g'), ` ${PROMPT_NEWLINE_PLACEHOLDER}`);
+    out = out.replace(/(?<![\s])\n/g, ' \n');
+    return out;
 }
 
 
@@ -757,7 +807,8 @@ function calculatePriceUnified({
     nSamples = 1,
     image = false,
     strength = 1,
-    reference = false
+    reference = false,
+    referenceCount = 0
 }) {
     // Input validation and defaults
     if (!height || !width || height <= 0 || width <= 0) {
@@ -817,8 +868,9 @@ function calculatePriceUnified({
                          resolution <= (freeEntry?.resolution || 0);
 
     let persistanceCost = 0;
-    if (reference) {
-        persistanceCost = 5;
+    const refCount = referenceCount > 0 ? referenceCount : (reference ? 1 : 0);
+    if (refCount > 0) {
+        persistanceCost = 5 * refCount;
     }
 
     const listCost = (perSample * n_samples) + persistanceCost;
@@ -1032,10 +1084,11 @@ function updateManualPriceDisplay(bypass = false) {
             };
 
             // Create values object with all form data (same as handleManualGeneration)
+            const preciseRefData = collectPreciseReferenceData();
             const values = {
                 upscale: document.getElementById('manualUpscale')?.getAttribute('data-state') === 'on' || false,
                 vibe_transfer: collectVibeTransferData(),
-                chara_reference_source: directorReferenceData ? true : undefined
+                chara_reference_source: preciseRefData ? preciseRefData.chara_reference_source : undefined
             };
 
             // Add shared fields using the same function as handleManualGeneration
@@ -1144,6 +1197,8 @@ function calculateCreditCost(requestBody) {
     }
 
     // Use the same price calculation as the rest of the application
+    const refSources = requestBody.chara_reference_source;
+    const refCount = Array.isArray(refSources) ? refSources.length : (refSources ? 1 : 0);
     const price = calculatePriceUnified({
         height: height,
         width: width,
@@ -1154,7 +1209,8 @@ function calculateCreditCost(requestBody) {
         nSamples: 1,
         image: requestBody.image ? true : false,
         strength: requestBody.strength || 1,
-        reference: requestBody.chara_reference_source ? true : false
+        reference: refCount > 0,
+        referenceCount: refCount
     });
 
     return price; // Return the list price (credits cost)
@@ -1311,7 +1367,7 @@ function updatePromptStatusIcons() {
 
             // Update UC level dots
             if (ucState === 'on') {
-                const ucPreset = window.selectedUcPreset || selectedUcPreset || 1;
+                const ucPreset = window.selectedUcPreset || selectedUcPreset || 3;
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
@@ -1478,7 +1534,7 @@ function updatePromptStatusIcons() {
 
             // Update UC level dots
             if (ucState === 'on') {
-                const ucPreset = window.selectedUcPreset || selectedUcPreset || 1;
+                const ucPreset = window.selectedUcPreset || selectedUcPreset || 3;
                 ucIcon.setAttribute('data-uc-level', ucPreset.toString());
             }
         }
@@ -1656,8 +1712,87 @@ function updatePromptStatusIcons() {
             }
         });
     }
+
+    if (typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
+    }
 }
 
+
+/**
+ * Valid numeric emphasis weight immediately before "::" (opening or closing delimiter).
+ * @param {string} weight
+ * @returns {boolean}
+ */
+function isValidEmphasisWeightBeforeDelimiter(weight) {
+    if (!weight) return false;
+    return /^-?(?:0(?:\.\d+)?|[1-9]\d*(?:\.\d+)?|\.\d+)$/.test(weight);
+}
+
+/**
+ * Insert a space before "::" when it is not preceded by a valid emphasis weight at a token boundary.
+ * Prevents false groups such as "magion02::" being parsed as "02::".
+ * @param {string} text
+ * @returns {string}
+ */
+function fixInvalidEmphasisDelimiters(text) {
+    if (!text || !text.includes('::')) return text;
+
+    const delimiterPositions = [];
+    for (let i = 0; i < text.length - 1; i++) {
+        if (text[i] === ':' && text[i + 1] === ':') {
+            delimiterPositions.push(i);
+            i++;
+        }
+    }
+
+    for (let p = delimiterPositions.length - 1; p >= 0; p--) {
+        const i = delimiterPositions[p];
+        let j = skipPromptWhitespaceBackward(text, i - 1);
+        let weightChars = '';
+        while (j >= 0 && /[\d.\-]/.test(text[j])) {
+            weightChars = text[j] + weightChars;
+            j--;
+        }
+        const hadWhitespaceBeforeWeight = j >= 0 && skipPromptWhitespaceBackward(text, j) < j;
+        j = skipPromptWhitespaceBackward(text, j);
+        const boundaryOk = j < 0 || !/[a-zA-Z0-9_]/.test(text[j]) || hadWhitespaceBeforeWeight;
+        const isValidWeight = weightChars.length > 0
+            && boundaryOk
+            && isValidEmphasisWeightBeforeDelimiter(weightChars);
+
+        if (!isValidWeight && !hasWhitespaceBeforeIndex(text, i)) {
+            text = text.slice(0, i) + ' ' + text.slice(i);
+        }
+    }
+
+    return text;
+}
+
+/**
+ * Format all manual prompt textareas before generation (even when still focused).
+ */
+function applyPromptFormattingBeforeGeneration() {
+    const textareas = [];
+    if (typeof manualPrompt !== 'undefined' && manualPrompt) textareas.push(manualPrompt);
+    if (typeof manualUc !== 'undefined' && manualUc) textareas.push(manualUc);
+    if (typeof manualPromptNegative !== 'undefined' && manualPromptNegative) textareas.push(manualPromptNegative);
+    document.querySelectorAll('.prompt-textarea, .character-prompt-textarea').forEach((el) => {
+        if (!textareas.includes(el)) textareas.push(el);
+    });
+
+    textareas.forEach((textarea) => {
+        applyFormattedText(textarea, true);
+        // emphasisManager.js
+        if (typeof updateEmphasisHighlighting === 'function') {
+            updateEmphasisHighlighting(textarea);
+        }
+        // app.js
+        if (typeof autoResizeTextarea === 'function') {
+            autoResizeTextarea(textarea);
+        }
+    });
+}
 
 /**
  * Apply formatted text to a textarea
@@ -1673,9 +1808,8 @@ function applyFormattedText(textarea, lostFocus) {
     const cursorPosition = !lostFocus ? textarea.selectionStart : -1;
 
     let text = normalizePromptNewlines(textarea.value);
-    const newlinePlaceholder = '__PROMPT_NEWLINE__';
     // Preserve user newlines during comma/whitespace formatting logic.
-    text = text.replace(/\n/g, newlinePlaceholder);
+    text = text.replace(/\n/g, PROMPT_NEWLINE_PLACEHOLDER);
     
     // Step 1: Protect special blocks from processing
     const protectedBlocks = [];
@@ -1782,19 +1916,20 @@ function applyFormattedText(textarea, lostFocus) {
         text = text.replace(/,\s+/g, ', ');
         text = text.replace(/\s+,/g, ',');
 
-        // Add spaces before :: terminators (but not before numeric emphasis patterns)
-        // Only apply to text that's not in disable blocks
-        text = text.replace(/(?<!\d+(?:\.\d+)?)(?<!\s)::/g, ' ::');
-
         // Step 2: Restore disable blocks
         disableBlocks.forEach(block => {
             text = text.replace(block.id, block.original);
         });
     }
 
-    text = text.replace(new RegExp(newlinePlaceholder, 'g'), '\n');
+    text = fixInvalidEmphasisDelimiters(text);
+    text = fixNewlinesMissingLeadingSpace(text);
+
+    text = text.replace(new RegExp(PROMPT_NEWLINE_PLACEHOLDER, 'g'), '\n');
+    text = fixNewlinesMissingLeadingSpace(text);
     text = normalizePromptNewlines(text);
-    textarea.value = text;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(textarea, text);
 
     // Restore cursor position if textarea was in focus
     if (!lostFocus && cursorPosition >= 0) {

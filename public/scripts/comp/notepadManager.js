@@ -1277,10 +1277,10 @@ class NotepadManager {
 
         if (this.notebookCurrentNote) {
             const unsavedMarker = this.notebookHasUnsavedChanges ? ' *' : '';
-            this.notebookTitleElement.textContent = `Notebook [${this.notebookCurrentNote.name}]${unsavedMarker}`;
+            this.notebookTitleElement.textContent = `Notion [${this.notebookCurrentNote.name}]${unsavedMarker}`;
         } else {
-            // Show "Notebook [Untitled] *" for new unsaved notes
-            const title = this.notebookHasUnsavedChanges ? 'Notebook [Untitled]*' : 'Notebook';
+            // Show "Notion [Untitled] *" for new unsaved notes
+            const title = this.notebookHasUnsavedChanges ? 'Notion [Untitled]*' : 'Notion';
             this.notebookTitleElement.textContent = title;
         }
     }

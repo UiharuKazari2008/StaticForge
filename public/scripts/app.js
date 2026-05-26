@@ -20,6 +20,7 @@ __dreamscapeFence = (typeof __dreamscapeFence !== 'undefined' && __dreamscapeFen
 __dreamscapeFence['app.js'] = false;
 let previewRatio = 1;
 let compareSourceImageData = null;
+let bracketGenPhaseCompareSourceData = null;
 let compareOverlayEnabled = false;
 let compareSlideEnabled = false;
 let compareViewQuickStored = { overlay: false, slide: false };
@@ -850,6 +851,9 @@ function updateCompareSplitFromPointer(clientX) {
 }
 
 function maybeReplaceCompareSourceAfterResultDimensions(width, height) {
+    if (shouldPreserveBracketGenPhaseCompareSource()) {
+        return;
+    }
     if (!compareSourceImageData || !compareSourceImageData.url || !width || !height) {
         return;
     }
@@ -861,7 +865,154 @@ function maybeReplaceCompareSourceAfterResultDimensions(width, height) {
     }
 }
 
+function normalizePipelineStageIndex(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = parseInt(value, 10);
+    return Number.isNaN(n) ? null : n;
+}
+
+// stage_seeds[0] = pipeline stage 1; base (00) is not in the array — match image seed to find stage
+function resolvePipelineStageIndexFromMetadata(meta) {
+    if (!meta) return null;
+
+    const stageSeeds = meta.forge_data?.stage_seeds || meta.stage_seeds;
+    const imageSeed = normalizePipelineStageIndex(meta.seed);
+
+    if (Array.isArray(stageSeeds) && stageSeeds.length > 0 && imageSeed !== null) {
+        for (let i = stageSeeds.length - 1; i >= 0; i--) {
+            const entry = stageSeeds[i];
+            const entrySeed = normalizePipelineStageIndex(entry?.seed);
+            if (entrySeed === null || entrySeed !== imageSeed) continue;
+            const entryStage = normalizePipelineStageIndex(entry?.stage_index);
+            return entryStage !== null ? entryStage : i + 1;
+        }
+    }
+
+    const explicit = normalizePipelineStageIndex(meta.forge_data?.stage_index ?? meta.stage_index);
+    if (explicit !== null) {
+        return explicit;
+    }
+
+    const pipeline = meta.forge_data?.pipeline || meta.pipeline;
+    if (!Array.isArray(pipeline) || pipeline.length === 0) {
+        return 0;
+    }
+
+    return null;
+}
+
+function getPreviewPipelineStageIndex(metadata) {
+    return resolvePipelineStageIndexFromMetadata(metadata || window.currentManualPreviewImage?.metadata);
+}
+
+function getBracketGenCompareSourcePipelineStageIndex() {
+    if (typeof bracketGenerationApplet === 'undefined' || typeof hasManagedBracketArtifacts !== 'function') {
+        return null;
+    }
+    if (!hasManagedBracketArtifacts()) return null;
+    const stepIdx = bracketGenerationApplet.state.compareSourceStepIndex;
+    if (stepIdx === null || stepIdx === undefined) return null;
+    return bracketGenerationApplet.getPipelineStageIndexForStep(stepIdx);
+}
+
+function hasBracketGenCompareSourceConfigured() {
+    return getBracketGenCompareSourcePipelineStageIndex() !== null;
+}
+
+function shouldPreserveBracketGenPhaseCompareSource() {
+    return hasBracketGenCompareSourceConfigured() && Boolean(bracketGenPhaseCompareSourceData?.url);
+}
+
+function captureBracketGenPhaseCompareSource() {
+    const data = buildCompareDataFromPreview();
+    if (!data) return false;
+    bracketGenPhaseCompareSourceData = cloneCompareData(data);
+    return true;
+}
+
+function clearBracketGenPhaseCompareSource() {
+    bracketGenPhaseCompareSourceData = null;
+}
+
+function applyBracketGenPhaseCompareSource(options = {}) {
+    if (!bracketGenPhaseCompareSourceData?.url) return false;
+    const ok = setCompareSourceData(bracketGenPhaseCompareSourceData);
+    if (ok && options.showToast) {
+        showGlassToast('success', null, 'Comparison source set from phase', false, 1800, '<i class="fas fa-eye-dropper"></i>');
+    }
+    return ok;
+}
+
+function tryCaptureBracketGenPhaseCompareSourceFromPreview(metadata) {
+    const targetStage = getBracketGenCompareSourcePipelineStageIndex();
+    if (targetStage === null) return false;
+    const previewStage = getPreviewPipelineStageIndex(metadata);
+    if (previewStage !== targetStage) return false;
+    if (!getSavedPipelinePreviewFilename()) return false;
+    return captureBracketGenPhaseCompareSource();
+}
+
+function handleBracketGenCompareSourceAfterPreviewUpdate(metadata, response) {
+    if (!hasBracketGenCompareSourceConfigured()) return;
+
+    const targetStage = getBracketGenCompareSourcePipelineStageIndex();
+    const previewStage = getPreviewPipelineStageIndex(metadata);
+
+    if (response && previewStage === targetStage) {
+        captureBracketGenPhaseCompareSource();
+    }
+
+    if (bracketGenPhaseCompareSourceData) {
+        applyBracketGenPhaseCompareSource();
+    } else if (response && previewStage === targetStage) {
+        applyBracketGenPhaseCompareSource();
+    }
+}
+
+function applyBracketGenCompareSourceBeforeGeneration(requestBody) {
+    if (!hasBracketGenCompareSourceConfigured()) return;
+
+    const targetStage = getBracketGenCompareSourcePipelineStageIndex();
+    const targetStageIndex = requestBody?.target_stage_index;
+
+    if (targetStageIndex !== undefined && targetStageIndex !== null && targetStageIndex === targetStage) {
+        clearBracketGenPhaseCompareSource();
+        return;
+    }
+
+    if (bracketGenPhaseCompareSourceData) {
+        applyBracketGenPhaseCompareSource();
+        return;
+    }
+
+    tryCaptureBracketGenPhaseCompareSourceFromPreview();
+    if (bracketGenPhaseCompareSourceData) {
+        applyBracketGenPhaseCompareSource();
+        return;
+    }
+
+    const previewStage = getPreviewPipelineStageIndex();
+    const generatingLaterStage = targetStageIndex !== undefined && targetStageIndex !== null
+        && targetStageIndex > targetStage;
+
+    if (previewStage === targetStage || generatingLaterStage) {
+        if (tryCaptureBracketGenPhaseCompareSourceFromPreview()) {
+            applyBracketGenPhaseCompareSource();
+        }
+    }
+}
+
 function syncCompareSourceBeforeGeneration(requestBody) {
+    applyBracketGenCompareSourceBeforeGeneration(requestBody);
+
+    if (shouldPreserveBracketGenPhaseCompareSource()) {
+        applyBracketGenPhaseCompareSource();
+        comparePresentationInhibited = false;
+        updateCompareDisplayState();
+        updateCompareControlsState();
+        return;
+    }
+
     const lockedSeedBtn = document.getElementById('sproutSeedBtn');
     if (lockedSeedBtn && lockedSeedBtn.getAttribute('data-state') === 'on' && !compareSourceImageData) {
         setCompareSourceFromCurrentPreview();
@@ -4013,6 +4164,111 @@ function populateCompiledPromptsSection() {
     }
 }
 
+function getInspectorAppliedTextReplacementSeeds() {
+    if (Array.isArray(window.lastGenerationTextReplacements) && window.lastGenerationTextReplacements.length > 0) {
+        return window.lastGenerationTextReplacements.slice();
+    }
+    const metadata = window.currentManualPreviewImage?.metadata || window.lastGeneration;
+    const fromPreview = metadata?.text_replacements_seed || metadata?.forge_data?.text_replacements_seed;
+    if (Array.isArray(fromPreview) && fromPreview.length > 0) {
+        return fromPreview.slice();
+    }
+    return [];
+}
+
+/** Editor has loaded prompt/metadata — Inspector may open even before generation. collectManualFormValues: manualModalManager.js */
+function inspectorEditorHasLoadedData() {
+    if (typeof collectManualFormValues === 'function') {
+        const values = collectManualFormValues();
+        if (values.prompt?.trim() || values.uc?.trim() || values.input_prompt_negative?.trim()) {
+            return true;
+        }
+        if (Array.isArray(values.characterPrompts) && values.characterPrompts.some(c => c.prompt?.trim() || c.uc?.trim())) {
+            return true;
+        }
+    }
+    if (window.currentManualPreviewImage?.metadata) return true;
+    if (window.lastGeneration) return true;
+    if (window.dynamicGenerationData?.compiled_prompt) return true;
+    if (Array.isArray(window.lastGenerationTextReplacements) && window.lastGenerationTextReplacements.length > 0) {
+        return true;
+    }
+    return false;
+}
+
+function syncInspectorTextReplacementsToLoadedMetadata(seeds) {
+    const normalized = Array.isArray(seeds) ? seeds : [];
+    window.lastGenerationTextReplacements = normalized;
+    window.lockedTextReplacements = normalized.filter(s => s.locked === true);
+
+    if (window.currentManualPreviewImage?.metadata) {
+        window.currentManualPreviewImage.metadata.text_replacements_seed = normalized;
+        if (window.currentManualPreviewImage.metadata.forge_data) {
+            window.currentManualPreviewImage.metadata.forge_data.text_replacements_seed = normalized;
+        }
+    }
+    if (window.lastGeneration && typeof window.lastGeneration === 'object') {
+        window.lastGeneration.text_replacements_seed = normalized;
+        if (window.lastGeneration.forge_data) {
+            window.lastGeneration.forge_data.text_replacements_seed = normalized;
+        }
+    }
+
+    updateMainLockButtonState();
+    if (typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
+    }
+}
+
+async function refreshInspectorTextReplacementsFromPrompts() {
+    if (!inspectorEditorHasLoadedData()) {
+        showGlassToast('warning', null, 'No editor data loaded to scan.', false, 3000, '<i class="fas fa-glasses-round"></i>');
+        return;
+    }
+
+    const refreshBtn = document.getElementById('refreshInspectorTextReplacementsBtn');
+    if (refreshBtn) refreshBtn.disabled = true;
+
+    try {
+        const values = collectManualFormValues();
+        const payload = {
+            prompt: values.prompt,
+            uc: values.uc,
+            input_prompt_negative: values.input_prompt_negative,
+            allCharacterPrompts: values.characterPrompts,
+            model: values.model,
+            presetName: values.presetName,
+            text_replacements: values.text_replacements,
+            text_replacements_seed: window.lastGenerationTextReplacements || [],
+            dynamic_generation: window.dynamicGenerationData,
+            periodKey: window.currentPeriodKey
+        };
+
+        const result = await window.wsClient.sendMessage('scan_text_replacements', payload);
+        if (!result?.success) {
+            throw new Error(result?.error || 'Scan failed');
+        }
+
+        const seeds = Array.isArray(result.text_replacements_seed) ? result.text_replacements_seed : [];
+        syncInspectorTextReplacementsToLoadedMetadata(seeds);
+        refreshTextReplacementLockModalIfOpen();
+
+        const addedMsg = seeds.length === 1 ? '1 expander' : `${seeds.length} expanders`;
+        showGlassToast('success', null, seeds.length > 0 ? `Found ${addedMsg} in prompts` : 'No expanders found in prompts', false, 2500, '<i class="fas fa-rotate"></i>');
+    } catch (error) {
+        console.error('Error refreshing inspector text replacements:', error);
+        showGlassToast('error', null, error.message || 'Failed to scan prompts for expanders', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
+    } finally {
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+// requestBodyReplacementsModal.js — getStagesDisplayText, hasReplacementStageConfiguration
+function buildInspectorStageTargetBadgeHtml(seed) {
+    if (!hasReplacementStageConfiguration(seed?.body_replacement_stages)) return '';
+    return `<div class="text-replacement-stages text-replacement-stage-scope" title="Replacement stage scope">${getStagesDisplayText(seed.body_replacement_stages)}</div>`;
+}
+
 // Open the Genso lock modal
 function renderTextReplacementModal() {
     const modal = document.getElementById('textReplacementLockModal');
@@ -4025,9 +4281,7 @@ function renderTextReplacementModal() {
     // Clear previous content
     listContainer.innerHTML = '';
 
-    // Get current Genso seeds from the last generation or preview
-    // This would be populated from window.lastGenerationTextReplacements
-    currentTextReplacementSeeds = window.lastGenerationTextReplacements || [];
+    currentTextReplacementSeeds = getInspectorAppliedTextReplacementSeeds();
 
     // Populate compiled prompts section
     populateCompiledPromptsSection();
@@ -4150,10 +4404,15 @@ function updateMainLockButtonState() {
     const totalReplacementsAvailable = allSeedsCount + dynamicReplacementsCount;
 
     if (totalReplacementsAvailable === 0) {
-        // No replacements available, hide button
-        textReplacementLockBtn.setAttribute('disabled', '');
-        textReplacementLockBtn.setAttribute('data-state', 'off');
-        textReplacementLockBtn.title = 'No Genso Expanders Available';
+        if (inspectorEditorHasLoadedData()) {
+            textReplacementLockBtn.removeAttribute('disabled');
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            textReplacementLockBtn.title = 'Open Inspector';
+        } else {
+            textReplacementLockBtn.setAttribute('disabled', '');
+            textReplacementLockBtn.setAttribute('data-state', 'off');
+            textReplacementLockBtn.title = 'No Genso Expanders Available';
+        }
     } else {
         // Replacements available, show button
         textReplacementLockBtn.removeAttribute('disabled', '');
@@ -4384,25 +4643,34 @@ function selectRandomTextReplacement(seed, index) {
     });
 }
 
+// Resolve prompt textarea for a text-replacement seed source (server assigns sources; merge is server-side)
+function getTextareaForReplacementSource(source) {
+    if (!source) return null;
+    if (source === 'prompt') return document.getElementById('manualPrompt');
+    if (source === 'negative_prompt') return document.getElementById('manualUc');
+    if (source === 'input_prompt_negative') return document.getElementById('manualPromptNegative');
+    if (!source.startsWith('character_') || !characterPromptsContainer) return null;
+
+    const charIndex = parseInt(source.split('_')[1], 10);
+    if (isNaN(charIndex)) return null;
+    const item = characterPromptsContainer.querySelectorAll('.character-prompt-item')[charIndex];
+    if (!item) return null;
+
+    if (source.endsWith('_input_prompt_negative')) {
+        return document.getElementById(`${item.id}_promptNegative`);
+    }
+    if (source.endsWith('_uc')) {
+        return document.getElementById(`${item.id}_uc`);
+    }
+    if (source.endsWith('_prompt')) {
+        return document.getElementById(`${item.id}_prompt`);
+    }
+    return null;
+}
+
 // Replace placeholder in the corresponding prompt textarea
 function replacePlaceholderInPrompt(seed, index) {
-    // Find the textarea based on the seed's source
-    let textarea = null;
-    if (seed.source === 'prompt') {
-        textarea = document.getElementById('manualPrompt');
-    } else if (seed.source === 'negative_prompt') {
-        textarea = document.getElementById('manualUc');
-    } else if (seed.source === 'input_prompt_negative') {
-        textarea = document.getElementById('manualPromptNegative');
-    } else if (seed.source && seed.source.startsWith('character_') && seed.source.endsWith('_prompt')) {
-        // For character prompts, we might need to handle this differently
-        // For now, just use the main prompt
-        textarea = document.getElementById('manualPrompt');
-    } else if (seed.source && seed.source.startsWith('character_') && seed.source.endsWith('_uc')) {
-        // For character negative prompts, use the negative prompt
-        textarea = document.getElementById('manualUc');
-    }
-
+    const textarea = getTextareaForReplacementSource(seed.source);
     if (!textarea) {
         console.warn('Could not find textarea for replacement source:', seed.source);
         return;
@@ -4478,7 +4746,10 @@ function renderTextReplacementLockList() {
     }
 
     if (currentTextReplacementSeeds.length === 0 && !hasDynamicReplacements) {
-        listContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-secondary);">No Genso Expanders Available. Generate an image first to see options.</div>';
+        const emptyHint = inspectorEditorHasLoadedData()
+            ? 'No Expanders in use, Click Refresh to scan prompts for prefixes.'
+            : 'No Genso Expanders Available. Load data or generate an image first.';
+        listContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--text-secondary);">${emptyHint}</div>`;
         updateLockStatusText();
         return;
     }
@@ -4493,15 +4764,17 @@ function renderTextReplacementLockList() {
 
         itemDiv.classList.toggle('selected', isLocked);
 
+        const stageTargetBadge = buildInspectorStageTargetBadgeHtml(seed);
+
         // Check if source is UC/negative and add class
         const source = seed.source || '';
         if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
-            (source.startsWith('character_') && source.endsWith('_uc'))) {
+            (source.startsWith('character_') && (source.endsWith('_uc') || source.endsWith('_input_prompt_negative')))) {
             itemDiv.classList.add('negative-prompt');
         }
 
         // Extract character index if it's a character prompt
-        // Source format: character_${charIndex}_prompt or character_${charIndex}_uc
+        // Source format: character_${charIndex}_prompt, character_${charIndex}_uc, character_${charIndex}_input_prompt_negative
         let characterIndex = null;
         if (source.startsWith('character_')) {
             const parts = source.split('_');
@@ -4517,7 +4790,7 @@ function renderTextReplacementLockList() {
         const indexDisplay = seed.index !== null && seed.index !== undefined ? `<span class="text-replacement-index">${seed.index}</span>` : '';
         let originalPattern = seed.pattern;
         if (!originalPattern) {
-            if (seed.type.startsWith('bracketed_')) {
+            if (seed.type && seed.type.startsWith('bracketed_')) {
                 originalPattern = seed.pattern;
             } else {
                 originalPattern = `!${seed.key}${seed.type === 'combine_incrementing' ? '~+#' : seed.type === 'pick_incrementing' ? '~#' : seed.type === 'combine' ? '~+' : '~'}`;
@@ -4550,6 +4823,7 @@ function renderTextReplacementLockList() {
                             ${characterBadge}
                             <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                         </span>
+                        ${stageTargetBadge}
                     </div>
                     <div class="text-replacement-lock-pattern">
                         ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
@@ -4590,12 +4864,12 @@ function renderTextReplacementLockList() {
             // Check if source is UC/negative and add class
             const source = seed.source || '';
             if (source === 'negative_prompt' || source === 'input_prompt_negative' ||
-                (source.startsWith('character_') && source.endsWith('_uc'))) {
+                (source.startsWith('character_') && (source.endsWith('_uc') || source.endsWith('_input_prompt_negative')))) {
                 itemDiv.classList.add('negative-prompt');
             }
 
             // Extract character index if it's a character prompt
-            // Source format: character_${charIndex}_prompt or character_${charIndex}_uc
+            // Source format: character_${charIndex}_prompt, character_${charIndex}_uc, character_${charIndex}_input_prompt_negative
             let characterIndex = null;
             if (source.startsWith('character_')) {
                 const parts = source.split('_');
@@ -4635,6 +4909,7 @@ function renderTextReplacementLockList() {
                                 ${characterBadge}
                                 <span class="badge-icon-type" style="color: ${typeColor};">${typeIcon}</span>
                             </span>
+                            ${stageTargetBadge}
                         </div>
                         <div class="text-replacement-lock-pattern">
                             ${!isStatic ? `<span class="text-replacement-original">${originalPattern}</span>
@@ -5998,6 +6273,21 @@ function updateTextReplacementLockItem(index, updatedSeed) {
     if (selectedElement && updatedSeed.key) {
         const indexDisplay = updatedSeed.index !== null && updatedSeed.index !== undefined ? `<span class="text-replacement-index">${updatedSeed.index}</span>` : '';
         selectedElement.innerHTML = `!${updatedSeed.key}${indexDisplay}`;
+    }
+
+    const badgesRow = item.querySelector('.text-replacement-lock-badges');
+    if (badgesRow) {
+        const existingTargetBadge = badgesRow.querySelector('.text-replacement-stage-scope');
+        const targetHtml = buildInspectorStageTargetBadgeHtml(updatedSeed);
+        if (targetHtml) {
+            if (existingTargetBadge) {
+                existingTargetBadge.outerHTML = targetHtml;
+            } else {
+                badgesRow.insertAdjacentHTML('beforeend', targetHtml);
+            }
+        } else if (existingTargetBadge) {
+            existingTargetBadge.remove();
+        }
     }
 
     // Update the data
@@ -9779,6 +10069,10 @@ function setupEventListeners() {
     if (textReplacementLockBtn) {
         textReplacementLockBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            if (!inspectorEditorHasLoadedData()) {
+                showGlassToast('warning', null, 'No Data to Inspector.', false, 3000, '<i class="fas fa-glasses-round"></i>');
+                return;
+            }
             renderTextReplacementModal();
             linkToolWindowToParent(textReplacementLockModal, manualModal);
             openModal(textReplacementLockModal);
@@ -9850,6 +10144,17 @@ function setupEventListeners() {
                             text: 'Compile Tendai',
                             icon: 'fas fa-wand-magic-sparkles',
                             action: 'compileTendaiReplacements'
+                        },
+                        {
+                            text: 'Delete Managed',
+                            icon: 'fas fa-trash-alt',
+                            action: 'deleteManagedPhases',
+                            loadfn: function (item) {
+                                // hasManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
+                                const hasManaged = typeof hasManagedBracketArtifacts === 'function'
+                                    && hasManagedBracketArtifacts();
+                                item.disabled = !hasManaged;
+                            }
                         }
                     ]
                 }
@@ -9877,6 +10182,14 @@ function setupEventListeners() {
         toggleCompiledPromptsSectionBtn.addEventListener('click', (e) => {
             e.preventDefault();
             toggleCompiledPromptsSection();
+        });
+    }
+
+    const refreshInspectorTextReplacementsBtn = document.getElementById('refreshInspectorTextReplacementsBtn');
+    if (refreshInspectorTextReplacementsBtn) {
+        refreshInspectorTextReplacementsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            refreshInspectorTextReplacementsFromPrompts();
         });
     }
 
@@ -10707,7 +11020,12 @@ function setupEventListeners() {
     // PRESET AUTOCOMPLETE SYSTEM - Preset name field autocomplete events
     manualPresetName.addEventListener('input', handlePresetAutocompleteInput);
     manualPresetName.addEventListener('keydown', handlePresetAutocompleteKeydown);
-    document.addEventListener('click', hideCharacterAutocomplete);
+    document.addEventListener('click', function (e) {
+        if (window.shouldDismissAutofillFromClick && !window.shouldDismissAutofillFromClick(e)) {
+            return;
+        }
+        hideCharacterAutocomplete();
+    });
     document.addEventListener('click', hidePresetAutocomplete);
 
     // AUTOCOMPLETE POSITIONING SYSTEM - Update autocomplete positions on scroll and resize
@@ -11680,6 +11998,7 @@ function setupEventListeners() {
     // Save Stage 0 button toggle
     if (saveStage0Btn) {
         saveStage0Btn.addEventListener('click', () => {
+            if (saveStage0Btn.dataset.managedLock === 'true') return;
             const newState = saveStage0Btn.dataset.state === 'on' ? 'off' : 'on';
             saveStage0Btn.dataset.state = newState;
             // Update manual upscale visibility based on new state
@@ -12194,6 +12513,11 @@ function setupEventListeners() {
     // Set up preset generation handlers
     sproutSeedBtn.addEventListener('click', toggleSproutSeed);
     contextMenu.attachToElement(document.getElementById('sproutSeedBtn'), getSproutSeedContextMenuConfig());
+
+    // manualModalManager.js — generate-stage context menu
+    const generateStageMenuConfig = getGenerateButtonContextMenuConfig();
+    contextMenu.attachToElement(document.getElementById('manualGenerateBtn'), generateStageMenuConfig);
+    contextMenu.attachToElement(document.getElementById('manualGenerateBtnAlt'), generateStageMenuConfig);
 
     initializeManualPreviewImageContextMenu();
 
@@ -13985,6 +14309,7 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             }, 100);
 
             if (response && imageWidth && imageHeight) {
+                handleBracketGenCompareSourceAfterPreviewUpdate(metadata, response);
                 maybeReplaceCompareSourceAfterResultDimensions(imageWidth, imageHeight);
                 registerCompareBaselineFromCurrentPreview();
             }
@@ -14020,6 +14345,8 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
                 }
                 // Director new session functionality is always available
             }
+
+            refreshTextReplacementLockModalIfOpen();
 
             // Update navigation buttons
             updateManualPreviewNavigation();
@@ -16439,6 +16766,8 @@ function setupTrayIconPopovers() {
         'imageGenerationIndicator',
         'searchIndexingIndicator',
         'workspaceTrayIcon',
+        'serviceWorkerTrayIcon',
+        'modemTrayIcon',
         'pingWarningIndicator',
         'taskbarWebsocketIndicator'
     ];
@@ -17778,6 +18107,88 @@ async function toggleRandomPrompt() {
     }
 }
 
+function buildCharacterUcTabContainerHtml(characterId, ucValue, promptNegativeValue) {
+    const uc = escapeHtml(ucValue || '');
+    const pn = escapeHtml(promptNegativeValue || '');
+    return `
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="${characterId}_uc" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${uc}</textarea>
+                            </div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="${characterId}_promptNegative" class="form-control character-prompt-textarea prompt-textarea" placeholder="Inline negative (merged into prompt as -1::...::)..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${pn}</textarea>
+                            </div>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <div class="token-info-container">
+                                        <div class="token-info-top">
+                                            <span class="token-count">0 tokens</span>
+                                        </div>
+                                        <div class="token-progress-bar">
+                                            <div class="token-progress-fill">
+                                                <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container">
+                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
+                                        </div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
+                                            <i class="fas fa-scissors"></i>
+                                        </button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-atlas"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
+                                            <i class="fas fa-search"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
+                                            <i class="fas fa-lightbulb"></i>
+                                        </button>
+                                        <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
+                                                <i class="fas fa-toolbox"></i>
+                                            </button>
+                                            <div id="characterUCActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+}
+
+function wireCharacterPromptTextarea(textarea, blurExtra) {
+    if (!textarea) return;
+    addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+    addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+    addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'focus');
+    addSafeEventListener(textarea, 'blur', () => {
+        applyFormattedText(textarea, true);
+        updateEmphasisHighlighting(textarea);
+        autoResizeTextarea(textarea);
+        stopEmphasisHighlighting();
+        if (blurExtra) blurExtra();
+    }, 'blur');
+    const debouncedResize = debounce(() => autoResizeTextarea(textarea), 50);
+    addSafeEventListener(textarea, 'input', debouncedResize, 'resize');
+    initializeEmphasisOverlay(textarea);
+}
+
 function addCharacterPrompt() {
     const characterId = `character_${characterPromptCounter++}`;
 
@@ -17836,7 +18247,7 @@ function addCharacterPrompt() {
                                         </div>
                                         <div class="token-progress-bar">
                                             <div class="token-progress-fill">
-                                                <div class="token-progress-inner"></div>
+                                                <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -17852,6 +18263,16 @@ function addCharacterPrompt() {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
+                                            <i class="fas fa-scissors"></i>
+                                        </button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-atlas"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
+                                            <i class="fas fa-search"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
@@ -17874,53 +18295,7 @@ function addCharacterPrompt() {
                         </div>
                     </div>
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
-                        <div class="character-prompt-textarea-container">
-                            <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
-                            <div class="prompt-textarea-toolbar hidden">
-                                <div class="toolbar-left">
-                                    <div class="token-info-container">
-                                        <div class="token-info-top">
-                                            <span class="token-count">0 tokens</span>
-                                        </div>
-                                        <div class="token-progress-bar">
-                                            <div class="token-progress-fill">
-                                                <div class="token-progress-inner"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Search Mode Elements (Hidden by default) -->
-                                    <div class="toolbar-search-elements">
-                                        <div class="text-search-label">Search</div>
-                                        <div class="text-search-input-container">
-                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
-                                        </div>
-                                        <div class="text-search-match-count">0</div>
-                                    </div>
-                                </div>
-                                <div class="toolbar-right">
-                                    <!-- Regular Toolbar Buttons -->
-                                    <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
-                                            <i class="fas fa-lightbulb"></i>
-                                        </button>
-                                        <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
-                                            <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
-                                                <i class="fas fa-toolbox"></i>
-                                            </button>
-                                            <div id="characterUCActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Search Mode Buttons (Hidden by default) -->
-                                    <div class="toolbar-search-buttons">
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        ${buildCharacterUcTabContainerHtml(characterId, '', '')}
                     </div>
                 </div>
             </div>
@@ -17935,43 +18310,21 @@ function addCharacterPrompt() {
     // Add autocomplete event listeners for prompt and UC fields
     const promptField = document.getElementById(`${characterId}_prompt`);
     const ucField = document.getElementById(`${characterId}_uc`);
+    const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
     if (promptField) {
-        addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-        addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-        addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
-        addSafeEventListener(promptField, 'blur', () => {
-            applyFormattedText(promptField, true);
-            updateEmphasisHighlighting(promptField);
-            autoResizeTextarea(promptField);
-            stopEmphasisHighlighting();
-            scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
-        }, 'blur');
-
-        // Add auto-resize functionality
-        const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
-        addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
-
-        // Initialize emphasis highlighting overlay
-        initializeEmphasisOverlay(promptField);
+        wireCharacterPromptTextarea(promptField, scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts);
+        promptField.addEventListener('input', () => {
+            updateCharacterPromptPreview(characterId);
+        });
     }
 
     if (ucField) {
-        addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-        addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-        addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
-        addSafeEventListener(ucField, 'blur', () => {
-            applyFormattedText(ucField, true);
-            updateEmphasisHighlighting(ucField);
-            autoResizeTextarea(ucField);
-            stopEmphasisHighlighting();
-        }, 'blur');
+        wireCharacterPromptTextarea(ucField);
+    }
 
-        // Add auto-resize functionality
-        const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
-        addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
-
-        initializeEmphasisOverlay(ucField);
+    if (promptNegativeField) {
+        wireCharacterPromptTextarea(promptNegativeField);
     }
 
     // Add preview textarea click handler
@@ -18043,12 +18396,16 @@ function deleteCharacterPrompt(characterId) {
         // Clean up event listeners before removing the element
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
+        const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
         if (promptField) {
             cleanupSafeEventListeners(promptField);
         }
         if (ucField) {
             cleanupSafeEventListeners(ucField);
+        }
+        if (promptNegativeField) {
+            cleanupSafeEventListeners(promptNegativeField);
         }
 
         characterItem.remove();
@@ -18524,6 +18881,10 @@ function getCharacterPrompts() {
         const enabled = document.getElementById(`${characterId}_enabled`).getAttribute('data-state') === 'on';
         const prompt = normalizePromptNewlines(document.getElementById(`${characterId}_prompt`).value).trim();
         const uc = normalizePromptNewlines(document.getElementById(`${characterId}_uc`).value).trim();
+        const promptNegativeEl = document.getElementById(`${characterId}_promptNegative`);
+        const input_prompt_negative = promptNegativeEl
+            ? normalizePromptNewlines(promptNegativeEl.value).trim()
+            : '';
         const charaName = item.dataset.charaName || `Character ${index + 1}`;
 
         let center = null;
@@ -18540,6 +18901,7 @@ function getCharacterPrompts() {
         characterPrompts.push({
             prompt: prompt,
             uc: uc,
+            input_prompt_negative: input_prompt_negative,
             center: center,
             enabled: enabled,
             chara_name: charaName
@@ -18695,7 +19057,8 @@ function maybeSyncMainPromptSubjectTagsFromCharacterPrompts() {
     const after = applyMainPromptSubjectTagSegment(before, desired, removeSolo);
     if (after === before) return;
 
-    manualPrompt.value = after;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(manualPrompt, after);
     applyFormattedText(manualPrompt, true);
     updateEmphasisHighlighting(manualPrompt);
     autoResizeTextarea(manualPrompt);
@@ -18817,7 +19180,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                         </div>
                                         <div class="token-progress-bar">
                                             <div class="token-progress-fill">
-                                                <div class="token-progress-inner"></div>
+                                                <div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -18833,6 +19196,16 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                                 <div class="toolbar-right">
                                     <!-- Regular Toolbar Buttons -->
                                     <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis">
+                                            <i class="fas fa-scissors"></i>
+                                        </button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access">
+                                            <i class="fas fa-book-atlas"></i>
+                                        </button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search">
+                                            <i class="fas fa-search"></i>
+                                        </button>
                                         <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
                                             <i class="fas fa-lightbulb"></i>
                                         </button>
@@ -18855,53 +19228,7 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
                         </div>
                     </div>
                     <div class="tab-pane ${ucTabActive}" id="${characterId}_uc-tab" data-label="UC">
-                        <div class="character-prompt-textarea-container">
-                            <div class="character-prompt-textarea-background"></div>
-                            <textarea id="${characterId}_uc" class="form-control character-prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${character.uc || ''}</textarea>
-                            <div class="prompt-textarea-toolbar hidden">
-                                <div class="toolbar-left">
-                                    <div class="token-info-container">
-                                        <div class="token-info-top">
-                                            <span class="token-count">0 tokens</span>
-                                        </div>
-                                        <div class="token-progress-bar">
-                                            <div class="token-progress-fill">
-                                                <div class="token-progress-inner"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Search Mode Elements (Hidden by default) -->
-                                    <div class="toolbar-search-elements">
-                                        <div class="text-search-label">Search</div>
-                                        <div class="text-search-input-container">
-                                            <input type="text" class="text-search-input" placeholder="Find Tag" />
-                                        </div>
-                                        <div class="text-search-match-count">0</div>
-                                    </div>
-                                </div>
-                                <div class="toolbar-right">
-                                    <!-- Regular Toolbar Buttons -->
-                                    <div class="toolbar-regular-buttons">
-                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill">
-                                            <i class="fas fa-lightbulb"></i>
-                                        </button>
-                                        <div id="characterUCActionsDropdown_${characterId}" class="custom-dropdown dark dropright">
-                                            <button type="button" id="characterUCActionsDropdownBtn_${characterId}" class="btn-secondary btn-small toolbar-btn">
-                                                <i class="fas fa-toolbox"></i>
-                                            </button>
-                                            <div id="characterUCActionsDropdownMenu_${characterId}" class="custom-dropdown-menu hidden">
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <!-- Search Mode Buttons (Hidden by default) -->
-                                    <div class="toolbar-search-buttons">
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
-                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        ${buildCharacterUcTabContainerHtml(characterId, character.uc || '', character.input_prompt_negative || '')}
                     </div>
                 </div>
             </div>
@@ -18924,50 +19251,24 @@ function loadCharacterPrompts(characterPrompts, useCoords) {
         // Add autocomplete event listeners for prompt and UC fields
         const promptField = document.getElementById(`${characterId}_prompt`);
         const ucField = document.getElementById(`${characterId}_uc`);
+        const promptNegativeField = document.getElementById(`${characterId}_promptNegative`);
 
         if (promptField) {
-            addSafeEventListener(promptField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-            addSafeEventListener(promptField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-            addSafeEventListener(promptField, 'focus', () => startEmphasisHighlighting(promptField), 'focus');
-            addSafeEventListener(promptField, 'blur', () => {
-                applyFormattedText(promptField, true);
-                updateEmphasisHighlighting(promptField);
-                autoResizeTextarea(promptField);
-                stopEmphasisHighlighting();
-                scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts();
-            }, 'blur');
-
-            // Add auto-resize functionality
-            const debouncedResize = debounce(() => autoResizeTextarea(promptField), 50);
-            addSafeEventListener(promptField, 'input', debouncedResize, 'resize');
-
-            // Initialize emphasis highlighting overlay
-            initializeEmphasisOverlay(promptField);
-            // Apply initial resizing and highlighting after content is set
+            wireCharacterPromptTextarea(promptField, scheduleMaybeSyncMainPromptSubjectTagsFromCharacterPrompts);
             autoResizeTextarea(promptField);
             updateEmphasisHighlighting(promptField);
         }
 
         if (ucField) {
-            addSafeEventListener(ucField, 'input', handleCharacterAutocompleteInput, 'autocomplete');
-            addSafeEventListener(ucField, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
-            addSafeEventListener(ucField, 'focus', () => startEmphasisHighlighting(ucField), 'focus');
-            addSafeEventListener(ucField, 'blur', () => {
-                applyFormattedText(ucField, true);
-                updateEmphasisHighlighting(ucField);
-                autoResizeTextarea(ucField);
-                stopEmphasisHighlighting();
-            }, 'blur');
-
-            // Add auto-resize functionality
-            const debouncedUcResize = debounce(() => autoResizeTextarea(ucField), 50);
-            addSafeEventListener(ucField, 'input', debouncedUcResize, 'resize');
-
-            // Initialize emphasis highlighting overlay
-            initializeEmphasisOverlay(ucField);
-            // Apply initial resizing and highlighting after content is set
+            wireCharacterPromptTextarea(ucField);
             autoResizeTextarea(ucField);
             updateEmphasisHighlighting(ucField);
+        }
+
+        if (promptNegativeField) {
+            wireCharacterPromptTextarea(promptNegativeField);
+            autoResizeTextarea(promptNegativeField);
+            updateEmphasisHighlighting(promptNegativeField);
         }
 
         // Add preview textarea click handler
@@ -19965,7 +20266,7 @@ function renderAddItemDropdown() {
     const transformationOptions = [
         { value: 'base-image', name: 'Base Image', icon: 'nai-img2img' },
         { value: 'vibe-transfer', name: 'Vibe Transfer', icon: 'nai-vibe-transfer' },
-        { value: 'character-reference', name: 'Character', icon: 'nai-image-tool-line-art' },
+        { value: 'character-reference', name: 'Character / Style', icon: 'nai-precise-reference-style-and-character' },
         { value: 'upload', name: 'Upload', icon: 'nai-import' }
     ];
 
@@ -20137,6 +20438,7 @@ function updateAllStageHexIds() {
             hexIdSpan.textContent = hexId;
             hexIdSpan.title = `Stage ID: ${hexId}`;
         }
+        syncManagedStageHammerIcon(stage, stage.dataset.managed === 'true');
     });
 }
 
@@ -20188,6 +20490,167 @@ function calculateStageHexIdsFromData(stagesData) {
     });
 }
 
+function resolvePipelineStageTypeMeta(type, options = {}) {
+    let typeName = 'Variation';
+    let typeIcon = 'ri-image-ai-fill';
+    if (type === STAGE_TYPES.EXPAND_CANVAS) {
+        typeName = 'Expand Canvas';
+        typeIcon = 'mdi mdi-1-25 mdi-relative-scale';
+    } else if (type === STAGE_TYPES.VARIATION) {
+        if (options.useBaseImage) {
+            typeName = 'Enhance';
+            typeIcon = 'fas fa-diagram-venn';
+        } else {
+            typeName = 'Variation';
+            typeIcon = 'ri-image-ai-fill';
+        }
+    }
+    return { typeName, typeIcon };
+}
+
+function getPipelineStageDefaultTypeName(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return 'Stage';
+    const useBaseBtn = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const useBase = useBaseBtn?.dataset.state === 'on';
+    return resolvePipelineStageTypeMeta(stageItem.dataset.stageType, { useBaseImage: useBase }).typeName;
+}
+
+function getPipelineStageDisplayName(stageItem) {
+    if (!stageItem) return '';
+    return String(stageItem.dataset.phaseStepName || '').trim();
+}
+
+function buildPipelineStageTypeLabelHtml(typeIcon, typeName, displayName) {
+    const visible = (displayName && String(displayName).trim()) || typeName;
+    const safeVisible = escapeHtml(visible);
+    const safeDefault = escapeHtml(typeName);
+    return `<i class="${typeIcon}"></i><div class="character-name-editable inline-name-edit stage-name-editable"><input type="text" class="character-name-input hover-show stage-display-name-input" value="${safeVisible}" placeholder="${safeDefault}" title="Click to rename stage"><span class="character-name-input-placeholder stage-display-name-placeholder">${safeVisible}</span></div><span class="stage-hex-id" title="Stage ID: "></span>`;
+}
+
+function wireInlineNameEditable(editableRoot, callbacks) {
+    if (!editableRoot || editableRoot.dataset.inlineNameWired === 'true') return;
+    editableRoot.classList.add('inline-name-edit');
+    editableRoot.dataset.inlineNameWired = 'true';
+    const input = editableRoot.querySelector('.character-name-input');
+    const placeholder = editableRoot.querySelector('.character-name-input-placeholder');
+    if (!input || !placeholder) return;
+
+    const endEdit = () => {
+        editableRoot.classList.remove('editing-name');
+    };
+    const startEdit = () => {
+        editableRoot.classList.add('editing-name');
+        input.focus();
+        input.select();
+    };
+
+    placeholder.addEventListener('click', (e) => {
+        e.preventDefault();
+        startEdit();
+    });
+    input.addEventListener('focus', () => {
+        editableRoot.classList.add('editing-name');
+    });
+    input.addEventListener('blur', () => {
+        endEdit();
+        if (callbacks && typeof callbacks.onCommit === 'function') {
+            callbacks.onCommit(input.value);
+        }
+        if (callbacks && typeof callbacks.onDisplaySync === 'function') {
+            callbacks.onDisplaySync(input, placeholder);
+        }
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            if (callbacks && typeof callbacks.onCancel === 'function') {
+                callbacks.onCancel(input, placeholder);
+            }
+            endEdit();
+            input.blur();
+        }
+    });
+}
+
+function refreshPipelineStageTypeLabel(stageId) {
+    const stageItem = document.getElementById(stageId);
+    const typeLabel = document.getElementById(`${stageId}_typeLabel`);
+    if (!stageItem || !typeLabel) return;
+    const useBaseBtn = document.getElementById(`${stageId}_useBaseImageToggle`);
+    const useBase = useBaseBtn?.dataset.state === 'on';
+    const meta = resolvePipelineStageTypeMeta(stageItem.dataset.stageType, { useBaseImage: useBase });
+    const displayName = getPipelineStageDisplayName(stageItem);
+    const hammer = typeLabel.querySelector('.stage-managed-hammer');
+    const hammerHtml = hammer ? hammer.outerHTML : '';
+    typeLabel.innerHTML = buildPipelineStageTypeLabelHtml(meta.typeIcon, meta.typeName, displayName);
+    const hexEl = typeLabel.querySelector('.stage-hex-id');
+    if (hexEl) {
+        hexEl.textContent = calculateStageHexId(stageItem);
+        hexEl.title = `Stage ID: ${hexEl.textContent}`;
+    }
+    if (hammerHtml) {
+        const hexSpan = typeLabel.querySelector('.stage-hex-id');
+        if (hexSpan) hexSpan.insertAdjacentHTML('afterend', hammerHtml);
+    }
+    wirePipelineStageDisplayNameInput(stageId);
+    syncManagedStageHammerIcon(stageItem, stageItem.dataset.managed === 'true');
+}
+
+function wirePipelineStageDisplayNameInput(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return;
+    const editableRoot = stageItem.querySelector('.stage-name-editable');
+    if (!editableRoot) return;
+    const input = editableRoot.querySelector('.stage-display-name-input');
+    const placeholder = editableRoot.querySelector('.stage-display-name-placeholder');
+
+    wireInlineNameEditable(editableRoot, {
+        onCommit: (raw) => {
+            const trimmed = String(raw || '').trim();
+            const defaultTypeName = getPipelineStageDefaultTypeName(stageId);
+            if (trimmed && trimmed !== defaultTypeName) {
+                stageItem.dataset.phaseStepName = trimmed;
+            } else {
+                delete stageItem.dataset.phaseStepName;
+            }
+            // bracketGenerationApplet: public/scripts/comp/bracketGenerationApplet.js
+            if (window.bracketGenerationApplet && typeof window.bracketGenerationApplet.syncStepNameFromPipelineStage === 'function') {
+                window.bracketGenerationApplet.syncStepNameFromPipelineStage(stageId, trimmed);
+            }
+        },
+        onDisplaySync: (inp, place) => {
+            const defaultTypeName = getPipelineStageDefaultTypeName(stageId);
+            const trimmed = String(stageItem.dataset.phaseStepName || '').trim();
+            const visible = trimmed || defaultTypeName;
+            inp.value = visible;
+            place.textContent = visible;
+        },
+        onCancel: (inp, place) => {
+            const defaultTypeName = getPipelineStageDefaultTypeName(stageId);
+            const trimmed = String(stageItem.dataset.phaseStepName || '').trim();
+            const visible = trimmed || defaultTypeName;
+            inp.value = visible;
+            place.textContent = visible;
+        }
+    });
+}
+
+function setPipelineStageDisplayName(stageId, name) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return;
+    const trimmed = String(name || '').trim();
+    if (trimmed) {
+        stageItem.dataset.phaseStepName = trimmed;
+    } else {
+        delete stageItem.dataset.phaseStepName;
+    }
+    refreshPipelineStageTypeLabel(stageId);
+}
+
 // Add pipeline stage
 function addPipelineStage(type, options = {}) {
     if (!type || !pipelineStagesContainer) return;
@@ -20211,26 +20674,19 @@ function addPipelineStage(type, options = {}) {
     dragHandle.title = 'Drag to reorder';
     dragHandle.innerHTML = '<i class="fas fa-grip-dots-vertical"></i>';
 
-    // Stage type label
+    // Stage type label (icon + editable display name)
     const stageTypeLabel = document.createElement('div');
     stageTypeLabel.className = 'stage-type-label';
     stageTypeLabel.id = `${stageId}_typeLabel`;
-    let typeName = 'Variation';
-    let typeIcon = 'ri-image-ai-fill';
-    if (type === STAGE_TYPES.EXPAND_CANVAS) {
-        typeName = 'Expand Canvas';
-        typeIcon = 'mdi mdi-1-25 mdi-relative-scale';
-    } else if (type === STAGE_TYPES.VARIATION) {
-        // Set based on useBaseImage option
-        if (options.useBaseImage) {
-            typeName = 'Enhance';
-            typeIcon = 'fas fa-diagram-venn';
-        } else {
-            typeName = 'Variation';
-            typeIcon = 'ri-image-ai-fill';
-        }
+    const typeMeta = resolvePipelineStageTypeMeta(type, options);
+    if (options.displayName) {
+        stageItem.dataset.phaseStepName = String(options.displayName).trim();
     }
-    stageTypeLabel.innerHTML = `<i class="${typeIcon}"></i> ${typeName} <span class="stage-hex-id" title="Stage ID: "></span>`;
+    stageTypeLabel.innerHTML = buildPipelineStageTypeLabelHtml(
+        typeMeta.typeIcon,
+        typeMeta.typeName,
+        options.displayName || ''
+    );
 
     // Stage controls
     const stageControls = document.createElement('div');
@@ -20303,17 +20759,7 @@ function addPipelineStage(type, options = {}) {
         }
     });
 
-    // Inset toggle (preserve source scale when target output is larger)
-    const insetBtn = document.createElement('button');
-    insetBtn.type = 'button';
-    insetBtn.id = `${stageId}_insetToggle`;
-    insetBtn.className = 'btn-secondary btn-small toggle-btn';
-    insetBtn.dataset.state = 'off';
-    insetBtn.title = 'Inset source when output is larger';
-    insetBtn.innerHTML = '<i class="fas fa-border-none"></i>';
-    insetBtn.addEventListener('click', () => {
-        insetBtn.dataset.state = insetBtn.dataset.state === 'on' ? 'off' : 'on';
-    });
+    // Inset toggle lives in expand-canvas stage body (renderExpandCanvasStage), not header controls.
 
     // Save results toggle button
     const saveResultsBtn = document.createElement('button');
@@ -20324,6 +20770,7 @@ function addPipelineStage(type, options = {}) {
     saveResultsBtn.title = 'Save Results';
     saveResultsBtn.innerHTML = '<i class="fas fa-folder-download"></i>';
     saveResultsBtn.addEventListener('click', () => {
+        if (saveResultsBtn.dataset.managedLock === 'true') return;
         const newState = saveResultsBtn.dataset.state === 'on' ? 'off' : 'on';
         saveResultsBtn.dataset.state = newState;
 
@@ -20340,11 +20787,19 @@ function addPipelineStage(type, options = {}) {
     branchBtn.title = 'Branch stage (independent from main pipeline)';
     branchBtn.innerHTML = '<i class="fas fa-alt"></i>';
     branchBtn.addEventListener('click', () => {
+        if (handleManagedStageBranchToggle(stageId)) {
+            return;
+        }
+
+        const stageItem = document.getElementById(stageId);
+        if (stageItem?.dataset.forcedBranch === 'true') {
+            return;
+        }
+
         const newState = branchBtn.dataset.state === 'on' ? 'off' : 'on';
         branchBtn.dataset.state = newState;
 
         // Update visual indicator - add/remove branch class
-        const stageItem = document.getElementById(stageId);
         if (stageItem) {
             if (newState === 'on') {
                 stageItem.classList.add('stage-branch');
@@ -20406,7 +20861,6 @@ function addPipelineStage(type, options = {}) {
     });
 
     stageControls.appendChild(upscaleBtn);
-    stageControls.appendChild(insetBtn);
     stageControls.appendChild(saveResultsBtn);
     stageControls.appendChild(lockPromptBtn);
     stageControls.appendChild(advancedToggleBtn);
@@ -20455,11 +20909,127 @@ function addPipelineStage(type, options = {}) {
 
     // Initialize drag and drop functionality
     initializePipelineStageDragAndDrop();
+
+    wirePipelineStageDisplayNameInput(stageId);
+}
+
+function getManagedStageElements() {
+    const container = pipelineStagesContainer;
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('.pipeline-stage-item[data-managed="true"]'));
+}
+
+function getLastManagedStageElement() {
+    const managed = getManagedStageElements();
+    return managed.length ? managed[managed.length - 1] : null;
+}
+
+function syncManagedStageHammerIcon(stageItem, managed) {
+    if (!stageItem) return;
+    const typeLabel = stageItem.querySelector('.stage-type-label');
+    if (!typeLabel) return;
+    let hammer = typeLabel.querySelector('.stage-managed-hammer');
+    if (managed) {
+        if (!hammer) {
+            hammer = document.createElement('i');
+            hammer.className = 'fas fa-hammer stage-managed-hammer';
+            hammer.title = 'Managed by Phasewalker';
+            const hexIdSpan = typeLabel.querySelector('.stage-hex-id');
+            if (hexIdSpan) {
+                hexIdSpan.insertAdjacentElement('afterend', hammer);
+            } else {
+                typeLabel.appendChild(hammer);
+            }
+        }
+    } else if (hammer) {
+        hammer.remove();
+    }
+}
+
+function applyManagedPipelineStageUi(stageId, managed) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem) return;
+    if (managed) {
+        stageItem.dataset.managed = 'true';
+        stageItem.classList.add('managed-stage');
+    } else {
+        delete stageItem.dataset.managed;
+        stageItem.classList.remove('managed-stage');
+    }
+    const deleteBtn = stageItem.querySelector('.stage-controls .btn-danger');
+    if (deleteBtn) {
+        deleteBtn.disabled = managed;
+        deleteBtn.classList.toggle('hidden', managed);
+    }
+    const dragHandle = stageItem.querySelector('.workspace-drag-handle');
+    if (dragHandle) {
+        dragHandle.classList.toggle('managed-drag-disabled', managed);
+    }
+    const saveResultsBtn = document.getElementById(`${stageId}_saveResultsToggle`);
+    if (saveResultsBtn) {
+        if (managed) {
+            saveResultsBtn.dataset.state = 'on';
+            saveResultsBtn.dataset.managedLock = 'true';
+            saveResultsBtn.disabled = true;
+        } else {
+            delete saveResultsBtn.dataset.managedLock;
+            saveResultsBtn.disabled = false;
+        }
+    }
+    if (typeof syncManagedBracketEditorSaveFlags === 'function') {
+        syncManagedBracketEditorSaveFlags();
+    }
+    syncManagedStageHammerIcon(stageItem, managed);
+}
+
+function enforceManagedStageSandwichRules() {
+    const all = Array.from(pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item') || []);
+    all.forEach((stage, i) => {
+        if (stage.dataset.managed === 'true') return;
+        const prev = all[i - 1];
+        const next = all[i + 1];
+        const sandwiched = prev?.dataset.managed === 'true' && next?.dataset.managed === 'true';
+        const branchBtn = document.getElementById(`${stage.id}_branchToggle`);
+        if (sandwiched) {
+            stage.dataset.forcedBranch = 'true';
+            if (branchBtn) branchBtn.dataset.state = 'on';
+            stage.classList.add('stage-branch');
+        } else if (stage.dataset.forcedBranch === 'true') {
+            delete stage.dataset.forcedBranch;
+        }
+    });
+    updateAllStageHexIds();
+}
+
+function handleManagedStageBranchToggle(stageId) {
+    const stageItem = document.getElementById(stageId);
+    if (!stageItem || stageItem.dataset.forcedBranch !== 'true') return false;
+
+    const lastManaged = getLastManagedStageElement();
+    if (!lastManaged || lastManaged === stageItem) return false;
+
+    if (lastManaged.nextSibling && lastManaged.nextSibling !== stageItem) {
+        pipelineStagesContainer.insertBefore(stageItem, lastManaged.nextSibling);
+    } else if (lastManaged.nextSibling === stageItem) {
+        return true;
+    } else {
+        pipelineStagesContainer.appendChild(stageItem);
+    }
+
+    delete stageItem.dataset.forcedBranch;
+    updatePipelineStages();
+    enforceManagedStageSandwichRules();
+    updateAllStageHexIds();
+    return true;
 }
 
 // Delete pipeline stage
 function deletePipelineStage(stageId) {
     const stageItem = document.getElementById(stageId);
+    if (stageItem && stageItem.dataset.managed === 'true') {
+        showGlassToast('warning', null, 'Managed stages can only be removed from Phasewalker', false, 4000, '<i class="fas fa-lock"></i>');
+        return;
+    }
     if (stageItem) {
         const stageType = stageItem.dataset.stageType;
         stageItem.remove();
@@ -20486,6 +21056,7 @@ function deletePipelineStage(stageId) {
 function movePipelineStageUp(stageId) {
     const stageItem = document.getElementById(stageId);
     if (!stageItem) return;
+    if (stageItem.dataset.managed === 'true') return;
 
     const previousStage = stageItem.previousElementSibling;
     if (previousStage) {
@@ -20495,12 +21066,14 @@ function movePipelineStageUp(stageId) {
         // Update all stage hex IDs
         updateAllStageHexIds();
     }
+    enforceManagedStageSandwichRules();
 }
 
 // Move pipeline stage down
 function movePipelineStageDown(stageId) {
     const stageItem = document.getElementById(stageId);
     if (!stageItem) return;
+    if (stageItem.dataset.managed === 'true') return;
 
     const nextStage = stageItem.nextElementSibling;
     if (nextStage) {
@@ -20510,6 +21083,7 @@ function movePipelineStageDown(stageId) {
         // Update all stage hex IDs
         updateAllStageHexIds();
     }
+    enforceManagedStageSandwichRules();
 }
 
 // Initialize drag and drop functionality for pipeline stage reordering
@@ -20538,6 +21112,10 @@ function initializePipelineStageDragAndDrop() {
 
         const item = e.target.closest('.pipeline-stage-item');
         if (!item) {
+            return;
+        }
+
+        if (item.dataset.managed === 'true') {
             return;
         }
 
@@ -20673,6 +21251,8 @@ function initializePipelineStageDragAndDrop() {
 
         // Update all stage hex IDs
         updateAllStageHexIds();
+
+        enforceManagedStageSandwichRules();
 
         // Reset draggedItem
         draggedItem = null;
@@ -21426,6 +22006,102 @@ function updateManualUpscaleVisibility() {
     }
 }
 
+// Whether a pipeline stage requires output from a prior stage (expand / img2img variation)
+function stageRequiresChaining(stageData) {
+    if (!stageData) return true;
+    if (stageData.type === STAGE_TYPES.EXPAND_CANVAS) return true;
+    return stageData.useBaseImage !== false;
+}
+
+function getSavedPipelinePreviewFilename() {
+    const preview = window.currentManualPreviewImage;
+    if (preview) {
+        return preview.original || preview.filename || preview.base || null;
+    }
+    if (compareSourceImageData?.chainSourceFile) {
+        return compareSourceImageData.chainSourceFile;
+    }
+    return null;
+}
+
+function getSavedPreviewStageIndex() {
+    const resolved = resolvePipelineStageIndexFromMetadata(window.currentManualPreviewImage?.metadata);
+    if (resolved !== null) return resolved;
+    const seeds = window.lastGenerationStageSeeds;
+    if (seeds?.length) {
+        return seeds.length;
+    }
+    return null;
+}
+
+function canUseSavedStageData(targetStageIndex) {
+    if (targetStageIndex <= 0) return false;
+    const stages = getPipelineStages();
+    const targetData = stages[targetStageIndex - 1];
+    if (!targetData || !stageRequiresChaining(targetData)) return false;
+
+    const priorIndex = targetStageIndex - 1;
+    const previewStage = getSavedPreviewStageIndex();
+    const seedsLen = window.lastGenerationStageSeeds?.length || 0;
+    const filename = getSavedPipelinePreviewFilename();
+
+    if (!filename) return false;
+    if (previewStage !== null && previewStage >= priorIndex) return true;
+    if (seedsLen >= priorIndex) return true;
+    return false;
+}
+
+function estimateTargetedStageCount(targetStageIndex) {
+    if (targetStageIndex === 0) return 1;
+    const stages = getPipelineStages();
+    const targetData = stages[targetStageIndex - 1];
+    if (!targetData) return targetStageIndex + 1;
+    if (!stageRequiresChaining(targetData)) return 1;
+    if (canUseSavedStageData(targetStageIndex)) {
+        const previewStage = getSavedPreviewStageIndex();
+        const priorIdx = targetStageIndex - 1;
+        if (previewStage !== null && previewStage < priorIdx) {
+            return priorIdx - previewStage + 1;
+        }
+        return 1;
+    }
+    return targetStageIndex + 1;
+}
+
+function getPipelineStageMenuLabel(stageIndex) {
+    if (stageIndex === 0) {
+        return { text: 'Stage 0 — Base', hex: '00', icon: 'nai-sparkles' };
+    }
+    const stageItems = pipelineStagesContainer?.querySelectorAll('.pipeline-stage-item');
+    const stageItem = stageItems?.[stageIndex - 1];
+    if (!stageItem) {
+        return { text: `Stage ${stageIndex}`, hex: '??', icon: 'fas fa-layer-group' };
+    }
+    const hexEl = stageItem.querySelector('.stage-hex-id');
+    const hex = hexEl?.textContent?.trim() || calculateStageHexId(stageItem);
+    const customName = getPipelineStageDisplayName(stageItem);
+    let typeName = customName || 'Stage';
+    if (!customName) {
+        const typeLabel = document.getElementById(`${stageItem.id}_typeLabel`);
+        if (typeLabel) {
+            const clone = typeLabel.cloneNode(true);
+            clone.querySelector('.stage-hex-id')?.remove();
+            clone.querySelector('.stage-managed-hammer')?.remove();
+            clone.querySelector('.stage-name-editable')?.remove();
+            typeName = clone.textContent.replace(/\s+/g, ' ').trim() || 'Stage';
+        }
+    }
+    let icon = 'ri-image-ai-fill';
+    const stageType = stageItem.dataset.stageType;
+    if (stageType === STAGE_TYPES.EXPAND_CANVAS) {
+        icon = 'mdi mdi-1-25 mdi-relative-scale';
+    } else if (stageType === STAGE_TYPES.VARIATION) {
+        const useBaseBtn = document.getElementById(`${stageItem.id}_useBaseImageToggle`);
+        icon = useBaseBtn?.dataset.state === 'on' ? 'fas fa-diagram-venn' : 'ri-image-ai-fill';
+    }
+    return { text: `Stage ${stageIndex} — ${typeName}`, hex, icon };
+}
+
 // Get pipeline stages data
 function getPipelineStages() {
     const stages = [];
@@ -21503,6 +22179,7 @@ function loadPipelineStages(stagesArray, stageSeeds = null) {
 
     // Update button states after loading all stages
     updateStageButtonStates();
+    enforceManagedStageSandwichRules();
 }
 
 // Update existing stages with seeds from stage_seeds array
@@ -21598,6 +22275,9 @@ function renderExpandCanvasStage(stageId) {
                                 <div id="${stageId}_resolutionDropdownMenu" class="custom-dropdown-menu hidden"></div>
                             </div>
                             <input type="hidden" id="${stageId}_resolution" value="">
+                            <button type="button" id="${stageId}_insetToggle" class="btn-secondary btn-small toggle-btn hidden" data-state="on" title="Inset source when output is larger">
+                                <i class="fas fa-border-none"></i>
+                            </button>
                             <div id="${stageId}_customResolution" class="custom-resolution-inputs hidden">
                                 <button type="button" id="${stageId}_customResolutionBtn" class="btn-secondary toggle-btn" data-state="off" title="Custom Resolution">
                                     <i class="fas fa-ruler-combined"></i>
@@ -21869,6 +22549,13 @@ function setupExpandCanvasStageEvents(stageId) {
 
     // Setup advanced controls (shared function)
     setupStageAdvancedControls(stageId);
+
+    const insetToggle = document.getElementById(`${stageId}_insetToggle`);
+    if (insetToggle) {
+        insetToggle.addEventListener('click', () => {
+            insetToggle.dataset.state = insetToggle.dataset.state === 'on' ? 'off' : 'on';
+        });
+    }
 
     updateExpandCanvasStageInsetToggle(stageId);
 }
@@ -22865,17 +23552,7 @@ function setupEnhanceStageEvents(stageId, initialUseBaseImage = true) {
             const newState = useBaseImageToggle.dataset.state === 'on' ? 'off' : 'on';
             useBaseImageToggle.dataset.state = newState;
 
-            // Update header name and icon
-            const typeLabel = document.getElementById(`${stageId}_typeLabel`);
-            if (typeLabel) {
-                const hexIdSpan = typeLabel.querySelector('.stage-hex-id');
-                const hexIdHtml = hexIdSpan ? hexIdSpan.outerHTML : '';
-                if (newState === 'on') {
-                    typeLabel.innerHTML = `<i class="fas fa-diagram-venn"></i> Enhance ${hexIdHtml}`;
-                } else {
-                    typeLabel.innerHTML = `<i class="ri-image-ai-fill"></i> Variation ${hexIdHtml}`;
-                }
-            }
+            refreshPipelineStageTypeLabel(stageId);
 
             if (newState === 'on') switchToEnhance(); else switchToStageResolution();
         });
@@ -23306,8 +23983,12 @@ function updateExpandCanvasStageInsetToggle(stageId) {
     }
 
     const applicable = bw > 0 && bh > 0 && tw > 0 && th > 0 && tw > bw && th > bh;
+    const wasHidden = insetBtn.classList.contains('hidden');
     if (applicable) {
         insetBtn.classList.remove('hidden');
+        if (wasHidden) {
+            insetBtn.dataset.state = 'on';
+        }
     } else {
         insetBtn.classList.add('hidden');
         insetBtn.dataset.state = 'off';
@@ -24343,6 +25024,7 @@ function getExpandCanvasStageData(stageId) {
     }
 
     const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+    const stageItem = document.getElementById(stageId);
 
     const data = {
         type: STAGE_TYPES.EXPAND_CANVAS,
@@ -24352,10 +25034,19 @@ function getExpandCanvasStageData(stageId) {
         upscale: upscaleToggle?.dataset.state === 'on',
         stopAtStage: stopToggle?.dataset.state === 'on',
         lockPrompt: lockPromptToggle?.dataset.state === 'on',
-        inset: insetToggle?.dataset.state === 'on',
+        inset: insetToggle?.dataset.state !== 'off',
         backgroundFocus: backgroundFocus,
         branch: branchToggle?.dataset.state === 'on'
     };
+
+    if (stageItem?.dataset.managed === 'true') {
+        data.managed = true;
+    }
+
+    const phaseStepName = getPipelineStageDisplayName(stageItem);
+    if (phaseStepName) {
+        data.displayName = phaseStepName;
+    }
 
     // Save custom resolution dimensions if resolution is custom
     if (resolutionValue === 'custom') {
@@ -24423,6 +25114,7 @@ function getEnhanceStageData(stageId) {
     const resInput = document.getElementById(`${stageId}_resolution`);
 
     const branchToggle = document.getElementById(`${stageId}_branchToggle`);
+    const stageItem = document.getElementById(stageId);
 
     const useBaseImage = useBaseToggle?.dataset.state === 'on';
 
@@ -24435,6 +25127,15 @@ function getEnhanceStageData(stageId) {
         lockPrompt: lockPromptToggle?.dataset.state === 'on',
         branch: branchToggle?.dataset.state === 'on'
     };
+
+    if (stageItem?.dataset.managed === 'true') {
+        data.managed = true;
+    }
+
+    const phaseStepName = getPipelineStageDisplayName(stageItem);
+    if (phaseStepName) {
+        data.displayName = phaseStepName;
+    }
 
     if (useBaseImage) {
         // Get values - check if using magnitude preset or custom values
@@ -24510,6 +25211,10 @@ function getEnhanceStageData(stageId) {
 function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
     if (!stageData) return;
 
+    if (stageData.displayName) {
+        setPipelineStageDisplayName(stageId, stageData.displayName);
+    }
+
     // Load basic data
     if (stageData.resolution) {
         // Handle custom resolution
@@ -24570,6 +25275,11 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
         const insetToggle = document.getElementById(`${stageId}_insetToggle`);
         if (insetToggle) {
             insetToggle.dataset.state = stageData.inset ? 'on' : 'off';
+        }
+    } else {
+        const insetToggle = document.getElementById(`${stageId}_insetToggle`);
+        if (insetToggle) {
+            insetToggle.dataset.state = 'on';
         }
     }
 
@@ -24785,11 +25495,19 @@ function loadExpandCanvasStageData(stageId, stageData, stageSeed = null) {
     }
 
     updateExpandCanvasStageInsetToggle(stageId);
+
+    if (stageData.managed) {
+        applyManagedPipelineStageUi(stageId, true);
+    }
 }
 
 // Load enhance stage data
 function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
     if (!stageData) return;
+
+    if (stageData.displayName) {
+        setPipelineStageDisplayName(stageId, stageData.displayName);
+    }
 
     // Setup toggle state (default true for legacy enhance, respect useBaseImage for variation)
     const useBaseToggle = document.getElementById(`${stageId}_useBaseImageToggle`);
@@ -25083,6 +25801,10 @@ function loadEnhanceStageData(stageId, stageData, stageSeed = null) {
     // Initialize inherited states
     updateStageDropdownInheritedState(stageId);
     updateStageResetButtonVisibility(stageId);
+
+    if (stageData.managed) {
+        applyManagedPipelineStageUi(stageId, true);
+    }
 }
 
 // Helper function to get bias name (for 5-position system, orientation-agnostic)
@@ -25253,6 +25975,51 @@ function createGenerateButtonPopover(counter) {
         <div class="popover-arrow"></div>
     `;
     return popover;
+}
+
+function getThemeSwitchOverlay() {
+    let overlay = document.getElementById('theme-switch-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'theme-switch-overlay';
+        document.body.appendChild(overlay);
+    }
+    return overlay;
+}
+
+const themeSwitchOverlayEnabled = false;
+
+function runWithThemeSwitchOverlay(applyFn) {
+    if (!themeSwitchOverlayEnabled) {
+        applyFn();
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+        const overlay = getThemeSwitchOverlay();
+        overlay.classList.add('active');
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                applyFn();
+                overlay.classList.remove('active');
+                resolve();
+            });
+        });
+    });
+}
+
+function switchTheme() {
+    return runWithThemeSwitchOverlay(() => {
+        const isBlurDisabled = document.documentElement.classList.contains('disable-blur');
+        if (isBlurDisabled) {
+            document.documentElement.classList.remove('disable-blur');
+            saveBlurPreference(false);
+        } else {
+            document.documentElement.classList.add('disable-blur');
+            saveBlurPreference(true);
+        }
+    });
 }
 
 function saveBlurPreference(disabled) {
@@ -26608,13 +27375,19 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-notebook',
-                        text: 'Notebook',
+                        text: 'Notion',
                         action: 'open-notebook'
                     },
                     {
                         icon: 'fa-regular fa-books',
-                        text: 'Encyclopedia',
+                        text: 'Grimoire',
                         action: 'open-encyclopedia',
+                        hideOnBreakpoint: "small-mobile"
+                    },
+                    {
+                        icon: 'fa-regular fa-flask',
+                        text: 'Atelier',
+                        action: 'open-naxt',
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
@@ -27022,6 +27795,17 @@ function setupMainMenuContextMenus() {
                 }
                 break;
 
+            case 'open-naxt':
+                if (window.naxtApplet) {
+                    window.naxtApplet.open();
+                } else {
+                    const naxtModalEl = document.getElementById('naxtModal');
+                    if (naxtModalEl) {
+                        openModal(naxtModalEl);
+                    }
+                }
+                break;
+
             case 'open-chat':
                 // Open chat modal directly
                 window.chatSystem.showAllChats();
@@ -27078,6 +27862,14 @@ function setupMainMenuContextMenus() {
                 compileAllTendaiReplacements();
                 break;
 
+            case 'deleteManagedPhases':
+                // deleteAllManagedBracketArtifacts: public/scripts/comp/bracketGenerationApplet.js
+                if (typeof deleteAllManagedBracketArtifacts === 'function') {
+                    deleteAllManagedBracketArtifacts();
+                    showGlassToast('success', null, 'Removed managed stages from editor', false, 3000, '<i class="fas fa-trash-alt"></i>');
+                }
+                break;
+
             case 'text-replacement-manager':
                 // Open Genso manager modal directly
                 showTextReplacementManager();
@@ -27110,17 +27902,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'toggle-glass':
-                // Toggle blur effect directly            
-                const isBlurDisabled = document.documentElement.classList.contains('disable-blur');
-                if (isBlurDisabled) {
-                    // Enable blur effects
-                    document.documentElement.classList.remove('disable-blur');
-                    saveBlurPreference(false);
-                } else {
-                    // Disable blur effects
-                    document.documentElement.classList.add('disable-blur');
-                    saveBlurPreference(true);
-                }
+                await switchTheme();
                 break;
 
             case 'lock-app':
@@ -28110,7 +28892,7 @@ if (window.wsClient) {
         updateDatasetDisplay();
         updateSubTogglesButtonState();
         renderUcPresetsDropdown();
-        selectUcPreset(0);
+        selectUcPreset(3);
         setupUcDropdownContextMenu();
         setupDatasetDropdownContextMenu();
 

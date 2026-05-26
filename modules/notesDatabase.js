@@ -3,15 +3,7 @@ const path = require('path');
 const logger = require('./logger');
 const SQLiteAsyncWrapper = require('./sqliteAsyncWrapper');
 
-// Database file path
-const dbPath = path.join(__dirname, '..', '.cache', 'notes.db');
-
-// Ensure cache directory exists
-const cacheDir = path.dirname(dbPath);
-if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-}
-
+let dbPath = null;
 let db = null;
 
 /**
@@ -24,9 +16,13 @@ function getCheckpointManager() {
 /**
  * Initialize the SQLite database for Notes system
  */
-async function initializeNotesDatabase() {
+async function initializeNotesDatabase(databasesPath) {
     try {
-        // Initialize async wrapper (checkpoint manager is automatically connected)
+        dbPath = path.join(databasesPath, 'notes.db');
+        const cacheDir = path.dirname(dbPath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
         db = new SQLiteAsyncWrapper(dbPath, 'notes', 30); // 30 minute idle timeout
         
         // Initialize database (opens connection and creates tables)

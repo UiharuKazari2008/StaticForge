@@ -1291,6 +1291,9 @@ function adjustDatasetBias(dataset, delta, datasetConfig) {
     
     // Update dataset display to ensure dropdown stays in sync
     updateDatasetDisplay();
+    if (typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
+    }
 }
 
 /**
@@ -1730,6 +1733,16 @@ function selectUcPreset(value) {
 
     // Update UC textarea placeholder
     updateUcTextareaPlaceholder();
+
+    // autoResizeTextarea: public/scripts/comp/utilities.js
+    const ucInput = document.getElementById('manualUc');
+    if (ucInput && typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(ucInput);
+        const manualPromptNegative = document.getElementById('manualPromptNegative');
+        if (manualPromptNegative) {
+            autoResizeTextarea(manualPromptNegative);
+        }
+    }
 }
 
 /**
@@ -1887,7 +1900,8 @@ function addUcPresetContents() {
 
     // Add preset value to start of UC with ", " separator if there's existing content
     const newUc = currentUc ? `${presetValue}, ${currentUc}` : presetValue;
-    ucInput.value = newUc;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(ucInput, newUc);
 
     // Trigger input event to update token count, auto-resize, and other updates
     const inputEvent = new Event('input', { bubbles: true, cancelable: true });
@@ -2180,7 +2194,8 @@ function addQualityPresetContents() {
 
     // Add quality text to start of prompt with ", " separator if there's existing content
     const newPrompt = currentPrompt ? `${currentPrompt}, ${qualityText}` : qualityText;
-    promptInput.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(promptInput, newPrompt);
 
     // Trigger input event to update token count, auto-resize, and other updates
     const inputEvent = new Event('input', { bubbles: true, cancelable: true });
@@ -2211,49 +2226,6 @@ function addQualityPresetContents() {
     // Show success message
     const biasText = qualityPresetBias !== 1.0 ? ` with ${qualityPresetBias}x emphasis` : '';
     showGlassToast('success', null, `Added quality preset to prompt${biasText}`, false, 2000, '<i class="fas fa-check"></i>');
-}
-
-/**
- * Get the quality preset text that would be prepended to the prompt for token counting.
- * Used by token analyzer so counts reflect the effective prompt sent to the API.
- * @returns {string} Preset text or '' if none
- */
-function getEffectivePromptPrefixForTokenCount() {
-    if (!appendQuality) return '';
-    const currentModel = manualSelectedModel;
-    if (!currentModel || !window.optionsData || !window.optionsData.quality_presets) return '';
-    const modelKey = currentModel.toLowerCase();
-    const qualityPresets = window.optionsData.quality_presets[modelKey];
-    if (!qualityPresets || (!Array.isArray(qualityPresets) && typeof qualityPresets !== 'string')) return '';
-    let qualityText = '';
-    if (Array.isArray(qualityPresets)) {
-        const firstPreset = qualityPresets[0];
-        if (typeof firstPreset === 'string') qualityText = firstPreset;
-        else if (firstPreset && firstPreset.value) qualityText = firstPreset.value;
-        else qualityText = firstPreset;
-    } else {
-        qualityText = qualityPresets;
-    }
-    if (qualityPresetBias !== 1.0 && typeof applyBiasToText === 'function') {
-        qualityText = applyBiasToText(qualityText, qualityPresetBias);
-    }
-    return qualityText ? `${qualityText}, ` : '';
-}
-
-/**
- * Get the UC preset text that would be prepended to the UC for token counting.
- * Used by token analyzer so counts reflect the effective UC sent to the API.
- * @returns {string} Preset text with trailing ", " or '' if none
- */
-function getEffectiveUcPrefixForTokenCount() {
-    if (selectedUcPreset === 0) return '';
-    const currentModel = manualSelectedModel;
-    if (!currentModel || !window.optionsData || !window.optionsData.uc_presets) return '';
-    const modelKey = currentModel.toLowerCase();
-    const ucPresets = window.optionsData.uc_presets[modelKey];
-    if (!ucPresets || !Array.isArray(ucPresets)) return '';
-    const presetValue = ucPresets[selectedUcPreset - 1];
-    return presetValue ? `${presetValue}, ` : '';
 }
 
 /**
@@ -2442,6 +2414,9 @@ function adjustNsfwBias(delta) {
 
     // Update dropdown display
     updateNsfwButtonDisplay();
+    if (typeof refreshTokenBarCounts === 'function') {
+        refreshTokenBarCounts();
+    }
 }
 
 /**

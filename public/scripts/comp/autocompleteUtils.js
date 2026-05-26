@@ -123,13 +123,21 @@ let serviceStatuses = new Map(); // Store status per service (stalled/completed/
 
 // Global handler for ack-less search responses
 window.handleSearchResponse = function (message) {
+    if (!autofillSessionId) {
+        return;
+    }
     if (currentSearchRequestId && shouldAbortAutocompleteSearchSession()) {
         abortAutocompleteSearchSession();
         return;
     }
 
+    const responseRequestId = message.requestId || null;
+
     if (message.type === 'search_characters_response') {
         if (!currentSearchRequestId) {
+            return;
+        }
+        if (!acknowledgeAutofillSessionPacket(responseRequestId)) {
             return;
         }
 
@@ -149,12 +157,15 @@ window.handleSearchResponse = function (message) {
         currentModel = searchModelMapping[currentModel] || currentModel;
         searchServices.set(currentModel, 'stalled');
 
-        if (currentCharacterAutocompleteTarget) {
+        if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
             updateAutocompleteDisplay([], currentCharacterAutocompleteTarget);
             updateSearchStatusDisplay();
         }
     } else if (message.type === 'search_characters_complete') {
         if (!currentSearchRequestId) {
+            return;
+        }
+        if (!acknowledgeAutofillSessionPacket(responseRequestId)) {
             return;
         }
 
@@ -222,7 +233,7 @@ window.handleSearchResponse = function (message) {
             // Spellcheck is now handled by the primary WebSocket search system
 
             updateSearchStatusDisplay();
-            if (currentCharacterAutocompleteTarget) {
+            if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
                 rebuildAndDisplayResults();
             }
         }
@@ -244,6 +255,10 @@ window.handleSearchResponse = function (message) {
         const requestId = message.requestId;
         const isCurrentRequest = requestId ? requestId === currentSearchRequestId : (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp);
         if (isCurrentRequest) {
+            if (!acknowledgeAutofillSessionPacket(requestId)) {
+                return;
+            }
+            currentSearchTimestamp = messageTimestamp;
             // Store results for this service in both Maps for compatibility
             serviceResults.set(serviceName, results);
             searchResultsByService.set(serviceName, results);
@@ -271,7 +286,7 @@ window.handleSearchResponse = function (message) {
 
             // Update display with current results
             updateSearchStatusDisplay();
-            if (currentCharacterAutocompleteTarget) {
+            if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
                 rebuildAndDisplayResults();
             }
         }
@@ -286,6 +301,9 @@ window.handleSearchResponse = function (message) {
 
         // Only process if this is from the latest search
         if (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp) {
+            if (!autofillSessionPacketRequestId) {
+                return;
+            }
             services.forEach(service => {
                 const serviceName = service.name;
                 const status = service.status;
@@ -325,6 +343,142 @@ let lastSearchQuery = '';
 // Track whether services have been initialized for the current autofill session
 let servicesInitialized = false;
 
+// Strict autofill session: overlay may only show while session is active and a server packet has arrived.
+let autofillSessionId = null;
+let autofillSessionTarget = null;
+let autofillSessionPacketRequestId = null;
+let autofillLastCaretPos = -1;
+let autofillLastCaretTime = 0;
+let autofillCaretFastUntil = 0;
+const AUTOFILL_CARET_SPEED_CHARS_PER_MS = 0.45;
+const AUTOFILL_CARET_FAST_COOLDOWN_MS = 320;
+
+function isCaretMovingTooFastForAutofill() {
+    return Date.now() < autofillCaretFastUntil;
+}
+
+function trackAutofillCaretMotion(target) {
+    if (!target || typeof target.selectionStart !== 'number') return;
+    const pos = target.selectionStart;
+    const now = Date.now();
+    if (autofillLastCaretTime > 0 && autofillLastCaretPos >= 0) {
+        const dt = now - autofillLastCaretTime;
+        if (dt > 0 && dt < 220) {
+            const speed = Math.abs(pos - autofillLastCaretPos) / dt;
+            if (speed >= AUTOFILL_CARET_SPEED_CHARS_PER_MS) {
+                autofillCaretFastUntil = now + AUTOFILL_CARET_FAST_COOLDOWN_MS;
+            }
+        }
+    }
+    autofillLastCaretPos = pos;
+    autofillLastCaretTime = now;
+}
+
+function hasActiveAutofillSessionForTarget(target) {
+    if (!autofillSessionId || !target || autofillSessionTarget !== target) return false;
+    if (!currentCharacterAutocompleteTarget || currentCharacterAutocompleteTarget !== target) return false;
+    if (document.activeElement !== target) return false;
+    if (shouldAbortAutocompleteSearchSession()) return false;
+    return true;
+}
+
+function ensureAutofillSession(target, explicit) {
+    if (!target || !autofillEnabled) return false;
+    if (document.activeElement !== target) return false;
+    if (isCaretMovingTooFastForAutofill() && !explicit) return false;
+
+    if (!autofillSessionId || autofillSessionTarget !== target) {
+        autofillSessionId = 'af_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        autofillSessionPacketRequestId = null;
+    }
+
+    autofillSessionTarget = target;
+    currentSearchSessionBounds = getAutocompleteSearchBounds(target);
+    return !!currentSearchSessionBounds;
+}
+
+function acknowledgeAutofillSessionPacket(requestId) {
+    if (!autofillSessionId || !currentSearchRequestId) return false;
+    if (requestId && requestId !== currentSearchRequestId) return false;
+    if (!currentCharacterAutocompleteTarget) return false;
+
+    autofillSessionPacketRequestId = currentSearchRequestId;
+    return true;
+}
+
+function canShowAutofillOverlay(target) {
+    if (!hasActiveAutofillSessionForTarget(target)) return false;
+    if (!currentSearchRequestId || autofillSessionPacketRequestId !== currentSearchRequestId) return false;
+    return true;
+}
+
+function clearAutofillSessionState() {
+    autofillSessionId = null;
+    autofillSessionTarget = null;
+    autofillSessionPacketRequestId = null;
+}
+
+function showAutofillLoadingShell(target) {
+    if (!characterAutocompleteOverlay || !hasActiveAutofillSessionForTarget(target)) return;
+
+    const rect = target.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 5;
+    const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
+
+    characterAutocompleteOverlay.style.left = rect.left + 'px';
+    characterAutocompleteOverlay.style.top = (rect.bottom + 5) + 'px';
+    characterAutocompleteOverlay.style.width = rect.width + 'px';
+    characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
+    characterAutocompleteOverlay.classList.remove('hidden');
+    isAutocompleteVisible = true;
+}
+
+function shouldDismissAutofillFromClick(event) {
+    if (!event || !event.target) return true;
+    const target = event.target;
+    if (characterAutocompleteOverlay && characterAutocompleteOverlay.contains(target)) {
+        return false;
+    }
+    if (target.type === 'textarea' &&
+        (target.classList.contains('prompt-textarea') || target.classList.contains('character-prompt-textarea'))) {
+        return false;
+    }
+    if (target.closest && target.closest('#characterAutocompleteOverlay')) {
+        return false;
+    }
+    return true;
+}
+
+window.shouldDismissAutofillFromClick = shouldDismissAutofillFromClick;
+
+function onAutofillSearchRequestStarted(requestId) {
+    autofillSessionPacketRequestId = null;
+}
+
+function handleAutofillSelectionChange() {
+    const target = document.activeElement;
+    if (!target || target.type !== 'textarea') return;
+    if (!target.classList.contains('prompt-textarea') && !target.classList.contains('character-prompt-textarea')) {
+        return;
+    }
+
+    trackAutofillCaretMotion(target);
+
+    // Don't abort overlay while keyboard-navigating spell-check or autocomplete results.
+    if (spellCheckNavigationMode || autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+        return;
+    }
+
+    if (autofillSessionId && autofillSessionTarget === target) {
+        if (shouldAbortAutocompleteSearchSession()) {
+            hideCharacterAutocomplete();
+        }
+    }
+}
+
+document.addEventListener('selectionchange', handleAutofillSelectionChange);
+document.addEventListener('beforeinput', handleCharacterAutocompleteBeforeinput, true);
+
 function getAutocompleteSearchBounds(target) {
     if (!target || typeof target.value !== 'string') return null;
     if (typeof target.selectionStart !== 'number') return null;
@@ -345,28 +499,16 @@ function getAutocompleteSearchBounds(target) {
         };
     }
 
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('.')
-    );
-
-    const tokenStart = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const tokenStart = findAutocompleteTermStart(textBeforeCursor);
     const textAfterCursor = value.substring(safeCursor);
-    const nextDelimiterOffset = textAfterCursor.search(/[{}\[\]:|,.]/);
-    const tokenEnd = nextDelimiterOffset >= 0 ? safeCursor + nextDelimiterOffset : value.length;
+    const tokenEnd = findAutocompleteTermEnd(value, safeCursor);
     let query = value.substring(tokenStart, safeCursor).trim();
 
     if (query.startsWith('<')) {
         // Keep < for replacement lookups.
     } else {
         const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
-        if (lastLessThanIndex > lastDelimiterIndex) {
+        if (lastLessThanIndex > tokenStart) {
             query = value.substring(lastLessThanIndex, safeCursor).trim();
         }
     }
@@ -697,7 +839,11 @@ async function enhanceTagResults(tags, query) {
 // Handle search status updates from WebSocket
 function handleSearchStatusUpdate(message) {
     if (!message.services || !Array.isArray(message.services)) return;
+    if (!autofillSessionId) return;
     if (!currentSearchRequestId) {
+        return;
+    }
+    if (!autofillSessionPacketRequestId) {
         return;
     }
 
@@ -713,11 +859,15 @@ function handleSearchStatusUpdate(message) {
 // Handle search results updates from WebSocket
 function handleSearchResultsUpdate(message) {
     if (!message.service) return;
+    if (!autofillSessionId) return;
 
     const requestId = message.requestId;
     if (requestId) {
         if (requestId !== currentSearchRequestId) return;
     } else if (!currentCharacterAutocompleteTarget || !currentSearchRequestId) {
+        return;
+    }
+    if (!acknowledgeAutofillSessionPacket(requestId)) {
         return;
     }
 
@@ -768,10 +918,15 @@ function handleSearchResultsUpdate(message) {
 
 // Handle search completion
 function handleSearchResultsComplete(message) {
+    if (!autofillSessionId) return;
+
     const requestId = message.requestId;
     if (requestId) {
         if (requestId !== currentSearchRequestId) return;
     } else if (!currentCharacterAutocompleteTarget || !currentSearchRequestId) {
+        return;
+    }
+    if (!acknowledgeAutofillSessionPacket(requestId)) {
         return;
     }
 
@@ -840,6 +995,12 @@ function getNormalizedTagCount(tag) {
 // Rebuild and display all results in proper order
 async function rebuildAndDisplayResults() {
     if (!currentCharacterAutocompleteTarget) {
+        return;
+    }
+    if (!hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
+        return;
+    }
+    if (!autofillSessionPacketRequestId || autofillSessionPacketRequestId !== currentSearchRequestId) {
         return;
     }
 
@@ -1352,20 +1513,51 @@ function handleCharacterAutocompleteInput(e) {
         return;
     }
 
+    const target = e.target;
+    if (!target || document.activeElement !== target) {
+        return;
+    }
 
-    // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
+    trackAutofillCaretMotion(target);
+
+    if (isCaretMovingTooFastForAutofill()) {
+        return;
+    }
+
+    if (autofillSessionId && autofillSessionTarget === target && shouldAbortAutocompleteSearchSession()) {
+        hideCharacterAutocomplete();
+        return;
+    }
+
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
     if (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0) {
         // Only clear navigation mode if user is typing (not just moving cursor)
         if (e.inputType && e.inputType !== 'insertText') {
             autocompleteNavigationMode = false;
-        } else {
-            // If user is typing, allow the search to continue but don't clear navigation mode
-            // This allows real-time updates while keeping navigation state
         }
     }
 
-    const target = e.target;
+    // Spell-check keyboard nav uses the same overlay but separate state — treat Enter/newline like autocomplete.
+    if (isCharacterAutocompleteOverlayOpen() && isAutofillKeyboardNavActive()) {
+        if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') {
+            const pos = target.selectionStart;
+            const value = target.value;
+            if (pos > 0) {
+                const ch = value.charAt(pos - 1);
+                if (ch === '\n' || ch === '\r') {
+                    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+                    setTextareaValuePreservingUndo(target, value.slice(0, pos - 1) + value.slice(pos));
+                    target.setSelectionRange(pos - 1, pos - 1);
+                }
+            }
+            applyActiveAutofillEnterSelection(target);
+            return;
+        }
+        if (e.inputType && e.inputType !== 'insertText') {
+            // Keep spell-check navigation alive for the same input types autocomplete tolerates.
+        }
+    }
+
     const value = target.value;
     const cursorPosition = target.selectionStart;
 
@@ -1423,20 +1615,7 @@ function handleCharacterAutocompleteInput(e) {
         return;
     }
 
-    // Find the last delimiter (:, |, ,, .) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('.'));
-
-    let searchText = lastDelimiterIndex >= 0 ?
-        textBeforeCursor.substring(lastDelimiterIndex + 1).trim() :
-        textBeforeCursor.trim();
+    let searchText = textBeforeCursor.substring(findAutocompleteTermStart(textBeforeCursor)).trim();
 
     // Limit search to last 8 words
     const searchWords = searchText.split(/\s+/).filter(function (w) { return w.length > 0; });
@@ -1452,7 +1631,7 @@ function handleCharacterAutocompleteInput(e) {
     } else {
         // Check if there's a < character before the cursor that should be included
         const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
-        if (lastLessThanIndex > lastDelimiterIndex) {
+        if (lastLessThanIndex > findAutocompleteTermStart(textBeforeCursor)) {
             // There's a < after the last delimiter, include it in the search
             searchText = textBeforeCursor.substring(lastLessThanIndex).trim();
         }
@@ -1567,7 +1746,7 @@ function triggerCharacterAutofillSearchAtCaret(target, forceRefresh) {
         hideCharacterAutocomplete();
         return;
     }
-    searchCharacters(searchText, target, forceRefresh);
+    searchCharacters(searchText, target, forceRefresh, { explicit: true });
 }
 
 function getWikiSearchTermFromAutocompleteItem(selectedItem) {
@@ -1668,9 +1847,11 @@ function injectAutocompleteSuggestionAtCursor(target, insertText) {
     if (spaceBefore) {
         const before = value.substring(0, cursor).replace(/\s+$/, '');
         const after = value.substring(cursor);
-        const newVal = before + ', ' + insertText + after;
-        const newCursor = before.length + 2 + insertText.length;
-        target.value = newVal;
+        const insertion = ', ' + insertText;
+        const replaceStart = before.length;
+        // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+        replaceTextareaRangePreservingUndo(target, replaceStart, cursor, insertion);
+        const newCursor = replaceStart + insertion.length;
         target.setSelectionRange(newCursor, newCursor);
     } else {
         const bounds = getAutocompleteSearchBounds(target);
@@ -1707,14 +1888,113 @@ function injectAutocompleteSuggestionAtCursor(target, insertText) {
                 replaceStart--;
             }
         }
-        const newVal = value.substring(0, replaceStart) + insertText + value.substring(cursor);
+        // replaceTextareaRangePreservingUndo: public/scripts/comp/textareaUtils.js
+        replaceTextareaRangePreservingUndo(target, replaceStart, cursor, insertText);
         const newCursor = replaceStart + insertText.length;
-        target.value = newVal;
         target.setSelectionRange(newCursor, newCursor);
     }
 
     autoResizeTextarea(target);
     updateEmphasisHighlighting(target);
+}
+
+function isAutocompleteEnterKey(e) {
+    return e.key === 'Enter' || e.keyCode === 13 || e.code === 'Enter' || e.code === 'NumpadEnter';
+}
+
+function isAutofillKeyboardNavActive() {
+    return spellCheckNavigationMode || selectedCharacterAutocompleteIndex >= 0;
+}
+
+function getSelectedSpellCheckSuggestionButton() {
+    if (!spellCheckNavigationMode) return null;
+
+    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (!spellCheckSection) return null;
+
+    const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
+    if (!wordSections || selectedSpellCheckWordIndex < 0 || selectedSpellCheckWordIndex >= wordSections.length) {
+        return null;
+    }
+
+    const currentWordSection = wordSections[selectedSpellCheckWordIndex];
+    const suggestionBtns = currentWordSection.querySelectorAll('.suggestion-btn');
+    if (!suggestionBtns || selectedSpellCheckSuggestionIndex < 0 || selectedSpellCheckSuggestionIndex >= suggestionBtns.length) {
+        return null;
+    }
+
+    return suggestionBtns[selectedSpellCheckSuggestionIndex];
+}
+
+function tryApplySelectedSpellCheckSuggestion(target) {
+    const selectedBtn = getSelectedSpellCheckSuggestionButton();
+    if (!selectedBtn || !target) return false;
+    return applySpellCorrection(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion);
+}
+
+function tryApplySelectedAutocompleteItem() {
+    if (selectedCharacterAutocompleteIndex < 0) return false;
+
+    const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+    const selectedItem = items[selectedCharacterAutocompleteIndex];
+    if (!selectedItem) return false;
+
+    const type = selectedItem.dataset.type;
+    if (type === 'character') {
+        const characterData = JSON.parse(selectedItem.dataset.characterData);
+        selectCharacterItem(characterData);
+    } else if (type === 'tag') {
+        selectTag(selectedItem.dataset.tagName, selectedItem.dataset.category);
+    } else if (type === 'textReplacement') {
+        selectTextReplacement(selectedItem.dataset.placeholder);
+    } else if (type === 'dynamicPlaceholder') {
+        selectDynamicPlaceholder(selectedItem.dataset.placeholder);
+    } else {
+        console.error('Unknown item type:', type);
+        return false;
+    }
+    return true;
+}
+
+function applyActiveAutofillEnterSelection(target) {
+    if (!isCharacterAutocompleteOverlayOpen()) return false;
+
+    const actionTarget = target || currentCharacterAutocompleteTarget;
+    if (!actionTarget) return false;
+    if (currentCharacterAutocompleteTarget && actionTarget !== currentCharacterAutocompleteTarget) return false;
+
+    const characterDetailContent = characterAutocompleteList?.querySelector('.character-detail-content');
+    if (characterDetailContent) {
+        handleCharacterDetailEnter();
+        return true;
+    }
+
+    // Spell-check and autocomplete share Enter — use the same active nav flag the arrow keys set.
+    if (spellCheckNavigationMode) {
+        if (tryApplySelectedSpellCheckSuggestion(actionTarget)) {
+            return true;
+        }
+    }
+
+    if (selectedCharacterAutocompleteIndex >= 0) {
+        return tryApplySelectedAutocompleteItem();
+    }
+
+    return false;
+}
+
+// Android virtual keyboard may deliver Enter as beforeinput instead of keydown.
+function handleCharacterAutocompleteBeforeinput(e) {
+    if (e.inputType !== 'insertLineBreak' && e.inputType !== 'insertParagraph') return;
+
+    const target = e.target;
+    if (!target || target.type !== 'textarea') return;
+    if (!target.classList.contains('prompt-textarea') && !target.classList.contains('character-prompt-textarea')) return;
+    if (!isCharacterAutocompleteOverlayOpen()) return;
+    if (currentCharacterAutocompleteTarget && target !== currentCharacterAutocompleteTarget) return;
+
+    e.preventDefault();
+    applyActiveAutofillEnterSelection(target);
 }
 
 function handleCharacterAutocompleteKeydown(e) {
@@ -1768,7 +2048,7 @@ function handleCharacterAutocompleteKeydown(e) {
                 handleCharacterDetailArrowKeys(e.key);
                 return;
             }
-            if (e.key === 'Enter') {
+            if (isAutocompleteEnterKey(e)) {
                 e.preventDefault();
                 e.stopPropagation();
                 handleCharacterDetailEnter();
@@ -1783,6 +2063,13 @@ function handleCharacterAutocompleteKeydown(e) {
             return;
         }
 
+        if (isAutocompleteEnterKey(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            applyActiveAutofillEnterSelection(e.target);
+            return;
+        }
+
         const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
         const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
 
@@ -1793,6 +2080,8 @@ function handleCharacterAutocompleteKeydown(e) {
                 // If not in spell check mode but spell check section exists and we haven't entered main list yet, enter spell check first
                 if (!spellCheckNavigationMode && spellCheckSection && selectedCharacterAutocompleteIndex === -1) {
                     spellCheckNavigationMode = true;
+                    autocompleteNavigationMode = true;
+                    userActivelyNavigating = true;
                     selectedSpellCheckWordIndex = 0;
                     selectedSpellCheckSuggestionIndex = 0;
 
@@ -1872,6 +2161,8 @@ function handleCharacterAutocompleteKeydown(e) {
                     // If in main list and at top, check if we should enter spell check
                     if (!spellCheckNavigationMode && selectedCharacterAutocompleteIndex <= 0 && spellCheckSection) {
                         spellCheckNavigationMode = true;
+                        autocompleteNavigationMode = true;
+                        userActivelyNavigating = true;
                         selectedSpellCheckWordIndex = 0;
                         selectedSpellCheckSuggestionIndex = 0;
 
@@ -2191,44 +2482,6 @@ function handleCharacterAutocompleteKeydown(e) {
                     }
                 }
                 break;
-            case 'Enter':
-                e.preventDefault();
-
-                if (spellCheckNavigationMode) {
-                    // Apply selected spell check suggestion
-                    const wordSections = spellCheckSection?.querySelectorAll('.spell-check-word');
-                    if (wordSections && selectedSpellCheckWordIndex >= 0 && selectedSpellCheckWordIndex < wordSections.length) {
-                        const currentWordSection = wordSections[selectedSpellCheckWordIndex];
-                        const suggestionBtns = currentWordSection.querySelectorAll('.suggestion-btn');
-                        if (suggestionBtns && selectedSpellCheckSuggestionIndex >= 0 && selectedSpellCheckSuggestionIndex < suggestionBtns.length) {
-                            const selectedBtn = suggestionBtns[selectedSpellCheckSuggestionIndex];
-                            const originalWord = selectedBtn.dataset.original;
-                            const suggestion = selectedBtn.dataset.suggestion;
-                            applySpellCorrection(currentCharacterAutocompleteTarget, originalWord, suggestion);
-                            return;
-                        }
-                    }
-                    return;
-                }
-
-                // Normal autocomplete selection
-                if (selectedCharacterAutocompleteIndex >= 0) {
-                    const selectedItem = items[selectedCharacterAutocompleteIndex];
-                    if (selectedItem) {
-                        const type = selectedItem.dataset.type;
-                        if (type === 'character') {
-                            const characterData = JSON.parse(selectedItem.dataset.characterData);
-                            selectCharacterItem(characterData);
-                        } else if (type === 'tag') {
-                            selectTag(selectedItem.dataset.tagName, selectedItem.dataset.category);
-                        } else if (type === 'textReplacement') {
-                            selectTextReplacement(selectedItem.dataset.placeholder);
-                        } else if (type === 'dynamicPlaceholder') {
-                            selectDynamicPlaceholder(selectedItem.dataset.placeholder);
-                        }
-                    }
-                }
-                break;
 
             case 'q':
             case 'Q':
@@ -2381,8 +2634,18 @@ function handleCharacterAutocompleteKeydown(e) {
 // Note: performSpellCheck function removed to prevent duplicate requests
 // All spellcheck functionality is now handled by triggerSpellCheck only
 
-async function searchCharacters(query, target, forceRefresh) {
+async function searchCharacters(query, target, forceRefresh, options) {
+    const searchOptions = options || {};
+    const explicitSession = searchOptions.explicit === true;
+
     try {
+        if (!target || document.activeElement !== target) {
+            return;
+        }
+        if (!ensureAutofillSession(target, explicitSession)) {
+            return;
+        }
+
         // Prevent duplicate searches for the same query
         if (!forceRefresh && currentSearchQuery === query && isSearching) {
             console.log(`🔄 Skipping duplicate search for query: "${query}"`);
@@ -2402,6 +2665,8 @@ async function searchCharacters(query, target, forceRefresh) {
         // Generate UUID for this search request
         currentSearchRequestId = 'search_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         const thisSearchRequestId = currentSearchRequestId;
+        currentSearchTimestamp = Date.now();
+        onAutofillSearchRequestStarted(thisSearchRequestId);
 
         // Only clear results if this is a completely new search query
         // But don't clear searchServices - we want to preserve service status
@@ -2457,8 +2722,7 @@ async function searchCharacters(query, target, forceRefresh) {
             servicesInitialized = true;
         }
 
-        // Show autocomplete dropdown immediately with loading state
-        updateAutocompleteDisplay([], target);
+        showAutofillLoadingShell(target);
         updateSearchStatusDisplay();
 
         // Check if query starts with ! - only return text replacements in this case
@@ -2595,7 +2859,7 @@ async function searchCharacters(query, target, forceRefresh) {
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request - spell check results will come via real-time updates
-                    await window.wsClient.searchCharacters(query, manualModel.value);
+                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
                         isSearching = false;
@@ -2635,15 +2899,12 @@ async function searchCharacters(query, target, forceRefresh) {
             abortAutocompleteSearchSession();
             return;
         }
-        if (!shouldApplyAutocompleteUI(target)) {
-            hideCharacterAutocomplete();
-            return;
+        if (hasActiveAutofillSessionForTarget(target) &&
+            autofillSessionPacketRequestId === currentSearchRequestId) {
+            rebuildAndDisplayResults();
         }
 
-        // Rebuild and display all results
-        rebuildAndDisplayResults();
-
-        // Note: Spell check is now handled by realtime updates from the server
+        // Further results arrive via handleSearchResponse / handleSearchResultsUpdate
 
     } catch (error) {
         console.error('Character and tag search error:', error);
@@ -2992,6 +3253,9 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     if (!shouldApplyAutocompleteUI(target)) {
         return;
     }
+    if (!canShowAutofillOverlay(target)) {
+        return;
+    }
 
     currentCharacterAutocompleteTarget = target;
 
@@ -3099,8 +3363,10 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     characterAutocompleteOverlay.style.width = rect.width + 'px';
     characterAutocompleteOverlay.style.maxHeight = maxHeight + 'px';
 
-    characterAutocompleteOverlay.classList.remove('hidden');
-    isAutocompleteVisible = true;
+    if (canShowAutofillOverlay(target)) {
+        characterAutocompleteOverlay.classList.remove('hidden');
+        isAutocompleteVisible = true;
+    }
 
     // Auto-select first item if there are results and user is in navigation mode
     if (displayResults.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
@@ -3131,13 +3397,7 @@ function updateAutocompleteDisplay(results, target) {
 }
 
 function shouldApplyAutocompleteUI(target) {
-    if (!target || currentCharacterAutocompleteTarget !== target) {
-        return false;
-    }
-    if (document.activeElement !== target) {
-        return false;
-    }
-    return true;
+    return hasActiveAutofillSessionForTarget(target);
 }
 
 function updateAutocompleteDisplayImmediate(results, target) {
@@ -3147,6 +3407,9 @@ function updateAutocompleteDisplayImmediate(results, target) {
     }
 
     if (!shouldApplyAutocompleteUI(target)) {
+        return;
+    }
+    if (!canShowAutofillOverlay(target)) {
         return;
     }
 
@@ -3185,8 +3448,8 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // This ensures we show the latest results from all services
     rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target);
 
-    // Ensure overlay is positioned and visible
-    if (!isAutocompleteVisible) {
+    // Ensure overlay is positioned and visible (only with active session + server packet)
+    if (!isAutocompleteVisible && canShowAutofillOverlay(target)) {
         const rect = target.getBoundingClientRect();
         const spaceBelow = window.innerHeight - rect.bottom - 5;
         const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
@@ -3566,7 +3829,8 @@ function applySpellCorrection(target, originalWord, suggestion) {
         const afterWord = currentValue.substring(wordEnd);
         const newValue = beforeWord + suggestion + afterWord;
 
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
         // Set cursor position after the end of the inserted text
         const newCursorPos = wordStart + suggestion.length;
@@ -3581,7 +3845,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
 
         // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
         hideCharacterAutocomplete();
-        return;
+        return true;
     }
 
     // If word at cursor doesn't match, try to find the closest occurrence
@@ -3621,7 +3885,8 @@ function applySpellCorrection(target, originalWord, suggestion) {
         const afterWord = currentValue.substring(closestMatch.end);
         const newValue = beforeWord + suggestion + afterWord;
 
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
         // Set cursor position after the end of the inserted text
         const newCursorPos = closestMatch.start + suggestion.length;
@@ -3636,6 +3901,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
 
         // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
         hideCharacterAutocomplete();
+        return true;
     } else {
         // Final fallback: if we can't find the word, try the old method
         const words = currentValue.split(/\b/);
@@ -3660,7 +3926,8 @@ function applySpellCorrection(target, originalWord, suggestion) {
             words[wordIndex] = suggestion;
             const newValue = words.join('');
 
-            target.value = newValue;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
             // Set cursor position after the end of the inserted text
             const newCursorPos = wordStartPos + suggestion.length;
@@ -3675,6 +3942,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
 
             // Hide autocomplete and mark as not expanded to fix keyboard navigation issue
             hideCharacterAutocomplete();
+            return true;
         } else {
             // Ultra-final fallback: try fuzzy matching with similar words near cursor
             // This handles cases where the word was partially corrected or changed
@@ -3707,7 +3975,8 @@ function applySpellCorrection(target, originalWord, suggestion) {
                 const afterWord = currentValue.substring(bestPosition + bestMatch.length);
                 const newValue = beforeWord + suggestion + afterWord;
 
-                target.value = newValue;
+                // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
                 // Set cursor position after the end of the inserted text
                 const newCursorPos = bestPosition + suggestion.length;
@@ -3721,6 +3990,7 @@ function applySpellCorrection(target, originalWord, suggestion) {
                 hideCharacterAutocomplete();
 
                 console.log(`Fuzzy matched "${originalWord}" to "${bestMatch}" and replaced with "${suggestion}"`);
+                return true;
             } else {
                 // If all else fails, show an error message
                 console.error(`Could not find word "${originalWord}" to replace`);
@@ -3730,6 +4000,8 @@ function applySpellCorrection(target, originalWord, suggestion) {
             }
         }
     }
+
+    return false;
 }
 
 // Helper function to calculate Levenshtein distance between two strings
@@ -3875,25 +4147,11 @@ function selectDynamicPlaceholder(placeholder) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,, %, .) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('%'),
-        textBeforeCursor.lastIndexOf('.')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
     // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Find the end of the current word/term
-    // Look for the next delimiter or end of text
-    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\[\]%.]/);
-    const endOfCurrentTerm = nextDelimiterIndex >= 0 ? cursorPosition + nextDelimiterIndex : currentValue.length;
+    const endOfCurrentTerm = findAutocompleteTermEnd(currentValue, cursorPosition);
 
     // Build the new prompt
     let newPrompt = '';
@@ -3906,7 +4164,7 @@ function selectDynamicPlaceholder(placeholder) {
     const wrappedPlaceholder = placeholder;
     if (newPrompt) {
         // Check if we should add a comma before the text
-        if (shouldAddCommaBefore(currentValue, startOfCurrentTerm)) {
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + wrappedPlaceholder;
         } else {
             newPrompt += wrappedPlaceholder;
@@ -3937,7 +4195,8 @@ function selectDynamicPlaceholder(placeholder) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted placeholder
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -3958,27 +4217,11 @@ function selectTextReplacement(placeholder) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,, %, .) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('%'),
-        textBeforeCursor.lastIndexOf('.')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
     // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Find the end of the current word/term
-    // Look for the next delimiter or end of text
-    const nextDelimiterIndex = textAfterCursor.search(/[,\s:|\{\}\[\]%.]/);
-    const endOfCurrentTerm = nextDelimiterIndex >= 0 ? cursorPosition + nextDelimiterIndex : currentValue.length;
+    const endOfCurrentTerm = findAutocompleteTermEnd(currentValue, cursorPosition);
 
     // Build the new prompt
     let newPrompt = '';
@@ -3991,7 +4234,7 @@ function selectTextReplacement(placeholder) {
     const wrappedPlaceholder = `!${placeholder}`;
     if (newPrompt) {
         // Check if we should add a comma before the text
-        if (shouldAddCommaBefore(currentValue, startOfCurrentTerm)) {
+        if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + wrappedPlaceholder;
         } else {
             newPrompt += wrappedPlaceholder;
@@ -4022,7 +4265,8 @@ function selectTextReplacement(placeholder) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted placeholder
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4049,18 +4293,7 @@ function insertTextReplacement(actualText) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,, .) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('.')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
     // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
@@ -4096,7 +4329,8 @@ function insertTextReplacement(actualText) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted text
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4123,18 +4357,7 @@ function selectTag(tagName, category) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,, .) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('.')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
     // Get the text before the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
@@ -4189,7 +4412,8 @@ function selectTag(tagName, category) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted tag
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4216,17 +4440,7 @@ function selectTextReplacementFullText(placeholder) {
     // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-    // Find the last delimiter (:, |, ,) before the cursor, or start from the beginning
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(',')
-    );
-    const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
     // Get the text after the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
@@ -4263,7 +4477,8 @@ function selectTextReplacementFullText(placeholder) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted text
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4291,18 +4506,7 @@ function selectCharacterWithoutEnhancers(character) {
         // Get the text before the cursor
         const textBeforeCursor = currentValue.substring(0, cursorPosition);
 
-        // Find the last delimiter (:, |, ,, .) before the cursor, or start from the beginning
-        const lastDelimiterIndex = Math.max(
-            textBeforeCursor.lastIndexOf('{'),
-            textBeforeCursor.lastIndexOf('}'),
-            textBeforeCursor.lastIndexOf('['),
-            textBeforeCursor.lastIndexOf(']'),
-            textBeforeCursor.lastIndexOf(':'),
-            textBeforeCursor.lastIndexOf('|'),
-            textBeforeCursor.lastIndexOf(','),
-            textBeforeCursor.lastIndexOf('.')
-        );
-        const startOfCurrentTerm = lastDelimiterIndex >= 0 ? lastDelimiterIndex + 1 : 0;
+        const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
 
         // Get the text after the cursor
         const textAfterCursor = currentValue.substring(cursorPosition);
@@ -4344,7 +4548,8 @@ function selectCharacterWithoutEnhancers(character) {
         }
 
         // Update the target field
-        target.value = newPrompt;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
         // Set cursor position after the inserted text
         const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4521,14 +4726,16 @@ function selectEnhancerGroup(enhancerGroup, character) {
 
     // Update the target field with character prompt
     if (character.prompt) {
-        target.value = character.prompt;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, character.prompt);
     }
 
     // Add enhancer items to the prompt if selected
     if (enhancerGroup && Array.isArray(enhancerGroup) && enhancerGroup.length > 0) {
         const currentPrompt = target.value;
         const enhancerText = enhancerGroup.join(', ');
-        target.value = currentPrompt + ', ' + enhancerText;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, currentPrompt + ', ' + enhancerText);
     }
 
     // Hide character detail overlay and autocomplete
@@ -4617,7 +4824,8 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     }
 
     // Update the target field
-    target.value = newPrompt;
+    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+    setTextareaValuePreservingUndo(target, newPrompt);
 
     // Set cursor position after the inserted text
     const newCursorPosition = newPrompt.length - textAfter.length;
@@ -4632,6 +4840,75 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
         autoResizeTextarea(target);
         updateEmphasisHighlighting(target);
     }
+}
+
+// utilities.js — same valid emphasis weight rules
+const EMPHASIS_WEIGHT_PATTERN = '-?(?:0(?:\\.\\d+)?|[1-9]\\d*(?:\\.\\d+)?|\\.\\d+)';
+
+/**
+ * Index where the autofill token before the cursor begins (treats "::" as one delimiter).
+ * @param {string} textBeforeCursor
+ * @returns {number}
+ */
+function findAutocompleteTermStart(textBeforeCursor) {
+    let start = 0;
+
+    const consider = (index, advance = 1) => {
+        if (index >= start) {
+            start = index + advance;
+        }
+    };
+
+    for (const ch of [',', '|', '{', '}', '[', ']', '%']) {
+        consider(textBeforeCursor.lastIndexOf(ch));
+    }
+
+    const doubleColon = textBeforeCursor.lastIndexOf('::');
+    if (doubleColon >= 0) {
+        consider(doubleColon, 2);
+    }
+
+    for (let i = textBeforeCursor.length - 1; i >= start; i--) {
+        if (textBeforeCursor[i] !== ':') continue;
+        if (i > 0 && textBeforeCursor[i - 1] === ':') continue;
+        if (i + 1 < textBeforeCursor.length && textBeforeCursor[i + 1] === ':') continue;
+        consider(i);
+        break;
+    }
+
+    const lastDot = textBeforeCursor.lastIndexOf('.');
+    if (lastDot >= start) {
+        const afterDot = textBeforeCursor.substring(lastDot + 1);
+        // Skip decimal points that are part of an emphasis weight (e.g. "1.5::")
+        const isEmphasisWeightDecimal = /^\d*(?:::|$)/.test(afterDot);
+        if (!isEmphasisWeightDecimal) {
+            consider(lastDot);
+        }
+    }
+
+    return start;
+}
+
+/**
+ * Index where the autofill token after the cursor ends.
+ * @param {string} value
+ * @param {number} cursorPosition
+ * @returns {number}
+ */
+function findAutocompleteTermEnd(value, cursorPosition) {
+    const textAfter = value.substring(cursorPosition);
+    for (let i = 0; i < textAfter.length; i++) {
+        if (textAfter[i] === ':' && textAfter[i + 1] === ':') {
+            return cursorPosition + i;
+        }
+        if (textAfter[i] === ':' && i > 0 && textAfter[i - 1] === ':') {
+            continue;
+        }
+        if (/[,\s|{}\[\]%.]/.test(textAfter[i])) {
+            return cursorPosition + i;
+        }
+    }
+    return value.length;
 }
 
 // Helper function to check if cursor is inside a :: emphasis group (between the :: markers)
@@ -4666,37 +4943,8 @@ function isInsideEmphasisGroup(text, cursorPosition) {
 // Helper function to check if cursor is at the start of a :: emphasis group (right after opening ::)
 function isAtStartOfEmphasisGroup(text, cursorPosition) {
     const textBeforeCursor = text.substring(0, cursorPosition);
-    const trimmed = textBeforeCursor.trim();
-
-    // Look for the pattern: weight:: at the end of text before cursor
-    const emphasisStartPattern = /(-?\d+\.?\d*)::$/;
-    const result = emphasisStartPattern.test(trimmed);
-
-    // If the pattern doesn't match at the end, check if we're right after a weight:: pattern
-    if (!result) {
-        // Look for the last occurrence of weight:: in the text before cursor
-        const lastWeightPattern = trimmed.match(/(-?\d+\.?\d*)::/g);
-        if (lastWeightPattern) {
-            const lastMatch = lastWeightPattern[lastWeightPattern.length - 1];
-            const lastMatchIndex = trimmed.lastIndexOf(lastMatch);
-
-            // Check if the cursor is right after this weight:: pattern
-            if (lastMatchIndex + lastMatch.length === trimmed.length) {
-                return true;
-            } else {
-                // Check if we're inside an emphasis group and at the start of its content
-                const textAfterWeight = trimmed.substring(lastMatchIndex + lastMatch.length);
-
-                // If the text after the weight:: is just whitespace or very short, 
-                // we might be at the start of the emphasis group content
-                if (textAfterWeight.trim().length <= 10) { // Allow for some short content
-                    return true;
-                }
-            }
-        }
-    }
-
-    return result;
+    const atGroupContentStart = new RegExp(`(${EMPHASIS_WEIGHT_PATTERN})::\\s*([^,:|]*)$`);
+    return atGroupContentStart.test(textBeforeCursor);
 }
 
 // Helper function to check if cursor is at the end of an emphasis group (right before closing ::)
@@ -4853,6 +5101,7 @@ function hideCharacterAutocomplete() {
     currentCharacterAutocompleteTarget = null;
     currentSearchRequestId = null;
     currentSearchSessionBounds = null;
+    clearAutofillSessionState();
 
     if (updateDisplayTimeout) {
         clearTimeout(updateDisplayTimeout);
@@ -4908,10 +5157,12 @@ function hideCharacterDetail() {
     // Since we're now replacing the content inside the autocomplete overlay,
     // we need to restore the original autocomplete list content
     const autocompleteList = document.querySelector('.character-autocomplete-list');
+    const restoreTarget = currentCharacterAutocompleteTarget;
 
-    if (autocompleteList && window.allAutocompleteResults && window.allAutocompleteResults.length > 0) {
+    if (autocompleteList && window.allAutocompleteResults && window.allAutocompleteResults.length > 0 &&
+        restoreTarget && hasActiveAutofillSessionForTarget(restoreTarget)) {
         // Restore the original autocomplete suggestions
-        showCharacterAutocompleteSuggestions(window.allAutocompleteResults, currentCharacterAutocompleteTarget);
+        showCharacterAutocompleteSuggestions(window.allAutocompleteResults, restoreTarget);
     } else {
         // If no search results, just hide the overlay
         hideCharacterAutocomplete();
@@ -4958,6 +5209,10 @@ function updateAutocompletePositions() {
 function updateAutocompletePositionsImmediate() {
     // Update character autocomplete position
     if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden') && currentCharacterAutocompleteTarget) {
+        if (!hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
+            hideCharacterAutocomplete();
+            return;
+        }
         const rect = currentCharacterAutocompleteTarget.getBoundingClientRect();
         const spaceBelow = window.innerHeight - rect.bottom - 5;
         const maxHeight = Math.min(400, spaceBelow, window.innerHeight * 0.6);
@@ -5871,27 +6126,7 @@ function deleteTagBehindCursor(target) {
     const textBeforeCursor = currentValue.substring(0, cursorPos);
 
     // Use the same logic as emphasis manager to find the current tag
-    // Find the last delimiter before the cursor
-    const lastDelimiterIndex = Math.max(
-        textBeforeCursor.lastIndexOf('{'),
-        textBeforeCursor.lastIndexOf('}'),
-        textBeforeCursor.lastIndexOf('['),
-        textBeforeCursor.lastIndexOf(']'),
-        textBeforeCursor.lastIndexOf(':'),
-        textBeforeCursor.lastIndexOf('|'),
-        textBeforeCursor.lastIndexOf(','),
-        textBeforeCursor.lastIndexOf('.')
-    );
-
-    // Find the start of the current tag
-    let tagStart;
-    if (lastDelimiterIndex >= 0) {
-        // Start after the last delimiter
-        tagStart = lastDelimiterIndex + 1;
-    } else {
-        // No delimiter found, start from beginning
-        tagStart = 0;
-    }
+    const tagStart = findAutocompleteTermStart(textBeforeCursor);
 
     // Find the end of the current tag by looking for the next delimiter or end of text
     const textAfterCursor = currentValue.substring(cursorPos);
@@ -5935,7 +6170,8 @@ function deleteTagBehindCursor(target) {
             const afterTag = currentValue.substring(tagEnd);
             const newValue = beforeTag + emphasizedText + afterTag;
 
-            target.value = newValue;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
             // Set cursor position after the cleaned text
             const newCursorPos = tagStart + emphasizedText.length;
@@ -5956,7 +6192,8 @@ function deleteTagBehindCursor(target) {
             const afterTag = currentValue.substring(tagEnd);
             const newValue = beforeTag + braceContent + afterTag;
 
-            target.value = newValue;
+            // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
             // Set cursor position after the cleaned text
             const newCursorPos = tagStart + braceContent.length;
@@ -5979,7 +6216,8 @@ function deleteTagBehindCursor(target) {
 
         const newValue = cleanedBeforeTag + afterTag;
 
-        target.value = newValue;
+        // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
+        setTextareaValuePreservingUndo(target, newValue);
 
         // Set cursor position to where the tag was
         const newCursorPos = cleanedBeforeTag.length;

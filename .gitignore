@@ -21,3 +21,9 @@ log.txt
 securePrompts/*
 tmp/
 .agents/skills/*
+.cursor/debug-*
+nax_tags.json
+danbooru_tagwiki.json
+danbooru_tagwiki_merged.json
+e621_wiki_fixed.json
+danbooru_tag_groups_hierarchy.json

@@ -13,8 +13,584 @@ let expansionModalData = {
     overrideParams: {},
     enableAI: false, // Default to disabled
     enableInset: false, // Default to disabled
-    expandSourcePixels: null // { width, height } of image being expanded (for inset eligibility)
+    expandSourcePixels: null, // { width, height } of image being expanded (for inset eligibility)
+    compiledPrompt: null, // { prompt, uc, characterPrompts } baseline from server (not sent unless editor save)
+    savedPromptOverrides: null, // { prompt, uc, characterPrompts } set only via expansion prompt editor Save
+    compiledPromptReady: false
 };
+
+let expansionCompiledPromptLoadToken = 0;
+let expansionCompiledPromptReloadTimer = null;
+
+function normalizeExpansionCharacterPrompts(arr) {
+    if (!Array.isArray(arr)) {
+        return [];
+    }
+    return arr.map((char) => ({ ...char }));
+}
+
+function getExpansionCharacterDisplayName(char, index) {
+    return char.chara_name || char.name || `Character ${index + 1}`;
+}
+
+function isExpansionCompiledPromptEditorOpen() {
+    const dialog = document.getElementById('expansionCompiledPromptDialog');
+    return !!(dialog && dialog.classList.contains('visible'));
+}
+
+function clearExpansionCompiledCharacterFields() {
+    const promptContainer = document.getElementById('expansionCompiledCharacterPromptsContainer');
+    const ucContainer = document.getElementById('expansionCompiledCharacterUcContainer');
+    if (promptContainer) {
+        promptContainer.innerHTML = '';
+    }
+    if (ucContainer) {
+        ucContainer.innerHTML = '';
+    }
+}
+
+/** Reinit custom scrollbars on prompt/UC tab panes — customScrollbar.js */
+function refreshExpansionCompiledPromptScrollbars() {
+    if (!window.customScrollbar) {
+        return;
+    }
+    const promptTab = document.getElementById('expansionCompiledPrompt-tab');
+    const ucTab = document.getElementById('expansionCompiledUc-tab');
+    if (promptTab) {
+        window.customScrollbar.forceReinit(promptTab);
+    }
+    if (ucTab) {
+        window.customScrollbar.forceReinit(ucTab);
+    }
+}
+
+/** Character textarea markup from loadCharacterPrompts() in app.js; dropdowns via initializeCharacterDropdowns() in promptTextareaToolbar.js */
+function getExpansionCharacterPromptTextareaHtml(characterId, field, text) {
+    const body = text != null ? text : '';
+    const safeId = escapeHtmlAttribute(characterId);
+
+    if (field === 'uc') {
+        return `
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="${safeId}_uc" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter undesired content..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${escapeHtml(body)}</textarea>
+                            </div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="${safeId}_promptNegative" class="form-control character-prompt-textarea prompt-textarea" placeholder="Inline negative (merged into prompt as -1::...::)..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false"></textarea>
+                            </div>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <div class="token-info-container">
+                                        <div class="token-info-top"><span class="token-count">0 tokens</span></div>
+                                        <div class="token-progress-bar"><div class="token-progress-fill"><div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div></div></div>
+                                    </div>
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container"><input type="text" class="text-search-input" placeholder="Find Tag" /></div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis"><i class="fas fa-scissors"></i></button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
+                                        <div id="characterUCActionsDropdown_${safeId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterUCActionsDropdownBtn_${safeId}" class="btn-secondary btn-small toolbar-btn"><i class="fas fa-toolbox"></i></button>
+                                            <div id="characterUCActionsDropdownMenu_${safeId}" class="custom-dropdown-menu hidden"></div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+    }
+
+    return `
+                        <div class="character-prompt-textarea-container">
+                            <div class="character-prompt-textarea-background"></div>
+                            <textarea id="${safeId}_prompt" class="form-control character-prompt-textarea prompt-textarea" placeholder="Enter character prompt..." autocapitalize="false" autocorrect="false" spellcheck="false" data-ms-editor="false">${escapeHtml(body)}</textarea>
+                            <div class="prompt-textarea-toolbar hidden">
+                                <div class="toolbar-left">
+                                    <div class="token-info-container">
+                                        <div class="token-info-top"><span class="token-count">0 tokens</span></div>
+                                        <div class="token-progress-bar"><div class="token-progress-fill"><div class="token-progress-inner"></div><div class="token-progress-inner-ne"></div></div></div>
+                                    </div>
+                                    <div class="toolbar-search-elements">
+                                        <div class="text-search-label">Search</div>
+                                        <div class="text-search-input-container"><input type="text" class="text-search-input" placeholder="Find Tag" /></div>
+                                        <div class="text-search-match-count">0</div>
+                                    </div>
+                                </div>
+                                <div class="toolbar-right">
+                                    <div class="toolbar-regular-buttons">
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="split-emphasis" title="Split Emphasis"><i class="fas fa-scissors"></i></button>
+                                        <div class="divider toolbar-wide-divider"></div>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="quick-access" title="Quick Access"><i class="fas fa-book-atlas"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toolbar-wide-btn" data-action="search" title="Search"><i class="fas fa-search"></i></button>
+                                        <button type="button" class="btn-secondary btn-small toolbar-btn toggle-btn" data-action="autofill" data-state="on" title="Toggle Autofill"><i class="fas fa-lightbulb"></i></button>
+                                        <div id="characterActionsDropdown_${safeId}" class="custom-dropdown dark dropright">
+                                            <button type="button" id="characterActionsDropdownBtn_${safeId}" class="btn-secondary btn-small toolbar-btn"><i class="fas fa-toolbox"></i></button>
+                                            <div id="characterActionsDropdownMenu_${safeId}" class="custom-dropdown-menu hidden"></div>
+                                        </div>
+                                    </div>
+                                    <div class="toolbar-search-buttons">
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-prev" data-action="search-prev" title="Previous"><i class="fas fa-chevron-up"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-next" data-action="search-next" title="Next"><i class="fas fa-chevron-down"></i></button>
+                                        <button class="btn-secondary btn-small toolbar-btn text-search-close" data-action="search-close" title="Close"><i class="fas fa-times"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>`;
+}
+
+function renderExpansionCompiledCharacterFields(source) {
+    const promptContainer = document.getElementById('expansionCompiledCharacterPromptsContainer');
+    const ucContainer = document.getElementById('expansionCompiledCharacterUcContainer');
+    if (!promptContainer || !ucContainer) {
+        return;
+    }
+
+    clearExpansionCompiledCharacterFields();
+    const characterPrompts = normalizeExpansionCharacterPrompts(source?.characterPrompts);
+
+    characterPrompts.forEach((char, index) => {
+        if (char.enabled === false) {
+            return;
+        }
+
+        const charName = getExpansionCharacterDisplayName(char, index);
+        const promptValue = char.prompt != null ? char.prompt : '';
+        const ucValue = char.uc != null ? char.uc : '';
+        const promptNegativeValue = char.input_prompt_negative != null ? char.input_prompt_negative : '';
+
+        const promptField = document.createElement("div");
+        promptField.className = 'compiled-prompt-field-container';
+        promptField.innerHTML = `<label class="compiled-prompt-label"><i class="ri-code-block"></i> Prompt - ${escapeHtml(charName)}</label>`;
+        const characterId = `expansionChar_${index}`;
+        promptField.innerHTML += getExpansionCharacterPromptTextareaHtml(characterId, 'prompt', promptValue);
+        promptContainer.appendChild(promptField);
+        const promptTextarea = document.getElementById(`${characterId}_prompt`);
+        if (promptTextarea) {
+            promptTextarea.setAttribute('data-char-index', String(index));
+            setupPromptTextareaControls(promptTextarea);
+            if (typeof initializeEmphasisOverlay === 'function') {
+                initializeEmphasisOverlay(promptTextarea);
+            }
+        }
+
+        const ucField = document.createElement('div');
+        ucField.className = 'compiled-prompt-field-container';
+        ucField.innerHTML = `<label class="compiled-prompt-label"><i class="ri-eraser-fill"></i> Negative - ${escapeHtml(charName)}</label>`;
+        ucField.innerHTML += getExpansionCharacterPromptTextareaHtml(characterId, 'uc', ucValue);
+        ucContainer.appendChild(ucField);
+        const ucTextarea = document.getElementById(`${characterId}_uc`);
+        const ucPromptNegativeTextarea = document.getElementById(`${characterId}_promptNegative`);
+        if (ucPromptNegativeTextarea && promptNegativeValue) {
+            ucPromptNegativeTextarea.value = promptNegativeValue;
+        }
+        if (ucTextarea) {
+            ucTextarea.setAttribute('data-char-index', String(index));
+            setupPromptTextareaControls(ucTextarea);
+            if (typeof initializeEmphasisOverlay === 'function') {
+                initializeEmphasisOverlay(ucTextarea);
+            }
+        }
+
+        if (promptTextarea && typeof autoResizeTextarea === 'function') {
+            autoResizeTextarea(promptTextarea);
+        }
+        if (ucTextarea && typeof autoResizeTextarea === 'function') {
+            autoResizeTextarea(ucTextarea);
+        }
+        if (promptTextarea && typeof updateEmphasisHighlighting === 'function') {
+            updateEmphasisHighlighting(promptTextarea);
+        }
+        if (ucTextarea && typeof updateEmphasisHighlighting === 'function') {
+            updateEmphasisHighlighting(ucTextarea);
+        }
+    });
+
+    if (window.promptTextareaToolbar) {
+        promptTextareaToolbar.initializeCharacterDropdowns();
+    }
+
+    requestAnimationFrame(() => {
+        refreshExpansionCompiledPromptScrollbars();
+    });
+}
+
+function collectExpansionCompiledPromptState() {
+    const baseline = expansionModalData.savedPromptOverrides || expansionModalData.compiledPrompt;
+    const fullChars = normalizeExpansionCharacterPrompts(baseline?.characterPrompts);
+    const promptInput = document.getElementById('expansionCompiledPromptInput');
+    const ucInput = document.getElementById('expansionCompiledUcInput');
+
+    const characterPrompts = fullChars.map((char, index) => {
+        const next = { ...char };
+        if (char.enabled !== false) {
+            const promptEl = document.getElementById(`expansionChar_${index}_prompt`);
+            const ucEl = document.getElementById(`expansionChar_${index}_uc`);
+            const promptNegativeEl = document.getElementById(`expansionChar_${index}_promptNegative`);
+            if (promptEl) {
+                next.prompt = promptEl.value;
+            }
+            if (ucEl) {
+                next.uc = ucEl.value;
+            }
+            if (promptNegativeEl) {
+                next.input_prompt_negative = promptNegativeEl.value;
+            }
+        }
+        return next;
+    });
+
+    return {
+        prompt: promptInput ? promptInput.value : (baseline?.prompt || ''),
+        uc: ucInput ? ucInput.value : (baseline?.uc || ''),
+        characterPrompts
+    };
+}
+
+function applyExpansionSavedOverridesToParams(overrideParams) {
+    if (!expansionModalData.savedPromptOverrides) {
+        return overrideParams;
+    }
+    const merged = { ...overrideParams };
+    merged.expansionPromptOverride = expansionModalData.savedPromptOverrides.prompt;
+    merged.expansionUcOverride = expansionModalData.savedPromptOverrides.uc;
+    if (Array.isArray(expansionModalData.savedPromptOverrides.characterPrompts)) {
+        merged.expansionCharacterPromptsOverride = expansionModalData.savedPromptOverrides.characterPrompts;
+    }
+    return merged;
+}
+
+function syncExpansionEnableAIFromToggle() {
+    const aiToggle = document.getElementById('expansionAIToggle');
+    expansionModalData.enableAI = aiToggle ? aiToggle.getAttribute('data-state') === 'on' : false;
+}
+
+function clearExpansionSavedPromptOverrides() {
+    expansionModalData.savedPromptOverrides = null;
+    updateExpansionEditCompiledPromptBtnState();
+}
+
+function updateExpansionEditCompiledPromptBtnState() {
+    const btn = document.getElementById('expansionEditCompiledPromptBtn');
+    if (btn) {
+        btn.setAttribute('data-state', expansionModalData.savedPromptOverrides ? 'on' : 'off');
+    }
+}
+
+function switchExpansionCompiledPromptTab(targetTab, shouldFocus = false) {
+    const dialog = document.getElementById('expansionCompiledPromptDialog');
+    if (!dialog) {
+        return;
+    }
+
+    const toggleGroup = dialog.querySelector('.prompt-tabs .gallery-toggle-group');
+    const tabButtons = dialog.querySelectorAll('.prompt-tabs .gallery-toggle-btn');
+    const tabPanes = dialog.querySelectorAll('.prompt-tabs .tab-pane');
+    const previouslyFocused = document.activeElement;
+
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabPanes.forEach(pane => pane.classList.remove('active'));
+
+    const targetButton = dialog.querySelector(`.prompt-tabs .gallery-toggle-btn[data-tab="${targetTab}"]`);
+    const targetPane = document.getElementById(
+        targetTab === 'prompt' ? 'expansionCompiledPrompt-tab' : 'expansionCompiledUc-tab'
+    );
+
+    if (targetButton) {
+        targetButton.classList.add('active');
+    }
+    if (targetPane) {
+        targetPane.classList.add('active');
+    }
+    if (toggleGroup) {
+        toggleGroup.setAttribute('data-active', targetTab);
+    }
+
+    let focusTarget = null;
+    if (shouldFocus || (previouslyFocused && previouslyFocused.closest('#expansionCompiledPromptDialog'))) {
+        if (targetPane) {
+            focusTarget = targetPane.querySelector('textarea');
+        }
+        if (!focusTarget) {
+            focusTarget = targetTab === 'prompt'
+                ? document.getElementById('expansionCompiledPromptInput')
+                : document.getElementById('expansionCompiledUcInput');
+        }
+    }
+
+    if (focusTarget) {
+        setTimeout(() => {
+            if (focusTarget && focusTarget.focus) {
+                focusTarget.focus();
+            }
+            if (typeof autoResizeTextarea === 'function') {
+                autoResizeTextarea(focusTarget);
+            }
+        }, 0);
+    }
+
+    requestAnimationFrame(() => {
+        if (targetPane && window.customScrollbar && window.customScrollbar.scrollbars.has(targetPane)) {
+            window.customScrollbar.updateScrollbar(targetPane);
+        } else if (targetPane) {
+            refreshExpansionCompiledPromptScrollbars();
+        }
+    });
+}
+
+function setupExpansionCompiledPromptTabSwitcher() {
+    const dialog = document.getElementById('expansionCompiledPromptDialog');
+    if (!dialog || dialog.dataset.expansionTabSwitcherInit === '1') {
+        return;
+    }
+    dialog.dataset.expansionTabSwitcherInit = '1';
+
+    dialog.querySelectorAll('.prompt-tabs .gallery-toggle-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchExpansionCompiledPromptTab(button.getAttribute('data-tab'));
+        });
+    });
+}
+
+function openExpansionCompiledPromptEditor() {
+    if (!expansionModalData.compiledPromptReady || !expansionModalData.compiledPrompt) {
+        showGlassToast('error', 'Error', 'Compiled prompt is not ready yet', false, 5000, '<i class="nai-cross"></i>');
+        return;
+    }
+
+    const dialog = document.getElementById('expansionCompiledPromptDialog');
+    const promptInput = document.getElementById('expansionCompiledPromptInput');
+    const ucInput = document.getElementById('expansionCompiledUcInput');
+    if (!dialog || !promptInput || !ucInput) {
+        return;
+    }
+
+    const source = expansionModalData.savedPromptOverrides || expansionModalData.compiledPrompt;
+    promptInput.value = source.prompt != null ? source.prompt : '';
+    ucInput.value = source.uc != null ? source.uc : '';
+    renderExpansionCompiledCharacterFields(source);
+
+    switchExpansionCompiledPromptTab('prompt');
+
+    const parentModal = document.getElementById('imageExpansionDialog');
+    if (parentModal && typeof linkToolWindowToParent === 'function') {
+        linkToolWindowToParent(dialog, parentModal);
+    }
+
+    openModal(dialog);
+    dialog.classList.add('visible');
+
+    if (window.promptTextareaToolbar && typeof window.promptTextareaToolbar.initializeExpansionCompiledPromptDropdowns === 'function') {
+        window.promptTextareaToolbar.initializeExpansionCompiledPromptDropdowns();
+    }
+
+    if (typeof bringModalToFront === 'function') {
+        bringModalToFront(dialog);
+    }
+
+    if (typeof autoResizeTextarea === 'function') {
+        autoResizeTextarea(promptInput);
+        autoResizeTextarea(ucInput);
+    }
+    if (typeof updateEmphasisHighlighting === 'function') {
+        updateEmphasisHighlighting(promptInput);
+        updateEmphasisHighlighting(ucInput);
+    }
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            refreshExpansionCompiledPromptScrollbars();
+            if (typeof cascadeModalFromParentIfConfigured === 'function') {
+                cascadeModalFromParentIfConfigured(dialog);
+            } else if (typeof ensureModalWithinViewport === 'function') {
+                ensureModalWithinViewport(dialog);
+            }
+        });
+    });
+}
+
+function closeExpansionCompiledPromptEditor() {
+    const dialog = document.getElementById('expansionCompiledPromptDialog');
+    if (!dialog) {
+        return;
+    }
+    if (window.promptTextareaToolbar) {
+        dialog.querySelectorAll('.prompt-textarea-toolbar.search-mode').forEach((toolbar) => {
+            window.promptTextareaToolbar.closeSearch(toolbar);
+        });
+    }
+    clearExpansionCompiledCharacterFields();
+    dialog.classList.remove('visible');
+    closeModal(dialog);
+}
+
+function setupExpansionCompiledPromptTextareas() {
+    const promptInput = document.getElementById('expansionCompiledPromptInput');
+    const ucInput = document.getElementById('expansionCompiledUcInput');
+    if (promptInput) {
+        setupPromptTextareaControls(promptInput);
+    }
+    if (ucInput) {
+        setupPromptTextareaControls(ucInput);
+    }
+    // Toolbox dropdowns: promptTextareaToolbar.initializeDropdowns() (init step 37, after this DOM exists)
+}
+
+function saveExpansionCompiledPromptForSubmission() {
+    const promptInput = document.getElementById('expansionCompiledPromptInput');
+    const ucInput = document.getElementById('expansionCompiledUcInput');
+    if (!promptInput || !ucInput) {
+        return;
+    }
+
+    expansionModalData.savedPromptOverrides = collectExpansionCompiledPromptState();
+    updateExpansionEditCompiledPromptBtnState();
+    closeExpansionCompiledPromptEditor();
+}
+
+function getExpansionPreviewParamsFromUI() {
+    syncExpansionEnableAIFromToggle();
+
+    const upscaleToggle = document.getElementById('expansionUpscaleToggle');
+    const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
+    const insetToggle = document.getElementById('expansionInsetToggle');
+    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
+
+    let overrideParams = {};
+    const advancedSection = document.getElementById('expansionAdvancedOptions');
+    if (advancedSection && !advancedSection.classList.contains('hidden')) {
+        overrideParams = getExpansionOverrideParams();
+    }
+    const requestedContentTextarea = document.getElementById('expansionRequestedContent');
+    if (requestedContentTextarea && requestedContentTextarea.value.trim()) {
+        overrideParams.requestedContent = requestedContentTextarea.value.trim();
+    }
+    overrideParams.inset = expansionModalData.enableInset;
+
+    return {
+        filename: expansionModalData.targetImage,
+        sourceFilename: expansionModalData.originalImage,
+        resolution: expansionModalData.selectedResolution,
+        imageBias: expansionModalData.selectedBias,
+        upscaleAfterComplete,
+        overrideParams,
+        inset: expansionModalData.enableInset,
+        enableInset: expansionModalData.enableInset,
+        workspace: activeWorkspace || null,
+        enableAI: expansionModalData.enableAI
+    };
+}
+
+async function fetchExpansionCompiledPrompt(options = {}) {
+    const { showToast = false, blockUI = false } = options;
+
+    if (!expansionModalData.targetImage || !expansionModalData.selectedResolution) {
+        return { ok: false, error: new Error('Missing image or resolution') };
+    }
+    if (!wsClient || !wsClient.isConnected()) {
+        return { ok: false, error: new Error('WebSocket not connected') };
+    }
+
+    const loadToken = ++expansionCompiledPromptLoadToken;
+    if (blockUI) {
+        expansionModalData.compiledPrompt = null;
+        expansionModalData.compiledPromptReady = false;
+        clearExpansionSavedPromptOverrides();
+    }
+
+    let toastId = null;
+    if (showToast) {
+        toastId = showGlassToast('info', 'Preparing expansion', 'Compiling prompt for generation…', true, false, '<i class="mdi mdi-1-25 mdi-relative-scale"></i>');
+    }
+
+    try {
+        const data = await wsClient.previewExpandImagePrompt(getExpansionPreviewParamsFromUI());
+        if (loadToken !== expansionCompiledPromptLoadToken) {
+            return { ok: false, cancelled: true };
+        }
+        expansionModalData.compiledPrompt = {
+            prompt: data.prompt != null ? data.prompt : '',
+            uc: data.uc != null ? data.uc : '',
+            characterPrompts: normalizeExpansionCharacterPrompts(data.characterPrompts)
+        };
+        expansionModalData.compiledPromptReady = true;
+        clearExpansionSavedPromptOverrides();
+        if (isExpansionCompiledPromptEditorOpen()) {
+            const promptInput = document.getElementById('expansionCompiledPromptInput');
+            const ucInput = document.getElementById('expansionCompiledUcInput');
+            if (promptInput) {
+                promptInput.value = expansionModalData.compiledPrompt.prompt;
+            }
+            if (ucInput) {
+                ucInput.value = expansionModalData.compiledPrompt.uc;
+            }
+            renderExpansionCompiledCharacterFields(expansionModalData.compiledPrompt);
+            if (typeof autoResizeTextarea === 'function') {
+                if (promptInput) {
+                    autoResizeTextarea(promptInput);
+                }
+                if (ucInput) {
+                    autoResizeTextarea(ucInput);
+                }
+            }
+        }
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Expansion ready',
+                message: data.expansionReasonDisplay ? String(data.expansionReasonDisplay) : 'Use the prompt button to edit before generating.',
+                showProgress: false
+            });
+        }
+        return { ok: true, data };
+    } catch (error) {
+        if (loadToken !== expansionCompiledPromptLoadToken) {
+            return { ok: false, cancelled: true };
+        }
+        expansionModalData.compiledPrompt = null;
+        expansionModalData.compiledPromptReady = false;
+        clearExpansionSavedPromptOverrides();
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Could not compile prompt',
+                message: error.message || 'Failed',
+                showProgress: false
+            });
+        }
+        return { ok: false, error };
+    }
+}
+
+function scheduleExpansionCompiledPromptReload() {
+    const modal = document.getElementById('imageExpansionDialog');
+    if (!modal || !modal.classList.contains('visible')) {
+        return;
+    }
+    if (expansionCompiledPromptReloadTimer) {
+        clearTimeout(expansionCompiledPromptReloadTimer);
+    }
+    expansionCompiledPromptReloadTimer = setTimeout(async () => {
+        expansionCompiledPromptReloadTimer = null;
+        if (!expansionModalData.selectedResolution) {
+            return;
+        }
+        await fetchExpansionCompiledPrompt({ showToast: false, blockUI: true });
+    }, 450);
+}
 
 // Open image expansion modal
 async function openImageExpansionModal(imageFilename, imageDimensions = null) {
@@ -47,7 +623,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         overrideParams: {},
         enableAI: false, // Reset to disabled
         enableInset: false, // Reset to disabled
-        expandSourcePixels: null
+        expandSourcePixels: null,
+        compiledPrompt: null,
+        savedPromptOverrides: null,
+        compiledPromptReady: false
     };
     
     // Reset AI toggle state
@@ -156,10 +735,17 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
             expansionModalData.enableInset = wasInset;
         }
 
-        // Set requested content if it was used
+        // Set requested content if it was used (input to AI — not the compiled prompt)
         const requestedContentTextarea = document.getElementById('expansionRequestedContent');
         if (requestedContentTextarea && metadata.forge_data.expansion_requested_content) {
             requestedContentTextarea.value = metadata.forge_data.expansion_requested_content;
+            if (aiToggle) {
+                aiToggle.setAttribute('data-state', 'on');
+                expansionModalData.enableAI = true;
+            }
+            if (requestedContentGroup) {
+                requestedContentGroup.classList.remove('hidden');
+            }
         } else if (requestedContentTextarea) {
             requestedContentTextarea.value = '';
         }
@@ -227,7 +813,8 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         }
         const insetToggle = document.getElementById('expansionInsetToggle');
         if (insetToggle) {
-            insetToggle.setAttribute('data-state', 'off');
+            insetToggle.setAttribute('data-state', 'on');
+            expansionModalData.enableInset = true;
         }
         
         // Clear advanced inputs
@@ -257,15 +844,10 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
     
     hideExpansionAdvancedOptions();
 
-    const expansionPromptReviewPanel = document.getElementById('expansionPromptReviewPanel');
-    if (expansionPromptReviewPanel) {
-        expansionPromptReviewPanel.classList.add('hidden');
-        expansionPromptReviewPanel.dataset.loaded = 'false';
-    }
-    const expansionFinalPromptTextarea = document.getElementById('expansionFinalPromptTextarea');
-    const expansionFinalUcTextarea = document.getElementById('expansionFinalUcTextarea');
-    if (expansionFinalPromptTextarea) expansionFinalPromptTextarea.value = '';
-    if (expansionFinalUcTextarea) expansionFinalUcTextarea.value = '';
+    expansionModalData.compiledPrompt = null;
+    expansionModalData.compiledPromptReady = false;
+    clearExpansionSavedPromptOverrides();
+    syncExpansionEnableAIFromToggle();
 
     // Setup expansion mode dropdown (only once)
     const expansionModeDropdown = document.getElementById('expansionModeDropdown');
@@ -277,15 +859,42 @@ async function openImageExpansionModal(imageFilename, imageDimensions = null) {
         updateExpansionModeDisplay();
     }
 
-    // Show modal
+    updateExpansionInsetToggleVisibility();
+
+    if (!expansionModalData.selectedResolution) {
+        showGlassToast('error', 'Expand Canvas', 'No valid target resolution for this image', false, 5000, '<i class="nai-cross"></i>');
+        return;
+    }
+
+    const prepared = await fetchExpansionCompiledPrompt({ showToast: true, blockUI: true });
+    if (!prepared.ok) {
+        if (prepared.error && !prepared.cancelled) {
+            const msg = prepared.error.message || 'Could not compile expansion prompt';
+            if (!prepared.error.message || prepared.error.message !== 'WebSocket not connected') {
+                showGlassToast('error', 'Expand Canvas', msg, false, 5000, '<i class="nai-cross"></i>');
+            }
+        }
+        return;
+    }
+
     openModal(modal);
     modal.classList.add('visible');
 
-    updateExpansionInsetToggleVisibility();
+    if (typeof ensureModalWithinViewport === 'function') {
+        ensureModalWithinViewport(modal);
+    }
 }
 
 // Close image expansion modal
 function closeImageExpansionModal() {
+    expansionCompiledPromptLoadToken++;
+    if (expansionCompiledPromptReloadTimer) {
+        clearTimeout(expansionCompiledPromptReloadTimer);
+        expansionCompiledPromptReloadTimer = null;
+    }
+
+    closeExpansionCompiledPromptEditor();
+
     const modal = document.getElementById('imageExpansionDialog');
     if (modal) {
         modal.classList.remove('visible');
@@ -416,6 +1025,8 @@ async function selectExpansionMode(mode) {
         // Update reroll button visibility
         updateRerollButtonVisibility();
 
+        scheduleExpansionCompiledPromptReload();
+
     } catch (error) {
         console.error('Failed to switch expansion mode:', error);
     }
@@ -524,6 +1135,11 @@ async function populateExpansionResolutionDropdown() {
         dropdown.appendChild(noOptions);
     }
 
+    if (!expansionModalData.selectedResolution && filteredGroups.length > 0 && filteredGroups[0].options.length > 0) {
+        const firstOpt = filteredGroups[0].options[0];
+        selectExpansionResolution(firstOpt.value, filteredGroups[0].group);
+    }
+
     updateExpansionInsetToggleVisibility();
 }
 
@@ -552,7 +1168,12 @@ function updateExpansionInsetToggleVisibility() {
         return;
     }
 
+    const wasHidden = btn.classList.contains('hidden');
     btn.classList.remove('hidden');
+    if (wasHidden) {
+        btn.setAttribute('data-state', 'on');
+        expansionModalData.enableInset = true;
+    }
 }
 
 // Select expansion resolution
@@ -590,6 +1211,8 @@ function selectExpansionResolution(value, group) {
     }
 
     updateExpansionInsetToggleVisibility();
+
+    scheduleExpansionCompiledPromptReload();
 }
 
 // Close expansion resolution dropdown
@@ -688,6 +1311,8 @@ function selectExpansionBias(value) {
     
     // Re-render dropdown to update selected state
     renderExpansionBiasDropdown(value.toString());
+
+    scheduleExpansionCompiledPromptReload();
 }
 
 // Close expansion bias dropdown
@@ -769,6 +1394,8 @@ async function submitImageExpansionReroll() {
     const insetToggleReroll = document.getElementById('expansionInsetToggle');
     const rerollInsetOn = insetToggleReroll ? insetToggleReroll.getAttribute('data-state') === 'on' : false;
     overrideParams.inset = rerollInsetOn;
+
+    Object.assign(overrideParams, applyExpansionSavedOverridesToParams({}));
     
     closeImageExpansionModal();
     
@@ -1036,84 +1663,6 @@ function hideExpansionAdvancedOptions() {
     }
 }
 
-// Load full prompt + UC for review (serverside: same as Generate, including optional AI pass)
-async function loadExpansionPromptForReview() {
-    const imageToExpand = expansionModalData.targetImage;
-    if (!imageToExpand) {
-        showGlassToast('error', 'Error', 'No image selected');
-        return;
-    }
-    if (!expansionModalData.selectedResolution) {
-        showGlassToast('error', 'Error', 'Please select a target resolution');
-        return;
-    }
-    if (!wsClient || !wsClient.isConnected()) {
-        showGlassToast('error', 'Error', 'WebSocket not connected');
-        return;
-    }
-
-    const upscaleToggle = document.getElementById('expansionUpscaleToggle');
-    const upscaleAfterComplete = upscaleToggle ? upscaleToggle.getAttribute('data-state') === 'on' : false;
-    const insetToggle = document.getElementById('expansionInsetToggle');
-    expansionModalData.enableInset = insetToggle ? insetToggle.getAttribute('data-state') === 'on' : false;
-
-    let overrideParams = {};
-    const advancedSection = document.getElementById('expansionAdvancedOptions');
-    if (advancedSection && !advancedSection.classList.contains('hidden')) {
-        overrideParams = getExpansionOverrideParams();
-    }
-    const requestedContentTextarea = document.getElementById('expansionRequestedContent');
-    if (requestedContentTextarea && requestedContentTextarea.value.trim()) {
-        overrideParams.requestedContent = requestedContentTextarea.value.trim();
-    }
-    overrideParams.inset = expansionModalData.enableInset;
-
-    const loadToastId = showGlassToast('info', 'Loading prompt', 'Resolving full prompt for expand…', true, false, '<i class="fas fa-align-left"></i>');
-    try {
-        const data = await wsClient.previewExpandImagePrompt({
-            filename: imageToExpand,
-            sourceFilename: expansionModalData.originalImage,
-            resolution: expansionModalData.selectedResolution,
-            imageBias: expansionModalData.selectedBias,
-            upscaleAfterComplete: upscaleAfterComplete,
-            overrideParams: overrideParams,
-            inset: expansionModalData.enableInset,
-            enableInset: expansionModalData.enableInset,
-            workspace: activeWorkspace || null,
-            enableAI: expansionModalData.enableAI
-        });
-
-        const panel = document.getElementById('expansionPromptReviewPanel');
-        const promptTa = document.getElementById('expansionFinalPromptTextarea');
-        const ucTa = document.getElementById('expansionFinalUcTextarea');
-        if (promptTa) {
-            promptTa.value = data.prompt != null ? data.prompt : '';
-        }
-        if (ucTa) {
-            ucTa.value = data.uc != null ? data.uc : '';
-        }
-        if (panel) {
-            panel.classList.remove('hidden');
-            panel.dataset.loaded = 'true';
-        }
-
-        updateGlassToastComplete(loadToastId, {
-            type: 'success',
-            title: 'Prompt loaded',
-            message: data.expansionReasonDisplay ? String(data.expansionReasonDisplay) : 'Edit below, then generate.',
-            showProgress: false
-        });
-    } catch (error) {
-        console.error('Expansion prompt preview failed:', error);
-        updateGlassToastComplete(loadToastId, {
-            type: 'error',
-            title: 'Could not load prompt',
-            message: error.message || 'Preview failed',
-            showProgress: false
-        });
-    }
-}
-
 // Get expansion override parameters from UI
 function getExpansionOverrideParams() {
     const params = {};
@@ -1184,6 +1733,11 @@ async function submitImageExpansion() {
         showGlassToast('error', 'Error', 'Please select a target resolution');
         return;
     }
+
+    if (!expansionModalData.compiledPromptReady) {
+        showGlassToast('error', 'Error', 'Compiled prompt is not ready yet');
+        return;
+    }
     
     // Get upscale toggle state
     const upscaleToggle = document.getElementById('expansionUpscaleToggle');
@@ -1210,17 +1764,7 @@ async function submitImageExpansion() {
     // Persist inset in existing override params channel
     expansionModalData.overrideParams.inset = expansionModalData.enableInset;
 
-    const reviewPanel = document.getElementById('expansionPromptReviewPanel');
-    if (reviewPanel && reviewPanel.dataset.loaded === 'true') {
-        const promptTa = document.getElementById('expansionFinalPromptTextarea');
-        const ucTa = document.getElementById('expansionFinalUcTextarea');
-        if (promptTa) {
-            expansionModalData.overrideParams.expansionPromptOverride = promptTa.value;
-        }
-        if (ucTa) {
-            expansionModalData.overrideParams.expansionUcOverride = ucTa.value;
-        }
-    }
+    expansionModalData.overrideParams = applyExpansionSavedOverridesToParams(expansionModalData.overrideParams);
 
     // Close modal
     closeImageExpansionModal();
@@ -1479,6 +2023,8 @@ function toggleExpansionAI() {
             requestedContentGroup.classList.add('hidden');
         }
     }
+
+    scheduleExpansionCompiledPromptReload();
 }
 
 // Update percentage overlay for an input
@@ -1547,11 +2093,33 @@ document.addEventListener('DOMContentLoaded', () => {
         aiToggle.addEventListener('click', toggleExpansionAI);
     }
 
-    const expansionLoadPromptBtn = document.getElementById('expansionLoadPromptBtn');
-    if (expansionLoadPromptBtn) {
-        expansionLoadPromptBtn.addEventListener('click', loadExpansionPromptForReview);
+    const expansionRequestedContent = document.getElementById('expansionRequestedContent');
+    if (expansionRequestedContent) {
+        expansionRequestedContent.addEventListener('input', () => {
+            if (expansionModalData.enableAI) {
+                scheduleExpansionCompiledPromptReload();
+            }
+        });
     }
-    
+
+    const expansionEditCompiledPromptBtn = document.getElementById('expansionEditCompiledPromptBtn');
+    if (expansionEditCompiledPromptBtn) {
+        expansionEditCompiledPromptBtn.addEventListener('click', openExpansionCompiledPromptEditor);
+    }
+
+    const saveExpansionCompiledPromptBtn = document.getElementById('saveExpansionCompiledPromptBtn');
+    if (saveExpansionCompiledPromptBtn) {
+        saveExpansionCompiledPromptBtn.addEventListener('click', saveExpansionCompiledPromptForSubmission);
+    }
+
+    const closeExpansionCompiledPromptBtn = document.getElementById('closeExpansionCompiledPromptBtn');
+    if (closeExpansionCompiledPromptBtn) {
+        closeExpansionCompiledPromptBtn.addEventListener('click', closeExpansionCompiledPromptEditor);
+    }
+
+    setupExpansionCompiledPromptTextareas();
+    setupExpansionCompiledPromptTabSwitcher();
+
     // Setup wheel event listeners for numeric inputs with percentage overlays
     const rescaleInput = document.getElementById('expansionRescaleInput');
     const rescaleOverlay = document.getElementById('expansionRescaleOverlay');

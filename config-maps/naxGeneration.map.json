@@ -1,0 +1,18 @@
+{
+  "configId": "naxGeneration",
+  "label": "NAX Generation",
+  "rules": [
+    { "path": ["galleries"], "type": "object", "label": "Galleries" },
+    { "path": ["galleries", "*"], "type": "object", "label": "Gallery" },
+    { "path": ["galleries", "*", "promptTemplate"], "type": "string", "label": "Prompt Template" },
+    { "path": ["galleries", "*", "characterPrompt"], "type": "string", "label": "Character Prompt" },
+    { "path": ["galleries", "*", "model"], "type": "string", "label": "Model" },
+    { "path": ["galleries", "*", "resPreset"], "type": "string", "label": "Resolution Preset" },
+    { "path": ["galleries", "*", "steps"], "type": "number", "label": "Steps" },
+    { "path": ["galleries", "*", "scale"], "type": "number", "label": "Scale" },
+    { "path": ["galleries", "*", "sampler"], "type": "string", "label": "Sampler" },
+    { "path": ["galleries", "*", "qualityToggle"], "type": "boolean", "label": "Quality Toggle" },
+    { "path": ["galleries", "*", "ucPreset"], "type": "number", "label": "UC Preset" },
+    { "path": ["galleries", "*", "seed"], "type": "number", "label": "Seed" }
+  ]
+}

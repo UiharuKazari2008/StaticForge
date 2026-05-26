@@ -13,6 +13,9 @@ let windowSwitcherWindows = [];
 let windowSwitcherSelectedIndex = 0;
 let ctrlKeyPressed = false;
 
+let runAppletLastAltUpTime = 0;
+const RUN_APPLET_DOUBLE_ALT_MS = 400;
+
 let shortcutActionToastHost = null;
 let shortcutActionToastHideTimer = null;
 let shortcutActionToastFadeTimer = null;
@@ -290,6 +293,14 @@ function createShortcutsOverlay() {
                         <span class="shortcut-key">F3</span>
                         <span class="shortcut-desc"><span>Emphasis</span><i class="fa fa-scale-unbalanced-flip"></i></span>
                     </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + F3</span>
+                        <span class="shortcut-desc"><span>Reset Emphasis</span><i class="fa fa-eraser"></i></span>
+                    </div>
+                    <div class="shortcut-item alt">
+                        <span class="shortcut-key">ALT + S</span>
+                        <span class="shortcut-desc"><span>Split Emphasis</span><i class="fa fa-scissors"></i></span>
+                    </div>
                     <div class="shortcut-item">
                         <span class="shortcut-key">F4</span>
                         <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-font"></i></span>
@@ -429,6 +440,23 @@ function handleKeyDown(event) {
             shouldHandleManualModalActions = true;
         }
     }
+
+    const expansionCompiledPromptDialog = document.getElementById('expansionCompiledPromptDialog');
+    const isExpansionPromptEditorOpen = expansionCompiledPromptDialog &&
+        !expansionCompiledPromptDialog.classList.contains('hidden') &&
+        !expansionCompiledPromptDialog.classList.contains('minimised') &&
+        !expansionCompiledPromptDialog.classList.contains('minimising');
+    let shouldHandleExpansionPromptEditorShortcuts = false;
+    if (isExpansionPromptEditorOpen) {
+        if (window.isDesktop) {
+            shouldHandleExpansionPromptEditorShortcuts = expansionCompiledPromptDialog.classList.contains('active-window');
+        } else {
+            shouldHandleExpansionPromptEditorShortcuts = true;
+        }
+    }
+
+    // bracketGenIsAppletActive: public/scripts/comp/bracketGenerationApplet.js
+    const shouldHandleBracketGenShortcuts = typeof bracketGenIsAppletActive === 'function' && bracketGenIsAppletActive();
     
     if (windowSwitcherActive) return;
 
@@ -456,12 +484,38 @@ function handleKeyDown(event) {
     
     switch (`${event.ctrlKey ? 'CTRL+' : ''}${event.altKey ? 'ALT+' : ''}${event.metaKey ? 'META+' : ''}${event.shiftKey ? 'SHIFT+' : ''}${event.key.toUpperCase()}`) {
         case 'F1':
+            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+                event.preventDefault();
+                event.stopPropagation();
+                bracketGenerationApplet.setActiveField('prompt');
+                break;
+            }
+            if (shouldHandleExpansionPromptEditorShortcuts) {
+                event.preventDefault();
+                event.stopPropagation();
+                // switchExpansionCompiledPromptTab: public/scripts/comp/imageExpansion.js
+                switchExpansionCompiledPromptTab('prompt', true);
+                break;
+            }
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             switchManualTab('prompt', document.activeElement);
             break;
         case 'F2':
+            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+                event.preventDefault();
+                event.stopPropagation();
+                bracketGenerationApplet.setActiveField('uc');
+                break;
+            }
+            if (shouldHandleExpansionPromptEditorShortcuts) {
+                event.preventDefault();
+                event.stopPropagation();
+                // switchExpansionCompiledPromptTab: public/scripts/comp/imageExpansion.js
+                switchExpansionCompiledPromptTab('uc', true);
+                break;
+            }
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
@@ -492,7 +546,7 @@ function handleKeyDown(event) {
                 event.preventDefault();
                 event.stopPropagation();
                 removeAllEmphasisFromSelection(activeElement);
-                showShortcutActionToast('Removed all EmphasisS');
+                showShortcutActionToast('Reset Emphasis');
             }
             break;
         case 'F4':
@@ -610,6 +664,13 @@ function handleKeyDown(event) {
             }
             break;
         case 'F8':
+            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+                event.preventDefault();
+                event.stopPropagation();
+                bracketGenerationApplet.compileStages();
+                showShortcutActionToast('Compiled Stages');
+                break;
+            }
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
@@ -655,11 +716,26 @@ function handleKeyDown(event) {
             if (label) showShortcutActionToast(label);
             break;
         case 'ALT+A':
+            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+                event.preventDefault();
+                event.stopPropagation();
+                void bracketGenerationApplet.addStep();
+                showShortcutActionToast('New Stage');
+                break;
+            }
             if (!shouldHandleManualModalActions) break;
             event.preventDefault();
             event.stopPropagation();
             addCharacterPrompt();
             showShortcutActionToast('New Character');
+            break;
+        case 'ALT+K':
+            if (shouldHandleBracketGenShortcuts && bracketGenerationApplet) {
+                event.preventDefault();
+                event.stopPropagation();
+                void bracketGenerationApplet.promptAddKeyword();
+                break;
+            }
             break;
         case 'CTRL+F':
             // Trigger inline search in the active prompt toolbar
@@ -806,6 +882,18 @@ function handleKeyUp(event) {
             suppressAltOverlayUntilRelease = false;
             altKeyPressed = false;
             hideShortcutsOverlay();
+        }
+
+        // Double-tap Alt opens Run applet (runApplet: public/scripts/comp/runApplet.js)
+        if (!event.ctrlKey && !event.shiftKey && !event.metaKey && window.runApplet) {
+            const now = Date.now();
+            if (runAppletLastAltUpTime && now - runAppletLastAltUpTime < RUN_APPLET_DOUBLE_ALT_MS) {
+                runAppletLastAltUpTime = 0;
+                event.preventDefault();
+                window.runApplet.toggle();
+                return;
+            }
+            runAppletLastAltUpTime = now;
         }
     }
 

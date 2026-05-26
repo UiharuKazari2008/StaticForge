@@ -171,9 +171,16 @@ class BannerManager {
             'search_dataset_tags': 'Find Dataset Tags',
             'get_dataset_tags_for_path': 'Get Dataset Tags',
             'search_tags': 'Find Tags',
-            'search_tag_wiki': 'Search Encyclopedia',
-            'get_tag_wiki_page': 'Get Encyclopedia Page',
-            'refresh_tag_wiki_page': 'Update Encyclopedia',
+            'search_tag_wiki': 'Search Grimoire',
+            'get_tag_wiki_page': 'Get Grimoire Page',
+            'refresh_tag_wiki_page': 'Update Grimoire',
+            'get_wiki_home': 'Get Wiki Home',
+            'get_static_wiki_site_index': 'Get Static Wiki Index',
+            'get_static_wiki_page': 'Get Static Wiki Page',
+            'get_nax_galleries': 'Get Datasets (NAX)',
+            'get_nax_tags': 'Get Tags (NAX)',
+            'set_nax_favorite': 'Set Favorite (NAX)',
+            'set_nax_try': 'Set Try (NAX)',
             'search_files': 'Find Images',
             'search_characters': 'Find Characters',
             'lookup_city': 'Lookup Location',
@@ -230,6 +237,7 @@ class BannerManager {
             'desktop_update_positions': 'Update Desktop Positions',
 
             'get_text_replacement_options': 'Resolve Placeholder',
+            'scan_text_replacements': 'Scan Expanders',
             'resolve_dynamic_context': 'Resolve Context',
 
             // Bulk operations
@@ -414,6 +422,52 @@ class WebSocketClient {
     static PROGRESS_INIT_BASE = 25; // Base progress percentage for initialization
     static PROGRESS_INIT_STEPS = 75; // Progress percentage allocated to init steps
 
+    static CONNECTION_BEATS = {
+        initializing: {
+            message: 'Initializing…',
+            minMs: 800,
+            progress: 12
+        },
+        dialing: {
+            message: 'Dialing…',
+            minMs: 1000,
+            progress: 32
+        },
+        negotiation: {
+            message: 'Negotiation…',
+            minMs: 500,
+            progress: 52
+        },
+        establishing: {
+            message: 'Establishing Session…',
+            minMs: 500,
+            progress: 72
+        },
+        connected: {
+            message: 'Connected to server',
+            minMs: 750,
+            progress: 100
+        }
+    };
+
+    /** Deterministic dial number from server hostname (FQDN). */
+    static fqdnToDialNumber(fqdn) {
+        const host = String(fqdn || window.location.hostname || 'localhost')
+            .toLowerCase()
+            .replace(/^www\./, '')
+            .split(':')[0];
+        let hash = 0;
+        for (let i = 0; i < host.length; i++) {
+            hash = ((hash << 5) - hash + host.charCodeAt(i)) | 0;
+        }
+        hash = Math.abs(hash);
+        const area = 200 + (hash % 800);
+        const prefix = 100 + ((hash >> 10) % 900);
+        const line = hash % 10000;
+        const pad = (n, w) => String(n).padStart(w, '0');
+        return `1-${area}-${pad(prefix, 3)}-${pad(line, 4)}`;
+    }
+
     /**
      * Creates a new WebSocket client instance
      *
@@ -426,8 +480,6 @@ class WebSocketClient {
         this.clientVersion = '1.0.2'; // Update this when making breaking changes to client
 
         this.ws = null;
-        /** Confirmed from server welcome message; mirrors URL sessionLinkId query (multi-tab link; one WebSocket per tab). */
-        this.sessionLinkId = null;
         this.reconnectAttempts = 0;
         this.updateCheckAttempted = false; // Track if update check has been attempted
         this.maxReconnectAttempts = WebSocketClient.ATTEMPTS_MAX_RECONNECT;
@@ -455,8 +507,26 @@ class WebSocketClient {
         this.pingVariabilityThreshold = 0.3; // Show warning if variability exceeds 30% of average
 
         this.progressToastId = null;
-        /** Persistent glass toast until the socket is connected again (disconnect, ping failure, max retries). */
-        this.connectionRecoveryToastId = null;
+        /** Connection dial UI — single source of truth for connect/reconnect/failure dialog. */
+        this.connectionPhase = 'idle'; // idle | dialing | failed | connected | auth
+        this.connectionDialView = 'transient'; // transient | status
+        this.connectionUi = {
+            beat: 'initializing',
+            message: '',
+            attempt: 0,
+            maxAttempts: WebSocketClient.ATTEMPTS_MAX_RECONNECT
+        };
+        this.connectionStats = {
+            messagesIn: 0,
+            messagesOut: 0,
+            connectedAt: null,
+            dialNumber: WebSocketClient.fqdnToDialNumber(window.location.hostname)
+        };
+        this._wasPingWarning = false;
+        this._initializingBeatComplete = false;
+        this._connectionStatsTimer = null;
+        this._melatonTrafficUp = null;
+        this._melatonTrafficDown = null;
         this.messageHandlers = new Map();
 
         this.initSteps = [];
@@ -507,51 +577,528 @@ class WebSocketClient {
         this.init();
     }
 
-    dismissConnectionRecoveryToast() {
-        if (this.connectionRecoveryToastId && typeof removeGlassToast === 'function') {
-            removeGlassToast(this.connectionRecoveryToastId);
-            this.connectionRecoveryToastId = null;
+    _setConnectionPhase(phase, patch = {}) {
+        this.connectionPhase = phase;
+        if (patch.beat !== undefined) this.connectionUi.beat = patch.beat;
+        if (patch.message !== undefined) this.connectionUi.message = patch.message;
+        if (patch.attempt !== undefined) this.connectionUi.attempt = patch.attempt;
+        if (patch.maxAttempts !== undefined) this.connectionUi.maxAttempts = patch.maxAttempts;
+        this._renderConnectionDial();
+        this._updateModemTrayIcon();
+    }
+
+    _setConnectionBeat(beat, patch = {}) {
+        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+        const merged = {
+            beat,
+            message: patch.message != null ? patch.message : beatDef.message,
+            attempt: patch.attempt !== undefined ? patch.attempt : this.connectionUi.attempt,
+            maxAttempts: patch.maxAttempts !== undefined ? patch.maxAttempts : this.connectionUi.maxAttempts
+        };
+        const phase = beat === 'connected' ? 'connected' : (this.connectionPhase === 'failed' ? 'failed' : 'dialing');
+        this._setConnectionPhase(phase, merged);
+    }
+
+    async _runConnectionBeat(beat, patch = {}) {
+        this._setConnectionBeat(beat, patch);
+        const minMs = WebSocketClient.CONNECTION_BEATS[beat]?.minMs || 0;
+        if (minMs > 0) {
+            await new Promise(resolve => setTimeout(resolve, minMs));
         }
     }
 
-    /**
-     * Shows or updates a non-dismissible (until connected) toast with a Connect action.
-     * Connect runs a full teardown + reconnect via manualReconnect().
-     */
-    showConnectionRecoveryToast(message, options = {}) {
-        const title = options.title != null ? options.title : 'Disconnected';
-        const type = options.type || 'error';
-        const icon = options.icon || '<i class="fas fa-fade fa-plug-circle-xmark"></i>';
-        const connectButtons = [{
-            text: 'Connect',
-            onClick: () => {
-                this.manualReconnect();
-            }
-        }];
+    async _ensureBeatMinDuration(beat, startedAt) {
+        const minMs = WebSocketClient.CONNECTION_BEATS[beat]?.minMs || 0;
+        if (minMs <= 0) return;
+        const elapsed = Date.now() - startedAt;
+        if (elapsed < minMs) {
+            await new Promise(resolve => setTimeout(resolve, minMs - elapsed));
+        }
+    }
 
-        if (this.connectionRecoveryToastId && typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.connectionRecoveryToastId, {
-                type,
-                title,
-                message,
-                customIcon: icon,
-                buttons: connectButtons,
-                timeout: false
+    _resetConnectionStatsSession() {
+        this.connectionStats.messagesIn = 0;
+        this.connectionStats.messagesOut = 0;
+        this.connectionStats.connectedAt = null;
+    }
+
+    _recordWsMessage(direction, message) {
+        if (message && (message.type === 'ping' || message.type === 'pong')) {
+            return;
+        }
+        if (direction === 'out') {
+            this.connectionStats.messagesOut++;
+        } else {
+            this.connectionStats.messagesIn++;
+        }
+        this._updateConnectionStatsDisplay();
+    }
+
+    formatConnectionUptime(ms) {
+        const s = Math.floor(ms / 1000);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        if (h > 0) {
+            return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+        }
+        return `${m}:${String(sec).padStart(2, '0')}`;
+    }
+
+    _isDesktopTrayMode() {
+        return !!(window.isDesktop || document.body.classList.contains('desktop-mode'));
+    }
+
+    _shouldShowConnectionStats() {
+        return this.connectionDialView === 'status' && this.isConnected();
+    }
+
+    _updateConnectionStatsDisplay() {
+        const statsEl = document.getElementById('connectionDialStats');
+        if (!statsEl) return;
+        if (!this._shouldShowConnectionStats()) {
+            statsEl.classList.add('hidden');
+            return;
+        }
+        statsEl.classList.remove('hidden');
+        const uptimeEl = document.getElementById('connectionDialStatUptime');
+        const outEl = document.getElementById('connectionDialStatOut');
+        const inEl = document.getElementById('connectionDialStatIn');
+        const pingEl = document.getElementById('connectionDialStatPing');
+        const varEl = document.getElementById('connectionDialStatVariability');
+        const uptimeMs = this.connectionStats.connectedAt && this.isConnected()
+            ? Date.now() - this.connectionStats.connectedAt
+            : 0;
+        if (uptimeEl) {
+            uptimeEl.textContent = uptimeMs > 0 ? this.formatConnectionUptime(uptimeMs) : '—';
+        }
+        if (outEl) outEl.textContent = String(this.connectionStats.messagesOut);
+        if (inEl) inEl.textContent = String(this.connectionStats.messagesIn);
+        if (pingEl) {
+            if (this.isConnected() && this.currentRtt !== null) {
+                const roundedRtt = Math.round(this.currentRtt / 10) * 10;
+                pingEl.textContent = `${roundedRtt}ms`;
+            } else {
+                pingEl.textContent = '—';
+            }
+        }
+        if (varEl) {
+            if (this.isConnected() && this.rttVariability !== null && this.currentRtt > 0) {
+                const variabilityPercent = Math.round((this.rttVariability / this.currentRtt) * 100);
+                varEl.textContent = `${variabilityPercent}%`;
+            } else {
+                varEl.textContent = '—';
+            }
+        }
+    }
+
+    _startConnectionStatsTimer() {
+        this._stopConnectionStatsTimer();
+        this._connectionStatsTimer = setInterval(() => {
+            this._updateConnectionStatsDisplay();
+            this._updateConnectionDialDetails();
+            this._updateServiceWorkerTrayIcon();
+            this._updateModemTrayIcon();
+        }, 1000);
+    }
+
+    _stopConnectionStatsTimer() {
+        if (this._connectionStatsTimer) {
+            clearInterval(this._connectionStatsTimer);
+            this._connectionStatsTimer = null;
+        }
+    }
+
+    openConnectionDialStatus() {
+        this.connectionDialView = 'status';
+        if (this.connectionPhase === 'failed') {
+            this._renderConnectionDial();
+        } else if (this.isConnected()) {
+            this._setConnectionBeat('connected');
+        } else if (this.connectionPhase === 'idle') {
+            this._setConnectionPhase('failed', {
+                message: 'NO CARRIER — Not connected to server.'
             });
+        } else {
+            this._setConnectionBeat(this.connectionUi.beat || 'dialing');
+        }
+        this._updateConnectionDialDetails();
+        this._updateServiceWorkerTrayIcon();
+        this._startConnectionStatsTimer();
+    }
+
+    /**
+     * User-initiated disconnect from the network status dialog.
+     * Keeps the dial modal open, shows reconnect UI, and auto-redials.
+     */
+    _userDisconnectFromDialog() {
+        this.connectionDialView = 'transient';
+        this._stopConnectionStatsTimer();
+        this.isManualClose = false;
+        this.reconnectAttempts = 0;
+        this.reconnectDelay = 1000;
+        this.circuitBreaker = false;
+        this.lastConnectionAttempt = 0;
+        this.isConnecting = false;
+        this.connectionLock = false;
+
+        this.disconnect(false);
+
+        this._setConnectionPhase('failed', {
+            message: 'NO CARRIER — Disconnected from server.'
+        });
+
+        this.reconnect();
+    }
+
+    closeConnectionDialStatus() {
+        this.connectionDialView = 'transient';
+        this._stopConnectionStatsTimer();
+        const modal = document.getElementById('connectionDialModal');
+        if (modal && !modal.classList.contains('hidden') && typeof closeModal === 'function') {
+            closeModal(modal);
+        } else if (modal) {
+            modal.classList.add('hidden');
+        }
+        if (!this.isConnected() && this.connectionPhase !== 'failed') {
+            this._setConnectionPhase('idle');
+        }
+    }
+
+    async _completeConnectionDialHandoff() {
+        if (this.connectionDialView === 'status') {
+            this._setConnectionBeat('connected');
+            this._updateConnectionDialDetails();
+            this._updateServiceWorkerTrayIcon();
+            return;
+        }
+        await this._runConnectionBeat('connected');
+        this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+        this.updateWebSocketStatus('connected');
+        this._setConnectionPhase('idle');
+    }
+
+    _getConnectionUsername() {
+        try {
+            const raw = localStorage.getItem('userData');
+            if (raw) {
+                const data = JSON.parse(raw);
+                if (data?.name) return data.name;
+                if (data?.username) return data.username;
+            }
+        } catch (e) { /* ignore */ }
+        const userType = localStorage.getItem('userType');
+        if (userType === 'admin') return 'Administrator';
+        if (userType === 'readonly') return 'Read-only';
+        if (userType) return userType;
+        return '—';
+    }
+
+    _getConnectionEncryptionLabel() {
+        if (window.location.protocol === 'https:') {
+            return 'TLS (HTTPS)';
+        }
+        return 'None (HTTP)';
+    }
+
+    _updateConnectionDialDetails() {
+        const phoneEl = document.getElementById('connectionDialDetailPhone');
+        const serverEl = document.getElementById('connectionDialDetailServer');
+        const encryptionEl = document.getElementById('connectionDialDetailEncryption');
+        const usernameEl = document.getElementById('connectionDialDetailUsername');
+        if (!phoneEl || !serverEl || !encryptionEl || !usernameEl) return;
+
+        phoneEl.textContent = this.connectionStats.dialNumber || '—';
+        serverEl.textContent = window.location.hostname || '—';
+        encryptionEl.textContent = this._getConnectionEncryptionLabel();
+        usernameEl.textContent = this._getConnectionUsername();
+    }
+
+    _updateConnectionDialProgress(beat, phase) {
+        const wrapEl = document.getElementById('connectionDialProgressWrap');
+        const barEl = document.getElementById('connectionDialProgressBar');
+        const fillEl = document.getElementById('connectionDialProgressFill');
+        if (!wrapEl || !barEl || !fillEl) return;
+
+        const progressBeats = new Set(['initializing', 'dialing', 'negotiation', 'establishing']);
+        const isTasking = progressBeats.has(beat) && phase !== 'failed' && phase !== 'idle' && phase !== 'auth';
+
+        if (!isTasking) {
+            barEl.classList.add('hidden');
+            return;
+        }
+
+        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+        const progress = beatDef.progress != null ? beatDef.progress : 0;
+        barEl.classList.remove('hidden');
+        fillEl.style.width = `${progress}%`;
+        barEl.setAttribute('aria-valuenow', String(progress));
+    }
+
+    _updateServiceWorkerTrayIcon() {
+        const trayIcon = document.getElementById('serviceWorkerTrayIcon');
+        const glyph = document.getElementById('serviceWorkerTrayIconGlyph');
+        if (!trayIcon || !glyph) return;
+
+        let swStatus = {
+            available: false,
+            isResponding: false,
+            heartbeatMissed: false,
+            timeSinceLastPingResponse: null
+        };
+        if (window.serviceWorkerManager) {
+            swStatus = window.serviceWorkerManager.getServiceWorkerHeartbeatStatus();
+        }
+
+        let iconClass = 'fas fa-cog';
+        let title = 'Service Worker: Active';
+        trayIcon.classList.remove('sw-unavailable', 'sw-heartbeat-missed');
+
+        if (!swStatus.available) {
+            iconClass = 'fas fa-times-circle';
+            title = 'Service Worker: Unavailable';
+            trayIcon.classList.add('sw-unavailable');
+        } else if (!swStatus.isResponding || swStatus.heartbeatMissed) {
+            iconClass = 'fas fa-exclamation-triangle';
+            title = 'Service Worker: Not Responding';
+            trayIcon.classList.add('sw-heartbeat-missed');
+        }
+
+        glyph.className = iconClass;
+        trayIcon.setAttribute('title', title);
+    }
+
+    _updateModemTrayIcon() {
+        const icon = document.getElementById('modemTrayIcon');
+        const glyph = document.getElementById('modemTrayIconGlyph');
+        if (!icon || !glyph) return;
+
+        let title = 'Melaton Network Connection';
+
+        if (this.isConnected()) {
+            glyph.className = 'fa-regular fa-globe';
+            const uptimeMs = this.connectionStats.connectedAt
+                ? Date.now() - this.connectionStats.connectedAt
+                : 0;
+            title = uptimeMs > 0
+                ? `Melaton Network: Connected (${this.formatConnectionUptime(uptimeMs)})`
+                : 'Melaton Network: Connected';
+        } else {
+            glyph.className = 'fas fa-phone-slash';
+            if (this.connectionPhase === 'failed') {
+                title = 'Melaton Network: NO CARRIER';
+            } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
+                title = `Melaton Network: ${this.connectionUi.message || 'Dialing…'}`;
+            } else {
+                title = 'Melaton Network: Not connected';
+            }
+        }
+
+        icon.setAttribute('title', title);
+    }
+
+    _showLatencyTrayPopup(reason) {
+        const message = reason || 'High latency detected on the network link.';
+        const indicator = document.getElementById('pingWarningIndicator');
+
+        if (this._isDesktopTrayMode() && indicator && window.PopoverManager && typeof showPopover === 'function') {
+            showPopover(
+                indicator,
+                'warning',
+                'High Latency Detected',
+                message,
+                false,
+                8000,
+                '<i class="fas fa-satellite"></i>',
+                null,
+                { position: 'top', arrowPosition: 'bottom-right' }
+            );
+            if (typeof startPopoverAutoHideTimer === 'function') {
+                startPopoverAutoHideTimer(indicator);
+            }
             return;
         }
 
         if (typeof showGlassToast === 'function') {
-            this.connectionRecoveryToastId = showGlassToast(
-                type,
-                title,
+            showGlassToast(
+                'warning',
+                'High Latency Detected',
                 message,
                 false,
-                false,
-                icon,
-                connectButtons
+                8000,
+                '<i class="fas fa-satellite"></i>',
+                [{
+                    text: 'View Connection',
+                    onClick: () => {
+                        this.openConnectionDialStatus();
+                    }
+                }]
             );
         }
+    }
+
+    _updateMelatonLinkIndicators() {
+        this._updateServiceWorkerTrayIcon();
+    }
+
+    _setupConnectionDialModalHandlers() {
+        if (this.connectionDialHandlersSetup) return;
+        this.connectionDialHandlersSetup = true;
+
+        const redialBtn = document.getElementById('connectionDialRedialBtn');
+        const reloadBtn = document.getElementById('connectionDialReloadBtn');
+        const forceBtn = document.getElementById('connectionDialDisconnectBtn');
+        const closeBtn = document.querySelector('.connection-dial-close-btn');
+
+        if (redialBtn) {
+            redialBtn.addEventListener('click', () => {
+                this.manualReconnect();
+            });
+        }
+        if (reloadBtn) {
+            reloadBtn.addEventListener('click', () => {
+                location.reload();
+            });
+        }
+        if (forceBtn) {
+            forceBtn.addEventListener('click', () => {
+                this._userDisconnectFromDialog();
+            });
+        }
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.closeConnectionDialStatus();
+            });
+        }
+
+        const modemTray = document.getElementById('modemTrayIcon');
+        if (modemTray) {
+            modemTray.addEventListener('click', () => {
+                this.openConnectionDialStatus();
+            });
+        }
+    }
+
+    _renderConnectionDial() {
+        const modal = document.getElementById('connectionDialModal');
+        const statusEl = document.getElementById('connectionDialStatus');
+        const attemptEl = document.getElementById('connectionDialAttempt');
+        const actionsEl = document.getElementById('connectionDialActions');
+        const statusActionsEl = document.getElementById('connectionDialStatusActions');
+        const statsEl = document.getElementById('connectionDialStats');
+        const closeBtn = modal?.querySelector('.connection-dial-close-btn');
+
+        if (!modal || !statusEl) {
+            console.warn('Connection dial modal elements not found');
+            return;
+        }
+
+        this._setupConnectionDialModalHandlers();
+
+        const phase = this.connectionPhase;
+        const ui = this.connectionUi;
+        const beat = ui.beat || 'initializing';
+        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+
+        modal.classList.remove('dialing', 'failed', 'connected-beat', 'status-view');
+        if (this.connectionDialView === 'status') {
+            modal.classList.add('status-view');
+        }
+
+        const hideModal = async () => {
+            if (modal.classList.contains('hidden')) return;
+            this._stopConnectionStatsTimer();
+            if (typeof closeModal === 'function') {
+                await closeModal(modal);
+            } else {
+                modal.classList.add('hidden');
+            }
+        };
+
+        if (phase === 'idle' || phase === 'auth') {
+            if (this.connectionDialView !== 'status') {
+                hideModal();
+            }
+            if (phase === 'auth') {
+                this.bannerManager.showWebSocketTicker('error', 'Authentication Required', 'fa-lock', false);
+                this.updateWebSocketStatus('disconnected');
+            }
+            return;
+        }
+
+        if (typeof openModal === 'function') {
+            openModal(modal);
+        } else {
+            modal.classList.remove('hidden');
+        }
+
+        this._updateConnectionDialDetails();
+
+        statusEl.textContent = ui.message || beatDef.message || 'Connecting…';
+        this._updateConnectionDialProgress(beat, phase);
+
+        if (phase === 'failed') {
+            modal.classList.add('failed');
+            if (attemptEl) attemptEl.classList.add('hidden');
+            if (actionsEl) actionsEl.classList.remove('hidden');
+            if (statusActionsEl) statusActionsEl.classList.add('hidden');
+            if (statsEl) statsEl.classList.add('hidden');
+            if (closeBtn) closeBtn.disabled = false;
+            this._updateConnectionDialProgress(beat, phase);
+            this.bannerManager.showWebSocketTicker(
+                'error',
+                ui.message || 'Server Not Responding',
+                'fa-phone-missed',
+                false
+            );
+            this.updateWebSocketStatus('disconnected');
+            this._updateServiceWorkerTrayIcon();
+            return;
+        }
+
+        if (phase === 'connected') {
+            modal.classList.add('connected-beat');
+        } else {
+            modal.classList.add('dialing');
+        }
+
+        if (attemptEl) {
+            if (ui.attempt > 0) {
+                attemptEl.textContent = `Redial attempt ${ui.attempt} of ${ui.maxAttempts}`;
+                attemptEl.classList.remove('hidden');
+            } else {
+                attemptEl.textContent = '';
+                attemptEl.classList.add('hidden');
+            }
+        }
+
+        if (this.connectionDialView === 'status') {
+            if (actionsEl) actionsEl.classList.add('hidden');
+            if (statusActionsEl) statusActionsEl.classList.remove('hidden');
+            if (this._shouldShowConnectionStats()) {
+                if (statsEl) statsEl.classList.remove('hidden');
+                this._updateConnectionStatsDisplay();
+            } else if (statsEl) {
+                statsEl.classList.add('hidden');
+            }
+            if (closeBtn) closeBtn.disabled = false;
+        } else {
+            if (actionsEl) actionsEl.classList.add('hidden');
+            if (statusActionsEl) statusActionsEl.classList.add('hidden');
+            if (statsEl) statsEl.classList.add('hidden');
+            if (closeBtn) closeBtn.disabled = true;
+        }
+
+        const tickerMessage = ui.message || beatDef.message || 'Dialing…';
+        this.bannerManager.showWebSocketTicker(
+            phase === 'connected' ? 'connected' : 'connecting',
+            tickerMessage,
+            ui.attempt > 0 ? 'fa-sync-alt' : 'fa-phone-arrow-up-right',
+            phase === 'connected',
+            phase === 'connected' ? 3000 : false
+        );
+        this.updateWebSocketStatus(phase === 'connected' ? 'connected' : 'connecting');
+        this._updateServiceWorkerTrayIcon();
     }
 
     // Helper method to safely clear timeouts
@@ -665,6 +1212,8 @@ class WebSocketClient {
 
         // Update ping warning tray icon
         this.updatePingWarningIcon();
+        this._updateMelatonLinkIndicators();
+        this._updateConnectionStatsDisplay();
     }
 
     /**
@@ -727,6 +1276,11 @@ class WebSocketClient {
             warningIcon.classList.add('hidden');
             warningIcon.classList.remove('high-ping', 'variable-ping');
         }
+
+        if (shouldShow && !this._wasPingWarning) {
+            this._showLatencyTrayPopup(this.getPingWarningReason());
+        }
+        this._wasPingWarning = shouldShow;
     }
 
     /**
@@ -835,7 +1389,9 @@ class WebSocketClient {
 
         for (let attempt = 1; attempt <= maxPingAttempts; attempt++) {
             try {
-                this.updateProgressNotification(`Dialing Server... (${attempt}/${maxPingAttempts})`, 5 + (attempt * 5));
+                this._setConnectionBeat('dialing', {
+                    message: `Dialing… (${attempt}/${maxPingAttempts})`
+                });
 
                 // Try to fetch a simple endpoint to ping the host
                 const response = await fetch('/', {
@@ -897,7 +1453,9 @@ class WebSocketClient {
                                 return true;
                             } else {
                                 // Server is initializing, show current stage
-                                this.updateProgressNotification(`${data.stageMessage}...`, 5 + (attempt * 5));
+                                this._setConnectionBeat('dialing', {
+                                    message: `${data.stageMessage}…`
+                                });
 
                                 if (attempt < maxPingAttempts) {
                                     // Wait before next attempt
@@ -977,16 +1535,33 @@ class WebSocketClient {
 
     updateProgressNotification(message, progress) {
         if (window.isDesktop) {
+            const startupModal = document.getElementById('windowsStartupModal');
+            const startupHidden = !startupModal || startupModal.classList.contains('hidden');
             if (this.progressToastId) {
                 if (typeof removeGlassToast === 'function') {
                     removeGlassToast(this.progressToastId);
                 }
                 this.progressToastId = null;
                 this.showWindowsStartupModal(message, progress);
+            } else if (startupHidden) {
+                this.showWindowsStartupModal(message, progress);
             } else {
                 this.updateWindowsStartupModal(message, progress);
             }
         } else {
+            if (!this.progressToastId) {
+                if (typeof showGlassToast === 'function') {
+                    this.progressToastId = showGlassToast(
+                        'info',
+                        'Dreamscape',
+                        message,
+                        true,
+                        false,
+                        '<i class="fa-duotone fa-star-christmas"></i>'
+                    );
+                    document.body.classList.add('initializing');
+                }
+            }
             if (!this.progressToastId) return;
 
             // Update toast message if updateGlassToastComplete is available
@@ -1450,18 +2025,22 @@ class WebSocketClient {
             console.log('🔍 Step-by-step mode enabled (Shift key detected on startup)');
         }
 
-        // Show progress notification immediately (after launch handoff fade when applicable)
-        await this.showProgressNotification('Initializing...', 0);
+        // Connection dial UI (not the top-left startup loader)
+        if (typeof dismissLaunchHandoffIfNeeded === 'function') {
+            await dismissLaunchHandoffIfNeeded();
+        }
+
+        this._setupConnectionDialModalHandlers();
+        this._updateServiceWorkerTrayIcon();
+
+        if (document.readyState === 'loading') {
+            await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
+        }
 
         // Initialize pending requests spinner
         this.updatePendingRequestsSpinner();
 
-        // Initialize WebSocket indicators after DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', this.connect);
-        } else {
-            this.connect();
-        }
+        this.connect();
 
         // Handle page visibility changes (covers tab switching, app minimise, screen lock)
         document.addEventListener('visibilitychange', () => {
@@ -1523,28 +2102,28 @@ class WebSocketClient {
 
         this.connectionLock = true;
         this.isConnecting = true;
+        this._resetConnectionStatsSession();
 
-        if (this.connectionRecoveryToastId && typeof updateGlassToastComplete === 'function') {
-            updateGlassToastComplete(this.connectionRecoveryToastId, {
-                type: 'warning',
-                title: 'Reconnecting',
-                message: 'Dialing server…',
-                customIcon: '<i class="fas fa-fade fa-phone-arrow-up-right"></i>',
-                timeout: false
-            });
+        if (!this._initializingBeatComplete) {
+            await this._runConnectionBeat('initializing');
+            this._initializingBeatComplete = true;
         }
 
-        this.updateProgressNotification('Dialing Server...', 0);
-
-        // Show connecting ticker (don't auto-hide until connected)
-        this.bannerManager.showWebSocketTicker('connecting', 'Dialing Server...', 'fa-phone-arrow-up-right', false);
-        this.updateWebSocketStatus('connecting');
+        const dialingStart = Date.now();
+        this._setConnectionBeat('dialing', {
+            attempt: this.reconnectAttempts,
+            maxAttempts: this.maxReconnectAttempts
+        });
 
         try {
             // Step 1: First ping the host over HTTP to ensure it's responsive
             try {
                 await this.pingHost();
-                this.updateProgressNotification('Initializing components...', 15);
+                await this._ensureBeatMinDuration('dialing', dialingStart);
+                await this._runConnectionBeat('negotiation', {
+                    attempt: this.reconnectAttempts,
+                    maxAttempts: this.maxReconnectAttempts
+                });
             } catch (pingError) {
                 console.error('❌ Host availability check failed:', pingError.message);
                 this.isConnecting = false;
@@ -1562,41 +2141,23 @@ class WebSocketClient {
                     }
                 }
 
-                // If we're already in circuit breaker mode, don't retry immediately
-                if (this.circuitBreaker) {
-                    this.bannerManager.showWebSocketTicker('error', pingError.message, 'fa-exclamation-triangle', false);
-                    this.showConnectionRecoveryToast(pingError.message || 'Server may be unavailable.', {
-                        icon: '<i class="fas fa-fade fa-phone-missed"></i>'
-                    });
-                    return;
-                }
+                const failureMessage = this.circuitBreaker
+                    ? (pingError.message || 'NO CARRIER — Server may be unavailable.')
+                    : 'NO CARRIER — Server not responding';
 
-                this.bannerManager.showWebSocketTicker('error', 'Server Not Responding', 'fa-phone-missed', false);
-                this.showConnectionRecoveryToast('Unable to reach the server.', {
-                    icon: '<i class="fas fa-fade fa-phone-missed"></i>'
-                });
+                this._setConnectionPhase('failed', { message: failureMessage });
 
-                // Retry connection after a delay (only if we could not show the recovery toast)
-                if (!this.connectionRecoveryToastId) {
+                if (!this.circuitBreaker) {
                     setTimeout(() => {
                         this.reconnect();
                     }, 3000);
                 }
-                this.connectionLock = false; // Release lock before returning
                 return;
             }
 
             // Step 3: Now attempt WebSocket connection
-            this.updateProgressNotification('Establishing Session...', 20);
-
-            // Determine WebSocket URL
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const baseHost = `${protocol}//${window.location.host}`;
-            let wsUrl = baseHost;
-            if (typeof getOrCreateSessionLinkId === 'function') {
-                const linkId = getOrCreateSessionLinkId();
-                wsUrl = `${baseHost}/?sessionLinkId=${encodeURIComponent(linkId)}`;
-            }
+            const wsUrl = `${protocol}//${window.location.host}`;
 
             this.ws = new WebSocket(wsUrl);
 
@@ -1607,11 +2168,12 @@ class WebSocketClient {
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
 
-                this.dismissConnectionRecoveryToast();
+                await this._runConnectionBeat('establishing', {
+                    attempt: 0,
+                    maxAttempts: this.maxReconnectAttempts
+                });
 
-                // Show connected ticker and auto-hide after 3 seconds
-                this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
-                this.updateWebSocketStatus('connected');
+                this.connectionStats.connectedAt = Date.now();
 
                 // Trigger connection event
                 this.triggerEvent('connected');
@@ -1642,12 +2204,14 @@ class WebSocketClient {
                             // Don't block initialization if update check fails
                         }
                     }
+                }
 
+                await this._completeConnectionDialHandoff();
+
+                if (!this.initializationCompleted) {
                     // Complete any remaining initialization steps (includes authentication)
                     // Now with RTT data available for dynamic timeout adjustment
                     this.executeInitSteps();
-                } else {
-                    await this.hideProgressNotification();
                 }
 
                 // Sync current workspace with server (only on reconnection, not initial connection)
@@ -1666,6 +2230,7 @@ class WebSocketClient {
             this.ws.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
+                    this._recordWsMessage('in', message);
                     // Flash down arrow to indicate inbound traffic
                     this.flashWebSocketArrow('down');
                     this.handleMessage(message);
@@ -1678,6 +2243,7 @@ class WebSocketClient {
                 console.log('🔌 WebSocket disconnected:', event.code, event.reason);
                 this.isConnecting = false;
                 this.connectionLock = false;
+                this.connectionStats.connectedAt = null;
 
                 // Stop periodic pings when connection is closed
                 this.stopPeriodicPings();
@@ -1743,17 +2309,18 @@ class WebSocketClient {
                         disconnectMessage += `: ${event.reason}`;
                     }
 
-                    // Only show reconnecting message if we're not in circuit breaker mode
                     if (!this.circuitBreaker) {
-                        disconnectMessage += '. Reconnecting...';
-                        this.bannerManager.showWebSocketTicker('warning', disconnectMessage, 'fa-sync-alt', false);
+                        this._setConnectionBeat('dialing', {
+                            message: `${disconnectMessage}. Reconnecting…`,
+                            attempt: this.reconnectAttempts,
+                            maxAttempts: this.maxReconnectAttempts
+                        });
                         this.reconnect();
                     } else {
-                        disconnectMessage += '. Server may be unavailable.';
-                        this.bannerManager.showWebSocketTicker('error', disconnectMessage, 'fa-exclamation-triangle', false);
+                        this._setConnectionPhase('failed', {
+                            message: `NO CARRIER — ${disconnectMessage}. Server may be unavailable.`
+                        });
                     }
-
-                    this.showConnectionRecoveryToast(disconnectMessage);
                 }
 
                 // Trigger disconnect event
@@ -1785,32 +2352,26 @@ class WebSocketClient {
 
                 if (!this.isManualClose) {
                     let errorMessage = '';
-                    let shouldRetry = true;
 
-                    // Categorize the error for better user messaging
                     if (error.target && error.target.readyState === WebSocket.CLOSED) {
-                        errorMessage = 'Connection Closed Unexpectedly';
+                        errorMessage = 'Connection closed unexpectedly';
                     } else if (error.target && error.target.readyState === WebSocket.CONNECTING) {
-                        errorMessage = 'Connection Failed';
+                        errorMessage = 'Connection failed';
                     } else {
-                        errorMessage = 'Network Connection Error';
+                        errorMessage = 'Network connection error';
                     }
 
-                    // If we're in circuit breaker mode, don't show retry message
                     if (this.circuitBreaker) {
-                        errorMessage += '. Server Unavailable';
-                        shouldRetry = false;
+                        errorMessage = `NO CARRIER — ${errorMessage}. Server unavailable.`;
+                        this._setConnectionPhase('failed', { message: errorMessage });
                     } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                        errorMessage += '. Max Retry Attempts Reached';
-                        shouldRetry = false;
+                        errorMessage = `NO CARRIER — ${errorMessage}. Max retry attempts reached.`;
+                        this._setConnectionPhase('failed', { message: errorMessage });
+                    } else {
+                        this._setConnectionPhase('failed', {
+                            message: `NO CARRIER — ${errorMessage}`
+                        });
                     }
-
-                    this.bannerManager.showWebSocketTicker(
-                        'error',
-                        errorMessage,
-                        'fa-exclamation-triangle',
-                        false // Don't auto-hide
-                    );
                 }
             };
 
@@ -1818,7 +2379,9 @@ class WebSocketClient {
             console.error('❌ Failed to create WebSocket connection:', error);
             this.isConnecting = false;
             this.connectionLock = false; // Release connection lock on exception
-            this.bannerManager.showWebSocketTicker('error', 'Connection Failure', 'fa-times-circle', false);
+            this._setConnectionPhase('failed', {
+                message: 'NO CARRIER — Connection failure'
+            });
         }
     }
 
@@ -1880,6 +2443,7 @@ class WebSocketClient {
         this.minRtt = null;
         this.maxRtt = null;
         this.pendingPings.clear();
+        this.connectionStats.connectedAt = null;
 
         // Clear and fail all pending requests
         this.clearPendingRequests();
@@ -1929,21 +2493,20 @@ class WebSocketClient {
         // Check if we've exceeded max attempts
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.circuitBreaker = true;
-            this.bannerManager.showWebSocketTicker(
-                'error',
-                'Connection Failed',
-                'fa-exclamation-triangle',
-                false // Don't auto-hide
-            );
-            this.showConnectionRecoveryToast(
-                'Connection failed after several attempts. Use Connect to fully reconnect.',
-                { icon: '<i class="fas fa-fade fa-exclamation-triangle"></i>' }
-            );
+            this._setConnectionPhase('failed', {
+                message: 'NO CARRIER — Connection failed after several attempts. Use Redial to reconnect.'
+            });
             return;
         }
 
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), this.maxReconnectDelay);
         console.log(`🔌 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+
+        this._setConnectionBeat('dialing', {
+            message: `Redialing in ${Math.ceil(delay / 1000)}s…`,
+            attempt: this.reconnectAttempts,
+            maxAttempts: this.maxReconnectAttempts
+        });
 
         setTimeout(() => {
             if (!this.isManualClose && !this.circuitBreaker) {
@@ -1973,7 +2536,11 @@ class WebSocketClient {
         this.circuitBreaker = false;
         this.lastConnectionAttempt = 0;
 
-        this.bannerManager.showWebSocketTicker('connecting', 'Reconnecting...', 'fa-signal', false);
+        this._setConnectionBeat('dialing', {
+            message: 'Redialing…',
+            attempt: 0,
+            maxAttempts: this.maxReconnectAttempts
+        });
 
         // Full socket teardown before connect so the next session is clean (same as forceReconnect).
         this.disconnect(false);
@@ -2058,7 +2625,8 @@ class WebSocketClient {
             this.bannerManager.hideWebSocketTicker();
         }
 
-        this.dismissConnectionRecoveryToast();
+        this._stopConnectionStatsTimer();
+        this._setConnectionPhase('idle');
 
         console.log('✅ WebSocket client destroyed');
     }
@@ -2130,6 +2698,7 @@ class WebSocketClient {
 
     send(message) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this._recordWsMessage('out', message);
             this.ws.send(JSON.stringify(message));
             this.flashWebSocketArrow('up');
         } else {
@@ -2548,12 +3117,6 @@ class WebSocketClient {
 
         // Handle specific message types
         switch (message.type) {
-            case 'connection':
-                if (message.sessionLinkId) {
-                    this.sessionLinkId = message.sessionLinkId;
-                }
-                break;
-
             case 'error':
                 this.bannerManager.showWebSocketBanner('error', 'WebSocket server error: ' + message.message, '<i class="fas fa-exclamation-triangle"></i>');
                 break;
@@ -2779,8 +3342,7 @@ class WebSocketClient {
     }
 
     handleAuthError(message) {
-        // Show authentication error ticker (won't auto-hide)
-        this.bannerManager.showWebSocketTicker('error', 'Authentication Required', 'fa-lock', false);
+        this._setConnectionPhase('auth');
 
         // Trigger authentication event for other parts of the app to handle
         this.triggerEvent('authentication_required', message);
@@ -3568,6 +4130,14 @@ class WebSocketClient {
         }
     }
 
+    // Partial fetches (probe, add-latest) must not join the full-gallery pagination group.
+    isPartialGalleryRequest(options = {}) {
+        if (options && options.skipGalleryPagination) return true;
+        const limit = Number(options.limit);
+        if (limit === 0) return true;
+        return limit > 0 && limit < 750;
+    }
+
     // Method to request gallery data via WebSocket
     async requestGallery(viewType = 'images', includePinnedStatus = true, options = {}) {
         try {
@@ -3579,7 +4149,8 @@ class WebSocketClient {
 
             // All gallery requests during active pagination loading should use pagination tracking
             let result;
-            if (this.isGalleryLoadingActive) {
+            const isPartial = this.isPartialGalleryRequest(options);
+            if (this.isGalleryLoadingActive && !isPartial) {
                 // Use pagination tracking for all gallery requests during active loading
                 if (!this.activeGalleryPaginationGroupId) {
                     this.activeGalleryPaginationGroupId = `gallery_load_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -4378,6 +4949,34 @@ class WebSocketClient {
         return cancelledIds;
     }
 
+    // Abort a single pending request from the connection status UI (public/scripts/websocket.js)
+    abortPendingRequest(requestId, reason = 'Request aborted') {
+        if (!this.pendingRequests || !this.pendingRequests.has(requestId)) {
+            return false;
+        }
+        const request = this.pendingRequests.get(requestId);
+        const generationTypes = new Set(['generate_image', 'generate_preset']);
+        const err = new Error(reason);
+        err.code = generationTypes.has(request.type) ? 'CLIENT_CANCELLED' : 'REQUEST_ABORTED';
+        err.requestId = requestId;
+
+        if (generationTypes.has(request.type)) {
+            this.clearStreamingStepQueues();
+            try {
+                this.sendAcklessMessage('cancel_generation', { cancelledRequestIds: [requestId] });
+            } catch (e) {
+                console.warn('cancel_generation notify failed:', e && e.message);
+            }
+        }
+
+        if (request.type === 'request_gallery' && this.isGalleryLoadingActive) {
+            this.completeGalleryLoading();
+        }
+
+        this.resolveRequest(requestId, null, err);
+        return true;
+    }
+
     // IP Management methods
     async getBlockedIPs(page = 1, limit = 15) {
         return this.sendMessage('get_blocked_ips', { page, limit });
@@ -4842,9 +5441,6 @@ class WebSocketClient {
                     group.orphanedAt = 0;
                 }
 
-                if (!this.isPaginationGroupComplete(groupId) && group.hasMore) {
-                    continue;
-                }
                 this.paginationGroups.delete(groupId);
             } else {
                 const group = this.paginationGroups.get(groupId);
@@ -5133,28 +5729,36 @@ class WebSocketClient {
         const arrowType = direction === 'up' ? 'upArrow' : 'downArrow';
         const timeoutType = direction === 'up' ? 'upTimeout' : 'downTimeout';
 
-        // Handle all indicators
-        this.websocketIndicators.forEach(indicator => {
-            const arrow = indicator[arrowType];
+        const flashArrow = (arrow, timeoutKey, timeoutStore) => {
             if (!arrow) return;
-
-            // Clear existing timeout if one is running (rapid activity handling)
-            if (indicator[timeoutType]) {
-                clearTimeout(indicator[timeoutType]);
+            if (timeoutStore[timeoutKey]) {
+                clearTimeout(timeoutStore[timeoutKey]);
             }
-
-            // Force animation restart by removing and re-adding the class
             arrow.classList.remove('active');
-            // Force reflow to ensure animation reset
             void arrow.offsetHeight;
             arrow.classList.add('active');
-
-            // Set new timeout to remove active class after duration
-            indicator[timeoutType] = setTimeout(() => {
+            timeoutStore[timeoutKey] = setTimeout(() => {
                 arrow.classList.remove('active');
-                indicator[timeoutType] = null;
+                timeoutStore[timeoutKey] = null;
             }, duration);
+        };
+
+        // Handle all indicators
+        this.websocketIndicators.forEach(indicator => {
+            flashArrow(indicator[arrowType], timeoutType, indicator);
         });
+
+        if (!this._melatonTrafficUp) {
+            this._melatonTrafficUp = document.getElementById('connectionTrafficUp');
+        }
+        if (!this._melatonTrafficDown) {
+            this._melatonTrafficDown = document.getElementById('connectionTrafficDown');
+        }
+        if (!this._melatonTrafficTimeouts) {
+            this._melatonTrafficTimeouts = { upTimeout: null, downTimeout: null };
+        }
+        const melatonArrow = direction === 'up' ? this._melatonTrafficUp : this._melatonTrafficDown;
+        flashArrow(melatonArrow, timeoutType, this._melatonTrafficTimeouts);
     }
 
     // Clear all WebSocket indicator timeouts (for cleanup)
@@ -5177,6 +5781,21 @@ class WebSocketClient {
                 indicator.downArrow.classList.remove('active');
             }
         });
+
+        if (this._melatonTrafficTimeouts) {
+            ['upTimeout', 'downTimeout'].forEach(timeoutType => {
+                if (this._melatonTrafficTimeouts[timeoutType]) {
+                    clearTimeout(this._melatonTrafficTimeouts[timeoutType]);
+                    this._melatonTrafficTimeouts[timeoutType] = null;
+                }
+            });
+        }
+        if (this._melatonTrafficUp) {
+            this._melatonTrafficUp.classList.remove('active');
+        }
+        if (this._melatonTrafficDown) {
+            this._melatonTrafficDown.classList.remove('active');
+        }
     }
 
     // Handle service worker messages
@@ -5422,7 +6041,8 @@ class WebSocketClient {
             // Handle gallery pagination state changes
             if (request.type === 'request_gallery' && data && data.pagination) {
                 const requestLimit = Number(request.limit) || 0;
-                const shouldEnableGalleryPagination = data.pagination.hasMore && requestLimit > 0;
+                const isPartialGalleryRequest = requestLimit > 0 && requestLimit < 750;
+                const shouldEnableGalleryPagination = data.pagination.hasMore && requestLimit > 0 && !isPartialGalleryRequest;
                 if (shouldEnableGalleryPagination && !this.isGalleryLoadingActive) {
                     // This response indicates pagination has started - set the flag for future requests
                     this.isGalleryLoadingActive = true;

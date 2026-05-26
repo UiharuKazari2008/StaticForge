@@ -10,20 +10,19 @@ class WebSocketRequestsModal {
         this.previousRequestsCount = document.getElementById('previousRequestsCount');
         this.activeRequestsEmptyState = document.getElementById('activeRequestsEmptyState');
         this.previousRequestsEmptyState = document.getElementById('previousRequestsEmptyState');
-        this.connectionStatusBadge = document.getElementById('connectionStatusBadge');
-        this.connectionStatusValue = document.getElementById('connectionStatusValue');
-        this.connectionSecurityIcon = document.getElementById('connectionSecurityIcon');
-        this.connectionTrafficUp = document.getElementById('connectionTrafficUp');
-        this.connectionTrafficDown = document.getElementById('connectionTrafficDown');
-        this.connectionRttValue = document.getElementById('connectionRttValue');
-        this.connectionVariabilityValue = document.getElementById('connectionVariabilityValue');
-        this.serviceWorkerIcon = document.getElementById('serviceWorkerIcon');
+        this.connectionStatusBadge = null;
+        this.connectionStatusValue = null;
+        this.connectionSecurityIcon = null;
+        this.connectionTrafficUp = null;
+        this.connectionTrafficDown = null;
+        this.connectionRttValue = null;
+        this.connectionVariabilityValue = null;
+        this.serviceWorkerIcon = null;
         this.updateInterval = null;
         this.isUpdating = false;
         this.observer = null;
         this.lastActiveHash = null;
         this.lastPreviousHash = null;
-        this.lastConnectionStatus = null; // Store last connection status to detect changes
         
         this.init();
     }
@@ -156,16 +155,8 @@ class WebSocketRequestsModal {
         try {
             if (!window.wsClient) {
                 this.renderEmpty();
-                this.renderConnectionStatus(null);
-                this.renderServiceWorkerStatus();
                 return;
             }
-
-            // Update connection status
-            this.renderConnectionStatus(window.wsClient);
-            
-            // Update service worker status
-            this.renderServiceWorkerStatus();
 
             // Get active requests (filter out ping)
             const activeRequests = this.getActiveRequests();
@@ -387,6 +378,8 @@ class WebSocketRequestsModal {
         if (html) {
             this.activeRequestsList.insertAdjacentHTML('beforeend', html);
         }
+
+        this.attachRequestItemContextMenus(this.activeRequestsList, requests);
     }
     
     updateActiveRequestAges(requests) {
@@ -501,199 +494,46 @@ class WebSocketRequestsModal {
         if (html) {
             this.previousRequestsList.insertAdjacentHTML('beforeend', html);
         }
+
+        this.attachRequestItemContextMenus(this.previousRequestsList, requests, false);
     }
 
-    renderConnectionStatus(wsClient) {
-        // Build current status object
-        let currentStatus = {
-            hasClient: !!wsClient,
-            isConnected: false,
-            isConnecting: false,
-            statusText: 'Disconnected',
-            statusBadgeClass: 'status-badge-disconnected',
-            securityIconClass: 'fas fa-unlock',
-            rttText: '---',
-            variabilityText: '---'
-        };
+    attachRequestItemContextMenus(listEl, requests, allowAbort = true) {
+        if (!listEl || !requests || !requests.length) return;
+        // contextMenu — public/scripts/comp/contextMenu.js
+        if (typeof contextMenu === 'undefined' || !contextMenu) return;
 
-        if (wsClient) {
-            const isConnected = typeof wsClient.isConnected === 'function' ? wsClient.isConnected() : (wsClient.ws && wsClient.ws.readyState === WebSocket.OPEN);
-            currentStatus.isConnected = isConnected;
-            currentStatus.isConnecting = wsClient.isConnecting || false;
+        const requestById = new Map(requests.map((r) => [r.id, r]));
 
-            // Connection Status - as badge using websocket-ticker classes
-            if (isConnected) {
-                currentStatus.statusText = 'Connected';
-                currentStatus.statusBadgeClass = 'connected';
-            } else if (wsClient.isConnecting) {
-                currentStatus.statusText = 'Connecting...';
-                currentStatus.statusBadgeClass = 'connecting';
-            } else {
-                currentStatus.statusText = 'Disconnected';
-                currentStatus.statusBadgeClass = 'disconnected';
+        listEl.querySelectorAll('.request-item[data-request-id]').forEach((itemEl) => {
+            const requestId = itemEl.dataset.requestId;
+            const req = requestById.get(requestId);
+            if (!req) return;
+
+            if (itemEl.dataset.requestContextMenuAttached === requestId) return;
+            itemEl.dataset.requestContextMenuAttached = requestId;
+
+            const menuItems = [];
+            if (allowAbort && req.isPending) {
+                menuItems.push({
+                    icon: 'fas fa-ban',
+                    text: 'Abort',
+                    action: 'abort-request',
+                    className: 'context-menu-item-danger'
+                });
             }
+            if (menuItems.length === 0) return;
 
-            // Security (WSS/WS) - icon only, inside badge
-            if (wsClient.ws) {
-                const url = wsClient.ws.url || '';
-                if (url.startsWith('wss://')) {
-                    currentStatus.securityIconClass = 'fas fa-lock connection-status-badge-icon';
-                } else if (url.startsWith('ws://')) {
-                    currentStatus.securityIconClass = 'fas fa-unlock connection-status-badge-icon';
-                } else {
-                    // Fallback to checking window location
-                    const isSecure = window.location.protocol === 'https:';
-                    currentStatus.securityIconClass = isSecure ? 'fas fa-lock connection-status-badge-icon' : 'fas fa-unlock connection-status-badge-icon';
+            contextMenu.attachToElement(itemEl, {
+                sections: [{ type: 'list', items: menuItems }],
+                onAction: (action) => {
+                    if (action !== 'abort-request') return;
+                    if (!window.wsClient || typeof window.wsClient.abortPendingRequest !== 'function') return;
+                    window.wsClient.abortPendingRequest(requestId, 'Request aborted');
+                    this.update();
                 }
-            } else {
-                currentStatus.securityIconClass = 'fas fa-unlock connection-status-badge-icon';
-            }
-
-
-            // RTT (Ping) - round to nearest 10ms to reduce updates
-            let rttText = '---';
-            let variabilityText = '';
-            
-            if (wsClient.currentRtt !== null && wsClient.currentRtt !== undefined) {
-                const roundedRtt = Math.round(wsClient.currentRtt / 10) * 10;
-                rttText = `${roundedRtt}ms`;
-            }
-
-            // Variability - round percentage to reduce updates
-            if (wsClient.rttVariability !== null && wsClient.rttVariability !== undefined && wsClient.currentRtt > 0) {
-                const variabilityPercent = Math.round((wsClient.rttVariability / wsClient.currentRtt) * 100);
-                variabilityText = ` · ${variabilityPercent}%`;
-            }
-            
-            // Combine RTT and variability with a small dot separator
-            if (variabilityText) {
-                currentStatus.rttText = rttText + variabilityText;
-            } else {
-                currentStatus.rttText = rttText;
-            }
-            
-            // Keep variabilityText empty since it's now combined
-            currentStatus.variabilityText = '';
-        }
-
-        // Only update DOM if values actually changed
-        if (this.lastConnectionStatus) {
-            const hasChanged = 
-                currentStatus.statusText !== this.lastConnectionStatus.statusText ||
-                currentStatus.statusBadgeClass !== this.lastConnectionStatus.statusBadgeClass ||
-                currentStatus.securityIconClass !== this.lastConnectionStatus.securityIconClass ||
-                currentStatus.rttText !== this.lastConnectionStatus.rttText;
-
-            if (!hasChanged) {
-                return; // No changes, skip DOM updates
-            }
-        }
-
-        // Update DOM only when values changed
-        if (this.connectionStatusValue && this.connectionStatusValue.textContent !== currentStatus.statusText) {
-            this.connectionStatusValue.textContent = currentStatus.statusText;
-        }
-        if (this.connectionStatusBadge) {
-            // Use connection-status-badge classes (copied from websocket-ticker styles)
-            this.connectionStatusBadge.className = `connection-status-badge ${currentStatus.statusBadgeClass}`;
-        }
-
-        if (this.connectionSecurityIcon && this.connectionSecurityIcon.className !== currentStatus.securityIconClass) {
-            this.connectionSecurityIcon.className = currentStatus.securityIconClass;
-        }
-
-        // Update RTT value with combined RTT and variability
-        if (this.connectionRttValue && this.connectionRttValue.textContent !== currentStatus.rttText) {
-            this.connectionRttValue.textContent = currentStatus.rttText;
-        }
-
-        // Hide variability element since it's now combined with RTT
-        if (this.connectionVariabilityValue) {
-            this.connectionVariabilityValue.textContent = '';
-            // Optionally hide the parent indicator if you want to remove it from view
-            const variabilityIndicator = this.connectionVariabilityValue.closest('.connection-status-indicator');
-            if (variabilityIndicator) {
-                variabilityIndicator.style.display = 'none';
-            }
-        }
-
-        // Store current status for next comparison
-        this.lastConnectionStatus = currentStatus;
-    }
-
-    renderServiceWorkerStatus() {
-        if (!this.serviceWorkerIcon) {
-            return;
-        }
-
-        // Get service worker status from serviceWorkerManager
-        let swStatus = {
-            available: false,
-            status: 'Not Available',
-            heartbeatMissed: false,
-            timeSinceLastHeartbeat: null
-        };
-
-        if (window.serviceWorkerManager) {
-            swStatus = window.serviceWorkerManager.getServiceWorkerHeartbeatStatus();
-        }
-
-        // Build tooltip text and icon
-        let tooltipText = 'Service Worker';
-        let iconClass = 'fas fa-cog';
-        let statusClass = '';
-
-        if (!swStatus.available) {
-            tooltipText = 'Service Worker: Not Registered';
-            iconClass = 'fas fa-times-circle';
-            statusClass = 'sw-unavailable';
-        } else if (!swStatus.isResponding) {
-            const secondsSinceResponse = swStatus.timeSinceLastPingResponse 
-                ? Math.round(swStatus.timeSinceLastPingResponse / 1000) 
-                : 0;
-            tooltipText = `Service Worker: Stopped (no response for ${secondsSinceResponse}s)`;
-            iconClass = 'fas fa-exclamation-triangle';
-            statusClass = 'sw-heartbeat-missed';
-        } else if (swStatus.heartbeatMissed) {
-            const secondsSinceHeartbeat = swStatus.timeSinceLastHeartbeat 
-                ? Math.round(swStatus.timeSinceLastHeartbeat / 1000) 
-                : 0;
-            tooltipText = `Service Worker: Heartbeat Missed (${secondsSinceHeartbeat}s)`;
-            iconClass = 'fas fa-exclamation-triangle';
-            statusClass = 'sw-heartbeat-missed';
-        } else if (swStatus.isUpdating) {
-            tooltipText = 'Service Worker: Updating';
-            iconClass = 'fas fa-sync fa-spin';
-            statusClass = 'sw-updating';
-        } else if (swStatus.hasActive) {
-            tooltipText = 'Service Worker: Active';
-            iconClass = 'fas fa-check-circle';
-            statusClass = 'sw-active';
-        } else {
-            tooltipText = 'Service Worker: Inactive';
-            iconClass = 'fas fa-minus-circle';
-            statusClass = 'sw-inactive';
-        }
-
-        // Update icon class (remove all possible classes and add the current one)
-        const possibleClasses = ['fa-cog', 'fa-times-circle', 'fa-exclamation-triangle', 'fa-sync', 'fa-check-circle', 'fa-minus-circle', 'fa-spin'];
-        possibleClasses.forEach(cls => this.serviceWorkerIcon.classList.remove(cls));
-        
-        iconClass.split(' ').forEach(cls => {
-            if (cls) this.serviceWorkerIcon.classList.add(cls);
+            });
         });
-
-        // Update status class and tooltip on the indicator element
-        const indicatorElement = this.serviceWorkerIcon.closest('.connection-status-indicator');
-        if (indicatorElement) {
-            const possibleStatusClasses = ['sw-unavailable', 'sw-heartbeat-missed', 'sw-updating', 'sw-active', 'sw-inactive'];
-            possibleStatusClasses.forEach(cls => indicatorElement.classList.remove(cls));
-            if (statusClass) {
-                indicatorElement.classList.add(statusClass);
-            }
-            // Update tooltip
-            indicatorElement.setAttribute('title', tooltipText);
-        }
     }
 
     renderEmpty() {

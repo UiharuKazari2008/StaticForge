@@ -9,28 +9,22 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
 
-// Database file path
-const dbPath = path.join(__dirname, '..', '.cache', 'knowledge_memory.db');
-
-// Ensure cache directory exists
-const cacheDir = path.dirname(dbPath);
-if (!fs.existsSync(cacheDir)) {
-    fs.mkdirSync(cacheDir, { recursive: true });
-}
-
+let dbPath = null;
 let db = null;
 
 /**
  * Initialize the SQLite database for knowledge memory
  */
-function initializeKnowledgeMemoryDatabase() {
+function initializeKnowledgeMemoryDatabase(databasesPath) {
     try {
-        // If already initialized, return true
         if (db !== null) {
             return true;
         }
-        
-        // Open database (creates if doesn't exist)
+        dbPath = path.join(databasesPath, 'knowledge_memory.db');
+        const cacheDir = path.dirname(dbPath);
+        if (!fs.existsSync(cacheDir)) {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        }
         db = new Database(dbPath);
         
         // Enable WAL mode for better concurrency

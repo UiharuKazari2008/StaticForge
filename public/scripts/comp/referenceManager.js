@@ -111,18 +111,161 @@ function filterReferenceImages(images, filterMode) {
             case 'image':
                 // All references that can be used as a base image and are not standalone vibes
                 // Also exclude character-only references
-                const isCharacterOnly = image.metadata && image.metadata.tags && image.metadata.tags.includes('characterOnly');
-                return !image.isStandalone && !isCharacterOnly;
+                return !image.isStandalone && !isPrecisionReferenceMetadata(image.metadata);
             case 'vibe':
                 // Reference items that have Vibe Encodings
                 return image.hasVibes && image.vibes && image.vibes.length > 0;
             case 'character':
-                // References that are marked as character-only
-                return image.metadata && image.metadata.tags && image.metadata.tags.includes('characterOnly');
+                // References marked as precise reference only
+                return isPrecisionReferenceMetadata(image.metadata);
             default:
                 return true;
         }
     });
+}
+
+const PRECISION_REFERENCE_TAG = 'precisionReference';
+const LEGACY_CHARACTER_ONLY_TAG = 'characterOnly';
+const PRECISION_REF_TYPE_TAG_PREFIX = 'preciseRefType:';
+
+function isPrecisionReferenceMetadata(metadata) {
+    if (!metadata || !metadata.tags || !Array.isArray(metadata.tags)) return false;
+    return metadata.tags.includes(PRECISION_REFERENCE_TAG) || metadata.tags.includes(LEGACY_CHARACTER_ONLY_TAG);
+}
+
+function getPrecisionReferenceTypeFromMetadata(metadata) {
+    if (!metadata || !metadata.tags || !Array.isArray(metadata.tags)) return 1;
+    const typeTag = metadata.tags.find(tag => typeof tag === 'string' && tag.startsWith(PRECISION_REF_TYPE_TAG_PREFIX));
+    if (typeTag) {
+        const n = parseInt(typeTag.slice(PRECISION_REF_TYPE_TAG_PREFIX.length), 10);
+        if (n === 2 || n === 3) return n;
+        return 1;
+    }
+    if (metadata.tags.includes(PRECISION_REFERENCE_TAG)) {
+        return 1;
+    }
+    if (metadata.tags.includes(LEGACY_CHARACTER_ONLY_TAG)) {
+        return 2;
+    }
+    return 1;
+}
+
+/** Thumbnail/full URLs for precise-ref cards — Lumen preview: openReferenceImageInViewer / openImageInViewer in imageViewer.js */
+function getPreciseReferencePreviewUrl(refData) {
+    if (!refData) return null;
+    if (refData.url) return refData.url;
+    if (refData.type === 'base64' && refData.source) {
+        return `data:image/png;base64,${refData.source}`;
+    }
+    if (refData.type === 'cache') {
+        const hash = refData.hash || refData.id;
+        if (hash) return `/cache/preview/${hash}.webp`;
+    }
+    if (refData.type === 'file') {
+        const name = refData.filename || refData.id;
+        if (name) return `/images/${name}`;
+    }
+    return refData.id ? `/cache/preview/${refData.id}.webp` : null;
+}
+
+function getPreciseReferenceFullImageUrl(refData) {
+    if (!refData) return null;
+    if (refData.type === 'base64' && refData.source) {
+        return `data:image/png;base64,${refData.source}`;
+    }
+    if (refData.type === 'cache') {
+        const hash = refData.hash || refData.id;
+        if (hash) return `/cache/upload/${hash}`;
+    }
+    if (refData.type === 'file') {
+        const name = refData.filename || refData.id;
+        if (name) return `/images/${name}`;
+    }
+    return getPreciseReferencePreviewUrl(refData);
+}
+
+function precisionReferenceTypeTag(type) {
+    const n = (type === 2 || type === 3) ? type : 1;
+    return `${PRECISION_REF_TYPE_TAG_PREFIX}${n}`;
+}
+
+function isPrecisionReferenceSystemTag(tag) {
+    return tag === PRECISION_REFERENCE_TAG ||
+        tag === LEGACY_CHARACTER_ONLY_TAG ||
+        (typeof tag === 'string' && tag.startsWith(PRECISION_REF_TYPE_TAG_PREFIX));
+}
+
+function appendPrecisionReferenceBadges(badgesContainer, metadata) {
+    if (!isPrecisionReferenceMetadata(metadata)) return false;
+    const type = getPrecisionReferenceTypeFromMetadata(metadata);
+    if (type === 1 || type === 2) {
+        const characterBadge = document.createElement('div');
+        characterBadge.className = 'cache-badge character-reference-badge';
+        characterBadge.innerHTML = '<i class="nai-person"></i> Character';
+        characterBadge.title = 'Precise reference — character';
+        badgesContainer.appendChild(characterBadge);
+    }
+    if (type === 1 || type === 3) {
+        const styleBadge = document.createElement('div');
+        styleBadge.className = 'cache-badge style-reference-badge';
+        styleBadge.innerHTML = '<i class="nai-precise-reference-style"></i> Style';
+        styleBadge.title = 'Precise reference — style';
+        badgesContainer.appendChild(styleBadge);
+    }
+    return true;
+}
+
+function syncCacheMetadataPreciseTypeToggles(type) {
+    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
+    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
+    if (!characterBtn || !styleBtn) return;
+    const normalized = (type === 2 || type === 3) ? type : 1;
+    setPreciseTypeToggleState(characterBtn, normalized === 1 || normalized === 2);
+    setPreciseTypeToggleState(styleBtn, normalized === 1 || normalized === 3);
+}
+
+function getCacheMetadataPreciseReferenceType() {
+    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
+    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
+    return getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
+}
+
+function updateCacheMetadataPreciseTypeGroupVisibility() {
+    const toggle = document.getElementById('preciseReferenceToggle');
+    const group = document.getElementById('cachePreciseReferenceTypeGroup');
+    if (!toggle || !group) return;
+    group.classList.toggle('hidden', toggle.getAttribute('data-state') !== 'on');
+}
+
+function handleCacheMetadataPreciseTypeToggleClick(toggled) {
+    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
+    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
+    if (!characterBtn || !styleBtn) return;
+
+    const charOn = isPreciseTypeToggleOn(characterBtn);
+    const styleOn = isPreciseTypeToggleOn(styleBtn);
+
+    if (toggled === 'character') {
+        if (charOn) {
+            if (!styleOn) setPreciseTypeToggleState(styleBtn, true);
+            setPreciseTypeToggleState(characterBtn, false);
+        } else {
+            setPreciseTypeToggleState(characterBtn, true);
+        }
+    } else if (toggled === 'style') {
+        if (styleOn) {
+            if (!charOn) setPreciseTypeToggleState(characterBtn, true);
+            setPreciseTypeToggleState(styleBtn, false);
+        } else {
+            setPreciseTypeToggleState(styleBtn, true);
+        }
+    }
+
+    if (!isPreciseTypeToggleOn(characterBtn) && !isPreciseTypeToggleOn(styleBtn)) {
+        syncCacheMetadataPreciseTypeToggles(1);
+    } else {
+        syncCacheMetadataPreciseTypeToggles(getCacheMetadataPreciseReferenceType());
+    }
 }
 
 // Toggle show all references functionality for cache browser
@@ -516,7 +659,6 @@ function createCacheGalleryItem(cacheImage) {
     const item = document.createElement('div');
     item.className = 'cache-gallery-item';
     item.dataset.hash = cacheImage.hash;
-    const isCharacterOnly = cacheImage.metadata && cacheImage.metadata.tags && cacheImage.metadata.tags.includes('characterOnly');
 
     // Create image element
     const img = document.createElement('img');
@@ -608,8 +750,8 @@ function createCacheGalleryItem(cacheImage) {
     const characterRefBtn = document.createElement('button');
     characterRefBtn.type = 'button';
     characterRefBtn.className = 'btn-primary';
-    characterRefBtn.innerHTML = '<i class="nai-image-tool-line-art"></i>';
-    characterRefBtn.title = 'Add as character reference';
+    characterRefBtn.innerHTML = '<i class="nai-precise-reference"></i>';
+    characterRefBtn.title = 'Add as precise reference';
     characterRefBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         await addAsCharacterReference(cacheImage);
@@ -668,16 +810,11 @@ function createCacheGalleryItem(cacheImage) {
 
     // Add base image badge only for actual cache images (not standalone vibes)
     if (!cacheImage.isStandalone) {
-        if (isCharacterOnly) {
-            const characterBadge = document.createElement('div');
-            characterBadge.className = 'cache-badge character-reference-badge';
-            characterBadge.innerHTML = '<i class="nai-image-tool-line-art"></i> Character';
-            badgesContainer.appendChild(characterBadge);
-        } else {
-        const baseBadge = document.createElement('div');
-        baseBadge.className = 'cache-badge base-image';
-        baseBadge.innerHTML = '<i class="nai-img2img"></i> Base Image';
-        badgesContainer.appendChild(baseBadge);
+        if (!appendPrecisionReferenceBadges(badgesContainer, cacheImage.metadata)) {
+            const baseBadge = document.createElement('div');
+            baseBadge.className = 'cache-badge base-image';
+            baseBadge.innerHTML = '<i class="nai-img2img"></i> Base Image';
+            badgesContainer.appendChild(baseBadge);
         }
     }
 
@@ -737,14 +874,536 @@ function createCacheGalleryItem(cacheImage) {
     return item;
 }
 
-// Add image as character reference
+const MAX_PRECISE_REFERENCES = 6;
+// #vibeReferencesContainer / #transformationRow: manualModalManager.js (top-level const) — getElementById here only
+
+function hasPreciseReferences() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return false;
+    return container.querySelectorAll('.precise-reference-item').length > 0;
+}
+
+function getPreciseReferenceCount() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return 0;
+    return container.querySelectorAll('.precise-reference-item').length;
+}
+
+function clearAllVibeReferenceItems() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    container.querySelectorAll('.vibe-reference-item:not(.precise-reference-item)').forEach(el => el.remove());
+    if (container.querySelectorAll('.vibe-reference-item, .precise-reference-item').length === 0) {
+        container.classList.add('hidden');
+    }
+    // updateTransformationDropdownForVibes: referenceManager.js
+    updateTransformationDropdownForVibes();
+}
+
+function clearAllPreciseReferenceItems() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    container.querySelectorAll('.precise-reference-item').forEach(el => el.remove());
+    if (container.querySelectorAll('.vibe-reference-item, .precise-reference-item').length === 0) {
+        container.classList.add('hidden');
+    }
+    const row = document.getElementById('transformationRow');
+    if (row) {
+        row.classList.remove('display-character');
+    }
+    // enableVibeReferences: manualModalManager.js
+    if (typeof enableVibeReferences === 'function') {
+        enableVibeReferences();
+    }
+    if (typeof updateManualPriceDisplay === 'function') {
+        updateManualPriceDisplay();
+    }
+}
+
+function updatePreciseReferenceContainerVisibility() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    const hasItems = container.querySelectorAll('.vibe-reference-item, .precise-reference-item').length > 0;
+    if (hasItems) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
+function isPreciseTypeToggleOn(btn) {
+    return btn && btn.getAttribute('data-state') === 'on';
+}
+
+function setPreciseTypeToggleState(btn, on) {
+    if (!btn) return;
+    btn.setAttribute('data-state', on ? 'on' : 'off');
+}
+
+function getPreciseReferenceTypeFromToggles(characterBtn, styleBtn) {
+    const charOn = isPreciseTypeToggleOn(characterBtn);
+    const styleOn = isPreciseTypeToggleOn(styleBtn);
+    if (!charOn && !styleOn) return 1;
+    if (charOn && styleOn) return 1;
+    if (charOn) return 2;
+    return 3;
+}
+
+function syncPreciseReferenceTypeToggles(item, type) {
+    const characterBtn = item.querySelector('[data-precise-type="character"]');
+    const styleBtn = item.querySelector('[data-precise-type="style"]');
+    if (!characterBtn || !styleBtn) return;
+    const normalized = (type === 2 || type === 3) ? type : 1;
+    const charOn = normalized === 1 || normalized === 2;
+    const styleOn = normalized === 1 || normalized === 3;
+    setPreciseTypeToggleState(characterBtn, charOn);
+    setPreciseTypeToggleState(styleBtn, styleOn);
+    item.dataset.preciseType = String(normalized);
+}
+
+function handlePreciseReferenceTypeToggleClick(item, toggled) {
+    const characterBtn = item.querySelector('[data-precise-type="character"]');
+    const styleBtn = item.querySelector('[data-precise-type="style"]');
+    if (!characterBtn || !styleBtn) return;
+
+    const charOn = isPreciseTypeToggleOn(characterBtn);
+    const styleOn = isPreciseTypeToggleOn(styleBtn);
+
+    if (toggled === 'character') {
+        if (charOn) {
+            if (!styleOn) {
+                setPreciseTypeToggleState(styleBtn, true);
+            }
+            setPreciseTypeToggleState(characterBtn, false);
+        } else {
+            setPreciseTypeToggleState(characterBtn, true);
+        }
+    } else if (toggled === 'style') {
+        if (styleOn) {
+            if (!charOn) {
+                setPreciseTypeToggleState(characterBtn, true);
+            }
+            setPreciseTypeToggleState(styleBtn, false);
+        } else {
+            setPreciseTypeToggleState(styleBtn, true);
+        }
+    }
+
+    if (!isPreciseTypeToggleOn(characterBtn) && !isPreciseTypeToggleOn(styleBtn)) {
+        syncPreciseReferenceTypeToggles(item, 1);
+    } else {
+        const type = getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
+        syncPreciseReferenceTypeToggles(item, type);
+    }
+    if (typeof updateManualPriceDisplay === 'function') {
+        updateManualPriceDisplay();
+    }
+}
+
+function buildPreciseReferencePercentageInput(initialValue, sideClass, peerLabel) {
+    const val = Math.max(0, Math.min(1, parseFloat(initialValue) || 1));
+    const wrap = document.createElement('div');
+    const alignClass = sideClass.includes('fidelity') ? ' right' : '';
+    wrap.className = `percentage-input-container hover-show colored precise-reference-input-side${alignClass} ${sideClass}`;
+
+    const peerText = document.createElement('span');
+    peerText.className = 'precise-reference-opposite-label';
+    peerText.textContent = peerLabel;
+
+    const overlay = document.createElement('span');
+    overlay.className = 'percentage-input-overlay';
+    overlay.textContent = `${(val * 100).toFixed(0)}%`;
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'form-control precise-reference-ratio-input';
+    input.min = '0';
+    input.max = '1';
+    input.step = '0.05';
+    input.value = val.toFixed(2);
+
+    const updateOverlay = () => {
+        const v = Math.max(0, Math.min(1, parseFloat(input.value) || 0));
+        overlay.textContent = `${(v * 100).toFixed(0)}%`;
+        if (typeof updateManualPriceDisplay === 'function') {
+            updateManualPriceDisplay();
+        }
+    };
+
+    input.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -(e.shiftKey ? 0.1 : 0.05) : (e.shiftKey ? 0.1 : 0.05);
+        const newValue = Math.max(0, Math.min(1, (parseFloat(input.value) || 0) + delta));
+        input.value = newValue.toFixed(2);
+        updateOverlay();
+    });
+    input.addEventListener('input', updateOverlay);
+    input.addEventListener('blur', updateOverlay);
+
+    wrap.appendChild(overlay);
+    wrap.appendChild(input);
+    wrap.appendChild(peerText);
+    return { wrap, input, overlay };
+}
+
+function openPreciseReferencePreview(refData) {
+    if (!refData) {
+        showError('No image found');
+        return;
+    }
+    const title = refData.filename || refData.hash || refData.id || 'Precise Reference';
+
+    if (refData.type === 'cache') {
+        const hash = refData.hash || refData.id;
+        if (!hash) {
+            showError('No image found');
+            return;
+        }
+        // Lumen applet (imageViewer.js) — not PhotoSwipe / Glancewell shell
+        if (typeof openReferenceImageInViewer === 'function') {
+            openReferenceImageInViewer({
+                type: 'cache',
+                hash,
+                filename: refData.filename,
+                hasPreview: `${hash}.webp`
+            });
+            return;
+        }
+    }
+
+    const imageSrc = getPreciseReferenceFullImageUrl(refData);
+    if (!imageSrc) {
+        showError('No image found');
+        return;
+    }
+    if (typeof openImageInViewer === 'function') {
+        openImageInViewer(imageSrc, title, {
+            hash: refData.hash,
+            filename: refData.filename,
+            genericExternalImage: true
+        });
+    }
+}
+
+function createPreciseReferenceItem(refData, options = {}) {
+    const type = (options.type === 2 || options.type === 3) ? options.type : 1; // default: character + style
+    const strength = options.strength !== undefined ? options.strength : 1;
+    const fidelity = options.fidelity !== undefined ? options.fidelity : 1;
+    const enabled = options.enabled !== false;
+    const refKey = `${refData.type}:${refData.id}`;
+
+    const item = document.createElement('div');
+    item.className = 'vibe-reference-item precise-reference-item';
+    item.dataset.preciseRefKey = refKey;
+    item.dataset.preciseType = String(type);
+
+    const previewContainer = document.createElement('div');
+    previewContainer.className = 'variation-image-container precise-reference-preview-clickable';
+    previewContainer.title = 'Preview in Lumen';
+
+    const preview = document.createElement('img');
+    preview.className = 'vibe-reference-preview';
+    preview.src = getPreciseReferencePreviewUrl(refData) || '/static_images/background.jpg';
+    preview.alt = `Precise reference ${refData.id}`;
+    preview.draggable = false;
+    previewContainer.appendChild(preview);
+
+    const overlayIcon = document.createElement('div');
+    overlayIcon.className = 'overlay-icon-container';
+    overlayIcon.innerHTML = '<i class="nai-precise-reference"></i>';
+    previewContainer.appendChild(overlayIcon);
+
+    const openPreviewFromClick = (e) => {
+        if (e.target.closest('button')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        openPreciseReferencePreview(refData);
+    };
+    preview.addEventListener('click', openPreviewFromClick, true);
+    previewContainer.addEventListener('click', openPreviewFromClick, true);
+
+    const overlayBottom = document.createElement('div');
+    overlayBottom.className = 'overlay-buttons-container-bottom';
+
+    const typeToggles = document.createElement('div');
+    typeToggles.className = 'precise-reference-type-toggles';
+
+    const characterBtn = document.createElement('button');
+    characterBtn.type = 'button';
+    characterBtn.className = 'toggle-btn btn-secondary blur btn-small';
+    characterBtn.dataset.preciseType = 'character';
+    characterBtn.title = 'Character';
+    characterBtn.innerHTML = '<i class="nai-person"></i>';
+
+    const styleBtn = document.createElement('button');
+    styleBtn.type = 'button';
+    styleBtn.className = 'toggle-btn btn-secondary blur btn-small';
+    styleBtn.dataset.preciseType = 'style';
+    styleBtn.title = 'Style';
+    styleBtn.innerHTML = '<i class="nai-precise-reference-style"></i>';
+
+    typeToggles.appendChild(characterBtn);
+    typeToggles.appendChild(styleBtn);
+    overlayBottom.appendChild(typeToggles);
+    previewContainer.appendChild(overlayBottom);
+
+    const charOn = type === 1 || type === 2;
+    const styleOn = type === 1 || type === 3;
+    setPreciseTypeToggleState(characterBtn, charOn);
+    setPreciseTypeToggleState(styleBtn, styleOn);
+
+    characterBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePreciseReferenceTypeToggleClick(item, 'character');
+    });
+    styleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handlePreciseReferenceTypeToggleClick(item, 'style');
+    });
+
+    const controls = document.createElement('div');
+    controls.className = 'vibe-reference-controls';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'indicator btn-secondary blur btn-small';
+    toggleBtn.setAttribute('data-state', enabled ? 'on' : 'off');
+    toggleBtn.innerHTML = '<i class="fas fa-power-off"></i>';
+    toggleBtn.title = enabled ? 'Toggle precise reference (enabled)' : 'Toggle precise reference (disabled)';
+    if (!enabled) {
+        toggleBtn.classList.add('disabled');
+    }
+    toggleBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const currentState = toggleBtn.getAttribute('data-state');
+        const newState = currentState === 'on' ? 'off' : 'on';
+        toggleBtn.setAttribute('data-state', newState);
+        toggleBtn.classList.toggle('disabled', newState === 'off');
+        toggleBtn.title = newState === 'on' ? 'Toggle precise reference (enabled)' : 'Toggle precise reference (disabled)';
+        if (typeof updateManualPriceDisplay === 'function') {
+            updateManualPriceDisplay();
+        }
+    });
+    controls.appendChild(toggleBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn-danger blur btn-small';
+    deleteBtn.innerHTML = '<i class="fa-regular fa-xmark-large"></i>';
+    deleteBtn.title = 'Remove precise reference';
+    deleteBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removePreciseReference(refKey);
+    });
+    controls.appendChild(deleteBtn);
+
+    const info = document.createElement('div');
+    info.className = 'vibe-reference-info precise-reference-strength-fidelity-pair';
+
+    const strengthBuilt = buildPreciseReferencePercentageInput(strength, 'precise-reference-strength-side', 'Fidelity');
+    strengthBuilt.input.dataset.preciseField = 'strength';
+    const fidelityBuilt = buildPreciseReferencePercentageInput(fidelity, 'precise-reference-fidelity-side', 'Strength');
+    fidelityBuilt.input.dataset.preciseField = 'fidelity';
+
+    info.appendChild(strengthBuilt.wrap);
+    info.appendChild(fidelityBuilt.wrap);
+
+    item.appendChild(previewContainer);
+    item.appendChild(controls);
+    item.appendChild(info);
+
+    syncPreciseReferenceTypeToggles(item, type);
+
+    return item;
+}
+
+function removePreciseReference(refKey) {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+    const item = container.querySelector(`.precise-reference-item[data-precise-ref-key="${refKey}"]`);
+    if (item) {
+        item.remove();
+    }
+    updatePreciseReferenceContainerVisibility();
+    if (!hasPreciseReferences()) {
+        const row = document.getElementById('transformationRow');
+        if (row) {
+            row.classList.remove('display-character');
+        }
+        if (typeof enableVibeReferences === 'function') {
+            enableVibeReferences();
+        }
+    }
+    if (typeof updateManualPriceDisplay === 'function') {
+        updateManualPriceDisplay();
+    }
+}
+
+async function addPreciseReferenceToContainer(refData, options = {}) {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return;
+
+    if (getPreciseReferenceCount() >= MAX_PRECISE_REFERENCES) {
+        showGlassToast('error', 'Limit Reached', `Maximum ${MAX_PRECISE_REFERENCES} precise references allowed`, false, undefined, '<i class="nai-precise-reference"></i>');
+        return;
+    }
+
+    clearAllVibeReferenceItems();
+
+    const refKey = `${refData.type}:${refData.id}`;
+    const existing = container.querySelector(`.precise-reference-item[data-precise-ref-key="${refKey}"]`);
+    if (existing) {
+        showGlassToast('warning', null, 'Precise reference already added', false, 3000, '<i class="nai-precise-reference"></i>');
+        return;
+    }
+
+    const resolvedOptions = { strength: 1, fidelity: 1, enabled: true, ...options };
+    if (resolvedOptions.type !== 2 && resolvedOptions.type !== 3) {
+        resolvedOptions.type = 1;
+    }
+    const item = createPreciseReferenceItem(refData, resolvedOptions);
+    container.appendChild(item);
+    container.classList.remove('hidden');
+
+    const row = document.getElementById('transformationRow');
+    if (row) {
+        row.classList.add('display-character');
+    }
+    if (typeof updateManualPriceDisplay === 'function') {
+        updateManualPriceDisplay();
+    }
+}
+
+function collectPreciseReferenceData() {
+    const container = document.getElementById('vibeReferencesContainer');
+    if (!container) return null;
+
+    const items = container.querySelectorAll('.precise-reference-item');
+    const sources = [];
+    const types = [];
+    const strengths = [];
+    const fidelities = [];
+
+    items.forEach(item => {
+        const toggleBtn = item.querySelector('.vibe-reference-controls .indicator');
+        if (toggleBtn && toggleBtn.getAttribute('data-state') === 'off') {
+            return;
+        }
+
+        const refKey = item.dataset.preciseRefKey;
+        if (!refKey) return;
+
+        const characterBtn = item.querySelector('[data-precise-type="character"]');
+        const styleBtn = item.querySelector('[data-precise-type="style"]');
+        let type = getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
+        if (type !== 1 && type !== 2 && type !== 3) {
+            type = 1;
+            syncPreciseReferenceTypeToggles(item, type);
+        }
+
+        const strengthInput = item.querySelector('input[data-precise-field="strength"]');
+        const fidelityInput = item.querySelector('input[data-precise-field="fidelity"]');
+        const strengthVal = Math.max(0, Math.min(1, parseFloat(strengthInput?.value) || 1));
+        const fidelityVal = Math.max(0, Math.min(1, parseFloat(fidelityInput?.value) || 1));
+
+        sources.push(refKey);
+        types.push(type);
+        strengths.push(strengthVal);
+        fidelities.push(fidelityVal);
+    });
+
+    if (!sources.length) return null;
+
+    return {
+        chara_reference_source: sources,
+        chara_reference_type: types,
+        chara_reference_strength: strengths,
+        chara_reference_fidelity: fidelities
+    };
+}
+
+function applyPreciseReferenceToRequestBody(requestBody) {
+    const data = collectPreciseReferenceData();
+    delete requestBody.chara_reference_source;
+    delete requestBody.chara_reference_type;
+    delete requestBody.chara_reference_strength;
+    delete requestBody.chara_reference_fidelity;
+    delete requestBody.chara_reference_with_style;
+    if (!data) return;
+    requestBody.chara_reference_source = data.chara_reference_source;
+    requestBody.chara_reference_type = data.chara_reference_type;
+    requestBody.chara_reference_strength = data.chara_reference_strength;
+    requestBody.chara_reference_fidelity = data.chara_reference_fidelity;
+}
+
+async function loadPreciseReferencesFromMetadata(data) {
+    if (!data || !data.chara_reference_source) {
+        clearAllPreciseReferenceItems();
+        return;
+    }
+
+    clearAllPreciseReferenceItems();
+
+    let sources = [];
+    if (Array.isArray(data.chara_reference_source)) {
+        sources = data.chara_reference_source;
+    } else if (typeof data.chara_reference_source === 'string') {
+        sources = [data.chara_reference_source];
+    }
+
+    let types = Array.isArray(data.chara_reference_type) ? data.chara_reference_type : [];
+    let strengths = Array.isArray(data.chara_reference_strength) ? data.chara_reference_strength : [];
+    let fidelities = Array.isArray(data.chara_reference_fidelity) ? data.chara_reference_fidelity : [];
+
+    if (!types.length && data.chara_reference_with_style !== undefined) {
+        types = [data.chara_reference_with_style ? 1 : 2];
+    }
+    if (!fidelities.length && data.chara_reference_fidelity !== undefined && !Array.isArray(data.chara_reference_fidelity)) {
+        fidelities = [data.chara_reference_fidelity];
+    }
+
+    for (let i = 0; i < sources.length && i < MAX_PRECISE_REFERENCES; i++) {
+        const source = sources[i];
+        if (!source || !source.includes(':')) continue;
+        const [refType, refId] = source.split(':', 2);
+        let referenceData;
+        if (refType === 'cache') {
+            referenceData = {
+                type: 'cache',
+                id: refId,
+                url: `/cache/preview/${refId}.webp`,
+                hash: refId
+            };
+        } else if (refType === 'file') {
+            referenceData = {
+                type: 'file',
+                id: refId,
+                url: `/images/${refId}`,
+                filename: refId
+            };
+        }
+        if (!referenceData) continue;
+
+        await addPreciseReferenceToContainer(referenceData, {
+            type: types[i] !== undefined ? types[i] : 1,
+            strength: strengths[i] !== undefined ? strengths[i] : 1,
+            fidelity: fidelities[i] !== undefined ? fidelities[i] : 1,
+            enabled: true
+        });
+    }
+}
+
 async function addAsCharacterReference(cacheImage) {
     try {
         if (!cacheImage || !cacheImage.hash) {
             throw new Error('Invalid cache image data');
         }
 
-        // Create reference data directly - simple approach
         const referenceData = {
             type: 'cache',
             id: cacheImage.hash,
@@ -753,22 +1412,15 @@ async function addAsCharacterReference(cacheImage) {
             hash: cacheImage.hash
         };
 
-        // Call the global setDirectorReference function
-        if (typeof setDirectorReference === 'function') {
-            setDirectorReference(referenceData);
-            showGlassToast('success', 'Character Reference Added', 'Character reference has been set successfully');
-        } else {
-            throw new Error('setDirectorReference function not available');
-        }
-
-        // Close cache browser
+        const refType = getPrecisionReferenceTypeFromMetadata(cacheImage.metadata);
+        await addPreciseReferenceToContainer(referenceData, { type: refType, strength: 1, fidelity: 1, enabled: true });
+        showGlassToast('success', 'Precise Reference Added', 'Precise reference has been set successfully', false, 3000, '<i class="nai-precise-reference"></i>');
         hideCacheBrowser();
     } catch (error) {
-        console.error('Error adding character reference:', error);
-        showGlassToast('error', 'Failed to Add Reference', 'Could not add character reference');
+        console.error('Error adding precise reference:', error);
+        showGlassToast('error', 'Failed to Add Reference', 'Could not add precise reference');
     }
 }
-
 
 // Helper function to get current selected model display name
 function getCurrentSelectedModelDisplayName() {
@@ -1328,6 +1980,11 @@ async function addVibeReferenceToContainer(vibeId, selectedIe, strength, textInj
     if (window.currentMaskData) {
         console.warn('Cannot add vibe references during inpainting');
         showError('Vibe transfers are disabled during inpainting');
+        return;
+    }
+
+    if (hasPreciseReferences()) {
+        showGlassToast('error', 'Vibes Blocked', 'Remove precise references before adding vibe transfers', false, 4000, '<i class="fas fa-wave-square"></i>');
         return;
     }
 
@@ -1906,17 +2563,9 @@ function createCacheManagerGalleryItem(cacheImage) {
         badgesContainer.appendChild(lockedBadge);
     }
 
-    // Add character reference or base image badge for actual cache images (not standalone vibes)
+    // Add precise reference or base image badge for actual cache images (not standalone vibes)
     if (!cacheImage.isStandalone) {
-        const isCharacterOnly = cacheImage.metadata && cacheImage.metadata.tags && cacheImage.metadata.tags.includes('characterOnly');
-        
-        if (isCharacterOnly) {
-            const characterBadge = document.createElement('div');
-            characterBadge.className = 'cache-badge character-reference-badge';
-            characterBadge.innerHTML = '<i class="nai-image-tool-line-art"></i> Character';
-            characterBadge.title = 'Character reference only - cannot be used as base image';
-            badgesContainer.appendChild(characterBadge);
-        } else {
+        if (!appendPrecisionReferenceBadges(badgesContainer, cacheImage.metadata)) {
             const baseBadge = document.createElement('div');
             baseBadge.className = 'cache-badge base-image';
             baseBadge.innerHTML = '<i class="nai-img2img"></i> Base Image';
@@ -2057,8 +2706,8 @@ function createReferenceManagerContextMenuConfig() {
                                 action: 'reference-manager-create-shortcut-vibe'
                             },
                             {
-                                text: 'Character',
-                                icon: 'nai-image-tool-line-art',
+                                text: 'Precise Reference',
+                                icon: 'nai-precise-reference',
                                 action: 'reference-manager-create-shortcut-character'
                             }
                         ],
@@ -2109,8 +2758,8 @@ function createReferenceManagerContextMenuConfig() {
                                 }
                             },
                             {
-                                text: 'Character',
-                                icon: 'nai-image-tool-line-art',
+                                text: 'Precise Reference',
+                                icon: 'nai-precise-reference',
                                 action: 'reference-manager-add-as-character',
                                 loadfn: (menuItem, target) => {
                                     const cacheImage = getCacheManagerImageFromElement(target);
@@ -2204,8 +2853,8 @@ function createReferenceBrowserContextMenuConfig() {
                         }
                     },
                     {
-                        icon: 'nai-image-tool-line-art',
-                        tooltip: 'Add as Character Reference',
+                        icon: 'nai-precise-reference',
+                        tooltip: 'Add as Precise Reference',
                         action: 'reference-browser-add-character',
                         loadfn: (menuItem, target) => {
                             const cacheImage = getReferenceBrowserImageFromElement(target);
@@ -2242,8 +2891,8 @@ function createReferenceBrowserContextMenuConfig() {
                                 action: 'reference-browser-create-shortcut-vibe'
                             },
                             {
-                                text: 'Character',
-                                icon: 'nai-image-tool-line-art',
+                                text: 'Precise Reference',
+                                icon: 'nai-precise-reference',
                                 action: 'reference-browser-create-shortcut-character'
                             }
                         ]
@@ -3156,7 +3805,7 @@ function updateUnifiedUploadMode() {
             } else if (unifiedUploadCurrentMode === 'blueprint') {
                 unifiedUploadModeDisplay.textContent = 'Import Image';
             } else if (unifiedUploadCurrentMode === 'character') {
-                unifiedUploadModeDisplay.textContent = 'Upload Character';
+                unifiedUploadModeDisplay.textContent = 'Upload Precise Reference';
             }
         } else {
             // In initial state, show default text
@@ -3182,7 +3831,7 @@ function updateUnifiedUploadMode() {
             } else if (unifiedUploadCurrentMode === 'blueprint') {
                 unifiedUploadModalTitle.innerHTML = '<i class="nai-import"></i> <span>Import Image</span>';
             } else if (unifiedUploadCurrentMode === 'character') {
-                unifiedUploadModalTitle.innerHTML = '<i class="nai-image-tool-line-art"></i> <span>Upload Character</span>';
+                unifiedUploadModalTitle.innerHTML = '<i class="nai-precise-reference"></i> <span>Upload Precise Reference</span>';
             }
         }
         // If no files and no specific mode, keep the default "Import File" title
@@ -3576,6 +4225,12 @@ function transformRawMetadataForEditor(metadata) {
         }
         if (forgeData.chara_reference_source !== undefined) {
             transformed.chara_reference_source = forgeData.chara_reference_source;
+        }
+        if (forgeData.chara_reference_type !== undefined) {
+            transformed.chara_reference_type = forgeData.chara_reference_type;
+        }
+        if (forgeData.chara_reference_strength !== undefined) {
+            transformed.chara_reference_strength = forgeData.chara_reference_strength;
         }
         if (forgeData.chara_reference_with_style !== undefined) {
             transformed.chara_reference_with_style = forgeData.chara_reference_with_style;
@@ -4042,10 +4697,10 @@ async function importUnifiedBlueprint(file) {
 }
 
 async function uploadUnifiedCharacterImages() {
-    let toastId = showGlassToast('info', 'Uploading Images', 'Uploading character images...', true, false, '<i class="nai-image-tool-line-art"></i>');
+    let toastId = showGlassToast('info', 'Uploading Images', 'Uploading precise reference images...', true, false, '<i class="nai-precise-reference"></i>');
 
     // Update cover message for upload
-    showGalleryMoveRightPanelCover('Uploading Character...');
+    showGalleryMoveRightPanelCover('Uploading Precise Reference...');
 
     try {
         // Get the selected workspace from the unified upload modal
@@ -4058,7 +4713,7 @@ async function uploadUnifiedCharacterImages() {
             // For downloaded files, we need to handle them differently based on type
             if (unifiedUploadDownloadedFile.type === 'image') {
                 // Use the downloaded file temp filename with characterOnly tag
-                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename, null, null, null, ['characterOnly']);
+                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename, null, null, null, [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(1)]);
 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -4073,7 +4728,7 @@ async function uploadUnifiedCharacterImages() {
             const uploadPromises = unifiedUploadFiles.map(async (file, index) => {
                 const base64 = await fileToBase64(file);
 
-                const response = await wsClient.uploadReference(base64, targetWorkspace, null, null, null, null, ['characterOnly']);
+                const response = await wsClient.uploadReference(base64, targetWorkspace, null, null, null, null, [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(1)]);
 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -6474,7 +7129,7 @@ function showBlueprintPreview(metadata) {
             if (metadata.forge_data.image_bias !== undefined)
                 infoBadges.push(`<div class="badge forgedata-badge"><i class="fa-light fa-crop"></i><span>NDRB</span></div>`);
             if (metadata.forge_data.chara_reference_source !== undefined)
-                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-image-tool-line-art"></i><span>Character Reference</span></div>`);
+                infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-precise-reference"></i><span>Precise Reference</span></div>`);
             if (metadata.forge_data.mask_compressed !== undefined)
                 infoBadges.push(`<div class="badge forgedata-badge"><i class="nai-inpaint"></i><span>InPaint</span></div>`);
             if (metadata.forge_data.vibe_transfer !== undefined && metadata.forge_data.vibe_transfer.length > 0)
@@ -7070,13 +7725,27 @@ function initializeCacheManager() {
     // Save handler
     saveBtn.addEventListener('click', saveReferenceMetadata);
     
-    // Character toggle handler
-    const characterToggle = document.getElementById('characterReferenceToggle');
-    if (characterToggle) {
-        characterToggle.addEventListener('click', () => {
-            const currentState = characterToggle.getAttribute('data-state');
-            const newState = currentState === 'on' ? 'off' : 'on';
-            characterToggle.setAttribute('data-state', newState);
+    const preciseReferenceToggle = document.getElementById('preciseReferenceToggle');
+    if (preciseReferenceToggle) {
+        preciseReferenceToggle.addEventListener('click', () => {
+            const newState = preciseReferenceToggle.getAttribute('data-state') === 'on' ? 'off' : 'on';
+            preciseReferenceToggle.setAttribute('data-state', newState);
+            updateCacheMetadataPreciseTypeGroupVisibility();
+        });
+    }
+
+    const cachePreciseRefTypeCharacterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
+    const cachePreciseRefTypeStyleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
+    if (cachePreciseRefTypeCharacterBtn) {
+        cachePreciseRefTypeCharacterBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleCacheMetadataPreciseTypeToggleClick('character');
+        });
+    }
+    if (cachePreciseRefTypeStyleBtn) {
+        cachePreciseRefTypeStyleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleCacheMetadataPreciseTypeToggleClick('style');
         });
     }
 
@@ -7122,8 +7791,8 @@ function initializeCacheMetadataToolbarDropdowns() {
             cachePromptDropdownBtn,
             cachePromptDropdownMenu,
             () => renderCachePromptActionsDropdown('cachePromptActionsDropdownMenu', [
-                { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
+                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font', toolbarWide: true },
                 { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
                 { value: 'text-replacement-manager', display: 'Text Expanders', icon: 'fas fa-book-font' }
             ]),
@@ -7146,8 +7815,8 @@ function initializeCacheMetadataToolbarDropdowns() {
             cacheUcDropdownBtn,
             cacheUcDropdownMenu,
             () => renderCacheUcActionsDropdown('cacheUcActionsDropdownMenu', [
-                { value: 'search', display: 'Search', icon: 'fas fa-search' },
-                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font' },
+                { value: 'search', display: 'Search', icon: 'fas fa-search', toolbarWide: true },
+                { value: 'quick-access', display: 'Quick Access', icon: 'fas fa-book-font', toolbarWide: true },
                 { value: 'emphasis', display: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' }
             ]),
             () => null,
@@ -7168,7 +7837,7 @@ function renderCachePromptActionsDropdown(dropdownMenuId, options) {
 
     options.forEach(option => {
         const optionElement = document.createElement('div');
-        optionElement.className = 'custom-dropdown-option';
+        optionElement.className = 'custom-dropdown-option' + (option.toolbarWide ? ' toolbar-menu-only' : '');
         optionElement.dataset.value = option.value;
         optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
 
@@ -7212,7 +7881,7 @@ function renderCacheUcActionsDropdown(dropdownMenuId, options) {
 
     options.forEach(option => {
         const optionElement = document.createElement('div');
-        optionElement.className = 'custom-dropdown-option';
+        optionElement.className = 'custom-dropdown-option' + (option.toolbarWide ? ' toolbar-menu-only' : '');
         optionElement.dataset.value = option.value;
         optionElement.innerHTML = `<i class="${option.icon}"></i> ${option.display}`;
 
@@ -8472,7 +9141,7 @@ function showManageReferenceModal(reference) {
     const modal = document.getElementById('cacheMetadataModal');
     
     // Get form elements
-    const characterToggle = document.getElementById('characterReferenceToggle');
+    const preciseReferenceToggle = document.getElementById('preciseReferenceToggle');
     const tagsInput = document.getElementById('cacheTagsInput');
     const commentTextarea = document.getElementById('cacheCommentTextarea');
     const displayNameInput = document.getElementById('cacheDisplayNameInput');
@@ -8490,11 +9159,14 @@ function showManageReferenceModal(reference) {
     if (reference.metadata) {
         const metadata = reference.metadata;
         
-        // Character reference toggle
-        characterToggle.setAttribute('data-state', metadata.tags && metadata.tags.includes('characterOnly') ? 'on' : 'off');
-        
-        // Tags (exclude characterOnly from display)
-        const displayTags = metadata.tags ? metadata.tags.filter(tag => tag !== 'characterOnly') : [];
+        const isPreciseRef = isPrecisionReferenceMetadata(metadata);
+        if (preciseReferenceToggle) {
+            preciseReferenceToggle.setAttribute('data-state', isPreciseRef ? 'on' : 'off');
+        }
+        syncCacheMetadataPreciseTypeToggles(getPrecisionReferenceTypeFromMetadata(metadata));
+        updateCacheMetadataPreciseTypeGroupVisibility();
+
+        const displayTags = metadata.tags ? metadata.tags.filter(tag => !isPrecisionReferenceSystemTag(tag)) : [];
         tagsInput.value = displayTags.join(', ');
         
         // Comment
@@ -8512,7 +9184,11 @@ function showManageReferenceModal(reference) {
         vibeAppendUcPrependToggle.setAttribute('data-state', metadata.vibe_prepend_uc ? 'on' : 'off');
     } else {
         // Reset form if no metadata
-        characterToggle.setAttribute('data-state', 'off');
+        if (preciseReferenceToggle) {
+            preciseReferenceToggle.setAttribute('data-state', 'off');
+        }
+        syncCacheMetadataPreciseTypeToggles(1);
+        updateCacheMetadataPreciseTypeGroupVisibility();
         tagsInput.value = '';
         commentTextarea.value = '';
         displayNameInput.value = '';
@@ -8550,7 +9226,7 @@ async function saveReferenceMetadata() {
     
     try {
         // Get form elements
-        const characterToggle = document.getElementById('characterReferenceToggle');
+        const preciseReferenceToggle = document.getElementById('preciseReferenceToggle');
         const tagsInput = document.getElementById('cacheTagsInput');
         const commentTextarea = document.getElementById('cacheCommentTextarea');
         const displayNameInput = document.getElementById('cacheDisplayNameInput');
@@ -8559,17 +9235,15 @@ async function saveReferenceMetadata() {
         const vibeAppendPromptPrependToggle = document.getElementById('cacheVibeAppendPromptPrependToggle');
         const vibeAppendUcPrependToggle = document.getElementById('cacheVibeAppendUcPrependToggle');
         
-        // Build tags array
         const tags = [];
         
-        // Add characterOnly tag if button is on
-        if (characterToggle.getAttribute('data-state') === 'on') {
-            tags.push('characterOnly');
-        }
-        
-        // Add other tags from input
-        const otherTags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+        const otherTags = tagsInput.value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0 && !isPrecisionReferenceSystemTag(tag));
         tags.push(...otherTags);
+
+        if (preciseReferenceToggle && preciseReferenceToggle.getAttribute('data-state') === 'on') {
+            tags.push(PRECISION_REFERENCE_TAG);
+            tags.push(precisionReferenceTypeTag(getCacheMetadataPreciseReferenceType()));
+        }
         
         // Build metadata object
         const metadata = {
@@ -8609,6 +9283,12 @@ async function saveReferenceMetadata() {
 
 // Expose functions globally
 window.addAsBaseImage = addAsBaseImage;
+window.addPreciseReferenceToContainer = addPreciseReferenceToContainer;
+window.collectPreciseReferenceData = collectPreciseReferenceData;
+window.applyPreciseReferenceToRequestBody = applyPreciseReferenceToRequestBody;
+window.loadPreciseReferencesFromMetadata = loadPreciseReferencesFromMetadata;
+window.clearAllPreciseReferenceItems = clearAllPreciseReferenceItems;
+window.hasPreciseReferences = hasPreciseReferences;
 window.refreshCacheBrowser = refreshCacheBrowser;
 window.createDirectorSessionWithImage = createDirectorSessionWithImage;
 window.showManageReferenceModal = showManageReferenceModal;

@@ -21,6 +21,17 @@ function getDevicePixelRatio() {
     return window.devicePixelRatio || 1;
 }
 
+// Snap a CSS pixel length to the nearest device pixel (reduces subpixel fringe on transformed layers)
+function roundToDevicePixel(value) {
+    const dpr = getDevicePixelRatio();
+    return Math.round(value * dpr) / dpr;
+}
+
+// Whole CSS pixels for sizes/offsets
+function roundCssPixel(value) {
+    return Math.round(value);
+}
+
 // Check if device has high DPI display (retina)
 function isHighDPIDevice() {
     return getDevicePixelRatio() > 1;
@@ -78,6 +89,8 @@ function getCachePreviewUrl(cacheHash) {
 window.deviceUtils = {
     isMobileDevice,
     getDevicePixelRatio,
+    roundToDevicePixel,
+    roundCssPixel,
     isHighDPIDevice,
     getPreviewUrl,
     getGalleryPreviewUrl,

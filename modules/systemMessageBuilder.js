@@ -10,8 +10,6 @@
 
 const path = require('path');
 const fs = require('fs');
-const globalResources = require('./globalResources');
-
 /**
  * Build system message in logical cognitive flow order
  * 
@@ -27,7 +25,7 @@ const globalResources = require('./globalResources');
  * 9. VALIDATION - Is my work correct?
  * 10. OUTPUT - Formatting response
  */
-async function buildSystemMessage(context, config) {
+async function buildSystemMessage(globalResources, context, config) {
     const {
         time,
         weather,
@@ -55,6 +53,7 @@ async function buildSystemMessage(context, config) {
     // PHASE 1: ORIENTATION
     // ========================================
     sections.push(...(await buildPhase1_Orientation(
+        globalResources,
         optimize,
         creative,
         toolPasses || 8,
@@ -71,6 +70,7 @@ async function buildSystemMessage(context, config) {
     // PHASE 2: UNDERSTANDING
     // ========================================
     sections.push(...(await buildPhase2_Understanding(
+        globalResources,
         stageContext,
         backgroundFocus,
         dynamicConfig,
@@ -189,7 +189,7 @@ async function buildSystemMessage(context, config) {
  * PHASE 1: ORIENTATION
  * Who am I, what can I do, what resources are available?
  */
-async function buildPhase1_Orientation(optimize, creative, toolPasses = 8, dialogsCount, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
+async function buildPhase1_Orientation(globalResources, optimize, creative, toolPasses = 8, dialogsCount, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
     const toolDescription = fastModeEnabled 
         ? `**You have access to memory tools, verification tools, and completion tools with ${toolPasses} tool loops. FAST MODE: You must use memories only to generate results.**`
         : `**You have access to powerful research and validation tools with ${toolPasses} tool loops. Tool usage is MANDATORY for all research and validation.**`;
@@ -212,10 +212,11 @@ async function buildPhase1_Orientation(optimize, creative, toolPasses = 8, dialo
     ];
 
     // Add tools reference
-    sections.push(...buildToolsReference(toolPasses, dialogsCount, fastModeEnabled));
+    sections.push(...buildToolsReference(globalResources, toolPasses, dialogsCount, fastModeEnabled));
 
     // Add knowledge resources (top relevant memories pre-selected in core function)
     sections.push(...buildKnowledgeResourcesSection(
+        globalResources,
         optimize, 
         fastModeEnabled, 
         availableMemories,
@@ -288,7 +289,7 @@ function buildTaskOverviewSection(creative, dialogsCount) {
  * @param {number} dialogsCount - Number of dialogs to generate (undefined/null = auto/3-10)
  * @param {boolean} fastModeEnabled - Whether fast mode is enabled (default: false)
  */
-function buildToolsReference(toolPasses = 8, dialogsCount, fastModeEnabled = false) {
+function buildToolsReference(globalResources, toolPasses = 8, dialogsCount, fastModeEnabled = false) {
     // Check if tag wiki collection is configured
     const grokConfig = globalResources.getSecureConfig({ path: 'grok' });
     const useCollectionSearch = grokConfig?.tagWikiCollectionId;
@@ -364,7 +365,7 @@ function buildToolsReference(toolPasses = 8, dialogsCount, fastModeEnabled = fal
 /**
  * Knowledge Resources Section
  */
-function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
+function buildKnowledgeResourcesSection(globalResources, optimize, fastModeEnabled = false, availableMemories = [], topRelevantMemories = []) {
     const sections = [
         '## 📚 AVAILABLE KNOWLEDGE RESOURCES',
         '',
@@ -621,7 +622,7 @@ function buildKnowledgeResourcesSection(optimize, fastModeEnabled = false, avail
  * PHASE 2: UNDERSTANDING
  * What am I being asked to do? What are the priorities?
  */
-async function buildPhase2_Understanding(stageContext, backgroundFocus, dynamicConfig, directive, fastModeEnabled = false) {
+async function buildPhase2_Understanding(globalResources, stageContext, backgroundFocus, dynamicConfig, directive, fastModeEnabled = false) {
     const sections = [
         '# 🎯 TASK UNDERSTANDING',
         '',
@@ -681,7 +682,7 @@ async function buildPhase2_Understanding(stageContext, backgroundFocus, dynamicC
     );
 
     // Add hierarchical category list
-    sections.push(...(await buildDatasetCategoryHierarchySection()));
+    sections.push(...(await buildDatasetCategoryHierarchySection(globalResources)));
 
     return sections;
 }
@@ -2938,7 +2939,7 @@ function buildSubjectLockSection() {
  * Build hierarchical dataset category list section
  * Uses database query function to get the hierarchy
  */
-async function buildDatasetCategoryHierarchySection() {
+async function buildDatasetCategoryHierarchySection(globalResources) {
     try {
         const treeItems = await globalResources.getTagDatabase().getDatasetCategoryHierarchy();
         

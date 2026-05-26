@@ -826,19 +826,16 @@ async function loadWorkspaces() {
         await switchWorkspaceTheme(activeWorkspace, isFirstLoad);
 
         // If desktop mode, switch from Windows Classic to Aero theme
-        loadBlurPreference();
-
-        // Remove classic theme first while no-animation is still active to prevent transition
-        document.body.classList.remove('windows-classic-theme');
-        // Wait for DOM to update, then remove no-animation after transition would be prevented
-        await new Promise(resolve => {
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    document.body.classList.remove('no-animation');
-                    resolve();
-                });
+        if (document.body.classList.contains('windows-classic-theme')) {
+            // runWithThemeSwitchOverlay: public/scripts/app.js
+            await runWithThemeSwitchOverlay(() => {
+                loadBlurPreference();
+                document.body.classList.remove('windows-classic-theme');
+                document.body.classList.remove('no-animation');
             });
-        });
+        } else {
+            loadBlurPreference();
+        }
         
         // Remove hard-set CSS variables after workspace theme is loaded (CSS will take over)
         document.documentElement.style.removeProperty('--workspace-color');

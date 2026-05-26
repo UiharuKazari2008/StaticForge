@@ -4,6 +4,35 @@
  */
 
 /**
+ * Replace a textarea range without clearing the browser undo stack.
+ * Use instead of building a new string and assigning textarea.value.
+ * public/scripts/comp/textareaUtils.js
+ */
+function replaceTextareaRangePreservingUndo(textarea, start, end, text) {
+    if (!textarea) return false;
+    const replacement = text != null ? String(text) : '';
+    const current = textarea.value;
+    const safeStart = Math.max(0, Math.min(start, current.length));
+    const safeEnd = Math.max(safeStart, Math.min(end, current.length));
+    if (current.substring(safeStart, safeEnd) === replacement) return false;
+    textarea.setRangeText(replacement, safeStart, safeEnd, 'end');
+    return true;
+}
+
+/**
+ * Replace entire textarea content without clearing the browser undo stack.
+ * public/scripts/comp/textareaUtils.js
+ */
+function setTextareaValuePreservingUndo(textarea, newValue) {
+    if (!textarea) return false;
+    const text = newValue != null ? String(newValue) : '';
+    const current = textarea.value;
+    if (current === text) return false;
+    textarea.setRangeText(text, 0, current.length, 'end');
+    return true;
+}
+
+/**
  * Creates an editable textarea container with toolbar
  * @param {Object} options - Configuration options
  * @param {string} options.value - Initial textarea value
@@ -59,6 +88,51 @@ function createEditableTextareaContainer(options = {}) {
     `;
     
     return container;
+}
+
+/**
+ * Wire .prompt-textarea fields the same way as manualPrompt in app.js (no per-button toolbar handlers).
+ * Toolbar actions and dropdowns are handled by promptTextareaToolbar.js (document delegation + setupDropdown).
+ * public/scripts/comp/textareaUtils.js
+ */
+function wireManualStylePromptTextarea(textarea) {
+    if (!textarea || !textarea.matches('.prompt-textarea')) {
+        return;
+    }
+    if (textarea.dataset.manualStylePromptWired === '1') {
+        return;
+    }
+    textarea.dataset.manualStylePromptWired = '1';
+
+    if (typeof handleCharacterAutocompleteInput === 'function') {
+        addSafeEventListener(textarea, 'input', handleCharacterAutocompleteInput, 'autocomplete');
+    }
+    if (typeof handleCharacterAutocompleteKeydown === 'function') {
+        addSafeEventListener(textarea, 'keydown', handleCharacterAutocompleteKeydown, 'keydown');
+    }
+    if (typeof startEmphasisHighlighting === 'function') {
+        addSafeEventListener(textarea, 'focus', () => startEmphasisHighlighting(textarea), 'emphasisFocus');
+    }
+    if (typeof applyFormattedText === 'function' && typeof updateEmphasisHighlighting === 'function' && typeof stopEmphasisHighlighting === 'function') {
+        addSafeEventListener(textarea, 'blur', () => {
+            applyFormattedText(textarea, true);
+            updateEmphasisHighlighting(textarea);
+            if (typeof autoResizeTextarea === 'function') {
+                autoResizeTextarea(textarea);
+            }
+            stopEmphasisHighlighting();
+        }, 'emphasisBlur');
+    }
+    if (typeof autoResizeTextarea === 'function') {
+        addSafeEventListener(textarea, 'input', () => autoResizeTextarea(textarea), 'resize');
+    }
+}
+
+function setupPromptTextareaControls(textarea) {
+    wireManualStylePromptTextarea(textarea);
+    if (window.promptTextareaToolbar) {
+        window.promptTextareaToolbar.updateTokenCount(textarea);
+    }
 }
 
 /**
@@ -155,7 +229,11 @@ function setupEditableTextareaToolbar(toolbar, textarea, customActionHandler = n
     
     buttons.forEach((button) => {
         const action = button.dataset.action;
-        
+        // Toolbox dropdown triggers have no data-action; setupDropdown owns those clicks (manualPrompt pattern).
+        if (!action || button.closest('.custom-dropdown')) {
+            return;
+        }
+
         // Remove any existing listeners first
         button.removeEventListener('click', button._editableTextareaClickHandler);
         

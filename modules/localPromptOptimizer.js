@@ -6,10 +6,13 @@ const fs = require('fs');
 const path = require('path');
 const moby = require('moby');
 const natural = require('natural');
-const globalResources = require('./globalResources');
 
 class LocalPromptOptimizer {
-    constructor() {
+    constructor(globalResources) {
+        if (!globalResources) {
+            throw new Error('LocalPromptOptimizer requires globalResources');
+        }
+        this.globalResources = globalResources;
         this.vocabulary = null;
         this.tokenIndex = null;
         this.synonymCache = new Map(); // Cache for synonym lookups
@@ -27,10 +30,10 @@ class LocalPromptOptimizer {
 
         try {
             // Get T5 tokenizer from global resources
-            const t5TokenizerService = globalResources.getT5Tokenizer();
+            const t5TokenizerService = this.globalResources.getT5Tokenizer();
 
             // Load T5 vocabulary with strength ratings
-            const vocabPath = path.join(__dirname, '../securePrompts/t5-vocabulary.json');
+            const vocabPath = this.globalResources.getPath('t5Vocabulary');
             
             if (!fs.existsSync(vocabPath)) {
                 console.warn('⚠️ T5 vocabulary file not found, local optimization disabled');
@@ -53,11 +56,14 @@ class LocalPromptOptimizer {
             });
 
             // Get services from global resources instead of creating new instances
-            this.spellChecker = globalResources.getSpellChecker();
-            this.fastTagSearch = await globalResources.getFastTagSearch();
+            this.spellChecker = this.globalResources.getSpellChecker();
+            // FastTagSearch is optional at boot (may lazy-load with tag search services later)
+            if (this.globalResources.fastTagSearch) {
+                this.fastTagSearch = this.globalResources.fastTagSearch;
+            }
 
             this.initialized = true;
-            console.log(`✅ Local Prompt Optimizer initialized with ${this.vocabulary.length} tokens and fast tag search`);
+            console.log(`✅ Local Prompt Optimizer initialized with ${this.vocabulary.length} tokens`);
             return true;
         } catch (error) {
             console.error('❌ Failed to initialize Local Prompt Optimizer:', error);
@@ -480,7 +486,7 @@ class LocalPromptOptimizer {
      */
     countTokens(text) {
         try {
-            const t5TokenizerService = globalResources.getT5Tokenizer();
+            const t5TokenizerService = this.globalResources.getT5Tokenizer();
             return t5TokenizerService.countTokens(text);
         } catch (error) {
             // Fallback: estimate by word count
@@ -1171,7 +1177,7 @@ class LocalPromptOptimizer {
                 const totalEmphasis = emphasis * itemEmphasis;
                 
                 // Token count - subtract 1 for </s>
-                const t5TokenizerService = globalResources.getT5Tokenizer();
+                const t5TokenizerService = this.globalResources.getT5Tokenizer();
                 const rawTokenCount = t5TokenizerService.encode(itemClean).length;
                 const itemTokens = rawTokenCount > 0 ? rawTokenCount - 1 : 0;
                 
@@ -1226,8 +1232,5 @@ class LocalPromptOptimizer {
     }
 }
 
-// Singleton instance
-const localPromptOptimizer = new LocalPromptOptimizer();
-
-module.exports = localPromptOptimizer;
+module.exports = LocalPromptOptimizer;
 

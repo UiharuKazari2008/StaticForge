@@ -10,7 +10,7 @@ class ReferenceMetadataDatabase {
         }
         this.globalResources = globalResources;
         this.db = null;
-        this.dbPath = path.join(__dirname, '..', '.cache', 'reference_metadata.db');
+        this.dbPath = path.join(globalResources.getPath('databases'), 'reference_metadata.db');
         this.init();
     }
 

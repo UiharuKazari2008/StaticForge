@@ -338,7 +338,7 @@ function positionConfirmationDialog(event) {
         // CSS formula: centerX = window.innerWidth/2 + offsetX
         //              centerY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
         let offsetX = desiredCenterX - containerWidth / 2;
-        let offsetY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+        let offsetY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
         // Get safe area inset values for bounds checking
         const safeAreaLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-left')) || 0;
@@ -347,7 +347,7 @@ function positionConfirmationDialog(event) {
 
         // Calculate actual center position using the CSS formula
         const actualCenterX = containerWidth / 2 + offsetX;
-        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - (window.isDesktop ? 17.5 : 0);
+        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - getDesktopModalTopBias();
 
         // Calculate window edges from center
         const leftEdge = actualCenterX - dialogWidth / 2;
@@ -372,7 +372,7 @@ function positionConfirmationDialog(event) {
         }
 
         // Recalculate centerY with potentially constrained offsetX
-        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - (window.isDesktop ? 17.5 : 0);
+        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - getDesktopModalTopBias();
         const recalculatedTopEdge = recalculatedCenterY - dialogHeight / 2;
         const recalculatedBottomEdge = recalculatedCenterY + dialogHeight / 2;
 
@@ -380,16 +380,15 @@ function positionConfirmationDialog(event) {
         if (recalculatedTopEdge < margin + trueInsetTop) {
             const desiredTopEdge = margin + trueInsetTop;
             const desiredCenterY = desiredTopEdge + dialogHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
         } else if (recalculatedBottomEdge > containerHeight - margin - safeAreaBottom) {
             const desiredBottomEdge = containerHeight - margin - safeAreaBottom;
             const desiredCenterY = desiredBottomEdge - dialogHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + (window.isDesktop ? 17.5 : 0);
+            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
         }
 
-        // Apply position using standard CSS variables (rounded to whole numbers)
-        confirmationDialog.style.setProperty('--modal-offset-x', `${Math.round(constrainedX)}px`);
-        confirmationDialog.style.setProperty('--modal-offset-y', `${Math.round(constrainedY)}px`);
+        // getDesktopModalTopBias, setModalOffsetPx — modalUtils.js
+        setModalOffsetPx(confirmationDialog, constrainedX, constrainedY, { snap: true, settle: true });
     });
 }
 
@@ -421,9 +420,7 @@ function positionConfirmationDialogBottomRight(config = {}) {
     const offsetX = rightEdge - dialogWidth / 2 - window.innerWidth / 2;
     const offsetY = bottomEdge - dialogHeight / 2 - window.innerHeight / 2;
 
-    // Apply positioning
-    confirmationDialog.style.setProperty('--modal-offset-x', `${Math.round(offsetX)}px`);
-    confirmationDialog.style.setProperty('--modal-offset-y', `${Math.round(offsetY)}px`);
+    setModalOffsetPx(confirmationDialog, offsetX, offsetY, { snap: true, settle: true });
 
     // Restore visibility
     confirmationDialog.style.display = '';

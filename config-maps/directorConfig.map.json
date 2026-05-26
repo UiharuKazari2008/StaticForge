@@ -1,0 +1,13 @@
+{
+  "configId": "directorConfig",
+  "label": "Director Config",
+  "rules": [
+    { "path": ["version"], "type": "string", "label": "Version" },
+    { "path": ["feedback"], "type": "object", "label": "Feedback" },
+    { "path": ["feedback", "entries"], "type": "array", "label": "Feedback Entries" },
+    { "path": ["feedback", "entries", "*"], "type": "object" },
+    { "path": ["rules"], "type": "object", "label": "Rules" },
+    { "path": ["rules", "entries"], "type": "array", "label": "Rule Entries" },
+    { "path": ["rules", "entries", "*"], "type": "object" }
+  ]
+}
