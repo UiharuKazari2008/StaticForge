@@ -392,7 +392,7 @@ function createManualPreviewImageContextMenuConfig() {
                 position: 'outer',
                 icons: [
                     {
-                        icon: 'fas fa-drafting-compass',
+                        icon: 'fas fa-arrow-left',
                         tooltip: 'Modify Image',
                         action: 'modify-preview'
                     },
@@ -440,7 +440,7 @@ function createManualPreviewImageContextMenuConfig() {
                     { separator: true },
                     {
                         icon: 'mdi mdi-1-25 mdi-relative-scale',
-                        text: 'Expand',
+                        text: 'Expand Canvas',
                         action: 'expand-canvas'
                     },
                     {
@@ -839,6 +839,118 @@ function sizeManualPreviewContainer(imageWidth, imageHeight) {
     }
 }
 
+let manualPreviewImageLoupeHandle = null;
+
+function initManualPreviewImageLoupe() {
+    // attachImageLoupe: public/scripts/comp/imageLoupe.js
+    if (manualPreviewImageLoupeHandle) {
+        manualPreviewImageLoupeHandle.refresh();
+        return;
+    }
+
+    const hostEl = document.querySelector('.manual-preview-image-container');
+    const hoverScopeEl = document.querySelector('.manual-preview-content');
+    const imageHitAreaEl = document.getElementById('manualPreviewImageContainerInner');
+
+    if (!hostEl || !hoverScopeEl || !imageHitAreaEl) {
+        return;
+    }
+
+    manualPreviewImageLoupeHandle = attachImageLoupe({
+        hostEl,
+        hoverScopeEl,
+        imageHitAreaEl,
+        getImageEl: () => {
+            const img = document.getElementById('manualPreviewImage');
+            if (!img || img.classList.contains('hidden') || !img.src) {
+                return null;
+            }
+            return img;
+        },
+        getSampleImageEl: () => {
+            // isCompareLoupeRevealActive: public/scripts/app.js
+            if (!isCompareLoupeRevealActive()) {
+                return null;
+            }
+            const src = document.getElementById('manualPreviewCompareSourceImage');
+            if (!src || src.classList.contains('hidden') || !src.src) {
+                return null;
+            }
+            return src;
+        },
+        isCompareRevealMode: () => isCompareLoupeRevealActive(),
+        isCompareRevealReady: () => isCompareLoupeRevealReady(),
+        onRequestRevealMode: () => enableCompareLoupeRevealFromLoupe(),
+        onLoupeInactive: () => {
+            // setCompareLoupeRevealEnabled: public/scripts/app.js
+            if (compareLoupeRevealEnabled) {
+                setCompareLoupeRevealEnabled(false);
+            }
+        },
+        storageKey: 'imageLoupe.manualPreview',
+        getBlurBackdropEl: () => {
+            const bg1 = document.getElementById('manualPreviewBlurBackground1');
+            const bg2 = document.getElementById('manualPreviewBlurBackground2');
+            const pickVisible = (el) => {
+                if (!el) return null;
+                const opacity = parseFloat(getComputedStyle(el).opacity);
+                const hasBg = getComputedStyle(el).backgroundImage !== 'none';
+                return opacity > 0.01 && hasBg ? el : null;
+            };
+            return pickVisible(bg1) || pickVisible(bg2) || bg1 || bg2;
+        },
+        enabled: () => {
+            const img = document.getElementById('manualPreviewImage');
+            const placeholder = document.getElementById('manualPreviewPlaceholder');
+            const manualForm = document.getElementById('manualForm');
+            if (!img || img.classList.contains('hidden') || !img.src) {
+                return false;
+            }
+            if (placeholder && !placeholder.classList.contains('hidden')) {
+                return false;
+            }
+            if (manualForm && manualForm.classList.contains('generating')) {
+                return false;
+            }
+            return img.naturalWidth > 0;
+        }
+    });
+}
+
+function destroyManualPreviewImageLoupe() {
+    if (!manualPreviewImageLoupeHandle) {
+        return;
+    }
+    manualPreviewImageLoupeHandle.destroy();
+    manualPreviewImageLoupeHandle = null;
+}
+
+function refreshManualPreviewImageLoupe() {
+    if (!manualPreviewImageLoupeHandle) {
+        initManualPreviewImageLoupe();
+        return;
+    }
+    manualPreviewImageLoupeHandle.refresh();
+}
+
+function setManualPreviewLoupeViewportMatchZoom(options) {
+    if (!manualPreviewImageLoupeHandle) {
+        initManualPreviewImageLoupe();
+    }
+    if (manualPreviewImageLoupeHandle && manualPreviewImageLoupeHandle.setViewportMatchZoom) {
+        manualPreviewImageLoupeHandle.setViewportMatchZoom(options || {});
+    }
+}
+
+function exitManualPreviewLoupeRevealMode() {
+    if (!manualPreviewImageLoupeHandle) {
+        return;
+    }
+    if (manualPreviewImageLoupeHandle.exitRevealPresentation) {
+        manualPreviewImageLoupeHandle.exitRevealPresentation();
+    }
+}
+
 function registerManualPreviewEventListeners() {
     if (manualPreviewEventListenersRegistered) return;
 
@@ -855,20 +967,21 @@ function registerManualPreviewEventListeners() {
     // Scroll up to open lightbox
     image.addEventListener('wheel', handleManualPreviewScroll, { passive: false });
 
+    initManualPreviewImageLoupe();
+
     manualPreviewEventListenersRegistered = true;
 }
 
 function deregisterManualPreviewEventListeners() {
     if (!manualPreviewEventListenersRegistered) return;
 
-    const imageContainer = document.querySelector('.manual-preview-image-container');
-    const image = imageContainer.querySelector('.manual-preview-image-container-inner');
+    const image = document.getElementById('manualPreviewImage');
+    if (image) {
+        image.removeEventListener('click', handleManualPreviewClick);
+        image.removeEventListener('wheel', handleManualPreviewScroll);
+    }
 
-    if (!imageContainer || !image) return;
-
-    // Remove all event listeners
-    image.removeEventListener('click', handleManualPreviewClick);
-    image.removeEventListener('wheel', handleManualPreviewScroll);
+    destroyManualPreviewImageLoupe();
 
     manualPreviewEventListenersRegistered = false;
 }

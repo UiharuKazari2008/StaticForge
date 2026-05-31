@@ -126,6 +126,10 @@ function wireManualStylePromptTextarea(textarea) {
     if (typeof autoResizeTextarea === 'function') {
         addSafeEventListener(textarea, 'input', () => autoResizeTextarea(textarea), 'resize');
     }
+    // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
+    if (attachPromptTextareaContextMenu) {
+        attachPromptTextareaContextMenu(textarea);
+    }
 }
 
 function setupPromptTextareaControls(textarea) {

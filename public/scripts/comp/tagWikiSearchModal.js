@@ -61,13 +61,23 @@ class WikiDisplayBase {
         const linkMenuConfig = {
             sections: [
                 {
-                    type: 'list',
-                    items: [
+                    type: 'icons',
+                    icons: [
                         {
-                            text: 'Copy Tag',
-                            icon: 'nai-clipboard',
+                            tooltip: 'Copy Tag',
+                            icon: 'fas fa-copy',
                             action: 'wiki-link-copy'
                         },
+                        {
+                            tooltip: 'Add to Favorites',
+                            icon: 'fas fa-star',
+                            action: 'wiki-link-add-to-favorites'
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: [
                         {
                             text: 'New Window',
                             icon: 'fas fa-window-restore',
@@ -87,6 +97,13 @@ class WikiDisplayBase {
                             disabled: () => !this.isDirectiveAvailable()
                         },
                         {
+                            text: 'PhaseWalker',
+                            icon: 'fas fa-layer-group',
+                            openOnHover: true,
+                            optionsfn: () => this.buildWikiPhasewalkerSubmenuItems(tagName),
+                            handlerfn: (subItem) => this.handleWikiPhasewalkerSubmenuAction(subItem)
+                        },
+                        {
                             text: 'Add to Desktop',
                             icon: 'fas fa-arrow-down-left',
                             action: 'wiki-link-add-to-desktop'
@@ -97,6 +114,11 @@ class WikiDisplayBase {
             onAction: (action, target, item) => {
                 if (action === 'wiki-link-copy') {
                     this.copyToClipboard(tagName);
+                } else if (action === 'wiki-link-add-to-favorites') {
+                    // showAddToFavoritesDialog: public/scripts/comp/autocompleteUtils.js
+                    if (showAddToFavoritesDialog) {
+                        showAddToFavoritesDialog(tagName);
+                    }
                 } else if (action === 'wiki-link-add-to-prompt') {
                     this.addToPrompt(tagName);
                 } else if (action === 'wiki-link-add-reference') {
@@ -151,7 +173,192 @@ class WikiDisplayBase {
         if (this.currentSelectedTag) {
             return this.currentSelectedTag.title || this.currentSelectedTag.name || '';
         }
-        return '';
+        return this.currentTagName || '';
+    }
+
+    hasWikiPageTag() {
+        return Boolean(String(this.getCurrentTagName() || '').trim()) && !this.currentStaticWiki;
+    }
+
+    buildWikiPhasewalkerSubmenuItems(tagText) {
+        const text = String(tagText || this.getCurrentTagName() || '').trim();
+        // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
+        if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
+            return buildPhasewalkerContextSubmenuItems(text);
+        }
+        return [{ text: 'Unavailable', disabled: true }];
+    }
+
+    handleWikiPhasewalkerSubmenuAction(subItem) {
+        // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
+        if (handlePhasewalkerContextSubmenuAction) {
+            handlePhasewalkerContextSubmenuAction(subItem);
+        }
+    }
+
+    handleWikiDisplayContextMenuAction(action, target, item) {
+        if (action === 'wiki-back') {
+            this.goBack();
+        } else if (action === 'wiki-forward') {
+            this.goForward();
+        } else if (action === 'wiki-home') {
+            this.goHome();
+        } else if (action === 'wiki-add-to-prompt') {
+            this.addToPrompt();
+        } else if (action === 'wiki-add-reference') {
+            this.addToDirective();
+        } else if (action === 'wiki-open-new-window') {
+            this.openInNewWindow();
+        } else if (action === 'wiki-add-to-desktop') {
+            this.addWikiPageToDesktop();
+        } else if (action === 'wiki-selection-search-google') {
+            this.searchGoogleForSelection();
+        } else if (action === 'wiki-selection-add-to-directive') {
+            this.addSelectionToDirective();
+        } else if (action === 'wiki-selection-copy') {
+            this.copySelectionToClipboard();
+        } else if (action === 'wiki-refresh-online') {
+            this.refreshFromOnline();
+        } else if (action === 'wiki-copy-tag') {
+            const tag = this.getCurrentTagName();
+            // copyRunTagText: public/scripts/comp/runCommandIndex.js
+            if (tag && typeof copyRunTagText === 'function') {
+                copyRunTagText(tag);
+            }
+        } else if (action === 'wiki-add-to-favorites') {
+            const tag = this.getCurrentTagName();
+            // showAddToFavoritesDialog: public/scripts/comp/autocompleteUtils.js
+            if (tag && showAddToFavoritesDialog) {
+                showAddToFavoritesDialog(tag);
+            }
+        }
+    }
+
+    attachWikiDisplayContextMenu() {
+        if (!this.displayArea || !contextMenu) return;
+
+        const displayMenuConfig = {
+            sections: [
+                {
+                    type: 'icons',
+                    icons: [
+                        {
+                            icon: 'fas fa-arrow-left',
+                            action: 'wiki-back',
+                            tooltip: 'Back',
+                            disabled: () => !this.history || this.historyIndex <= 0
+                        },
+                        {
+                            icon: 'fas fa-arrow-right',
+                            action: 'wiki-forward',
+                            tooltip: 'Forward',
+                            disabled: () => !this.history || this.historyIndex >= this.history.length - 1
+                        },
+                        {
+                            icon: 'fas fa-home',
+                            action: 'wiki-home',
+                            tooltip: 'Home'
+                        },
+                        {
+                            tooltip: 'New Window',
+                            icon: 'fas fa-window-restore',
+                            action: 'wiki-open-new-window'
+                        },
+                        {
+                            tooltip: 'Copy Tag',
+                            icon: 'fas fa-copy',
+                            action: 'wiki-copy-tag',
+                            hidden: () => !this.hasWikiPageTag()
+                        },
+                        {
+                            tooltip: 'Copy Selected Text to Clipboard',
+                            icon: 'fas fa-clipboard',
+                            action: 'wiki-selection-copy',
+                            hidden: () => {
+                                const selection = window.getSelection();
+                                const text = selection.toString().trim();
+                                if (!text) return true;
+                                const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+                                return !range || !this.displayArea.contains(range.commonAncestorContainer);
+                            }
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: [
+                        {
+                            text: 'Add to Prompt',
+                            icon: 'fas fa-plus',
+                            action: 'wiki-add-to-prompt',
+                            disabled: () => manualModal.classList.contains('hidden')
+                        },
+                        {
+                            text: 'Add to Favorites',
+                            icon: 'fas fa-star',
+                            action: 'wiki-add-to-favorites',
+                            hidden: () => !this.hasWikiPageTag()
+                        },
+                        {
+                            text: 'PhaseWalker',
+                            icon: 'fas fa-layer-group',
+                            openOnHover: true,
+                            optionsfn: () => this.buildWikiPhasewalkerSubmenuItems(),
+                            handlerfn: (subItem) => this.handleWikiPhasewalkerSubmenuAction(subItem),
+                            hidden: () => !this.hasWikiPageTag()
+                        },
+                        {
+                            text: 'Add Selection to Directive',
+                            icon: 'fas fa-plus',
+                            action: 'wiki-selection-add-to-directive',
+                            disabled: () => !this.isDirectiveAvailable(),
+                            hidden: () => {
+                                const selection = window.getSelection();
+                                const text = selection.toString().trim();
+                                if (!text) return true;
+                                const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+                                return !range || !this.displayArea.contains(range.commonAncestorContainer);
+                            }
+                        },
+                        {
+                            text: 'Add Reference',
+                            icon: 'fas fa-bookmark',
+                            action: 'wiki-add-reference',
+                            disabled: () => !this.isDirectiveAvailable()
+                        },
+                        { separator: true },
+                        {
+                            text: 'Refresh from Online',
+                            icon: 'fas fa-sync-alt',
+                            action: 'wiki-refresh-online'
+                        },
+                        {
+                            text: 'Search Google',
+                            icon: 'fas fa-search',
+                            action: 'wiki-selection-search-google',
+                            hidden: () => {
+                                const selection = window.getSelection();
+                                const text = selection.toString().trim();
+                                if (!text) return true;
+                                const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+                                return !range || !this.displayArea.contains(range.commonAncestorContainer);
+                            }
+                        },
+                        {
+                            text: 'Add to Desktop',
+                            icon: 'fas fa-arrow-down-left',
+                            action: 'wiki-add-to-desktop'
+                        }
+                    ]
+                }
+            ],
+            onAction: (action, target, item) => {
+                this.handleWikiDisplayContextMenuAction(action, target, item);
+            }
+        };
+
+        contextMenu.attachToElement(this.displayArea, displayMenuConfig);
+        this.contextMenuElements.push(this.displayArea);
     }
     
     addToPrompt(text) {
@@ -1591,133 +1798,7 @@ class WikiWindowInstance extends WikiDisplayBase {
             });
         }
         
-        // Setup context menu for display area using existing context menu system
-        if (this.displayArea && contextMenu) {
-            const displayMenuConfig = {
-                sections: [
-                    {
-                        type: 'icons',
-                        icons: [
-                            {
-                                icon: 'fas fa-arrow-left',
-                                action: 'wiki-back',
-                                tooltip: 'Back',
-                                disabled: () => !this.history || this.historyIndex <= 0
-                            },
-                            {
-                                icon: 'fas fa-arrow-right',
-                                action: 'wiki-forward',
-                                tooltip: 'Forward',
-                                disabled: () => !this.history || this.historyIndex >= this.history.length - 1
-                            },
-                            {
-                                icon: 'fas fa-home',
-                                action: 'wiki-home',
-                                tooltip: 'Home'
-                            },
-                            {
-                                tooltip: 'New Window',
-                                icon: 'fas fa-window-restore',
-                                action: 'wiki-open-new-window'
-                            },
-                            {
-                                tooltip: 'Copy to Clipboard',
-                                icon: 'fas fa-clipboard',
-                                action: 'wiki-selection-copy',
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            }
-                        ]
-                    },
-                    {
-                        type: 'list',
-                        items: [
-                            {
-                                text: 'Add to Prompt',
-                                icon: 'fas fa-plus',
-                                action: 'wiki-add-to-prompt',
-                                disabled: () => manualModal.classList.contains('hidden')
-                            },
-                            {
-                                text: 'Add Selection to Directive',
-                                icon: 'fas fa-plus',
-                                action: 'wiki-selection-add-to-directive',
-                                disabled: () => !this.isDirectiveAvailable(),
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            },
-                            {
-                                text: 'Add Reference',
-                                icon: 'fas fa-bookmark',
-                                action: 'wiki-add-reference',
-                                disabled: () => !this.isDirectiveAvailable()
-                            },
-                            { separator: true },
-                            {
-                                text: 'Refresh from Online',
-                                icon: 'fas fa-sync-alt',
-                                action: 'wiki-refresh-online'
-                            },
-                            {
-                                text: 'Search Google',
-                                icon: 'fas fa-search',
-                                action: 'wiki-selection-search-google',
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            },
-                            {
-                                text: 'Add to Desktop',
-                                icon: 'fas fa-arrow-down-left',
-                                action: 'wiki-add-to-desktop'
-                            }
-                        ]
-                    }
-                ],
-                onAction: (action, target, item) => {
-                    if (action === 'wiki-back') {
-                        this.goBack();
-                    } else if (action === 'wiki-forward') {
-                        this.goForward();
-                    } else if (action === 'wiki-home') {
-                        this.goHome();
-                    } else if (action === 'wiki-add-to-prompt') {
-                        this.addToPrompt();
-                    } else if (action === 'wiki-add-reference') {
-                        this.addToDirective();
-                    } else if (action === 'wiki-open-new-window') {
-                        this.openInNewWindow();
-                    } else if (action === 'wiki-add-to-desktop') {
-                        this.addWikiPageToDesktop();
-                    } else if (action === 'wiki-selection-search-google') {
-                        this.searchGoogleForSelection();
-                    } else if (action === 'wiki-selection-add-to-directive') {
-                        this.addSelectionToDirective();
-                    } else if (action === 'wiki-selection-copy') {
-                        this.copySelectionToClipboard();
-                    } else if (action === 'wiki-refresh-online') {
-                        this.refreshFromOnline();
-                    }
-                }
-            };
-            
-            contextMenu.attachToElement(this.displayArea, displayMenuConfig);
-            this.contextMenuElements.push(this.displayArea);
-        }
+        this.attachWikiDisplayContextMenu();
         
         // Open the modal first (same pattern as main modal)
         openModal(this.modal);
@@ -2039,10 +2120,16 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.forwardBtn = null;
         this.homeBtn = null;
         this.closeBtn = null;
+        this.searchBody = null;
+        this.resultsScrollPanel = null;
+        this.resultsCollapseBtn = null;
+        this.resultsExpandBtn = null;
         
         this.history = [];
         this.historyIndex = -1;
         this.currentSearchResults = [];
+        this.resultsSidebarManualCollapsed = false;
+        this.RESULTS_SIDEBAR_AUTO_COLLAPSE_WIDTH = 900;
         
         // Current filter values
         this.currentFilter = '';
@@ -2074,140 +2161,19 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.forwardBtn = document.getElementById('tagWikiSearchForwardBtn');
         this.homeBtn = document.getElementById('tagWikiSearchHomeBtn');
         this.closeBtn = document.getElementById('closeTagWikiSearchModalBtn');
+        this.searchBody = this.modal.querySelector('.tag-wiki-search-body');
+        this.resultsScrollPanel = this.modal.querySelector('.tag-wiki-search-results.form-section-scroll');
+        this.resultsCollapseBtn = document.getElementById('tagWikiSearchResultsCollapseBtn');
+        this.resultsExpandBtn = document.getElementById('tagWikiSearchResultsExpandBtn');
         
         this.setupDropdowns();
+        this.setupResultsSidebar();
         this.setupEventListeners();
         this.setupContextMenu();
     }
     
     setupContextMenu() {
-        // Setup context menu for display area using existing context menu system
-        if (this.displayArea && contextMenu) {
-            const displayMenuConfig = {
-                sections: [
-                    {
-                        type: 'icons',
-                        icons: [
-                            {
-                                icon: 'fas fa-arrow-left',
-                                action: 'wiki-back',
-                                tooltip: 'Back',
-                                disabled: () => !this.history || this.historyIndex <= 0
-                            },
-                            {
-                                icon: 'fas fa-arrow-right',
-                                action: 'wiki-forward',
-                                tooltip: 'Forward',
-                                disabled: () => !this.history || this.historyIndex >= this.history.length - 1
-                            },
-                            {
-                                icon: 'fas fa-home',
-                                action: 'wiki-home',
-                                tooltip: 'Home'
-                            },
-                            {
-                                tooltip: 'New Window',
-                                icon: 'fas fa-window-restore',
-                                action: 'wiki-open-new-window'
-                            },
-                            {
-                                tooltip: 'Copy Selected Text to Clipboard',
-                                icon: 'fas fa-clipboard',
-                                action: 'wiki-selection-copy',
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            },
-                        ]
-                    },
-                    {
-                        type: 'list',
-                        items: [
-                            {
-                                text: 'Add to Prompt',
-                                icon: 'fas fa-plus',
-                                action: 'wiki-add-to-prompt',
-                                disabled: () => manualModal.classList.contains('hidden')
-                            },
-                            {
-                                text: 'Add Selection to Directive',
-                                icon: 'fas fa-plus',
-                                action: 'wiki-selection-add-to-directive',
-                                disabled: () => !this.isDirectiveAvailable(),
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            },
-                            {
-                                text: 'Add Reference',
-                                icon: 'fas fa-bookmark',
-                                action: 'wiki-add-reference',
-                                disabled: () => !this.isDirectiveAvailable()
-                            },
-                            { separator: true },
-                            {
-                                text: 'Refresh from Online',
-                                icon: 'fas fa-sync-alt',
-                                action: 'wiki-refresh-online'
-                            },
-                            {
-                                text: 'Search Google',
-                                icon: 'fas fa-search',
-                                action: 'wiki-selection-search-google',
-                                hidden: () => {
-                                    const selection = window.getSelection();
-                                    const text = selection.toString().trim();
-                                    if (!text) return true;
-                                    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-                                    return !range || !this.displayArea.contains(range.commonAncestorContainer);
-                                }
-                            },
-                            {
-                                text: 'Add to Desktop',
-                                icon: 'fas fa-arrow-down-left',
-                                action: 'wiki-add-to-desktop'
-                            }
-                        ]
-                    }
-                ],
-                onAction: (action, target, item) => {
-                    if (action === 'wiki-back') {
-                        this.goBack();
-                    } else if (action === 'wiki-forward') {
-                        this.goForward();
-                    } else if (action === 'wiki-home') {
-                        this.goHome();
-                    } else if (action === 'wiki-add-to-prompt') {
-                        this.addToPrompt();
-                    } else if (action === 'wiki-add-reference') {
-                        this.addToDirective();
-                    } else if (action === 'wiki-open-new-window') {
-                        this.openInNewWindow();
-                    } else if (action === 'wiki-add-to-desktop') {
-                        this.addWikiPageToDesktop();
-                    } else if (action === 'wiki-selection-search-google') {
-                        this.searchGoogleForSelection();
-                    } else if (action === 'wiki-selection-add-to-directive') {
-                        this.addSelectionToDirective();
-                    } else if (action === 'wiki-selection-copy') {
-                        this.copySelectionToClipboard();
-                    } else if (action === 'wiki-refresh-online') {
-                        this.refreshFromOnline();
-                    }
-                }
-            };
-            
-            contextMenu.attachToElement(this.displayArea, displayMenuConfig);
-            this.contextMenuElements.push(this.displayArea);
-        }
+        this.attachWikiDisplayContextMenu();
     }
     
     
@@ -2335,16 +2301,78 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
     }
     
+    setupResultsSidebar() {
+        if (!this.searchBody || !this.modal) return;
+
+        if (this.resultsCollapseBtn) {
+            this.resultsCollapseBtn.addEventListener('click', () => {
+                this.resultsSidebarManualCollapsed = true;
+                this.updateResultsSidebar();
+            });
+        }
+
+        if (this.resultsExpandBtn) {
+            this.resultsExpandBtn.addEventListener('click', () => {
+                this.resultsSidebarManualCollapsed = false;
+                this.updateResultsSidebar();
+            });
+        }
+
+        this._boundResultsSidebarResize = () => this.updateResultsSidebar();
+        this.modal.addEventListener('modalResized', this._boundResultsSidebarResize);
+        this.updateResultsSidebar();
+    }
+
+    updateResultsSidebar(expandForResults = false) {
+        if (!this.searchBody || !this.modal) return;
+
+        const modalWidth = this.modal.offsetWidth || 0;
+        const tooSmall = modalWidth > 0 && modalWidth <= this.RESULTS_SIDEBAR_AUTO_COLLAPSE_WIDTH;
+        const hasResults = this.currentSearchResults.length > 0 ||
+            (this.resultsList && (
+                this.resultsList.querySelector('.tag-wiki-result-item') ||
+                this.resultsList.querySelector('.tag-wiki-loading') ||
+                this.resultsList.querySelector('.tag-wiki-empty-results') ||
+                this.resultsList.querySelector('.tag-wiki-error')
+            ));
+
+        if (expandForResults && hasResults && !tooSmall) {
+            this.resultsSidebarManualCollapsed = false;
+        }
+
+        const collapsed = tooSmall || this.resultsSidebarManualCollapsed;
+        const wasCollapsed = this.searchBody.classList.contains('results-sidebar-collapsed');
+        this.searchBody.classList.toggle('results-sidebar-collapsed', collapsed);
+
+        if (this.resultsExpandBtn) {
+            this.resultsExpandBtn.classList.toggle('hidden', !collapsed || tooSmall);
+            this.resultsExpandBtn.disabled = tooSmall;
+            this.resultsExpandBtn.title = tooSmall
+                ? 'Widen the window to show search results'
+                : 'Show search results';
+        }
+
+        if (this.resultsCollapseBtn) {
+            this.resultsCollapseBtn.disabled = tooSmall;
+            this.resultsCollapseBtn.title = tooSmall
+                ? 'Results hidden while window is narrow'
+                : 'Collapse results';
+        }
+
+        if (wasCollapsed && !collapsed && this.resultsScrollPanel && window.customScrollbar) {
+            window.customScrollbar.forceReinit(this.resultsScrollPanel);
+        }
+    }
+    
     setupEventListeners() {
         if (!this.modal) return;
         
         // Search input - Enter key to search
         if (this.searchInput) {
             this.searchInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && (!e.shiftKey || !e.ctrlKey || !e.altKey)) {
+                if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
                     e.preventDefault();
                     this.performSearch();
-                    this.searchInput.blur();
                 }
             });
         }
@@ -2525,24 +2553,19 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     this.searchInput.value = trimmedQuery;
                 }
                 setTimeout(() => {
-                    if (trimmedQuery) {
+                    if (this.searchInput) {
                         this.searchInput.focus();
-                        this.searchInput.setSelectionRange(trimmedQuery.length, trimmedQuery.length);
-                        setTimeout(() => {
-                            this.performSearch();
-                        }, 10);
-                    } else if (!skipInitialHome) {
-                        const di = this.displayArea && this.displayArea.querySelector('.dreamwiki-direct-page-input');
-                        if (di) {
-                            di.focus();
-                        } else {
-                            this.searchInput.focus();
+                        if (trimmedQuery) {
+                            this.searchInput.setSelectionRange(trimmedQuery.length, trimmedQuery.length);
+                            setTimeout(() => {
+                                this.performSearch();
+                            }, 10);
                         }
-                    } else {
-                        this.searchInput.focus();
                     }
                 }, 100);
             }
+
+            this.updateResultsSidebar();
         }
     }
 
@@ -2593,20 +2616,20 @@ class TagWikiSearchModal extends WikiDisplayBase {
      */
     async openStandaloneWikiIfDirectMatch(tagName) {
         const trimmed = String(tagName || '').trim();
-        if (!trimmed) return;
+        if (!trimmed) return false;
 
         if (!window.wikiWindowManager) {
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, 'Wiki windows are not available', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
             }
-            return;
+            return false;
         }
 
         if (!window.wsClient || !window.wsClient.isConnected()) {
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, 'WebSocket not connected', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
             }
-            return;
+            return false;
         }
 
         try {
@@ -2620,7 +2643,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 if (typeof showGlassToast === 'function') {
                     showGlassToast('info', null, 'No matching wiki page', false, 3500, '<i class="fas fa-book"></i>');
                 }
-                return;
+                return false;
             }
 
             if (typeof hideCharacterAutocomplete === 'function') {
@@ -2632,11 +2655,13 @@ class TagWikiSearchModal extends WikiDisplayBase {
             if (winInstance && winInstance.modal && typeof bringModalToFront === 'function') {
                 bringModalToFront(winInstance.modal);
             }
+            return true;
         } catch (err) {
             console.error('openStandaloneWikiIfDirectMatch:', err);
             if (typeof showGlassToast === 'function') {
                 showGlassToast('info', null, 'No matching wiki page', false, 3500, '<i class="fas fa-book"></i>');
             }
+            return false;
         }
     }
     
@@ -2670,6 +2695,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (this.resultsList) {
             this.resultsList.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Searching...</div>';
         }
+        this.updateResultsSidebar(true);
         
         try {
             const results = await this.searchTagWiki(query, {
@@ -2695,6 +2721,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             if (this.resultsList) {
                 this.resultsList.innerHTML = `<div class="tag-wiki-error"><i class="fas fa-exclamation-circle"></i> Error: ${error.message}</div>`;
             }
+            this.updateResultsSidebar(true);
         }
     }
     
@@ -2728,6 +2755,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         if (!results || results.length === 0) {
             this.resultsList.innerHTML = '<div class="tag-wiki-empty-results"><i class="fas fa-search"></i> No results found</div>';
+            this.updateResultsSidebar(true);
             return;
         }
         
@@ -2797,6 +2825,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         // Check for direct match and auto-open if found
         this.checkAndOpenDirectMatch(results, itemsWithWiki);
+        this.updateResultsSidebar(true);
     }
     
     checkAndOpenDirectMatch(allResults, itemsWithWiki) {
@@ -2986,6 +3015,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.resultsList.innerHTML = '';
         }
         this.currentSearchResults = [];
+        this.updateResultsSidebar();
     }
     
     clearDisplay() {
@@ -3111,6 +3141,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             if (entry.results) {
                 this.currentSearchResults = entry.results;
                 this.renderResults(entry.results);
+            } else {
+                this.updateResultsSidebar(true);
             }
         }
         

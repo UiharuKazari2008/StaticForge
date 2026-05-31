@@ -11,8 +11,8 @@ class SearchService {
         // Tag search services will be lazy-loaded when needed
         // This prevents loading 380MB+ of data at server startup
         this.spellChecker = null;
-        this.furryTagSearch = null;
-        this.animeTagSearch = null;
+        this.wordLookupService = null;
+        this.tagAutofillSearch = null;
         this._servicesInitialized = false;
 
         // Session-based rate limiting with rolling window
@@ -28,28 +28,36 @@ class SearchService {
 
         // Timer will be registered by globalResources when SearchService is initialized
         this._cleanupTimerId = null;
+
+        // Active search packet context (requestId + autofillSessionId) for WS responses
+        this._searchPacketContext = null;
+    }
+
+    sendSearchWs(ws, payload) {
+        if (!ws) return;
+        const ctx = this._searchPacketContext || {};
+        const message = {
+            ...payload,
+            requestId: payload.requestId ?? ctx.requestId ?? null,
+            ...(ctx.autofillSessionId ? { autofillSessionId: ctx.autofillSessionId } : {})
+        };
+        ws.send(JSON.stringify(message));
     }
 
     /**
-     * Lazy-initialize tag search services (loads 380MB+ of data)
+     * Lazy-initialize spell checker and database autofill search
      */
     async ensureServicesInitialized() {
         if (this._servicesInitialized) return;
 
         if (this.globalResources.isInitialized()) {
-            // Get from global resources (will lazy-load if needed)
             this.spellChecker = this.globalResources.getSpellChecker();
-            this.furryTagSearch = await this.globalResources.getFurryTagSearch();
-            this.animeTagSearch = await this.globalResources.getAnimeTagSearch();
+            this.wordLookupService = this.globalResources.getWordLookupService();
+            this.tagAutofillSearch = this.globalResources.getTagAutofillSearch();
         } else {
-            // Fallback: create new instances
-            console.log('⚠️  Creating local tag search instances (global resources not initialized)');
+            console.log('⚠️  SearchService running without global resources (spell check only)');
             const SpellChecker = require('./spellChecker');
-            const AnimeTagSearch = require('./animeTagSearch');
-            const FurryTagSearch = require('./furryTagSearch');
             this.spellChecker = new SpellChecker();
-            this.furryTagSearch = new FurryTagSearch();
-            this.animeTagSearch = new AnimeTagSearch();
         }
 
         this._servicesInitialized = true;
@@ -305,7 +313,7 @@ class SearchService {
     }
 
     // Search for characters and tags - Latest Request Wins Pattern
-    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null, requestId = null) {
+    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null, requestId = null, autofillSessionId = null) {
         const key = `${sessionId}_${model}`;
 
         // Store the latest request (overwrites previous)
@@ -315,36 +323,41 @@ class SearchService {
             ws,
             sessionId,
             requestId,
+            autofillSessionId: autofillSessionId || null,
             timestamp: Date.now()
         });
 
-        // If already processing, just return (latest request will be processed after current completes)
-        if (this.isProcessing.get(key)) {
-            return { results: [], spellCheck: null };
-        }
+        return await this.waitForSearchTurn(key, requestId);
+    }
 
-        // Mark as processing
-        this.isProcessing.set(key, true);
+    async waitForSearchTurn(key, requestId) {
+        while (true) {
+            while (this.isProcessing.get(key)) {
+                await new Promise(resolve => setTimeout(resolve, 15));
+            }
 
-        // Store the timestamp of the request we're about to process
-        const currentRequest = this.latestRequests.get(key);
-        const requestTimestamp = currentRequest ? currentRequest.timestamp : Date.now();
+            const latest = this.latestRequests.get(key);
+            if (!latest) {
+                return { results: [], spellCheck: null, processed: false, superseded: true };
+            }
 
-        try {
-            return await this.processLatestRequest(key);
-        } finally {
-            // Mark as not processing
-            this.isProcessing.set(key, false);
+            // A newer search replaced this request before it could run
+            if (latest.requestId !== requestId) {
+                return { results: [], spellCheck: null, processed: false, superseded: true };
+            }
 
-            // Check if there's a newer request waiting
-            const currentLatest = this.latestRequests.get(key);
-            if (currentLatest && currentLatest.timestamp > requestTimestamp) {
-                // Process the newer request
-                this.isProcessing.set(key, true);
-                try {
-                    await this.processLatestRequest(key);
-                } finally {
-                    this.isProcessing.set(key, false);
+            this.isProcessing.set(key, true);
+            const capturedTimestamp = latest.timestamp;
+
+            try {
+                const result = await this.processLatestRequest(key);
+                return { ...result, processed: true, superseded: false };
+            } finally {
+                this.isProcessing.set(key, false);
+
+                const currentLatest = this.latestRequests.get(key);
+                if (currentLatest && currentLatest.timestamp > capturedTimestamp) {
+                    // A newer request arrived during processing; its caller will wait and run it
                 }
             }
         }
@@ -357,7 +370,20 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
 
-        const { query, model, ws, sessionId, requestId } = latestRequest;
+        const { query, model, ws, sessionId, requestId, autofillSessionId } = latestRequest;
+
+        this._searchPacketContext = {
+            requestId: requestId || null,
+            autofillSessionId: autofillSessionId || null
+        };
+
+        if (ws) {
+            this.sendSearchWs(ws, {
+                type: 'search_characters_response',
+                data: { results: [], spellCheck: null },
+                timestamp: new Date().toISOString()
+            });
+        }
 
         try {
             // Check if query starts with ! - only return text replacements in this case
@@ -396,128 +422,58 @@ class SearchService {
                 }).catch(error => {
                     console.error('Character search error:', error);
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_results_update',
                             service: 'characters',
                             results: [],
                             isComplete: true,
                             timestamp: new Date().toISOString(),
                             requestId: requestId
-                        }));
+                        });
                     }
                     return [];
                 });
 
-                // Start tag search as independent service
-                const tagPromise = this.performTagSearch(query, model, ws, sessionId, requestId).then(results => {
-                    // Send tag results immediately when ready
-                    if (ws && results && results.length > 0) {
-                        const message = {
-                            type: 'search_results_update',
-                            service: model, // Use model name as service name for tags
-                            results: results,
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        };
-                        ws.send(JSON.stringify(message));
-                    } else if (ws) {
-                        // Send empty results to clear previous results
-                        const message = {
-                            type: 'search_results_update',
-                            service: model,
-                            results: [],
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        };
-                        ws.send(JSON.stringify(message));
-                    }
-                    return results;
-                }).catch(error => {
+                // Tag results stream per-model via makeTagRequests(); aggregate only for complete payload
+                const tagPromise = this.performTagSearch(query, model, ws, sessionId, requestId).catch(error => {
                     console.error('Tag search error:', error);
-                    if (ws) {
-                        ws.send(JSON.stringify({
-                            type: 'search_results_update',
-                            service: model,
-                            results: [],
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        }));
-                    }
                     return [];
                 });
 
-                // Start spellcheck as independent service
-                const spellcheckPromise = this.performSpellCheckAsync(query, ws, requestId).then(results => {
-                    // Send spellcheck results immediately when ready
-                    if (ws && results) {
-                        ws.send(JSON.stringify({
-                            type: 'search_results_update',
-                            service: 'spellcheck',
-                            results: [{
-                                type: 'spellcheck',
-                                data: results,
-                                serviceOrder: -2,
-                                resultOrder: 0,
-                                serviceName: 'spellcheck'
-                            }],
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        }));
-                    }
-                    return results;
-                }).catch(error => {
+                // Start spellcheck first; thesaurus runs after spell check so corrections apply
+                const spellcheckPromise = this.performSpellCheckAsync(query, ws, requestId).catch(error => {
                     console.error('Spellcheck error:', error);
                     return null;
                 });
 
-                // Start text replacement search as independent service
-                const textReplacementPromise = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).then(results => {
-                    // Send text replacement results immediately when ready
-                    if (ws && results && results.length > 0) {
-                        ws.send(JSON.stringify({
-                            type: 'search_results_update',
-                            service: 'textReplacements',
-                            results: results,
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        }));
-                    } else if (ws) {
-                        // Send empty results to clear previous results
-                        ws.send(JSON.stringify({
-                            type: 'search_results_update',
-                            service: 'textReplacements',
-                            results: [],
-                            isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        }));
-                    }
-                    return results;
-                }).catch(error => {
+                const wordLookupPromise = spellcheckPromise.then(spellCheckData =>
+                    this.performWordLookupAsync(query, ws, requestId, spellCheckData)
+                ).catch(error => {
+                    console.error('Word lookup error:', error);
+                    return null;
+                });
+
+                // Text replacements stream via performTextReplacementSearch (single WS send per service)
+                const textReplacementPromise = this.performTextReplacementSearch(searchQuery, ws, hasPickSuffix, requestId).catch(error => {
                     console.error('Text replacement search error:', error);
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws, {
                             type: 'search_results_update',
                             service: 'textReplacements',
                             results: [],
                             isComplete: true,
-                            timestamp: new Date().toISOString(),
-                            requestId: requestId
-                        }));
+                            timestamp: new Date().toISOString()
+                        });
                     }
                     return [];
                 });
 
                 // Wait for all services to complete (they run concurrently)
-                const [characterResults, tagResults, spellcheckData, textReplacementResults] = await Promise.allSettled([
+                const [characterResults, tagResults, spellcheckData, wordLookupData, textReplacementResults] = await Promise.allSettled([
                     characterPromise,
                     tagPromise,
                     spellcheckPromise,
+                    wordLookupPromise,
                     textReplacementPromise
                 ]);
 
@@ -553,11 +509,11 @@ class SearchService {
 
                 // Send initial status update for spellcheck service
                 if (ws) {
-                    ws.send(JSON.stringify({
+                    this.sendSearchWs(ws,{
                         type: 'search_status_update',
                         services: [{ name: 'spellcheck', status: 'searching' }],
                         requestId: requestId
-                    }));
+                    });
                 }
 
                 // Only perform spell checking for "Text:" searches
@@ -567,7 +523,7 @@ class SearchService {
 
                         // Send spell check results separately if WebSocket is available
                         if (ws && spellCheckData) {
-                            ws.send(JSON.stringify({
+                            this.sendSearchWs(ws,{
                                 type: 'search_results_update',
                                 service: 'spellcheck',
                                 results: [{
@@ -580,27 +536,27 @@ class SearchService {
                                 serviceOrder: -2,
                                 isComplete: false,
                                 requestId: requestId
-                            }));
+                            });
                         }
 
                         // Send completion status for spellcheck service
                         if (ws) {
-                            ws.send(JSON.stringify({
+                            this.sendSearchWs(ws,{
                                 type: 'search_status_update',
                                 services: [{ name: 'spellcheck', status: 'completed' }],
                                 requestId: requestId
-                            }));
+                            });
                         }
                     }
                 } catch (error) {
                     console.error('Spell check failed for Text: search:', error);
                     // Send error status for spellcheck service
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_status_update',
                             services: [{ name: 'spellcheck', status: 'error' }],
                             requestId: requestId
-                        }));
+                        });
                     }
                     spellCheckData = null;
                 }
@@ -629,6 +585,8 @@ class SearchService {
         } catch (error) {
             console.error('Character and tag search error:', error);
             throw error;
+        } finally {
+            this._searchPacketContext = null;
         }
     }
 
@@ -751,17 +709,17 @@ class SearchService {
 
             // Send initial status update for characters service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'characters', status: 'searching' }],
                     requestId: requestId
-                }));
+                });
             }
 
             // Send character results immediately if WebSocket is available
             // Always send results (even if empty) to ensure client receives them
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_results_update',
                     service: 'characters',
                     results: characterResults,
@@ -769,16 +727,16 @@ class SearchService {
                     isComplete: true,
                     timestamp: new Date().toISOString(),
                     requestId: requestId
-                }));
+                });
             }
 
             // Send completion status for characters service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'characters', status: 'completed' }],
                     requestId: requestId
-                }));
+                });
             }
 
             // Return character results (tags are sent via WebSocket)
@@ -833,6 +791,7 @@ class SearchService {
 
     async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
         const https = require('https');
+        const normalizedQuery = (query || '').trim().toLowerCase();
 
         // Shared tagSearchDatabase instance for all API calls in this request
         let tagSearchDatabase = null;
@@ -852,7 +811,7 @@ class SearchService {
 
             if (tagSearchDatabase) {
                 try {
-                    cachedTags = tagSearchDatabase.getCachedTags(query, apiModel);
+                    cachedTags = tagSearchDatabase.getCachedTags(normalizedQuery, apiModel);
                 } catch (e) {
                     console.warn('Failed to get cached tags:', e.message);
                 }
@@ -860,10 +819,11 @@ class SearchService {
 
             if (cachedTags && cachedTags.length > 0) {
                 return {
+                    fromCache: true,
                     tags: cachedTags.map(tag => ({
                         tag: tag.tag,
                         count: tag.count,
-                        confidence: tag.confidence || 0.95
+                        confidence: tag.confidence ?? 0.95
                     }))
                 };
             }
@@ -874,7 +834,7 @@ class SearchService {
 
             if (sessionId && ws) {
                 // Use rate limiting for WebSocket-based requests
-                abortSignal = await this.throttleTagRequest(sessionId, query, apiModel, localRequestId, ws);
+                abortSignal = await this.throttleTagRequest(sessionId, normalizedQuery, apiModel, localRequestId, ws);
 
                 // Check if this request was aborted while waiting
                 if (!abortSignal || abortSignal?.aborted) {
@@ -886,7 +846,7 @@ class SearchService {
                 abortSignal = abortController.signal;
             }
 
-            const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(query)}`;
+            const url = `https://image.novelai.net/ai/generate-image/suggest-tags?model=${apiModel}&prompt=${encodeURIComponent(normalizedQuery)}`;
             const options = {
                 method: 'GET',
                 headers: {
@@ -1041,45 +1001,28 @@ class SearchService {
                 models.push('nai-diffusion-furry-3');
             }
 
+            const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
+            const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
+
             // Send initial status update for all services (API + local)
             if (ws) {
                 const allServices = [
                     ...models.map(m => ({ name: m, status: 'stalled' })),
-                    { name: 'furry-local', status: 'searching' },
-                    { name: 'anime-local', status: 'searching' }
+                    { name: animeLocalService, status: 'searching' },
+                    { name: furryLocalService, status: 'searching' }
                 ];
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: allServices,
                     requestId: requestId
-                }));
+                });
             }
 
-            // Start local services immediately (they're fast and don't need rate limiting)
-            const localServices = [
-                { name: 'furry-local', method: () => this.makeLocalFurryTagRequests(query, currentModel, queryHash, ws, requestId) },
-                { name: 'anime-local', method: () => this.makeLocalAnimeTagRequests(query, currentModel, queryHash, ws, requestId) }
-            ];
-
-            // Run local services concurrently
-            const localPromises = localServices.map(async (service) => {
-                try {
-                    const results = await service.method();
-                    // Local services handle their own WebSocket communication
-                    return results;
-                } catch (error) {
-                    console.error(`❌ Local ${service.name} search error:`, error);
-                    // Send error status for local service
-                    if (ws) {
-                        ws.send(JSON.stringify({
-                            type: 'search_status_update',
-                            services: [{ name: service.name, status: 'error', error: error.message }],
-                            requestId: requestId
-                        }));
-                    }
+            const localTagsPromise = this.makeLocalDatasetTagRequests(normalizedQuery, currentModel, queryHash, ws, requestId)
+                .catch(error => {
+                    console.error('❌ Local dataset tag search error:', error.message);
                     return [];
-                }
-            });
+                });
 
             // Start all API calls concurrently - no sequential waiting
             const allTags = [];
@@ -1091,60 +1034,63 @@ class SearchService {
                 try {
                     // Send status update for this model
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_status_update',
                             services: [{ name: apiModel, status: 'searching' }],
                             requestId: requestId
-                        }));
+                        });
                     }
 
                     const response = await makeTagRequest(apiModel);
+                    const fromCache = !!response?.fromCache;
+                    const processedTags = [];
 
                     if (response && response.tags) {
                         const tagsToCache = [];
 
                         response.tags.forEach(tag => {
-                            // Store tag in new cache system
-                            // NovelAI API returns confidence where lower = more confident, so we invert it
-                            // Store the inverted confidence (0-1 range) in cache
-                            const invertedConfidence = 1 - tag.confidence;
+                            // Cache stores inverted confidence (0-1, higher = better).
+                            // Live API returns raw confidence where lower = more confident.
+                            const invertedConfidence = fromCache
+                                ? (tag.confidence ?? 0.95)
+                                : (1 - (tag.confidence ?? 0));
+                            const displayConfidence = parseInt((invertedConfidence * 100).toFixed(0));
 
-                            tagsToCache.push({
+                            if (!fromCache) {
+                                tagsToCache.push({
+                                    tag: tag.tag,
+                                    count: tag.count,
+                                    confidence: invertedConfidence
+                                });
+                            }
+
+                            const processedTag = {
                                 tag: tag.tag,
                                 count: tag.count,
-                                confidence: invertedConfidence
-                            });
-
-                            // Store object with tag data for later processing
-                            // Use the inverted confidence (0-100 range) for display
-                            queryTagObjs.push({
-                                tag: tag.tag,
-                                count: tag.count,
-                                confidence: parseInt((invertedConfidence * 100).toFixed(0)),
+                                confidence: displayConfidence,
                                 model: apiModel,
                                 searchModel: apiModel
-                            });
+                            };
 
-                            allTags.push({
-                                ...tag,
-                                model: apiModel,
-                                searchModel: apiModel
-                            });
+                            processedTags.push(processedTag);
+
+                            queryTagObjs.push(processedTag);
+
+                            allTags.push(processedTag);
                         });
 
-                        // Store query results for this model immediately
-                        if (tagsToCache.length > 0 && tagSearchDatabase) {
-                            tagSearchDatabase.saveSearchResults(query, apiModel, tagsToCache);
+                        if (!fromCache && tagsToCache.length > 0 && tagSearchDatabase) {
+                            tagSearchDatabase.saveSearchResults(normalizedQuery, apiModel, tagsToCache);
                         }
                     }
 
                     // Send results for this model immediately with ordering info
                     if (ws) {
-                        const modelResults = response?.tags?.map((tag, index) => ({
+                        const modelResults = processedTags.map((tag, index) => ({
                             type: 'tag',
                             name: tag.tag,
                             count: tag.count,
-                            confidence: parseInt((tag.confidence * 100).toFixed(0)),
+                            confidence: tag.confidence,
                             model: apiModel,
                             searchModel: apiModel,
                             serviceOrder: i, // Order of service (0 = first, 1 = second, etc.)
@@ -1152,23 +1098,23 @@ class SearchService {
                             serviceName: apiModel
                         }));
 
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_results_update',
                             service: apiModel,
                             results: modelResults,
                             serviceOrder: i,
                             isComplete: false,
                             requestId: requestId
-                        }));
+                        });
                     }
 
                     // Send completion status for this model
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_status_update',
                             services: [{ name: apiModel, status: 'completed' }],
                             requestId: requestId
-                        }));
+                        });
                     }
 
                 } catch (error) {
@@ -1182,33 +1128,32 @@ class SearchService {
 
                     // Send error status for this model
                     if (ws) {
-                        ws.send(JSON.stringify({
+                        this.sendSearchWs(ws,{
                             type: 'search_status_update',
                             services: [{ name: apiModel, status: 'error', error: error.message }],
                             requestId: requestId
-                        }));
+                        });
                     }
                 }
             }
 
-            // Wait for local services to complete
-            const localResults = await Promise.all(localPromises);
+            const localTags = await localTagsPromise;
 
-            // Send final completion signal for all services
+            // Send final completion signal for tag API + local streams
             if (ws) {
-                const totalServices = models.length + localServices.length;
-                ws.send(JSON.stringify({
+                const totalServices = models.length + 2; // anime-local + furry-local
+                this.sendSearchWs(ws,{
                     type: 'search_results_complete',
                     totalServices: totalServices,
                     completedServices: totalServices,
                     requestId: requestId
-                }));
+                });
             }
 
             // Query results are already stored in cache per model above
 
             // Combine API and local results
-            const combinedResults = [...allTags, ...localResults.flat()];
+            const combinedResults = [...allTags, ...localTags];
             return combinedResults;
         } catch (error) {
             // Check if this was a cancellation due to being superseded
@@ -1227,166 +1172,55 @@ class SearchService {
         return crypto.createHash('md5').update(`${query.toLowerCase()}_${model.toLowerCase()}`).digest('hex');
     }
 
-    async makeLocalFurryTagRequests(query, model, queryHash, ws = null, requestId = null) {
+    async makeLocalDatasetTagRequests(query, model, queryHash, ws = null, requestId = null) {
+        const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
+        const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
+
+        const sendLocalStream = (serviceName, tags, isComplete) => {
+            if (!ws || !this.tagAutofillSearch) return;
+            const wsResults = tags.map((tag, index) =>
+                this.tagAutofillSearch.formatWebSocketResult(tag, index, model)
+            );
+            this.sendSearchWs(ws,{
+                type: 'search_results_update',
+                service: serviceName,
+                searchModel: model,
+                results: wsResults,
+                serviceOrder: 0,
+                isComplete: isComplete,
+                requestId: requestId
+            });
+            this.sendSearchWs(ws,{
+                type: 'search_status_update',
+                services: [{ name: serviceName, status: 'completed' }],
+                requestId: requestId
+            });
+        };
+
         try {
-            // Send initial status update
-            if (ws) {
-                ws.send(JSON.stringify({
-                    type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'searching' }],
-                    requestId: requestId
-                }));
+            if (!this.tagAutofillSearch) {
+                throw new Error('Tag autofill search not available');
             }
 
-            // Use local furry tag search
-            const furryResults = this.furryTagSearch.searchTags(query);
-            const allTags = [];
+            const tags = await this.tagAutofillSearch.searchTags(query);
+            const { anime, furry } = this.tagAutofillSearch.splitLocalServices(tags);
 
-            if (furryResults.length > 0) {
-                furryResults.forEach((tag, index) => {
-                    allTags.push({
-                        tag: tag.tag,
-                        count: tag.n_count,
-                        confidence: tag.confidence,
-                        model: 'furry-local',
-                        searchModel: model,
-                        category: tag.e_category,
-                        e_count: tag.e_count,
-                    });
-                });
-            }
+            sendLocalStream(animeLocalService, anime, true);
+            sendLocalStream(furryLocalService, furry, true);
 
-            // Send results for furry search immediately
-            if (ws && furryResults.length > 0) {
-                const furryModelResults = furryResults.map((tag, index) => ({
-                    type: 'tag',
-                    name: tag.tag,
-                    count: tag.n_count,
-                    e_count: tag.e_count,
-                    confidence: tag.confidence,
-                    model: 'furry-local',
-                    searchModel: model,
-                    category: tag.e_category,
-                    serviceOrder: 0,
-                    resultOrder: index,
-                    serviceName: 'furry-local'
-                }));
-
-                ws.send(JSON.stringify({
-                    type: 'search_results_update',
-                    service: 'furry-local',
-                    searchModel: model,
-                    results: furryModelResults,
-                    serviceOrder: 0,
-                    isComplete: false,
-                    requestId: requestId
-                }));
-            }
-
-            // Send completion status for furry search
-            if (ws) {
-                ws.send(JSON.stringify({
-                    type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'completed' }],
-                    requestId: requestId
-                }));
-            }
-
-            return allTags;
-
+            return [...anime, ...furry];
         } catch (error) {
-            console.error(`❌ Furry tag search error:`, error.message);
+            console.error('❌ Local tag search error:', error.message);
 
-            // Send error status for furry search
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
-                    services: [{ name: 'furry-local', status: 'error', error: error.message }],
+                    services: [
+                        { name: animeLocalService, status: 'error', error: error.message },
+                        { name: furryLocalService, status: 'error', error: error.message }
+                    ],
                     requestId: requestId
-                }));
-            }
-
-            return [];
-        }
-    }
-
-    async makeLocalAnimeTagRequests(query, model, queryHash, ws = null, requestId = null) {
-        try {
-            // Send initial status update
-            if (ws) {
-                ws.send(JSON.stringify({
-                    type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'searching' }],
-                    requestId: requestId
-                }));
-            }
-
-            // Use local anime tag search
-            const animeResults = this.animeTagSearch.searchTags(query);
-            const allTags = [];
-
-            if (animeResults.length > 0) {
-                animeResults.forEach((tag, index) => {
-                    allTags.push({
-                        tag: tag.tag,
-                        count: tag.n_count,
-                        confidence: tag.confidence,
-                        model: 'anime-local',
-                        searchModel: model,
-                        category: tag.d_category,
-                        d_count: tag.d_count,
-                    });
                 });
-            }
-
-            // Send results for anime search immediately
-            if (ws && animeResults.length > 0) {
-                const animeModelResults = animeResults.map((tag, index) => ({
-                    type: 'tag',
-                    name: tag.tag,
-                    count: tag.n_count,
-                    d_count: tag.d_count,
-                    confidence: tag.confidence,
-                    model: 'anime-local',
-                    searchModel: model,
-                    category: tag.d_category,
-                    serviceOrder: 0,
-                    resultOrder: index,
-                    serviceName: 'anime-local'
-                }));
-
-                ws.send(JSON.stringify({
-                    type: 'search_results_update',
-                    service: 'anime-local',
-                    searchModel: model,
-                    results: animeModelResults,
-                    serviceOrder: 0,
-                    isComplete: false,
-                    requestId: requestId
-                }));
-            }
-
-            // Send completion status for anime search
-            if (ws) {
-                ws.send(JSON.stringify({
-                    type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'completed' }],
-                    requestId: requestId
-                }));
-            }
-
-            return allTags;
-
-        } catch (error) {
-            console.error(`❌ Anime tag search error:`, error.message);
-
-            // Send error status for anime search
-            if (ws) {
-                ws.send(JSON.stringify({
-                    type: 'search_status_update',
-                    services: [{ name: 'anime-local', status: 'error', error: error.message }],
-                    requestId: requestId
-                }));
             }
 
             return [];
@@ -1538,11 +1372,11 @@ class SearchService {
 
             // Send initial status update for textReplacements service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'textReplacements', status: 'searching' }],
                     requestId: requestId
-                }));
+                });
             }
 
             const results = this.searchTextReplacements(query, hasPickSuffix);
@@ -1557,14 +1391,14 @@ class SearchService {
                     timestamp: new Date().toISOString(),
                     requestId: requestId
                 };
-                ws.send(JSON.stringify(message));
+                this.sendSearchWs(ws, message);
 
                 // Send completion status for textReplacements service
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'textReplacements', status: 'completed' }],
                     requestId: requestId
-                }));
+                });
             }
 
             return results;
@@ -1573,11 +1407,11 @@ class SearchService {
 
             // Send error status for textReplacements service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'textReplacements', status: 'error' }],
                     requestId: requestId
-                }));
+                });
             }
 
             return [];
@@ -1613,41 +1447,55 @@ class SearchService {
 
             // Send initial status update for spellcheck service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'spellcheck', status: 'searching' }],
                     requestId: requestId
-                }));
+                });
             }
 
             // Perform spell checking
             const spellCheckData = this.performSpellCheck(query);
 
-            // Send spell check results separately if WebSocket is available
-            if (ws && spellCheckData && spellCheckData.hasErrors) {
-                ws.send(JSON.stringify({
-                    type: 'search_results_update',
-                    service: 'spellcheck',
-                    results: [{
-                        type: 'spellcheck',
-                        data: spellCheckData,
-                        serviceOrder: -2, // Spell check comes before text replacements
-                        resultOrder: 0,
-                        serviceName: 'spellcheck'
-                    }],
-                    serviceOrder: -2,
-                    isComplete: false,
-                    requestId: requestId
-                }));
+            if (ws) {
+                if (spellCheckData && spellCheckData.hasErrors) {
+                    this.sendSearchWs(ws,{
+                        type: 'search_results_update',
+                        service: 'spellcheck',
+                        results: [{
+                            type: 'spellcheck',
+                            data: spellCheckData,
+                            serviceOrder: -2,
+                            resultOrder: 0,
+                            serviceName: 'spellcheck'
+                        }],
+                        serviceOrder: -2,
+                        isComplete: true,
+                        timestamp: new Date().toISOString(),
+                        requestId: requestId
+                    });
+                } else {
+                    this.sendSearchWs(ws,{
+                        type: 'search_results_update',
+                        service: 'spellcheck',
+                        results: [],
+                        isComplete: true,
+                        timestamp: new Date().toISOString(),
+                        requestId: requestId
+                    });
+                }
             }
 
             // Send completion status for spellcheck service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
-                    services: [{ name: 'spellcheck', status: 'completed' }],
+                    services: [{
+                        name: 'spellcheck',
+                        status: spellCheckData && spellCheckData.hasErrors ? 'completed' : 'completed-noerrors'
+                    }],
                     requestId: requestId
-                }));
+                });
             }
 
             return spellCheckData;
@@ -1656,11 +1504,110 @@ class SearchService {
 
             // Send error status for spellcheck service
             if (ws) {
-                ws.send(JSON.stringify({
+                this.sendSearchWs(ws,{
                     type: 'search_status_update',
                     services: [{ name: 'spellcheck', status: 'error' }],
                     requestId: requestId
-                }));
+                });
+            }
+
+            return null;
+        }
+    }
+
+    async performWordLookupAsync(query, ws = null, requestId = null, spellCheckData = null) {
+        try {
+            await this.ensureServicesInitialized();
+
+            if (!this.wordLookupService || typeof this.wordLookupService.lookupQuery !== 'function') {
+                if (ws) {
+                    this.sendSearchWs(ws,{
+                        type: 'search_status_update',
+                        services: [{ name: 'wordLookup', status: 'completed-none' }],
+                        requestId: requestId
+                    });
+                }
+                return null;
+            }
+
+            const parsed = this.wordLookupService.parseWordLookupQuery(query);
+            if (!parsed) {
+                if (ws) {
+                    this.sendSearchWs(ws,{
+                        type: 'search_results_update',
+                        service: 'wordLookup',
+                        results: [],
+                        isComplete: true,
+                        timestamp: new Date().toISOString(),
+                        requestId: requestId
+                    });
+                    this.sendSearchWs(ws,{
+                        type: 'search_status_update',
+                        services: [{ name: 'wordLookup', status: 'completed-none' }],
+                        requestId: requestId
+                    });
+                }
+                return null;
+            }
+
+            if (ws) {
+                this.sendSearchWs(ws,{
+                    type: 'search_status_update',
+                    services: [{ name: 'wordLookup', status: 'searching' }],
+                    requestId: requestId
+                });
+            }
+
+            const lookupData = await this.wordLookupService.lookupQuery(query, spellCheckData);
+
+            if (ws && lookupData && lookupData.hasData) {
+                this.sendSearchWs(ws,{
+                    type: 'search_results_update',
+                    service: 'wordLookup',
+                    results: [{
+                        type: 'wordLookup',
+                        data: lookupData,
+                        serviceOrder: -1,
+                        resultOrder: 0,
+                        serviceName: 'wordLookup'
+                    }],
+                    serviceOrder: -1,
+                    isComplete: true,
+                    timestamp: new Date().toISOString(),
+                    requestId: requestId
+                });
+            } else if (ws) {
+                this.sendSearchWs(ws,{
+                    type: 'search_results_update',
+                    service: 'wordLookup',
+                    results: [],
+                    isComplete: true,
+                    timestamp: new Date().toISOString(),
+                    requestId: requestId
+                });
+            }
+
+            if (ws) {
+                this.sendSearchWs(ws,{
+                    type: 'search_status_update',
+                    services: [{
+                        name: 'wordLookup',
+                        status: lookupData && lookupData.hasData ? 'completed' : 'completed-none'
+                    }],
+                    requestId: requestId
+                });
+            }
+
+            return lookupData;
+        } catch (error) {
+            console.error('Word lookup failed:', error);
+
+            if (ws) {
+                this.sendSearchWs(ws,{
+                    type: 'search_status_update',
+                    services: [{ name: 'wordLookup', status: 'error' }],
+                    requestId: requestId
+                });
             }
 
             return null;

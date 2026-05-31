@@ -7167,6 +7167,9 @@ function selectRelevantMemories(availableMemories, prompt = '', uc = '', directi
 }
 
 async function generateDynamicGenerationSystemMessage_Modular(globalResources, context, backgroundFocus = false, pipelineAware = false, stageContext = null, directive = null, dynamicConfig = {}, nsfw_level = 0, compiled_prompt = null, prompt = '', uc = '') {
+    if (!globalResources) {
+        throw new Error('generateDynamicGenerationSystemMessage_Modular requires globalResources');
+    }
     bindRuntimeGlobalResources(globalResources);
     const { buildSystemMessage } = require('./systemMessageBuilder');
     
@@ -7211,10 +7214,10 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
     let availableMemories = [];
     let topRelevantMemories = [];
     try {
-        const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+        const knowledgeMemoryDb = __runtimeGr.getKnowledgeMemoryDb();
         availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
         if (availableMemories.length > 0) {
-            globalResources.getLogger().detailed(`📚 Including ${availableMemories.length} global memories in system message`);
+            __runtimeGr.getLogger().detailed(`📚 Including ${availableMemories.length} global memories in system message`);
             
             // Select top 5 most relevant memories based on prompt and context
             topRelevantMemories = selectRelevantMemories(
@@ -7231,7 +7234,7 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
             );
             
             if (topRelevantMemories.length > 0) {
-                globalResources.getLogger().detailed(`📊 Selected ${topRelevantMemories.length} most relevant memories based on prompt/context`);
+                __runtimeGr.getLogger().detailed(`📊 Selected ${topRelevantMemories.length} most relevant memories based on prompt/context`);
             }
         }
     } catch (error) {
@@ -7239,7 +7242,7 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
         // Continue without memories - not critical
     }
     
-    const systemMessageText = await buildSystemMessage(globalResources, context, {
+    const systemMessageText = await buildSystemMessage(__runtimeGr, context, {
         backgroundFocus,
         stageContext,
         directive,
@@ -7517,6 +7520,7 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
         let atmosphere = [];
         let colors = [];
         let activities = [];
+        let holidayRecommendations = [];
         let holidayName = '';
         
         if (holiday.progressiveElements) {
@@ -7525,6 +7529,12 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
             atmosphere = holiday.progressiveElements.atmosphere || [];
             colors = holiday.progressiveElements.colors || [];
             activities = holiday.progressiveElements.activities || [];
+            if (holiday.progressiveElements.guidance) {
+                holidayRecommendations.push(holiday.progressiveElements.guidance);
+            }
+            if (holiday.progressiveElements.elementSummary) {
+                holidayRecommendations.push(holiday.progressiveElements.elementSummary);
+            }
             holidayName = `${holiday.primaryHoliday.name} (${holiday.progressiveElements.daysUntil} days, ${holiday.progressiveElements.level} intensity)`;
         } else if (holiday.primaryHoliday) {
             // Primary holiday has comma-separated strings or use flat arrays if available
@@ -7535,10 +7545,12 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
             holidayName = holiday.primaryHoliday.name;
         }
         
+        const holidayDaysUntil = holiday.progressiveElements?.daysUntil ?? holiday.primaryHoliday?.daysUntil;
         if (decorations.length > 0 || atmosphere.length > 0 || colors.length > 0 || activities.length > 0 || holidayRecommendations.length > 0) {
+            const holidayTimingLabel = typeof holidayDaysUntil === 'number' && holidayDaysUntil > 1 ? 'Upcoming' : 'Current';
             userContentSections.push(
                 `## 🎉 HOLIDAY ELEMENTS`,
-                `**${holiday.progressiveElements.daysUntil > 1 ? 'Upcoming' : 'Current'} Holiday:** ${holidayName}`,
+                `**${holidayTimingLabel} Holiday:** ${holidayName}`,
                 '',
                 'Use these as suggestions for holiday elements, but not as strict requirements. Use this as a guide to help you create a holiday scene, but not the exact elements to use.',
                 '**Check this list for available holiday elements to consider when integrating holiday themes into the scene.**',
@@ -7583,6 +7595,14 @@ async function generateDynamicGenerationSystemMessage_Modular(globalResources, c
                 userContentSections.push('### Activities');
                 activities.forEach(item => {
                     userContentSections.push(`* ${item.trim()}`);
+                });
+                userContentSections.push('');
+            }
+
+            if (holidayRecommendations.length > 0) {
+                userContentSections.push('### Recommendations');
+                holidayRecommendations.forEach(item => {
+                    userContentSections.push(item.trim());
                 });
                 userContentSections.push('');
             }
@@ -9763,7 +9783,7 @@ async function initializeSystemMessageConversation(params) {
     const systemMessageHash = generateSystemMessageHashFromText(systemMessageText);
 
     // Check cache using the generated system message hash
-    const cachedResponseId = getCachedSystemMessageResponseId(globalResources, systemMessageHash);
+    const cachedResponseId = getCachedSystemMessageResponseId(__runtimeGr, systemMessageHash);
 
     if (cachedResponseId) {
         console.log(`✅ Using cached system message response ID: ${cachedResponseId}`);
@@ -9795,7 +9815,7 @@ async function initializeSystemMessageConversation(params) {
     // Load available memories for ready check message
     let availableMemories = [];
     try {
-        const knowledgeMemoryDb = globalResources.getKnowledgeMemoryDb();
+        const knowledgeMemoryDb = __runtimeGr.getKnowledgeMemoryDb();
         availableMemories = knowledgeMemoryDb.listKnowledgeMemories() || [];
     } catch (error) {
         console.error('Error loading memories for ready check:', error);
@@ -9873,7 +9893,7 @@ async function initializeSystemMessageConversation(params) {
             _requestId: `${requestId}_init_${attempt}`,
             _attemptId: initAttemptId
         };
-        globalResources.getDataPlumbing().set(`${initAttemptId}:buildOptions`, initBuildOptions, {
+        __runtimeGr.getDataPlumbing().set(`${initAttemptId}:buildOptions`, initBuildOptions, {
             temporary: true,
             category: 'build_options',
             tags: ['workflow', 'init']
@@ -9881,7 +9901,7 @@ async function initializeSystemMessageConversation(params) {
 
         // Always send fresh request with full system message (no previous_response_id on retries)
         const aiOptions = {
-            model: globalResources.getGrokService().getDefaultGrokModel(),
+            model: __runtimeGr.getGrokService().getDefaultGrokModel(),
             timeout: 30000,
             liveSearch: true,
             store: true,
@@ -9896,7 +9916,7 @@ async function initializeSystemMessageConversation(params) {
 
         let initResponse;
         try {
-            initResponse = await globalResources.getGrokService().callDirectorAIWithStructuredOutput(
+            initResponse = await __runtimeGr.getGrokService().callDirectorAIWithStructuredOutput(
                 [
                     ...(systemMessage ? [{ role: 'system', content: systemMessage }] : []),
                     { role: 'user', content: [initialUserMessage] }
@@ -9952,7 +9972,7 @@ async function initializeSystemMessageConversation(params) {
 
     // Cache the response ID with date (only on success)
     if (responseId) {
-        saveCachedSystemMessageResponseId(globalResources, systemMessageHash, responseId);
+        saveCachedSystemMessageResponseId(__runtimeGr, systemMessageHash, responseId);
 
         console.log(`💾 Cached system message response ID: ${responseId}`);
     }
@@ -10028,7 +10048,7 @@ async function processDynamicGenerationCore(globalResources, dynamicConfig, cont
                 // Get system message response ID from cache or new initialization
                 // Use the context we already compiled above
                 const systemMessageResponseId = await initializeSystemMessageConversation({
-                    globalResources,
+                    globalResources: __runtimeGr,
                     dynamicConfig,
                     prompt,
                     uc,
@@ -12568,7 +12588,7 @@ async function processDynamicGenerationPhase2(phase1Results, dynamicConfig, prom
 async function resolveDynamicContext(globalResources, dynamicConfig, clientIP = null) {
     bindRuntimeGlobalResources(globalResources);
     try {
-        const context = await compileContext(globalResources, dynamicConfig, clientIP);
+        const context = await compileContext(__runtimeGr, dynamicConfig, clientIP);
         const result = formatContextForCarousel(context);
         return result;
     } catch (error) {

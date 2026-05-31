@@ -110,6 +110,30 @@ function naxtMergeTagsPartAndTextSuffix(tagsPart, textSuffix) {
     return t + sfx;
 }
 
+function naxtExtractEmphasisBias(segment) {
+    const s = String(segment || '').trim();
+    const m = s.match(/^(-?\d+(?:\.\d+)?)::([\s\S]+)::\s*$/);
+    if (m) {
+        const bias = parseFloat(m[1]);
+        return Number.isFinite(bias) ? bias : null;
+    }
+    return null;
+}
+
+/** Replace the trailing tag token in tagsPart, preserving emphasis on the replaced segment. */
+function naxtReplaceLastTagInTagsPart(tagsPart, newFragment) {
+    const s = String(tagsPart || '');
+    if (!s.trim()) return newFragment;
+    // findAutocompleteTermStart, findAutocompleteTermEnd: public/scripts/comp/autocompleteUtils.js
+    const termStart = findAutocompleteTermStart(s);
+    const termEnd = findAutocompleteTermEnd(s, s.length);
+    const oldSegment = s.substring(termStart, termEnd);
+    const bias = naxtExtractEmphasisBias(oldSegment);
+    const frag = naxtApplyEmphasisToFragment(newFragment, bias);
+    const before = s.substring(0, termStart).replace(/[,\s]*$/, '');
+    return before ? `${before}, ${frag}` : frag;
+}
+
 /** Uses global emphasis helpers (present after full page script load). */
 function naxtApplyEmphasisToFragment(fragment, bias) {
     if (!fragment || bias == null || bias === 1.0) return fragment;
@@ -614,7 +638,6 @@ class NaxtApplet {
         this.bag.push({ tag, gallerySlug, filename });
         this.saveBagToStorage();
         this.updateBagChrome();
-        await this.clearTryMark(gallerySlug, tag);
         if (typeof showGlassToast === 'function') {
             showGlassToast('success', null, `Added "${tag}" to bag`, false, 2500, '<i class="fas fa-shopping-bag"></i>');
         }
@@ -1658,12 +1681,25 @@ class NaxtApplet {
         card.appendChild(wrap);
         card.appendChild(cap);
 
-        card.addEventListener('click', () => {
+        const openCard = () => {
             this.openInWindow(card);
-        });
+        };
+        if (typeof touchSlopUtils !== 'undefined') {
+            touchSlopUtils.registerTouchSlopTracking(card);
+            card.addEventListener('touchend', (e) => {
+                const maxDelta = touchSlopUtils.finalizeTouchSlop(card, e);
+                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) {
+                    return;
+                }
+                openCard();
+            }, { passive: true });
+        } else {
+            card.addEventListener('click', openCard);
+        }
 
         if (contextMenu) {
             const manualModal = document.getElementById('manualModal');
+            const tagText = card.dataset.tag;
             const menu = {
                 sections: [
                     {
@@ -1691,20 +1727,38 @@ class NaxtApplet {
                                 }
                             },
                             {
+                                icon: 'fas fa-shopping-bag',
+                                tooltip: 'Add to bag',
+                                action: 'naxt-add-bag'
+                            },
+                            {
                                 icon: 'nai-clipboard',
                                 tooltip: 'Copy tag',
                                 action: 'naxt-copy'
-                            },
-                            {
-                                icon: 'fas fa-external-link-alt',
-                                tooltip: 'Open in window',
-                                action: 'naxt-open'
                             }
                         ]
                     },
                     {
                         type: 'list',
                         items: [
+                            {
+                                text: 'PhaseWalker',
+                                icon: 'fas fa-layer-group',
+                                openOnHover: true,
+                                optionsfn: () => {
+                                    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
+                                    if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
+                                        return buildPhasewalkerContextSubmenuItems(tagText);
+                                    }
+                                    return [{ text: 'Unavailable', disabled: true }];
+                                },
+                                handlerfn: (subItem) => {
+                                    // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
+                                    if (handlePhasewalkerContextSubmenuAction) {
+                                        handlePhasewalkerContextSubmenuAction(subItem);
+                                    }
+                                }
+                            },
                             {
                                 text: 'Add to Prompt',
                                 icon: 'fas fa-plus',
@@ -1718,11 +1772,6 @@ class NaxtApplet {
                                 disabled: () => manualModal && manualModal.classList.contains('hidden')
                             },
                             {
-                                text: 'Add to bag',
-                                icon: 'fas fa-shopping-bag',
-                                action: 'naxt-add-bag'
-                            },
-                            {
                                 text: 'Add to Desktop',
                                 icon: 'fas fa-arrow-down-left',
                                 action: 'naxt-add-desktop',
@@ -1732,7 +1781,7 @@ class NaxtApplet {
                                 text: 'Delete custom tag',
                                 icon: 'fas fa-trash',
                                 action: 'naxt-delete-custom',
-                                disabled: () => !card.dataset.isCustom
+                                hidden: () => card.dataset.isCustom !== '1'
                             }
                         ]
                     }
@@ -1746,7 +1795,6 @@ class NaxtApplet {
                     else if (action === 'naxt-copy') this.copyTag(card.dataset.tag);
                     else if (action === 'naxt-fav') this.toggleFavorite(card);
                     else if (action === 'naxt-try') this.toggleTry(card);
-                    else if (action === 'naxt-open') this.openInWindow(card);
                     else if (action === 'naxt-delete-custom') {
                         void this.deleteCustomTag(card.dataset.gallerySlug, card.dataset.tag);
                     }
@@ -1786,9 +1834,13 @@ class NaxtApplet {
                 );
                 replacedArtist = true;
             } else {
-                const sep = tagsPart.trim() && !tagsPart.trim().endsWith(',') ? ', ' : '';
-                nextValue = naxtMergeTagsPartAndTextSuffix(tagsPart + sep + fragment, textSuffix);
+                const newTagsPart = naxtReplaceLastTagInTagsPart(tagsPart, fragment);
+                nextValue = naxtMergeTagsPartAndTextSuffix(newTagsPart, textSuffix);
             }
+        } else if (replaceMode) {
+            const { tagsPart, textSuffix } = naxtSplitPromptTagsAndText(currentValue);
+            const newTagsPart = naxtReplaceLastTagInTagsPart(tagsPart, fragment);
+            nextValue = naxtMergeTagsPartAndTextSuffix(newTagsPart, textSuffix);
         } else {
             const sep = currentValue.trim() && !currentValue.trim().endsWith(',') ? ', ' : '';
             nextValue = currentValue + sep + fragment;
@@ -1813,9 +1865,10 @@ class NaxtApplet {
         void this.clearTryMark(gallerySlug, tagName);
 
         if (typeof showGlassToast === 'function') {
-            const msg = replacedArtist
-                ? `Replaced artist with "${tagName}"`
-                : `Added "${tagName}" to prompt`;
+            let msg = `Added "${tagName}" to prompt`;
+            if (replaceMode) {
+                msg = replacedArtist ? `Replaced artist with "${tagName}"` : `Replaced tag with "${tagName}"`;
+            }
             showGlassToast('success', null, msg, false, 2500, '<i class="fas fa-check"></i>');
         }
     }

@@ -218,6 +218,327 @@ function cycleManualResolutionSizeTier() {
     return null;
 }
 
+function shortcutListItem(key, label, icon, alt) {
+    return { key, label, icon: icon || '', alt: !!alt };
+}
+
+function shortcutListDivider() {
+    return { divider: true };
+}
+
+const FN_KEY_ORDER = ['Esc', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
+const FN_KEY_GROUPS = [
+    ['Esc'],
+    ['F1', 'F2', 'F3', 'F4'],
+    ['F5', 'F6', 'F7', 'F8'],
+    ['F9', 'F10', 'F11', 'F12']
+];
+
+const MANUAL_FN_ROW = [
+    { key: 'Esc', label: 'Close', icon: 'fa fa-times' },
+    { key: 'F1', label: 'Prompts', icon: 'ri-code-block' },
+    { key: 'F2', label: 'UC', icon: 'ri-eraser-fill' },
+    { key: 'F3', label: 'Emphasis', icon: 'fas fa-scale-unbalanced-flip' },
+    { key: 'F4', label: 'Quick Access', icon: 'fas fa-book-atlas' },
+    { key: 'F5', label: 'Generate', icon: 'nai-sparkles' },
+    { key: 'F6', label: 'References', icon: 'nai-img2img' },
+    { key: 'F7', label: 'Reset', icon: 'nai-dot-reset' },
+    { key: 'F8', label: 'Lock Seed', icon: 'fas fa-seedling' },
+    { key: 'F9', label: 'Res. Ratio', icon: 'fas fa-expand-arrows-alt' },
+    { key: 'F10', label: 'Comparison', icon: 'fas fa-eye-dropper' },
+    { key: 'F11', empty: true },
+    { key: 'F12', empty: true }
+];
+
+const MANUAL_FN_ALT_ROW = [
+    { key: 'F1', label: 'Merged', icon: 'nai-detatch-up' },
+    { key: 'F3', label: 'Reset Emp.', icon: 'fas fa-eraser' },
+    { key: 'F5', label: 'Staged Gen.', icon: 'fas fa-arrow-down-square-triangle' },
+    { key: 'F7', label: 'Maximum', icon: 'fas fa-bolt' },
+    { key: 'F8', label: 'Compare Source', icon: 'fas fa-eye-dropper' },
+    { key: 'F9', label: 'Res. Group', icon: 'fas fa-layer-group' },
+    { key: 'F10', label: 'Compare View', icon: 'fas fa-columns-3' }
+];
+
+const MANUAL_CLASSIC_LEFT = [
+    shortcutListItem('ALT + A', 'Add Character', 'fa fa-user-plus'),
+    shortcutListItem('CTRL + F', 'Inline Search', 'fa fa-search'),
+    shortcutListItem('CTRL + I', 'Toggle Autofill', 'fa fa-lightbulb'),
+    shortcutListItem('ALT + P', 'Allow Paid', 'fa fa-dollar-sign'),
+    shortcutListItem('Alt + F', 'Favorite Tag', 'fa fa-star'),
+    shortcutListItem('Alt + D', 'Disable Syntax', 'fa fa-ban'),
+    shortcutListItem('Alt + Esc', 'Close Editor', 'fa fa-times'),
+    shortcutListDivider(),
+    shortcutListItem('Alt + ,', 'Previous Image', 'nai-directional-arrow-left'),
+    shortcutListItem('Alt + .', 'Next Image', 'nai-directional-arrow-right')
+];
+
+const MANUAL_CLASSIC_RIGHT = [
+    shortcutListItem('F1', 'Prompts', 'ri-code-block'),
+    shortcutListItem('F2', 'UC', 'ri-eraser-fill'),
+    shortcutListItem('ALT + F1', 'Prompts/UC', 'nai-detatch-up', true),
+    shortcutListItem('F3', 'Emphasis', 'fas fa-scale-unbalanced-flip'),
+    shortcutListItem('ALT + F3', 'Reset Emphasis', 'fas fa-eraser', true),
+    shortcutListItem('ALT + S', 'Split Emphasis', 'fas fa-scissors', true),
+    shortcutListItem('F4', 'Quick Access', 'fas fa-book-atlas'),
+    shortcutListDivider(),
+    shortcutListItem('F5', 'Generate', 'nai-sparkles'),
+    shortcutListItem('ALT + F5', 'Staged Generation', 'fas fa-arrow-down-square-triangle', true),
+    shortcutListItem('F6', 'References', 'nai-img2img'),
+    shortcutListItem('F7', 'Reset to Normal', 'nai-dot-reset'),
+    shortcutListItem('ALT + F7', 'Maximum Quality', 'fas fa-bolt', true),
+    shortcutListItem('F8', 'Lock Seed', 'fas fa-seedling'),
+    shortcutListItem('ALT + F8', 'Toggle/Replace Compare Source', 'fas fa-eye-dropper', true),
+    shortcutListDivider(),
+    shortcutListItem('F9', 'Cycle Ratio', 'fas fa-expand-arrows-alt'),
+    shortcutListItem('ALT + F9', 'Cycle Res. Group', 'fas fa-layer-group', true),
+    shortcutListItem('F10', 'Comparison', 'fas fa-eye-dropper'),
+    shortcutListItem('ALT + F10', 'Cycle Compare View', 'fas fa-columns-3', true),
+    shortcutListItem('ALT + L/SHFT', 'Peek Source', 'fas fa-eye-dropper', true),
+    shortcutListItem('ALT + R/SHFT', 'Peek Result', 'fas fa-eye-dropper', true),
+    shortcutListItem('F11', '', ''),
+    shortcutListItem('F12', '', '')
+];
+
+const MANUAL_WIDE_LIST = [...MANUAL_CLASSIC_LEFT, ...MANUAL_CLASSIC_RIGHT];
+
+const SHORTCUT_PROFILES = {
+    manual: {
+        fnRow: MANUAL_FN_ROW,
+        fnAltRow: MANUAL_FN_ALT_ROW,
+        classicLeft: MANUAL_CLASSIC_LEFT,
+        classicRight: MANUAL_CLASSIC_RIGHT,
+        wideList: MANUAL_WIDE_LIST
+    },
+    expansion: {
+        fnRow: [
+            { key: 'F1', label: 'Prompts', icon: 'ri-code-block' },
+            { key: 'F2', label: 'UC', icon: 'ri-eraser-fill' }
+        ],
+        fnAltRow: [],
+        classicLeft: [
+            shortcutListItem('F1', 'Prompts', 'ri-code-block'),
+            shortcutListItem('F2', 'UC', 'ri-eraser-fill')
+        ],
+        classicRight: [],
+        wideList: [
+            shortcutListItem('F1', 'Prompts', 'ri-code-block'),
+            shortcutListItem('F2', 'UC', 'ri-eraser-fill')
+        ]
+    },
+    bracket: {
+        fnRow: [
+            { key: 'F1', label: 'Prompt', icon: 'ri-code-block' },
+            { key: 'F2', label: 'UC', icon: 'ri-eraser-fill' },
+            { key: 'F8', label: 'Compile Stages', icon: 'fas fa-hammer' }
+        ],
+        fnAltRow: [],
+        classicLeft: [
+            shortcutListItem('F1', 'Prompt', 'ri-code-block'),
+            shortcutListItem('F2', 'UC', 'ri-eraser-fill'),
+            shortcutListItem('F8', 'Compile Stages', 'fas fa-hammer'),
+            shortcutListDivider(),
+            shortcutListItem('ALT + A', 'New Stage', 'fas fa-plus', true),
+            shortcutListItem('ALT + K', 'Add Keyword', 'fas fa-tag', true)
+        ],
+        classicRight: [],
+        wideList: [
+            shortcutListItem('F1', 'Prompt', 'ri-code-block'),
+            shortcutListItem('F2', 'UC', 'ri-eraser-fill'),
+            shortcutListItem('F8', 'Compile Stages', 'fas fa-hammer'),
+            shortcutListDivider(),
+            shortcutListItem('ALT + A', 'New Stage', 'fas fa-plus', true),
+            shortcutListItem('ALT + K', 'Add Keyword', 'fas fa-tag', true)
+        ]
+    }
+};
+
+let shortcutsClassicLeftGrid = null;
+let shortcutsClassicRightGrid = null;
+let shortcutsWideListEl = null;
+let shortcutsWideFnPrimaryGroupsEl = null;
+let shortcutsWideFnAltGroupsEl = null;
+let shortcutsWideFnAltRowEl = null;
+
+function isBareFunctionKey(key) {
+    return /^F(\d{1,2})$/i.test(String(key || '').trim());
+}
+
+function mergeFnRowDefs(fnRowDefs) {
+    const byKey = {};
+    (fnRowDefs || []).forEach((def) => {
+        if (def && def.key) byKey[def.key] = def;
+    });
+    return FN_KEY_ORDER.map((key) => byKey[key] || { key, empty: true });
+}
+
+function appendShortcutDesc(parent, label, icon) {
+    const desc = document.createElement('span');
+    desc.className = 'shortcut-desc';
+    if (label) {
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = label;
+        desc.appendChild(labelSpan);
+    }
+    if (icon) {
+        const iconEl = document.createElement('i');
+        iconEl.className = icon;
+        desc.appendChild(iconEl);
+    }
+    parent.appendChild(desc);
+}
+
+function createShortcutListItem(item) {
+    if (item.divider) {
+        const divider = document.createElement('div');
+        divider.className = 'divider';
+        return divider;
+    }
+    const row = document.createElement('div');
+    row.className = 'shortcut-item' + (item.alt ? ' alt' : '');
+    const keyEl = document.createElement('span');
+    keyEl.className = 'shortcut-key';
+    keyEl.textContent = item.key;
+    row.appendChild(keyEl);
+    appendShortcutDesc(row, item.label, item.icon);
+    return row;
+}
+
+function renderShortcutListItems(container, items) {
+    if (!container) return;
+    container.innerHTML = '';
+    (items || []).forEach((item) => {
+        container.appendChild(createShortcutListItem(item));
+    });
+}
+
+function createFnKeyElement(def, options) {
+    const altRow = options && options.altRow;
+    const isEmpty = !!def.empty || (!def.label && !def.icon);
+    const wrap = document.createElement('div');
+    wrap.className = 'shortcut-fn-key' +
+        (isEmpty ? ' is-empty' : '') +
+        (altRow ? ' shortcut-fn-key--alt' : '');
+
+    if (!isEmpty && def.label) {
+        const actionLabel = document.createElement('span');
+        actionLabel.className = 'shortcut-fn-action-label';
+        actionLabel.textContent = def.label;
+        wrap.appendChild(actionLabel);
+    }
+
+    const cap = document.createElement('div');
+    cap.className = 'shortcut-fn-key-cap' + (altRow ? ' shortcut-fn-key-cap--alt' : '');
+
+    if (!isEmpty && def.icon) {
+        const iconEl = document.createElement('i');
+        iconEl.className = def.icon + ' shortcut-fn-icon';
+        cap.appendChild(iconEl);
+    }
+
+    const keyLabel = document.createElement('span');
+    keyLabel.className = 'shortcut-fn-key-label';
+    keyLabel.textContent = def.key;
+    cap.appendChild(keyLabel);
+
+    wrap.appendChild(cap);
+    return wrap;
+}
+
+function fnRowHasActiveKeys(fnRowDefs) {
+    return mergeFnRowDefs(fnRowDefs).some((def) => !def.empty && (def.label || def.icon));
+}
+
+function renderFnKeyRow(container, fnRowDefs, options) {
+    if (!container) return;
+    container.innerHTML = '';
+    const merged = mergeFnRowDefs(fnRowDefs);
+    const byKey = {};
+    merged.forEach((def) => { byKey[def.key] = def; });
+
+    FN_KEY_GROUPS.forEach((groupKeys) => {
+        const groupEl = document.createElement('div');
+        groupEl.className = 'shortcuts-fn-group';
+        groupKeys.forEach((key) => {
+            groupEl.appendChild(createFnKeyElement(byKey[key] || { key, empty: true }, options));
+        });
+        container.appendChild(groupEl);
+    });
+}
+
+function getShortcutOverlayContextFlags() {
+    const isManualModalOpen = manualModal &&
+        !manualModal.classList.contains('hidden') &&
+        !manualModal.classList.contains('minimised') &&
+        !manualModal.classList.contains('minimising');
+
+    let shouldHandleManualModalActions = false;
+    if (isManualModalOpen) {
+        if (window.isDesktop) {
+            shouldHandleManualModalActions = manualModal.classList.contains('active-window');
+        } else {
+            shouldHandleManualModalActions = true;
+        }
+    }
+
+    const expansionCompiledPromptDialog = document.getElementById('expansionCompiledPromptDialog');
+    const isExpansionPromptEditorOpen = expansionCompiledPromptDialog &&
+        !expansionCompiledPromptDialog.classList.contains('hidden') &&
+        !expansionCompiledPromptDialog.classList.contains('minimised') &&
+        !expansionCompiledPromptDialog.classList.contains('minimising');
+
+    let shouldHandleExpansionPromptEditorShortcuts = false;
+    if (isExpansionPromptEditorOpen) {
+        if (window.isDesktop) {
+            shouldHandleExpansionPromptEditorShortcuts = expansionCompiledPromptDialog.classList.contains('active-window');
+        } else {
+            shouldHandleExpansionPromptEditorShortcuts = true;
+        }
+    }
+
+    const shouldHandleBracketGenShortcuts = typeof bracketGenIsAppletActive === 'function' && bracketGenIsAppletActive();
+
+    return {
+        shouldHandleManualModalActions,
+        shouldHandleExpansionPromptEditorShortcuts,
+        shouldHandleBracketGenShortcuts
+    };
+}
+
+function getActiveShortcutContext(flags) {
+    if (flags.shouldHandleBracketGenShortcuts) return 'bracket';
+    if (flags.shouldHandleExpansionPromptEditorShortcuts) return 'expansion';
+    if (flags.shouldHandleManualModalActions) return 'manual';
+    return null;
+}
+
+function renderShortcutsOverlayContent(contextKey) {
+    const profile = SHORTCUT_PROFILES[contextKey];
+    if (!profile) return;
+
+    renderShortcutListItems(shortcutsClassicLeftGrid, profile.classicLeft);
+    renderShortcutListItems(shortcutsClassicRightGrid, profile.classicRight);
+
+    const wideList = profile.wideList && profile.wideList.length
+        ? profile.wideList
+        : (profile.classicLeft || []).concat(profile.classicRight || []).filter((item) => {
+            if (item.divider) return true;
+            return !isBareFunctionKey(item.key);
+        });
+
+    renderShortcutListItems(shortcutsWideListEl, wideList);
+    renderFnKeyRow(shortcutsWideFnAltGroupsEl, profile.fnAltRow || [], { altRow: true });
+    renderFnKeyRow(shortcutsWideFnPrimaryGroupsEl, profile.fnRow);
+
+    const wideListPanel = shortcutsWideListEl && shortcutsWideListEl.closest('.shortcuts-wide-list');
+    if (wideListPanel) {
+        wideListPanel.classList.toggle('is-empty', !wideList.length);
+    }
+    if (shortcutsWideFnAltRowEl) {
+        shortcutsWideFnAltRowEl.classList.toggle('is-empty', !fnRowHasActiveKeys(profile.fnAltRow));
+    }
+}
+
 // Initialize keyboard shortcuts
 function initializeManualModalShortcuts() {
     createShortcutsOverlay();
@@ -233,146 +554,53 @@ function createShortcutsOverlay() {
     shortcutsOverlay = document.createElement('div');
     shortcutsOverlay.id = 'shortcutsOverlay';
     shortcutsOverlay.className = 'shortcuts-overlay';
-    shortcutsOverlay.innerHTML = `
+
+    const classicLayout = document.createElement('div');
+    classicLayout.className = 'shortcuts-layout shortcuts-layout--classic';
+    classicLayout.innerHTML = `
         <div class="shortcuts-content">
             <div class="shortcuts-title">Keyboard Shortcuts</div>
             <div class="shortcuts-grids">
-                <div class="shortcuts-grid left">
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">ALT + A</span>
-                        <span class="shortcut-desc"><span>Add Character</span><i class="fa fa-user-plus"></i></span>
+                <div class="shortcuts-grid left"></div>
+                <div class="shortcuts-grid right"></div>
+            </div>
+        </div>
+    `;
+    shortcutsClassicLeftGrid = classicLayout.querySelector('.shortcuts-grid.left');
+    shortcutsClassicRightGrid = classicLayout.querySelector('.shortcuts-grid.right');
+
+    const wideLayout = document.createElement('div');
+    wideLayout.className = 'shortcuts-layout shortcuts-layout--wide';
+    wideLayout.innerHTML = `
+        <div class="shortcuts-wide-stack">
+            <div class="shortcuts-glass shortcuts-wide-list">
+                <div class="shortcuts-title">Keyboard Shortcuts</div>
+                <div class="shortcuts-wide-list-items"></div>
+            </div>
+            <div class="shortcuts-glass shortcuts-fn-panel">
+                <div class="shortcuts-fn-rows">
+                    <div class="shortcuts-fn-row shortcuts-fn-row--alt">
+                        <span class="shortcuts-fn-row-alt-label" aria-hidden="true">ALT</span>
+                        <div class="shortcuts-fn-groups shortcuts-fn-alt-groups"></div>
                     </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">CTRL + F</span>
-                        <span class="shortcut-desc"><span>Inline Search</span><i class="fa fa-search"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">CTRL + I</span>
-                        <span class="shortcut-desc"><span>Toggle Autofill</span><i class="fa fa-lightbulb"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">ALT + P</span>
-                        <span class="shortcut-desc"><span>Allow Paid</span><i class="fa fa-dollar-sign"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">Alt + F</span>
-                        <span class="shortcut-desc"><span>Favorite Tag</span><i class="fa fa-star"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">Alt + D</span>
-                        <span class="shortcut-desc"><span>Disable Syntax</span><i class="fa fa-ban"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">Alt + Esc</span>
-                        <span class="shortcut-desc"><span>Close Editor</span><i class="fa fa-times"></i></span>
-                    </div>
-                    <div class="divider"></div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">Alt + ,</span>
-                        <span class="shortcut-desc"><span>Previous Image</span><i class="fa fa-arrow-left"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">Alt + .</span>
-                        <span class="shortcut-desc"><span>Next Image</span><i class="fa fa-arrow-right"></i></span>
-                    </div>
-                </div>
-                <div class="shortcuts-grid right">
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F1</span>
-                        <span class="shortcut-desc"><span>Prompts</span><i class="fas fa-compass-drafting"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F2</span>
-                        <span class="shortcut-desc"><span>UC</span><i class="fa fa-ban"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F1</span>
-                        <span class="shortcut-desc"><span>Prompts/UC</span><i class="nai-detatch-up"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F3</span>
-                        <span class="shortcut-desc"><span>Emphasis</span><i class="fa fa-scale-unbalanced-flip"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F3</span>
-                        <span class="shortcut-desc"><span>Reset Emphasis</span><i class="fa fa-eraser"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + S</span>
-                        <span class="shortcut-desc"><span>Split Emphasis</span><i class="fa fa-scissors"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F4</span>
-                        <span class="shortcut-desc"><span>Quick Access</span><i class="fa fa-book-font"></i></span>
-                    </div>
-                    <div class="divider"></div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F5</span>
-                        <span class="shortcut-desc"><span>Generate</span><i class="fa fa-sparkles"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F5</span>
-                        <span class="shortcut-desc"><span>Staged Generation</span><i class="fas fa-arrow-down-square-triangle"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F6</span>
-                        <span class="shortcut-desc"><span>References</span><i class="nai-img2img"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F7</span>
-                        <span class="shortcut-desc"><span>Reset to Normal</span><i class="nai-dot-reset"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F7</span>
-                        <span class="shortcut-desc"><span>Maximum Quality</span><i class="fa fa-bolt"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F8</span>
-                        <span class="shortcut-desc"><span>Lock Seed</span><i class="fas fa-dice"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F8</span>
-                        <span class="shortcut-desc"><span>Toggle/Replace Compare Source</span><i class="fas fa-eye-dropper"></i></span>
-                    </div>
-                    <div class="divider"></div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F9</span>
-                        <span class="shortcut-desc"><span>Cycle Ratio</span><i class="fa fa-arrows-alt"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F9</span>
-                        <span class="shortcut-desc"><span>Cycle Res. Group</span><i class="fa fa-layer-group"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F10</span>
-                        <span class="shortcut-desc"><span>Comparison</span><i class="fas fa-columns-3"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + F10</span>
-                        <span class="shortcut-desc"><span>Cycle Compare View</span><i class="fas fa-columns-3"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + L/SHFT</span>
-                        <span class="shortcut-desc"><span>Peek Source</span><i class="fas fa-eye-dropper"></i></span>
-                    </div>
-                    <div class="shortcut-item alt">
-                        <span class="shortcut-key">ALT + R/SHFT</span>
-                        <span class="shortcut-desc"><span>Peek Result</span><i class="fas fa-eye-dropper"></i></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F11</span>
-                        <span class="shortcut-desc"></span>
-                    </div>
-                    <div class="shortcut-item">
-                        <span class="shortcut-key">F12</span>
-                        <span class="shortcut-desc"></span>
+                    <div class="shortcuts-fn-row shortcuts-fn-row--primary">
+                        <span class="shortcuts-fn-row-alt-label shortcuts-fn-row-alt-label--spacer" aria-hidden="true">ALT</span>
+                        <div class="shortcuts-fn-groups shortcuts-fn-primary-groups"></div>
                     </div>
                 </div>
             </div>
         </div>
     `;
-    
+    shortcutsWideListEl = wideLayout.querySelector('.shortcuts-wide-list-items');
+    shortcutsWideFnAltGroupsEl = wideLayout.querySelector('.shortcuts-fn-alt-groups');
+    shortcutsWideFnPrimaryGroupsEl = wideLayout.querySelector('.shortcuts-fn-primary-groups');
+    shortcutsWideFnAltRowEl = wideLayout.querySelector('.shortcuts-fn-row--alt');
+
+    shortcutsOverlay.appendChild(classicLayout);
+    shortcutsOverlay.appendChild(wideLayout);
     document.body.appendChild(shortcutsOverlay);
+
+    renderShortcutsOverlayContent('manual');
 }
 
 // Create the window switcher overlay
@@ -425,43 +653,22 @@ function handleKeyDown(event) {
         return;
     }
     
-    // Check if manualModal is open
-    const isManualModalOpen = !manualModal.classList.contains('hidden') && !manualModal.classList.contains('minimised') &&
-    !manualModal.classList.contains('minimising');
-    
-    // If manualModal is open, check if it should handle keyboard actions
-    let shouldHandleManualModalActions = false;
-    if (isManualModalOpen) {
-        if (window.isDesktop) {
-            // In desktop mode, only handle if manualModal is the active main window
-            shouldHandleManualModalActions = manualModal.classList.contains('active-window');
-        } else {
-            // Not in desktop mode, handle if modal is open
-            shouldHandleManualModalActions = true;
-        }
-    }
+    const shortcutContextFlags = getShortcutOverlayContextFlags();
+    const {
+        shouldHandleManualModalActions,
+        shouldHandleExpansionPromptEditorShortcuts,
+        shouldHandleBracketGenShortcuts
+    } = shortcutContextFlags;
 
-    const expansionCompiledPromptDialog = document.getElementById('expansionCompiledPromptDialog');
-    const isExpansionPromptEditorOpen = expansionCompiledPromptDialog &&
-        !expansionCompiledPromptDialog.classList.contains('hidden') &&
-        !expansionCompiledPromptDialog.classList.contains('minimised') &&
-        !expansionCompiledPromptDialog.classList.contains('minimising');
-    let shouldHandleExpansionPromptEditorShortcuts = false;
-    if (isExpansionPromptEditorOpen) {
-        if (window.isDesktop) {
-            shouldHandleExpansionPromptEditorShortcuts = expansionCompiledPromptDialog.classList.contains('active-window');
-        } else {
-            shouldHandleExpansionPromptEditorShortcuts = true;
-        }
-    }
-
-    // bracketGenIsAppletActive: public/scripts/comp/bracketGenerationApplet.js
-    const shouldHandleBracketGenShortcuts = typeof bracketGenIsAppletActive === 'function' && bracketGenIsAppletActive();
+    const shouldShowShortcutOverlay =
+        shouldHandleManualModalActions ||
+        shouldHandleExpansionPromptEditorShortcuts ||
+        shouldHandleBracketGenShortcuts;
     
     if (windowSwitcherActive) return;
 
     // Handle Alt key press
-    if (event.key === 'Alt' && shouldHandleManualModalActions) {
+    if (event.key === 'Alt' && shouldShowShortcutOverlay) {
         event.preventDefault();
         event.stopPropagation();
         activeAltKeyCodes.add(event.code || 'AltLeft');
@@ -540,12 +747,14 @@ function handleKeyDown(event) {
             }
             break;
         case 'ALT+F3':
-            // Remove all emphasis from selected text
+            // Remove all emphasis from selection or entire active prompt textarea
             const activeElement = document.activeElement;
-            if (activeElement && (activeElement.tagName === 'TEXTAREA' || activeElement.tagName === 'INPUT')) {
+            if (activeElement && activeElement.matches('.prompt-textarea, .character-prompt-textarea')) {
                 event.preventDefault();
                 event.stopPropagation();
                 removeAllEmphasisFromSelection(activeElement);
+                // updateEmphasisHighlighting: public/scripts/comp/emphasisManager.js
+                updateEmphasisHighlighting(activeElement);
                 showShortcutActionToast('Reset Emphasis');
             }
             break;
@@ -1104,6 +1313,16 @@ function handleShortcutVisibilityChange() {
 // Show shortcuts overlay
 function showShortcutsOverlay() {
     if (!shortcutsOverlay) return;
+
+    const flags = getShortcutOverlayContextFlags();
+    const contextKey = getActiveShortcutContext(flags);
+    if (contextKey) {
+        renderShortcutsOverlayContent(contextKey);
+    }
+
+    const isWideViewport = window.innerWidth > window.innerHeight;
+    shortcutsOverlay.classList.toggle('shortcuts-overlay--wide', isWideViewport);
+
     shortcutsOverlay.classList.add('visible');
     clearTimeout(shortcutOverlayTimeout);
     shortcutOverlayTimeout = setTimeout(() => {
@@ -1130,6 +1349,13 @@ function cleanupManualModalShortcuts() {
     if (shortcutsOverlay && shortcutsOverlay.parentNode) {
         shortcutsOverlay.parentNode.removeChild(shortcutsOverlay);
     }
+    shortcutsOverlay = null;
+    shortcutsClassicLeftGrid = null;
+    shortcutsClassicRightGrid = null;
+    shortcutsWideListEl = null;
+    shortcutsWideFnPrimaryGroupsEl = null;
+    shortcutsWideFnAltGroupsEl = null;
+    shortcutsWideFnAltRowEl = null;
     
     if (windowSwitcherOverlay && windowSwitcherOverlay.parentNode) {
         windowSwitcherOverlay.parentNode.removeChild(windowSwitcherOverlay);

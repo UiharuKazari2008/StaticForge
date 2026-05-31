@@ -1664,6 +1664,37 @@ window.applyFilteredImages = function (images, originalIndices = null) {
 };
 
 // Gallery view switching progress functions
+function createGalleryWindowCenterEvent() {
+    const galleryWindowEl = document.getElementById('galleryWindow');
+    if (!galleryWindowEl) {
+        return null;
+    }
+
+    // Measure even while opening/hidden (public/scripts/comp/modalUtils.js beginModalLayoutMeasure)
+    let measureState = null;
+    if (typeof beginModalLayoutMeasure === 'function') {
+        measureState = beginModalLayoutMeasure(galleryWindowEl);
+    } else if (galleryWindowEl.classList.contains('hidden')) {
+        return null;
+    }
+
+    try {
+        const rect = galleryWindowEl.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return null;
+        }
+        return {
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+            target: galleryWindowEl
+        };
+    } finally {
+        if (measureState && typeof endModalLayoutMeasure === 'function') {
+            endModalLayoutMeasure(galleryWindowEl, measureState);
+        }
+    }
+}
+
 function showGalleryProgressModal(viewType) {
     const viewName = viewType.charAt(0).toUpperCase() + viewType.slice(1);
 
@@ -1686,29 +1717,30 @@ function showGalleryProgressModal(viewType) {
         </div>
     `;
 
-    // Create synthetic event to center modal over gallery window
-    const galleryWindow = document.getElementById('galleryWindow');
-    let syntheticEvent = null;
-    if (galleryWindow) {
-        const rect = galleryWindow.getBoundingClientRect();
-        syntheticEvent = {
-            clientX: rect.left + rect.width / 2,
-            clientY: rect.top + rect.height / 2,
-            target: galleryWindow
-        };
-    }
+    // Center progress over the workspace (gallery) window — never saved/restored
+    const syntheticEvent = createGalleryWindowCenterEvent();
 
     galleryProgressModal = showConfirmationDialog(
         progressHtml,
         [], // No buttons - this is a progress modal
-        syntheticEvent, // Synthetic event to center over gallery
+        syntheticEvent,
         {
             title: `Dreamscape Workspace`,
             icon: 'fas fa-film-canister',
             showCloseButton: false,
-            width: '375px'
+            width: 400,
+            manualPosition: true
         }
     );
+
+    if (!syntheticEvent) {
+        requestAnimationFrame(() => {
+            const retryEvent = createGalleryWindowCenterEvent();
+            if (retryEvent && typeof positionConfirmationDialog === 'function') {
+                positionConfirmationDialog(retryEvent);
+            }
+        });
+    }
 
     // Store references to progress elements after modal is created
     setTimeout(() => {
@@ -1739,20 +1771,29 @@ function showGalleryLoadingProgressModal() {
         </div>
     `;
 
+    const syntheticEvent = createGalleryWindowCenterEvent();
+
     galleryProgressModal = showConfirmationDialog(
         progressHtml,
         [], // No buttons - this is a progress modal
-        null, // No event - will use bottom-right positioning
+        syntheticEvent,
         {
             title: 'Dreamscape Workspace',
             icon: 'fas fa-film-canister',
             showCloseButton: false,
-            width: '375px',
-            position: 'bottom-right',
-            leftPadding: 20,
-            bottomPadding: 20
+            width: 400,
+            manualPosition: true
         }
     );
+
+    if (!syntheticEvent) {
+        requestAnimationFrame(() => {
+            const retryEvent = createGalleryWindowCenterEvent();
+            if (retryEvent && typeof positionConfirmationDialog === 'function') {
+                positionConfirmationDialog(retryEvent);
+            }
+        });
+    }
 
     // Store references to progress elements after modal is created
     setTimeout(() => {
@@ -2202,6 +2243,7 @@ function buildGalleryNavigationCache(images) {
 async function loadGallery(addLatest, progressCallback = null) {
     // Check if spinner already exists (added in step 89)
     const spinner = document.getElementById('galleryLoadingSpinner');
+    let galleryLoadingProgressShown = false;
 
     try {
         // Handle addLatest case (add new item without full reload)
@@ -2258,6 +2300,7 @@ async function loadGallery(addLatest, progressCallback = null) {
             // Show progress modal in desktop mode for full gallery loads
             if (window.isDesktop && !progressCallback) {
                 showGalleryLoadingProgressModal();
+                galleryLoadingProgressShown = true;
                 progressCallback = updateGalleryLoadingProgress;
             }
 
@@ -2294,7 +2337,7 @@ async function loadGallery(addLatest, progressCallback = null) {
             }
 
             // Hide progress modal if it was shown
-            if (window.isDesktop && !progressCallback) {
+            if (galleryLoadingProgressShown) {
                 hideGalleryProgressModal();
             }
 
@@ -2318,7 +2361,7 @@ async function loadGallery(addLatest, progressCallback = null) {
         allImages = [];
 
         // Hide progress modal if it was shown
-        if (window.isDesktop && !progressCallback) {
+        if (galleryLoadingProgressShown) {
             hideGalleryProgressModal();
         }
 
@@ -7514,19 +7557,28 @@ async function handleMoveWorkspaceAction(subItem, target) {
                     }
                 }
             } else {
-                // Single operation: get image from target (gallery item)
-                const galleryItem = target.closest('.gallery-item');
-                if (!galleryItem) return;
+                // Check if target is inside spellbook preview
+                const spellbookModal = target.closest('#spellbookGenerationModal');
+                if (spellbookModal && window.spellbookModalManager && typeof window.spellbookModalManager.getPreviewImageMetadata === 'function') {
+                    const imageToMove = window.spellbookModalManager.getPreviewImageMetadata();
+                    if (imageToMove) {
+                        imagesToMove = [imageToMove];
+                    }
+                } else {
+                    // Single operation: get image from target (gallery item)
+                    const galleryItem = target.closest('.gallery-item');
+                    if (!galleryItem) return;
 
-                const fileIndex = parseInt(galleryItem.dataset.fileIndex, 10);
-                const imageToMove = allImages[fileIndex];
+                    const fileIndex = parseInt(galleryItem.dataset.fileIndex, 10);
+                    const imageToMove = allImages[fileIndex];
 
-                if (!imageToMove) return;
+                    if (!imageToMove) return;
 
-                const filename = imageToMove.filename || imageToMove.original || imageToMove.upscaled;
-                if (!filename) return;
+                    const filename = imageToMove.filename || imageToMove.original || imageToMove.upscaled;
+                    if (!filename) return;
 
-                imagesToMove = [imageToMove];
+                    imagesToMove = [imageToMove];
+                }
             }
         }
 

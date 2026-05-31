@@ -4,8 +4,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const moby = require('moby');
-const natural = require('natural');
 
 class LocalPromptOptimizer {
     constructor(globalResources) {
@@ -199,7 +197,7 @@ class LocalPromptOptimizer {
     }
 
     /**
-     * Get synonyms for a word using Moby Thesaurus with spell checking
+     * Get synonyms for a word using shared word lookup with T5 strength filtering
      * @param {string} word - The word to get synonyms for
      * @returns {Array} Array of {synonym, safeForLocal} objects
      */
@@ -211,17 +209,24 @@ class LocalPromptOptimizer {
         }
 
         try {
-            // Get synonyms from Moby Thesaurus
-            const rawSynonyms = moby.search(word.toLowerCase()) || [];
-            
+            let rawSynonyms = [];
+            const wordLookupService = this.globalResources.getWordLookupService();
+            const cachedLookup = wordLookupService.cache.get(cacheKey);
+            if (cachedLookup) {
+                rawSynonyms = cachedLookup.synonyms;
+            } else {
+                rawSynonyms = wordLookupService.getMobySynonyms(word);
+                wordLookupService.lookupWord(word).catch(() => {});
+            }
+
             // Filter and categorize synonyms
             const filtered = [];
-            
+
             for (const syn of rawSynonyms) {
                 // Skip complex multi-word phrases (more than 2 words)
                 const wordCount = syn.split(/\s+/).length;
                 if (wordCount > 2) continue;
-                
+
                 // Check spelling
                 const words = syn.split(/\s+/);
                 let allCorrect = true;
@@ -231,29 +236,29 @@ class LocalPromptOptimizer {
                         break;
                     }
                 }
-                
+
                 if (!allCorrect) continue;
-                
+
                 // Check if this synonym exists in our T5 vocabulary
                 const synTokenData = this.getTokenData(syn);
                 const hasStrengthData = synTokenData && synTokenData.length > 0;
                 const strength = hasStrengthData ? Math.max(...synTokenData.map(t => t.strength || 0)) : 0;
-                
+
                 //  Mark as safe for local application only if:
                 // 1. It has T5 strength data (means it's in the model vocabulary)
                 // 2. Strength is decent (≥ 7.0)
                 const safeForLocal = hasStrengthData && strength >= 7.0;
-                
+
                 filtered.push({
                     synonym: syn,
                     safeForLocal: safeForLocal,
                     strength: strength
                 });
             }
-            
+
             // Cache the result
             this.synonymCache.set(cacheKey, filtered);
-            
+
             return filtered;
         } catch (error) {
             console.error(`Error getting synonyms for "${word}":`, error);

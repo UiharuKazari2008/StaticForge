@@ -160,6 +160,7 @@
     <link rel="stylesheet" href="/css/pin-modal.css">
     <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
     <link rel="stylesheet" href="/css/blockContainer.css">
+    <link rel="stylesheet" href="/css/image-loupe.css">
     <script src="/scripts/comp/tagSets.js"></script>
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
@@ -574,7 +575,7 @@
                                 </button>
                                 <button type="button" id="galleryVisualIndexBtn" class="btn-secondary desktop-only"
                                     title="Visual Index">
-                                    <i class="fa-regular fa-objects-column"></i>
+                                    <i class="fa-light fa-objects-column"></i>
                                 </button>
                                 <button type="button" id="searchToggleBtn" class="btn-secondary">
                                     <i class="fa-light fa-search"></i>
@@ -636,7 +637,7 @@
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title photo-swipe-window-title">
             <div class="modal-window-title-main">
-                <i class="fa-light fa-images icon-fa"></i>
+                <i class="fa-duotone fa-images icon-fa"></i>
                 <img src="/static_images/app_icons/art.png" alt="" class="icon-image" />
                 <span>Glancewell</span>
             </div>
@@ -702,13 +703,13 @@
 
     <!-- Run Applet (Application Finder) -->
     <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
-        data-window-max-width="520" data-window-min-width="420" data-window-min-height="120"
-        data-window-max-height="600">
+        data-window-max-width="720" data-window-min-width="560" data-window-min-height="100"
+        data-window-max-height="520" data-window-content-anchor="top" data-window-position-mode="run-open">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-magnifying-glass icon-fa"></i>
-                <img src="/static_images/app_icons/studio.png" alt="" class="icon-image" />
+                <img src="/static_images/app_icons/search.png" alt="" class="icon-image" />
                 <span>Run</span>
             </div>
         </div>
@@ -723,12 +724,10 @@
                 <input type="text" id="runAppletInput" class="form-control run-applet-input"
                     placeholder="Type to search…" autocomplete="off" spellcheck="false" />
             </div>
-            <div id="runAppletSuggestions" class="character-autocomplete-list run-applet-suggestions hidden"></div>
-            <div class="run-applet-footer">
-                <button type="button" id="runAppletLaunchBtn" class="btn-standard primary run-applet-launch-btn" disabled>
-                    <i class="fas fa-play"></i>
-                    <span>Launch</span>
-                </button>
+            <div id="runAppletPrefixHint" class="run-applet-prefix-hint"></div>
+            <div class="run-applet-results-shell">
+                <div id="runAppletSuggestions" class="character-autocomplete-list run-applet-suggestions hidden"></div>
+                <div id="runAppletActionPanel" class="run-applet-action-panel hidden"></div>
             </div>
         </div>
     </div>
@@ -4670,8 +4669,8 @@ Examples:
                     </div>
                     <button type="button" id="unifiedUploadCancelBtn" class="btn-secondary">Cancel</button>
                     <button type="button" id="unifiedUploadOpenInEditorBtn" class="btn-secondary hidden"
-                        title="Open in Editor">
-                        <i class="fas fa-edit"></i> Edit
+                        title="Open in Studio">
+                        <i class="fas fa-compass-drafting"></i> Studio
                     </button>
                     <button type="button" id="unifiedUploadConfirmBtn" class="btn-primary" disabled>
                         <span id="unifiedUploadConfirmText">Upload</span> <i class="fas fa-upload"></i>
@@ -5711,7 +5710,7 @@ Examples:
                                         <i class="fa-regular fa-clipboard"></i>
                                     </button>
                                     <button type="button" id="spellbookExpandBtn" class="btn-secondary round-button"
-                                        title="Expand Image">
+                                        title="Expand Canvas">
                                         <i class="mdi mdi-1-25 mdi-relative-scale"></i>
                                     </button>
                                     <button type="button" id="spellbookUpscaleBtn" class="btn-secondary round-button"
@@ -5908,14 +5907,14 @@ Examples:
             <div class="modal-window-title-main">
                 <i class="fas fa-image icon-fa"></i>
                 <img src="/static_images/app_icons/glasses.png" alt="" class="icon-image" />
-                <span id="imageViewerTitle">Glancewell</span>
+                <span id="imageViewerTitle">Lumen</span>
             </div>
         </div>
         <div class="modal-window-controls">
             <button type="button" class="btn-secondary minimize-btn" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
-            <button type="button" class="btn-secondary toolbar-btn btn-small" id="maximizeBtn" title="Maximize">
+            <button type="button" class="btn-secondary toolbar-btn btn-small modal-work-area-maximize" id="maximizeBtn" title="Maximize">
                 <i class="fa-regular fa-window-maximize"></i>
             </button>
             <button type="button" class="btn-danger close-btn btn-small" title="Close">
@@ -6029,14 +6028,52 @@ Examples:
         </div>
     </div>
 
+    <!-- Application error list modal (scripts/comp/fatalErrorBootstrap.js) -->
+    <div id="dreamscapeAppErrorModal" class="modal hidden resizeable-window dreamscape-app-error-modal dark"
+        data-window-max-width="960" data-window-max-height="900" data-window-min-width="420"
+        data-window-min-height="320">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-wave-pulse icon-fa"></i>
+                <span>Spectator</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" id="dreamscapeAppErrorModalCloseBtn"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dreamscape-app-error-modal-content dark">
+            <div class="dreamscape-app-error-toolbar">
+                <div class="toolbar-right">
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="repair"
+                        title="Redownload all files listed in the error list">Repair</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="restart"
+                        title="Reload the application">Restart</button>
+                    <button type="button" class="btn-danger btn-small" data-fatal-toolbar="reinstall"
+                        title="Clear all caches, storage, databases, and reinstall the application">Reinstall</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="clear"
+                        title="Clear the error list">Clear All</button>
+                </div>
+            </div>
+            <div class="dreamscape-app-error-list-scroll form-section-scroll">
+                <div id="dreamscapeAppErrorList" class="dreamscape-app-error-list"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Application fatal error window (cloned by scripts/comp/fatalErrorBootstrap.js) -->
     <div id="dreamscapeAppErrorWindowTemplate" class="modal hidden transient resizeable-window dreamscape-app-error-window dark"
         data-window-max-width="960" data-window-max-height="900" data-window-min-width="360"
         data-window-min-height="280">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-triangle-exclamation icon-fa"></i>
-                <span>Application error</span>
+                <i class="fas fa-wave-pulse icon-fa"></i>
+                <span class="dreamscape-app-error-window-title">Spectator</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -6047,9 +6084,25 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dreamscape-app-error-modal-content">
+        <div class="modal-content dreamscape-app-error-modal-content dark">
             <div class="dreamscape-app-error-scroll form-section-scroll">
                 <div class="dreamscape-app-error-body"></div>
+            </div>
+            <div class="modal-footer-colored dreamscape-app-error-window-footer">
+                <div class="modal-actions dreamscape-app-error-actions">
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="repair"
+                        title="Redownload all files listed in the error list">Repair</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="restart"
+                        title="Reload the application">Restart</button>
+                    <button type="button" class="btn-danger btn-small" data-fatal-toolbar="reinstall"
+                        title="Clear all caches, storage, databases, and reinstall the application">Reinstall</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="clear"
+                        title="Clear the error list">Clear All</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-action="copy"
+                        title="Copy formatted issue for Cursor">Copy Issue</button>
+                    <button type="button" class="btn-secondary btn-small" data-fatal-action="return"
+                        title="Close this error window">Return</button>
+                </div>
             </div>
         </div>
     </div>
@@ -6111,11 +6164,24 @@ Examples:
                 </div>
             </div>
             <div class="tag-wiki-search-body">
-                <div class="tag-wiki-search-results form-section-scroll">
-                    <div id="tagWikiSearchResultsList" class="tag-wiki-results-list">
-                        <!-- Results will be populated here -->
+                <aside class="tag-wiki-search-results-panel">
+                    <div class="tag-wiki-results-panel-header">
+                        <span class="tag-wiki-results-panel-title">Results</span>
+                        <button type="button" id="tagWikiSearchResultsCollapseBtn"
+                            class="btn-secondary btn-small tag-wiki-results-collapse-btn" title="Collapse results">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
                     </div>
-                </div>
+                    <div class="tag-wiki-search-results form-section-scroll">
+                        <div id="tagWikiSearchResultsList" class="tag-wiki-results-list">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </div>
+                </aside>
+                <button type="button" id="tagWikiSearchResultsExpandBtn"
+                    class="btn-secondary btn-small tag-wiki-results-expand-btn hidden" title="Show search results">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
                 <div class="tag-wiki-search-display form-section-scroll selectable">
                     <div id="tagWikiSearchDisplay" class="tag-wiki-display-content">
                         <div class="tag-wiki-empty-state">
@@ -6156,14 +6222,6 @@ Examples:
                 </button>
                 <div id="naxtDatasetDropdownMenu" class="custom-dropdown-menu hidden"></div>
             </div>
-            <div id="naxtBagDropdown" class="custom-dropdown">
-                <button type="button" id="naxtBagDropdownBtn" class="btn-secondary btn-small indicator" data-state="off"
-                    title="Tag bag">
-                    <i class="fas fa-shopping-bag"></i>
-                    <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
-                </button>
-                <div id="naxtBagDropdownMenu" class="custom-dropdown-menu hidden naxt-bag-dropdown-menu"></div>
-            </div>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
@@ -6174,6 +6232,14 @@ Examples:
         <div class="modal-content naxt-modal-content dark">
             <div class="naxt-search-header">
                 <div class="naxt-search-controls">
+                    <div id="naxtBagDropdown" class="custom-dropdown">
+                        <button type="button" id="naxtBagDropdownBtn" class="btn-secondary indicator" data-state="off"
+                            title="Tag bag">
+                            <i class="fas fa-shopping-bag"></i>
+                            <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
+                        </button>
+                        <div id="naxtBagDropdownMenu" class="custom-dropdown-menu hidden naxt-bag-dropdown-menu"></div>
+                    </div>
                     <input type="text" id="naxtSearchInput" class="form-control hover-show colored naxt-search-input"
                         placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
                     <button type="button" id="naxtFilterToggleBtn" class="btn-secondary indicator" data-state="off"
@@ -6723,33 +6789,6 @@ Examples:
         </div>
     </div>
 
-    <!-- Explorer Applet Modal (Windows Vista-style) -->
-    <div id="explorerModal" class="modal resizeable-window hidden" data-window-min-width="600"
-        data-window-min-height="400">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-folder-open icon-fa"></i>
-                <img src="/static_images/app_icons/cabinet.png" alt="" class="icon-image" />
-                <span>Explorer</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeExplorerBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content explorer-content dark">
-            <div class="modal-body modal-padding">
-                <div id="explorerDrivesContainer" class="explorer-drives-container">
-                    <!-- Drive/Workspace items will be dynamically created here -->
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Desktop Icons (dynamically generated) -->
     <div class="desktop-icons" id="desktopIcons">
         <!-- Grid container for auto-arranged icons (index 0) -->
@@ -6861,6 +6900,7 @@ Examples:
     <script src="scripts/comp/serviceWorkerManager.js"></script>
     <script src="scripts/comp/dropdown.js"></script>
     <script src="scripts/comp/contextMenu.js"></script>
+    <script src="scripts/comp/imageLoupe.js"></script>
     <script src="scripts/comp/lightbox.js"></script>
     <script src="scripts/comp/imageViewer.js"></script>
     <script src="scripts/comp/spellbookModal.js"></script>
@@ -6905,6 +6945,7 @@ Examples:
     <script src="scripts/comp/utilities.js"></script>
     <script src="scripts/comp/manualDropdownManager.js"></script>
     <script src="scripts/comp/bracketGenerationApplet.js"></script>
+    <script src="scripts/comp/promptTextareaContextMenu.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

@@ -18,6 +18,12 @@ let spellCheckNavigationMode = false;
 let selectedSpellCheckWordIndex = -1;
 let selectedSpellCheckSuggestionIndex = -1;
 
+// Dictionary / thesaurus navigation state
+let wordLookupNavigationMode = false;
+let selectedWordLookupWordIndex = -1;
+let selectedWordLookupSuggestionIndex = -1;
+let activeWordLookupWordIndex = 0;
+
 // Hover/wheel UX state (for popup overlay interaction)
 let autocompleteWheelAccumulator = 0;
 let isAutocompleteOverlayHovered = false;
@@ -34,12 +40,16 @@ function handleAutocompleteOverlayWheel(e) {
     if (!isAutocompleteOverlayHovered) return;
 
     // Per UX request: wheel navigates only the main results list.
-    // If spell-check navigation is active, switch back to the main list.
-    if (spellCheckNavigationMode) {
+    // If spell-check or dictionary navigation is active, switch back to the main list.
+    if (spellCheckNavigationMode || wordLookupNavigationMode) {
         spellCheckNavigationMode = false;
+        wordLookupNavigationMode = false;
         selectedSpellCheckWordIndex = -1;
         selectedSpellCheckSuggestionIndex = -1;
+        selectedWordLookupWordIndex = -1;
+        selectedWordLookupSuggestionIndex = -1;
         updateSpellCheckSelection();
+        updateWordLookupSelection();
     }
 
     const deltaY = typeof e.deltaY === 'number' ? e.deltaY : 0;
@@ -109,133 +119,151 @@ if (characterAutocompleteOverlay) {
 
 // Realtime search state
 let searchServices = new Map(); // Track service status
-let searchResultsByService = new Map(); // Track results by service
-let spellCheckResults = new Map(); // Track spell check results by service
-let textReplacementResults = new Map(); // Track text replacement results by service
 let currentSearchRequestId = null;
 let isSearching = false;
 let allSearchResults = []; // Combined and ordered results
+let contextMenuThesaurusLookupActive = false;
 
 // Global variables for real-time search tracking
 let currentSearchTimestamp = null;
 let serviceResults = new Map(); // Store results per service
-let serviceStatuses = new Map(); // Store status per service (stalled/completed/no-results)
+let searchStatusHideTimeout = null;
+const SEARCH_STATUS_DONE_VISIBLE_MS = 5000;
+
+function clearSearchStatusHideTimer() {
+    if (searchStatusHideTimeout) {
+        clearTimeout(searchStatusHideTimeout);
+        searchStatusHideTimeout = null;
+    }
+}
+
+function scheduleSearchStatusHide() {
+    clearSearchStatusHideTimer();
+    searchStatusHideTimeout = setTimeout(() => {
+        searchStatusHideTimeout = null;
+        const statusDisplay = characterAutocompleteList?.querySelector('.search-status-display');
+        if (statusDisplay) {
+            statusDisplay.classList.add('hidden');
+        }
+    }, SEARCH_STATUS_DONE_VISIBLE_MS);
+}
 
 // Global handler for ack-less search responses
 window.handleSearchResponse = function (message) {
     if (!autofillSessionId) {
         return;
     }
-    if (currentSearchRequestId && shouldAbortAutocompleteSearchSession()) {
-        abortAutocompleteSearchSession();
-        return;
-    }
-
-    const responseRequestId = message.requestId || null;
 
     if (message.type === 'search_characters_response') {
         if (!currentSearchRequestId) {
             return;
         }
-        if (!acknowledgeAutofillSessionPacket(responseRequestId)) {
+        if (!acknowledgeAutofillSessionPacket(message)) {
             return;
         }
 
-        // Initial response - start new search but keep existing results
+        // Initial response - search started; keep existing service statuses from initializeAutofillServices
         currentSearchTimestamp = Date.now();
-        // DON'T clear results - keep them for real-time updates
 
-        // Mark all services as stalled (but keep their results)
-        searchServices.set('characters', 'stalled');
-        searchServices.set('anime-local', 'stalled');
-        searchServices.set('furry-local', 'stalled');
-        searchServices.set('textReplacements', 'stalled');
-        searchServices.set('spellcheck', 'stalled');
-
-        // Mark the current model service as stalled
-        let currentModel = window.manualModel?.value || 'unknown';
-        currentModel = searchModelMapping[currentModel] || currentModel;
-        searchServices.set(currentModel, 'stalled');
-
-        if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
-            updateAutocompleteDisplay([], currentCharacterAutocompleteTarget);
+        if (currentCharacterAutocompleteTarget && (contextMenuThesaurusLookupActive || hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget))) {
             updateSearchStatusDisplay();
+        }
+    } else if (message.type === 'search_results_complete') {
+        if (!currentSearchRequestId) {
+            return;
+        }
+        if (!acknowledgeAutofillSessionPacket(message)) {
+            return;
+        }
+
+        searchCompletionStatus = {
+            totalServices: message.totalServices || 0,
+            completedServices: message.completedServices || 0,
+            isComplete: true
+        };
+
+        // Tag API + local streams finished; characters/spellcheck/textReplacements may still be in flight
+        if (!contextMenuThesaurusLookupActive) {
+            rebuildAndDisplayResults()
+                .catch(error => console.error('Error rebuilding display on tag completion:', error));
         }
     } else if (message.type === 'search_characters_complete') {
         if (!currentSearchRequestId) {
             return;
         }
-        if (!acknowledgeAutofillSessionPacket(responseRequestId)) {
+        if (!acknowledgeAutofillSessionPacket(message)) {
             return;
         }
 
-        // Final response - mark all services as completed
-        const finalTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
+        if (message.data && message.data.results) {
+            const resultsByService = new Map();
+            message.data.results.forEach(result => {
+                let serviceName = result.serviceName || result.model || 'unknown';
 
-        // Only process if this is the latest search
-        if (currentSearchTimestamp && finalTimestamp >= currentSearchTimestamp) {
-            // Process the results from the complete message if we have results
-            if (message.data && message.data.results) {
-                // Process results from search_characters_complete
-
-                // Group results by service type
-                const resultsByService = new Map();
-                message.data.results.forEach(result => {
-                    // Try to determine service name from various fields
-                    let serviceName = result.serviceName || result.model || 'unknown';
-
-                    // Map model names to service names
-                    if (serviceName === 'unknown' && result.model) {
-                        if (result.model.includes('furry-local')) serviceName = 'furry-local';
-                        else if (result.model.includes('anime-local')) serviceName = 'anime-local';
-                        else if (result.model.includes('nai-diffusion-')) {
-                            // Dynamic model names - use the actual model name
-                            serviceName = result.model;
-                        } else if (result.model.includes('v4_5')) serviceName = 'v4_5';
-                        else if (result.type === 'character') serviceName = 'characters';
-                        else if (result.type === 'textReplacement') serviceName = 'textReplacements';
-                        else {
-                            // Use the model name as service name for unknown models
-                            serviceName = result.model;
-                        }
+                if (serviceName === 'unknown' && result.model) {
+                    if (result.model.includes('nai-diffusion-')) {
+                        serviceName = result.model;
+                    } else if (result.model.includes('v4_5')) {
+                        serviceName = 'v4_5';
+                    } else if (result.type === 'character') {
+                        serviceName = 'characters';
+                    } else if (result.type === 'textReplacement') {
+                        serviceName = 'textReplacements';
+                    } else {
+                        serviceName = result.model;
                     }
+                } else if (isLocalTagResult(result)) {
+                    serviceName = result.model || result.serviceName || ANIME_LOCAL_SERVICE;
+                }
 
-                    if (!resultsByService.has(serviceName)) {
-                        resultsByService.set(serviceName, []);
-                    }
-                    resultsByService.get(serviceName).push(result);
-                });
+                if (!resultsByService.has(serviceName)) {
+                    resultsByService.set(serviceName, []);
+                }
+                resultsByService.get(serviceName).push(result);
+            });
 
-                // Store results in both Maps (merge with existing results)
-                for (const [serviceName, results] of resultsByService) {
+            for (const [serviceName, results] of resultsByService) {
+                if (Array.isArray(results) && results.length > 0) {
                     serviceResults.set(serviceName, results);
-                    searchResultsByService.set(serviceName, results);
                 }
             }
+        }
 
-            // Copy results from serviceResults to searchResultsByService for compatibility
-            for (const [serviceName, results] of serviceResults) {
-                searchResultsByService.set(serviceName, results);
+        // Mark services completed; preserve empty-result status where already known
+        const serviceNames = ['characters', ANIME_LOCAL_SERVICE, FURRY_LOCAL_SERVICE, 'textReplacements', 'spellcheck', 'wordLookup'];
+        for (const serviceName of serviceNames) {
+            const existingResults = serviceResults.get(serviceName);
+            const existingStatus = searchServices.get(serviceName);
+            if (existingStatus === 'completed' || existingStatus === 'completed-noerrors') {
+                continue;
             }
+            if (!existingResults || existingResults.length === 0) {
+                searchServices.set(serviceName, 'completed-none');
+            } else {
+                searchServices.set(serviceName, 'completed');
+            }
+        }
 
-            // Mark all services as completed
-            searchServices.set('characters', 'completed');
-            searchServices.set('anime-local', 'completed');
-            searchServices.set('furry-local', 'completed');
-            searchServices.set('textReplacements', 'completed');
-            searchServices.set('spellcheck', 'completed');
-
-            // Mark the current model service as completed
-            let currentModel = window.manualModel?.value || 'unknown';
-            currentModel = searchModelMapping[currentModel] || currentModel;
+        const currentModel = getMappedManualModel();
+        const modelResults = serviceResults.get(currentModel);
+        if (!modelResults || modelResults.length === 0) {
+            searchServices.set(currentModel, 'completed-none');
+        } else {
             searchServices.set(currentModel, 'completed');
+        }
 
-            // Spellcheck is now handled by the primary WebSocket search system
-
+        if (!contextMenuThesaurusLookupActive) {
+            rebuildAndDisplayResults()
+                .catch(error => console.error('Error rebuilding display on completion:', error))
+                .finally(() => {
+                    finalizeSearchServiceStatuses();
+                    updateSearchStatusDisplay();
+                    markSearchSessionCompleteIfIdle();
+                });
+        } else {
+            finalizeSearchServiceStatuses();
             updateSearchStatusDisplay();
-            if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
-                rebuildAndDisplayResults();
-            }
+            markSearchSessionCompleteIfIdle();
         }
     } else if (message.type === 'search_results_update') {
         // Real-time result update from a specific service
@@ -246,47 +274,57 @@ window.handleSearchResponse = function (message) {
         const serviceName = message.service;
         const results = message.results || [];
         const isComplete = message.isComplete || false;
-        const messageTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
 
-        // Process search_results_update
+        if (!acknowledgeAutofillSessionPacket(message)) {
+            return;
+        }
 
-        // Only process if this is from the latest search
-        // Use request ID if available, otherwise fall back to timestamp check
-        const requestId = message.requestId;
-        const isCurrentRequest = requestId ? requestId === currentSearchRequestId : (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp);
-        if (isCurrentRequest) {
-            if (!acknowledgeAutofillSessionPacket(requestId)) {
-                return;
-            }
-            currentSearchTimestamp = messageTimestamp;
-            // Store results for this service in both Maps for compatibility
-            serviceResults.set(serviceName, results);
-            searchResultsByService.set(serviceName, results);
+        applyServiceResultsUpdate(serviceName, results);
 
-            // Also populate textReplacementResults for text replacement results
-            const textReplacementResultsArray = results.filter(result => result.type === 'textReplacement');
-            if (textReplacementResultsArray.length > 0) {
-                textReplacementResults.set(serviceName, textReplacementResultsArray);
-            }
-
-            // Results stored for service
-
-            // Update service status
-            if (results.length === 0) {
-                serviceStatuses.set(serviceName, 'no-results');
-                searchServices.set(serviceName, 'completed-noresults');
-            } else {
-                serviceStatuses.set(serviceName, 'has-results');
-                if (isComplete) {
-                    searchServices.set(serviceName, 'completed');
+        if (serviceName === 'spellcheck') {
+            if (results.length > 0) {
+                const sc = results[0];
+                if (sc.data && sc.data.hasErrors && sc.data.misspelled && sc.data.misspelled.length > 0) {
+                    searchServices.set('spellcheck', 'completed');
                 } else {
-                    searchServices.set(serviceName, 'searching');
+                    searchServices.set('spellcheck', 'completed-noerrors');
+                    persistentSpellCheckData = null;
                 }
+            } else {
+                searchServices.set('spellcheck', 'completed-none');
+                persistentSpellCheckData = null;
             }
+        } else if (serviceName === 'wordLookup') {
+            if (results.length > 0) {
+                const wl = results[0];
+                if (wl.data && wl.data.hasData) {
+                    searchServices.set('wordLookup', 'completed');
+                    persistentWordLookupData = wl.data;
+                } else {
+                    searchServices.set('wordLookup', 'completed-none');
+                    persistentWordLookupData = null;
+                    activeWordLookupWordIndex = 0;
+                }
+            } else {
+                searchServices.set('wordLookup', 'completed-none');
+                persistentWordLookupData = null;
+                activeWordLookupWordIndex = 0;
+            }
+        } else if (results.length === 0) {
+            searchServices.set(serviceName, 'completed-none');
+        } else {
+            if (isComplete) {
+                searchServices.set(serviceName, 'completed');
+            } else {
+                searchServices.set(serviceName, 'searching');
+            }
+        }
 
-            // Update display with current results
-            updateSearchStatusDisplay();
-            if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
+        updateSearchStatusDisplay();
+        if (currentCharacterAutocompleteTarget && shouldShowAutofillResultsForTarget(currentCharacterAutocompleteTarget)) {
+            if (serviceName === 'spellcheck' || serviceName === 'wordLookup') {
+                refreshAutofillSideSections(currentCharacterAutocompleteTarget);
+            } else {
                 rebuildAndDisplayResults();
             }
         }
@@ -295,31 +333,30 @@ window.handleSearchResponse = function (message) {
             return;
         }
 
+        if (!isValidAutofillSearchPacket(message)) {
+            return;
+        }
+
         // Service status update
         const services = message.services || [];
-        const messageTimestamp = message.timestamp ? new Date(message.timestamp).getTime() : Date.now();
 
-        // Only process if this is from the latest search
-        if (currentSearchTimestamp && messageTimestamp >= currentSearchTimestamp) {
-            if (!autofillSessionPacketRequestId) {
-                return;
+        services.forEach(service => {
+            const serviceName = service.name;
+            const status = service.status;
+
+            // Update service status
+            if (status === 'searching' || status === 'stalled') {
+                searchServices.set(serviceName, status);
+            } else if (status === 'completed') {
+                searchServices.set(serviceName, 'completed');
+            } else if (status === 'completed-none' || status === 'completed-noerrors' || status === 'completed-noresults') {
+                searchServices.set(serviceName, status);
+            } else if (status === 'error') {
+                searchServices.set(serviceName, 'error');
             }
-            services.forEach(service => {
-                const serviceName = service.name;
-                const status = service.status;
+        });
 
-                // Update service status
-                if (status === 'searching') {
-                    searchServices.set(serviceName, 'searching');
-                } else if (status === 'completed') {
-                    searchServices.set(serviceName, 'completed');
-                } else if (status === 'error') {
-                    searchServices.set(serviceName, 'error');
-                }
-            });
-
-            updateSearchStatusDisplay();
-        }
+        updateSearchStatusDisplay();
     }
 };
 let searchCompletionStatus = {
@@ -335,6 +372,7 @@ let currentSearchSessionBounds = null;
 
 // Persistent results storage for stable autocomplete
 let persistentSpellCheckData = null; // Current spell check data
+let persistentWordLookupData = null; // Current dictionary / thesaurus data
 let isAutocompleteVisible = false; // Track if autocomplete is currently visible
 
 // Track last search query to prevent unnecessary clearing
@@ -382,6 +420,11 @@ function hasActiveAutofillSessionForTarget(target) {
     return true;
 }
 
+function shouldShowAutofillResultsForTarget(target) {
+    if (contextMenuThesaurusLookupActive) return false;
+    return hasActiveAutofillSessionForTarget(target);
+}
+
 function ensureAutofillSession(target, explicit) {
     if (!target || !autofillEnabled) return false;
     if (document.activeElement !== target) return false;
@@ -397,19 +440,64 @@ function ensureAutofillSession(target, explicit) {
     return !!currentSearchSessionBounds;
 }
 
-function acknowledgeAutofillSessionPacket(requestId) {
+function isValidAutofillSearchPacket(message) {
     if (!autofillSessionId || !currentSearchRequestId) return false;
-    if (requestId && requestId !== currentSearchRequestId) return false;
+    const requestId = message && message.requestId ? message.requestId : null;
+    if (!requestId || requestId !== currentSearchRequestId) return false;
+    const packetSessionId = message && message.autofillSessionId ? message.autofillSessionId : null;
+    if (packetSessionId && packetSessionId !== autofillSessionId) return false;
+    return true;
+}
+
+function acknowledgeAutofillSessionPacket(message) {
+    if (!isValidAutofillSearchPacket(message)) return false;
     if (!currentCharacterAutocompleteTarget) return false;
 
     autofillSessionPacketRequestId = currentSearchRequestId;
     return true;
 }
 
+function hasSearchServicesInFlight() {
+    for (const [, status] of searchServices) {
+        if (status === 'searching') {
+            return true;
+        }
+    }
+    return false;
+}
+
+function finalizeSearchServiceStatuses() {
+    for (const [serviceName, status] of searchServices) {
+        if (status !== 'searching' && status !== 'stalled') {
+            continue;
+        }
+        const results = serviceResults.get(serviceName);
+        if (results && results.length > 0) {
+            searchServices.set(serviceName, 'completed');
+        } else {
+            searchServices.set(serviceName, 'completed-none');
+        }
+    }
+}
+
+function applyServiceResultsUpdate(serviceName, results) {
+    if (!serviceName) return;
+    serviceResults.set(serviceName, Array.isArray(results) ? results : []);
+}
+
+function markSearchSessionCompleteIfIdle() {
+    if (hasSearchServicesInFlight()) {
+        return;
+    }
+    markSearchSessionComplete();
+}
+
 function canShowAutofillOverlay(target) {
     if (!hasActiveAutofillSessionForTarget(target)) return false;
-    if (!currentSearchRequestId || autofillSessionPacketRequestId !== currentSearchRequestId) return false;
-    return true;
+    if (!currentSearchRequestId) return false;
+    if (autofillSessionPacketRequestId === currentSearchRequestId) return true;
+    if (isSearching) return true;
+    return false;
 }
 
 function clearAutofillSessionState() {
@@ -455,6 +543,12 @@ function onAutofillSearchRequestStarted(requestId) {
     autofillSessionPacketRequestId = null;
 }
 
+function markAutofillSearchPacketSent() {
+    if (currentSearchRequestId) {
+        autofillSessionPacketRequestId = currentSearchRequestId;
+    }
+}
+
 function handleAutofillSelectionChange() {
     const target = document.activeElement;
     if (!target || target.type !== 'textarea') return;
@@ -464,8 +558,8 @@ function handleAutofillSelectionChange() {
 
     trackAutofillCaretMotion(target);
 
-    // Don't abort overlay while keyboard-navigating spell-check or autocomplete results.
-    if (spellCheckNavigationMode || autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
+    // Don't abort overlay while keyboard-navigating spell-check, dictionary, or autocomplete results.
+    if (spellCheckNavigationMode || wordLookupNavigationMode || autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
         return;
     }
 
@@ -566,31 +660,71 @@ const searchModelMapping = {
     'v3_furry': 'nai-diffusion-furry-3'
 };
 
+const ANIME_LOCAL_SERVICE = 'anime-local';
+const FURRY_LOCAL_SERVICE = 'furry-local';
+
+function getMappedManualModel() {
+    const raw = manualModel?.value || 'unknown';
+    return searchModelMapping[raw] || raw;
+}
+
+function isFurryApiModelSlotNeeded() {
+    return getMappedManualModel() !== 'nai-diffusion-furry-3';
+}
+
 // Function to initialize all autofill services
 function initializeAutofillServices() {
-    // Initialize ALL services immediately when autofill appears
-    // This ensures all services are visible with their icons from the start
+    searchServices.clear();
     searchServices.set('characters', 'stalled');
-    searchServices.set('anime-local', 'stalled');
+    searchServices.set(ANIME_LOCAL_SERVICE, 'stalled');
+    searchServices.set(FURRY_LOCAL_SERVICE, 'stalled');
 
-    // Set the current model service dynamically based on the actual model being searched
-    // Map client model names to server model names to prevent conflicts
-    let currentModel = window.manualModel?.value || 'unknown';
-
-    // Use mapped name if available, otherwise use original
-    currentModel = searchModelMapping[currentModel] || currentModel;
-
-    // Only add if it's a valid model name (starts with nai-diffusion)
-    searchServices.set(currentModel, 'stalled');
-
-    searchServices.set('furry-local', 'stalled');
-    searchServices.set('nai-diffusion-furry-3', 'stalled');
-    searchServices.set('dual-match', 'stalled');
+    const currentModel = getMappedManualModel();
+    if (currentModel.startsWith('nai-diffusion')) {
+        searchServices.set(currentModel, 'stalled');
+    }
+    if (isFurryApiModelSlotNeeded()) {
+        searchServices.set('nai-diffusion-furry-3', 'stalled');
+    }
     searchServices.set('textReplacements', 'stalled');
     searchServices.set('spellcheck', 'stalled');
+    searchServices.set('wordLookup', 'stalled');
 
-    // Update the display to show the services
     updateSearchStatusDisplay();
+}
+
+function markRegularAutofillServicesSearching() {
+    searchServices.set('characters', 'searching');
+    searchServices.set(ANIME_LOCAL_SERVICE, 'searching');
+    searchServices.set(FURRY_LOCAL_SERVICE, 'searching');
+    searchServices.set('spellcheck', 'searching');
+    searchServices.set('wordLookup', 'searching');
+    searchServices.set('textReplacements', 'searching');
+
+    const currentModel = getMappedManualModel();
+    if (searchServices.has(currentModel)) {
+        searchServices.set(currentModel, 'searching');
+    }
+    if (isFurryApiModelSlotNeeded()) {
+        searchServices.set('nai-diffusion-furry-3', 'searching');
+    }
+}
+
+function markRegularAutofillServicesError() {
+    searchServices.set('characters', 'error');
+    searchServices.set(ANIME_LOCAL_SERVICE, 'error');
+    searchServices.set(FURRY_LOCAL_SERVICE, 'error');
+    searchServices.set('spellcheck', 'error');
+    searchServices.set('wordLookup', 'error');
+    searchServices.set('textReplacements', 'error');
+
+    const currentModel = getMappedManualModel();
+    if (searchServices.has(currentModel)) {
+        searchServices.set(currentModel, 'error');
+    }
+    if (isFurryApiModelSlotNeeded()) {
+        searchServices.set('nai-diffusion-furry-3', 'error');
+    }
 }
 
 const modelKeys = {
@@ -604,6 +738,671 @@ const modelKeys = {
     "anime-local": { type: "Hidden", version: "Danbooru" },
     "dual-match": { type: "Global" }
 };
+
+const TAG_CATEGORY_BY_ID = {
+    0: 'General',
+    1: 'Artist',
+    3: 'Copyright',
+    4: 'Character',
+    5: 'Meta',
+    6: 'Species'
+};
+
+function isServiceStatusTerminal(status) {
+    return status === 'completed' ||
+        status === 'completed-none' ||
+        status === 'completed-noresults' ||
+        status === 'completed-noerrors' ||
+        status === 'error';
+}
+
+function getTagServiceLabelHtml(displayMeta, isLocal) {
+    const badgeText = displayMeta.displayType || '';
+    const rightText = displayMeta.displayVersion || '';
+    if (isLocal) {
+        if (badgeText && rightText) {
+            return `<span class="badge">${badgeText}</span> ${rightText}`;
+        }
+        if (badgeText) {
+            return `<span class="badge">${badgeText}</span>`;
+        }
+        return rightText;
+    }
+    if (rightText && badgeText) {
+        return `<span class="badge">${rightText}</span> ${badgeText}`;
+    }
+    if (rightText) {
+        return `<span class="badge">${rightText}</span>`;
+    }
+    return badgeText;
+}
+
+function getTagMetaIconFlags(result) {
+    const local = result.localResult || null;
+    const dCount = Math.max(result.d_count || 0, local?.d_count || 0);
+    const eCount = Math.max(result.e_count || 0, local?.e_count || 0);
+    let hasWiki = !!(result.hasWiki || local?.hasWiki);
+    if (!hasWiki) {
+        const sources = result.wikiSources || local?.wikiSources;
+        hasWiki = Array.isArray(sources) && sources.length > 0;
+    }
+
+    return {
+        hasWiki,
+        danbooru: dCount > 0,
+        e621: eCount > 0
+    };
+}
+
+function buildTagMetaIconsHtml(result) {
+    if (!isDualMatchTagResult(result)) {
+        const flags = getTagMetaIconFlags(result);
+        if (!flags.hasWiki) {
+            return '';
+        }
+        return '<span class="tag-meta-icons"><i class="fas fa-book tag-meta-icon" title="Wiki available"></i></span>';
+    }
+
+    const flags = getTagMetaIconFlags(result);
+    if (!flags.hasWiki && !flags.danbooru && !flags.e621) {
+        return '';
+    }
+
+    let html = '<span class="tag-meta-icons">';
+    if (flags.hasWiki) {
+        html += '<i class="fas fa-book tag-meta-icon" title="Wiki available"></i>';
+    }
+    if (flags.danbooru) {
+        html += '<i class="nai-sakura tag-meta-icon tag-danbooru-icon" title="Danbooru"></i>';
+    }
+    if (flags.e621) {
+        html += '<i class="nai-paw tag-meta-icon tag-e621-icon" title="e621"></i>';
+    }
+    html += '</span>';
+    return html;
+}
+
+function getTagCopyrightHtml(result, displayMeta) {
+    const metaIcons = buildTagMetaIconsHtml(result);
+    const serviceLabel = getTagServiceLabelHtml(displayMeta, isLocalTagResult(result));
+    return `${metaIcons}${serviceLabel}`;
+}
+
+function getTagPrimaryBodyPreview(result) {
+    if (!result) return '';
+    const local = result.localResult || null;
+    const raw = result.primaryBody || local?.primaryBody || '';
+    return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function buildTagWikiPreviewRowHtml(previewText) {
+    if (!previewText) return '';
+    const safeText = escapeHtml(previewText);
+    return `
+        <div class="tag-wiki-preview-row">
+            <div class="tag-wiki-preview-scroll">
+                <span class="tag-wiki-preview-text">${safeText}</span>
+            </div>
+        </div>
+    `;
+}
+
+function updateTagWikiPreviewScroll(item) {
+    if (!item) return;
+    const textEl = item.querySelector('.tag-wiki-preview-text');
+    const scrollEl = item.querySelector('.tag-wiki-preview-scroll');
+    if (!textEl || !scrollEl) return;
+
+    textEl.classList.remove('is-scrolling');
+    textEl.style.removeProperty('--tag-wiki-preview-offset');
+    textEl.style.removeProperty('--tag-wiki-preview-duration');
+
+    if (!item.classList.contains('selected')) return;
+
+    const overflow = textEl.scrollWidth - scrollEl.clientWidth;
+    if (overflow <= 2) return;
+
+    const duration = Math.max(6, Math.min(28, overflow / 28));
+    textEl.style.setProperty('--tag-wiki-preview-offset', `-${overflow}px`);
+    textEl.style.setProperty('--tag-wiki-preview-duration', `${duration}s`);
+    textEl.classList.add('is-scrolling');
+}
+
+function markSearchSessionComplete() {
+    isSearching = false;
+    currentSearchQuery = '';
+    searchCompletionStatus.isComplete = true;
+    updateSearchStatusDisplay();
+    if (currentCharacterAutocompleteTarget && hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
+        updateAutocompleteDisplay(allSearchResults, currentCharacterAutocompleteTarget);
+    }
+}
+
+function isLocalTagResult(result) {
+    if (!result) return false;
+    const model = result.model || result.serviceName || result.source || '';
+    return model === ANIME_LOCAL_SERVICE || model === FURRY_LOCAL_SERVICE;
+}
+
+function isDualMatchTagResult(result) {
+    return !!(result && (result.isDualMatch || result.source === 'dual-match' || result.serviceName === 'dual-match'));
+}
+
+function isDatabaseTagResult(result) {
+    return isLocalTagResult(result);
+}
+
+function isApiTagResult(result) {
+    if (!result || isLocalTagResult(result) || isDualMatchTagResult(result)) {
+        return false;
+    }
+    const model = result.model || result.serviceName || '';
+    if (model.includes('nai-diffusion')) {
+        return true;
+    }
+    return (result.count !== undefined || result.confidence !== undefined) &&
+        !!(result.name || result.tag);
+}
+
+function isCharacterResult(result) {
+    if (!result) return false;
+    if (result.type === 'character' || result.type === 'characterTag') return true;
+    return !!(result.character && result.type !== 'tag');
+}
+
+function isTagResult(result) {
+    if (!result || isCharacterResult(result)) return false;
+    if (result.type === 'tag') return true;
+    if (isLocalTagResult(result)) return true;
+    if (isDualMatchTagResult(result)) return true;
+    if (isApiTagResult(result)) return true;
+    if (result.tag && (result.count !== undefined || result.n_count !== undefined)) return true;
+    if (result.name && (result.count !== undefined || result.n_count !== undefined)) return true;
+    return false;
+}
+
+function getCharacterDedupeKey(result) {
+    const name = result.name || result.character?.name || '';
+    return name.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function mergeCharacterTagResults(characterResult, tagResult) {
+    return {
+        type: 'characterTag',
+        name: characterResult.name,
+        character: characterResult.character,
+        tag: tagResult,
+        tagInsertName: getTagInsertName(tagResult),
+        tagCategory: getTagCategorySlug(tagResult),
+        count: characterResult.count,
+        enhancedSimilarity: characterResult.enhancedSimilarity,
+        similarity: characterResult.similarity,
+        serviceName: characterResult.serviceName,
+        _isTopTier: characterResult._isTopTier
+    };
+}
+
+function getTagInsertName(result) {
+    if (result.title) {
+        return result.title;
+    }
+    return result.tag || result.name || '';
+}
+
+function getTagDisplayLabel(result) {
+    if (result.title) return result.title;
+    const raw = result.name || result.tag || '';
+    return raw.replace(/_/g, ' ');
+}
+
+function getTagDedupeKey(result) {
+    return normalizeTagSearchText(getTagDisplayLabel(result));
+}
+
+// Comparison-only — keep in sync with modules/tag-lookup.js normalizeTagName / getQueryMatchTier
+function normalizeTagSearchText(value) {
+    return (value || '').toLowerCase()
+        .replace(/_/g, ' ')
+        .replace(/[\s\-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function tokenizeTagSearchText(value) {
+    const normalized = normalizeTagSearchText(value);
+    if (!normalized) return [];
+    return normalized.split(' ').filter(Boolean);
+}
+
+function commonPrefixLength(a = '', b = '') {
+    const minLen = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < minLen && a[i] === b[i]) {
+        i++;
+    }
+    return i;
+}
+
+function getTokenMatchScore(queryToken = '', titleToken = '') {
+    const qt = queryToken.toLowerCase();
+    const tt = titleToken.toLowerCase();
+    if (!qt || !tt) return 0;
+    if (qt === tt) return 100;
+    if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
+        return 90;
+    }
+    const stemLen = commonPrefixLength(qt, tt);
+    const minLen = Math.min(qt.length, tt.length);
+    const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
+    if (stemLen >= 5) {
+        return 88;
+    }
+    if (stemLen >= stemThreshold) {
+        return 75;
+    }
+    if (qt.includes(tt) || tt.includes(qt)) {
+        if (Math.min(qt.length, tt.length) >= 3) {
+            return 55;
+        }
+    }
+    return 0;
+}
+
+function getQueryTokenCoverageScore(query, title) {
+    const queryTokens = tokenizeTagSearchText(query);
+    const titleTokens = tokenizeTagSearchText(title);
+    if (queryTokens.length === 0) return 0;
+
+    let sum = 0;
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (let i = 0; i < queryTokens.length; i++) {
+        const queryToken = queryTokens[i];
+        let best = 0;
+        for (const titleToken of titleTokens) {
+            best = Math.max(best, getTokenMatchScore(queryToken, titleToken));
+        }
+        sum += best;
+        const weight = queryTokens.length >= 2
+            ? (i === 0 ? 1.4 : (i === queryTokens.length - 1 ? 1.0 : 1.1))
+            : 1;
+        weightedSum += best * weight;
+        weightTotal += weight;
+    }
+
+    let coverage = Math.max(sum / queryTokens.length, weightedSum / weightTotal);
+    if (titleTokens.length === queryTokens.length && queryTokens.length >= 2) {
+        coverage += 8;
+    } else if (titleTokens.length < queryTokens.length) {
+        coverage -= 12;
+    }
+    return Math.min(100, coverage);
+}
+
+function getTagTextMatchInfo(name, query) {
+    const queryNorm = normalizeTagSearchText(query);
+    const titleNorm = normalizeTagSearchText(name);
+    if (!queryNorm) {
+        return { tier: 0, matchCoverage: 0, isExactMatch: false, isPrefixMatch: false };
+    }
+    if (!titleNorm) {
+        return { tier: 0, matchCoverage: 0, isExactMatch: false, isPrefixMatch: false };
+    }
+
+    if (titleNorm === queryNorm) {
+        return { tier: 4, matchCoverage: 100, isExactMatch: true, isPrefixMatch: true };
+    }
+    if (titleNorm.startsWith(queryNorm)) {
+        return { tier: 3, matchCoverage: 90, isExactMatch: false, isPrefixMatch: true };
+    }
+
+    const queryTokens = tokenizeTagSearchText(query);
+    const titleTokens = tokenizeTagSearchText(name);
+    const coverage = getQueryTokenCoverageScore(query, name);
+    const allTokensPartial = queryTokens.length > 0 && queryTokens.every(qt =>
+        titleTokens.some(tt => getTokenMatchScore(qt, tt) >= 40)
+    );
+
+    if (coverage >= 90 || (coverage >= 55 && allTokensPartial)) {
+        return { tier: 2, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: true };
+    }
+    if (coverage >= 35) {
+        if (queryTokens.length >= 2 && titleTokens.length === 1) {
+            const singleToken = titleTokens[0];
+            const matchedQueryWord = queryTokens.some(qt => qt === singleToken);
+            if (matchedQueryWord && coverage >= 45) {
+                return { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+            }
+            return { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+        }
+        return { tier: 1, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+    }
+
+    return { tier: 0, matchCoverage: coverage, isExactMatch: false, isPrefixMatch: false };
+}
+
+function resolveTagTextMatchInfo(result, query) {
+    const resultName = getTagDisplayLabel(result);
+    const clientInfo = getTagTextMatchInfo(resultName, query);
+    const serverTier = typeof result.matchTier === 'number' ? result.matchTier : 0;
+    const serverCoverage = typeof result.matchCoverage === 'number' ? result.matchCoverage : 0;
+    const bestTier = Math.max(serverTier, clientInfo.tier, result.textMatchInfo?.tier || 0);
+    const bestCoverage = Math.max(serverCoverage, clientInfo.matchCoverage || 0, result.textMatchInfo?.matchCoverage || 0);
+
+    if (bestTier > clientInfo.tier || bestCoverage > (clientInfo.matchCoverage || 0)) {
+        return {
+            tier: bestTier,
+            matchCoverage: bestCoverage,
+            isExactMatch: bestTier === 4,
+            isPrefixMatch: bestTier >= 3
+        };
+    }
+    return clientInfo;
+}
+
+function getRawApiTagConfidence(result) {
+    if (result.isDualMatch && result.apiResult) {
+        return result.apiResult.confidence || result.apiResult.count || 0;
+    }
+    if (isApiTagResult(result)) {
+        return result.confidence || result.count || 0;
+    }
+    return 0;
+}
+
+function getTagTextRelevanceScore(query, tagName) {
+    const stringScore = calculateStringSimilarity(query, tagName);
+    const matchInfo = getTagTextMatchInfo(tagName, query);
+    let score = stringScore;
+    if (matchInfo.tier === 4) score = Math.max(score, 100);
+    else if (matchInfo.tier === 3) score = Math.max(score, 85);
+    else if (matchInfo.tier === 2) score = Math.max(score, 80);
+    else if (matchInfo.tier === 1) score = Math.max(score, 60);
+    return score;
+}
+
+function pickBestTagTextMatchInfo(info1, info2) {
+    const tier1 = info1?.tier || 0;
+    const tier2 = info2?.tier || 0;
+    if (tier1 >= tier2) return info1 || info2;
+    return info2 || info1;
+}
+
+function mergeTagEnhancementFields(result1, result2, merged) {
+    const primaryBody = getTagPrimaryBodyPreview(merged)
+        || getTagPrimaryBodyPreview(result1)
+        || getTagPrimaryBodyPreview(result2);
+    return {
+        ...merged,
+        ...(primaryBody ? { primaryBody } : {}),
+        textMatchInfo: pickBestTagTextMatchInfo(result1.textMatchInfo, result2.textMatchInfo),
+        predictionaryScore: Math.max(result1.predictionaryScore || 0, result2.predictionaryScore || 0),
+        enhancedConfidence: Math.max(
+            result1.enhancedConfidence || getTagScore(result1) || 0,
+            result2.enhancedConfidence || getTagScore(result2) || 0,
+            merged.enhancedConfidence || 0
+        )
+    };
+}
+
+function getTagNCount(result) {
+    if (result.n_count !== undefined && result.n_count !== null) {
+        return result.n_count;
+    }
+    return result.count || 0;
+}
+
+function getTagECount(result) {
+    return result.e_count || 0;
+}
+
+function getTagScore(result) {
+    if (result.enhancedConfidence !== undefined) {
+        return result.enhancedConfidence;
+    }
+    if (isLocalTagResult(result)) {
+        return result.score || 0;
+    }
+    return result.confidence || result.score || 0;
+}
+
+function getTagCategoryLabel(result) {
+    if (result.categoryName) {
+        return result.categoryName;
+    }
+    if (typeof result.category === 'string') {
+        return result.category.charAt(0).toUpperCase() + result.category.slice(1);
+    }
+    if (typeof result.category === 'number') {
+        return TAG_CATEGORY_BY_ID[result.category] || '';
+    }
+    return '';
+}
+
+function getTagCategorySlug(result) {
+    return getTagCategoryLabel(result).toLowerCase();
+}
+
+function getTagDatasetType(result) {
+    if (isLocalTagResult(result)) {
+        const model = result.model || result.serviceName || '';
+        if (model === FURRY_LOCAL_SERVICE) return 'furry';
+        if (model === ANIME_LOCAL_SERVICE) return 'anime';
+    }
+    if (Array.isArray(result.datasets)) {
+        const dCount = result.d_count || 0;
+        const eCount = result.e_count || 0;
+        if (eCount > dCount) return 'furry';
+        if (dCount > 0) return 'anime';
+    }
+    const model = (result.model || result.serviceName || '').toLowerCase();
+    if (model.includes('furry')) return 'furry';
+    return 'anime';
+}
+
+function getTagSourceBadge(result) {
+    const dCount = result.d_count || 0;
+    const eCount = result.e_count || 0;
+
+    if (isLocalTagResult(result)) {
+        const model = result.model || result.serviceName || '';
+        if (model === FURRY_LOCAL_SERVICE) {
+            return { slug: 'e621', label: 'e621' };
+        }
+        if (model === ANIME_LOCAL_SERVICE) {
+            return { slug: 'danbooru', label: 'Danbooru' };
+        }
+    }
+
+    if (eCount > dCount && eCount > 0) {
+        return { slug: 'e621', label: 'e621' };
+    }
+    if (dCount > 0) {
+        return { slug: 'danbooru', label: 'Danbooru' };
+    }
+    return null;
+}
+
+function getTagServiceKey(result) {
+    if (isDualMatchTagResult(result)) {
+        return 'dual-match';
+    }
+    if (isLocalTagResult(result)) {
+        return result.model || result.serviceName;
+    }
+    if (result.serviceName) {
+        return result.serviceName;
+    }
+    return result.model || 'unknown';
+}
+
+function getTagCountTooltip(result) {
+    if (result.isDualMatch && result.localResult) {
+        return getTagCountTooltip(result.localResult);
+    }
+    const nCount = getTagNCount(result);
+    const eCount = getTagECount(result);
+    let text = `NovelAI: ${nCount}`;
+    if (eCount > 0 || result.e_count !== undefined) {
+        text += `\ne621: ${eCount}`;
+    }
+    if (isDatabaseTagResult(result) && result.d_count) {
+        text += `\ndanbooru: ${result.d_count}`;
+    }
+    return text;
+}
+
+function buildTagCountDots(result) {
+    const nCount = getTagNCount(result);
+    const eCount = getTagECount(result);
+    const nCountOpacity = nCount ? Math.min(1, Math.log10(nCount + 1) / Math.log10(10001)) : 0;
+    const eCountOpacity = eCount ? Math.min(1, Math.log10(eCount + 1) / Math.log10(100001)) : 0;
+    const nCountLightness = 15 + (nCountOpacity * 75);
+    const eCountLightness = 15 + (eCountOpacity * 75);
+    const tooltipText = getTagCountTooltip(result);
+
+    return `
+        <div class="tag-count-dots" title="${tooltipText}">
+            <div class="count-dot n-count-dot" style="background: hsl(260, 100%, ${nCountLightness}%, ${nCountOpacity});"></div>
+            ${eCount > 0 || result.e_count !== undefined ? `<div class="count-dot e-count-dot" style="background: hsl(35, 100%, ${eCountLightness}%, ${eCountOpacity});"></div>` : ''}
+        </div>
+    `;
+}
+
+function getTagResultDisplayMeta(result) {
+    let displayType = 'Search';
+    let displayVersion = '';
+    let modelType = getTagDatasetType(result);
+
+    if (result.isDualMatch && result.mergedServices) {
+        const matchInfo = getMatchType(result.mergedServices);
+        displayType = matchInfo.type;
+        displayVersion = matchInfo.version;
+        if (matchInfo.dataType) {
+            modelType = matchInfo.dataType;
+        }
+    } else if (isLocalTagResult(result)) {
+        const serviceKey = getTagServiceKey(result);
+        displayType = modelKeys[serviceKey]?.type || 'Hidden';
+        displayVersion = modelKeys[serviceKey]?.version || '';
+    } else {
+        const serviceKey = getTagServiceKey(result);
+        displayType = modelKeys[serviceKey]?.type || 'Search';
+        displayVersion = modelKeys[serviceKey]?.version || '';
+    }
+
+    return { displayType, displayVersion, modelType };
+}
+
+function applyTagResultToAutocompleteItem(item, result) {
+    const insertName = getTagInsertName(result);
+    const displayLabel = getTagDisplayLabel(result);
+    const categorySlug = getTagCategorySlug(result);
+    const categoryLabel = getTagCategoryLabel(result);
+    const sourceBadge = getTagSourceBadge(result);
+    const displayMeta = getTagResultDisplayMeta(result);
+    const { displayType, displayVersion, modelType } = displayMeta;
+
+    item.dataset.type = 'tag';
+    item.dataset.tagName = insertName;
+    item.dataset.modelType = modelType;
+    item.dataset.category = categorySlug;
+
+    if (result.isDualMatch) {
+        item.classList.add('multi-match');
+    }
+    if (result.isDualMatch && displayMeta.displayType === 'Global') {
+        item.classList.add('global-match');
+    } else if (modelType === 'anime') {
+        item.classList.add('anime-match');
+    } else if (modelType === 'furry') {
+        item.classList.add('furry-match');
+    }
+
+    const metaFlags = getTagMetaIconFlags(result);
+    const sourceBadgeHtml = (!isLocalTagResult(result) && !isDualMatchTagResult(result) && sourceBadge)
+        ? `<span class="tag-category-badge ${sourceBadge.slug}-badge">${sourceBadge.label}</span>`
+        : '';
+    const categoryBadge = (!isLocalTagResult(result) && categoryLabel)
+        ? `<span class="tag-category-badge ${categorySlug}-badge">${categoryLabel}</span>`
+        : '';
+    const countDots = buildTagCountDots(result);
+    const copyrightHtml = getTagCopyrightHtml(result, displayMeta);
+
+    const wikiPreviewText = metaFlags.hasWiki ? getTagPrimaryBodyPreview(result) : '';
+    if (metaFlags.hasWiki) {
+        item.dataset.hasWiki = 'true';
+    }
+    if (wikiPreviewText) {
+        item.dataset.hasWikiPreview = 'true';
+    }
+
+    item.innerHTML = `
+        <div class="character-info-row">
+            <span class="character-name">${displayLabel}${countDots}${sourceBadgeHtml}${categoryBadge}</span>
+            <span class="character-copyright">
+                ${copyrightHtml}
+            </span>
+        </div>
+        ${buildTagWikiPreviewRowHtml(wikiPreviewText)}
+    `;
+
+    const onSelect = (e) => {
+        e.preventDefault();
+        selectTag(insertName, categorySlug);
+    };
+    item.addEventListener('click', onSelect);
+    item.addEventListener('touchend', (e) => {
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        onSelect(e);
+    }, { passive: false });
+}
+
+function getCharacterDetailOptionsFromItem(selectedItem) {
+    if (!selectedItem || !selectedItem.dataset.tagName) return {};
+    return {
+        tagInsertName: selectedItem.dataset.tagName,
+        tagCategory: selectedItem.dataset.category || ''
+    };
+}
+
+function applyCharacterResultToAutocompleteItem(item, result) {
+    const character = result.character;
+    const name = character.name || result.name || 'Unknown';
+    const copyright = character.copyright || '';
+    const hasTagMatch = result.type === 'characterTag' || !!result.tag;
+
+    item.dataset.type = 'character';
+    item.dataset.characterData = JSON.stringify(character);
+    if (hasTagMatch) {
+        item.dataset.tagName = result.tagInsertName || getTagInsertName(result.tag);
+        item.dataset.category = result.tagCategory || getTagCategorySlug(result.tag) || '';
+    }
+
+    item.innerHTML = `
+        <div class="character-info-row">
+            <span class="character-name">${name}</span>
+            <span class="character-copyright">${copyright}</span>
+        </div>
+    `;
+
+    const detailOptions = hasTagMatch ? {
+        tagInsertName: item.dataset.tagName,
+        tagCategory: item.dataset.category || ''
+    } : {};
+
+    const onSelect = (e) => {
+        e.preventDefault();
+        selectCharacterItem(character, detailOptions);
+    };
+    item.addEventListener('click', onSelect);
+    item.addEventListener('touchend', (e) => {
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        onSelect(e);
+    }, { passive: false });
+}
 
 // Predictionary integration for better ranking
 let predictionaryInstance = null;
@@ -674,7 +1473,7 @@ async function calculateEnhancedSimilarity(query, text, type = 'general') {
             return Math.min(enhancedScore, 100); // Cap at 100
         }
 
-        return 0;
+        return calculateStringSimilarity(query, text);
     } catch (error) {
         console.warn('Predictionary search failed, using fallback:', error.message);
         return calculateStringSimilarity(query, text);
@@ -735,35 +1534,36 @@ async function enhanceTagResultsWithPredictionary(results, query) {
     const tagMap = new Map(); // Track best tag by name for deduplication
 
     for (const result of results) {
-        // Ensure result has proper type and name/tag field
-        const tagName = result.tag || result.name;
+        const tagName = getTagDisplayLabel(result);
+        const dedupeKey = getTagDedupeKey(result);
         if (!tagName) continue;
 
-        // Set type if missing
         if (!result.type) {
             result.type = 'tag';
         }
 
         const predictionaryScore = await calculateEnhancedSimilarity(query, tagName, 'tag');
-        const existingConfidence = result.confidence || 0;
-
-        // Combine predictionary score with existing confidence
-        const enhancedConfidence = (predictionaryScore * 0.3) + (existingConfidence * 0.7);
+        const textRelevanceScore = getTagTextRelevanceScore(query, tagName);
+        const blendedTextScore = Math.max(predictionaryScore, textRelevanceScore);
+        const existingScore = getTagScore(result);
+        const enhancedConfidence = (blendedTextScore * 0.35) + (existingScore * 0.65);
 
         const enhancedTag = {
             ...result,
-            name: tagName, // Ensure name field is set
-            predictionaryScore: predictionaryScore,
-            enhancedConfidence: enhancedConfidence
+            type: 'tag',
+            name: getTagInsertName(result),
+            title: result.title || tagName,
+            predictionaryScore: blendedTextScore,
+            textMatchInfo: getTagTextMatchInfo(tagName, query),
+            enhancedConfidence
         };
 
-        // Check for duplicates and merge them intelligently
-        if (tagMap.has(tagName)) {
-            const existingTag = tagMap.get(tagName);
+        if (tagMap.has(dedupeKey)) {
+            const existingTag = tagMap.get(dedupeKey);
             const mergedTag = mergeTagResults(existingTag, enhancedTag);
-            tagMap.set(tagName, mergedTag);
+            tagMap.set(dedupeKey, mergedTag);
         } else {
-            tagMap.set(tagName, enhancedTag);
+            tagMap.set(dedupeKey, enhancedTag);
         }
     }
 
@@ -806,25 +1606,29 @@ async function enhanceTagResults(tags, query) {
     const tagMap = new Map(); // Track best tag by name
 
     for (const tag of tags) {
-        const predictionaryScore = await calculateEnhancedSimilarity(query, tag.name, 'tag');
-        const existingConfidence = tag.confidence || 0;
-
-        // Combine predictionary score with existing confidence
-        const enhancedConfidence = (predictionaryScore * 0.3) + (existingConfidence * 0.7);
+        const tagName = getTagDisplayLabel(tag);
+        const dedupeKey = getTagDedupeKey(tag);
+        const predictionaryScore = await calculateEnhancedSimilarity(query, tagName, 'tag');
+        const textRelevanceScore = getTagTextRelevanceScore(query, tagName);
+        const blendedTextScore = Math.max(predictionaryScore, textRelevanceScore);
+        const existingScore = getTagScore(tag);
+        const enhancedConfidence = (blendedTextScore * 0.35) + (existingScore * 0.65);
 
         const enhancedTag = {
             ...tag,
-            predictionaryScore: predictionaryScore,
-            enhancedConfidence: enhancedConfidence
+            name: getTagInsertName(tag),
+            title: tag.title || tagName,
+            predictionaryScore: blendedTextScore,
+            textMatchInfo: getTagTextMatchInfo(tagName, query),
+            enhancedConfidence
         };
 
-        // Check for duplicates and merge them intelligently
-        if (tagMap.has(tag.name)) {
-            const existingTag = tagMap.get(tag.name);
+        if (tagMap.has(dedupeKey)) {
+            const existingTag = tagMap.get(dedupeKey);
             const mergedTag = mergeTagResults(existingTag, enhancedTag);
-            tagMap.set(tag.name, mergedTag);
+            tagMap.set(dedupeKey, mergedTag);
         } else {
-            tagMap.set(tag.name, enhancedTag);
+            tagMap.set(dedupeKey, enhancedTag);
         }
     }
 
@@ -836,160 +1640,21 @@ async function enhanceTagResults(tags, query) {
     return enhancedTags;
 }
 
-// Handle search status updates from WebSocket
-function handleSearchStatusUpdate(message) {
-    if (!message.services || !Array.isArray(message.services)) return;
-    if (!autofillSessionId) return;
-    if (!currentSearchRequestId) {
-        return;
-    }
-    if (!autofillSessionPacketRequestId) {
-        return;
-    }
-
-    message.services.forEach(service => {
-        // Always update service status, don't remove completed/error services
-        searchServices.set(service.name, service.status);
-    });
-
-    // Update the UI to show service status
-    updateSearchStatusDisplay();
-}
-
-// Handle search results updates from WebSocket
-function handleSearchResultsUpdate(message) {
-    if (!message.service) return;
-    if (!autofillSessionId) return;
-
-    const requestId = message.requestId;
-    if (requestId) {
-        if (requestId !== currentSearchRequestId) return;
-    } else if (!currentCharacterAutocompleteTarget || !currentSearchRequestId) {
-        return;
-    }
-    if (!acknowledgeAutofillSessionPacket(requestId)) {
-        return;
-    }
-
-    // Store results by service
-    const results = message.results || [];
-    searchResultsByService.set(message.service, results);
-    serviceResults.set(message.service, results); // Also store in serviceResults for rebuildAndDisplayResults
-
-    // Update service status based on results
-    if (results.length === 0) {
-        // No results found, mark as completed-none
-        searchServices.set(message.service, 'completed-none');
-    } else {
-        // Results found, mark as completed
-        searchServices.set(message.service, 'completed');
-    }
-
-    // Special handling for spellcheck service
-    if (message.service === 'spellcheck') {
-        if (results.length > 0) {
-            const spellCheckResult = results[0];
-            if (spellCheckResult.data && spellCheckResult.data.hasErrors &&
-                spellCheckResult.data.misspelled && spellCheckResult.data.misspelled.length > 0) {
-                // Has spelling errors
-                searchServices.set('spellcheck', 'completed');
-            } else {
-                // No spelling errors found - clear persistent spell check data to prevent showing stale suggestions
-                searchServices.set('spellcheck', 'completed-noerrors');
-                persistentSpellCheckData = null;
-            }
-        } else {
-            // No spell check results returned - clear persistent data
-            persistentSpellCheckData = null;
-        }
-    }
-
-    // Handle dynamic results (spell check and text replacements) separately
-    handleDynamicResultsUpdate(message.service, results);
-
-    // Immediately rebuild and display results from all services
-    rebuildAndDisplayResults().catch(error => {
-        console.error('Error rebuilding display:', error);
-    });
-
-    // Update the UI to show service status changes
-    updateSearchStatusDisplay();
-}
-
-// Handle search completion
-function handleSearchResultsComplete(message) {
-    if (!autofillSessionId) return;
-
-    const requestId = message.requestId;
-    if (requestId) {
-        if (requestId !== currentSearchRequestId) return;
-    } else if (!currentCharacterAutocompleteTarget || !currentSearchRequestId) {
-        return;
-    }
-    if (!acknowledgeAutofillSessionPacket(requestId)) {
-        return;
-    }
-
-    searchCompletionStatus = {
-        totalServices: message.totalServices || 0,
-        completedServices: message.completedServices || 0,
-        isComplete: true
-    };
-
-    // Don't clear search services - keep them visible with completed status
-    // The services will remain visible until explicitly cleared or new search starts
-
-    // Final rebuild and display
-    rebuildAndDisplayResults().catch(error => {
-        console.error('Error rebuilding display on completion:', error);
-    });
-
-    // Set searching to false after a small delay to ensure results are displayed
-    setTimeout(() => {
-        isSearching = false;
-        // Reset current search query to allow new searches
-        currentSearchQuery = '';
-    }, 100);
-
-    // Don't clear search state immediately - let it persist for continued searching
-    // Only clear if user stops typing for a while
-    setTimeout(() => {
-        // Only clear if we're still in the same search session and no new search has started
-        if (searchCompletionStatus.isComplete && !isSearching && lastSearchQuery === '') {
-            // Don't clear searchServices - keep services visible with completed status
-            // Only clear results and other state
-            searchResultsByService.clear();
-            clearDynamicResults();
-            allSearchResults = [];
-            searchCompletionStatus = {
-                totalServices: 0,
-                completedServices: 0,
-                isComplete: false
-            };
-            // Don't clear persistent results here - let them persist for stable display
-        }
-    }, 10000); // Increased delay to 10 seconds
-}
-
 // Helper function to get normalized tag count for sorting
 function getNormalizedTagCount(tag) {
-    // For local tags (furry-local and anime-local), use n_count as primary, e_count as fallback
-    if (tag.model === 'furry-local' || tag.model === 'anime-local') {
-        // Use n_count if available and significant (> 100)
-        if (tag.count && tag.count > 100) {
-            return tag.count;
+    if (isLocalTagResult(tag)) {
+        const nCount = getTagNCount(tag);
+        if (nCount > 100) {
+            return nCount;
         }
-        // Otherwise use e_count scaled to be comparable to API counts
-        // Scale: 50000 e_count = 10000 API count
-        if (tag.e_count) {
-            return (tag.e_count / 50000) * 10000;
+        const eCount = getTagECount(tag);
+        if (eCount) {
+            return (eCount / 50000) * 10000;
         }
-        // Fallback to regular count if no local-specific counts
-        return tag.count || 0;
+        return nCount || tag.n || 0;
     }
 
-    // For API tags, use regular count
-    return tag.count || 0;
+    return getTagNCount(tag);
 }
 
 // Rebuild and display all results in proper order
@@ -1000,7 +1665,10 @@ async function rebuildAndDisplayResults() {
     if (!hasActiveAutofillSessionForTarget(currentCharacterAutocompleteTarget)) {
         return;
     }
-    if (!autofillSessionPacketRequestId || autofillSessionPacketRequestId !== currentSearchRequestId) {
+    if (!currentSearchRequestId) {
+        return;
+    }
+    if (autofillSessionPacketRequestId !== currentSearchRequestId && !isSearching) {
         return;
     }
 
@@ -1014,7 +1682,7 @@ async function rebuildAndDisplayResults() {
     const allCharacterResults = [];
     for (const [serviceName, results] of serviceResults) {
         if (results && Array.isArray(results)) {
-            const characterResults = results.filter(result => result.type === 'character' || (result.type !== 'tag' && !result.tag));
+            const characterResults = results.filter(result => isCharacterResult(result));
             if (characterResults.length > 0) {
                 const enhancedCharacters = await enhanceCharacterResultsWithPredictionary(characterResults, lastSearchQuery);
                 allCharacterResults.push(...enhancedCharacters);
@@ -1022,17 +1690,20 @@ async function rebuildAndDisplayResults() {
         }
     }
 
-    // Collect tag results (no limit on tags)
-    const allTagResults = [];
-    for (const [serviceName, results] of serviceResults) {
+    // Collect tag results from all services, then merge in one pass
+    const allTagResultsRaw = [];
+    for (const [, results] of serviceResults) {
         if (results && Array.isArray(results)) {
-            const tagResults = results.filter(result => result.type === 'tag' || result.tag);
-            if (tagResults.length > 0) {
-                const enhancedTags = await enhanceTagResultsWithPredictionary(tagResults, lastSearchQuery);
-                allTagResults.push(...enhancedTags);
+            for (const result of results) {
+                if (isTagResult(result)) {
+                    allTagResultsRaw.push(result);
+                }
             }
         }
     }
+    const allTagResults = allTagResultsRaw.length > 0
+        ? await enhanceTagResultsWithPredictionary(allTagResultsRaw, lastSearchQuery)
+        : [];
 
     // Merge text replacement results from all services with predictionary enhancement
     const allTextReplacements = getAllTextReplacementResults();
@@ -1083,11 +1754,11 @@ async function rebuildAndDisplayResults() {
 
         topResults.push(...topTextReplacements.map(result => ({ ...result, _isTopTier: true })));
         bottomResults.push(...bottomTextReplacements.map(result => ({ ...result, _isTopTier: false })));
+    }
 
-        // Add Rentan placeholders to top results
-        if (dynamicGenerationPlaceholders.length > 0) {
-            topResults.push(...dynamicGenerationPlaceholders.map(result => ({ ...result, _isTopTier: true })));
-        }
+    // Prefix hints (TIME, WEATHER, etc.) — independent of text replacement matches
+    if (dynamicGenerationPlaceholders.length > 0) {
+        topResults.push(...dynamicGenerationPlaceholders.map(result => ({ ...result, _isTopTier: true })));
     }
 
     // Add all tag results (no limit) - these are always in bottom tier
@@ -1142,6 +1813,25 @@ async function rebuildAndDisplayResults() {
             return bRanking.score - aRanking.score;
         }
 
+        // For tags, prefer stronger text match tier before generic tiebreakers
+        if (aType === 'tag' && bType === 'tag') {
+            const aTier = aRanking.textMatchTier || 0;
+            const bTier = bRanking.textMatchTier || 0;
+            if (aTier !== bTier) {
+                return bTier - aTier;
+            }
+            const aApiConfidence = getRawApiTagConfidence(a);
+            const bApiConfidence = getRawApiTagConfidence(b);
+            if (aTier === 0 && bTier === 0 && aApiConfidence !== bApiConfidence) {
+                return bApiConfidence - aApiConfidence;
+            }
+            const aNameLen = (getTagDisplayLabel(a) || '').length;
+            const bNameLen = (getTagDisplayLabel(b) || '').length;
+            if (aNameLen !== bNameLen) {
+                return aNameLen - bNameLen;
+            }
+        }
+
         // If scores are equal, use tiebreakers in order of importance
         // 1. Exact match priority
         if (aRanking.isExactMatch !== bRanking.isExactMatch) {
@@ -1156,7 +1846,7 @@ async function rebuildAndDisplayResults() {
         // 3. Type hierarchy within same tier
         if (aIsTopTier && bIsTopTier) {
             // Within top tier: spellcheck > characters > textReplacements
-            const topTypeOrder = { spellcheck: 3, character: 2, textReplacement: 1 };
+            const topTypeOrder = { spellcheck: 4, character: 3, textReplacement: 2, dynamicPlaceholder: 1 };
             const aTopPriority = topTypeOrder[aType] || 0;
             const bTopPriority = topTypeOrder[bType] || 0;
             if (aTopPriority !== bTopPriority) {
@@ -1185,6 +1875,8 @@ async function rebuildAndDisplayResults() {
     if (currentCharacterAutocompleteTarget) {
         updateAutocompleteDisplay(allSearchResults, currentCharacterAutocompleteTarget);
     }
+
+    updateSearchStatusDisplay();
 }
 
 // Throttled version of updateSearchStatusDisplay
@@ -1239,9 +1931,7 @@ function updateSearchStatusDisplayImmediate() {
     }
 
     // Check if all services are in a completed state (not stalled or searching)
-    const allServicesDone = visibleServices.every(([name, status]) =>
-        status === 'completed' || status === 'completed-none' || status === 'error'
-    );
+    const allServicesDone = visibleServices.every(([name, status]) => isServiceStatusTerminal(status));
 
     // Count results for display
     let tagResultsCount = 0;
@@ -1249,17 +1939,17 @@ function updateSearchStatusDisplayImmediate() {
 
     if (allServicesDone) {
         // Count tag results (API models and local tag services)
-        for (const [serviceName, results] of searchResultsByService) {
-            if (serviceName !== 'characters' && serviceName !== 'textReplacements' && serviceName !== 'spellcheck') {
-                if (results && Array.isArray(results)) {
-                    tagResultsCount += results.length;
-                }
+        for (const [serviceName, results] of serviceResults) {
+            if (serviceName === 'characters' || serviceName === 'textReplacements' || serviceName === 'spellcheck' || serviceName === 'wordLookup' || serviceName === 'searchResults') {
+                continue;
+            }
+            if (results && Array.isArray(results)) {
+                tagResultsCount += results.length;
             }
         }
 
-        // Count special results (characters and text replacements)
-        const charactersResults = searchResultsByService.get('characters') || [];
-        const textReplacementsResults = searchResultsByService.get('textReplacements') || [];
+        const charactersResults = serviceResults.get('characters') || [];
+        const textReplacementsResults = serviceResults.get('textReplacements') || [];
         specialResultsCount = charactersResults.length + textReplacementsResults.length;
     }
 
@@ -1282,41 +1972,31 @@ function updateSearchStatusDisplayImmediate() {
         }
     }
 
-    // Handle expanded vs compact state
-    if (autocompleteExpanded) {
-        // In expanded state, don't show the element if search is done
-        if (allServicesDone) {
-            statusDisplay.classList.add('hidden');
-            return;
-        } else {
-            statusDisplay.classList.remove('hidden');
-        }
+    // Keep status visible after completion, then auto-hide
+    if (allServicesDone) {
+        statusDisplay.classList.remove('hidden');
+        statusDisplay.classList.add('search-done');
+        scheduleSearchStatusHide();
     } else {
-        if (allServicesDone) {
-            statusDisplay.classList.add('search-done');
-        } else {
-            statusDisplay.classList.remove('search-done');
-            statusDisplay.classList.remove('hidden');
-        }
+        clearSearchStatusHideTimer();
+        statusDisplay.classList.remove('search-done');
+        statusDisplay.classList.remove('hidden');
     }
 
     let statusHTML = `<div class="search-status-header"><i class="${displayIcon}"></i><span>${displayText}</span></div><div class="search-service-indicators">`;
 
     // Define the order you want services to appear in the status bar
     const serviceOrder = [
-        'spellcheck',        // 1st - Spellcheck (most important for user feedback)
-        'characters',        // 2nd - Character search
-        'anime-local',      // 4th - Anime Local
-        // Note: The current model service will be inserted here as 5th
-        'furry-local',      // 6th - Furry Local
-        'nai-diffusion-furry-3', // 7th - Furry v3
-        'dual-match',       // 8th - Dual match corrections
-        'textReplacements', // 9th - Text replacements
+        'spellcheck',
+        'wordLookup',
+        'characters',
+        ANIME_LOCAL_SERVICE,
+        FURRY_LOCAL_SERVICE,
+        'nai-diffusion-furry-3',
+        'textReplacements',
     ];
 
-    // Get the current model for dynamic insertion
-    let currentModel = window.manualModel?.value || 'unknown';
-    currentModel = searchModelMapping[currentModel] || currentModel;
+    const currentModel = getMappedManualModel();
 
     // Show service status in the defined order, with current model inserted at 5th position
     let serviceCount = 0;
@@ -1367,8 +2047,17 @@ function updateSearchStatusDisplayImmediate() {
     statusDisplay.innerHTML = statusHTML;
 }
 
+function isServiceStatusInactiveIcon(status) {
+    return status === 'searching' ||
+        status === 'stalled' ||
+        status === 'completed-none' ||
+        status === 'completed-noresults' ||
+        status === 'completed-noerrors';
+}
+
 // Get CSS class for service icon
 function getServiceIconClass(serviceName, status) {
+    const inactive = isServiceStatusInactiveIcon(status);
     switch (serviceName) {
         case 'nai-diffusion-4-5-full':
         case 'nai-diffusion-4-5':
@@ -1384,34 +2073,36 @@ function getServiceIconClass(serviceName, status) {
         case 'nai-diffusion-furry-3':
         case 'v3_furry':
             return 'nai-paw';
-        case 'furry-local':
+        case FURRY_LOCAL_SERVICE:
             return 'nai-paw';
-        case 'anime-local':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-landmark-magnifying-glass'
+        case ANIME_LOCAL_SERVICE:
+            return (inactive ? 'fa-light' : 'fas') + ' fa-landmark-magnifying-glass';
         case 'dual-match':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-link';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-link';
         case 'characters':
         case 'cached_characters':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-user';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-user';
         case 'tags':
         case 'cached_tags':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-tag';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-tag';
         case 'textReplacements':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-book-font';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-book-font';
         case 'spellcheck':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-noerrors') ? 'fa-light' : 'fas') + ' fa-spell-check';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-spell-check';
+        case 'wordLookup':
+            return (inactive ? 'fa-light' : 'fas') + ' fa-book';
         case 'cached':
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-database';
         default:
             // Handle dynamic model names (like nai-diffusion-4-5, nai-diffusion-furry-3, etc.)
             if (serviceName.startsWith('nai-diffusion')) {
                 if (serviceName.includes('furry')) {
                     return 'nai-paw';
                 } else {
-                    return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-database';
+                    return (inactive ? 'fa-light' : 'fas') + ' fa-database';
                 }
             }
-            return ((status === 'searching' || status === 'stalled' || status === 'completed-none') ? 'fa-light' : 'fas') + ' fa-question';
+            return (inactive ? 'fa-light' : 'fas') + ' fa-question';
     }
 }
 
@@ -1425,6 +2116,7 @@ function getStatusClass(status) {
         case 'completed':
             return 'status-completed';
         case 'completed-none':
+        case 'completed-noresults':
             return 'status-completed-none';
         case 'completed-noerrors':
             return 'status-completed-noerrors';
@@ -1446,9 +2138,9 @@ function getServiceDisplayName(serviceName) {
             return 'NovelAI';
         case 'nai-diffusion-furry-3':
             return 'Furry';
-        case 'furry-local':
+        case FURRY_LOCAL_SERVICE:
             return 'Furry Local';
-        case 'anime-local':
+        case ANIME_LOCAL_SERVICE:
             return 'Anime Local';
         case 'dual-match':
             return 'Dual Match';
@@ -1462,6 +2154,8 @@ function getServiceDisplayName(serviceName) {
             return 'Genso Expanders';
         case 'spellcheck':
             return 'Spell Check';
+        case 'wordLookup':
+            return 'Dictionary';
         case 'cached':
             return 'Cache';
         default:
@@ -1505,11 +2199,93 @@ window.toggleAutofill = toggleAutofill;
 window.setAutofillEnabled = setAutofillEnabled;
 window.isAutofillEnabled = isAutofillEnabled;
 window.showAddToFavoritesDialog = showAddToFavoritesDialog;
+window.showTextReplacementDialog = showTextReplacementDialog;
+
+/**
+ * Word lookup only (for prompt context menu thesaurus submenu).
+ * fetchWordLookupForTerm: public/scripts/comp/promptTextareaContextMenu.js
+ */
+async function fetchWordLookupForTerm(term, textarea) {
+    const q = String(term || '').trim();
+    if (!q || !textarea) return null;
+
+    persistentWordLookupData = null;
+
+    const prevTarget = currentCharacterAutocompleteTarget;
+    contextMenuThesaurusLookupActive = true;
+    currentCharacterAutocompleteTarget = textarea;
+
+    const requestId = 'ctx_wl_' + Date.now();
+    currentSearchRequestId = requestId;
+    currentSearchQuery = q;
+    currentSearchTimestamp = Date.now();
+    isSearching = true;
+
+    if (!autofillSessionId || autofillSessionTarget !== textarea) {
+        autofillSessionId = 'ctx_af_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        autofillSessionTarget = textarea;
+    }
+    autofillSessionPacketRequestId = null;
+    currentSearchSessionBounds = getAutocompleteSearchBounds(textarea) || {
+        tokenStart: 0,
+        tokenEnd: textarea.value.length,
+        query: q,
+        isTextPrefix: false
+    };
+
+    if (searchServices.size === 0 || !searchServices.has('wordLookup')) {
+        initializeAutofillServices();
+        servicesInitialized = true;
+    }
+    searchServices.set('wordLookup', 'searching');
+    updateSearchStatusDisplay();
+
+    const modelEl = document.getElementById('manualModel');
+    const model = modelEl && modelEl.value ? modelEl.value : 'nai-diffusion-4-5-full';
+
+    try {
+        if (window.wsClient && window.wsClient.isConnected()) {
+            await window.wsClient.searchCharacters(q, model, {
+                requestId,
+                autofillSessionId
+            });
+            const deadline = Date.now() + 8000;
+            while (Date.now() < deadline) {
+                const st = searchServices.get('wordLookup');
+                if (st === 'completed' || st === 'completed-none' || st === 'completed-noerrors' || st === 'error') {
+                    break;
+                }
+                await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+        } else {
+            searchServices.set('wordLookup', 'error');
+            updateSearchStatusDisplay();
+        }
+    } catch (err) {
+        console.warn('fetchWordLookupForTerm failed:', err);
+        searchServices.set('wordLookup', 'error');
+        updateSearchStatusDisplay();
+    } finally {
+        isSearching = false;
+        contextMenuThesaurusLookupActive = false;
+        hideCharacterAutocomplete();
+        markSearchSessionCompleteIfIdle();
+        if (currentCharacterAutocompleteTarget === textarea) {
+            currentCharacterAutocompleteTarget = prevTarget;
+        }
+    }
+
+    return getActiveWordLookupData();
+}
 
 // Character autocomplete functions
 function handleCharacterAutocompleteInput(e) {
     // Don't trigger autocomplete if autofill is disabled
     if (!autofillEnabled) {
+        return;
+    }
+
+    if (e.detail && e.detail.skipAutofill) {
         return;
     }
 
@@ -1732,8 +2508,12 @@ function triggerCharacterAutofillSearchAtCaret(target, forceRefresh) {
     selectedCharacterAutocompleteIndex = -1;
     autocompleteNavigationMode = false;
     spellCheckNavigationMode = false;
+    wordLookupNavigationMode = false;
     selectedSpellCheckWordIndex = -1;
     selectedSpellCheckSuggestionIndex = -1;
+    selectedWordLookupWordIndex = -1;
+    selectedWordLookupSuggestionIndex = -1;
+    activeWordLookupWordIndex = 0;
     autocompleteExpanded = false;
 
     const bounds = getAutocompleteSearchBounds(target);
@@ -1903,7 +2683,158 @@ function isAutocompleteEnterKey(e) {
 }
 
 function isAutofillKeyboardNavActive() {
-    return spellCheckNavigationMode || selectedCharacterAutocompleteIndex >= 0;
+    return spellCheckNavigationMode || wordLookupNavigationMode || selectedCharacterAutocompleteIndex >= 0;
+}
+
+function getWordLookupSection() {
+    return characterAutocompleteList?.querySelector('.word-lookup-section');
+}
+
+function removeSpellCheckSection() {
+    const section = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (section) section.remove();
+}
+
+function removeWordLookupSection() {
+    const section = getWordLookupSection();
+    if (section) section.remove();
+}
+
+function insertSideSectionAtTop(section) {
+    if (!characterAutocompleteList || !section) return;
+    const firstItem = characterAutocompleteList.querySelector('.character-autocomplete-item, .spell-check-section, .word-lookup-section');
+    if (firstItem) {
+        characterAutocompleteList.insertBefore(section, firstItem);
+    } else {
+        const statusDisplay = characterAutocompleteList.querySelector('.search-status-display');
+        if (statusDisplay) {
+            characterAutocompleteList.insertBefore(section, statusDisplay);
+        } else {
+            characterAutocompleteList.appendChild(section);
+        }
+    }
+}
+
+function refreshAutofillSideSections(target) {
+    if (!target || !characterAutocompleteList) return;
+
+    removeSpellCheckSection();
+    removeWordLookupSection();
+
+    if (persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
+        showSpellCheckSuggestions(persistentSpellCheckData, target);
+    }
+
+    const wordLookupData = getActiveWordLookupData();
+    if (wordLookupData) {
+        showWordLookupSection(wordLookupData, target);
+    }
+}
+
+function getSpellCheckWordCount(section) {
+    if (!section) return 0;
+    const rows = section.querySelectorAll('.spell-check-word');
+    return rows ? rows.length : 0;
+}
+
+function getWordLookupWordCount(section) {
+    if (!section) return 0;
+    const rows = section.querySelectorAll('.word-lookup-word-row');
+    return rows ? rows.length : 0;
+}
+
+function spellCheckSectionHasSuggestions(section) {
+    if (!section) return false;
+    const wordSections = section.querySelectorAll('.spell-check-word');
+    for (const wordSection of wordSections) {
+        if (wordSection.querySelectorAll('.suggestion-btn').length > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function clearWordLookupNavigationState() {
+    wordLookupNavigationMode = false;
+    selectedWordLookupWordIndex = -1;
+    selectedWordLookupSuggestionIndex = -1;
+    updateWordLookupSelection();
+}
+
+function clearSpellCheckNavigationState() {
+    spellCheckNavigationMode = false;
+    selectedSpellCheckWordIndex = -1;
+    selectedSpellCheckSuggestionIndex = -1;
+    updateSpellCheckSelection();
+}
+
+function clearMainAutocompleteSelection() {
+    selectedCharacterAutocompleteIndex = -1;
+    updateCharacterAutocompleteSelection();
+}
+
+function enterSpellCheckNavigation(preferLastWord = false) {
+    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (!spellCheckSectionHasSuggestions(spellCheckSection)) {
+        return false;
+    }
+
+    clearWordLookupNavigationState();
+    clearMainAutocompleteSelection();
+    spellCheckNavigationMode = true;
+    autocompleteNavigationMode = true;
+    userActivelyNavigating = true;
+
+    const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
+    selectedSpellCheckWordIndex = preferLastWord ? wordSections.length - 1 : 0;
+    selectedSpellCheckSuggestionIndex = 0;
+    updateSpellCheckSelection();
+    return true;
+}
+
+function enterWordLookupNavigation(preferLastWord = false) {
+    const wordLookupSection = getWordLookupSection();
+    if (!wordLookupSection || getWordLookupWordCount(wordLookupSection) === 0) {
+        return false;
+    }
+
+    clearSpellCheckNavigationState();
+    clearMainAutocompleteSelection();
+    wordLookupNavigationMode = true;
+    autocompleteNavigationMode = true;
+    userActivelyNavigating = true;
+
+    const wordCount = getWordLookupWordCount(wordLookupSection);
+    selectedWordLookupWordIndex = preferLastWord ? wordCount - 1 : 0;
+    selectedWordLookupSuggestionIndex = 0;
+    updateWordLookupSelection();
+    return true;
+}
+
+function getSelectedWordLookupSuggestionButton() {
+    if (!wordLookupNavigationMode) return null;
+
+    const wordLookupSection = getWordLookupSection();
+    if (!wordLookupSection) return null;
+
+    const wordSections = wordLookupSection.querySelectorAll('.word-lookup-word-row');
+    if (!wordSections || selectedWordLookupWordIndex < 0 || selectedWordLookupWordIndex >= wordSections.length) {
+        return null;
+    }
+
+    const currentWordSection = wordSections[selectedWordLookupWordIndex];
+    const suggestionBtns = currentWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
+    if (!suggestionBtns || selectedWordLookupSuggestionIndex < 0 || selectedWordLookupSuggestionIndex >= suggestionBtns.length) {
+        return null;
+    }
+
+    return suggestionBtns[selectedWordLookupSuggestionIndex];
+}
+
+function tryApplySelectedWordLookupSuggestion(target) {
+    const selectedBtn = getSelectedWordLookupSuggestionButton();
+    if (!selectedBtn || !target) return false;
+    return applyWordLookupInsert(target, selectedBtn.dataset.original, selectedBtn.dataset.suggestion);
 }
 
 function getSelectedSpellCheckSuggestionButton() {
@@ -1918,7 +2849,7 @@ function getSelectedSpellCheckSuggestionButton() {
     }
 
     const currentWordSection = wordSections[selectedSpellCheckWordIndex];
-    const suggestionBtns = currentWordSection.querySelectorAll('.suggestion-btn');
+    const suggestionBtns = currentWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
     if (!suggestionBtns || selectedSpellCheckSuggestionIndex < 0 || selectedSpellCheckSuggestionIndex >= suggestionBtns.length) {
         return null;
     }
@@ -1942,7 +2873,7 @@ function tryApplySelectedAutocompleteItem() {
     const type = selectedItem.dataset.type;
     if (type === 'character') {
         const characterData = JSON.parse(selectedItem.dataset.characterData);
-        selectCharacterItem(characterData);
+        selectCharacterItem(characterData, getCharacterDetailOptionsFromItem(selectedItem));
     } else if (type === 'tag') {
         selectTag(selectedItem.dataset.tagName, selectedItem.dataset.category);
     } else if (type === 'textReplacement') {
@@ -1954,6 +2885,44 @@ function tryApplySelectedAutocompleteItem() {
         return false;
     }
     return true;
+}
+
+function applyTabAutofillPreview(target) {
+    if (!target) return false;
+
+    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (spellCheckSection) {
+        const firstWordSection = spellCheckSection.querySelector('.spell-check-word');
+        const suggestionBtns = firstWordSection?.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
+        if (suggestionBtns && suggestionBtns.length > 0) {
+            const firstBtn = suggestionBtns[0];
+            applySpellCorrection(target, firstBtn.dataset.original, firstBtn.dataset.suggestion);
+            return true;
+        }
+    }
+
+    const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+    if (items && items.length > 0) {
+        const firstItem = items[0];
+        const type = firstItem.dataset.type;
+
+        if (type === 'character') {
+            const characterData = JSON.parse(firstItem.dataset.characterData);
+            selectCharacterItem(characterData, getCharacterDetailOptionsFromItem(firstItem));
+        } else if (type === 'tag') {
+            selectTag(firstItem.dataset.tagName, firstItem.dataset.category);
+        } else if (type === 'textReplacement') {
+            selectTextReplacement(firstItem.dataset.placeholder);
+        } else if (type === 'dynamicPlaceholder') {
+            selectDynamicPlaceholder(firstItem.dataset.placeholder);
+        } else {
+            console.error('Unknown item type:', type);
+            return false;
+        }
+        return true;
+    }
+
+    return false;
 }
 
 function applyActiveAutofillEnterSelection(target) {
@@ -1969,9 +2938,15 @@ function applyActiveAutofillEnterSelection(target) {
         return true;
     }
 
-    // Spell-check and autocomplete share Enter — use the same active nav flag the arrow keys set.
+    // Spell-check, dictionary, and autocomplete share Enter — use the same active nav flag the arrow keys set.
     if (spellCheckNavigationMode) {
         if (tryApplySelectedSpellCheckSuggestion(actionTarget)) {
+            return true;
+        }
+    }
+
+    if (wordLookupNavigationMode) {
+        if (tryApplySelectedWordLookupSuggestion(actionTarget)) {
             return true;
         }
     }
@@ -2071,43 +3046,22 @@ function handleCharacterAutocompleteKeydown(e) {
         }
 
         const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+        const wordLookupSection = getWordLookupSection();
         const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
 
         switch (e.key) {
             case 'ArrowDown':
                 e.preventDefault();
 
-                // If not in spell check mode but spell check section exists and we haven't entered main list yet, enter spell check first
-                if (!spellCheckNavigationMode && spellCheckSection && selectedCharacterAutocompleteIndex === -1) {
-                    spellCheckNavigationMode = true;
-                    autocompleteNavigationMode = true;
-                    userActivelyNavigating = true;
-                    selectedSpellCheckWordIndex = 0;
-                    selectedSpellCheckSuggestionIndex = 0;
-
-                    // Ensure we have a valid suggestion selected
-                    const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-                    if (wordSections && wordSections.length > 0) {
-                        const firstWordSection = wordSections[0];
-                        const suggestionBtns = firstWordSection.querySelectorAll('.suggestion-btn');
-                        if (suggestionBtns.length === 0) {
-                            // No suggestions available, exit spell check and go to main list
-                            spellCheckNavigationMode = false;
-                            selectedSpellCheckWordIndex = -1;
-                            selectedSpellCheckSuggestionIndex = -1;
-                        } else {
-                            updateSpellCheckSelection();
-                            return;
-                        }
-                    } else {
-                        // No spell check words available, exit spell check and go to main list
-                        spellCheckNavigationMode = false;
-                        selectedSpellCheckWordIndex = -1;
-                        selectedSpellCheckSuggestionIndex = -1;
+                if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex === -1) {
+                    if (enterSpellCheckNavigation()) {
+                        return;
+                    }
+                    if (enterWordLookupNavigation()) {
+                        return;
                     }
                 }
 
-                // If in spell check navigation, navigate down to next word or exit to main list
                 if (spellCheckNavigationMode) {
                     const wordSections = spellCheckSection?.querySelectorAll('.spell-check-word');
                     if (wordSections && selectedSpellCheckWordIndex < wordSections.length - 1) {
@@ -2115,14 +3069,24 @@ function handleCharacterAutocompleteKeydown(e) {
                         selectedSpellCheckSuggestionIndex = 0;
                         updateSpellCheckSelection();
                         return;
-                    } else {
-                        // Exit spell check and enter main list
-                        spellCheckNavigationMode = false;
-                        selectedSpellCheckWordIndex = -1;
-                        selectedSpellCheckSuggestionIndex = -1;
-                        updateSpellCheckSelection();
-                        // Continue to main list navigation
                     }
+
+                    clearSpellCheckNavigationState();
+                    if (enterWordLookupNavigation()) {
+                        return;
+                    }
+                }
+
+                if (wordLookupNavigationMode) {
+                    const wordCount = getWordLookupWordCount(wordLookupSection);
+                    if (wordCount && selectedWordLookupWordIndex < wordCount - 1) {
+                        selectedWordLookupWordIndex++;
+                        selectedWordLookupSuggestionIndex = 0;
+                        updateWordLookupSelection();
+                        return;
+                    }
+
+                    clearWordLookupNavigationState();
                 }
 
                 // Normal autocomplete navigation
@@ -2154,57 +3118,52 @@ function handleCharacterAutocompleteKeydown(e) {
                 break;
 
             case 'ArrowUp':
-                // Only intercept if we're in navigation mode (autocomplete is expanded)
-                if (autocompleteNavigationMode || spellCheckNavigationMode) {
+                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
                     e.preventDefault();
 
-                    // If in main list and at top, check if we should enter spell check
-                    if (!spellCheckNavigationMode && selectedCharacterAutocompleteIndex <= 0 && spellCheckSection) {
-                        spellCheckNavigationMode = true;
-                        autocompleteNavigationMode = true;
-                        userActivelyNavigating = true;
-                        selectedSpellCheckWordIndex = 0;
-                        selectedSpellCheckSuggestionIndex = 0;
+                    if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex <= 0) {
+                        if (enterWordLookupNavigation(true)) {
+                            return;
+                        }
+                        if (enterSpellCheckNavigation(true)) {
+                            return;
+                        }
+                    }
 
-                        // Ensure we have a valid suggestion selected
-                        const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-                        if (wordSections && wordSections.length > 0) {
-                            const firstWordSection = wordSections[0];
-                            const suggestionBtns = firstWordSection.querySelectorAll('.suggestion-btn');
-                            if (suggestionBtns.length === 0) {
-                                // No suggestions available, exit spell check
-                                spellCheckNavigationMode = false;
-                                selectedSpellCheckWordIndex = -1;
-                                selectedSpellCheckSuggestionIndex = -1;
-                                return;
-                            }
+                    if (wordLookupNavigationMode) {
+                        if (selectedWordLookupWordIndex > 0) {
+                            selectedWordLookupWordIndex--;
+                            selectedWordLookupSuggestionIndex = 0;
+                            updateWordLookupSelection();
+                            return;
                         }
 
-                        updateSpellCheckSelection();
+                        clearWordLookupNavigationState();
+                        if (enterSpellCheckNavigation(true)) {
+                            return;
+                        }
+
+                        hideCharacterAutocomplete();
+                        autocompleteNavigationMode = false;
+                        autocompleteExpanded = false;
                         return;
                     }
 
-                    // If in spell check navigation, navigate up
                     if (spellCheckNavigationMode) {
                         if (selectedSpellCheckWordIndex > 0) {
                             selectedSpellCheckWordIndex--;
                             selectedSpellCheckSuggestionIndex = 0;
-                        } else {
-                            // Exit spell check and return to textbox
-                            spellCheckNavigationMode = false;
-                            selectedSpellCheckWordIndex = -1;
-                            selectedSpellCheckSuggestionIndex = -1;
                             updateSpellCheckSelection();
-                            hideCharacterAutocomplete();
-                            autocompleteNavigationMode = false;
-                            autocompleteExpanded = false;
                             return;
                         }
-                        updateSpellCheckSelection();
+
+                        clearSpellCheckNavigationState();
+                        hideCharacterAutocomplete();
+                        autocompleteNavigationMode = false;
+                        autocompleteExpanded = false;
                         return;
                     }
 
-                    // Normal autocomplete navigation
                     autocompleteNavigationMode = true;
                     if (selectedCharacterAutocompleteIndex <= 0) {
                         hideCharacterAutocomplete();
@@ -2215,23 +3174,20 @@ function handleCharacterAutocompleteKeydown(e) {
                     updateCharacterAutocompleteSelection();
                     updateEmphasisTooltipVisibility();
                 } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                    // In preview mode - close autocomplete and allow normal text navigation
                     hideCharacterAutocomplete();
                     autocompleteNavigationMode = false;
                     autocompleteExpanded = false;
                 }
-                // If not in navigation mode and no autocomplete visible, don't prevent default - allow normal text navigation
                 break;
 
             case 'PageDown':
                 e.preventDefault();
 
-                // If in spell check mode, exit to main list
                 if (spellCheckNavigationMode) {
-                    spellCheckNavigationMode = false;
-                    selectedSpellCheckWordIndex = -1;
-                    selectedSpellCheckSuggestionIndex = -1;
-                    updateSpellCheckSelection();
+                    clearSpellCheckNavigationState();
+                }
+                if (wordLookupNavigationMode) {
+                    clearWordLookupNavigationState();
                 }
 
                 // Normal autocomplete navigation
@@ -2261,10 +3217,10 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 // If in spell check mode, exit to main list
                 if (spellCheckNavigationMode) {
-                    spellCheckNavigationMode = false;
-                    selectedSpellCheckWordIndex = -1;
-                    selectedSpellCheckSuggestionIndex = -1;
-                    updateSpellCheckSelection();
+                    clearSpellCheckNavigationState();
+                }
+                if (wordLookupNavigationMode) {
+                    clearWordLookupNavigationState();
                 }
 
                 // Normal autocomplete navigation
@@ -2294,10 +3250,10 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 // If in spell check mode, exit to main list
                 if (spellCheckNavigationMode) {
-                    spellCheckNavigationMode = false;
-                    selectedSpellCheckWordIndex = -1;
-                    selectedSpellCheckSuggestionIndex = -1;
-                    updateSpellCheckSelection();
+                    clearSpellCheckNavigationState();
+                }
+                if (wordLookupNavigationMode) {
+                    clearWordLookupNavigationState();
                 }
 
                 // Normal autocomplete navigation
@@ -2323,10 +3279,10 @@ function handleCharacterAutocompleteKeydown(e) {
 
                 // If in spell check mode, exit to main list
                 if (spellCheckNavigationMode) {
-                    spellCheckNavigationMode = false;
-                    selectedSpellCheckWordIndex = -1;
-                    selectedSpellCheckSuggestionIndex = -1;
-                    updateSpellCheckSelection();
+                    clearSpellCheckNavigationState();
+                }
+                if (wordLookupNavigationMode) {
+                    clearWordLookupNavigationState();
                 }
 
                 // Normal autocomplete navigation
@@ -2352,11 +3308,10 @@ function handleCharacterAutocompleteKeydown(e) {
                 break;
 
             case 'ArrowLeft':
-                if (autocompleteNavigationMode || spellCheckNavigationMode) {
+                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
                     e.preventDefault();
 
                     if (spellCheckNavigationMode) {
-                        // Navigate left in spell check suggestions
                         const wordSections = spellCheckSection?.querySelectorAll('.spell-check-word');
                         if (wordSections && selectedSpellCheckWordIndex >= 0 && selectedSpellCheckWordIndex < wordSections.length) {
                             if (selectedSpellCheckSuggestionIndex > 0) {
@@ -2367,9 +3322,18 @@ function handleCharacterAutocompleteKeydown(e) {
                         return;
                     }
 
-                    // Normal autocomplete navigation
+                    if (wordLookupNavigationMode) {
+                        const wordCount = getWordLookupWordCount(wordLookupSection);
+                        if (wordCount && selectedWordLookupWordIndex >= 0 && selectedWordLookupWordIndex < wordCount) {
+                            if (selectedWordLookupSuggestionIndex > 0) {
+                                selectedWordLookupSuggestionIndex--;
+                                updateWordLookupSelection();
+                            }
+                        }
+                        return;
+                    }
+
                     if (selectedCharacterAutocompleteIndex >= 0) {
-                        // Allow normal text navigation
                         hideCharacterAutocomplete();
                         autocompleteNavigationMode = false;
                     } else {
@@ -2377,22 +3341,32 @@ function handleCharacterAutocompleteKeydown(e) {
                         autocompleteNavigationMode = false;
                     }
                 }
-                // If not in navigation mode, don't prevent default - allow normal text navigation
                 break;
 
             case 'ArrowRight':
-                if (autocompleteNavigationMode || spellCheckNavigationMode) {
+                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
                     e.preventDefault();
 
                     if (spellCheckNavigationMode) {
-                        // Navigate right in spell check suggestions
                         const wordSections = spellCheckSection?.querySelectorAll('.spell-check-word');
                         if (wordSections && selectedSpellCheckWordIndex >= 0 && selectedSpellCheckWordIndex < wordSections.length) {
                             const currentWordSection = wordSections[selectedSpellCheckWordIndex];
-                            const suggestionBtns = currentWordSection.querySelectorAll('.suggestion-btn');
+                            const suggestionBtns = currentWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
                             if (selectedSpellCheckSuggestionIndex < suggestionBtns.length - 1) {
                                 selectedSpellCheckSuggestionIndex++;
                                 updateSpellCheckSelection();
+                            }
+                        }
+                        return;
+                    }
+
+                    if (wordLookupNavigationMode) {
+                        const activeRow = wordLookupSection?.querySelector(`.word-lookup-word-row[data-word-index="${selectedWordLookupWordIndex}"]`);
+                        if (activeRow) {
+                            const suggestionBtns = activeRow.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
+                            if (selectedWordLookupSuggestionIndex < suggestionBtns.length - 1) {
+                                selectedWordLookupSuggestionIndex++;
+                                updateWordLookupSelection();
                             }
                         }
                         return;
@@ -2438,47 +3412,11 @@ function handleCharacterAutocompleteKeydown(e) {
                 }
                 break;
             case 'Tab':
-                // Handle Tab for autocomplete when visible but not in navigation mode (preview mode)
-                if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden') && !autocompleteNavigationMode) {
-                    e.preventDefault();
-
-                    // Apply the first available result (spell check first, then main list)
-                    if (spellCheckSection) {
-                        // Check if there are spell check suggestions available
-                        const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
-                        if (wordSections && wordSections.length > 0) {
-                            const firstWordSection = wordSections[0];
-                            const suggestionBtns = firstWordSection.querySelectorAll('.suggestion-btn');
-                            if (suggestionBtns.length > 0) {
-                                // Apply the first spell check suggestion
-                                const firstBtn = suggestionBtns[0];
-                                const originalWord = firstBtn.dataset.original;
-                                const suggestion = firstBtn.dataset.suggestion;
-                                applySpellCorrection(currentCharacterAutocompleteTarget, originalWord, suggestion);
-                                return;
-                            }
-                        }
-                    }
-
-                    // If no spell check or no spell check suggestions, apply first main list item
-                    if (items && items.length > 0) {
-                        const firstItem = items[0];
-                        if (firstItem) {
-                            const type = firstItem.dataset.type;
-
-                            if (type === 'character') {
-                                const characterData = JSON.parse(firstItem.dataset.characterData);
-                                selectCharacterItem(characterData);
-                            } else if (type === 'tag') {
-                                selectTag(firstItem.dataset.tagName, firstItem.dataset.category);
-                            } else if (type === 'textReplacement') {
-                                selectTextReplacement(firstItem.dataset.placeholder);
-                            } else if (type === 'dynamicPlaceholder') {
-                                selectDynamicPlaceholder(firstItem.dataset.placeholder);
-                            } else {
-                                console.error('Unknown item type:', type);
-                            }
-                        }
+                if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
+                    if (wordLookupNavigationMode || spellCheckNavigationMode || !autocompleteNavigationMode) {
+                        e.preventDefault();
+                        applyTabAutofillPreview(currentCharacterAutocompleteTarget);
+                        return;
                     }
                 }
                 break;
@@ -2546,10 +3484,9 @@ function handleCharacterAutocompleteKeydown(e) {
             case 'Escape':
                 e.preventDefault();
                 if (spellCheckNavigationMode) {
-                    spellCheckNavigationMode = false;
-                    selectedSpellCheckWordIndex = -1;
-                    selectedSpellCheckSuggestionIndex = -1;
-                    updateSpellCheckSelection();
+                    clearSpellCheckNavigationState();
+                } else if (wordLookupNavigationMode) {
+                    clearWordLookupNavigationState();
                 } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
                     // Autocomplete popup is visible, close it
                     hideCharacterAutocomplete();
@@ -2646,8 +3583,9 @@ async function searchCharacters(query, target, forceRefresh, options) {
             return;
         }
 
-        // Prevent duplicate searches for the same query
-        if (!forceRefresh && currentSearchQuery === query && isSearching) {
+        // Prevent duplicate searches for the same query while the current request is active
+        if (!forceRefresh && currentSearchQuery === query && isSearching &&
+            currentSearchRequestId && autofillSessionPacketRequestId === currentSearchRequestId) {
             console.log(`🔄 Skipping duplicate search for query: "${query}"`);
             console.log(`🔍 Current search state: query="${currentSearchQuery}", isSearching=${isSearching}`);
             return;
@@ -2658,6 +3596,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
             clearTimeout(currentSearchTimeout);
             currentSearchTimeout = null;
         }
+        clearSearchStatusHideTimer();
 
         // Update current search query
         currentSearchQuery = query;
@@ -2676,7 +3615,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
 
             if (!isContinuation) {
                 // This is a completely different search, clear results but preserve services
-                searchResultsByService.clear();
+                serviceResults.clear();
                 clearDynamicResults();
                 allSearchResults = [];
 
@@ -2687,7 +3626,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
                 }
             } else {
                 // This is a continuation, just clear results but keep services
-                searchResultsByService.clear();
+                serviceResults.clear();
                 clearDynamicResults();
                 allSearchResults = [];
             }
@@ -2704,6 +3643,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
 
         // Clear persistent state for new search
         persistentSpellCheckData = null;
+        persistentWordLookupData = null;
         isAutocompleteVisible = false;
 
 
@@ -2722,44 +3662,31 @@ async function searchCharacters(query, target, forceRefresh, options) {
             servicesInitialized = true;
         }
 
-        showAutofillLoadingShell(target);
-        updateSearchStatusDisplay();
-
         // Check if query starts with ! - only return text replacements in this case
         const isTextReplacementSearch = query.startsWith('!');
-
-        // Check if query starts with "Text:" - only perform spell correction in this case
         const isTextPrefixSearch = query.startsWith('Text:');
+
+        if (!isTextReplacementSearch && !isTextPrefixSearch) {
+            markRegularAutofillServicesSearching();
+        }
+
+        showAutofillLoadingShell(target);
+        updateSearchStatusDisplay();
 
         let searchResults = [];
         let spellCheckData = null;
 
         if (!isTextReplacementSearch && !isTextPrefixSearch) {
 
-            // Mark services as searching for regular searches
-            searchServices.set('characters', 'searching');
-            searchServices.set('anime-local', 'searching');
-            searchServices.set('spellcheck', 'searching');
-
-            // Mark the current model service as searching
-            let currentModel = window.manualModel?.value || 'unknown';
-
-            currentModel = searchModelMapping[currentModel] || currentModel;
-
-            if (searchServices.has(currentModel)) {
-                searchServices.set(currentModel, 'searching');
-            }
-
-            searchServices.set('furry-local', 'searching');
-            searchServices.set('nai-diffusion-furry-3', 'searching');
-            searchServices.set('textReplacements', 'searching');
-            updateSearchStatusDisplay();
-
             // Use WebSocket for search - this will handle characters, tags, and textReplacements server-side
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request (responses handled by global handler)
-                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
+                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                        requestId: currentSearchRequestId,
+                        autofillSessionId: autofillSessionId
+                    });
+                    markAutofillSearchPacketSent();
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
                         isSearching = false;
@@ -2775,23 +3702,8 @@ async function searchCharacters(query, target, forceRefresh, options) {
                     // Results will be processed by the global handleSearchResponse function
                 } catch (wsError) {
                     console.error('WebSocket search failed:', wsError);
-                    // Mark services as error if search fails
-                    searchServices.set('characters', 'error');
-                    searchServices.set('anime-local', 'error');
-                    searchServices.set('spellcheck', 'error');
-
-                    // Mark the current model service as error
-                    let currentModel = window.manualModel?.value || 'unknown';
-
-                    currentModel = searchModelMapping[currentModel] || currentModel;
-
-                    if (searchServices.has(currentModel)) {
-                        searchServices.set(currentModel, 'error');
-                    }
-
-                    searchServices.set('furry-local', 'error');
-                    searchServices.set('nai-diffusion-furry-3', 'error');
-                    searchServices.set('textReplacements', 'error');
+                    markRegularAutofillServicesError();
+                    updateSearchStatusDisplay();
                     throw new Error('Search service unavailable');
                 }
             } else {
@@ -2822,7 +3734,11 @@ async function searchCharacters(query, target, forceRefresh, options) {
             // Perform text replacement search via WebSocket
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
-                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
+                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                        requestId: currentSearchRequestId,
+                        autofillSessionId: autofillSessionId
+                    });
+                    markAutofillSearchPacketSent();
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
                         isSearching = false;
@@ -2859,7 +3775,11 @@ async function searchCharacters(query, target, forceRefresh, options) {
             if (window.wsClient && window.wsClient.isConnected()) {
                 try {
                     // Send ack-less search request - spell check results will come via real-time updates
-                    await window.wsClient.searchCharacters(query, manualModel.value, { requestId: currentSearchRequestId });
+                    await window.wsClient.searchCharacters(query, manualModel.value, {
+                        requestId: currentSearchRequestId,
+                        autofillSessionId: autofillSessionId
+                    });
+                    markAutofillSearchPacketSent();
 
                     if (currentSearchRequestId !== thisSearchRequestId) {
                         isSearching = false;
@@ -2888,7 +3808,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
 
         // Add search results to the collection (only for non-"Text:" searches)
         if (!isTextPrefixSearch && searchResults.length > 0) {
-            searchResultsByService.set('searchResults', searchResults);
+            serviceResults.set('searchResults', searchResults);
         }
 
         if (currentSearchRequestId !== thisSearchRequestId) {
@@ -2904,7 +3824,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
             rebuildAndDisplayResults();
         }
 
-        // Further results arrive via handleSearchResponse / handleSearchResultsUpdate
+        // Further results arrive via handleSearchResponse
 
     } catch (error) {
         console.error('Character and tag search error:', error);
@@ -2914,7 +3834,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
         isSearching = false;
         currentSearchQuery = ''; // Reset current search query
         searchServices.clear();
-        searchResultsByService.clear();
+        serviceResults.clear();
         allSearchResults = [];
         searchCompletionStatus = {
             totalServices: 0,
@@ -3014,229 +3934,31 @@ function createAutocompleteItem(result) {
             e.preventDefault();
             selectDynamicPlaceholder(result.placeholder);
         }, { passive: false });
-    } else if (result.type === 'tag') {
-        // Handle tag results
-        item.dataset.type = 'tag';
-        item.dataset.tagName = result.name;
-        item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
-        item.dataset.category = result.category || '';
-
-        // Calculate opacity for dots based on counts with logarithmic scaling
-        const nCountOpacity = result.count ? Math.min(1, Math.log10(result.count + 1) / Math.log10(10001)) : 0;
-        const eCountOpacity = result.e_count ? Math.min(1, Math.log10(result.e_count + 1) / Math.log10(100001)) : 0;
-
-        // Create category badge if available
-        if (result.isDualMatch) {
-            item.classList.add('multi-match');
-        }
-        const categoryBadgeClass = 'tag-category-badge ' + result.category + '-badge';
-        const categoryBadge = result.category ? `<span class="${categoryBadgeClass}">${result.category}</span>` : '';
-
-        // Create count dots with enhanced tooltip for dual matches
-        let tooltipText = `NovelAI: ${result.count || 0}${result.e_count !== undefined ? `\ne621: ${result.e_count}` : ''}`;
-        if (result.isDualMatch && result.apiResult && result.localResult) {
-            const localNCount = result.localResult.count || 0;
-            const localECount = result.localResult.e_count || 0;
-            tooltipText = `NovelAI: ${localNCount}${localECount !== undefined ? `\ne621: ${localECount}` : ''}`;
-        }
-
-        // Calculate lightness with logarithmic scaling - higher opacity = higher lightness
-        const nCountLightness = 15 + (nCountOpacity * 75); // Range: 15% to 90%
-        const eCountLightness = 15 + (eCountOpacity * 75); // Range: 15% to 90%
-
-        const countDots = `
-            <div class="tag-count-dots" title="${tooltipText}">
-                <div class="count-dot n-count-dot" style="background: hsl(260, 100%, ${nCountLightness}%, ${nCountOpacity});"></div>
-                ${result.e_count !== undefined ? `<div class="count-dot e-count-dot" style="background: hsl(35, 100%, ${eCountLightness}%, ${eCountOpacity});"></div>` : ''}
-            </div>
-        `;
-
-        // Determine display type and version based on match type
-        let displayType = 'Search';
-        let displayVersion = '';
-        let dataType = '';
-
-        if (result.isDualMatch && result.mergedModels) {
-            const matchInfo = getMatchType(result.mergedModels);
-            displayType = matchInfo.type;
-            displayVersion = matchInfo.version;
-            dataType = matchInfo.dataType;
-
-            // Add appropriate CSS class for styling
-            if (displayType === 'Global') {
-                item.classList.add('global-match');
-            } else if (dataType === 'anime') {
-                item.classList.add('anime-match');
-                item.dataset.modelType = 'anime';
-            } else if (dataType === 'furry') {
-                item.classList.add('furry-match');
-                item.dataset.modelType = 'furry';
-            }
-        } else {
-            // Regular single model
-            displayType = modelKeys[result.model]?.type || 'Search';
-            displayVersion = modelKeys[result.model]?.version || '';
-        }
-
-        item.innerHTML = `
-            <div class="character-info-row">
-                <span class="character-name">${result.name}${countDots}${categoryBadge}</span>
-                <span class="character-copyright">
-                    ${displayVersion ? '<span class="badge">' + displayVersion + '</span> ' : ''}${displayType}
-                </span>
-            </div>
-        `;
-
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectTag(result.name, result.category);
-        });
-        item.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            selectTag(result.name, result.category);
-        }, { passive: false });
-    } else if (result.tag || (result.name && result.model && result.count !== undefined)) {
-        // Handle tag results that don't have type set
-        item.dataset.type = 'tag';
-        item.dataset.tagName = result.tag || result.name;
-        item.dataset.modelType = result.model.toLowerCase().includes('furry') ? 'furry' : 'anime';
-        item.dataset.category = result.category || '';
-
-        const tagName = result.tag || result.name;
-        const count = result.count || 0;
-        const eCount = result.e_count;
-
-        // Calculate opacity for dots based on counts with logarithmic scaling
-        const nCountOpacity = count ? Math.min(1, Math.log10(count + 1) / Math.log10(10001)) : 0;
-        const eCountOpacity = eCount ? Math.min(1, Math.log10(eCount + 1) / Math.log10(100001)) : 0;
-
-        // Create category badge if available
-        if (result.isDualMatch) {
-            item.classList.add('multi-match');
-        }
-        const categoryBadgeClass = 'tag-category-badge ' + (result.category || '') + '-badge';
-        const categoryBadge = result.category ? `<span class="${categoryBadgeClass}">${result.category}</span>` : '';
-
-        // Create count dots with enhanced tooltip for dual matches
-        let tooltipText = `NovelAI: ${count}${eCount !== undefined ? `\ne621: ${eCount}` : ''}`;
-        if (result.isDualMatch && result.apiResult && result.localResult) {
-            const localNCount = result.localResult.count || 0;
-            const localECount = result.localResult.e_count || 0;
-            tooltipText = `NovelAI: ${localNCount}${localECount !== undefined ? `\ne621: ${localECount}` : ''}`;
-        }
-
-        // Calculate lightness with logarithmic scaling - higher opacity = higher lightness
-        const nCountLightness = 15 + (nCountOpacity * 75); // Range: 15% to 90%
-        const eCountLightness = 15 + (eCountOpacity * 75); // Range: 15% to 90%
-
-        const countDots = `
-            <div class="tag-count-dots" title="${tooltipText}">
-                <div class="count-dot n-count-dot" style="background: hsl(260, 100%, ${nCountLightness}%, ${nCountOpacity});"></div>
-                ${eCount !== undefined ? `<div class="count-dot e-count-dot" style="background: hsl(35, 100%, ${eCountLightness}%, ${eCountOpacity});"></div>` : ''}
-            </div>
-        `;
-
-        // Determine display type and version based on match type
-        let displayType = 'Search';
-        let displayVersion = '';
-        let dataType = '';
-
-        if (result.isDualMatch && result.mergedModels) {
-            const matchInfo = getMatchType(result.mergedModels);
-            displayType = matchInfo.type;
-            displayVersion = matchInfo.version;
-            dataType = matchInfo.dataType;
-
-            // Add appropriate CSS class for styling
-            if (displayType === 'Global') {
-                item.classList.add('global-match');
-            } else if (dataType === 'anime') {
-                item.classList.add('anime-match');
-                item.dataset.modelType = 'anime';
-            } else if (dataType === 'furry') {
-                item.classList.add('furry-match');
-                item.dataset.modelType = 'furry';
-            }
-        } else {
-            // Regular single model
-            displayType = modelKeys[result.model]?.type || 'Search';
-            displayVersion = modelKeys[result.model]?.version || '';
-        }
-
-        item.innerHTML = `
-            <div class="character-info-row">
-                <span class="character-name">${tagName}${countDots}${categoryBadge}</span>
-                <span class="character-copyright">
-                    ${displayVersion ? '<span class="badge">' + displayVersion + '</span> ' : ''}${displayType}
-                </span>
-            </div>
-        `;
-
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            selectTag(tagName, result.category);
-        });
-        item.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            selectTag(tagName, result.category);
-        }, { passive: false });
+    } else if (isCharacterResult(result) && result.character) {
+        applyCharacterResultToAutocompleteItem(item, result);
+    } else if (isTagResult(result)) {
+        applyTagResultToAutocompleteItem(item, result);
     } else {
-        // Handle character results or other unknown types
-        // Processing unknown result type
+        // Handle other unknown types
+        item.dataset.type = 'unknown';
+        const name = result.name || result.tag || 'Unknown';
+        const service = result.serviceName || result.model || 'Unknown Service';
 
-        if (result.character) {
-            // Handle character results
-            item.dataset.type = 'character';
-            item.dataset.characterData = JSON.stringify(result.character);
+        item.innerHTML = `
+            <div class="character-info-row">
+                <span class="character-name">${name}</span>
+                <span class="character-copyright">${service}</span>
+            </div>
+        `;
 
-            // Parse name and copyright from character data
-            const character = result.character;
-            const name = character.name || result.name || 'Unknown';
-            const copyright = character.copyright || '';
-
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${name}</span>
-                    <span class="character-copyright">${copyright}</span>
-                </div>
-            `;
-
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-                selectCharacterItem(result.character);
-            });
-            item.addEventListener('touchend', (e) => {
-                const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
-                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                e.preventDefault();
-                selectCharacterItem(result.character);
-            }, { passive: false });
-        } else {
-            // Handle other result types (fallback)
-            item.dataset.type = 'unknown';
-            const name = result.name || result.tag || 'Unknown';
-            const service = result.serviceName || result.model || 'Unknown Service';
-
-            item.innerHTML = `
-                <div class="character-info-row">
-                    <span class="character-name">${name}</span>
-                    <span class="character-copyright">${service}</span>
-                </div>
-            `;
-
-            item.addEventListener('click', (e) => {
-                e.preventDefault();
-            });
-            item.addEventListener('touchend', (e) => {
-                const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
-                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                e.preventDefault();
-            }, { passive: false });
-        }
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+        });
+        item.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(item, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+            e.preventDefault();
+        }, { passive: false });
     }
 
     touchSlopUtils.registerTouchSlopTracking(item);
@@ -3280,8 +4002,8 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     // Store all results for potential expansion
     window.allAutocompleteResults = results;
 
-    // Filter out spell check results from main display
-    const displayResults = results.filter(result => result.type !== 'spellcheck');
+    // Filter out spell check and dictionary results from main display
+    const displayResults = results.filter(result => result.type !== 'spellcheck' && result.type !== 'wordLookup');
     const spellCheckResult = results.find(result => result.type === 'spellcheck');
 
     // Show all results if expanded, otherwise show only first 5 items
@@ -3289,7 +4011,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Clear only the results section, not the entire list
     // This preserves the search status display
-    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator, .character-detail-content');
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -3318,8 +4040,13 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         showSpellCheckSuggestions(currentSpellCheckData, target);
     }
 
-    // If no results and not searching, show a "no results" message
-    if (displayResults.length === 0 && !isSearching) {
+    const currentWordLookupData = getActiveWordLookupData();
+    if (currentWordLookupData) {
+        showWordLookupSection(currentWordLookupData, target);
+    }
+
+    // If no results and search is fully idle, show a "no results" message
+    if (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight()) {
         const noResultsItem = document.createElement('div');
         noResultsItem.className = 'character-autocomplete-item no-results';
         noResultsItem.innerHTML = `
@@ -3437,8 +4164,8 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // Store results for potential expansion
     window.allAutocompleteResults = results;
 
-    // Filter out spell check results from main display
-    const displayResults = results.filter(result => result.type !== 'spellcheck');
+    // Filter out spell check and dictionary results from main display
+    const displayResults = results.filter(result => result.type !== 'spellcheck' && result.type !== 'wordLookup');
     const spellCheckResult = results.find(result => result.type === 'spellcheck');
 
     // Show all results if expanded, otherwise show only first 5 items
@@ -3501,6 +4228,8 @@ function storeCurrentSelection() {
                         type: 'character',
                         name: characterData.name,
                         copyright: characterData.copyright,
+                        tagName: selectedItem.dataset.tagName || undefined,
+                        tagCategory: selectedItem.dataset.category || undefined,
                         originalIndex: originalIndex
                     };
                     lastSelectedItemType = 'character';
@@ -3612,7 +4341,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
 
     // Clear only the results section, not the entire list
     // This preserves the search status display
-    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .no-results, .more-indicator, .character-detail-content');
+    const existingResults = characterAutocompleteList.querySelectorAll('.character-autocomplete-item, .spell-check-section, .word-lookup-section, .no-results, .more-indicator, .character-detail-content');
     existingResults.forEach(item => item.remove());
 
     // Note: Search status will be added at the bottom after results
@@ -3639,8 +4368,13 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
         showSpellCheckSuggestions(currentSpellCheckData, target);
     }
 
-    // If no results and not searching, show a "no results" message
-    if (displayResults.length === 0 && !isSearching) {
+    const currentWordLookupData = getActiveWordLookupData();
+    if (currentWordLookupData) {
+        showWordLookupSection(currentWordLookupData, target);
+    }
+
+    // If no results and search is fully idle, show a "no results" message
+    if (displayResults.length === 0 && !isSearching && !hasSearchServicesInFlight()) {
         const noResultsItem = document.createElement('div');
         noResultsItem.className = 'character-autocomplete-item no-results';
         noResultsItem.innerHTML = `
@@ -3681,18 +4415,132 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     }
 }
 
+function applySpellCheckWordDisplay(section, activeIndex) {
+    if (!section) {
+        section = characterAutocompleteList?.querySelector('.spell-check-section');
+    }
+    if (!section) return;
+
+    if (typeof activeIndex !== 'number' || activeIndex < 0) {
+        activeIndex = 0;
+    }
+
+    section.querySelectorAll('.spell-check-word').forEach(row => {
+        const rowIndex = parseInt(row.dataset.wordIndex, 10);
+        row.classList.toggle('expanded', rowIndex === activeIndex);
+    });
+}
+
+function wireSpellCheckSuggestionButtons(container, target) {
+    if (!container) return;
+    container.querySelectorAll('.suggestion-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
+        });
+        touchSlopUtils.registerTouchSlopTracking(btn);
+        btn.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+            e.preventDefault();
+            applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
+        }, { passive: false });
+    });
+}
+
+function buildSpellCheckSuggestionButtons(word, suggestions) {
+    if (!suggestions || suggestions.length === 0) return '';
+    return suggestions.map(suggestion => `
+        <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}">
+            ${suggestion}
+        </button>
+    `).join('');
+}
+
+function wireSpellCheckAddWordButton(container, word) {
+    const addWordBtn = container?.querySelector('.add-word-btn');
+    if (!addWordBtn) return;
+    addWordBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        addWordToDictionary(word);
+    });
+    touchSlopUtils.registerTouchSlopTracking(addWordBtn);
+    addWordBtn.addEventListener('touchend', (e) => {
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(addWordBtn, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        e.preventDefault();
+        addWordToDictionary(word);
+    }, { passive: false });
+}
+
+function selectSpellCheckRow(wordIndex) {
+    const section = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (!section) return;
+    selectedSpellCheckWordIndex = wordIndex;
+    selectedSpellCheckSuggestionIndex = 0;
+    spellCheckNavigationMode = true;
+    autocompleteNavigationMode = true;
+    clearWordLookupNavigationState();
+    clearMainAutocompleteSelection();
+    applySpellCheckWordDisplay(section, wordIndex);
+    updateSpellCheckSelection();
+}
+
+function createSpellCheckWordRow(word, suggestions, target, wordIndex) {
+    const suggestionButtonsHtml = buildSpellCheckSuggestionButtons(word, suggestions);
+
+    const row = document.createElement('div');
+    row.className = 'spell-check-word';
+    row.dataset.wordIndex = String(wordIndex);
+
+    const compact = document.createElement('div');
+    compact.className = 'spell-check-row-compact';
+    compact.innerHTML = `
+        <span class="spell-check-term-inline">"${word}"</span>
+        ${suggestionButtonsHtml ? `<div class="suggestions-list spell-check-inline-synonyms">${suggestionButtonsHtml}</div>` : ''}
+    `;
+    compact.addEventListener('click', (e) => {
+        if (e.target.closest('.suggestion-btn')) return;
+        e.preventDefault();
+        selectSpellCheckRow(wordIndex);
+    });
+    touchSlopUtils.registerTouchSlopTracking(compact);
+    compact.addEventListener('touchend', (e) => {
+        if (e.target.closest('.suggestion-btn')) return;
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(compact, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        e.preventDefault();
+        selectSpellCheckRow(wordIndex);
+    }, { passive: false });
+    row.appendChild(compact);
+    wireSpellCheckSuggestionButtons(compact, target);
+
+    const expanded = document.createElement('div');
+    expanded.className = 'spell-check-row-expanded';
+    expanded.innerHTML = `
+        <div class="misspelled-word">"${word}"</div>
+        ${suggestionButtonsHtml ? `
+            <div class="spell-check-suggestions-label">Suggestions</div>
+            <div class="suggestions-list">${suggestionButtonsHtml}</div>
+        ` : ''}
+        <button class="add-word-btn" data-word="${word}">
+            <i class="fas fa-plus"></i> Add
+        </button>
+    `;
+    row.appendChild(expanded);
+    wireSpellCheckSuggestionButtons(expanded, target);
+    wireSpellCheckAddWordButton(expanded, word);
+
+    return row;
+}
+
 function showSpellCheckSuggestions(spellCheckData, target) {
     if (!spellCheckData.misspelled || spellCheckData.misspelled.length === 0) {
         return;
     }
 
-    // Remove any existing spell check section
-    const existingSpellCheckSection = document.querySelector('.spell-check-section');
-    if (existingSpellCheckSection) {
-        existingSpellCheckSection.remove();
-    }
+    removeSpellCheckSection();
 
-    // Create spell check section
     const spellCheckSection = document.createElement('div');
     spellCheckSection.className = 'spell-check-section';
     spellCheckSection.innerHTML = `
@@ -3703,63 +4551,17 @@ function showSpellCheckSuggestions(spellCheckData, target) {
         </div>
     `;
 
-    // Add suggestions for each misspelled word
-    spellCheckData.misspelled.forEach(word => {
+    const wordList = document.createElement('div');
+    wordList.className = 'spell-check-word-list';
+
+    spellCheckData.misspelled.forEach((word, wordIndex) => {
         const suggestions = spellCheckData.suggestions[word] || [];
-
-        const wordSection = document.createElement('div');
-        wordSection.className = 'spell-check-word';
-        wordSection.innerHTML = `
-            <div class="misspelled-word">"${word}"</div>
-            <div class="suggestions-list">
-                ${suggestions.map(suggestion => `
-                    <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}">
-                        ${suggestion}
-                    </button>
-                `).join('')}
-                <button class="add-word-btn" data-word="${word}">
-                    <i class="fas fa-plus"></i> Add
-                </button>
-            </div>
-        `;
-
-        // Add event listeners for suggestions
-        wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
-            });
-            touchSlopUtils.registerTouchSlopTracking(btn);
-            btn.addEventListener('touchend', (e) => {
-                const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
-                if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-                e.preventDefault();
-                applySpellCorrection(target, btn.dataset.original, btn.dataset.suggestion);
-            }, { passive: false });
-        });
-
-        // Add event listener for adding word to dictionary
-        const addWordBtn = wordSection.querySelector('.add-word-btn');
-        addWordBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            addWordToDictionary(word);
-        });
-        touchSlopUtils.registerTouchSlopTracking(addWordBtn);
-        addWordBtn.addEventListener('touchend', (e) => {
-            const maxDelta = touchSlopUtils.finalizeTouchSlop(addWordBtn, e);
-            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
-            e.preventDefault();
-            addWordToDictionary(word);
-        }, { passive: false });
-
-        spellCheckSection.appendChild(wordSection);
+        wordList.appendChild(createSpellCheckWordRow(word, suggestions, target, wordIndex));
     });
 
-    // Insert spell check section at the top of the autocomplete list
-    characterAutocompleteList.insertBefore(spellCheckSection, characterAutocompleteList.firstChild);
+    spellCheckSection.appendChild(wordList);
+    insertSideSectionAtTop(spellCheckSection);
 
-    // If spell-check navigation is active, clamp and re-apply selection on rebuilt DOM.
-    // This keeps the highlighted suggestion visible when result updates refresh the list.
     if (spellCheckNavigationMode) {
         const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
         if (!wordSections || wordSections.length === 0) {
@@ -3775,8 +4577,10 @@ function showSpellCheckSuggestions(spellCheckData, target) {
             selectedSpellCheckWordIndex = wordSections.length - 1;
         }
 
+        applySpellCheckWordDisplay(spellCheckSection, selectedSpellCheckWordIndex);
+
         const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
-        const suggestionBtns = selectedWordSection.querySelectorAll('.suggestion-btn');
+        const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
         if (!suggestionBtns || suggestionBtns.length === 0) {
             selectedSpellCheckSuggestionIndex = -1;
         } else if (selectedSpellCheckSuggestionIndex < 0) {
@@ -3786,7 +4590,233 @@ function showSpellCheckSuggestions(spellCheckData, target) {
         }
 
         updateSpellCheckSelection();
+    } else {
+        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
+            row.classList.remove('expanded');
+        });
     }
+}
+
+function getBestWordLookupResult() {
+    for (const [, results] of serviceResults) {
+        if (!results || !Array.isArray(results)) continue;
+        const wordLookupResult = results.find(result => result.type === 'wordLookup');
+        if (wordLookupResult && wordLookupResult.data && wordLookupResult.data.hasData) {
+            return wordLookupResult;
+        }
+    }
+    return null;
+}
+
+function getActiveWordLookupData() {
+    const wordLookupResult = getBestWordLookupResult();
+    if (wordLookupResult && wordLookupResult.data && wordLookupResult.data.hasData) {
+        persistentWordLookupData = wordLookupResult.data;
+        return wordLookupResult.data;
+    }
+    if (persistentWordLookupData && persistentWordLookupData.hasData) {
+        return persistentWordLookupData;
+    }
+    persistentWordLookupData = null;
+    return null;
+}
+
+function applyWordLookupWordDisplay(section, activeIndex) {
+    if (!section) {
+        section = getWordLookupSection();
+    }
+    if (!section) return;
+
+    if (typeof activeIndex !== 'number' || activeIndex < 0) {
+        activeIndex = 0;
+    }
+    activeWordLookupWordIndex = activeIndex;
+
+    section.querySelectorAll('.word-lookup-word-row').forEach(row => {
+        const rowIndex = parseInt(row.dataset.wordIndex, 10);
+        const isActive = rowIndex === activeIndex;
+        row.classList.toggle('expanded', isActive);
+    });
+}
+
+function wireWordLookupSuggestionButtons(container, target) {
+    if (!container) return;
+    container.querySelectorAll('.suggestion-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion);
+        });
+        touchSlopUtils.registerTouchSlopTracking(btn);
+        btn.addEventListener('touchend', (e) => {
+            const maxDelta = touchSlopUtils.finalizeTouchSlop(btn, e);
+            if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+            e.preventDefault();
+            applyWordLookupInsert(target, btn.dataset.original, btn.dataset.suggestion);
+        }, { passive: false });
+    });
+}
+
+function buildWordLookupSynonymButtons(entry) {
+    const synonyms = entry.synonyms || [];
+    if (synonyms.length === 0) return '';
+    return synonyms.map(synonym => `
+        <button class="suggestion-btn" data-original="${entry.word}" data-suggestion="${synonym}">
+            ${synonym}
+        </button>
+    `).join('');
+}
+
+function buildWordLookupDefinitionsHtml(definitions) {
+    if (!definitions || definitions.length === 0) return '';
+    return definitions.map(definition => {
+        const posLabel = definition.pos ? `<span class="word-lookup-pos">${definition.pos}.</span> ` : '';
+        return `<div class="word-lookup-definition">${posLabel}${definition.gloss}</div>`;
+    }).join('');
+}
+
+function selectWordLookupRow(wordIndex) {
+    const section = getWordLookupSection();
+    if (!section) return;
+    activeWordLookupWordIndex = wordIndex;
+    selectedWordLookupWordIndex = wordIndex;
+    selectedWordLookupSuggestionIndex = 0;
+    wordLookupNavigationMode = true;
+    autocompleteNavigationMode = true;
+    clearMainAutocompleteSelection();
+    applyWordLookupWordDisplay(section, wordIndex);
+    updateWordLookupSelection();
+}
+
+function createWordLookupWordRow(entry, target, wordIndex) {
+    const definitions = entry.definitions || [];
+    const synonymButtonsHtml = buildWordLookupSynonymButtons(entry);
+    const definitionsHtml = buildWordLookupDefinitionsHtml(definitions);
+
+    const lookupHint = entry.lookupWord && entry.lookupWord.toLowerCase() !== String(entry.word).toLowerCase()
+        ? `<div class="word-lookup-lookup-hint">via "${entry.lookupWord}"</div>`
+        : '';
+
+    const row = document.createElement('div');
+    row.className = 'word-lookup-word-row';
+    row.dataset.wordIndex = String(wordIndex);
+
+    const compact = document.createElement('div');
+    compact.className = 'word-lookup-row-compact';
+    compact.innerHTML = `
+        <span class="word-lookup-term-inline">"${entry.word}"</span>
+        ${synonymButtonsHtml ? `<div class="suggestions-list word-lookup-inline-synonyms">${synonymButtonsHtml}</div>` : ''}
+    `;
+    compact.addEventListener('click', (e) => {
+        if (e.target.closest('.suggestion-btn')) return;
+        e.preventDefault();
+        selectWordLookupRow(wordIndex);
+    });
+    touchSlopUtils.registerTouchSlopTracking(compact);
+    compact.addEventListener('touchend', (e) => {
+        if (e.target.closest('.suggestion-btn')) return;
+        const maxDelta = touchSlopUtils.finalizeTouchSlop(compact, e);
+        if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
+        e.preventDefault();
+        selectWordLookupRow(wordIndex);
+    }, { passive: false });
+    row.appendChild(compact);
+    wireWordLookupSuggestionButtons(compact, target);
+
+    const expanded = document.createElement('div');
+    expanded.className = 'word-lookup-row-expanded';
+    expanded.innerHTML = `
+        <div class="word-lookup-term">"${entry.word}"</div>
+        ${lookupHint}
+        ${definitionsHtml ? `<div class="word-lookup-definitions-panel">${definitionsHtml}</div>` : ''}
+        ${synonymButtonsHtml ? `
+            <div class="word-lookup-synonyms-label">Synonyms</div>
+            <div class="suggestions-list">${synonymButtonsHtml}</div>
+        ` : ''}
+    `;
+    row.appendChild(expanded);
+    wireWordLookupSuggestionButtons(expanded, target);
+
+    return row;
+}
+
+function showWordLookupSection(wordLookupData, target) {
+    if (!wordLookupData || !wordLookupData.hasData || !Array.isArray(wordLookupData.words)) {
+        removeWordLookupSection();
+        return;
+    }
+
+    const wordsWithData = wordLookupData.words.filter(entry =>
+        (entry.synonyms && entry.synonyms.length > 0) ||
+        (entry.definitions && entry.definitions.length > 0)
+    );
+    if (wordsWithData.length === 0) {
+        removeWordLookupSection();
+        return;
+    }
+
+    if (activeWordLookupWordIndex >= wordsWithData.length) {
+        activeWordLookupWordIndex = 0;
+    }
+
+    removeWordLookupSection();
+
+    const hasSynonyms = wordsWithData.some(entry => entry.synonyms && entry.synonyms.length > 0);
+    const sectionTitle = hasSynonyms ? 'Thesaurus' : 'Dictionary';
+
+    const wordLookupSection = document.createElement('div');
+    wordLookupSection.className = 'word-lookup-section';
+
+    const header = document.createElement('div');
+    header.className = 'word-lookup-header';
+    header.innerHTML = `<i class="fas fa-book"></i><span>${sectionTitle}</span>`;
+    wordLookupSection.appendChild(header);
+
+    const wordList = document.createElement('div');
+    wordList.className = 'word-lookup-word-list';
+
+    wordsWithData.forEach((entry, wordIndex) => {
+        wordList.appendChild(createWordLookupWordRow(entry, target, wordIndex));
+    });
+
+    wordLookupSection.appendChild(wordList);
+
+    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    if (spellCheckSection) {
+        spellCheckSection.insertAdjacentElement('afterend', wordLookupSection);
+    } else {
+        insertSideSectionAtTop(wordLookupSection);
+    }
+
+    let displayIndex = activeWordLookupWordIndex;
+    if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
+        displayIndex = selectedWordLookupWordIndex;
+    } else if (displayIndex >= wordsWithData.length) {
+        displayIndex = 0;
+    }
+    activeWordLookupWordIndex = displayIndex;
+    if (wordLookupNavigationMode) {
+        selectedWordLookupWordIndex = displayIndex;
+        applyWordLookupWordDisplay(wordLookupSection, displayIndex);
+
+        const activeRow = wordLookupSection.querySelector(`.word-lookup-word-row[data-word-index="${displayIndex}"]`);
+        const suggestionBtns = activeRow?.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
+        if (!suggestionBtns || suggestionBtns.length === 0) {
+            selectedWordLookupSuggestionIndex = -1;
+        } else if (selectedWordLookupSuggestionIndex < 0) {
+            selectedWordLookupSuggestionIndex = 0;
+        } else if (selectedWordLookupSuggestionIndex >= suggestionBtns.length) {
+            selectedWordLookupSuggestionIndex = suggestionBtns.length - 1;
+        }
+        updateWordLookupSelection();
+    } else {
+        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
+            row.classList.remove('expanded');
+        });
+    }
+}
+
+function applyWordLookupInsert(target, originalWord, synonym) {
+    return applySpellCorrection(target, originalWord, synonym);
 }
 
 function applySpellCorrection(target, originalWord, suggestion) {
@@ -4118,23 +5148,33 @@ function updateCharacterAutocompleteSelection() {
 
     const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
     items.forEach((item, index) => {
-        item.classList.toggle('selected', index === selectedCharacterAutocompleteIndex);
+        const isSelected = index === selectedCharacterAutocompleteIndex;
+        item.classList.toggle('selected', isSelected);
+        if (!isSelected) {
+            updateTagWikiPreviewScroll(item);
+        }
     });
 
     // Scroll the selected item into view and center it
     if (selectedCharacterAutocompleteIndex >= 0 && items[selectedCharacterAutocompleteIndex]) {
         const selectedItem = items[selectedCharacterAutocompleteIndex];
         scrollToAutocompleteOption(selectedItem);
+        requestAnimationFrame(() => updateTagWikiPreviewScroll(selectedItem));
     }
 }
 
-function selectCharacterItem(character) {
+function selectCharacterItem(character, detailOptions = {}) {
     try {
-        showCharacterDetail(character);
+        showCharacterDetail(character, detailOptions);
     } catch (error) {
         console.error('Error displaying character data:', error);
         showError('Failed to display character data');
     }
+}
+
+function selectTagOnlyFromDetail(tagName, category) {
+    if (!tagName || !currentCharacterAutocompleteTarget) return;
+    selectTag(tagName, category || '');
 }
 
 function selectDynamicPlaceholder(placeholder) {
@@ -4570,7 +5610,7 @@ function selectCharacterWithoutEnhancers(character) {
     }
 }
 
-function showCharacterDetail(character) {
+function showCharacterDetail(character, detailOptions = {}) {
     try {
         // Reset selected enhancer group index
         selectedEnhancerGroupIndex = -1;
@@ -4644,6 +5684,25 @@ function showCharacterDetail(character) {
             enhancersHTML += '<div class="no-enhancers">No enhancers available</div>';
         }
 
+        if (detailOptions.tagInsertName) {
+            const tagInsertName = detailOptions.tagInsertName;
+            const tagCategory = detailOptions.tagCategory || '';
+            enhancersHTML += `
+                <div class="enhancer-group tag-only-option" 
+                     data-action="tag-only"
+                     data-tag-name='${JSON.stringify(tagInsertName)}'
+                     data-tag-category='${JSON.stringify(tagCategory)}'
+                     onclick="selectTagOnlyFromDetail(${JSON.stringify(tagInsertName).replace(/"/g, '&quot;')}, ${JSON.stringify(tagCategory).replace(/"/g, '&quot;')})">
+                    <div class="enhancer-group-header">
+                        <span class="enhancer-group-name">Tag only</span>
+                    </div>
+                    <div class="enhancer-items">
+                        <span class="enhancer-item">${tagInsertName}</span>
+                    </div>
+                </div>
+            `;
+        }
+
         // Replace the autocomplete content with character detail
         autocompleteList.innerHTML = `
             <div class="character-detail-content">
@@ -4673,10 +5732,14 @@ function showCharacterDetail(character) {
             characterAutocompleteOverlay.style.width = characterAutocompleteOverlay.style.width || '400px';
         }
 
-        // Select the first enhancer group automatically and add touchend for touch devices
+        // Select the "None" enhancer group by default
         setTimeout(() => {
             const enhancerGroups = document.querySelectorAll('.character-detail-content .enhancer-group');
-            if (enhancerGroups.length > 0) {
+            const noneGroup = document.querySelector('.character-detail-content .enhancer-group[data-enhancer-group="null"]');
+            if (noneGroup) {
+                selectedEnhancerGroupIndex = Array.from(enhancerGroups).indexOf(noneGroup);
+                noneGroup.classList.add('selected');
+            } else if (enhancerGroups.length > 0) {
                 selectedEnhancerGroupIndex = 0;
                 enhancerGroups[0].classList.add('selected');
             }
@@ -4686,6 +5749,12 @@ function showCharacterDetail(character) {
                     const maxDelta = touchSlopUtils.finalizeTouchSlop(group, e);
                     if (!touchSlopUtils.isTouchSlopTap(maxDelta)) return;
                     e.preventDefault();
+                    if (group.getAttribute('data-action') === 'tag-only') {
+                        const tagName = JSON.parse(group.getAttribute('data-tag-name'));
+                        const tagCategory = JSON.parse(group.getAttribute('data-tag-category') || '""');
+                        selectTagOnlyFromDetail(tagName, tagCategory);
+                        return;
+                    }
                     const enhancerGroupData = group.getAttribute('data-enhancer-group');
                     const characterData = group.getAttribute('data-character');
                     if (enhancerGroupData && characterData) {
@@ -4756,71 +5825,44 @@ function selectEnhancerGroupFromDetail(enhancerGroup, character) {
     const currentValue = target.value;
     const cursorPosition = target.selectionStart;
 
-    // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
+    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
+    const endOfCurrentTerm = findAutocompleteTermEnd(currentValue, cursorPosition);
 
-    // Find the last comma before the cursor, or start from the beginning
-    const lastCommaIndex = textBeforeCursor.lastIndexOf(',');
-    const startOfCurrentTerm = lastCommaIndex >= 0 ? lastCommaIndex + 1 : 0;
-
-    // Get the text after the cursor
-    const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
     let newPrompt = '';
 
-    // Keep the text before the current term (trim any trailing commas and spaces)
     const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
     newPrompt = textBefore;
 
-    // Add character prompt if this is the first item or we're at the beginning
-    if (character.prompt) {
-        if (startOfCurrentTerm === 0) {
-            // This is the first item, use the character prompt
-            newPrompt = character.prompt;
-        } else {
-            // Add character prompt after existing text
-            if (newPrompt) {
-                // Check if we should add a comma before the text
-                if (shouldAddCommaBefore(currentValue, cursorPosition)) {
-                    newPrompt += ', ' + character.prompt;
-                } else {
-                    newPrompt += character.prompt;
-                }
-            } else {
-                newPrompt = character.prompt;
-            }
-        }
-    }
-
-    // Add enhancer items if selected
+    let inserted = character.prompt || '';
     if (enhancerGroup && Array.isArray(enhancerGroup) && enhancerGroup.length > 0) {
         const enhancerText = enhancerGroup.join(', ');
-        if (newPrompt) {
-            // Check if we should add a comma before the text
-            if (shouldAddCommaBefore(currentValue, cursorPosition)) {
-                newPrompt += ', ' + enhancerText;
-            } else {
-                newPrompt += enhancerText;
-            }
+        inserted = inserted ? inserted + ', ' + enhancerText : enhancerText;
+    }
+
+    if (inserted) {
+        if (newPrompt && shouldAddCommaBeforeInsertPrefix(newPrompt)) {
+            newPrompt += ', ' + inserted;
+        } else if (newPrompt) {
+            newPrompt += inserted;
         } else {
-            newPrompt = enhancerText;
+            newPrompt = inserted;
         }
     }
 
-    // Add the text after the cursor (trim any leading commas and spaces)
-    const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
-    if (textAfter) {
-        if (newPrompt) {
-            // Check if we should add a comma after the inserted text
-            if (shouldAddCommaAfter(currentValue, cursorPosition)) {
-                newPrompt += ', ' + textAfter;
-            } else {
-                newPrompt += textAfter;
-            }
+    const textAfterTerm = currentValue.substring(endOfCurrentTerm);
+    const textAfter = textAfterTerm.replace(/^[,\s]*/, '');
+    const isAtEndOfEmphasis = textAfter.startsWith('::');
+    const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']') || textAfter.startsWith('%');
+
+    if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
+        if (shouldAddCommaAfter(currentValue, endOfCurrentTerm)) {
+            newPrompt += ', ' + textAfter;
         } else {
-            newPrompt = textAfter;
+            newPrompt += textAfter;
         }
+    } else if (textAfter) {
+        newPrompt += textAfter;
     }
 
     // Update the target field
@@ -4964,6 +6006,17 @@ function isAtEndOfEmphasisGroup(text, cursorPosition) {
 }
 
 // Helper function to check if we should add a comma before inserting text
+function shouldAddCommaBeforeInsertPrefix(prefixText) {
+    if (!prefixText) return false;
+    const trimmed = prefixText.trim();
+    if (!trimmed) return false;
+    if (trimmed.endsWith('::')) return false;
+    if (trimmed.endsWith(':') && !trimmed.endsWith('::')) return false;
+    if (trimmed.endsWith('|')) return false;
+    return true;
+}
+
+// Helper function to check if we should add a comma before inserting text
 function shouldAddCommaBefore(text, cursorPosition) {
     const textBeforeCursor = text.substring(0, cursorPosition);
     const trimmed = textBeforeCursor.trim();
@@ -5044,6 +6097,13 @@ function handleCharacterDetailEnter() {
     if (selectedEnhancerGroupIndex >= 0 && selectedEnhancerGroupIndex < enhancerGroups.length) {
         const selectedGroup = enhancerGroups[selectedEnhancerGroupIndex];
 
+        if (selectedGroup.getAttribute('data-action') === 'tag-only') {
+            const tagName = JSON.parse(selectedGroup.getAttribute('data-tag-name'));
+            const tagCategory = JSON.parse(selectedGroup.getAttribute('data-tag-category') || '""');
+            selectTagOnlyFromDetail(tagName, tagCategory);
+            return;
+        }
+
         // Get the data from data attributes (much more reliable than parsing onclick)
         const enhancerGroupData = selectedGroup.getAttribute('data-enhancer-group');
         const characterData = selectedGroup.getAttribute('data-character');
@@ -5111,6 +6171,7 @@ function hideCharacterAutocomplete() {
         clearTimeout(updateStatusTimeout);
         updateStatusTimeout = null;
     }
+    clearSearchStatusHideTimer();
 
     // Clear position cache so it gets repositioned when shown again
     lastCharacterAutocompletePosition = null;
@@ -5122,20 +6183,21 @@ function hideCharacterAutocomplete() {
     characterSearchResults = [];
     autocompleteNavigationMode = false;
     spellCheckNavigationMode = false;
+    wordLookupNavigationMode = false;
     selectedSpellCheckWordIndex = -1;
     selectedSpellCheckSuggestionIndex = -1;
+    selectedWordLookupWordIndex = -1;
+    selectedWordLookupSuggestionIndex = -1;
+    activeWordLookupWordIndex = 0;
     autocompleteExpanded = false;
     lastSearchText = ''; // Clear last search text so retyping works
 
     // Clear all search results when overlay is closed
     serviceResults.clear();
-    serviceStatuses.clear();
-    searchResultsByService.clear();
     currentSearchTimestamp = null;
 
-    // Reset persistent state
-    searchResultsByService.clear();
     persistentSpellCheckData = null;
+    persistentWordLookupData = null;
     isAutocompleteVisible = false;
 
     // Clear search state
@@ -5349,7 +6411,9 @@ function updateSpellCheckSelection() {
     const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
     if (!spellCheckSection) return;
 
-    // Clear all previous selections
+    const wordCount = getSpellCheckWordCount(spellCheckSection);
+    spellCheckSection.classList.toggle('nav-active', spellCheckNavigationMode && wordCount > 1);
+
     spellCheckSection.querySelectorAll('.spell-check-word').forEach(wordSection => {
         wordSection.classList.remove('selected');
         wordSection.querySelectorAll('.suggestion-btn').forEach(btn => {
@@ -5357,23 +6421,63 @@ function updateSpellCheckSelection() {
         });
     });
 
-    // Apply current selection
     if (spellCheckNavigationMode && selectedSpellCheckWordIndex >= 0) {
+        applySpellCheckWordDisplay(spellCheckSection, selectedSpellCheckWordIndex);
+
         const wordSections = spellCheckSection.querySelectorAll('.spell-check-word');
         if (wordSections && selectedSpellCheckWordIndex < wordSections.length) {
             const selectedWordSection = wordSections[selectedSpellCheckWordIndex];
             selectedWordSection.classList.add('selected');
-
-            // Scroll to center the selected word section
             scrollToAutocompleteOption(selectedWordSection);
 
             if (selectedSpellCheckSuggestionIndex >= 0) {
-                const suggestionBtns = selectedWordSection.querySelectorAll('.suggestion-btn');
+                const suggestionBtns = selectedWordSection.querySelectorAll('.spell-check-row-expanded .suggestion-btn');
                 if (suggestionBtns && selectedSpellCheckSuggestionIndex < suggestionBtns.length) {
                     suggestionBtns[selectedSpellCheckSuggestionIndex].classList.add('selected');
                 }
             }
         }
+    } else {
+        spellCheckSection.querySelectorAll('.spell-check-word').forEach(row => {
+            row.classList.remove('expanded');
+        });
+    }
+}
+
+function updateWordLookupSelection() {
+    const wordLookupSection = getWordLookupSection();
+    if (!wordLookupSection) return;
+
+    const wordCount = getWordLookupWordCount(wordLookupSection);
+    wordLookupSection.classList.toggle('nav-active', wordLookupNavigationMode && wordCount > 1);
+
+    wordLookupSection.querySelectorAll('.suggestion-btn').forEach(btn => {
+        btn.classList.remove('selected');
+    });
+    wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
+        row.classList.remove('selected');
+    });
+
+    if (wordLookupNavigationMode && selectedWordLookupWordIndex >= 0) {
+        applyWordLookupWordDisplay(wordLookupSection, selectedWordLookupWordIndex);
+
+        const wordSections = wordLookupSection.querySelectorAll('.word-lookup-word-row');
+        if (wordSections && selectedWordLookupWordIndex < wordSections.length) {
+            const selectedWordSection = wordSections[selectedWordLookupWordIndex];
+            selectedWordSection.classList.add('selected');
+            scrollToAutocompleteOption(selectedWordSection);
+
+            if (selectedWordLookupSuggestionIndex >= 0) {
+                const suggestionBtns = selectedWordSection.querySelectorAll('.word-lookup-row-expanded .suggestion-btn');
+                if (suggestionBtns && selectedWordLookupSuggestionIndex < suggestionBtns.length) {
+                    suggestionBtns[selectedWordLookupSuggestionIndex].classList.add('selected');
+                }
+            }
+        }
+    } else {
+        wordLookupSection.querySelectorAll('.word-lookup-word-row').forEach(row => {
+            row.classList.remove('expanded');
+        });
     }
 }
 
@@ -5382,41 +6486,29 @@ function isAnimeModel(model) {
     return model && (
         model.includes('nai-diffusion-3') ||
         model.includes('nai-diffusion-4') ||
-        model.includes('nai-diffusion-4-5') ||
-        model === 'anime-local'
+        model.includes('nai-diffusion-4-5')
     );
 }
 
-// Helper function to determine if a model is a furry model
 function isFurryModel(model) {
-    return model && (
-        model.includes('furry') ||
-        model === 'furry-local'
-    );
+    return model && model.includes('furry');
 }
 
-// Helper function to determine match type for dual matches
-function getMatchType(mergedModels) {
-    if (!mergedModels || mergedModels.length === 0) {
+function getMatchType(mergedServices) {
+    if (!mergedServices || mergedServices.length === 0) {
         return { type: 'Search', version: '' };
     }
 
-    // Count different types of models
-    const apiModels = mergedModels.filter(m => m !== 'furry-local' && m !== 'anime-local');
-    const hasFurryLocal = mergedModels.includes('furry-local');
-    const hasAnimeLocal = mergedModels.includes('anime-local');
+    const apiModels = mergedServices.filter(m =>
+        m !== FURRY_LOCAL_SERVICE && m !== ANIME_LOCAL_SERVICE
+    );
+    const hasFurryLocal = mergedServices.includes(FURRY_LOCAL_SERVICE);
+    const hasAnimeLocal = mergedServices.includes(ANIME_LOCAL_SERVICE);
 
-    // Global: exists in multiple API models (cross-model compatibility)
     if (apiModels.length >= 2) {
         return { type: 'Global', version: '' };
     }
 
-    // Global: exists in both API models and matches a local search result
-    if (apiModels.length >= 2 && (hasFurryLocal || hasAnimeLocal)) {
-        return { type: 'Global', version: '' };
-    }
-
-    // Anime: matches current search model and a local search result
     if (apiModels.length === 1 && hasAnimeLocal) {
         const apiModel = apiModels[0];
         if (isAnimeModel(apiModel)) {
@@ -5428,7 +6520,6 @@ function getMatchType(mergedModels) {
         }
     }
 
-    // Furry: matches v3 furry model search result and a local result
     if (apiModels.length === 1 && hasFurryLocal) {
         const apiModel = apiModels[0];
         if (isFurryModel(apiModel)) {
@@ -5440,10 +6531,10 @@ function getMatchType(mergedModels) {
         }
     }
 
-    // Fallback for other combinations
     if (apiModels.length >= 2) {
         return { type: 'Global', version: '' };
-    } else if (apiModels.length === 1) {
+    }
+    if (apiModels.length === 1) {
         const apiModel = apiModels[0];
         return {
             type: modelKeys[apiModel]?.type || 'Search',
@@ -5451,55 +6542,30 @@ function getMatchType(mergedModels) {
         };
     }
 
-    // Local-only results
     if (hasFurryLocal && hasAnimeLocal) {
         return { type: 'Global', version: '' };
-    } else if (hasFurryLocal) {
+    }
+    if (hasFurryLocal) {
         return { type: 'NovelAI', dataType: 'furry', version: 'Local' };
-    } else if (hasAnimeLocal) {
+    }
+    if (hasAnimeLocal) {
         return { type: 'NovelAI', dataType: 'anime', version: 'Local' };
     }
 
     return { type: 'Search', version: '' };
 }
 
-// Helper function to get the preferred local result when merging
 function getPreferredLocalResult(result1, result2) {
-    // If one is furry-local and the other is anime-local, prioritize furry-local
-    if (result1.model === 'furry-local' && result2.model === 'anime-local') {
+    if (result1.model === FURRY_LOCAL_SERVICE && result2.model === ANIME_LOCAL_SERVICE) {
         return result1;
     }
-    if (result1.model === 'anime-local' && result2.model === 'furry-local') {
+    if (result1.model === ANIME_LOCAL_SERVICE && result2.model === FURRY_LOCAL_SERVICE) {
         return result2;
     }
-
-    // If both are the same type, return the one with higher confidence
     if (result1.model === result2.model) {
-        return (result1.confidence || 0) >= (result2.confidence || 0) ? result1 : result2;
+        return getTagScore(result1) >= getTagScore(result2) ? result1 : result2;
     }
-
-    // If neither is local, return the one with higher confidence
-    return (result1.confidence || 0) >= (result2.confidence || 0) ? result1 : result2;
-}
-
-// Handle dynamic updates of spell check and text replacement results
-function handleDynamicResultsUpdate(serviceName, results) {
-    if (!results || !Array.isArray(results)) return;
-
-    // Update spell check results
-    const spellCheckResult = results.find(result => result.type === 'spellcheck');
-    if (spellCheckResult) {
-        spellCheckResults.set(serviceName, spellCheckResult);
-    }
-
-    // Update text replacement results
-    const textReplacementResultsArray = results.filter(result => result.type === 'textReplacement');
-    if (textReplacementResultsArray.length > 0) {
-        textReplacementResults.set(serviceName, textReplacementResultsArray);
-    }
-
-    // Rebuild and display results to show the updated dynamic content
-    rebuildAndDisplayResults();
+    return getTagScore(result1) >= getTagScore(result2) ? result1 : result2;
 }
 
 // Get the best spell check result from all services
@@ -5507,18 +6573,19 @@ function getBestSpellCheckResult() {
     let bestSpellCheckResult = null;
     let bestScore = 0;
 
-    for (const [serviceName, spellCheckResult] of spellCheckResults) {
-        if (spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
-            // Calculate a score based on the number of misspelled words and suggestions
-            const misspelledCount = spellCheckResult.data.misspelled.length;
-            const totalSuggestions = Object.values(spellCheckResult.data.suggestions || {})
-                .reduce((sum, suggestions) => sum + suggestions.length, 0);
-            const score = misspelledCount * 10 + totalSuggestions;
+    for (const [, results] of serviceResults) {
+        if (!results || !Array.isArray(results)) continue;
+        const spellCheckResult = results.find(result => result.type === 'spellcheck');
+        if (!spellCheckResult || !spellCheckResult.data || !spellCheckResult.data.hasErrors) continue;
 
-            if (score > bestScore) {
-                bestScore = score;
-                bestSpellCheckResult = spellCheckResult;
-            }
+        const misspelledCount = spellCheckResult.data.misspelled.length;
+        const totalSuggestions = Object.values(spellCheckResult.data.suggestions || {})
+            .reduce((sum, suggestions) => sum + suggestions.length, 0);
+        const score = misspelledCount * 10 + totalSuggestions;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestSpellCheckResult = spellCheckResult;
         }
     }
 
@@ -5529,9 +6596,12 @@ function getBestSpellCheckResult() {
 function getAllTextReplacementResults() {
     const allTextReplacements = [];
 
-    for (const [serviceName, textReplacements] of textReplacementResults) {
-        if (textReplacements && Array.isArray(textReplacements)) {
-            allTextReplacements.push(...textReplacements);
+    for (const [, results] of serviceResults) {
+        if (!results || !Array.isArray(results)) continue;
+        for (const result of results) {
+            if (result.type === 'textReplacement') {
+                allTextReplacements.push(result);
+            }
         }
     }
 
@@ -5594,23 +6664,77 @@ function getDynamicGenerationPlaceholderResults(query) {
 
 // Clear dynamic results (spell check and text replacements)
 function clearDynamicResults() {
-    spellCheckResults.clear();
-    textReplacementResults.clear();
     persistentSpellCheckData = null;
+    persistentWordLookupData = null;
 }
 
 // Calculate comprehensive ranking for search results
 function calculateComprehensiveRanking(result, query, bestTextReplacement = null) {
     const resultType = result.type || '';
-    const resultName = result.name || result.placeholder || '';
+    const resultName = isTagResult(result)
+        ? getTagDisplayLabel(result)
+        : (result.name || result.placeholder || '');
     const queryLower = query.toLowerCase();
     const nameLower = resultName.toLowerCase();
 
     let score = 0;
     let isExactMatch = false;
     let isPrefixMatch = false;
+    let textMatchTier = 0;
 
-    // Base score from similarity calculation
+    if (isTagResult(result)) {
+        const matchInfo = resolveTagTextMatchInfo(result, query);
+        textMatchTier = matchInfo.tier;
+        isExactMatch = matchInfo.isExactMatch;
+        isPrefixMatch = matchInfo.isPrefixMatch;
+
+        const textRelevance = result.predictionaryScore ||
+            getTagTextRelevanceScore(query, resultName);
+
+        const queryNormLen = normalizeTagSearchText(query).length;
+        const nameNormLen = normalizeTagSearchText(resultName).length;
+
+        if (matchInfo.tier === 4) {
+            score += 1200;
+        } else if (matchInfo.tier === 3) {
+            score += 700;
+            score -= Math.max(0, nameNormLen - queryNormLen - 1) * 4;
+        } else if (matchInfo.tier === 2) {
+            score += 550;
+            score -= Math.max(0, nameNormLen - queryNormLen - 1) * 3;
+        } else if (matchInfo.tier === 1) {
+            score += 120;
+            score -= Math.max(0, nameNormLen - queryNormLen) * 2;
+        }
+
+        if (matchInfo.matchCoverage) {
+            score += matchInfo.matchCoverage * 2.5;
+        }
+
+        score += textRelevance * 2;
+
+        const apiConfidence = getRawApiTagConfidence(result);
+        if (matchInfo.tier === 0 && apiConfidence > 0) {
+            score += apiConfidence * 3.5;
+        } else {
+            score += getTagScore(result) * 1.2;
+            if (apiConfidence > 0) {
+                score += apiConfidence * 0.5;
+            }
+        }
+
+        const frequency = getTagNCount(result) || result.frequency || result.n || 0;
+        score += Math.min(frequency * 0.05, 8);
+
+        return {
+            score: Math.round(score * 100) / 100,
+            isExactMatch,
+            isPrefixMatch,
+            textMatchTier
+        };
+    }
+
+    // Base score from similarity calculation (non-tag results)
     const similarityScore = result.predictionaryScore ||
         result.enhancedSimilarity ||
         result.matchScore ||
@@ -5639,43 +6763,33 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
     // Type-specific adjustments
     switch (resultType) {
         case 'character':
-            // Characters get bonus for being more specific
+        case 'characterTag':
             score += 50;
-            // Add existing similarity score if available
             if (result.similarity) {
                 score += result.similarity * 0.5;
             }
             break;
 
-        case 'tag':
-            // Tags get confidence bonus
-            const confidence = result.enhancedConfidence || result.confidence || 0;
-            score += confidence * 0.8;
-            break;
-
         case 'textReplacement':
-            // Text replacements get bonus if they're the best match
             if (bestTextReplacement &&
                 resultName === bestTextReplacement.name &&
                 result.placeholder === bestTextReplacement.placeholder) {
-                score += 300; // Significant bonus for best text replacement match
+                score += 300;
             }
-
-            // Bonus for placeholder matches
             if (result.placeholder && result.placeholder.toLowerCase() === queryLower) {
                 score += 400;
             }
             break;
     }
 
-    // Frequency/popularity bonus (small, as tiebreaker)
-    const frequency = result.count || result.frequency || 0;
-    score += Math.min(frequency * 0.1, 10); // Cap at 10 points
+    const frequency = getTagNCount(result) || result.frequency || result.n || 0;
+    score += Math.min(frequency * 0.1, 10);
 
     return {
-        score: Math.round(score * 100) / 100, // Round to 2 decimal places
+        score: Math.round(score * 100) / 100,
         isExactMatch,
-        isPrefixMatch
+        isPrefixMatch,
+        textMatchTier
     };
 }
 
@@ -5683,36 +6797,25 @@ function calculateComprehensiveRanking(result, query, bestTextReplacement = null
 function calculateStringSimilarity(query, text) {
     if (!query || !text) return 0;
 
-    const queryLower = query.toLowerCase();
-    const textLower = text.toLowerCase();
+    const queryNorm = normalizeTagSearchText(query);
+    const textNorm = normalizeTagSearchText(text);
+    if (!queryNorm || !textNorm) return 0;
 
-    // Exact match gets highest score
-    if (textLower === queryLower) return 100;
+    if (textNorm === queryNorm) return 100;
+    if (textNorm.startsWith(queryNorm)) return 85;
+    if (textNorm.includes(queryNorm)) return 60;
 
-    // Starts with query gets high score
-    if (textLower.startsWith(queryLower)) return 85;
-
-    // Contains query gets medium score
-    if (textLower.includes(queryLower)) return 60;
-
-    // Calculate word-by-word matching
-    const queryWords = queryLower.split(/\s+/).filter(word => word.length > 0);
-    const textWords = textLower.split(/\s+/).filter(word => word.length > 0);
+    const queryWords = tokenizeTagSearchText(query);
+    const textWords = tokenizeTagSearchText(text);
+    if (queryWords.length === 0) return 0;
 
     let matchScore = 0;
-    let totalWords = queryWords.length;
+    const totalWords = queryWords.length;
 
     for (const queryWord of queryWords) {
         let bestWordScore = 0;
         for (const textWord of textWords) {
-            if (textWord === queryWord) {
-                bestWordScore = 100;
-                break;
-            } else if (textWord.startsWith(queryWord)) {
-                bestWordScore = Math.max(bestWordScore, 70);
-            } else if (textWord.includes(queryWord)) {
-                bestWordScore = Math.max(bestWordScore, 40);
-            }
+            bestWordScore = Math.max(bestWordScore, getTokenMatchScore(queryWord, textWord));
         }
         matchScore += bestWordScore;
     }
@@ -5747,7 +6850,7 @@ function enhanceCharacterResultsWithStringSimilarity(results, query) {
     if (!results || !Array.isArray(results) || !query) return results;
 
     return results.map(result => {
-        if (result.type === 'character') {
+        if (result.type === 'character' || result.type === 'characterTag') {
             const stringScore = calculateStringSimilarity(query, result.name);
             return {
                 ...result,
@@ -5772,11 +6875,11 @@ function logRankingDebug(results, query) {
     const topResults = results.slice(0, 5);
     topResults.forEach((result, index) => {
         let score = 'N/A';
-        if (result.type === 'tag') {
-            const enhancedConfidence = result.enhancedConfidence || result.confidence || 0;
+        if (isTagResult(result)) {
+            const enhancedConfidence = getTagScore(result);
             const predictionaryScore = result.predictionaryScore || 'N/A';
-            score = `enhanced: ${enhancedConfidence.toFixed(1)}, confidence: ${result.confidence || 0}, predictionary: ${predictionaryScore}`;
-        } else if (result.type === 'character') {
+            score = `enhanced: ${enhancedConfidence.toFixed(1)}, score: ${result.score || result.confidence || 0}, predictionary: ${predictionaryScore}`;
+        } else if (result.type === 'character' || result.type === 'characterTag') {
             const stringScore = result.stringSimilarity || calculateStringSimilarity(query, result.name);
             const enhancedScore = result.enhancedSimilarity || (stringScore * 0.5) + ((result.similarity || 0) * 0.5);
             const predictionaryScore = result.predictionaryScore || 'N/A';
@@ -5798,8 +6901,8 @@ function deduplicateResults(results) {
     const finalResults = [];
 
     for (const result of results) {
-        if (result.type === 'tag') {
-            const tagName = result.name;
+        if (isTagResult(result)) {
+            const tagName = getTagDedupeKey(result);
 
             if (tagMap.has(tagName)) {
                 // We have a duplicate tag - merge them intelligently
@@ -5810,7 +6913,7 @@ function deduplicateResults(results) {
                 // First occurrence of this tag
                 tagMap.set(tagName, result);
             }
-        } else if (result.type === 'character') {
+        } else if (isCharacterResult(result)) {
             const characterName = result.name;
 
             if (characterMap.has(characterName)) {
@@ -5848,6 +6951,16 @@ function deduplicateResults(results) {
         }
     }
 
+    // Merge characters that share a name with a tag result
+    for (const [characterName, characterResult] of characterMap) {
+        const matchKey = getCharacterDedupeKey(characterResult);
+        if (tagMap.has(matchKey)) {
+            const tagResult = tagMap.get(matchKey);
+            tagMap.delete(matchKey);
+            characterMap.set(characterName, mergeCharacterTagResults(characterResult, tagResult));
+        }
+    }
+
     // Add all deduplicated results to final results
     for (const result of tagMap.values()) {
         finalResults.push(result);
@@ -5859,77 +6972,75 @@ function deduplicateResults(results) {
         finalResults.push(result);
     }
 
-    // Log dual matches and add dual-match service status
-    let dualMatchCount = 0;
-    for (const result of tagMap.values()) {
-        if (result.isDualMatch) {
-            dualMatchCount++;
-        }
-    }
-
-    // Add dual-match service status if we have dual matches
-    if (dualMatchCount > 0 && searchServices.has('dual-match') === false) {
-        searchServices.set('dual-match', 'completed');
-    } else {
-        searchServices.set('dual-match', 'completed-none');
-    }
-
     return finalResults;
 }
 
 // Merge two tag results intelligently
 function mergeTagResults(result1, result2) {
-    // Check if one is API and one is local
-    const isResult1API = result1.model !== 'furry-local' && result1.model !== 'anime-local';
-    const isResult2API = result2.model !== 'furry-local' && result2.model !== 'anime-local';
-
-    if (isResult1API !== isResult2API) {
-        // Create dual match - prioritize API result
-        const apiResult = isResult1API ? result1 : result2;
-        const localResult = isResult1API ? result2 : result1;
-
-        // Track which models were merged
-        const mergedModels = new Set();
-        mergedModels.add(apiResult.model);
-        mergedModels.add(localResult.model);
-
-        // Create combined result with API priority
-        const dualMatch = {
-            ...apiResult, // Use API result as base
-            model: 'dual-match',
-            serviceName: 'dual-match',
-            // Combine counts - use API count as primary, local counts as additional info
-            count: localResult.count || apiResult.count,
-            e_count: localResult.e_count || apiResult.e_count,
-            // Use higher confidence
-            confidence: Math.max(apiResult.confidence || 0, localResult.confidence || 0),
-            // Combine enhanced confidence if available
-            enhancedConfidence: Math.max(
-                apiResult.enhancedConfidence || apiResult.confidence || 0,
-                localResult.enhancedConfidence || localResult.confidence || 0
-            ),
-            // Combine categories if different
-            category: apiResult.category || localResult.category,
-            // Track merged models for badge display
-            mergedModels: Array.from(mergedModels),
-            // Mark as dual match
-            isDualMatch: true,
-            apiResult: apiResult,
-            localResult: localResult
-        };
-
-        return dualMatch;
-    } else {
-        // Both are same type - keep the one with higher confidence
-        const result1Confidence = result1.enhancedConfidence || result1.confidence || 0;
-        const result2Confidence = result2.enhancedConfidence || result2.confidence || 0;
-
-        if (result2Confidence > result1Confidence) {
-            return result2;
-        } else {
-            return result1;
-        }
+    if (isDualMatchTagResult(result1) && isLocalTagResult(result2)) {
+        const mergedServices = [...new Set([
+            ...(result1.mergedServices || []),
+            getTagServiceKey(result2)
+        ])];
+        return mergeTagEnhancementFields(result1, result2, {
+            ...result1,
+            mergedServices,
+            e_count: Math.max(result1.e_count || 0, result2.e_count || 0),
+            d_count: Math.max(result1.d_count || 0, result2.d_count || 0),
+            n_count: result1.n_count ?? result2.n_count ?? getTagNCount(result1),
+            localResult: getPreferredLocalResult(result1.localResult || result1, result2)
+        });
     }
+    if (isDualMatchTagResult(result2) && isLocalTagResult(result1)) {
+        return mergeTagResults(result2, result1);
+    }
+
+    const isResult1Api = isApiTagResult(result1);
+    const isResult2Api = isApiTagResult(result2);
+    const isResult1Local = isLocalTagResult(result1);
+    const isResult2Local = isLocalTagResult(result2);
+
+    if ((isResult1Api && isResult2Local) || (isResult1Local && isResult2Api)) {
+        const apiResult = isResult1Api ? result1 : result2;
+        const localResult = isResult1Local ? result1 : result2;
+        const mergedServices = [
+            getTagServiceKey(apiResult),
+            getTagServiceKey(localResult)
+        ];
+
+        return mergeTagEnhancementFields(apiResult, localResult, {
+            type: 'tag',
+            source: 'dual-match',
+            serviceName: 'dual-match',
+            id: localResult.id,
+            title: localResult.title || getTagDisplayLabel(localResult) || getTagDisplayLabel(apiResult),
+            name: getTagInsertName(localResult) || getTagInsertName(apiResult),
+            category: localResult.category ?? apiResult.category,
+            categoryName: getTagCategoryLabel(localResult) || getTagCategoryLabel(apiResult),
+            d_count: localResult.d_count ?? apiResult.d_count,
+            e_count: localResult.e_count ?? apiResult.e_count,
+            n_count: localResult.n_count ?? getTagNCount(apiResult),
+            n: localResult.n ?? apiResult.n,
+            datasets: localResult.datasets || [],
+            hasWiki: localResult.hasWiki,
+            wikiSources: localResult.wikiSources || [],
+            primaryBody: localResult.primaryBody || apiResult.primaryBody || '',
+            score: Math.max(getTagScore(apiResult), getTagScore(localResult)),
+            enhancedConfidence: Math.max(getTagScore(apiResult), getTagScore(localResult)),
+            mergedServices,
+            isDualMatch: true,
+            apiResult,
+            localResult
+        });
+    }
+
+    if (isResult1Local && isResult2Local) {
+        const preferred = getPreferredLocalResult(result1, result2);
+        return mergeTagEnhancementFields(result1, result2, preferred);
+    }
+
+    const preferred = getTagScore(result2) > getTagScore(result1) ? result2 : result1;
+    return mergeTagEnhancementFields(result1, result2, preferred);
 }
 
 // Handle Tab cycling between main prompt and character prompts
@@ -6560,13 +7671,5 @@ async function showTextReplacementDialog(selectedText) {
                 resolve(false);
             }
         });
-    });
-}
-
-if (window.wsClient) {
-    window.wsClient.registerInitStep(20, 'Setting up autocomplete', async () => {
-        window.wsClient.on('search_status_update', handleSearchStatusUpdate);
-        window.wsClient.on('search_results_update', handleSearchResultsUpdate);
-        window.wsClient.on('search_results_complete', handleSearchResultsComplete);
     });
 }

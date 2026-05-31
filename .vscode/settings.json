@@ -27,5 +27,6 @@
     "html.hover.documentation": false,
     "editor.hover.delay": 2500,
     "workbench.hover.delay": 2500,
-    "workbench.sash.hoverDelay": 2000
+    "workbench.sash.hoverDelay": 2000,
+    "window.commandCenter": true
 }

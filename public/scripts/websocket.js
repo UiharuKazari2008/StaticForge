@@ -153,7 +153,7 @@ class BannerManager {
             'generate_image': 'Generate Image',
             'upscale_image': 'Upscale Image',
             'reroll_image': 'Recast Spell',
-            'expand_image': 'Expand Image',
+            'expand_image': 'Expand Canvas',
             'preview_expand_image_prompt': 'Preview Expand Prompt',
             'reroll_expanded_image': 'Recast Spell',
 
@@ -3683,9 +3683,19 @@ class WebSocketClient {
     }
 
     /**
+     * Spellbook preset generation owns Rentan/streaming UI — do not touch the manual editor.
+     * spellbookModalManager: public/scripts/comp/spellbookModal.js
+     */
+    isSpellbookGenerationActive() {
+        return Boolean(window.spellbookModalManager?.isGenerating);
+    }
+
+    /**
      * Carousel updates only from dynamic_generation_progress_update payloads (context / compiled_prompt).
      */
     applyRentanCarouselFromDynamicProgress(phase, data) {
+        if (this.isSpellbookGenerationActive()) return;
+
         if (phase === 'context' && data?.carousel && typeof updateDynamicCarousel === 'function') {
             updateDynamicCarousel(data.carousel, 'current');
         }
@@ -3698,9 +3708,13 @@ class WebSocketClient {
      * Manual + spellbook Rentan overlays (same phase strings as sendGenerationProgress / dynamic_generation_progress_update).
      */
     applyRentanGenerationProgressUi(phase, data = {}) {
-        if (!spellbookModalManager?.modal?.classList?.contains('hidden')) {
-            updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+        if (this.isSpellbookGenerationActive()) {
+            if (window.spellbookModalManager?.modal && !window.spellbookModalManager.modal.classList.contains('hidden')) {
+                updateSpellbookDynamicGenerationProgressOverlay(phase, data);
+            }
+            return;
         }
+
         const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
         if (isDynamicGenerationActive) {
             updateDynamicGenerationProgressOverlay(phase, data);
@@ -3900,13 +3914,10 @@ class WebSocketClient {
 
                 // Also handle modal streaming updates for intermediate images
                 if (data.phase === 'generating' && data.currentStep !== undefined) {
-                    // Add step to the appropriate queue
-                    if (!manualModal.classList.contains('hidden')) {
-                        this.queueStreamingStep('manual', data);
-                    }
-
-                    if (window.spellbookModalManager && !window.spellbookModalManager.modal.classList.contains('hidden') && window.spellbookModalManager.isGenerating) {
+                    if (this.isSpellbookGenerationActive()) {
                         this.queueStreamingStep('spellbook', data);
+                    } else if (manualModal && !manualModal.classList.contains('hidden')) {
+                        this.queueStreamingStep('manual', data);
                     }
                 }
             }
@@ -4298,7 +4309,12 @@ class WebSocketClient {
     async searchCharacters(query, model, options = {}) {
         try {
             // Send ack-less search request (no response expected)
-            this.sendAcklessMessage('search_characters', { query, model, requestId: options.requestId });
+            this.sendAcklessMessage('search_characters', {
+                query,
+                model,
+                requestId: options.requestId,
+                autofillSessionId: options.autofillSessionId || null
+            });
             return { success: true };
         } catch (error) {
             showGlassToast('error', 'Character search error', error.message, false);

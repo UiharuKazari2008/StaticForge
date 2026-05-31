@@ -562,7 +562,189 @@ class TagLookup {
     return tagName
         .trim()
         .toLowerCase()
-        .replace(/[_\s]+/g, ' ');
+        .replace(/[\s\-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+    /**
+     * Text match tier for ranking (comparison-only; never mutates tag title).
+     * 4 = separator-exact, 3 = separator-prefix, 2 = strong token coverage, 1 = partial token coverage, 0 = weak
+     */
+    commonPrefixLength(a = '', b = '') {
+    const minLen = Math.min(a.length, b.length);
+    let i = 0;
+    while (i < minLen && a[i] === b[i]) {
+        i++;
+    }
+    return i;
+}
+
+    getWordStemPrefix(word = '') {
+    if (!word || word.length < 4) return null;
+    const stemLen = Math.min(5, word.length - 1);
+    if (stemLen < 4) return null;
+    const stem = word.substring(0, stemLen);
+    return stem === word ? null : stem;
+}
+
+    getTokenMatchScore(queryToken = '', titleToken = '') {
+    const qt = queryToken.toLowerCase();
+    const tt = titleToken.toLowerCase();
+    if (!qt || !tt) return 0;
+    if (qt === tt) return 100;
+    if (qt.length >= 3 && tt.length >= 3 && (qt.startsWith(tt) || tt.startsWith(qt))) {
+        return 90;
+    }
+    const stemLen = this.commonPrefixLength(qt, tt);
+    const minLen = Math.min(qt.length, tt.length);
+    const stemThreshold = Math.max(3, Math.min(4, Math.floor(minLen * 0.72)));
+    if (stemLen >= 5) {
+        return 88;
+    }
+    if (stemLen >= stemThreshold) {
+        return 75;
+    }
+    if (qt.includes(tt) || tt.includes(qt)) {
+        if (Math.min(qt.length, tt.length) >= 3) {
+            return 55;
+        }
+    }
+    const distance = this.levenshteinDistance(qt, tt);
+    const maxLen = Math.max(qt.length, tt.length);
+    const similarity = 1 - (distance / maxLen);
+    if (similarity >= 0.72) {
+        return Math.round(similarity * 65);
+    }
+    return 0;
+}
+
+    getQueryTokenCoverageScore(query, title) {
+    const queryTokens = this.tokenizeSearchWords(query);
+    const titleTokens = this.tokenizeSearchWords(title);
+    if (queryTokens.length === 0) return 0;
+
+    let sum = 0;
+    let weightedSum = 0;
+    let weightTotal = 0;
+    for (let i = 0; i < queryTokens.length; i++) {
+        const queryToken = queryTokens[i];
+        let best = 0;
+        for (const titleToken of titleTokens) {
+            best = Math.max(best, this.getTokenMatchScore(queryToken, titleToken));
+        }
+        sum += best;
+        const weight = queryTokens.length >= 2
+            ? (i === 0 ? 1.4 : (i === queryTokens.length - 1 ? 1.0 : 1.1))
+            : 1;
+        weightedSum += best * weight;
+        weightTotal += weight;
+    }
+
+    let coverage = Math.max(sum / queryTokens.length, weightedSum / weightTotal);
+    if (titleTokens.length === queryTokens.length && queryTokens.length >= 2) {
+        coverage += 8;
+    } else if (titleTokens.length < queryTokens.length) {
+        coverage -= 12;
+    }
+    return Math.min(100, coverage);
+}
+
+    getQueryMatchTier(query, title) {
+    const queryNorm = this.normalizeTagName(query);
+    const titleNorm = this.normalizeTagName(title);
+    if (!queryNorm || !titleNorm) return 0;
+
+    if (titleNorm === queryNorm) return 4;
+    if (titleNorm.startsWith(queryNorm)) return 3;
+
+    const queryTokens = this.tokenizeSearchWords(query);
+    const titleTokens = this.tokenizeSearchWords(title);
+    if (queryTokens.length === 0) return 0;
+
+    const coverage = this.getQueryTokenCoverageScore(query, title);
+    const allTokensPartial = queryTokens.every(qt =>
+        titleTokens.some(tt => this.getTokenMatchScore(qt, tt) >= 40)
+    );
+
+    if (coverage >= 90 || (coverage >= 55 && allTokensPartial)) {
+        return 2;
+    }
+    if (coverage >= 35) {
+        if (queryTokens.length >= 2 && titleTokens.length === 1) {
+            const singleToken = titleTokens[0];
+            const matchedQueryWord = queryTokens.some(qt => qt === singleToken);
+            return matchedQueryWord && coverage >= 45 ? 1 : 0;
+        }
+        return 1;
+    }
+    return 0;
+}
+
+    getQueryMatchInfo(query, title) {
+    const tier = this.getQueryMatchTier(query, title);
+    return {
+        tier,
+        matchCoverage: this.getQueryTokenCoverageScore(query, title),
+        isExactMatch: tier === 4,
+        isPrefixMatch: tier >= 3
+    };
+}
+
+    /**
+     * Title lookup variants for exact/LIKE matching (spaces vs hyphens vs underscores).
+     */
+    getTagNameLookupVariants(normalized) {
+    if (!normalized) return [];
+    const variants = new Set([normalized]);
+    variants.add(normalized.replace(/ /g, '-'));
+    variants.add(normalized.replace(/ /g, '_'));
+    return [...variants].filter(Boolean);
+}
+
+    /**
+     * Split a search query into word tokens; hyphens/underscores/special chars are word boundaries.
+     */
+    tokenizeSearchWords(query = '') {
+    const lower = (query || '').trim().toLowerCase();
+    const words = [];
+    let current = '';
+
+    for (let i = 0; i < lower.length; i++) {
+        const char = lower[i];
+        if (/[\s\-_]/.test(char) || /[^a-z0-9]/.test(char)) {
+            if (current.trim()) {
+                words.push(current.trim());
+            }
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    if (current.trim()) {
+        words.push(current.trim());
+    }
+    return words.filter(word => word.length > 0);
+}
+
+    /**
+     * Multi-word sequence forms stored in tag_word_sequences (space- or §-separated).
+     */
+    buildSearchWordSequences(wordTokens) {
+    const sequences = new Set();
+    if (!wordTokens || wordTokens.length < 2) {
+        return sequences;
+    }
+
+    for (let i = 0; i < wordTokens.length; i++) {
+        for (let j = i + 2; j <= wordTokens.length; j++) {
+            const slice = wordTokens.slice(i, j);
+            sequences.add(slice.join(' '));
+            sequences.add(slice.join(' § '));
+        }
+    }
+
+    return sequences;
 }
 
     escapeLikePattern(value = '') {
@@ -654,6 +836,179 @@ class TagLookup {
     if (bodies.danbooru && bodies.danbooru.body) return bodies.danbooru.body;
     if (bodies.e621 && bodies.e621.body) return bodies.e621.body;
     return '';
+}
+
+    stripWikiFormattingSync(text, options = {}) {
+    if (!text) return '';
+    const singleLine = !!options.singleLine;
+    let cleaned = String(text);
+
+    // Section index markers (database / legacy)
+    cleaned = cleaned.replace(/\[SECTION:([^\]]+)\]/gi, '$1');
+    cleaned = cleaned.replace(/\[ENDSECTION:[^\]]+\]/gi, '');
+
+    // Non-displayable blocks — drop entirely
+    cleaned = cleaned.replace(/\[table\][\s\S]*?\[\/table\]/gi, ' ');
+    cleaned = cleaned.replace(/\[code\][\s\S]*?\[\/code\]/gi, ' ');
+    cleaned = cleaned.replace(/\[nodtext\][\s\S]*?\[\/nodtext\]/gi, ' ');
+    cleaned = cleaned.replace(/\[hr\]/gi, ' ');
+    cleaned = cleaned.replace(/\[hr\.[^\]]*\]/gi, ' ');
+    cleaned = cleaned.replace(/<(code|nowiki|pre)>[\s\S]*?<\/\1>/gi, ' ');
+
+    // Unwrap structural blocks — keep readable inner text
+    const pairedBlocks = ['expand', 'section', 'quote', 'spoiler', 'colordiff', 'align'];
+    for (const tag of pairedBlocks) {
+        const blockRe = new RegExp(`\\[${tag}(?:=[^\\]]*)?\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'gi');
+        cleaned = cleaned.replace(blockRe, ' $1 ');
+    }
+
+    // Inline formatting — unwrap, keep text
+    const inlineTags = ['b', 'i', 'u', 's', 'sup', 'sub', 'tt', 'color', 'size'];
+    for (let pass = 0; pass < 4; pass++) {
+        let changed = false;
+        for (const tag of inlineTags) {
+            const inlineRe = new RegExp(`\\[${tag}(?:=[^\\]]*)?\\]([\\s\\S]*?)\\[\\/${tag}\\]`, 'gi');
+            const next = cleaned.replace(inlineRe, '$1');
+            if (next !== cleaned) changed = true;
+            cleaned = next;
+        }
+        if (!changed) break;
+    }
+
+    // Resource / navigation links (not useful in one-line preview)
+    cleaned = cleaned.replace(/\bfile:\d+(?:\|[^\s\]]+)?/gi, ' ');
+    cleaned = cleaned.replace(/\bpost:\d+(?:\|[^\s\]]+)?/gi, ' ');
+    cleaned = cleaned.replace(/\bimage:\d+(?:\|[^\s\]]+)?/gi, ' ');
+    cleaned = cleaned.replace(/\bwiki:[^\s\]]+(?:\|[^\s\]]+)?/gi, ' ');
+    cleaned = cleaned.replace(/!?(?:post|image|thumb)\s+#\d+/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:pool|topic|forum|comment|wiki)\s+#\d+(?:\/p\d+)?/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:asset|video|note|favgroup)\s+#\d+/gi, ' ');
+    cleaned = cleaned.replace(/\b(?:source|parent|child|rating|fav)\s*:\s*\S+/gi, ' ');
+
+    // Anchor links: [#anchor|text] or [#anchor]
+    cleaned = cleaned.replace(/\[#([^\]]+)\|([^\]]+)\]/g, '$2');
+    cleaned = cleaned.replace(/\[#([^\]]+)\]/g, '');
+
+    // Wiki links: [[tag]] or [[display|tag]]
+    let previousLength;
+    do {
+        previousLength = cleaned.length;
+        cleaned = cleaned.replace(/\[\[([^\]]+?)\]\]/g, (match, content) => {
+            if (content.includes('[[')) return match;
+            if (content.includes('|')) {
+                const parts = content.split('|');
+                return parts[0].trim() || parts[parts.length - 1].trim();
+            }
+            return content.trim();
+        });
+    } while (cleaned.length !== previousLength && cleaned.includes('[['));
+
+    // Tag search shortcuts
+    cleaned = cleaned.replace(/\{\{([^}]+)\}\}/g, '$1');
+
+    // External links: "text":url
+    cleaned = cleaned.replace(/"([^"]+)":\[?https?:\/\/[^\]\s]+\]?/gi, '$1');
+    cleaned = cleaned.replace(/\[([^\]]+)\]\(https?:\/\/[^)]+\)/gi, '$1');
+    cleaned = cleaned.replace(/\[([^\]]+)\]\(file:\/\/[^)]+\)/gi, ' ');
+
+    // Headers: h1#id. Title or h4. Title
+    cleaned = cleaned.replace(/h[1-6](?:#[^\s.]+)?\.\s*/gi, '');
+
+    // List markers and blockquote markers
+    cleaned = cleaned.replace(/^[ \t]*(?:\*{1,2}|-{1,2}|#{1,2}|\d+\.)\s+/gm, '');
+    cleaned = cleaned.replace(/^bq\.\s*/gm, '');
+
+    // Markdown headings / artifacts if mixed in
+    cleaned = cleaned.replace(/^[ \t]*#{1,6}\s+/gm, '');
+
+    // Inline / fenced code remnants
+    cleaned = cleaned.replace(/```[\s\S]*?```/g, ' ');
+    cleaned = cleaned.replace(/`([^`]+)`/g, '$1');
+
+    // HTML tags and entities
+    cleaned = cleaned.replace(/<[^>]+>/g, ' ');
+    cleaned = cleaned.replace(/&(?:nbsp|amp|lt|gt|quot);/gi, ' ');
+
+    // Underscores in tag names → spaces for readability
+    cleaned = cleaned.replace(/_/g, ' ');
+
+    if (singleLine) {
+        cleaned = cleaned.replace(/\r\n?/g, ' ');
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    } else {
+        cleaned = cleaned.replace(/\r\n?/g, '\n');
+        cleaned = cleaned.replace(/[ \t]+/g, ' ');
+        cleaned = cleaned.replace(/[ \t]*\n[ \t]*/g, '\n');
+        cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+        cleaned = cleaned.trim();
+    }
+
+    return cleaned;
+}
+
+    stripWikiFormattingForPreview(text, maxLength = 320) {
+    if (!text) return '';
+    let cleaned = this.stripWikiFormattingSync(text, { singleLine: true });
+    if (!cleaned) return '';
+    if (cleaned.length > maxLength) {
+        cleaned = cleaned.substring(0, maxLength).trim() + '…';
+    }
+    return cleaned;
+}
+
+    async attachPrimaryBodyPreviews(tags) {
+    if (!tags || tags.length === 0 || !this.db) return tags;
+
+    const wikiTags = tags.filter(tag => tag && tag.id && tag.hasWiki);
+    if (wikiTags.length === 0) return tags;
+
+    const tagIds = wikiTags.map(tag => tag.id);
+    const placeholders = tagIds.map(() => '?').join(',');
+    const query = `
+        SELECT tw.tag_id, w.source, w.body
+        FROM tag_wikis tw
+        INNER JOIN wikis w ON w.id = tw.wiki_id
+        WHERE tw.tag_id IN (${placeholders})
+        ORDER BY tw.tag_id, w.source
+    `;
+    const rows = await this.db.all(query, tagIds);
+    const bodiesByTagId = new Map();
+
+    for (const row of rows) {
+        if (!row || !row.body) continue;
+        if (!bodiesByTagId.has(row.tag_id)) {
+            bodiesByTagId.set(row.tag_id, []);
+        }
+        bodiesByTagId.get(row.tag_id).push(row);
+    }
+
+    for (const tag of wikiTags) {
+        const bodyRows = bodiesByTagId.get(tag.id);
+        if (!bodyRows || bodyRows.length === 0) continue;
+
+        const hasCustom = bodyRows.some(row => row.source === this.SOURCE_CUSTOM);
+        const filtered = hasCustom
+            ? bodyRows.filter(row => row.source === this.SOURCE_CUSTOM)
+            : bodyRows;
+        const bodies = {};
+        filtered.forEach(row => {
+            let key = 'custom';
+            if (row.source === this.SOURCE_DANBOORU) key = 'danbooru';
+            if (row.source === this.SOURCE_E621) key = 'e621';
+            bodies[key] = { body: row.body };
+        });
+
+        const primaryBody = this.selectPrimaryBody(bodies);
+        if (!primaryBody) continue;
+
+        const titleKey = (tag.title || tag.name || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const bodyKey = this.stripWikiFormattingForPreview(primaryBody, 2000).replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (!bodyKey || bodyKey === titleKey || bodyKey.length < 3) continue;
+
+        tag.primaryBody = this.stripWikiFormattingForPreview(primaryBody);
+    }
+
+    return tags;
 }
 
     async buildBodiesForTag(tagId) {
@@ -2068,71 +2423,59 @@ class TagLookup {
     const exactRow = await this.db.get(statements.getTagByNormalizedTitle, [normalized]);
     if (exactRow) {
         addMatch(exactRow, normalized, 600, 'exact', 4);
+    } else {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            const variantRow = await this.db.get(statements.getTagByNormalizedTitle, [variant]);
+            if (variantRow) {
+                addMatch(variantRow, normalized, 580, 'exact', 4);
+                break;
+            }
+        }
     }
 
     const aliasRow = await this.db.get(statements.getTagByOtherNameExact, [normalized]);
     if (aliasRow) {
         addMatch(aliasRow, normalized, 450, 'alias', 4);
-    }
-
-    const titlePatterns = this.buildLikePatterns(normalized);
-    for (const { pattern, score } of titlePatterns) {
-        const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
-        for (const row of rows) {
-            const calculated = this.getTitleMatchScore(row.title || '', query);
-            let finalScore = Math.max(score, calculated, 25);
-            const boundaryHit = this.hasWordBoundary(row.title || '', normalized);
-            if (boundaryHit) {
-                finalScore += 400;
+    } else {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            const variantAlias = await this.db.get(statements.getTagByOtherNameExact, [variant]);
+            if (variantAlias) {
+                addMatch(variantAlias, normalized, 430, 'alias', 4);
+                break;
             }
-            const sourceWeight = boundaryHit ? 3 : 2;
-            addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
         }
     }
 
-    const otherNamePatterns = this.buildLikePatterns(normalized);
-    for (const { pattern, score } of otherNamePatterns) {
-        const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
-        for (const row of rows) {
-            addMatch(row, normalized, score, 'other_name', 3);
+    for (const variant of this.getTagNameLookupVariants(normalized)) {
+        const titlePatterns = this.buildLikePatterns(variant);
+        for (const { pattern, score } of titlePatterns) {
+            const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
+            for (const row of rows) {
+                const calculated = this.getTitleMatchScore(row.title || '', query);
+                let finalScore = Math.max(score, calculated, 25);
+                const boundaryHit = this.hasWordBoundary(row.title || '', variant);
+                if (boundaryHit) {
+                    finalScore += 400;
+                }
+                const sourceWeight = boundaryHit ? 3 : 2;
+                addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
+            }
         }
     }
 
-    // Use tag_word_sequences index for fast sequence matching (replaces slow LIKE search on tag_words)
-    // Search each word individually (like original LIKE search) and also check multi-word sequences
-    
-    // First, extract individual words from the query (same tokenization as tags)
-    const SPECIAL_TOKEN = '§';
-    const queryTokens = [];
-    const lowerQuery = normalized.toLowerCase();
-    let currentToken = '';
-    
-    for (let i = 0; i < lowerQuery.length; i++) {
-        const char = lowerQuery[i];
-        const isSpecial = /[^a-z0-9\s]/.test(char);
-        
-        if (isSpecial) {
-            if (currentToken.trim()) {
-                queryTokens.push(currentToken.trim());
-                currentToken = '';
+    for (const variant of this.getTagNameLookupVariants(normalized)) {
+        const otherNamePatterns = this.buildLikePatterns(variant);
+        for (const { pattern, score } of otherNamePatterns) {
+            const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
+            for (const row of rows) {
+                addMatch(row, normalized, score, 'other_name', 3);
             }
-            queryTokens.push(SPECIAL_TOKEN);
-        } else if (char === ' ') {
-            if (currentToken.trim()) {
-                queryTokens.push(currentToken.trim());
-                currentToken = '';
-            }
-        } else {
-            currentToken += char;
         }
     }
-    if (currentToken.trim()) {
-        queryTokens.push(currentToken.trim());
-    }
-    
-    // Extract just the word tokens (no special tokens) for individual word searches
-    const wordTokens = queryTokens.filter(t => t !== SPECIAL_TOKEN);
-    
+
+    const wordTokens = this.tokenizeSearchWords(query);
     // Search each word individually with same ranking as original LIKE search
     // This matches the behavior of the original searchWordsLike with buildLikePatterns
     for (const word of wordTokens) {
@@ -2167,60 +2510,33 @@ class TagLookup {
         for (const row of innerRows) {
             addMatch(row, normalized, 75, 'word_inner', 2);
         }
+
+        const stemPrefix = this.getWordStemPrefix(word);
+        if (stemPrefix) {
+            const stemStartRows = await this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]);
+            for (const row of stemStartRows) {
+                addMatch(row, normalized, 70, 'word_stem_start', 2);
+            }
+            const stemInnerRows = await this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit]);
+            for (const row of stemInnerRows) {
+                addMatch(row, normalized, 60, 'word_stem_inner', 2);
+            }
+        }
     }
     
-    // Also search for multi-word sequences (if query has multiple words)
-    if (wordTokens.length > 1) {
-        // Generate sequences from query tokens (same logic as tag indexing)
-        const querySequences = [];
-        for (let startPos = 0; startPos < queryTokens.length; startPos++) {
-            let sequence = '';
-            let wordCount = 0;
-            
-            for (let endPos = startPos; endPos < queryTokens.length; endPos++) {
-                const token = queryTokens[endPos];
-                
-                // Build sequence with proper spacing
-                if (sequence) {
-                    if (token !== SPECIAL_TOKEN && sequence[sequence.length - 1] !== SPECIAL_TOKEN && sequence[sequence.length - 1] !== ' ') {
-                        sequence += ' ';
-                    }
-                }
-                sequence += token;
-                
-                if (token !== SPECIAL_TOKEN) {
-                    wordCount++;
-                }
-                
-                // Store sequence if it has at least one word
-                if (wordCount > 0) {
-                    querySequences.push(sequence);
-                }
-            }
+    // Multi-word sequences: match both space-separated titles and hyphen/special-indexed titles
+    const multiWordSequences = this.buildSearchWordSequences(wordTokens);
+    for (const seq of multiWordSequences) {
+        const seqRows = await this.db.all(statements.searchWordSequencesExact, [seq, sanitizedLimit]);
+        for (const row of seqRows) {
+            const wordCount = seq.split(' ').filter(part => part && part !== '§').length;
+            const score = 100 + (wordCount * 20);
+            addMatch(row, normalized, score, 'sequence_exact', 3);
         }
-        
-        // Search for exact multi-word sequence matches (higher score for longer sequences)
-        const uniqueSequences = [...new Set(querySequences)];
-        for (const seq of uniqueSequences) {
-            if (seq.split(' ').filter(t => t !== SPECIAL_TOKEN).length > 1) {
-                const seqRows = await this.db.all(statements.searchWordSequencesExact, [seq, sanitizedLimit]);
-                for (const row of seqRows) {
-                    // Higher score for multi-word exact matches
-                    const wordCount = seq.split(' ').filter(t => t !== SPECIAL_TOKEN).length;
-                    const score = 100 + (wordCount * 20); // 120 for 2 words, 140 for 3, etc.
-                    addMatch(row, normalized, score, 'sequence_exact', 3);
-                }
-            }
-        }
-        
-        // Search for prefix matches of multi-word sequences
-        for (const seq of uniqueSequences) {
-            if (seq.split(' ').filter(t => t !== SPECIAL_TOKEN).length > 1) {
-                const prefixRows = await this.db.all(statements.searchWordSequencesPrefix, [seq, sanitizedLimit]);
-                for (const row of prefixRows) {
-                    addMatch(row, normalized, 150, 'sequence_prefix', 2);
-                }
-            }
+
+        const prefixRows = await this.db.all(statements.searchWordSequencesPrefix, [seq, sanitizedLimit]);
+        for (const row of prefixRows) {
+            addMatch(row, normalized, 150, 'sequence_prefix', 2);
         }
     }
 
@@ -2248,11 +2564,26 @@ class TagLookup {
     }
 
     results.sort((a, b) => {
+        const tierA = this.getQueryMatchTier(query, a.row.title || '');
+        const tierB = this.getQueryMatchTier(query, b.row.title || '');
+        if (tierB !== tierA) return tierB - tierA;
+        const covA = this.getQueryTokenCoverageScore(query, a.row.title || '');
+        const covB = this.getQueryTokenCoverageScore(query, b.row.title || '');
+        if (covB !== covA) return covB - covA;
         if (b.score !== a.score) return b.score - a.score;
         return this.getUsageCount(b.row) - this.getUsageCount(a.row);
     });
 
-    return results.slice(0, sanitizedLimit).map(entry => this.mapRowToTag(entry.row));
+    return results.slice(0, sanitizedLimit).map(entry => {
+        const tag = this.mapRowToTag(entry.row);
+        if (tag) {
+            const matchInfo = this.getQueryMatchInfo(query, tag.title || '');
+            tag.searchScore = entry.score;
+            tag.matchTier = matchInfo.tier;
+            tag.matchCoverage = matchInfo.matchCoverage;
+        }
+        return tag;
+    });
 }
 
 /**
@@ -2303,101 +2634,69 @@ class TagLookup {
         matches.set(row.id, existing);
     };
 
-    // Check exact match first
-    const exactRow = await this.db.get(statements.getTagByNormalizedTitle, [normalized]);
+    // Check exact match first (including hyphen/underscore title variants)
+    let exactRow = await this.db.get(statements.getTagByNormalizedTitle, [normalized]);
+    if (!exactRow) {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            exactRow = await this.db.get(statements.getTagByNormalizedTitle, [variant]);
+            if (exactRow) break;
+        }
+    }
     if (exactRow) {
         addMatch(exactRow, normalized, 600, 'exact', 4);
     }
 
-    // Tokenize query into words
-    const lowerQuery = normalized.toLowerCase();
-    const words = [];
-    let currentWord = '';
-    
-    for (let i = 0; i < lowerQuery.length; i++) {
-        const char = lowerQuery[i];
-        if (char === ' ') {
-            if (currentWord.trim()) {
-                words.push(currentWord.trim());
-                currentWord = '';
-            }
-        } else {
-            currentWord += char;
+    const wordTokens = this.tokenizeSearchWords(query);
+
+    for (const word of wordTokens) {
+        if (!word) continue;
+
+        const exactRows = await this.db.all(statements.searchWordSequencesExact, [word, sanitizedLimit]);
+        for (const row of exactRows) {
+            addMatch(row, normalized, 100, 'word_exact', 2);
         }
-    }
-    if (currentWord.trim()) {
-        words.push(currentWord.trim());
+
+        const startRows = await this.db.all(statements.searchWordSequencesStart, [word, sanitizedLimit]);
+        for (const row of startRows) {
+            addMatch(row, normalized, 85, 'word_start', 2);
+        }
+
+        const endRows = await this.db.all(statements.searchWordSequencesEnd, [word, sanitizedLimit]);
+        for (const row of endRows) {
+            addMatch(row, normalized, 85, 'word_end', 2);
+        }
+
+        const innerRows = await this.db.all(statements.searchWordSequencesInner, [word, sanitizedLimit]);
+        for (const row of innerRows) {
+            addMatch(row, normalized, 75, 'word_inner', 2);
+        }
+
+        const stemPrefix = this.getWordStemPrefix(word);
+        if (stemPrefix) {
+            const stemStartRows = await this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]);
+            for (const row of stemStartRows) {
+                addMatch(row, normalized, 70, 'word_stem_start', 2);
+            }
+            const stemInnerRows = await this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit]);
+            for (const row of stemInnerRows) {
+                addMatch(row, normalized, 60, 'word_stem_inner', 2);
+            }
+        }
     }
 
-    // Process word-by-word: check sequences, then search individually if sequence doesn't match
-    const processedWords = new Set();
-    
-    for (let i = 0; i < words.length; i++) {
-        if (processedWords.has(i)) continue;
-        
-        const currentWord = words[i];
-        if (!currentWord) continue;
-        
-        // Try to find sequences starting from this word
-        let sequenceFound = false;
-        let sequenceLength = 1;
-        
-        // Check sequences of increasing length (2, 3, 4 words, etc.)
-        for (let j = i + 1; j <= words.length; j++) {
-            const sequenceWords = words.slice(i, j).join(' ');
-            
-            // Check if this sequence exists (exact match)
-            const sequenceRows = await this.db.all(statements.searchWordSequencesExact, [sequenceWords, sanitizedLimit]);
-            if (sequenceRows.length > 0) {
-                // Sequence found - add matches with higher score for longer sequences
-                for (const row of sequenceRows) {
-                    const wordCount = j - i;
-                    const score = 100 + (wordCount * 20); // 120 for 2 words, 140 for 3, etc.
-                    addMatch(row, normalized, score, 'sequence_exact', 3);
-                }
-                sequenceFound = true;
-                sequenceLength = j - i;
-                
-                // Also check prefix matches for this sequence
-                const prefixRows = await this.db.all(statements.searchWordSequencesPrefix, [sequenceWords, sanitizedLimit]);
-                for (const row of prefixRows) {
-                    addMatch(row, normalized, 150, 'sequence_prefix', 2);
-                }
-            } else {
-                // This sequence doesn't exist, stop extending
-                break;
-            }
+    const multiWordSequences = this.buildSearchWordSequences(wordTokens);
+    for (const seq of multiWordSequences) {
+        const seqRows = await this.db.all(statements.searchWordSequencesExact, [seq, sanitizedLimit]);
+        for (const row of seqRows) {
+            const wordCount = seq.split(' ').filter(part => part && part !== '§').length;
+            const score = 100 + (wordCount * 20);
+            addMatch(row, normalized, score, 'sequence_exact', 3);
         }
-        
-        // If no sequence found starting from this word, search the word individually
-        if (!sequenceFound) {
-            processedWords.add(i);
-            
-            // Search this word individually with all match types
-            const exactRows = await this.db.all(statements.searchWordSequencesExact, [currentWord, sanitizedLimit]);
-            for (const row of exactRows) {
-                addMatch(row, normalized, 100, 'word_exact', 2);
-            }
-            
-            const startRows = await this.db.all(statements.searchWordSequencesStart, [currentWord, sanitizedLimit]);
-            for (const row of startRows) {
-                addMatch(row, normalized, 85, 'word_start', 2);
-            }
-            
-            const endRows = await this.db.all(statements.searchWordSequencesEnd, [currentWord, sanitizedLimit]);
-            for (const row of endRows) {
-                addMatch(row, normalized, 85, 'word_end', 2);
-            }
-            
-            const innerRows = await this.db.all(statements.searchWordSequencesInner, [currentWord, sanitizedLimit]);
-            for (const row of innerRows) {
-                addMatch(row, normalized, 75, 'word_inner', 2);
-            }
-        } else {
-            // Mark all words in the sequence as processed
-            for (let k = i; k < i + sequenceLength; k++) {
-                processedWords.add(k);
-            }
+
+        const prefixRows = await this.db.all(statements.searchWordSequencesPrefix, [seq, sanitizedLimit]);
+        for (const row of prefixRows) {
+            addMatch(row, normalized, 150, 'sequence_prefix', 2);
         }
     }
 
@@ -2407,26 +2706,30 @@ class TagLookup {
         addMatch(aliasRow, normalized, 450, 'alias', 4);
     }
 
-    const titlePatterns = this.buildLikePatterns(normalized);
-    for (const { pattern, score } of titlePatterns) {
-        const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
-        for (const row of rows) {
-            const calculated = this.getTitleMatchScore(row.title || '', query);
-            let finalScore = Math.max(score, calculated, 25);
-            const boundaryHit = this.hasWordBoundary(row.title || '', normalized);
-            if (boundaryHit) {
-                finalScore += 400;
+    for (const variant of this.getTagNameLookupVariants(normalized)) {
+        const titlePatterns = this.buildLikePatterns(variant);
+        for (const { pattern, score } of titlePatterns) {
+            const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
+            for (const row of rows) {
+                const calculated = this.getTitleMatchScore(row.title || '', query);
+                let finalScore = Math.max(score, calculated, 25);
+                const boundaryHit = this.hasWordBoundary(row.title || '', variant);
+                if (boundaryHit) {
+                    finalScore += 400;
+                }
+                const sourceWeight = boundaryHit ? 3 : 2;
+                addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
             }
-            const sourceWeight = boundaryHit ? 3 : 2;
-            addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
         }
     }
 
-    const otherNamePatterns = this.buildLikePatterns(normalized);
-    for (const { pattern, score } of otherNamePatterns) {
-        const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
-        for (const row of rows) {
-            addMatch(row, normalized, score, 'other_name', 3);
+    for (const variant of this.getTagNameLookupVariants(normalized)) {
+        const otherNamePatterns = this.buildLikePatterns(variant);
+        for (const { pattern, score } of otherNamePatterns) {
+            const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
+            for (const row of rows) {
+                addMatch(row, normalized, score, 'other_name', 3);
+            }
         }
     }
 
@@ -2455,11 +2758,26 @@ class TagLookup {
     }
 
     results.sort((a, b) => {
+        const tierA = this.getQueryMatchTier(query, a.row.title || '');
+        const tierB = this.getQueryMatchTier(query, b.row.title || '');
+        if (tierB !== tierA) return tierB - tierA;
+        const covA = this.getQueryTokenCoverageScore(query, a.row.title || '');
+        const covB = this.getQueryTokenCoverageScore(query, b.row.title || '');
+        if (covB !== covA) return covB - covA;
         if (b.score !== a.score) return b.score - a.score;
         return this.getUsageCount(b.row) - this.getUsageCount(a.row);
     });
 
-    return results.slice(0, sanitizedLimit).map(entry => this.mapRowToTag(entry.row));
+    return results.slice(0, sanitizedLimit).map(entry => {
+        const tag = this.mapRowToTag(entry.row);
+        if (tag) {
+            const matchInfo = this.getQueryMatchInfo(query, tag.title || '');
+            tag.searchScore = entry.score;
+            tag.matchTier = matchInfo.tier;
+            tag.matchCoverage = matchInfo.matchCoverage;
+        }
+        return tag;
+    });
 }
 
 /**
@@ -2476,7 +2794,21 @@ class TagLookup {
     const statements = this.getStatements();
     let row = await this.db.get(statements.getTagByNormalizedTitle, [normalized]);
     if (!row) {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            row = await this.db.get(statements.getTagByNormalizedTitle, [variant]);
+            if (row) break;
+        }
+    }
+    if (!row) {
         row = await this.db.get(statements.getTagByOtherNameExact, [normalized]);
+    }
+    if (!row) {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            row = await this.db.get(statements.getTagByOtherNameExact, [variant]);
+            if (row) break;
+        }
     }
 
     if (!row) return null;
@@ -2658,68 +2990,11 @@ class TagLookup {
 
     async stripWikiFormatting(text) {
     if (!text) return '';
-    
-    let cleaned = await this.convertWikiMarkupToMarkdown(text);
-    
-    // Remove anchor links: [#anchor|text] or [#anchor]
-    cleaned = cleaned.replace(/\[#([^\]]+)\|([^\]]+)\]/g, '$2');
-    cleaned = cleaned.replace(/\[#([^\]]+)\]/g, '');
-    
-    // Remove wiki links: [[tag]] or [[display|tag]] - keep display text or tag name
-    // Use non-greedy match and handle multiple passes for nested brackets
-    let previousLength;
-    do {
-        previousLength = cleaned.length;
-        cleaned = cleaned.replace(/\[\[([^\]]+?)\]\]/g, (match, content) => {
-            // Skip if content still contains [[ (nested, will be handled in next pass)
-            if (content.includes('[[')) {
-                return match; // Keep as-is for next pass
-            }
-            if (content.includes('|')) {
-                const parts = content.split('|');
-                return parts[parts.length - 1].trim(); // Return the tag name (last part)
-            }
-            return content.trim(); // Return the tag name
-        });
-    } while (cleaned.length !== previousLength && cleaned.includes('[[')); // Repeat until no more changes
-    
-    // Remove headers: h4. text or h5. text
-    cleaned = cleaned.replace(/h[45]\.\s*/g, '');
-    
-    // Remove code blocks: <code>text</code> or <nowiki>text</nowiki>
-    cleaned = cleaned.replace(/<(code|nowiki|pre)>[\s\S]*?<\/\1>/gi, '');
-    
-    // Remove spoiler tags: [spoiler]text[/spoiler]
-    cleaned = cleaned.replace(/\[spoiler\][\s\S]*?\[\/spoiler\]/gi, '');
-    
-    // Remove external links: "text":http://url or "text":[http://url]
-    cleaned = cleaned.replace(/"([^"]+)":\[?https?:\/\/[^\]]+\]?/gi, '$1');
-    
-    // Remove list markers at start of lines: * text, - text, # text
-    cleaned = cleaned.replace(/^[\*\-\#]\s+/gm, '');
-    
-    // Remove post references: post #12345
-    cleaned = cleaned.replace(/post\s+#\d+/gi, '');
-    
-    // Remove image references: !post #12345
-    cleaned = cleaned.replace(/!post\s+#\d+/gi, '');
-    
-    // Remove thumbs references: thumb #12345
-    cleaned = cleaned.replace(/thumb\s+#\d+/gi, '');
-    
-    // Remove thumbs references: !thumb #12345
-    cleaned = cleaned.replace(/!thumb\s+#\d+/gi, '');
-    
-    // Remove markdown headings (generated from [section=] tags to save preview space)
-    cleaned = cleaned.replace(/^[ \t]*#{1,6}\s+.+$/gm, '');
-    
-    // Normalize whitespace while preserving intentional line breaks
-    cleaned = cleaned.replace(/\r\n?/g, '\n'); // Normalize newlines
-    cleaned = cleaned.replace(/[ \t]+/g, ' '); // Collapse extra spaces/tabs
-    cleaned = cleaned.replace(/[ \t]*\n[ \t]*/g, '\n'); // Trim spaces around newlines
-    cleaned = cleaned.replace(/\n{3,}/g, '\n\n'); // Limit consecutive blank lines
-    cleaned = cleaned.trim();
-    
+
+    let cleaned = this.stripWikiFormattingSync(text);
+    cleaned = await this.convertWikiMarkupToMarkdown(cleaned);
+    cleaned = this.stripWikiFormattingSync(cleaned);
+
     return cleaned;
 }
 

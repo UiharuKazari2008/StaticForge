@@ -1,8 +1,6 @@
 /**
  * NovelAI `suggest-tags` API result cache (`search_cache`, `cached_tags`, processed cache tables).
- * Local anime/furry tag search uses in-memory JSON indexes via animeTagSearch/furryTagSearch, not this file.
- * Migrating dataset tags into SQLite for unified search would be a separate server-side effort; the browser
- * does not query this database directly.
+ * Local autofill tag search uses TagLookup via modules/tagAutofillSearch.js, not animeTagSearch/furryTagSearch.
  */
 const Database = require('better-sqlite3');
 const fs = require('fs');
@@ -142,7 +140,8 @@ function closeTagSearchDatabase() {
  */
 function getCachedTags(query, model) {
     try {
-        const search = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(query, model);
+        const normalizedQuery = (query || '').trim().toLowerCase();
+        const search = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, model);
         
         if (!search) {
             return null;
@@ -172,10 +171,11 @@ function saveSearchResults(query, model, tags) {
     if (!tags || !Array.isArray(tags)) return false;
     
     try {
+        const normalizedQuery = (query || '').trim().toLowerCase();
         // Use a transaction for atomicity
         const transaction = db.transaction(() => {
             // Check if entry already exists
-            const existing = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(query, model);
+            const existing = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, model);
             
             let searchId;
             if (existing) {
@@ -187,7 +187,7 @@ function saveSearchResults(query, model, tags) {
                 db.prepare("UPDATE search_cache SET created_at = strftime('%s', 'now') WHERE id = ?").run(searchId);
             } else {
                 // Insert new search cache entry
-                const result = db.prepare('INSERT INTO search_cache (input_query, model) VALUES (?, ?)').run(query, model);
+                const result = db.prepare('INSERT INTO search_cache (input_query, model) VALUES (?, ?)').run(normalizedQuery, model);
                 searchId = result.lastInsertRowid;
             }
             
@@ -352,6 +352,25 @@ function cleanupOldCache(daysToKeep = 30) {
 }
 
 /**
+ * Clear cached NovelAI suggest-tags results for a specific query (all models).
+ * @param {string} query - Search query to clear
+ * @returns {number} - Number of search_cache rows deleted
+ */
+function clearCacheForQuery(query) {
+    try {
+        const normalizedQuery = (query || '').trim().toLowerCase();
+        const result = db.prepare('DELETE FROM search_cache WHERE input_query = ?').run(normalizedQuery);
+        if (result.changes > 0) {
+            logger.info(`Cleared tag search cache for query "${normalizedQuery}": ${result.changes} entries`);
+        }
+        return result.changes;
+    } catch (error) {
+        console.error('❌ Error clearing cache for query:', error.message);
+        return 0;
+    }
+}
+
+/**
  * Clear all search cache entries
  * @returns {Object} - Object with counts of deleted entries
  */
@@ -396,6 +415,7 @@ module.exports = {
     getCachedTags,
     saveSearchResults,
     cleanupOldCache,
+    clearCacheForQuery,
     clearAllCache,
     getCachedProcessedResults,
     setCachedProcessedResults,

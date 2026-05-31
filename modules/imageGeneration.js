@@ -522,9 +522,28 @@ function mergePromptNegativeFragmentIntoPrompt(processedPrompt, addition) {
 // Dynamic Generation Processing - Uses pre-compiled AI prompts from client
 
 // Function to convert character reference to base64 JPG with max edge 1500px
+function normalizeCharaReferenceSources(source) {
+    if (source == null) return [];
+    if (Array.isArray(source)) {
+        return source.filter(item => typeof item === 'string' && item.includes(':'));
+    }
+    if (typeof source === 'string' && source.includes(':')) {
+        return [source];
+    }
+    return [];
+}
+
+function getCharaReferenceBaseCaption(refType, legacyWithStyle) {
+    const type = Number(refType);
+    if (type === 2) return 'character';
+    if (type === 3) return 'style';
+    if (type === 1) return 'character&style';
+    return legacyWithStyle ? 'character&style' : 'character';
+}
+
 async function convertCharacterReferenceToBase64(charaReference) {
     try {
-        if (!charaReference) return null;
+        if (!charaReference || typeof charaReference !== 'string') return null;
 
         const [type, identifier] = charaReference.split(':', 2);
         if (!type || !identifier) return null;
@@ -3142,31 +3161,74 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
 
         if (body.chara_reference_source !== undefined) {
             try {
-                // Convert character reference to base64 PNG image (following chunk pattern)
-                const charaReferenceBase64 = await convertCharacterReferenceToBase64(body.chara_reference_source);
-                if (charaReferenceBase64) {
-                    // Add to API options following chunk pattern exactly
-                    baseOptions.director_reference_images = [charaReferenceBase64];
-                    baseOptions.director_reference_descriptions = [{
+                const sources = normalizeCharaReferenceSources(body.chara_reference_source);
+                let types = Array.isArray(body.chara_reference_type) ? body.chara_reference_type : [];
+                if (!types.length && body.chara_reference_with_style !== undefined) {
+                    types = [body.chara_reference_with_style ? 1 : 2];
+                }
+                const strengths = Array.isArray(body.chara_reference_strength) ? body.chara_reference_strength : [];
+                let fidelities = [];
+                if (Array.isArray(body.chara_reference_fidelity)) {
+                    fidelities = body.chara_reference_fidelity;
+                } else if (body.chara_reference_fidelity !== undefined) {
+                    fidelities = [body.chara_reference_fidelity];
+                }
+
+                const directorReferenceImages = [];
+                const directorReferenceDescriptions = [];
+                const directorReferenceInformationExtracted = [];
+                const directorReferenceStrengthValues = [];
+                const directorReferenceSecondaryStrengthValues = [];
+                const charaReferenceWithStyle = body.chara_reference_with_style === true;
+
+                for (let i = 0; i < sources.length; i++) {
+                    const source = sources[i];
+                    const charaReferenceBase64 = await convertCharacterReferenceToBase64(source);
+                    if (!charaReferenceBase64) {
+                        console.warn(`⚠️ Failed to convert character reference to base64: ${source}`);
+                        continue;
+                    }
+
+                    const refType = types[i] !== undefined && types[i] !== null ? types[i] : 1;
+                    const strength = Math.max(0, Math.min(1, Number(strengths[i] ?? 1)));
+                    const fidelity = Math.max(0, Math.min(1, Number(fidelities[i] ?? 0)));
+                    const secondaryStrength = Number((1 - fidelity).toFixed(2));
+
+                    directorReferenceImages.push(charaReferenceBase64);
+                    directorReferenceDescriptions.push({
                         caption: {
-                            base_caption: body.chara_reference_fidelity ? "character&style" : "character",
+                            base_caption: getCharaReferenceBaseCaption(refType, charaReferenceWithStyle),
                             char_captions: []
                         },
                         legacy_uc: false
-                    }];
-                    baseOptions.director_reference_information_extracted = [1];
-                    baseOptions.director_reference_strength_values = [1];
-                    const fidelity = Number((body.chara_reference_fidelity || 0).toFixed(2));
-                    const secondaryStrength = Number((1 - fidelity).toFixed(2));
-                    baseOptions.director_reference_secondary_strength_values = [Math.max(0, Math.min(1, secondaryStrength))];
+                    });
+                    directorReferenceInformationExtracted.push(1);
+                    directorReferenceStrengthValues.push(strength);
+                    directorReferenceSecondaryStrengthValues.push(Math.max(0, Math.min(1, secondaryStrength)));
+                }
 
-                    // Add to returned options for forgeData storage
+                if (directorReferenceImages.length > 0) {
+                    baseOptions.director_reference_images = directorReferenceImages;
+                    baseOptions.director_reference_descriptions = directorReferenceDescriptions;
+                    baseOptions.director_reference_information_extracted = directorReferenceInformationExtracted;
+                    baseOptions.director_reference_strength_values = directorReferenceStrengthValues;
+                    baseOptions.director_reference_secondary_strength_values = directorReferenceSecondaryStrengthValues;
+
                     baseOptions.chara_reference_source = body.chara_reference_source;
+                    if (body.chara_reference_type !== undefined) {
+                        baseOptions.chara_reference_type = body.chara_reference_type;
+                    }
+                    if (body.chara_reference_strength !== undefined) {
+                        baseOptions.chara_reference_strength = body.chara_reference_strength;
+                    }
+                    if (body.chara_reference_fidelity !== undefined) {
+                        baseOptions.chara_reference_fidelity = body.chara_reference_fidelity;
+                    }
                     baseOptions.chara_reference_with_style = body.chara_reference_with_style !== undefined ? body.chara_reference_with_style : false;
 
-                    console.log(`🎭 Added character reference to API request (${charaReferenceBase64.length} chars, style: ${body.chara_reference_with_style})`);
-                } else {
-                    console.warn(`⚠️ Failed to convert character reference to base64: ${body.chara_reference_source}`);
+                    console.log(`🎭 Added ${directorReferenceImages.length} character reference(s) to API request`);
+                } else if (sources.length > 0) {
+                    console.warn(`⚠️ Failed to convert character reference to base64: ${sources.join(', ')}`);
                 }
             } catch (error) {
                 console.warn(`⚠️ Failed to process character reference: ${error.message}`);
@@ -3584,6 +3646,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.vibe_transfer;
     delete apiOpts.normalize_vibes;
     delete apiOpts.chara_reference_source;
+    delete apiOpts.chara_reference_type;
+    delete apiOpts.chara_reference_strength;
     delete apiOpts.chara_reference_with_style;
     delete apiOpts.chara_reference_fidelity;
     delete apiOpts.director_session_id;
@@ -3840,6 +3904,12 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
         if (opts.chara_reference_source !== undefined) {
             forgeData.chara_reference_source = opts.chara_reference_source;
+            if (opts.chara_reference_type !== undefined) {
+                forgeData.chara_reference_type = opts.chara_reference_type;
+            }
+            if (opts.chara_reference_strength !== undefined) {
+                forgeData.chara_reference_strength = opts.chara_reference_strength;
+            }
             forgeData.chara_reference_with_style = opts.chara_reference_with_style !== undefined ? opts.chara_reference_with_style : false;
             forgeData.chara_reference_fidelity = opts.chara_reference_fidelity !== undefined ? opts.chara_reference_fidelity : 0;
         }
@@ -4279,6 +4349,24 @@ async function generateImageWebSocket(globalResources, body, userType, sessionId
     }
 }
 
+function isStagedGenerationCancelled(handler, requestId) {
+    return !!(handler && requestId && typeof handler.isGenerationCancelled === 'function' && handler.isGenerationCancelled(requestId));
+}
+
+async function waitStageDelayWithCancellation(delayMs, handler, requestId) {
+    const pollMs = 250;
+    let elapsed = 0;
+    while (elapsed < delayMs) {
+        if (isStagedGenerationCancelled(handler, requestId)) {
+            return false;
+        }
+        const step = Math.min(pollMs, delayMs - elapsed);
+        await new Promise(resolve => setTimeout(resolve, step));
+        elapsed += step;
+    }
+    return true;
+}
+
 // Handle staged generation with multiple stages
 async function handleStagedGeneration(globalResources, bodyData, sessionId, streamingCallback, ws, handler, wsServer) {
     bindRuntimeGlobalResources(globalResources);
@@ -4527,6 +4615,48 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
             });
             console.log(`💾 Base stage saved: ${baseResult.filename} (ID: 00)`);
         }
+
+        let cancelledEarly = false;
+
+        const buildStagedPartialReturn = (extra = {}) => ({
+            buffer: currentBuffer,
+            filename: savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1].filename : null,
+            filenames: savedFilenames,
+            saved: savedFilenames.length > 0,
+            seed: baseSeed,
+            compiled_prompt: baseResult.compiled_prompt,
+            text_replacements_seed: baseResult.text_replacements_seed,
+            stage_seeds: stageSeeds,
+            total_stages: totalStages,
+            ...extra
+        });
+
+        const sendCancelledCompleteProgress = (completedStages) => {
+            if (!ws || !handler) return;
+            handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
+                phase: 'complete',
+                totalStages: completedStages,
+                currentStage: completedStages,
+                stageType: 'complete',
+                stoppedEarly: true,
+                cancelled: true
+            });
+        };
+
+        if (isStagedGenerationCancelled(handler, bodyData.requestId)) {
+            console.log(`🛑 Generation cancelled after base stage - skipping ${pipeline.length} pipeline stage(s)`);
+            sendCancelledCompleteProgress(1);
+            try {
+                if (bodyData.requestId) {
+                    __runtimeGr.getTracing().finalizeTrace(bodyData.requestId, 'completed', {
+                        cancelled: true,
+                        totalStages: totalStages,
+                        savedStages: savedFilenames.length
+                    });
+                }
+            } catch {}
+            return buildStagedPartialReturn({ cancelled: true, stopped_early: true });
+        }
         
         // Process pipeline stages
         for (let i = 0; i < pipeline.length; i++) {
@@ -4566,6 +4696,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
             }
             
             try {
+                if (isStagedGenerationCancelled(handler, bodyData.requestId)) {
+                    console.log(`🛑 Generation cancelled before stage ${stageIndex} - skipping remaining ${pipeline.length - i} stage(s)`);
+                    cancelledEarly = true;
+                    sendCancelledCompleteProgress(stageIndex);
+                    break;
+                }
+
                 // Send stage progress update (use 1-based indexing for UI: stageIndex + 1)
                 if (ws && handler) {
                     handler.sendGenerationProgress(ws, bodyData.requestId || 'generation', {
@@ -4589,7 +4726,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                     });
                 }
                 
-                await new Promise(resolve => setTimeout(resolve, delayMs));
+                const delayCompleted = await waitStageDelayWithCancellation(delayMs, handler, bodyData.requestId);
+                if (!delayCompleted) {
+                    console.log(`🛑 Generation cancelled during stage ${stageIndex} delay - skipping remaining ${pipeline.length - i} stage(s)`);
+                    cancelledEarly = true;
+                    sendCancelledCompleteProgress(stageIndex);
+                    break;
+                }
                 
                 // Validate stage parameters
                 if (!stage.type) {
@@ -5047,7 +5190,18 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
 
                 // Build options and generate
                 const stageOpts = await buildOptions(globalResources, stageRequestBody, null, {}, ws, handler, wsServer, currentStageData);
-                stageOpts.action = stage.type === 'expand-canvas' ? __runtimeGr.getNekoAiService('Action').INPAINT : __runtimeGr.getNekoAiService('Action').IMG2IMG;
+                const StageAction = __runtimeGr.getNekoAiService('Action');
+                if (stage.type === 'expand-canvas') {
+                    stageOpts.action = StageAction.INPAINT;
+                } else if (stage.type === 'enhance' || (stage.type === 'variation' && stage.useBaseImage === true)) {
+                    stageOpts.action = StageAction.IMG2IMG;
+                } else if (stage.type === 'variation') {
+                    // Prompt-only variation (e.g. Phasewalker) — text-to-image, not img2img
+                    stageOpts.action = StageAction.GENERATE;
+                    delete stageOpts.image;
+                    delete stageOpts.strength;
+                    delete stageOpts.noise;
+                }
 
                 // Generate stage image using the unified approach
                 const stageResult = await handleGeneration(globalResources, stageOpts, true, null, bodyData.workspace, mockReq, streamingCallback, ws, handler, baseMetadata, stageSeeds);
@@ -5158,6 +5312,13 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 }
                 
                 console.log(`✅ Stage ${stageIndex} completed successfully`);
+
+                if (isStagedGenerationCancelled(handler, bodyData.requestId)) {
+                    console.log(`🛑 Generation cancelled after stage ${stageIndex} - skipping remaining ${pipeline.length - i - 1} stage(s)`);
+                    cancelledEarly = true;
+                    sendCancelledCompleteProgress(stageIndex + 1);
+                    break;
+                }
                 
                 // Check if we should stop at this stage (either stopAtStage flag or breakPoint match)
                 if (stage.stopAtStage) {
@@ -5231,6 +5392,22 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
                 throw stageError;
             }
         }
+
+        if (cancelledEarly) {
+            console.log(`✅ Staged generation stopped early (cancelled)`);
+            console.log(`💾 Total saved stages: ${savedFilenames.length}`);
+            try {
+                if (bodyData.requestId) {
+                    __runtimeGr.getTracing().finalizeTrace(bodyData.requestId, 'completed', {
+                        cancelled: true,
+                        totalStages: totalStages,
+                        savedStages: savedFilenames.length,
+                        seeds: { base: baseSeed, stages: stageSeeds }
+                    });
+                }
+            } catch {}
+            return buildStagedPartialReturn({ cancelled: true, stopped_early: true });
+        }
         
         // Send completion progress update
         if (ws && handler) {
@@ -5256,17 +5433,7 @@ async function handleStagedGeneration(globalResources, bodyData, sessionId, stre
             }
         } catch {}
         
-        return {
-            buffer: currentBuffer,
-            filename: savedFilenames.length > 0 ? savedFilenames[savedFilenames.length - 1].filename : null, // Last saved filename for backward compat
-            filenames: savedFilenames, // Array of all saved stage data (filename, stageId, stageIndex, stageType)
-            saved: true,
-            seed: baseSeed, // Return base generation seed
-            compiled_prompt: baseResult.compiled_prompt, // Return base compiled prompt for client
-            text_replacements_seed: baseResult.text_replacements_seed, // Return text replacements from base for client
-            stage_seeds: stageSeeds, // Return accumulated stage seeds for web UI
-            total_stages: totalStages
-        };
+        return buildStagedPartialReturn({ saved: true });
         
     } catch (error) {
         console.error('❌ Staged generation error:', error);
@@ -5405,6 +5572,12 @@ async function convertMetadataToRequestFormat(globalResources, metadata, allowPa
     }
     if (extractedMetadata.chara_reference_source !== undefined) {
         requestBody.chara_reference_source = extractedMetadata.chara_reference_source;
+    }
+    if (extractedMetadata.chara_reference_type !== undefined) {
+        requestBody.chara_reference_type = extractedMetadata.chara_reference_type;
+    }
+    if (extractedMetadata.chara_reference_strength !== undefined) {
+        requestBody.chara_reference_strength = extractedMetadata.chara_reference_strength;
     }
     if (extractedMetadata.chara_reference_with_style !== undefined) {
         requestBody.chara_reference_with_style = extractedMetadata.chara_reference_with_style;

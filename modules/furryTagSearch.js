@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy e621 JSON index (dataset_tags_furry.json + .cache/furry_* indexes).
+ * Prompt autofill uses TagLookup via modules/tagAutofillSearch.js instead.
+ * Still used by fastTagSearch.js and promptLogitAnalyzer.js until migrated.
+ */
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');

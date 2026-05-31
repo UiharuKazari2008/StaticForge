@@ -237,6 +237,7 @@ class WebSocketMessageHandlers {
             throw new Error('WebSocketMessageHandlers requires globalResources instance and shoudl only be instantiated by globalResources.js');
         }
         this.keepAliveIntervals = new Map(); // Store keep-alive intervals by requestId
+        this.cancelledGenerationRequestIds = new Set(); // Client-cancelled image generation request IDs
         this.metadataCache = new MetadataCache(1000); // LRU cache with 1000 items
         this.metadataCache.startCleanup(); // Start periodic cleanup
     }
@@ -1265,7 +1266,7 @@ class WebSocketMessageHandlers {
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
-        const { query, model, requestId } = message;
+        const { query, model, requestId, autofillSessionId } = message;
 
         if (!query) {
             this.sendError(ws, 'Missing query parameter', 'search_characters');
@@ -1273,23 +1274,22 @@ class WebSocketMessageHandlers {
         }
 
         try {
-            // Send initial response to show autocomplete dropdown (ack-less)
-            this.sendToClient(ws, {
-                type: 'search_characters_response',
-                data: { results: [], spellCheck: null },
-                timestamp: new Date().toISOString(),
-                requestId: requestId
-            });
-
             // Perform search with latest-request-wins pattern
-            const result = await this.globalResources.getSearchService().searchCharacters(query, model, ws, clientInfo.sessionId, null, requestId);
+            const result = await this.globalResources.getSearchService().searchCharacters(
+                query, model, ws, clientInfo.sessionId, null, requestId, autofillSessionId
+            );
+
+            if (result && result.superseded) {
+                return;
+            }
 
             // Send final complete response (ack-less)
             this.sendToClient(ws, {
                 type: 'search_characters_complete',
                 data: result,
                 timestamp: new Date().toISOString(),
-                requestId: requestId
+                requestId: requestId,
+                autofillSessionId: autofillSessionId || null
             });
         } catch (error) {
             // Only log errors that aren't cancellation
@@ -1830,6 +1830,7 @@ class WebSocketMessageHandlers {
     // Handle preset generation requests
     async handleGeneratePreset(ws, message, clientInfo, wsServer) {
         const { presetName, allow_paid, workspace, enableStreaming } = message;
+        const requestId = message.requestId || 'unknown';
 
         if (!presetName) {
             this.sendError(ws, 'Missing presetName parameter', 'generate_preset');
@@ -1873,13 +1874,14 @@ class WebSocketMessageHandlers {
                 ...preset,
                 workspace: targetWorkspace,
                 presetName: presetName,
-                allow_paid: allow_paid
+                allow_paid: allow_paid,
+                requestId
             }, clientInfo.userType, clientInfo.sessionId, streamingCallback, ws, this, wsServer);
 
             // Send generation response
             this.sendToClient(ws, {
                 type: 'generate_preset_response',
-                requestId: message.requestId,
+                requestId: requestId,
                 data: {
                     filename: result.filename,
                     seed: result.seed,
@@ -1894,6 +1896,8 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('Preset generation error:', error);
             this.sendError(ws, 'Failed to generate preset', error.message, message.requestId);
+        } finally {
+            this.clearGenerationCancelled(requestId);
         }
     }
 
@@ -4851,12 +4855,15 @@ class WebSocketMessageHandlers {
 
             // Save window positions to workspaceDesktop config as global object (not per-workspace)
             // id is ignored now since positions are global
-            this.globalResources.modifyConfig('workspaceDesktop').assign(['windowPositions'], windowPositions);
+            const desktopConfig = this.globalResources.getWorkspaceDesktopConfig() || {};
+            const existing = desktopConfig.windowPositions || {};
+            const merged = { ...existing, ...windowPositions };
+            this.globalResources.modifyConfig('workspaceDesktop').assign(['windowPositions'], merged);
 
             // Broadcast to all clients (no response since this is ackless)
             wsServer.broadcast({
                 type: 'workspace_updated',
-                data: { action: 'window_positions_updated', windowPositions }, // No workspaceId, positions are global
+                data: { action: 'window_positions_updated', windowPositions: merged }, // No workspaceId, positions are global
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -9079,6 +9086,22 @@ class WebSocketMessageHandlers {
         });
     }
 
+    markGenerationCancelled(requestId) {
+        if (typeof requestId === 'string' && requestId) {
+            this.cancelledGenerationRequestIds.add(requestId);
+        }
+    }
+
+    isGenerationCancelled(requestId) {
+        return !!(requestId && this.cancelledGenerationRequestIds.has(requestId));
+    }
+
+    clearGenerationCancelled(requestId) {
+        if (requestId) {
+            this.cancelledGenerationRequestIds.delete(requestId);
+        }
+    }
+
     // Stop keep-alive interval for a specific request
     stopKeepAliveInterval(requestId) {
         if (this.keepAliveIntervals && this.keepAliveIntervals.has(requestId)) {
@@ -10433,6 +10456,7 @@ class WebSocketMessageHandlers {
 
         try {
             const { requestId: _, enableStreaming, ...data } = message;
+            data.requestId = requestId;
 
             // Initialize generation log for this request
             this.globalResources.getLogger().initGenerationLog(requestId);
@@ -10596,6 +10620,8 @@ class WebSocketMessageHandlers {
                 error: userFriendlyError,
                 timestamp: new Date().toISOString()
             });
+        } finally {
+            this.clearGenerationCancelled(requestId);
         }
     }
 
@@ -12132,6 +12158,7 @@ class WebSocketMessageHandlers {
             if (Array.isArray(ids)) {
                 for (const id of ids) {
                     if (typeof id === 'string') {
+                        this.markGenerationCancelled(id);
                         this.stopKeepAliveInterval(id);
                     }
                 }

@@ -17,7 +17,7 @@ class ImageViewerManager {
     }
 
     // Create a new image viewer instance
-    createViewer(imageSrc, title = 'Glancewell', metadata = {}) {
+    createViewer(imageSrc, title = 'Image', metadata = {}) {
         const viewerId = `imageViewer_${this.nextId++}`;
         const viewerElement = this.template.cloneNode(true);
         viewerElement.id = viewerId;
@@ -51,10 +51,15 @@ class ImageViewerManager {
             transientWindowsWithPositions.add(windowIdentifier);
         }
 
-        // Calculate tiling offset for this window
-        const tileOffset = this.calculateTileOffset();
-        viewerElement.style.setProperty('--modal-offset-x', `${Math.round(tileOffset.x)}px`);
-        viewerElement.style.setProperty('--modal-offset-y', `${Math.round(tileOffset.y)}px`);
+        // Tile new windows only when there is no saved position to restore
+        const hasSavedPosition = windowIdentifier
+            && typeof globalWindowPositions !== 'undefined'
+            && globalWindowPositions[windowIdentifier]?.topLeft;
+        if (!hasSavedPosition) {
+            const tileOffset = this.calculateTileOffset();
+            viewerElement.style.setProperty('--modal-offset-x', `${Math.round(tileOffset.x)}px`);
+            viewerElement.style.setProperty('--modal-offset-y', `${Math.round(tileOffset.y)}px`);
+        }
 
         // Insert into DOM
         document.body.appendChild(viewerElement);
@@ -182,6 +187,9 @@ class ImageViewer {
         this.maxZoom = 5.0;
         this.zoomStep = 0.25;
         this.isMinimized = false;
+        this.isMaximized = false;
+        this._preMaximizeLayout = null;
+        this._zoomSnapEscapeAccum = { value: 0 };
 
         this.panX = 0;
         this.panY = 0;
@@ -197,6 +205,12 @@ class ImageViewer {
         this.setupWindowBlurHandler();
         this.setupContextMenu();
         this.setupResizeHandler();
+        this.element.addEventListener('modalMaximized', () => {
+            setTimeout(() => this.fitToScreen(), 50);
+        });
+        this.element.addEventListener('modalRestored', () => {
+            setTimeout(() => this.fitToScreen(), 50);
+        });
     }
 
     init() {
@@ -206,8 +220,34 @@ class ImageViewer {
             titleElement.textContent = `Lumen [${this.title}]`;
         }
 
-        // Open modal
         openModal(this.element);
+
+        // Restore after visible — openModal skips Lumen while hidden (public/scripts/comp/modalUtils.js)
+        const windowKey = this.element.dataset.windowIdentifier;
+        const hasSavedLayout = window.isDesktop && windowKey
+            && typeof globalWindowPositions !== 'undefined'
+            && globalWindowPositions[windowKey]?.topLeft;
+
+        if (hasSavedLayout) {
+            this.element.setAttribute('data-window-position-restored', 'true');
+            const applySavedLayout = () => {
+                restoreWindowPosition(this.element);
+                ensureModalEdgesWithinWorkArea(this.element);
+            };
+
+            if (this.element.classList.contains('opening')) {
+                const onOpened = (e) => {
+                    if (e.target !== this.element || e.animationName !== 'modalSlideIn') {
+                        return;
+                    }
+                    this.element.removeEventListener('animationend', onOpened);
+                    requestAnimationFrame(applySavedLayout);
+                };
+                this.element.addEventListener('animationend', onOpened);
+            } else {
+                requestAnimationFrame(() => requestAnimationFrame(applySavedLayout));
+            }
+        }
     }
 
     loadImage() {
@@ -248,34 +288,40 @@ class ImageViewer {
 
         let modalWidth, modalHeight;
 
-        // Base height - reasonable viewing size
-        const baseHeight = 600;
+        // Base height — generous default so the window is usable without manual resize
+        const baseHeight = 780;
+        const sizePadding = 1.12;
 
         if (aspectRatio >= 1.5) {
             // Wide landscape - wider modal
-            modalWidth = Math.min(baseHeight * aspectRatio, maxWidth);
-            modalHeight = baseHeight;
+            modalWidth = Math.min(baseHeight * aspectRatio * sizePadding, maxWidth);
+            modalHeight = Math.min(baseHeight * sizePadding, maxHeight);
         } else if (aspectRatio >= 0.8) {
             // Square-ish - balanced modal
-            modalWidth = 700;
-            modalHeight = 600;
+            modalWidth = Math.min(880 * sizePadding, maxWidth);
+            modalHeight = Math.min(baseHeight * sizePadding, maxHeight);
         } else if (aspectRatio >= 0.5) {
             // Portrait - narrower modal
-            modalWidth = Math.max(baseHeight * aspectRatio, minWidth);
-            modalHeight = baseHeight;
+            modalWidth = Math.max(baseHeight * aspectRatio * sizePadding, minWidth);
+            modalHeight = Math.min(baseHeight * sizePadding, maxHeight);
         } else {
             // Very tall portrait - minimum width
             modalWidth = minWidth;
-            modalHeight = Math.min(minWidth / aspectRatio, maxHeight);
+            modalHeight = Math.min((minWidth / aspectRatio) * sizePadding, maxHeight);
         }
 
         // Apply constraints
         modalWidth = Math.max(minWidth, Math.min(modalWidth, maxWidth));
         modalHeight = Math.max(minHeight, Math.min(modalHeight, maxHeight));
 
-        // Set modal size
-        this.element.style.width = `${Math.round(modalWidth)}px`;
-        this.element.style.height = `${Math.round(modalHeight)}px`;
+        // Saved layout already has size — only auto-size brand-new windows
+        if (this.element.getAttribute('data-window-position-restored') === 'true') {
+            this.element.removeAttribute('data-window-position-restored');
+            return;
+        }
+
+        // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
+        setModalSizePreservingCenter(this.element, modalWidth, modalHeight);
     }
 
     // Get blur preview URL from metadata
@@ -370,7 +416,6 @@ class ImageViewer {
         const fitToScreenBtn = this.element.querySelector(`#fitToScreenBtn_${this.id}`);
         const actualSizeBtn = this.element.querySelector(`#actualSizeBtn_${this.id}`);
         const openInLightboxBtn = this.element.querySelector(`#openInLightboxBtn_${this.id}`);
-        const maximizeBtn = this.element.querySelector(`#maximizeBtn_${this.id}`);
 
         // Zoom controls
         if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomIn());
@@ -378,7 +423,7 @@ class ImageViewer {
         if (fitToScreenBtn) fitToScreenBtn.addEventListener('click', () => this.fitToScreen());
         if (actualSizeBtn) actualSizeBtn.addEventListener('click', () => this.actualSize());
         if (openInLightboxBtn) openInLightboxBtn.addEventListener('click', () => this.openInLightbox());
-        if (maximizeBtn) maximizeBtn.addEventListener('click', () => this.maximize());
+        // Work-area maximize: .modal-work-area-maximize → openModal wireModalMaximizeButton
     }
 
     setupContextMenu() {
@@ -395,39 +440,45 @@ class ImageViewer {
 
         // Icon actions section (always available)
         const isNax = this.isNaxImage();
-        contextMenuConfig.sections.push({
-            type: 'icons',
-            position: 'outer',
-            icons: [
-                {
-                    icon: isNax ? 'nai-clipboard' : 'fas fa-clipboard',
-                    tooltip: isNax ? 'Copy tag' : 'Copy',
-                    action: isNax ? 'image-viewer-copy-tag' : 'image-viewer-copy'
-                },
-                {
-                    icon: 'fas fa-download',
-                    tooltip: 'Download',
-                    action: 'image-viewer-download'
-                }
-            ]
-        });
+        const iconActions = [
+            {
+                icon: isNax ? 'nai-clipboard' : 'fas fa-clipboard',
+                tooltip: isNax ? 'Copy tag' : 'Copy',
+                action: isNax ? 'image-viewer-copy-tag' : 'image-viewer-copy'
+            },
+            {
+                icon: 'fas fa-download',
+                tooltip: 'Download',
+                action: 'image-viewer-download'
+            }
+        ];
 
-        // Add pin icon if metadata available
         if (hasMetadata) {
-            contextMenuConfig.sections[0].icons.unshift({
+            iconActions.unshift({
                 icon: 'fa-regular fa-star',
                 tooltip: 'Favorite',
                 action: 'image-viewer-toggle-pin',
-                loadfn: (menuItem, target) => {
-                    const filename = this.metadata.filename || this.metadata.original || this.metadata.upscaled;
-                    if (filename && typeof checkIfImageIsPinned === 'function') {
+                loadfn: (menuItem) => {
+                    const filename = this.getImageFilename();
+                    if (filename) {
                         const isPinned = checkIfImageIsPinned(filename);
                         menuItem.icon = isPinned ? 'fa-solid fa-star' : 'fa-regular fa-star';
                         menuItem.tooltip = isPinned ? 'Unfavorite' : 'Favorite';
                     }
                 }
             });
+            iconActions.splice(2, 0, {
+                icon: 'fas fa-dice-three',
+                tooltip: 'Recast Spell',
+                action: 'image-viewer-reroll'
+            });
         }
+
+        contextMenuConfig.sections.push({
+            type: 'icons',
+            position: 'outer',
+            icons: iconActions
+        });
 
         // Atelier / NAX tag previews (public/scripts/comp/naxtApplet.js)
         if (isNax) {
@@ -451,6 +502,11 @@ class ImageViewer {
                         menuItem.icon = on ? 'fas fa-flask' : 'far fa-flask';
                         menuItem.tooltip = on ? 'Remove try mark' : 'Mark to try';
                     }
+                },
+                {
+                    icon: 'fas fa-shopping-bag',
+                    tooltip: 'Add to bag',
+                    action: 'image-viewer-add-to-bag'
                 }
             );
             contextMenuConfig.sections.push({
@@ -474,10 +530,24 @@ class ImageViewer {
                             return manualModal && manualModal.classList.contains('hidden');
                         }
                     },
+
                     {
-                        icon: 'fas fa-shopping-bag',
-                        text: 'Add to bag',
-                        action: 'image-viewer-add-to-bag'
+                        icon: 'fas fa-layer-group',
+                        text: 'PhaseWalker',
+                        openOnHover: true,
+                        optionsfn: () => {
+                            // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
+                            if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
+                                return buildPhasewalkerContextSubmenuItems(this.title);
+                            }
+                            return [{ text: 'Unavailable', disabled: true }];
+                        },
+                        handlerfn: (subItem) => {
+                            // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
+                            if (handlePhasewalkerContextSubmenuAction) {
+                                handlePhasewalkerContextSubmenuAction(subItem);
+                            }
+                        }
                     }
                 ]
             });
@@ -490,29 +560,40 @@ class ImageViewer {
             // Always available if has metadata
             items.push(
                 {
-                    icon: 'fas fa-dice-three',
-                    text: 'Reroll',
-                    action: 'image-viewer-reroll'
-                },
-                {
                     icon: 'fas fa-compass-drafting',
-                    text: 'Creator',
+                    text: 'Open in Studio',
                     action: 'image-viewer-creator'
                 },
                 {
                     icon: 'mdi mdi-1-25 mdi-relative-scale',
-                    text: 'Expand',
+                    text: 'Expand Canvas',
                     action: 'image-viewer-expand'
+                },
+                {
+                    icon: 'nai-upscale',
+                    text: 'Upscale',
+                    action: 'image-viewer-upscale',
+                    disabled: !!this.metadata.upscaled
+                },
+                { separator: true },
+                {
+                    icon: 'fas fa-person-to-portal',
+                    text: 'New Persona',
+                    action: 'image-viewer-start-chat'
+                },
+                {
+                    icon: 'fas fa-image',
+                    text: 'Set as Wallpaper',
+                    action: 'image-viewer-set-wallpaper',
+                    hidden: () => !document.body.classList.contains('desktop-mode')
+                },
+                {
+                    icon: 'fas fa-arrow-down-left',
+                    text: 'Add to Desktop',
+                    action: 'image-viewer-desktop-shortcut',
+                    hidden: () => !document.body.classList.contains('desktop-mode')
                 }
             );
-
-            // Upscale - check if already upscaled
-            items.push({
-                icon: 'nai-upscale',
-                text: 'Upscale',
-                action: 'image-viewer-upscale',
-                disabled: !!this.metadata.upscaled
-            });
 
             contextMenuConfig.sections.push({
                 type: 'list',
@@ -525,12 +606,25 @@ class ImageViewer {
                 title: 'Management',
                 items: [
                     {
-                        icon: 'fas fa-folder-arrow-up',
-                        text: 'Move to...',
-                        action: 'image-viewer-move',
+                        icon: 'fas fa-film-canister',
+                        text: 'Jump to Image',
+                        action: 'image-viewer-jump-workspace'
+                    },
+                    {
+                        icon: 'nai-img2img',
+                        text: 'New Reference',
+                        action: 'image-viewer-create-reference'
+                    },
+                    {
+                        content: (target) => this.buildMoveToMenuContent(target),
                         optionsfn: getMoveWorkspaceOptions,
                         handlerfn: handleMoveWorkspaceAction,
-                        openOnHover: false
+                        openOnHover: false,
+                        loadfn: (menuItem) => {
+                            // getMoveWorkspaceOptions: public/scripts/comp/galleryView.js
+                            const options = getMoveWorkspaceOptions(null);
+                            menuItem.disabled = !options.length;
+                        }
                     },
                     {
                         icon: 'fas fa-bin-recycle',
@@ -585,14 +679,26 @@ class ImageViewer {
             case 'image-viewer-upscale':
                 this.upscale();
                 break;
-            case 'image-viewer-move':
-                this.moveTo();
+            case 'image-viewer-jump-workspace':
+                void this.jumpToInWorkspace();
                 break;
             case 'image-viewer-scrap':
                 this.scrap();
                 break;
             case 'image-viewer-incinerate':
                 this.incinerate();
+                break;
+            case 'image-viewer-start-chat':
+                this.startChat();
+                break;
+            case 'image-viewer-set-wallpaper':
+                this.setAsWallpaper();
+                break;
+            case 'image-viewer-desktop-shortcut':
+                this.addDesktopShortcut();
+                break;
+            case 'image-viewer-create-reference':
+                this.createReference();
                 break;
             case 'image-viewer-copy-tag':
                 if (this.isNaxImage() && window.naxtApplet) {
@@ -649,6 +755,37 @@ class ImageViewer {
         return !!(this.metadata && this.metadata.naxGallerySlug && this.metadata.naxFilename);
     }
 
+    getImageFilename() {
+        if (!this.metadata) return null;
+        return this.metadata.filename || this.metadata.original || this.metadata.upscaled || null;
+    }
+
+    getImageWorkspaceId() {
+        if (this.metadata?.workspace) {
+            return this.metadata.workspace;
+        }
+        const filename = this.getImageFilename();
+        if (filename && findImageByFilename(filename)) {
+            return (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
+        }
+        return this.metadata?.generatedWorkspace || null;
+    }
+
+    buildMoveToMenuContent() {
+        const workspaceId = this.getImageWorkspaceId()
+            || (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
+            || window.activeWorkspace
+            || 'default';
+        const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
+        const workspaceColor = workspacesData[workspaceId]?.color || '#6366f1';
+        return `
+            <div class="workspace-option-content" style="display: flex; align-items: center; gap: 8px;">
+                <div class="workspace-color-indicator" style="width: 12px; height: 12px; border-radius: 50%; background-color: ${workspaceColor};"></div>
+                <span class="context-menu-item-text">Move to...</span>
+            </div>
+        `;
+    }
+
     hasValidMetadata() {
         if (!this.metadata) return false;
         // NAX tag wiki / arbitrary URL previews: not workspace gallery images (no Reroll, Scrap, pin, etc.)
@@ -657,16 +794,97 @@ class ImageViewer {
     }
 
     zoomIn() {
-        this.setZoom(this.zoomLevel + this.zoomStep);
+        this.setZoom(this.zoomLevel + this.zoomStep, { applyDisplaySnap: true, wheelDelta: -1 });
     }
 
     zoomOut() {
-        this.setZoom(this.zoomLevel - this.zoomStep);
+        this.setZoom(this.zoomLevel - this.zoomStep, { applyDisplaySnap: true, wheelDelta: 1 });
     }
 
-    setZoom(level) {
+    _getCssScale() {
+        const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
+        const container = this.element.querySelector('.image-container');
+        if (!imgElement || !container || !imgElement.naturalWidth || !imgElement.naturalHeight) {
+            return null;
+        }
+        const containerRect = container.getBoundingClientRect();
+        const scaleX = containerRect.width / imgElement.naturalWidth;
+        const scaleY = containerRect.height / imgElement.naturalHeight;
+        return Math.min(scaleX, scaleY, 1.0) || null;
+    }
+
+    _getActualSizeZoom() {
+        const cssScale = this._getCssScale();
+        if (!cssScale) return null;
+        return 1.0 / cssScale;
+    }
+
+    _applyActualSizeDisplaySnap(nextLevel) {
+        const cssScale = this._getCssScale();
+        const actualSizeZoom = this._getActualSizeZoom();
+        if (!cssScale || !actualSizeZoom) {
+            return nextLevel;
+        }
+
+        const currentDisplay = this.zoomLevel * cssScale;
+        const nextDisplay = nextLevel * cssScale;
+        const snapTolerance = 0.05;
+
+        const crossingUp = currentDisplay < 1.0 && nextDisplay >= 1.0 - snapTolerance;
+        const crossingDown = currentDisplay > 1.0 && nextDisplay <= 1.0 + snapTolerance;
+        const nearActual = Math.abs(nextDisplay - 1.0) < snapTolerance;
+
+        if (crossingUp || crossingDown || nearActual) {
+            return actualSizeZoom;
+        }
+
+        return nextLevel;
+    }
+
+    _getZoomSnapPresets() {
+        const presets = [1.0];
+        const actualSizeZoom = this._getActualSizeZoom();
+        if (actualSizeZoom != null && Math.abs(actualSizeZoom - 1.0) > 0.02) {
+            presets.push(actualSizeZoom);
+        }
+        return presets.sort((a, b) => a - b);
+    }
+
+    _snapZoomLevel(level, wheelDelta) {
+        const presets = this._getZoomSnapPresets();
+        const tolerance = 0.05;
+        const absDelta = Math.abs(wheelDelta);
+        const atPreset = presets.find((p) => Math.abs(level - p) < tolerance * 0.35);
+
+        if (atPreset != null) {
+            this._zoomSnapEscapeAccum.value += absDelta;
+            if (this._zoomSnapEscapeAccum.value < 80) {
+                return atPreset;
+            }
+            this._zoomSnapEscapeAccum.value = 0;
+            return level;
+        }
+
+        const nearPreset = presets.find((p) => Math.abs(level - p) < tolerance);
+        if (nearPreset != null && absDelta < 50) {
+            this._zoomSnapEscapeAccum.value = 0;
+            return nearPreset;
+        }
+
+        this._zoomSnapEscapeAccum.value = 0;
+        return level;
+    }
+
+    setZoom(level, options = {}) {
         const minZoom = this.minZoom || 0.1;
-        this.zoomLevel = Math.max(minZoom, Math.min(this.maxZoom, level));
+        let nextLevel = Math.max(minZoom, Math.min(this.maxZoom, level));
+        if (options.applyDisplaySnap || options.wheelDelta != null) {
+            nextLevel = this._applyActualSizeDisplaySnap(nextLevel);
+        }
+        if (options.wheelDelta != null) {
+            nextLevel = this._snapZoomLevel(nextLevel, options.wheelDelta);
+        }
+        this.zoomLevel = nextLevel;
         this.panX = 0;
         this.panY = 0;
         this.updateImageTransform();
@@ -768,7 +986,7 @@ class ImageViewer {
     handleZoom(e) {
         e.preventDefault();
         const delta = e.deltaY > 0 ? -this.zoomStep : this.zoomStep;
-        this.setZoom(this.zoomLevel + delta);
+        this.setZoom(this.zoomLevel + delta, { applyDisplaySnap: true, wheelDelta: e.deltaY });
     }
 
     handleDragStart(e) {
@@ -880,9 +1098,10 @@ class ImageViewer {
     openInLightbox() {
         // Use existing lightbox functionality
         if (typeof showLightbox === 'function') {
+            const filename = this.getImageFilename();
             // If we have metadata with a filename, use that to find the image in the gallery
-            if (this.metadata && (this.metadata.filename || this.metadata.original || this.metadata.upscaled)) {
-                showLightbox(this.metadata);
+            if (filename) {
+                showLightbox({ filename });
             } else {
                 // Standalone image - use URL mode
                 const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
@@ -899,16 +1118,8 @@ class ImageViewer {
     }
 
     maximize() {
-        // Maximize the modal window
         if (!this.element) return;
-
-        this.element.style.width = '90vw';
-        this.element.style.height = '90vh';
-        this.element.style.setProperty('--modal-offset-x', '0px');
-        this.element.style.setProperty('--modal-offset-y', '0px');
-
-        // Fit image to screen after maximizing
-        setTimeout(() => this.fitToScreen(), 50);
+        toggleModalMaximize(this.element);
     }
 
     download() {
@@ -959,11 +1170,111 @@ class ImageViewer {
         }
     }
 
-    moveTo() {
-        const filename = this.metadata.filename || this.metadata.original || this.metadata.upscaled;
-        if (filename && typeof showGalleryMoveModal === 'function') {
-            showGalleryMoveModal(filename);
+    async jumpToInWorkspace() {
+        const filename = this.getImageFilename();
+        if (!filename) {
+            showGlassToast('warning', 'Not Available', 'No gallery image to jump to', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
         }
+
+        const currentWorkspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.activeWorkspace || 'default';
+        const imageWorkspaceId = this.getImageWorkspaceId() || currentWorkspaceId;
+
+        const findImageIndex = () => {
+            if (typeof allImages === 'undefined' || !Array.isArray(allImages) || !allImages.length) {
+                return -1;
+            }
+            return allImages.findIndex(img =>
+                img && (img.filename === filename || img.original === filename || img.upscaled === filename)
+            );
+        };
+
+        let imageIndex = findImageIndex();
+
+        if (imageIndex === -1 && imageWorkspaceId !== currentWorkspaceId) {
+            const workspacesData = (typeof workspaces !== 'undefined' ? workspaces : null) || window.workspaces || {};
+            const workspaceName = workspacesData[imageWorkspaceId]?.name || imageWorkspaceId;
+            const confirmed = await showConfirmationDialog(
+                `This image is in the "${workspaceName}" workspace. Switch to that workspace and jump to the image?`,
+                [
+                    { text: 'Switch & Jump', value: true, className: 'btn-primary' },
+                    { text: 'Cancel', value: false, className: 'btn-secondary' }
+                ]
+            );
+            if (!confirmed) return;
+
+            if (typeof setActiveWorkspace === 'function') {
+                await setActiveWorkspace(imageWorkspaceId);
+            }
+            if (typeof loadGallery === 'function') {
+                await loadGallery(true);
+            }
+            imageIndex = findImageIndex();
+        }
+
+        if (imageIndex === -1 && typeof loadGallery === 'function') {
+            await loadGallery(true);
+            imageIndex = findImageIndex();
+        }
+
+        if (imageIndex === -1) {
+            showGlassToast('warning', 'Not Found', 'Image not found in workspace', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+            return;
+        }
+
+        let targetIndex = imageIndex;
+        if (typeof window.filteredImageIndices !== 'undefined' && Array.isArray(window.filteredImageIndices)) {
+            const filteredIndex = window.filteredImageIndices.indexOf(imageIndex);
+            if (filteredIndex !== -1) {
+                targetIndex = filteredIndex;
+            } else {
+                showGlassToast('warning', 'Not Visible', 'Image is filtered out of current view', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                return;
+            }
+        }
+
+        const galleryWindow = document.getElementById('galleryWindow');
+        if (galleryWindow) {
+            // isGalleryWindowHidden, showGalleryWindow, bringModalToFront: public/scripts/comp/modalUtils.js
+            if (isGalleryWindowHidden()) {
+                openModal(galleryWindow);
+                if (typeof window.isGalleryHidden !== 'undefined') {
+                    window.isGalleryHidden = false;
+                }
+            } else {
+                bringModalToFront(galleryWindow);
+            }
+        }
+
+        if (typeof displayGalleryFromStartIndex === 'function') {
+            await displayGalleryFromStartIndex(targetIndex, true);
+        }
+    }
+
+    startChat() {
+        const filename = this.getImageFilename();
+        if (!filename || !window.chatSystem) return;
+        const characterName = this.metadata?.characterName || this.metadata?.metadata?.character_name || null;
+        window.chatSystem.openChatModal(filename, characterName);
+    }
+
+    setAsWallpaper() {
+        const filename = this.getImageFilename();
+        if (!filename) return;
+        openDesktopSettingsModal(`file:${filename}`);
+    }
+
+    addDesktopShortcut() {
+        const image = this.metadata;
+        if (!image || !this.getImageFilename()) return;
+        createDesktopShortcutFromImage(image);
+    }
+
+    createReference() {
+        const image = this.metadata;
+        if (!image || !this.getImageFilename()) return;
+        // createVibeEncodingFromImage: public/scripts/comp/galleryView.js
+        createVibeEncodingFromImage(image);
     }
 
     scrap() {
@@ -1044,7 +1355,7 @@ if (document.readyState === 'loading') {
 }
 
 // Helper functions for opening images from different sources
-window.openImageInViewer = function (imageSrc, title = 'Glancewell', metadata = {}) {
+window.openImageInViewer = function (imageSrc, title = 'Image', metadata = {}) {
     return imageViewerManager.createViewer(imageSrc, title, metadata);
 };
 

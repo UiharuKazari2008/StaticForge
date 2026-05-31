@@ -1484,12 +1484,13 @@ function showWorkspaceProgressModal(workspaceName) {
     workspaceProgressModal = showConfirmationDialog(
         progressHtml,
         [], // No buttons - this is a progress modal
-        null, // No event
+        typeof createGalleryWindowCenterEvent === 'function' ? createGalleryWindowCenterEvent() : null,
         {
             title: `Change Workspace`,
             icon: 'fas fa-planet-ringed',
             showCloseButton: false,
-            width: '375px'
+            width: 400,
+            manualPosition: true
         }
     );
 

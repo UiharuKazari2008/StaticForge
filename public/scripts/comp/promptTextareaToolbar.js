@@ -14,6 +14,10 @@ class PromptTextareaToolbar {
         this.setupEventListeners();
         this.initializeTokenCounters();
         this.initializeDropdowns();
+        // initPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
+        if (initPromptTextareaContextMenu) {
+            initPromptTextareaContextMenu();
+        }
     }
 
     setupEventListeners() {
@@ -119,6 +123,11 @@ class PromptTextareaToolbar {
             // If in search mode, don't hide the toolbar at all
             if (toolbar && toolbar.classList.contains('search-mode')) {
                 return; // Keep toolbar visible in search mode
+            }
+
+            // Keep toolbar visible while emphasis editor is open
+            if (toolbar && toolbar.classList.contains('emphasis-mode')) {
+                return;
             }
             
             // Check if the new focus target is within the same container
@@ -1451,6 +1460,7 @@ class PromptTextareaToolbar {
 
         // Add emphasis mode class to show emphasis elements
         toolbar.classList.add('emphasis-mode');
+        toolbar.classList.remove('hidden');
 
         // Initialize emphasis mode
         this.initializeEmphasisMode(textarea, toolbar);
@@ -1470,8 +1480,8 @@ class PromptTextareaToolbar {
             emphasisElements.className = 'toolbar-emphasis-elements';
             emphasisElements.innerHTML = `
                 <div class="emphasis-toolbar">
-                    <div class="emphasis-type" id="emphasisType">New Group</div>
-                    <div class="emphasis-value" id="emphasisValue">1.0</div>
+                    <div class="emphasis-type">New Group</div>
+                    <div class="emphasis-value" title="Scroll ±0.1 · Shift+scroll ±0.01">1.0</div>
                     <div class="emphasis-controls">
                         <button class="btn-secondary emphasis-btn btn-small emphasis-up" data-action="emphasis-up" title="Increase">
                             <i class="nai-plus"></i>
@@ -1483,10 +1493,10 @@ class PromptTextareaToolbar {
                             <i class="nai-arrow-left"></i>
                         </button>
                         <div class="emphasis-actions">
-                            <button class="btn-secondary emphasis-btn btn-small emphasis-apply" data-action="emphasis-apply" title="Apply (Enter)">
+                            <button class="btn-secondary emphasis-btn btn-small toolbar-btn emphasis-apply" data-action="emphasis-apply" title="Apply (Enter)">
                                 <i class="fas fa-check"></i>
                             </button>
-                            <button class="btn-secondary emphasis-btn btn-small emphasis-cancel" data-action="emphasis-cancel" title="Cancel (Esc)">
+                            <button class="btn-secondary emphasis-btn btn-small toolbar-btn emphasis-cancel" data-action="emphasis-cancel" title="Cancel (Esc)">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
@@ -1508,7 +1518,8 @@ class PromptTextareaToolbar {
             upBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.adjustEmphasis(0.1, toolbar);
+                const step = getEmphasisAdjustStep(e.shiftKey);
+                this.adjustEmphasis(step, toolbar);
             });
             upBtn.setAttribute('data-listeners-attached', 'true');
         }
@@ -1516,7 +1527,8 @@ class PromptTextareaToolbar {
             downBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.adjustEmphasis(-0.1, toolbar);
+                const step = getEmphasisAdjustStep(e.shiftKey);
+                this.adjustEmphasis(-step, toolbar);
             });
             downBtn.setAttribute('data-listeners-attached', 'true');
         }
@@ -1551,6 +1563,21 @@ class PromptTextareaToolbar {
             cancelBtn.setAttribute('data-listeners-attached', 'true');
         }
 
+        const valueEl = emphasisElements.querySelector('.emphasis-value');
+        if (valueEl && !valueEl.hasAttribute('data-wheel-attached')) {
+            valueEl.addEventListener('wheel', (e) => {
+                if (!toolbar.classList.contains('emphasis-mode')) return;
+                e.preventDefault();
+                const step = getEmphasisAdjustStep(e.shiftKey);
+                const delta = e.deltaY > 0 ? -step : step;
+                if (window.adjustEmphasisEditing) {
+                    window.adjustEmphasisEditing(delta);
+                    this.updateEmphasisDisplay(toolbar);
+                }
+            }, { passive: false });
+            valueEl.setAttribute('data-wheel-attached', 'true');
+        }
+
         // Add keyboard event listener for emphasis mode
         this.addEmphasisKeyboardListener(toolbar);
         
@@ -1572,9 +1599,70 @@ class PromptTextareaToolbar {
         }
     }
 
+    clearDirectEmphasisPending(toolbar) {
+        if (toolbar.directEmphasisApplyTimeout) {
+            clearTimeout(toolbar.directEmphasisApplyTimeout);
+            toolbar.directEmphasisApplyTimeout = null;
+        }
+        toolbar.directEmphasisPending = null;
+    }
+
+    buildDirectEmphasisWeightFromDigits(digits) {
+        if (!digits || !digits.length) return null;
+        if (digits.length === 1) {
+            return parseInt(digits, 10);
+        }
+        return parseFloat(digits.charAt(0) + '.' + digits.slice(1));
+    }
+
+    queueDirectEmphasisDigit(toolbar, textarea, digit, isAltPressed) {
+        const now = Date.now();
+        const selKey = `${textarea.selectionStart}:${textarea.selectionEnd}`;
+        let pending = toolbar.directEmphasisPending;
+
+        if (!pending || pending.textarea !== textarea || pending.selKey !== selKey || now - pending.time > 500) {
+            pending = { textarea, selKey, digits: '', isAlt: isAltPressed, time: now };
+            toolbar.directEmphasisPending = pending;
+        }
+
+        pending.digits += String(digit);
+        pending.time = now;
+        pending.isAlt = isAltPressed;
+
+        if (toolbar.directEmphasisApplyTimeout) {
+            clearTimeout(toolbar.directEmphasisApplyTimeout);
+        }
+
+        toolbar.directEmphasisApplyTimeout = setTimeout(() => {
+            const activePending = toolbar.directEmphasisPending;
+            toolbar.directEmphasisPending = null;
+            toolbar.directEmphasisApplyTimeout = null;
+            if (!activePending) return;
+
+            let numericValue = this.buildDirectEmphasisWeightFromDigits(activePending.digits);
+            if (numericValue === null) return;
+            if (activePending.isAlt) {
+                numericValue = -numericValue;
+            }
+
+            const ta = activePending.textarea;
+            const currentMode = this.detectEmphasisMode(ta, ta.selectionStart, ta.selectionEnd);
+            if (currentMode === 'brace') {
+                numericValue = snapWeightForBraceMode(numericValue);
+            }
+
+            const result = applyEmphasisDirectly(ta, numericValue, currentMode);
+            if (result && result.success) {
+                window.emphasisEditingValue = numericValue;
+                this.updateEmphasisDisplay(toolbar);
+                ta.setSelectionRange(result.start, result.end);
+            }
+        }, 500);
+    }
+
     updateEmphasisDisplay(toolbar) {
-        const valueElement = toolbar.querySelector('#emphasisValue');
-        const typeElement = toolbar.querySelector('#emphasisType');
+        const valueElement = toolbar.querySelector('.emphasis-value');
+        const typeElement = toolbar.querySelector('.emphasis-type');
         const toggleBtn = toolbar.querySelector('[data-action="emphasis-toggle"]');
 
         // Get current emphasis state from global variables
@@ -1585,20 +1673,13 @@ class PromptTextareaToolbar {
                 // Handle special "---" value
                 if (emphasisValue === "---") {
                     valueElement.textContent = "---";
-                    valueElement.style.color = '#ff6b6b'; // Red for remove emphasis
+                    valueElement.style.color = getEmphasisToolbarColor('---');
                 } else {
-                    // Handle integer inputs by converting to float
                     const displayValue = typeof emphasisValue === 'string' ? parseFloat(emphasisValue) : emphasisValue;
-                    valueElement.textContent = displayValue.toFixed(1);
-                    
-                    // Color code the emphasis value
-                    if (displayValue > 1.0) {
-                        valueElement.style.color = '#ff8c00'; // Orange for > 1
-                    } else if (displayValue < 1.0) {
-                        valueElement.style.color = '#87ceeb'; // Light blue for < 1
-                    } else {
-                        valueElement.style.color = '#ffffff'; // White for = 1
-                    }
+                    // formatEmphasisWeightDisplay: public/scripts/comp/emphasisManager.js
+                    valueElement.textContent = formatEmphasisWeightDisplay(displayValue);
+                    // getEmphasisToolbarColor: public/scripts/comp/emphasisManager.js
+                    valueElement.style.color = getEmphasisToolbarColor(displayValue);
                 }
             }
         }
@@ -1673,11 +1754,11 @@ class PromptTextareaToolbar {
             switch (e.key) {
                 case 'ArrowUp':
                     e.preventDefault();
-                    this.adjustEmphasis(0.1, toolbar);
+                    this.adjustEmphasis(getEmphasisAdjustStep(e.shiftKey), toolbar);
                     break;
                 case 'ArrowDown':
                     e.preventDefault();
-                    this.adjustEmphasis(-0.1, toolbar);
+                    this.adjustEmphasis(-getEmphasisAdjustStep(e.shiftKey), toolbar);
                     break;
                 case '0':
                 case '1':
@@ -1692,7 +1773,7 @@ class PromptTextareaToolbar {
                     e.preventDefault();
                     const integerValue = parseInt(e.key);
                     if (window.emphasisEditingValue !== undefined) {
-                        window.emphasisEditingValue = integerValue;
+                        window.emphasisEditingValue = clampEmphasisWeight(integerValue);
                         this.updateEmphasisDisplay(toolbar);
                     }
                     break;
@@ -1770,7 +1851,8 @@ class PromptTextareaToolbar {
             if ((e.key === '{' || e.key === '[') && !e.altKey && !e.ctrlKey && !e.metaKey) {
                 if (!toolbar.classList.contains('emphasis-mode') && document.activeElement === textarea) {
                     if (textarea.selectionStart !== textarea.selectionEnd) {
-                        const weight = e.key === '{' ? 1.5 : 0.5;
+                        this.clearDirectEmphasisPending(toolbar);
+                        const weight = e.key === '{' ? 1.1 : 0.9;
                         const result = applyEmphasisDirectly(textarea, weight, 'brace');
                         if (result && result.success) {
                             window.emphasisEditingValue = weight;
@@ -1799,59 +1881,15 @@ class PromptTextareaToolbar {
 
             // Check if there's selected text and apply emphasis directly
             if (textarea.selectionStart !== textarea.selectionEnd) {
-                // Handle alt + number for negative values
-                const isAltPressed = e.altKey;
-                
-                let numericValue = (e.key === '™') ? 1 : (e.key === '¡') ? 2 : parseInt(e.key);
-                
-                // Check for second number input within 500ms for decimal values
-                const now = Date.now();
-                const lastNumberTime = toolbar.lastNumberTime || 0;
-                const lastNumberValue = toolbar.lastNumberValue || 0;
-                
-                if (now - lastNumberTime < 500 && lastNumberValue >= 0 && lastNumberValue <= 9) {
-                    // Second number within 500ms - use as decimal
-                    numericValue = lastNumberValue + (numericValue / 10);
-                }
-                
-                // Apply alt modifier for negative values
-                if (isAltPressed) {
-                    numericValue = -numericValue;
-                }
-                
-                // Store current number for potential decimal input
-                toolbar.lastNumberTime = now;
-                toolbar.lastNumberValue = parseInt(e.key);
-                
-                // Clear decimal state after 500ms
-                setTimeout(() => {
-                    if (toolbar.lastNumberTime === now) {
-                        toolbar.lastNumberValue = null;
-                    }
-                }, 500);
-                                
-                // Auto-detect emphasis mode based on context
-                const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
-                const result = applyEmphasisDirectly(textarea, numericValue, currentMode);
-
-                if (result && result.success) {
-                    // Update the emphasis value for future use
-                    window.emphasisEditingValue = numericValue;
-                    this.updateEmphasisDisplay(toolbar);
-                    
-                    // Reselect the emphasized text so user can see what was emphasized
-                    setTimeout(() => {
-                        if (result.start !== undefined && result.end !== undefined) {
-                            textarea.setSelectionRange(result.start, result.end);
-                        }
-                    }, 10);
-                    
-                    e.preventDefault(); // Only prevent default if emphasis was successfully applied
+                const selectedText = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd).trim();
+                if (/^-?\d+(\.\d+)?$/.test(selectedText)) {
                     return;
                 }
-                // If emphasis application failed (e.g., selected text is a pure number),
-                // don't prevent default - allow normal typing to replace the selected text
-                return; // Exit early to allow normal typing
+                e.preventDefault();
+                const isAltPressed = e.altKey;
+                const digit = (e.key === '™') ? 1 : (e.key === '¡') ? 2 : parseInt(e.key, 10);
+                this.queueDirectEmphasisDigit(toolbar, textarea, digit, isAltPressed);
+                return;
             }
             // If no text selected, don't prevent default - allow normal typing
         };
@@ -1873,7 +1911,8 @@ class PromptTextareaToolbar {
             if (textarea.selectionStart === textarea.selectionEnd) return;
 
             if (isBraceWrap) {
-                const weight = char === '{' ? 1.5 : 0.5;
+                this.clearDirectEmphasisPending(toolbar);
+                const weight = char === '{' ? 1.1 : 0.9;
                 const result = applyEmphasisDirectly(textarea, weight, 'brace');
                 if (result && result.success) {
                     e.preventDefault();
@@ -1889,19 +1928,7 @@ class PromptTextareaToolbar {
             }
 
             e.preventDefault();
-            const numericValue = parseInt(char, 10);
-            const currentMode = this.detectEmphasisMode(textarea, textarea.selectionStart, textarea.selectionEnd);
-            const result = applyEmphasisDirectly(textarea, numericValue, currentMode);
-
-            if (result && result.success) {
-                window.emphasisEditingValue = numericValue;
-                this.updateEmphasisDisplay(toolbar);
-                setTimeout(() => {
-                    if (result.start !== undefined && result.end !== undefined) {
-                        textarea.setSelectionRange(result.start, result.end);
-                    }
-                }, 10);
-            }
+            this.queueDirectEmphasisDigit(toolbar, textarea, parseInt(char, 10), false);
         };
         toolbar.directEmphasisBeforeinputHandler = directEmphasisBeforeinputHandler;
         container.addEventListener('beforeinput', directEmphasisBeforeinputHandler);

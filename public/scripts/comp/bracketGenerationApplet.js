@@ -29,6 +29,56 @@ function bracketGenIsAppletActive() {
     return true;
 }
 
+/** Step/keyword data for context menus — does not require Phasewalker window focus. */
+function bracketGenGetStepMenuData() {
+    const applet = bracketGenerationApplet;
+    if (!applet) return null;
+
+    let keywords = Array.isArray(applet.state.keywords) ? applet.state.keywords : [];
+    let keywordSteps = applet.state.keywordSteps || {};
+    let stepNames = Array.isArray(applet.state.stepNames) ? applet.state.stepNames : [];
+    let useAppletLabels = keywords.length > 0;
+
+    if (keywords.length === 0 && hasManagedBracketArtifacts()) {
+        const rebuilt = rebuildToolStateFromEditor();
+        if (rebuilt && rebuilt.keywords && rebuilt.keywords.length > 0) {
+            keywords = rebuilt.keywords;
+            keywordSteps = rebuilt.keywordSteps || {};
+            stepNames = Array.isArray(rebuilt.stepNames) ? rebuilt.stepNames : [];
+            useAppletLabels = false;
+        }
+    }
+
+    if (!keywords.length) return null;
+
+    return {
+        keywords,
+        keywordSteps,
+        stepLabel(index) {
+            if (useAppletLabels && typeof applet.getStepDisplayName === 'function') {
+                return applet.getStepDisplayName(index);
+            }
+            const name = stepNames[index];
+            return (name && String(name).trim()) || `Step ${index + 1}`;
+        }
+    };
+}
+
+/** Hydrate in-memory Phasewalker state from applet or editor before writing a step. */
+function bracketGenEnsureStepStateReady() {
+    const applet = bracketGenerationApplet;
+    if (!applet) return false;
+    if (applet.state.keywords && applet.state.keywords.length > 0) return true;
+    if (hasManagedBracketArtifacts()) {
+        const rebuilt = rebuildToolStateFromEditor();
+        if (rebuilt && rebuilt.keywords && rebuilt.keywords.length > 0) {
+            applet.hydrateFromSnapshot(rebuilt);
+            return true;
+        }
+    }
+    return false;
+}
+
 function bracketGenExpanderStageIndex(replacement) {
     if (!replacement || replacement.stages === undefined) return null;
     if (Array.isArray(replacement.stages) && replacement.stages.length > 0) {
@@ -691,8 +741,77 @@ class BracketGenerationApplet {
         this.setupFieldToggle();
         this.setupKeywordDropdown();
         this.setupGearDropdown();
+        this.setupStepTabNavigation();
         this.initializeStepDragDrop();
         this.updateKeywordDropdownLabel();
+    }
+
+    setupStepTabNavigation() {
+        if (!this.modal || this.modal.dataset.bracketTabNavWired === 'true') return;
+        this.modal.dataset.bracketTabNavWired = 'true';
+        this.modal.addEventListener('keydown', (e) => this.handleStepTabKeydown(e), true);
+    }
+
+    bracketGenIsAutocompleteTabReserved() {
+        const overlay = document.getElementById('characterAutocompleteOverlay');
+        return overlay && !overlay.classList.contains('hidden');
+    }
+
+    handleStepTabKeydown(e) {
+        if (!bracketGenIsAppletActive()) return;
+        if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return;
+
+        const target = e.target;
+        const reverse = e.shiftKey;
+
+        if (target.matches('textarea[data-step-id]')) {
+            if (this.bracketGenIsAutocompleteTabReserved()) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.saveStepTextareasToState();
+            this.focusAdjacentStepTextarea(target, reverse);
+            return;
+        }
+
+        if (target.matches('.bracket-gen-step-name-input')) {
+            e.preventDefault();
+            e.stopPropagation();
+            target.blur();
+            this.focusAdjacentStepNameInput(target, reverse);
+        }
+    }
+
+    focusAdjacentStepTextarea(currentTa, reverse) {
+        if (!this.stepsContainer) return;
+        const textareas = Array.from(this.stepsContainer.querySelectorAll('textarea[data-step-id]'));
+        const idx = textareas.indexOf(currentTa);
+        if (idx === -1 || textareas.length === 0) return;
+        const nextIdx = reverse
+            ? (idx > 0 ? idx - 1 : textareas.length - 1)
+            : (idx < textareas.length - 1 ? idx + 1 : 0);
+        const next = textareas[nextIdx];
+        if (!next) return;
+        next.focus();
+        next.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }
+
+    focusAdjacentStepNameInput(currentInput, reverse) {
+        if (!this.stepsContainer) return;
+        const items = Array.from(this.stepsContainer.querySelectorAll('.bracket-gen-step-item'));
+        const currentItem = currentInput.closest('.bracket-gen-step-item');
+        const idx = items.indexOf(currentItem);
+        if (idx === -1 || items.length === 0) return;
+        const nextIdx = reverse
+            ? (idx > 0 ? idx - 1 : items.length - 1)
+            : (idx < items.length - 1 ? idx + 1 : 0);
+        const nextItem = items[nextIdx];
+        const nextInput = nextItem?.querySelector('.bracket-gen-step-name-input');
+        const editableRoot = nextItem?.querySelector('.character-name-editable.inline-name-edit');
+        if (!nextInput || !editableRoot) return;
+        editableRoot.classList.add('editing-name');
+        nextInput.focus();
+        nextInput.select();
+        nextInput.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     }
 
     setupFieldToggle() {
@@ -1288,6 +1407,38 @@ class BracketGenerationApplet {
         });
     }
 
+    /**
+     * Append text to a Phasewalker step field (prompt or uc) for a keyword.
+     * promptTextareaContextMenu.js
+     */
+    appendTextToStep(keyword, stepIndex, field, text) {
+        const add = String(text || '').trim();
+        if (!add) return false;
+        const kw = String(keyword || '').trim();
+        if (!kw || !this.state.keywordSteps[kw]) return false;
+        this.syncKeywordStepCounts();
+        const steps = this.state.keywordSteps[kw];
+        const idx = Number(stepIndex);
+        if (!Number.isFinite(idx) || idx < 0 || idx >= steps.length) return false;
+        const f = field === 'uc' ? 'uc' : 'prompt';
+        const step = steps[idx];
+        const current = String(step[f] || '').trim();
+        const sep = current && !current.endsWith(',') ? ', ' : (current ? ' ' : '');
+        step[f] = current ? current + sep + add : add;
+
+        if (this.state.activeKeyword === kw && this.state.activeField === f && this.stepsContainer) {
+            const ta = this.stepsContainer.querySelector(`textarea[data-step-id="${step.id}"]`);
+            if (ta) {
+                setTextareaValuePreservingUndo(ta, step[f]);
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                if (typeof autoResizeTextarea === 'function') {
+                    autoResizeTextarea(ta);
+                }
+            }
+        }
+        return true;
+    }
+
     syncStepTextareasFromState() {
         if (!this.stepsContainer) return;
         const kw = this.state.activeKeyword;
@@ -1708,6 +1859,8 @@ class BracketGenerationApplet {
 const bracketGenerationApplet = new BracketGenerationApplet();
 window.bracketGenerationApplet = bracketGenerationApplet;
 window.bracketGenIsAppletActive = bracketGenIsAppletActive;
+window.bracketGenGetStepMenuData = bracketGenGetStepMenuData;
+window.bracketGenEnsureStepStateReady = bracketGenEnsureStepStateReady;
 window.rebuildToolStateFromEditor = rebuildToolStateFromEditor;
 window.deleteAllManagedBracketArtifacts = deleteAllManagedBracketArtifacts;
 window.hasManagedBracketArtifacts = hasManagedBracketArtifacts;

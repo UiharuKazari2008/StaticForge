@@ -1265,6 +1265,19 @@ async function hideFavoritesManager() {
 }
 
 // Load favorites from server
+// promptTextareaContextMenu.js
+function getPromptContextMenuFavorites() {
+    return favoritesData;
+}
+
+async function ensureFavoritesLoadedForPromptMenu() {
+    if (favoritesData.tags.length > 0 || favoritesData.textReplacements.length > 0) {
+        return favoritesData;
+    }
+    await loadFavorites();
+    return favoritesData;
+}
+
 async function loadFavorites() {
     try {
         if (window.wsClient && window.wsClient.isConnected()) {

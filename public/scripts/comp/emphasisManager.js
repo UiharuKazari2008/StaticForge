@@ -6,6 +6,645 @@ let emphasisEditingValue = 1.0;
 let emphasisEditingTarget = null;
 let emphasisEditingSelection = null;
 let emphasisEditingMode = 'normal'; // 'normal', 'brace', 'group'
+/** Saved group/normal context when drilling into brace mode; restored on toggle back (no text apply). */
+let emphasisModeParentContext = null;
+
+function clearEmphasisModeParentContext() {
+    emphasisModeParentContext = null;
+}
+
+function saveEmphasisModeParentContext() {
+    if (!emphasisEditingSelection) return;
+    emphasisModeParentContext = {
+        mode: emphasisEditingMode,
+        selection: {
+            start: emphasisEditingSelection.start,
+            end: emphasisEditingSelection.end
+        },
+        value: emphasisEditingValue
+    };
+}
+
+function restoreEmphasisModeParentContext() {
+    if (!emphasisModeParentContext) return false;
+    emphasisEditingMode = emphasisModeParentContext.mode;
+    emphasisEditingSelection = {
+        start: emphasisModeParentContext.selection.start,
+        end: emphasisModeParentContext.selection.end
+    };
+    emphasisEditingValue = emphasisModeParentContext.value;
+    emphasisModeParentContext = null;
+    return true;
+}
+
+function findEmphasisGroupContainingSelection(value, selStart, selEnd) {
+    for (const block of listEmphasisBlocks(value)) {
+        if (selStart >= block.start && selEnd <= block.end) {
+            return {
+                start: block.start,
+                end: block.end,
+                weight: block.weight
+            };
+        }
+    }
+    return null;
+}
+
+function switchBraceToGroupOrNormal(value) {
+    if (restoreEmphasisModeParentContext()) {
+        return;
+    }
+
+    const containingGroup = findEmphasisGroupContainingSelection(
+        value,
+        emphasisEditingSelection.start,
+        emphasisEditingSelection.end
+    );
+    if (containingGroup) {
+        emphasisEditingMode = 'group';
+        emphasisEditingSelection = {
+            start: containingGroup.start,
+            end: containingGroup.end
+        };
+        emphasisEditingValue = containingGroup.weight;
+        return;
+    }
+
+    emphasisEditingMode = 'normal';
+    const braceText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
+    if (/^\{+.*\}+$|^\[+.*\]+$/.test(braceText)) {
+        emphasisEditingValue = weightFromBraceBlockText(braceText);
+    }
+}
+
+// Bridge module-scoped state to window (promptTextareaToolbar.js, autocompleteUtils.js)
+(function bindEmphasisEditingWindowState() {
+    const state = {
+        emphasisEditingActive: () => emphasisEditingActive,
+        emphasisEditingValue: () => emphasisEditingValue,
+        emphasisEditingTarget: () => emphasisEditingTarget,
+        emphasisEditingSelection: () => emphasisEditingSelection,
+        emphasisEditingMode: () => emphasisEditingMode
+    };
+    const setters = {
+        emphasisEditingActive: (v) => { emphasisEditingActive = v; },
+        emphasisEditingValue: (v) => { emphasisEditingValue = v; },
+        emphasisEditingTarget: (v) => { emphasisEditingTarget = v; },
+        emphasisEditingSelection: (v) => { emphasisEditingSelection = v; },
+        emphasisEditingMode: (v) => { emphasisEditingMode = v; }
+    };
+    Object.keys(state).forEach((name) => {
+        Object.defineProperty(window, name, {
+            get: state[name],
+            set: setters[name],
+            configurable: true
+        });
+    });
+})();
+
+const EMPHASIS_WEIGHT_MIN = -6;
+const EMPHASIS_WEIGHT_MAX = 6;
+const EMPHASIS_WEIGHT_STEP = 0.1;
+const EMPHASIS_WEIGHT_FINE_STEP = 0.01;
+const DISABLE_SYNTAX_HIGHLIGHT = {
+    background: 'rgba(175, 175, 175, 0.92)',
+    border: 'rgba(231, 231, 231, 0.95)'
+};
+
+function clampEmphasisWeight(value) {
+    const n = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(n)) return 1.0;
+    const clamped = Math.max(EMPHASIS_WEIGHT_MIN, Math.min(EMPHASIS_WEIGHT_MAX, n));
+    return Math.round(clamped * 100) / 100;
+}
+
+function formatEmphasisWeight(value) {
+    if (value === '---') return '---';
+    // Auto precision up to 2 decimals: 1, 1.3, 1.54 (not 1.00, 1.30)
+    return String(parseFloat(clampEmphasisWeight(value).toFixed(2)));
+}
+
+/** Toolbar display: always 1 decimal; 2 when value uses 0.01 precision. */
+function formatEmphasisWeightDisplay(value) {
+    if (value === '---') return '---';
+    const n = clampEmphasisWeight(value);
+    const oneDecimal = Math.round(n * 10) / 10;
+    const twoDecimal = Math.round(n * 100) / 100;
+    if (Math.abs(twoDecimal - oneDecimal) > 0.0001) {
+        return twoDecimal.toFixed(2);
+    }
+    return oneDecimal.toFixed(1);
+}
+
+function getEmphasisAdjustStep(shiftKey) {
+    return shiftKey ? EMPHASIS_WEIGHT_FINE_STEP : EMPHASIS_WEIGHT_STEP;
+}
+
+const EMPHASIS_BRACE_BLOCK_PATTERN = /(\{+)([^{}]*)\}+|(\[+)([^\[]*)\]+/g;
+const EMPHASIS_WEIGHT_PART = '-?\\d+(?:\\.\\d+)?';
+
+function createEmphasisTraditionalPattern() {
+    return new RegExp(`(${EMPHASIS_WEIGHT_PART})::(.+?)::`, 'g');
+}
+
+function createEmphasisAutoTerminatingPattern() {
+    return new RegExp(`(${EMPHASIS_WEIGHT_PART})::(.+?)(?=\\s*${EMPHASIS_WEIGHT_PART}::|$)`, 'g');
+}
+
+const EMPHASIS_NEXT_GROUP_PATTERN = new RegExp(`(?:,\\s*|\\s+)${EMPHASIS_WEIGHT_PART}::`);
+
+/** Parse emphasis blocks without treating the next group's weight:: as this block's closing ::. */
+function listEmphasisBlocks(value) {
+    const blocks = [];
+    let searchFrom = 0;
+
+    while (searchFrom < value.length) {
+        const openRe = new RegExp(`${EMPHASIS_WEIGHT_PART}::`, 'g');
+        openRe.lastIndex = searchFrom;
+        const open = openRe.exec(value);
+        if (!open) break;
+
+        const start = open.index;
+        const weightStr = open[0].slice(0, -2);
+        const contentStart = start + open[0].length;
+        const tail = value.substring(contentStart);
+
+        const nextGroupMatch = tail.match(EMPHASIS_NEXT_GROUP_PATTERN);
+        const nextGroupAt = nextGroupMatch ? nextGroupMatch.index : -1;
+        const closeAt = tail.indexOf('::');
+
+        let innerText;
+        let end;
+        let needsTerminator = false;
+
+        if (closeAt >= 0 && (nextGroupAt < 0 || closeAt < nextGroupAt)) {
+            innerText = tail.substring(0, closeAt);
+            end = contentStart + closeAt + 2;
+            needsTerminator = true;
+        } else if (nextGroupAt >= 0) {
+            innerText = tail.substring(0, nextGroupAt).replace(/\s+$/, '');
+            end = contentStart + nextGroupAt;
+            needsTerminator = false;
+        } else {
+            innerText = tail;
+            end = value.length;
+            needsTerminator = false;
+        }
+
+        const match = [value.substring(start, end), weightStr, innerText];
+        match.index = start;
+
+        blocks.push({
+            start,
+            end,
+            weight: parseFloat(weightStr),
+            weightStr,
+            innerText,
+            needsTerminator,
+            match
+        });
+
+        searchFrom = end;
+    }
+
+    return blocks;
+}
+
+function parseEmphasisBlockSpan(blockText) {
+    const traditional = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)::$`);
+    const autoTerminating = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)$`);
+    const tradMatch = blockText.match(traditional);
+    if (tradMatch) {
+        return {
+            weight: parseFloat(tradMatch[1]),
+            innerText: tradMatch[2],
+            needsTerminator: true
+        };
+    }
+    const autoMatch = blockText.match(autoTerminating);
+    if (autoMatch) {
+        return {
+            weight: parseFloat(autoMatch[1]),
+            innerText: autoMatch[2],
+            needsTerminator: false
+        };
+    }
+    return null;
+}
+
+function extractEmphasisInnerForRemoval(value, selStart, selEnd) {
+    const overlap = findEmphasisBlockOverlappingSelection(value, selStart, selEnd);
+    if (overlap) {
+        return { start: overlap.start, end: overlap.end, innerText: overlap.innerText };
+    }
+    const parsed = parseEmphasisBlockSpan(value.substring(selStart, selEnd).trim());
+    if (parsed) {
+        return { start: selStart, end: selEnd, innerText: parsed.innerText };
+    }
+    return null;
+}
+
+/** When removing a group that auto-terminated the previous one, insert closing :: for the prior group. */
+function resolveEmphasisRemovalSpan(value, blockStart, blockEnd, innerText) {
+    const blocks = listEmphasisBlocks(value);
+    let blockIndex = blocks.findIndex((b) => b.start === blockStart && b.end === blockEnd);
+    if (blockIndex < 0) {
+        blockIndex = blocks.findIndex((b) => blockStart >= b.start && blockEnd <= b.end);
+        if (blockIndex >= 0) {
+            blockStart = blocks[blockIndex].start;
+            blockEnd = blocks[blockIndex].end;
+            innerText = blocks[blockIndex].innerText;
+        }
+    }
+
+    let replaceStart = blockStart;
+    let replaceEnd = blockEnd;
+    let replacementText = innerText;
+
+    if (blockIndex > 0) {
+        const prevBlock = blocks[blockIndex - 1];
+        const currentBlock = blocks[blockIndex];
+        if (!prevBlock.needsTerminator) {
+            const between = value.substring(prevBlock.end, currentBlock.start);
+            if (/^\s+$/.test(between)) {
+                replacementText = (between.endsWith(' ') ? ':: ' : '::') + innerText;
+            } else if (between === ', ') {
+                replaceStart = prevBlock.end;
+                replacementText = '::, ' + innerText;
+            } else if (between === ',') {
+                replaceStart = prevBlock.end;
+                replacementText = '::,' + innerText;
+            } else if (/^,\s+$/.test(between)) {
+                replaceStart = prevBlock.end;
+                replacementText = '::, ' + innerText;
+            }
+        }
+    }
+
+    return { replaceStart, replaceEnd, replacementText };
+}
+
+function findEmphasisBlockAtCursor(value, cursorPosition) {
+    for (const block of listEmphasisBlocks(value)) {
+        if (cursorPosition >= block.start && cursorPosition < block.end) {
+            return {
+                start: block.start,
+                end: block.end,
+                weight: block.weight,
+                match: block.match
+            };
+        }
+    }
+    return null;
+}
+
+function forEachEmphasisBlockInValue(value, callback) {
+    for (const block of listEmphasisBlocks(value)) {
+        callback(block.match, block.start, block.end);
+    }
+}
+
+function weightFromBraceBlockText(blockText) {
+    const openBraces = blockText.match(/^\{+/);
+    if (openBraces) {
+        const closeBraces = blockText.match(/\}+$/);
+        const level = Math.min(openBraces[0].length, closeBraces ? closeBraces[0].length : 0);
+        return 1.0 + (level * 0.1);
+    }
+    const openBrackets = blockText.match(/^\[+/);
+    if (openBrackets) {
+        const closeBrackets = blockText.match(/\]+$/);
+        const level = Math.min(openBrackets[0].length, closeBrackets ? closeBrackets[0].length : 0);
+        return 1.0 - (level * 0.1);
+    }
+    return 1.0;
+}
+
+/** Braces only support 0.1 weight steps — snap and reject 0.01 precision. */
+function snapWeightForBraceMode(weight) {
+    return Math.round(clampEmphasisWeight(weight) * 10) / 10;
+}
+
+function buildBraceEmphasisText(innerText, weight) {
+    const w = snapWeightForBraceMode(weight);
+    if (w > 1.0) {
+        const count = Math.round((w - 1.0) * 10);
+        if (count <= 0) return innerText;
+        const braces = '{'.repeat(count);
+        return `${braces}${innerText}${'}'.repeat(count)}`;
+    }
+    if (w < 1.0) {
+        const count = Math.round((1.0 - w) * 10);
+        if (count <= 0) return innerText;
+        const brackets = '['.repeat(count);
+        return `${brackets}${innerText}${']'.repeat(count)}`;
+    }
+    return innerText;
+}
+
+function findEmphasisBlockOverlappingSelection(value, selStart, selEnd) {
+    for (const block of listEmphasisBlocks(value)) {
+        if (selStart < block.end && selEnd > block.start) {
+            return {
+                start: block.start,
+                end: block.end,
+                innerText: block.innerText,
+                needsTerminator: block.needsTerminator
+            };
+        }
+    }
+    return null;
+}
+
+function findBraceBlockOverlappingSelection(value, selStart, selEnd) {
+    const pattern = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+    let match;
+    while ((match = pattern.exec(value)) !== null) {
+        const start = match.index;
+        const end = start + match[0].length;
+        if (selStart < end && selEnd > start) {
+            const blockText = match[0];
+            return {
+                start,
+                end,
+                innerText: blockText.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '')
+            };
+        }
+    }
+    return null;
+}
+
+function findEmphasisBraceBlockAtCursor(value, searchStart, searchEnd, cursorPosition) {
+    const slice = value.substring(searchStart, searchEnd);
+    const pattern = new RegExp(EMPHASIS_BRACE_BLOCK_PATTERN.source, 'g');
+    let match;
+    while ((match = pattern.exec(slice)) !== null) {
+        const start = searchStart + match.index;
+        const end = start + match[0].length;
+        if (cursorPosition >= start && cursorPosition <= end) {
+            return {
+                start,
+                end,
+                weight: weightFromBraceBlockText(match[0])
+            };
+        }
+    }
+    return null;
+}
+
+function getEmphasisGroupContentBounds(emphasisMatch) {
+    const contentStart = emphasisMatch.index + emphasisMatch[1].length + 2;
+    const contentEnd = contentStart + emphasisMatch[2].length;
+    return { contentStart, contentEnd };
+}
+
+function trySelectBraceInEmphasisGroup(value, groupStart, groupEnd, cursorPosition) {
+    const braceHit = findEmphasisBraceBlockAtCursor(value, groupStart, groupEnd, cursorPosition);
+    if (!braceHit) return false;
+    emphasisEditingMode = 'brace';
+    emphasisEditingSelection = { start: braceHit.start, end: braceHit.end };
+    emphasisEditingValue = braceHit.weight;
+    return true;
+}
+
+function isDecimalPointAt(value, index) {
+    if (index <= 0 || index >= value.length - 1) return false;
+    return /\d/.test(value[index - 1]) && /\d/.test(value[index + 1]);
+}
+
+function findEmphasisBlockEndBefore(value, pos) {
+    let best = 0;
+    forEachEmphasisBlockInValue(value, (match, start, end) => {
+        if (end <= pos) {
+            best = Math.max(best, end);
+        }
+    });
+    return best;
+}
+
+function findEmphasisBlockStartAfter(value, pos) {
+    let best = value.length;
+    forEachEmphasisBlockInValue(value, (match, start) => {
+        if (start >= pos) {
+            best = Math.min(best, start);
+        }
+    });
+    return best;
+}
+
+function trimTagSelectionBounds(value, start, end) {
+    let blockStart = start;
+    let blockEnd = end;
+    while (blockStart < blockEnd && value[blockStart] === ' ') {
+        blockStart++;
+    }
+    while (blockEnd > blockStart && value[blockEnd - 1] === ' ') {
+        blockEnd--;
+    }
+    return { start: blockStart, end: blockEnd };
+}
+
+/** Tag bounds when opening emphasis editor with no selection. */
+function findAutoDetectTagBounds(value, cursorPosition) {
+    const braceHit = findEmphasisBraceBlockAtCursor(value, 0, value.length, cursorPosition);
+    if (braceHit) {
+        return {
+            start: braceHit.start,
+            end: braceHit.end,
+            mode: 'brace',
+            weight: braceHit.weight
+        };
+    }
+
+    const emphasisBlock = findEmphasisBlockAtCursor(value, cursorPosition);
+    if (emphasisBlock) {
+        return {
+            start: emphasisBlock.start,
+            end: emphasisBlock.end,
+            mode: 'group',
+            weight: emphasisBlock.weight
+        };
+    }
+
+    const textBeforeCursor = value.substring(0, cursorPosition);
+    const textAfterCursor = value.substring(cursorPosition);
+
+    let blockStart = findEmphasisBlockEndBefore(value, cursorPosition);
+
+    const commaIdx = textBeforeCursor.lastIndexOf(',');
+    if (commaIdx >= 0) blockStart = Math.max(blockStart, commaIdx + 1);
+    const semicolonIdx = textBeforeCursor.lastIndexOf(';');
+    if (semicolonIdx >= 0) blockStart = Math.max(blockStart, semicolonIdx + 1);
+    const pipeIdx = textBeforeCursor.lastIndexOf('|');
+    if (pipeIdx >= 0) blockStart = Math.max(blockStart, pipeIdx + 1);
+
+    const periodIdx = textBeforeCursor.lastIndexOf('.');
+    if (periodIdx >= 0 && !isDecimalPointAt(value, periodIdx)) {
+        blockStart = Math.max(blockStart, periodIdx + 1);
+    }
+
+    let blockEnd = findEmphasisBlockStartAfter(value, cursorPosition);
+
+    const forwardDelimiters = [',', ';', '|'];
+    for (const delimiter of forwardDelimiters) {
+        const idx = textAfterCursor.indexOf(delimiter);
+        if (idx >= 0) {
+            blockEnd = Math.min(blockEnd, cursorPosition + idx);
+        }
+    }
+
+    let periodOffset = 0;
+    while (periodOffset < textAfterCursor.length) {
+        const idx = textAfterCursor.indexOf('.', periodOffset);
+        if (idx < 0) break;
+        const absIdx = cursorPosition + idx;
+        if (!isDecimalPointAt(value, absIdx)) {
+            blockEnd = Math.min(blockEnd, absIdx);
+            break;
+        }
+        periodOffset = idx + 1;
+    }
+
+    const trimmed = trimTagSelectionBounds(value, blockStart, blockEnd);
+    blockStart = trimmed.start;
+    blockEnd = trimmed.end;
+
+    const blockText = value.substring(blockStart, blockEnd);
+    if (/^\{+.*\}+$|^\[+.*\]+$/.test(blockText)) {
+        return {
+            start: blockStart,
+            end: blockEnd,
+            mode: 'brace',
+            weight: weightFromBraceBlockText(blockText)
+        };
+    }
+
+    const braceInTag = findEmphasisBraceBlockAtCursor(value, blockStart, blockEnd, cursorPosition);
+    if (braceInTag) {
+        return {
+            start: braceInTag.start,
+            end: braceInTag.end,
+            mode: 'brace',
+            weight: braceInTag.weight
+        };
+    }
+
+    return { start: blockStart, end: blockEnd, mode: 'normal' };
+}
+
+/** RGB + overlay alpha for one emphasis weight; extremes stay hue-distinct (+6 hot red, -6 strong blue). */
+function computeEmphasisWeightColor(weight) {
+    const w = typeof weight === 'string' ? parseFloat(weight) : weight;
+    if (isNaN(w)) {
+        return { r: 232, g: 232, b: 232, borderR: 232, borderG: 232, borderB: 232, backgroundA: 0, borderA: 0 };
+    }
+
+    const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+    const P = {
+        GREEN: { r: 45, g: 215, b: 65 },
+        ORANGE: { r: 255, g: 130, b: 25 },
+        NEUTRAL: { r: 232, g: 232, b: 232 },
+        LIGHT_BLUE: { r: 110, g: 195, b: 255 },
+        STRONG_BLUE: { r: 15, g: 95, b: 255 },
+        BRIGHT_RED: { r: 255, g: 55, b: 45 },
+        INTENSE_RED: { r: 255, g: 12, b: 20 }
+    };
+
+    let r;
+    let g;
+    let b;
+    let borderR;
+    let borderG;
+    let borderB;
+    let backgroundA;
+    let borderA;
+
+    if (w >= 1.0) {
+        if (w <= 1.0) {
+            r = P.NEUTRAL.r;
+            g = P.NEUTRAL.g;
+            b = P.NEUTRAL.b;
+            borderR = P.NEUTRAL.r;
+            borderG = P.NEUTRAL.g;
+            borderB = P.NEUTRAL.b;
+            backgroundA = 0;
+            borderA = 0;
+        } else if (w < 2.0) {
+            const t = Math.min(w - 1.0, 1.0);
+            r = lerp(P.NEUTRAL.r, P.BRIGHT_RED.r, t);
+            g = lerp(P.NEUTRAL.g, P.BRIGHT_RED.g, t);
+            b = lerp(P.NEUTRAL.b, P.BRIGHT_RED.b, t);
+            borderR = r;
+            borderG = g;
+            borderB = b;
+            backgroundA = t * 0.58;
+            borderA = t * 0.78;
+        } else {
+            const t = Math.min((w - 2.0) / (EMPHASIS_WEIGHT_MAX - 2.0), 1.0);
+            // Higher positive = hotter, more saturated red (not muddy dark)
+            r = lerp(P.BRIGHT_RED.r, P.INTENSE_RED.r, t);
+            g = lerp(P.BRIGHT_RED.g, P.INTENSE_RED.g, t);
+            b = lerp(P.BRIGHT_RED.b, P.INTENSE_RED.b, t);
+            backgroundA = 0.55 + (0.42 * t);
+            borderR = 255;
+            borderG = lerp(100, 45, t);
+            borderB = lerp(80, 35, t);
+            borderA = 0.78 + (0.17 * t);
+        }
+    } else if (w > 0.0) {
+        const t = w;
+        r = lerp(P.GREEN.r, P.ORANGE.r, t);
+        g = lerp(P.GREEN.g, P.ORANGE.g, t);
+        b = lerp(P.GREEN.b, P.ORANGE.b, t);
+        backgroundA = 0.52 * (1 - t);
+        borderR = Math.min(255, r + 45);
+        borderG = Math.min(255, g + 35);
+        borderB = Math.min(255, b + 40);
+        borderA = Math.min(1.0, backgroundA + 0.28);
+    } else if (w === 0.0) {
+        r = P.GREEN.r;
+        g = P.GREEN.g;
+        b = P.GREEN.b;
+        backgroundA = 0.50;
+        borderR = 85;
+        borderG = 245;
+        borderB = 95;
+        borderA = 0.80;
+    } else if (w > -1.0) {
+        const t = Math.abs(w);
+        r = lerp(P.GREEN.r, P.LIGHT_BLUE.r, t);
+        g = lerp(P.GREEN.g, P.LIGHT_BLUE.g, t);
+        b = lerp(P.GREEN.b, P.LIGHT_BLUE.b, t);
+        backgroundA = 0.46 + (0.24 * t);
+        borderR = Math.min(255, r + 45);
+        borderG = Math.min(255, g + 35);
+        borderB = Math.min(255, b + 40);
+        borderA = Math.min(1.0, backgroundA + 0.30);
+    } else {
+        const t = Math.min((Math.abs(w) - 1.0) / (Math.abs(EMPHASIS_WEIGHT_MIN) - 1.0), 1.0);
+        // More negative = deeper cool blue (not murky navy that reads like dark red)
+        r = lerp(P.LIGHT_BLUE.r, P.STRONG_BLUE.r, t);
+        g = lerp(P.LIGHT_BLUE.g, P.STRONG_BLUE.g, t);
+        b = lerp(P.LIGHT_BLUE.b, P.STRONG_BLUE.b, t);
+        backgroundA = 0.45 + (0.48 * t);
+        borderR = lerp(140, 40, t);
+        borderG = lerp(215, 130, t);
+        borderB = 255;
+        borderA = 0.72 + (0.23 * t);
+    }
+
+    return { r, g, b, borderR, borderG, borderB, backgroundA, borderA };
+}
+
+/** Programmatic input after emphasis edits; skipAutofill avoids opening autofill overlay. */
+function dispatchPromptTextareaInputEvent(target, options = {}) {
+    if (!target) return;
+    if (options.skipAutofill) {
+        target.dispatchEvent(new CustomEvent('input', { bubbles: true, detail: { skipAutofill: true } }));
+        return;
+    }
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
 /** UC tab stacks two fields in one container; each textarea lives in .prompt-textarea-emphasis-wrap (app.html). */
 function getPromptTextareaOverlayHost(textarea) {
@@ -146,7 +785,7 @@ function splitEmphasisBlock(target) {
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
     // Trigger input event to update any dependent UI
-    target.dispatchEvent(new Event('input', { bubbles: true }));
+    dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
     
     return true;
 }
@@ -305,100 +944,82 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     } else {
         numericWeight = weight;
     }
-    
-    // Format the weight
-    const formattedWeight = numericWeight.toFixed(1);
-    
-    // Check if the selected text is already emphasized (both traditional and auto-terminating)
-    const traditionalEmphasisPattern = /^(-?\d+\.\d+)::(.+?)::$/;
-    const autoTerminatingEmphasisPattern = /^(-?\d+\.\d+)::(.+?)$/;
-    
-    const isTraditionalEmphasized = traditionalEmphasisPattern.test(selectedText);
-    const isAutoTerminatingEmphasized = autoTerminatingEmphasisPattern.test(selectedText);
-    const isAlreadyEmphasized = isTraditionalEmphasized || isAutoTerminatingEmphasized;
-    
+    numericWeight = clampEmphasisWeight(numericWeight);
+    if (mode === 'brace') {
+        numericWeight = snapWeightForBraceMode(numericWeight);
+    }
+
+    const formattedWeight = formatEmphasisWeight(numericWeight);
+
+    const traditionalEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)::$`);
+    const autoTerminatingEmphasisPattern = new RegExp(`^(${EMPHASIS_WEIGHT_PART})::(.+)$`);
+
+    let replaceStart = selectionStart;
+    let replaceEnd = selectionEnd;
+    let innerText = selectedText;
     let emphasizedText;
-    let finalStart = selectionStart;
-    let finalEnd = selectionStart;
-    
-    if (isAlreadyEmphasized) {
-        // Update existing emphasis - extract the inner text and re-emphasize
-        let innerText;
-        if (isTraditionalEmphasized) {
-            const match = selectedText.match(traditionalEmphasisPattern);
-            innerText = match[2];
-        } else if (isAutoTerminatingEmphasized) {
-            const match = selectedText.match(autoTerminatingEmphasisPattern);
-            innerText = match[2];
-        }
-        
-        if (innerText) {
-            if (mode === 'brace') {
-                // Brace mode: create {} or [] blocks with more reasonable scaling
-                let braceLevel;
-                
-                if (numericWeight > 1.0) {
-                    // Positive emphasis: use {} - limit to reasonable number
-                    braceLevel = Math.min(Math.round((numericWeight - 1.0) * 2), 5); // Max 5 braces
-                    const braces = '{'.repeat(braceLevel);
-                    emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel)}`;
-                } else if (numericWeight < 1.0) {
-                    // Negative emphasis: use [] - limit to reasonable number
-                    braceLevel = Math.min(Math.round((1.0 - numericWeight) * 2), 5); // Max 5 brackets
-                    const brackets = '['.repeat(braceLevel);
-                    emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
-                } else {
-                    // No emphasis: just the text
-                    emphasizedText = innerText;
-                }
-            } else {
-                // Normal/Group mode: determine if we need a terminator
-                const needsTerminator = shouldAddTerminator(value, selectionEnd, {
-                    allowAutoTerminationByNextGroup: false
-                });
-                emphasizedText = `${formattedWeight}::${innerText}${needsTerminator ? '::' : ''}`;
+
+    const overlappingGroup = findEmphasisBlockOverlappingSelection(value, selectionStart, selectionEnd);
+    const overlappingBrace = findBraceBlockOverlappingSelection(value, selectionStart, selectionEnd);
+
+    if (mode === 'brace') {
+        if (overlappingBrace) {
+            replaceStart = overlappingBrace.start;
+            replaceEnd = overlappingBrace.end;
+            innerText = overlappingBrace.innerText;
+        } else if (overlappingGroup) {
+            replaceStart = overlappingGroup.start;
+            replaceEnd = overlappingGroup.end;
+            innerText = overlappingGroup.innerText;
+        } else {
+            const isTraditionalEmphasized = traditionalEmphasisPattern.test(selectedText);
+            const isAutoTerminatingEmphasized = autoTerminatingEmphasisPattern.test(selectedText);
+            if (isTraditionalEmphasized) {
+                innerText = selectedText.match(traditionalEmphasisPattern)[2];
+            } else if (isAutoTerminatingEmphasized) {
+                innerText = selectedText.match(autoTerminatingEmphasisPattern)[2];
             }
-            console.log('Updated existing emphasis:', { old: selectedText, new: emphasizedText });
         }
+        emphasizedText = buildBraceEmphasisText(innerText, numericWeight);
+    } else if (overlappingGroup) {
+        replaceStart = overlappingGroup.start;
+        replaceEnd = overlappingGroup.end;
+        innerText = overlappingGroup.innerText;
+        emphasizedText = `${formattedWeight}::${innerText}${overlappingGroup.needsTerminator ? '::' : ''}`;
+    } else if (overlappingBrace) {
+        replaceStart = overlappingBrace.start;
+        replaceEnd = overlappingBrace.end;
+        emphasizedText = buildBraceEmphasisText(overlappingBrace.innerText, snapWeightForBraceMode(numericWeight));
     } else {
-        // Create new emphasis
-        if (mode === 'brace') {
-            // Brace mode: create {} or [] blocks with more reasonable scaling
-            let braceLevel;
-            
-            if (numericWeight > 1.0) {
-                // Positive emphasis: use {} - limit to reasonable number
-                braceLevel = Math.min(Math.round((numericWeight - 1.0) * 2), 5); // Max 5 braces
-                const braces = '{'.repeat(braceLevel);
-                emphasizedText = `${braces}${selectedText}${'}'.repeat(braceLevel)}`;
-            } else if (numericWeight < 1.0) {
-                // Negative emphasis: use [] - limit to reasonable number
-                braceLevel = Math.min(Math.round((1.0 - numericWeight) * 2), 5); // Max 5 brackets
-                const brackets = '['.repeat(braceLevel);
-                emphasizedText = `${brackets}${selectedText}${']'.repeat(braceLevel)}`;
+        const isTraditionalEmphasized = traditionalEmphasisPattern.test(selectedText);
+        const isAutoTerminatingEmphasized = autoTerminatingEmphasisPattern.test(selectedText);
+        const isAlreadyEmphasized = isTraditionalEmphasized || isAutoTerminatingEmphasized;
+
+        if (isAlreadyEmphasized) {
+            if (isTraditionalEmphasized) {
+                innerText = selectedText.match(traditionalEmphasisPattern)[2];
             } else {
-                // No emphasis: just the text
-                emphasizedText = selectedText;
+                innerText = selectedText.match(autoTerminatingEmphasisPattern)[2];
             }
+            const needsTerminator = shouldAddTerminator(value, selectionEnd, {
+                allowAutoTerminationByNextGroup: false
+            });
+            emphasizedText = `${formattedWeight}::${innerText}${needsTerminator ? '::' : ''}`;
         } else if (mode === 'group') {
-            // Group mode: determine if we need a terminator
             const needsTerminator = shouldAddTerminator(value, selectionEnd, {
                 allowAutoTerminationByNextGroup: false
             });
             emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
         } else {
-            // Normal mode: determine if we need a terminator
             const needsTerminator = shouldAddTerminator(value, selectionEnd, {
                 allowAutoTerminationByNextGroup: false
             });
             emphasizedText = `${formattedWeight}::${selectedText}${needsTerminator ? '::' : ''}`;
         }
-        console.log('Created new emphasis:', emphasizedText);
     }
-    
-    // Replace the selected text with the emphasized version
-    const beforeText = value.substring(0, selectionStart);
-    const afterText = value.substring(selectionEnd);
+
+    const beforeText = value.substring(0, replaceStart);
+    const afterText = value.substring(replaceEnd);
     const newValue = beforeText + emphasizedText + afterText;
     
     console.log('Replacing text:', { 
@@ -411,12 +1032,13 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     setTextareaValuePreservingUndo(target, newValue);
     
     // Set cursor position after the emphasized text
-    const newCursorPosition = selectionStart + emphasizedText.length;
+    const newCursorPosition = replaceStart + emphasizedText.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
     
     // Trigger input event to update any dependent UI
-    target.dispatchEvent(new Event('input', { bubbles: true }));
-    
+    dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+    hideCharacterAutocomplete();
+
     // Update emphasis highlighting
     if (window.autoResizeTextarea) {
         window.autoResizeTextarea(target);
@@ -429,8 +1051,8 @@ function applyEmphasisDirectly(target, weight, mode = 'normal') {
     return {
         success: true,
         emphasizedText: emphasizedText,
-        start: selectionStart,
-        end: selectionStart + emphasizedText.length
+        start: replaceStart,
+        end: replaceStart + emphasizedText.length
     };
 }
 
@@ -453,16 +1075,9 @@ function checkCanAddEmphasis(target) {
     const textBeforeCursor = value.substring(0, cursorPosition);
 
     // First check if cursor is inside a {} or [] block
-    const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-    let braceMatch;
-    while ((braceMatch = bracePattern.exec(value)) !== null) {
-        const braceStart = braceMatch.index;
-        const braceEnd = braceMatch.index + braceMatch[0].length;
-
-        if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
-            // Cursor is inside a {} or [] block, can add emphasis
-            return true;
-        }
+    const braceHit = findEmphasisBraceBlockAtCursor(value, 0, value.length, cursorPosition);
+    if (braceHit) {
+        return true;
     }
 
     // Check if cursor is at end of a tag pattern (same logic as autocomplete)
@@ -488,272 +1103,83 @@ function checkCanAddEmphasis(target) {
 function startEmphasisEditing(target) {
     if (!target) return;
 
+    clearEmphasisModeParentContext();
     emphasisEditingTarget = target;
     const value = target.value;
     const cursorPosition = target.selectionStart;
-    const textBeforeCursor = value.substring(0, cursorPosition);
 
-    // First, check if cursor is inside an existing emphasis block
-    // Check for auto-terminating emphasis blocks first: number::text (without closing ::)
-    const autoTerminatingPattern = /(-?\d+\.\d+)::(.+?)(?=\s*-?\d+\.?\d*::|::|$)/g;
-    let emphasisMatch;
     let insideEmphasis = false;
     let emphasisMode = 'normal'; // 'normal', 'brace', 'group'
 
-    while ((emphasisMatch = autoTerminatingPattern.exec(value)) !== null) {
-        const emphasisStart = emphasisMatch.index;
-        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
+    const emphasisBlock = findEmphasisBlockAtCursor(value, cursorPosition);
+    if (emphasisBlock) {
+        insideEmphasis = true;
+        emphasisEditingValue = emphasisBlock.weight;
 
-        if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
-            // Cursor is inside an existing emphasis block
-            insideEmphasis = true;
-            emphasisEditingValue = parseFloat(emphasisMatch[1]);
-            
-            // Check if there's a text selection first - prioritize selection over emphasis block
-            const selectionStart = target.selectionStart;
-            const selectionEnd = target.selectionEnd;
-            const hasSelection = selectionStart !== selectionEnd;
-            
-            if (hasSelection) {
-                // If there's a text selection, use it instead of the emphasis block
-                emphasisEditingSelection = {
-                    start: selectionStart,
-                    end: selectionEnd
-                };
-                emphasisMode = 'normal'; // Start in normal mode for text selection
-            } else {
-                // No text selection, use the emphasis block boundaries
-                emphasisEditingSelection = {
-                    start: emphasisStart,
-                    end: emphasisEnd
-                };
-            }
+        const selectionStart = target.selectionStart;
+        const selectionEnd = target.selectionEnd;
+        const hasSelection = selectionStart !== selectionEnd;
 
-            // Check if there's a {} block inside this emphasis block
-            const emphasisText = emphasisMatch[2];
-            const bracePattern = /\{([^}]*)\}/g;
-            let braceMatch;
-            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                const braceStartInEmphasis = emphasisStart + emphasisMatch.index;
-                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                    // Cursor is inside a {} block within the emphasis block
-                    emphasisMode = 'brace';
-                    emphasisEditingSelection = {
-                        start: braceStartInEmphasis,
-                        end: braceEndInEmphasis
-                    };
-                    break;
-                }
-            }
-
-            if (emphasisMode !== 'brace') {
-                emphasisMode = 'group';
-            }
-            break;
+        if (hasSelection) {
+            emphasisEditingSelection = {
+                start: selectionStart,
+                end: selectionEnd
+            };
+            emphasisMode = 'normal';
+        } else {
+            emphasisEditingSelection = {
+                start: emphasisBlock.start,
+                end: emphasisBlock.end
+            };
         }
-    }
 
-    // If not found in auto-terminating blocks, check traditional emphasis blocks
-    if (!insideEmphasis) {
-        const traditionalEmphasisPattern = /(-?\d+\.\d+)::(.+?)::/g;
-        
-        while ((emphasisMatch = traditionalEmphasisPattern.exec(value)) !== null) {
-            const emphasisStart = emphasisMatch.index;
-            const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-            if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
-                // Cursor is inside an existing emphasis block
-                insideEmphasis = true;
-                emphasisEditingValue = parseFloat(emphasisMatch[1]);
-                
-                // Check if there's a text selection first - prioritize selection over emphasis block
-                const selectionStart = target.selectionStart;
-                const selectionEnd = target.selectionEnd;
-                const hasSelection = selectionStart !== selectionEnd;
-                
-                if (hasSelection) {
-                    // If there's a text selection, use it instead of the emphasis block
-                    emphasisEditingSelection = {
-                        start: selectionStart,
-                        end: selectionEnd
-                    };
-                    emphasisMode = 'normal'; // Start in normal mode for text selection
-                } else {
-                    // No text selection, use the emphasis block boundaries
-                    emphasisEditingSelection = {
-                        start: emphasisStart,
-                        end: emphasisEnd
-                    };
-                }
-
-                // Check if there's a {} block inside this emphasis block
-                const emphasisText = emphasisMatch[2];
-                const bracePattern = /\{([^}]*)\}/g;
-                let braceMatch;
-                while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                    const braceStartInEmphasis = emphasisStart + emphasisMatch.index;
-                    const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                    if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                        // Cursor is inside a {} block within the emphasis block
-                        emphasisMode = 'brace';
-                        emphasisEditingSelection = {
-                            start: braceStartInEmphasis,
-                            end: braceEndInEmphasis
-                        };
-                        break;
-                    }
-                }
-
-                if (emphasisMode !== 'brace') {
-                    emphasisMode = 'group';
-                }
-                break;
-            }
+        const { contentStart, contentEnd } = getEmphasisGroupContentBounds(emphasisBlock.match);
+        if (trySelectBraceInEmphasisGroup(value, contentStart, contentEnd, cursorPosition)) {
+            emphasisMode = 'brace';
+        } else if (emphasisMode !== 'brace') {
+            emphasisMode = 'group';
         }
     }
 
     if (!insideEmphasis) {
-        // Check if cursor is inside a {} or [] block
-        const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-        let braceMatch;
-        let insideBrace = false;
+        // Check if there's a text selection
+        const selectionStart = target.selectionStart;
+        const selectionEnd = target.selectionEnd;
+        const hasSelection = selectionStart !== selectionEnd;
 
-        while ((braceMatch = bracePattern.exec(value)) !== null) {
-            const braceStart = braceMatch.index;
-            const braceEnd = braceMatch.index + braceMatch[0].length;
+        if (hasSelection) {
+            // Use the selected text for emphasis - start with "---" value
+            emphasisEditingSelection = {
+                start: selectionStart,
+                end: selectionEnd
+            };
+            emphasisEditingValue = "---";
+            emphasisMode = 'normal';
+        } else {
+            const autoBounds = findAutoDetectTagBounds(value, cursorPosition);
+            const blockText = value.substring(autoBounds.start, autoBounds.end);
 
-            if (cursorPosition >= braceStart && cursorPosition <= braceEnd) {
-                // Cursor is inside a {} or [] block
-                insideBrace = true;
+            if (blockText.length < 2) return;
+
+            if (autoBounds.mode === 'brace') {
+                emphasisEditingValue = autoBounds.weight;
+                emphasisEditingSelection = {
+                    start: autoBounds.start,
+                    end: autoBounds.end
+                };
                 emphasisMode = 'brace';
-                // Calculate weight based on number of {} or [] around it
-                const braceText = braceMatch[0];
-                const isBracket = braceText.startsWith('[');
-
-                if (isBracket) {
-                    // [] block - negative emphasis
-                    const openBrackets = (braceText.match(/\[/g) || []).length;
-                    const closeBrackets = (braceText.match(/\]/g) || []).length;
-                    const bracketLevel = openBrackets - closeBrackets;
-                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                } else {
-                    // {} block - positive emphasis
-                    const openBraces = (braceText.match(/\{/g) || []).length;
-                    const closeBraces = (braceText.match(/\}/g) || []).length;
-                    const braceLevel = openBraces - closeBraces;
-                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                }
-
+            } else if (autoBounds.mode === 'group') {
+                emphasisEditingValue = autoBounds.weight;
                 emphasisEditingSelection = {
-                    start: braceStart,
-                    end: braceEnd
+                    start: autoBounds.start,
+                    end: autoBounds.end
                 };
-                break;
-            }
-        }
-
-        // If not inside a brace, check if we're at the start/end of a brace block within an emphasis group
-        if (!insideBrace) {
-            const emphasisPattern = /(-?\d+\.\d+)::(.+?)::/g;
-            let emphasisMatch;
-
-            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                const emphasisStart = emphasisMatch.index;
-                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-                const emphasisText = emphasisMatch[2];
-
-                // Check if cursor is at the start or end of a brace block within this emphasis
-                if (cursorPosition >= emphasisStart && cursorPosition <= emphasisEnd) {
-                    const relativePos = cursorPosition - emphasisStart;
-                    const emphasisContent = emphasisText;
-
-                    // Check if cursor is at the start of a brace block
-                    const braceStartMatch = emphasisContent.match(/^(\{+|\[+)/);
-                    if (braceStartMatch && relativePos <= braceStartMatch[0].length) {
-                        insideBrace = true;
-                        emphasisMode = 'brace';
-                        const braceLevel = braceStartMatch[0].length;
-                        emphasisEditingValue = braceStartMatch[0].startsWith('[') ?
-                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
-                        emphasisEditingSelection = {
-                            start: emphasisStart + emphasisMatch.index + 1,
-                            end: emphasisStart + emphasisMatch.index + 1 + braceStartMatch[0].length
-                        };
-                        break;
-                    }
-
-                    // Check if cursor is at the end of a brace block
-                    const braceEndMatch = emphasisContent.match(/(\}+|]+)$/);
-                    if (braceEndMatch && relativePos >= emphasisContent.length - braceEndMatch[0].length) {
-                        insideBrace = true;
-                        emphasisMode = 'brace';
-                        const braceLevel = braceEndMatch[0].length;
-                        emphasisEditingValue = braceEndMatch[0].startsWith(']') ?
-                            1.0 - (braceLevel * 0.1) : 1.0 + (braceLevel * 0.1);
-                        emphasisEditingSelection = {
-                            start: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length - braceEndMatch[0].length,
-                            end: emphasisStart + emphasisMatch.index + 1 + emphasisContent.length
-                        };
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!insideBrace) {
-            // Check if there's a text selection
-            const selectionStart = target.selectionStart;
-            const selectionEnd = target.selectionEnd;
-            const hasSelection = selectionStart !== selectionEnd;
-
-            if (hasSelection) {
-                // Use the selected text for emphasis - start with "---" value
-                emphasisEditingSelection = {
-                    start: selectionStart,
-                    end: selectionEnd
-                };
-                emphasisEditingValue = "---";
-                emphasisMode = 'normal';
+                emphasisMode = 'group';
             } else {
-                // For new blocks, search back to find the block boundary
-                const searchBackIndex = Math.max(
-                    textBeforeCursor.lastIndexOf(','),
-                    textBeforeCursor.lastIndexOf('|'),
-                    textBeforeCursor.lastIndexOf(':'),
-                    textBeforeCursor.lastIndexOf('{'),
-                    textBeforeCursor.lastIndexOf('}'),
-                    textBeforeCursor.lastIndexOf('['),
-                    textBeforeCursor.lastIndexOf(']')
-                );
-
-                const blockStart = searchBackIndex >= 0 ? searchBackIndex + 1 : 0;
-
-                // Search forward to find the end of the current tag
-                const textAfterCursor = value.substring(cursorPosition);
-                const searchForwardIndex = Math.min(
-                    textAfterCursor.indexOf(',') >= 0 ? textAfterCursor.indexOf(',') : Infinity,
-                    textAfterCursor.indexOf('|') >= 0 ? textAfterCursor.indexOf('|') : Infinity,
-                    textAfterCursor.indexOf(':') >= 0 ? textAfterCursor.indexOf(':') : Infinity,
-                    textAfterCursor.indexOf('{') >= 0 ? textAfterCursor.indexOf('{') : Infinity,
-                    textAfterCursor.indexOf('}') >= 0 ? textAfterCursor.indexOf('}') : Infinity,
-                    textAfterCursor.indexOf('[') >= 0 ? textAfterCursor.indexOf('[') : Infinity,
-                    textAfterCursor.indexOf(']') >= 0 ? textAfterCursor.indexOf(']') : Infinity
-                );
-
-                const blockEnd = searchForwardIndex !== Infinity ? cursorPosition + searchForwardIndex : value.length;
-                const blockText = value.substring(blockStart, blockEnd).trim();
-
-                if (blockText.length < 2) return;
-
-                // Check if the current tag is already emphasized
-                const currentTagEmphasisPattern = new RegExp(`(-?\\d+\\.\\d+)::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
+                const currentTagEmphasisPattern = new RegExp(`(${EMPHASIS_WEIGHT_PART})::${blockText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}::`);
                 const currentTagMatch = value.match(currentTagEmphasisPattern);
 
                 if (currentTagMatch) {
-                    // Current tag is already emphasized, adjust its weight
                     emphasisEditingValue = parseFloat(currentTagMatch[1]);
                     emphasisEditingSelection = {
                         start: currentTagMatch.index,
@@ -761,11 +1187,10 @@ function startEmphasisEditing(target) {
                     };
                     emphasisMode = 'group';
                 } else {
-                    // Create new emphasis block - start with "---" value
                     emphasisEditingValue = "---";
                     emphasisEditingSelection = {
-                        start: blockStart,
-                        end: blockEnd
+                        start: autoBounds.start,
+                        end: autoBounds.end
                     };
                     emphasisMode = 'normal';
                 }
@@ -784,10 +1209,19 @@ function startEmphasisEditing(target) {
     addEmphasisSelectionHighlight(emphasisEditingTarget, emphasisEditingSelection);
     
     // Add blur event listener to cancel editing when textarea loses focus
-    const blurHandler = () => {
-        if (emphasisEditingActive) {
-            cancelEmphasisEditing();
+    const blurHandler = (e) => {
+        if (!emphasisEditingActive) return;
+
+        const related = e.relatedTarget;
+        const container = emphasisEditingTarget?.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+        if (related && container && container.contains(related)) {
+            return;
         }
+        if (related && related.closest && related.closest('.prompt-textarea-toolbar')) {
+            return;
+        }
+
+        cancelEmphasisEditing();
         // Remove the listener after it's used (with null check)
         if (emphasisEditingTarget && emphasisEditingTarget.removeEventListener) {
             emphasisEditingTarget.removeEventListener('blur', blurHandler);
@@ -854,7 +1288,10 @@ function adjustEmphasisEditing(delta) {
         } else if (currentValue >= 1.0 && currentValue + delta < 1.0) {
             emphasisEditingValue = "---";
         } else {
-            emphasisEditingValue = Math.max(-1.0, Math.min(5.0, currentValue + delta));
+            emphasisEditingValue = clampEmphasisWeight(currentValue + delta);
+            if (emphasisEditingMode === 'brace') {
+                emphasisEditingValue = snapWeightForBraceMode(emphasisEditingValue);
+            }
         }
     }
     
@@ -870,7 +1307,10 @@ function updateEmphasisEditingFromSlider(value) {
         emphasisEditingValue = "---";
     } else {
         // Convert to number if it's a string (for integer inputs)
-        emphasisEditingValue = parseFloat(value.toString());
+        emphasisEditingValue = clampEmphasisWeight(parseFloat(value.toString()));
+        if (emphasisEditingMode === 'brace') {
+            emphasisEditingValue = snapWeightForBraceMode(emphasisEditingValue);
+        }
     }
     
     // Update selection highlight to show the new emphasis value
@@ -881,13 +1321,15 @@ function updateEmphasisEditingFromSlider(value) {
 
 function adjustEmphasisEditingFromWheel(event) {
     event.preventDefault();
-    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    const step = getEmphasisAdjustStep(event.shiftKey);
+    const delta = event.deltaY > 0 ? -step : step;
     adjustEmphasisEditing(delta);
 }
 
 function applyEmphasisEditing() {
     if (!emphasisEditingTarget || !emphasisEditingSelection) return;
 
+    clearEmphasisModeParentContext();
     const target = emphasisEditingTarget;
     const value = target.value;
     
@@ -898,50 +1340,41 @@ function applyEmphasisEditing() {
     
     // Handle special "---" value (remove emphasis)
     if (emphasisEditingValue === "---") {
-        // Get the text to emphasize (trim any leading/trailing spaces)
-        const textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end).trim();
-        
-        // Check if we're inside an existing emphasis block
-        const traditionalEmphasisPattern = /(-?\d+\.\d+)::(.+?)::/;
-        const autoTerminatingEmphasisPattern = /(-?\d+\.\d+)::(.+?)(?=\s*-?\d+\.?\d*::|::|$)/;
-        const isInsideEmphasis = traditionalEmphasisPattern.test(textToEmphasize) || autoTerminatingEmphasisPattern.test(textToEmphasize);
-        
-        // Check if we're inside a {} or [] block
-        const isInsideBrace = (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) ||
-                              (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']'));
-        
+        let replaceStart = emphasisEditingSelection.start;
+        let replaceEnd = emphasisEditingSelection.end;
         let emphasizedText;
-        if (isInsideEmphasis) {
-            // Extract the text content from emphasis block
-            let match = textToEmphasize.match(traditionalEmphasisPattern);
-            if (!match) {
-                match = textToEmphasize.match(autoTerminatingEmphasisPattern);
-            }
-            emphasizedText = match ? match[2] : textToEmphasize;
-        } else if (isInsideBrace) {
-            // Extract the text content from brace block
-            if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
-                emphasizedText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
-            } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
-                emphasizedText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
+
+        const extracted = extractEmphasisInnerForRemoval(value, replaceStart, replaceEnd);
+        if (extracted) {
+            const resolved = resolveEmphasisRemovalSpan(value, extracted.start, extracted.end, extracted.innerText);
+            replaceStart = resolved.replaceStart;
+            replaceEnd = resolved.replaceEnd;
+            emphasizedText = resolved.replacementText;
+        } else {
+            const textToEmphasize = value.substring(replaceStart, replaceEnd).trim();
+            const isInsideBrace = (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) ||
+                                  (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']'));
+            if (isInsideBrace) {
+                if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
+                    emphasizedText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
+                } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
+                    emphasizedText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
+                } else {
+                    emphasizedText = textToEmphasize;
+                }
             } else {
                 emphasizedText = textToEmphasize;
             }
-        } else {
-            // No emphasis to remove, just use the text as is
-            emphasizedText = textToEmphasize;
         }
-        
-        // Replace the text with the cleaned version
-        const beforeText = value.substring(0, emphasisEditingSelection.start);
-        const afterText = value.substring(emphasisEditingSelection.end);
+
+        const beforeText = value.substring(0, replaceStart);
+        const afterText = value.substring(replaceEnd);
         const newValue = beforeText + emphasizedText + afterText;
         
         // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(target, newValue);
         
-        // Set cursor position after the cleaned text
-        const newCursorPosition = emphasisEditingSelection.start + emphasizedText.length;
+        const newCursorPosition = replaceStart + emphasizedText.length;
         target.setSelectionRange(newCursorPosition, newCursorPosition);
         
         // Reset state and cleanup
@@ -951,7 +1384,8 @@ function applyEmphasisEditing() {
         emphasisEditingMode = 'normal';
         
         // Trigger input event to update any dependent UI
-        target.dispatchEvent(new Event('input', { bubbles: true }));
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+        hideCharacterAutocomplete();
         
         // Remove selection highlight
         removeEmphasisSelectionHighlight(target);
@@ -970,7 +1404,7 @@ function applyEmphasisEditing() {
         return;
     }
     
-    const weight = emphasisEditingValue.toFixed(1);
+    const weight = formatEmphasisWeight(emphasisEditingValue);
 
     // Get the text to emphasize and adjust selection range to trim boundaries
     let textToEmphasize = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
@@ -1011,53 +1445,22 @@ function applyEmphasisEditing() {
 
     let emphasizedText;
     if (emphasisEditingMode === 'brace') {
-        // Brace mode: create or update {} or [] blocks
+        let innerText;
         if (isInsideBrace) {
-            // Update existing brace block - extract the actual text content
-            let innerText;
-            if (textToEmphasize.startsWith('{') && textToEmphasize.endsWith('}')) {
-                // Remove all { and } from the beginning and end
-                innerText = textToEmphasize.replace(/^\{+/, '').replace(/\}+$/, '');
-            } else if (textToEmphasize.startsWith('[') && textToEmphasize.endsWith(']')) {
-                // Remove all [ and ] from the beginning and end
-                innerText = textToEmphasize.replace(/^\[+/, '').replace(/\]+$/, '');
-            } else {
-                innerText = textToEmphasize;
+            innerText = textToEmphasize.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
+        } else if (isInsideEmphasis) {
+            let match = textToEmphasize.match(traditionalEmphasisPattern);
+            if (!match) {
+                match = textToEmphasize.match(autoTerminatingEmphasisPattern);
             }
-
-            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
-
-            if (braceLevel > 0) {
-                // Positive emphasis: use {} - ensure clean conversion from []
-                const braces = '{'.repeat(braceLevel + 1);
-                emphasizedText = `${braces}${innerText}${'}'.repeat(braceLevel + 1)}`;
-            } else if (braceLevel < 0) {
-                // Negative emphasis: use [] - ensure clean conversion from {}
-                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
-                const brackets = '['.repeat(bracketLevel);
-                emphasizedText = `${brackets}${innerText}${']'.repeat(bracketLevel)}`;
-            } else {
-                // No emphasis: just the text - remove all braces/brackets
-                emphasizedText = innerText;
-            }
+            innerText = match ? match[2] : textToEmphasize;
         } else {
-            // Create new brace block
-            const braceLevel = Math.round((emphasisEditingValue - 1.0) * 10);
-
-            if (braceLevel > 0) {
-                // Positive emphasis: use {}
-                const braces = '{'.repeat(braceLevel + 1);
-                emphasizedText = `${braces}${textToEmphasize}${'}'.repeat(braceLevel + 1)}`;
-            } else if (braceLevel < 0) {
-                // Negative emphasis: use [] (inverted calculation)
-                const bracketLevel = Math.abs(Math.round((1.0 - emphasisEditingValue) * 10));
-                const brackets = '['.repeat(bracketLevel);
-                emphasizedText = `${brackets}${textToEmphasize}${']'.repeat(bracketLevel)}`;
-            } else {
-                // No emphasis: just the text
-                emphasizedText = textToEmphasize;
-            }
+            innerText = textToEmphasize;
         }
+        const braceWeight = snapWeightForBraceMode(
+            typeof emphasisEditingValue === 'string' ? parseFloat(emphasisEditingValue) : emphasisEditingValue
+        );
+        emphasizedText = buildBraceEmphasisText(innerText, braceWeight);
     } else if (isInsideEmphasis) {
         // We're inside an existing emphasis block, just update the weight
         let match = textToEmphasize.match(traditionalEmphasisPattern);
@@ -1225,7 +1628,8 @@ function applyEmphasisEditing() {
     emphasisEditingMode = 'normal';
 
     // Trigger input event to update any dependent UI
-    target.dispatchEvent(new Event('input', { bubbles: true }));
+    dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
+    hideCharacterAutocomplete();
 
     // Remove selection highlight
     removeEmphasisSelectionHighlight(target);
@@ -1363,6 +1767,12 @@ function updateEmphasisHighlighting(textarea) {
     // Skip emphasis highlighting for creative directive container (only use search highlighting)
     if (textarea.closest('.creative-directive-container')) return;
 
+    // Keep golden selection highlight while emphasis editor is active
+    if (emphasisEditingActive && emphasisEditingTarget === textarea && emphasisEditingSelection) {
+        addEmphasisSelectionHighlight(textarea, emphasisEditingSelection);
+        return;
+    }
+
     const value = textarea.value;
 
     // NSFW tag detection and auto-setting
@@ -1400,6 +1810,13 @@ function initializeEmphasisOverlay(textarea) {
     overlay.scrollLeft = textarea.scrollLeft;
 }
 
+/** Solid text color for emphasis toolbar value — mirrors highlight ramps; 1.0 = light gray (not transparent). */
+function getEmphasisToolbarColor(weight) {
+    if (weight === '---') return '#ff6b6b';
+    const c = computeEmphasisWeightColor(weight);
+    return `rgb(${c.r}, ${c.g}, ${c.b})`;
+}
+
 function highlightEmphasisInText(text) {
     if (!text) return '';
 
@@ -1407,79 +1824,10 @@ function highlightEmphasisInText(text) {
 
     // Function to calculate dynamic colors based on weight
     function getEmphasisColors(weight) {
-        let backgroundR, backgroundG, backgroundB, backgroundA;
-        let borderR, borderG, borderB, borderA;
-
-        if (weight >= 1.0) {
-            // Positive emphasis: 1.0 and above
-            // Gradient from light orange/yellow to deep red
-            const ratio = Math.min((weight - 1.0) / 8.0, 1.0); // 0 to 1 over 1-9 range, clamped
-            backgroundR = 255;
-            backgroundG = Math.round(69 - (62 * ratio));
-            backgroundB = 0; // No blue for positive emphasis
-            backgroundA = 0.05 + (0.90 * ratio); // Alpha from 0.05 to 0.95
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        } else if (weight > 0.0 && weight < 1.0) {
-            // Values between 0 and 1: Light green to neutral
-            const ratio = weight; // 0 to 1
-            backgroundR = Math.round(76 + (19 * (1 - ratio))); // Green to neutral
-            backgroundG = Math.round(175 + (80 * (1 - ratio)));
-            backgroundB = Math.round(80 + (175 * (1 - ratio)));
-            backgroundA = 0.2 - (0.15 * ratio); // Alpha decreasing
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        } else if (weight === 0.0) {
-            // Exact neutral green at 0.0
-            backgroundR = 76;
-            backgroundG = 175;
-            backgroundB = 80;
-            backgroundA = 0.2;
-
-            borderR = 106;
-            borderG = 205;
-            borderB = 110;
-            borderA = 0.4;
-        } else if (weight > -1.0 && weight < 0.0) {
-            // Transition from green to blue (0.0 to -1.0)
-            const ratio = Math.abs(weight); // 0 to 1 as we go from 0 to -1
-            backgroundR = Math.round(76 - (53 * ratio)); // Green to blue
-            backgroundG = Math.round(175 - (41 * ratio));
-            backgroundB = Math.round(80 + (175 * ratio)); // Increasing blue
-            backgroundA = 0.2 + (0.25 * ratio); // Slightly more opaque
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        } else {
-            // Negative emphasis: -1.0 and below
-            // Gradient from medium blue (at -1) to deep blue (at -9)
-            const ratio = Math.min(Math.abs(weight + 1.0) / 8.0, 1.0); // 0 to 1 over -1 to -9 range, clamped
-            backgroundR = Math.round(23 - (5 * ratio)); // Slight decrease in red
-            backgroundG = Math.round(133 - (99 * ratio)); // Larger decrease in green
-            backgroundB = 255; // Full blue throughout
-            backgroundA = 0.45 + (0.50 * ratio); // Alpha from 0.45 to 0.95
-
-            // Brighter border for contrast
-            borderR = Math.min(255, backgroundR + 30);
-            borderG = Math.min(255, backgroundG + 30);
-            borderB = Math.min(255, backgroundB + 30);
-            borderA = Math.min(1.0, backgroundA + 0.2);
-        }
-
+        const c = computeEmphasisWeightColor(weight);
         return {
-            background: `rgba(${backgroundR}, ${backgroundG}, ${backgroundB}, ${backgroundA.toFixed(2)})`,
-            border: `rgba(${borderR}, ${borderG}, ${borderB}, ${borderA.toFixed(2)})`
+            background: `rgba(${c.r}, ${c.g}, ${c.b}, ${c.backgroundA.toFixed(2)})`,
+            border: `rgba(${c.borderR}, ${c.borderG}, ${c.borderB}, ${c.borderA.toFixed(2)})`
         };
     }
 
@@ -1765,114 +2113,26 @@ function highlightEmphasisInText(text) {
         });
     });
 
-    // Step 3: Restore disable blocks with proper highlighting (black: slash-delimited / stage-adjacent syntax)
+    // Step 3: Restore disable blocks with dark gray highlighting
     disableBlocks.forEach(block => {
-        const backgroundColor = '#000000';
-        
-        // Escape special characters for HTML display
         const escapedMatch = block.original.replace(/!/g, '&#33;')
                                          .replace(/\//g, '&#47;');
 
         highlightedText = highlightedText.replace(block.id, 
-            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: #555555;">${escapedMatch}</span>`
+            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; border-color: ${DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
         );
     });
 
     // Step 4: Restore stage-conditional blocks
     stageConditionalBlocks.forEach(block => {
-        const backgroundColor = '#000000';
         const escapedMatch = block.original.replace(/!/g, '&#33;')
                                          .replace(/\//g, '&#47;');
         highlightedText = highlightedText.replace(block.id,
-            `<span class="emphasis-highlight" style="background: ${backgroundColor}; border-color: #555555;">${escapedMatch}</span>`
+            `<span class="emphasis-highlight" style="background: ${DISABLE_SYNTAX_HIGHLIGHT.background}; border-color: ${DISABLE_SYNTAX_HIGHLIGHT.border};">${escapedMatch}</span>`
         );
     });
 
     return highlightedText;
-}
-
-// Helper function to clean up emphasis groups and brace blocks, and copy values
-function cleanupEmphasisGroupsAndCopyValue(target, selection, currentValue) {
-    const value = target.value;
-    let cleanedValue = value;
-    let newSelection = { ...selection };
-    let copiedValue = currentValue;
-
-    // First, clean up emphasis groups
-    const emphasisPattern = /(-?\d+\.\d+)::(.+?)::/g;
-    let emphasisMatch;
-
-    while ((emphasisMatch = emphasisPattern.exec(cleanedValue)) !== null) {
-        const emphasisStart = emphasisMatch.index;
-        const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-        // If the current selection overlaps with an emphasis group, clean it up
-        if (selection.start <= emphasisEnd && selection.end >= emphasisStart) {
-            const beforeEmphasis = cleanedValue.substring(0, emphasisStart);
-            const afterEmphasis = cleanedValue.substring(emphasisEnd);
-            const emphasisContent = emphasisMatch[2]; // The text inside the emphasis
-            const emphasisWeight = parseFloat(emphasisMatch[1]);
-
-            // Copy the emphasis value
-            copiedValue = emphasisWeight;
-
-            // Replace the emphasis group with just the content
-            cleanedValue = beforeEmphasis + emphasisContent + afterEmphasis;
-
-            // Update the selection to point to the cleaned content
-            newSelection = {
-                start: emphasisStart,
-                end: emphasisStart + emphasisContent.length
-            };
-            break;
-        }
-    }
-
-    // Then, clean up brace blocks ({} and [])
-    const bracePattern = /\{+([^{}]*)\}+|\[+([^\[\]]*)\]+/g;
-    let braceMatch;
-
-    while ((braceMatch = bracePattern.exec(cleanedValue)) !== null) {
-        const braceStart = braceMatch.index;
-        const braceEnd = braceMatch.index + braceMatch[0].length;
-
-        // If the current selection overlaps with a brace block, clean it up
-        if (selection.start <= braceEnd && selection.end >= braceStart) {
-            const beforeBrace = cleanedValue.substring(0, braceStart);
-            const afterBrace = cleanedValue.substring(braceEnd);
-            const braceContent = braceMatch[1] || braceMatch[2]; // The text inside the braces
-            const isBracket = braceMatch[0].startsWith('[');
-
-            // Calculate brace value
-            if (isBracket) {
-                const bracketLevel = (braceMatch[0].match(/\[/g) || []).length;
-                copiedValue = 1.0 - (bracketLevel * 0.1);
-            } else {
-                const braceLevel = (braceMatch[0].match(/\{/g) || []).length;
-                copiedValue = 1.0 + (braceLevel * 0.1);
-            }
-
-            // Replace the brace block with just the content
-            cleanedValue = beforeBrace + braceContent + afterBrace;
-
-            // Update the selection to point to the cleaned content
-            newSelection = {
-                start: braceStart,
-                end: braceStart + braceContent.length
-            };
-            break;
-        }
-    }
-
-    // Update the target value
-    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
-    setTextareaValuePreservingUndo(target, cleanedValue);
-
-    return {
-        newSelection,
-        copiedValue,
-        cleanedValue
-    };
 }
 
 function switchEmphasisMode(direction) {
@@ -1882,53 +2142,21 @@ function switchEmphasisMode(direction) {
     const cursorPosition = emphasisEditingTarget.selectionStart;
 
     if (direction === 'toggle') {
-        // Toggle between group and brace modes
+        // Toggle between group and brace modes (UI only — never modify prompt text)
         if (emphasisEditingMode === 'group') {
-            // Switch from group to brace mode
-            const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-            const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-            let braceMatch;
-            let foundBrace = false;
-
-            while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
-                const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
-
-                if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                    emphasisEditingMode = 'brace';
-                    emphasisEditingSelection = {
-                        start: braceStartInEmphasis,
-                        end: braceEndInEmphasis
-                    };
-                    // Calculate brace level from the text
-                    const braceText = braceMatch[0];
-                    const isBracket = braceText.startsWith('[');
-
-                    if (isBracket) {
-                        const openBrackets = (braceText.match(/\[/g) || []).length;
-                        const closeBrackets = (braceText.match(/\]/g) || []).length;
-                        const bracketLevel = openBrackets - closeBrackets;
-                        emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                    } else {
-                        const openBraces = (braceText.match(/\{/g) || []).length;
-                        const closeBraces = (braceText.match(/\}/g) || []).length;
-                        const braceLevel = openBraces - closeBraces;
-                        emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                    }
-                    foundBrace = true;
-                    break;
-                }
-            }
+            saveEmphasisModeParentContext();
+            const groupStart = emphasisEditingSelection.start;
+            const groupEnd = emphasisEditingSelection.end;
+            let foundBrace = trySelectBraceInEmphasisGroup(value, groupStart, groupEnd, cursorPosition);
 
             if (!foundBrace) {
-                // Find the current word/tag within the group
-                const groupText = emphasisText;
+                const emphasisText = value.substring(groupStart, groupEnd);
                 const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
                 let tagMatch;
                 let foundTag = false;
 
-                while ((tagMatch = tagPattern.exec(groupText)) !== null) {
-                    const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
+                while ((tagMatch = tagPattern.exec(emphasisText)) !== null) {
+                    const tagStartInGroup = groupStart + tagMatch.index;
                     const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
 
                     if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
@@ -1944,7 +2172,6 @@ function switchEmphasisMode(direction) {
                 }
 
                 if (!foundTag) {
-                    // Use cursor position to find the word
                     const textBeforeCursor = value.substring(0, cursorPosition);
                     const textAfterCursor = value.substring(cursorPosition);
 
@@ -1965,201 +2192,67 @@ function switchEmphasisMode(direction) {
                 }
             }
         } else if (emphasisEditingMode === 'brace') {
-            // Switch from brace to group mode
-            const emphasisPattern = /(-?\d+\.\d+)::(.+?)::/g;
-            let emphasisMatch;
-            let foundGroup = false;
-
-            // Store the current brace value before switching
-            const currentBraceValue = emphasisEditingValue;
-
-            while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                const emphasisStart = emphasisMatch.index;
-                const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-                // Check if we're inside this emphasis group (but not switching between outer/inner)
-                if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
-                    // Don't allow switching to a group that contains the current selection
-                    // This prevents switching between outer and inner groups
-                    continue;
-                }
-
-                // Check if this emphasis group is inside our current selection
-                if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
-                    emphasisEditingMode = 'group';
-                    emphasisEditingSelection = {
-                        start: emphasisStart,
-                        end: emphasisEnd
-                    };
-                    // Copy the brace value to the group value
-                    emphasisEditingValue = currentBraceValue;
-                    foundGroup = true;
-                    break;
-                }
-            }
-
-            if (!foundGroup) {
-                // If no group found, create a new emphasis block from the brace
-                const braceText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-                const innerText = braceText.replace(/^\{+|\[+/, '').replace(/\}+|\]+$/, '');
-
-                // Calculate weight from brace level
-                const braceLevel = (braceText.match(/\{/g) || []).length - (braceText.match(/\}/g) || []).length;
-                const bracketLevel = (braceText.match(/\[/g) || []).length - (braceText.match(/\]/g) || []).length;
-
-                if (braceLevel > 0) {
-                    emphasisEditingValue = 1.0 + (braceLevel * 0.1);
-                } else if (bracketLevel > 0) {
-                    emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                } else {
-                    emphasisEditingValue = 1.0;
-                }
-
-                // Create new emphasis block and clean up existing groups
-                const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, emphasisEditingValue);
-                emphasisEditingMode = 'normal';
-                emphasisEditingSelection = result.newSelection;
-                emphasisEditingValue = result.copiedValue;
-            }
+            switchBraceToGroupOrNormal(value);
         }
     } else if (direction === 'right') {
-        // Right arrow: switch to more specific mode
+        // Right arrow: switch to more specific mode (UI only)
         switch (emphasisEditingMode) {
             case 'normal':
-                // Switch to brace mode - add {} around current selection
+                saveEmphasisModeParentContext();
                 emphasisEditingMode = 'brace';
                 emphasisEditingValue = 1.0;
                 break;
             case 'group':
-                // Switch to brace mode - focus on {} or [] block inside the group
-                const emphasisText = value.substring(emphasisEditingSelection.start, emphasisEditingSelection.end);
-                const bracePattern = /\{([^}]*)\}|\[([^\]]*)\]/g;
-                let braceMatch;
-                let foundBrace = false;
-                while ((braceMatch = bracePattern.exec(emphasisText)) !== null) {
-                    const braceStartInEmphasis = emphasisEditingSelection.start + emphasisText.indexOf(braceMatch[0]);
-                    const braceEndInEmphasis = braceStartInEmphasis + braceMatch[0].length;
+                saveEmphasisModeParentContext();
+                {
+                    const groupStart = emphasisEditingSelection.start;
+                    const groupEnd = emphasisEditingSelection.end;
+                    let foundBrace = trySelectBraceInEmphasisGroup(value, groupStart, groupEnd, cursorPosition);
 
-                    if (cursorPosition >= braceStartInEmphasis && cursorPosition <= braceEndInEmphasis) {
-                        emphasisEditingMode = 'brace';
-                        emphasisEditingSelection = {
-                            start: braceStartInEmphasis,
-                            end: braceEndInEmphasis
-                        };
-                        // Calculate brace level from the text
-                        const braceText = braceMatch[0];
-                        const isBracket = braceText.startsWith('[');
+                    if (!foundBrace) {
+                        const emphasisText = value.substring(groupStart, groupEnd);
+                        const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
+                        let tagMatch;
+                        let foundTag = false;
 
-                        if (isBracket) {
-                            const openBrackets = (braceText.match(/\[/g) || []).length;
-                            const closeBrackets = (braceText.match(/\]/g) || []).length;
-                            const bracketLevel = openBrackets - closeBrackets;
-                            emphasisEditingValue = 1.0 - (bracketLevel * 0.1);
-                        } else {
-                            const openBraces = (braceText.match(/\{/g) || []).length;
-                            const closeBraces = (braceText.match(/\}/g) || []).length;
-                            const braceLevel = openBraces - closeBraces;
-                            emphasisEditingValue = 1.0 + (braceLevel * 0.1);
+                        while ((tagMatch = tagPattern.exec(emphasisText)) !== null) {
+                            const tagStartInGroup = groupStart + tagMatch.index;
+                            const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
+
+                            if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
+                                emphasisEditingMode = 'brace';
+                                emphasisEditingSelection = {
+                                    start: tagStartInGroup,
+                                    end: tagEndInGroup
+                                };
+                                emphasisEditingValue = 1.0;
+                                foundTag = true;
+                                break;
+                            }
                         }
-                        foundBrace = true;
-                        break;
-                    }
-                }
 
-                // If no specific brace found, find the current tag/item within the group
-                if (!foundBrace) {
-                    // Find the current tag/item within the group
-                    const groupText = emphasisText;
-                    const tagPattern = /([a-zA-Z0-9_]+(?:\s+[a-zA-Z0-9_]+)*)/g;
-                    let tagMatch;
-                    let foundTag = false;
+                        if (!foundTag) {
+                            const textBeforeCursor = value.substring(0, cursorPosition);
+                            const textAfterCursor = value.substring(cursorPosition);
+                            const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
+                            const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
 
-                    while ((tagMatch = tagPattern.exec(groupText)) !== null) {
-                        const tagStartInGroup = emphasisEditingSelection.start + tagMatch.index;
-                        const tagEndInGroup = tagStartInGroup + tagMatch[0].length;
+                            if (wordBefore || wordAfter) {
+                                const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
+                                const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
 
-                        if (cursorPosition >= tagStartInGroup && cursorPosition <= tagEndInGroup) {
-                            emphasisEditingMode = 'brace';
-                            emphasisEditingSelection = {
-                                start: tagStartInGroup,
-                                end: tagEndInGroup
-                            };
-                            emphasisEditingValue = 1.0;
-                            foundTag = true;
-                            break;
-                        }
-                    }
-
-                    // If still no tag found, use the cursor position to find the word
-                    if (!foundTag) {
-                        const textBeforeCursor = value.substring(0, cursorPosition);
-                        const textAfterCursor = value.substring(cursorPosition);
-
-                        // Find the word boundaries
-                        const wordBefore = textBeforeCursor.match(/\b[a-zA-Z0-9_]+$/);
-                        const wordAfter = textAfterCursor.match(/^[a-zA-Z0-9_]+/);
-
-                        if (wordBefore || wordAfter) {
-                            const start = wordBefore ? cursorPosition - wordBefore[0].length : cursorPosition;
-                            const end = wordAfter ? cursorPosition + wordAfter[0].length : cursorPosition;
-
-                            emphasisEditingMode = 'brace';
-                            emphasisEditingSelection = {
-                                start: start,
-                                end: end
-                            };
-                            emphasisEditingValue = 1.0;
+                                emphasisEditingMode = 'brace';
+                                emphasisEditingSelection = { start, end };
+                                emphasisEditingValue = 1.0;
+                            }
                         }
                     }
                 }
                 break;
         }
     } else if (direction === 'left') {
-                        // Left arrow: switch to less specific mode
-        switch (emphasisEditingMode) {
-            case 'brace':
-                // Try to switch back to group mode first
-                const emphasisPattern = /(-?\d+\.\d+)::(.+?)::/g;
-                let emphasisMatch;
-                let foundGroup = false;
-
-                // Store the current brace value before switching
-                const currentBraceValue = emphasisEditingValue;
-
-                while ((emphasisMatch = emphasisPattern.exec(value)) !== null) {
-                    const emphasisStart = emphasisMatch.index;
-                    const emphasisEnd = emphasisMatch.index + emphasisMatch[0].length;
-
-                    // Check if we're inside this emphasis group (but not switching between outer/inner)
-                    if (emphasisEditingSelection.start >= emphasisStart && emphasisEditingSelection.end <= emphasisEnd) {
-                        // Don't allow switching to a group that contains the current selection
-                        // This prevents switching between outer and inner groups
-                        continue;
-                    }
-
-                    // Check if this emphasis group is inside our current selection
-                    if (emphasisStart >= emphasisEditingSelection.start && emphasisEnd <= emphasisEditingSelection.end) {
-                        emphasisEditingMode = 'group';
-                        emphasisEditingSelection = {
-                            start: emphasisStart,
-                            end: emphasisEnd
-                        };
-                        // Copy the brace value to the group value
-                        emphasisEditingValue = currentBraceValue;
-                        foundGroup = true;
-                        break;
-                    }
-                }
-
-                // If no group found, switch back to normal mode
-                if (!foundGroup) {
-                    emphasisEditingMode = 'normal';
-                    // Copy the brace value to normal mode and clean up existing groups
-                    const result = cleanupEmphasisGroupsAndCopyValue(emphasisEditingTarget, emphasisEditingSelection, currentBraceValue);
-                    emphasisEditingSelection = result.newSelection;
-                    emphasisEditingValue = result.copiedValue;
-                }
-                break;
+        if (emphasisEditingMode === 'brace') {
+            switchBraceToGroupOrNormal(value);
         }
     }
 
@@ -2189,6 +2282,7 @@ function cancelEmphasisEditing() {
     }
 
     // Reset state
+    clearEmphasisModeParentContext();
     emphasisEditingActive = false;
     emphasisEditingTarget = null;
     emphasisEditingSelection = null;
@@ -2513,137 +2607,68 @@ function closeTextSearch() {
     }
 }
 
-// Function to remove all emphasis from selected text
+// Strip emphasis syntax from a text fragment (weight prefixes, :: groups, braces, brackets)
+function stripEmphasisFromText(text) {
+    if (!text) return '';
+
+    let result = text;
+    let prev;
+
+    do {
+        prev = result;
+
+        // Weighted traditional emphasis: 1.3::content::
+        result = result.replace(/(-?\d+(?:\.\d+)?)::(.+?)::/g, '$2');
+
+        // Weighted auto-terminating emphasis: 1.3::content
+        result = result.replace(/(-?\d+(?:\.\d+)?)::(.+?)(?=\s*-?\d+\.?\d*::|::|$)/g, '$2');
+
+        // Unweighted ::content:: groups
+        result = result.replace(/::(.+?)::/g, '$1');
+
+        // Brace emphasis {content}, {{content}}
+        result = result.replace(/\{+([^{}]*)\}+/g, '$1');
+
+        // Bracket emphasis [content], [[content]]
+        result = result.replace(/\[+([^\[\]]*)\]+/g, '$1');
+
+        // Parentheses emphasis (content)
+        result = result.replace(/\(([^()]*)\)/g, '$1');
+    } while (result !== prev);
+
+    return result;
+}
+
+// Function to remove all emphasis from selected text (or entire textarea when nothing is selected)
 function removeAllEmphasisFromSelection(target) {
     if (!target) return;
-    
+
+    const value = target.value;
     const start = target.selectionStart;
     const end = target.selectionEnd;
-    
-    if (start === end) return; // No selection
-    
-    const value = target.value;
-    const selectedText = value.substring(start, end);
-    
-    // Systematic approach: parse and remove emphasis groups properly
-    let cleanedText = selectedText;
-    
-    // Parse and remove emphasis groups systematically
-    let i = 0;
-    let result = '';
-    
-    while (i < cleanedText.length) {
-        // Check for colon emphasis groups: number::content:: or ::content::
-        if (cleanedText[i] === ':' && i + 1 < cleanedText.length && cleanedText[i + 1] === ':') {
-            // Find the start of content after ::
-            let contentStart = i + 2;
-            let contentEnd = contentStart;
-            
-            // Look for closing ::
-            while (contentEnd < cleanedText.length) {
-                if (cleanedText[contentEnd] === ':' && contentEnd + 1 < cleanedText.length && cleanedText[contentEnd + 1] === ':') {
-                    // Found closing ::, extract content
-                    const content = cleanedText.substring(contentStart, contentEnd);
-                    result += content;
-                    i = contentEnd + 2;
-                    break;
-                }
-                contentEnd++;
-            }
-            
-            // If no closing :: found, look for end of word/group
-            if (contentEnd >= cleanedText.length) {
-                while (contentEnd < cleanedText.length && cleanedText[contentEnd] !== ' ' && cleanedText[contentEnd] !== ',') {
-                    contentEnd++;
-                }
-                const content = cleanedText.substring(contentStart, contentEnd);
-                result += content;
-                i = contentEnd;
-            }
-        }
-        // Check for bracket groups: [content] or [[content]]
-        else if (cleanedText[i] === '[') {
-            let depth = 1;
-            let j = i + 1;
-            let contentStart = i + 1;
-            
-            while (j < cleanedText.length && depth > 0) {
-                if (cleanedText[j] === '[') depth++;
-                else if (cleanedText[j] === ']') depth--;
-                j++;
-            }
-            
-            if (depth === 0) {
-                const content = cleanedText.substring(contentStart, j - 1);
-                result += content;
-                i = j;
-            } else {
-                result += cleanedText[i];
-                i++;
-            }
-        }
-        // Check for brace groups: {content} or {{{content}}}
-        else if (cleanedText[i] === '{') {
-            let depth = 1;
-            let j = i + 1;
-            let contentStart = i + 1;
-            
-            while (j < cleanedText.length && depth > 0) {
-                if (cleanedText[j] === '{') depth++;
-                else if (cleanedText[j] === '}') depth--;
-                j++;
-            }
-            
-            if (depth === 0) {
-                const content = cleanedText.substring(contentStart, j - 1);
-                result += content;
-                i = j;
-            } else {
-                result += cleanedText[i];
-                i++;
-            }
-        }
-        // Check for parentheses: (content)
-        else if (cleanedText[i] === '(') {
-            let depth = 1;
-            let j = i + 1;
-            let contentStart = i + 1;
-            
-            while (j < cleanedText.length && depth > 0) {
-                if (cleanedText[j] === '(') depth++;
-                else if (cleanedText[j] === ')') depth--;
-                j++;
-            }
-            
-            if (depth === 0) {
-                const content = cleanedText.substring(contentStart, j - 1);
-                result += content;
-                i = j;
-            } else {
-                result += cleanedText[i];
-                i++;
-            }
-        }
-        // Regular character
-        else {
-            result += cleanedText[i];
-            i++;
-        }
-    }
-    
-    cleanedText = result;
-    
-    // Replace the selected text with cleaned text
-    const newValue = value.substring(0, start) + cleanedText + value.substring(end);
+    const hasSelection = start !== end;
+
+    const textToClean = hasSelection ? value.substring(start, end) : value;
+    const cleanedText = stripEmphasisFromText(textToClean);
+
+    if (cleanedText === textToClean) return;
+
+    const newValue = hasSelection
+        ? value.substring(0, start) + cleanedText + value.substring(end)
+        : cleanedText;
+
     // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(target, newValue);
-    
-    // Update selection to cover the cleaned text
-    const newEnd = start + cleanedText.length;
-    target.setSelectionRange(start, newEnd);
-    
-    // Trigger input event to update any highlighting
-    target.dispatchEvent(new Event('input', { bubbles: true }));
+
+    if (hasSelection) {
+        const newEnd = start + cleanedText.length;
+        target.setSelectionRange(start, newEnd);
+    } else {
+        const newCursor = Math.min(start, cleanedText.length);
+        target.setSelectionRange(newCursor, newCursor);
+    }
+
+    dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
 }
 
 // Disable syntax functions
@@ -2708,7 +2733,7 @@ function toggleDisableSyntax(target) {
         target.setSelectionRange(newCursorPosition, newCursorPosition);
         
         // Trigger input event to update any dependent UI
-        target.dispatchEvent(new Event('input', { bubbles: true }));
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
         
         // Update emphasis highlighting
         if (window.autoResizeTextarea) {
@@ -2745,7 +2770,7 @@ function toggleDisableSyntax(target) {
         target.setSelectionRange(newCursorPosition, newCursorPosition);
         
         // Trigger input event to update any dependent UI
-        target.dispatchEvent(new Event('input', { bubbles: true }));
+        dispatchPromptTextareaInputEvent(target, { skipAutofill: true });
         
         // Update emphasis highlighting
         if (window.autoResizeTextarea) {

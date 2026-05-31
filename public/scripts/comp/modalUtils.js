@@ -17,7 +17,7 @@ const WINDOW_POSITION_SAVE_MAX_WAIT = 300000; // 5 minutes max wait time
 let globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
 
 // Track which transient windows should restore positions
-const transientWindowsWithPositions = new Set(); // Set of window IDs that are transient but should restore positions
+const transientWindowsWithPositions = new Set(['photoSwipeShell']); // Set of window IDs that are transient but should restore positions
 
 // Active window management
 let currentActiveWindowId = null; // ID of the currently active window (null if no window is active)
@@ -44,9 +44,281 @@ document.addEventListener('visibilitychange', () => {
 
 // Integer desktop title-band bias (CSS uses 18px; was calc(0.5 * 35px) = 17.5px)
 const MODAL_DESKTOP_TOP_BIAS_PX = 18;
+// Minimum on-screen strip when dragging partially off-screen (matches title bar band)
+const MODAL_MIN_VISIBLE_PX = 27;
+// Inset from work-area edges when opening/restoring/clamping window position
+const MODAL_EDGE_MARGIN_PX = 0;
 
 function getDesktopModalTopBias() {
     return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
+}
+
+function getModalWorkAreaBounds() {
+    const trueInsetTop = getModalTrueInsetTop();
+    let bottom = window.innerHeight;
+    if (window.isDesktop && document.body.classList.contains('desktop-mode')) {
+        const taskbar = document.getElementById('desktopTaskbar');
+        if (taskbar) {
+            bottom -= taskbar.offsetHeight || 35;
+        }
+    }
+    return {
+        left: 0,
+        top: trueInsetTop,
+        right: window.innerWidth,
+        bottom,
+        width: window.innerWidth,
+        height: Math.max(0, bottom - trueInsetTop)
+    };
+}
+
+function getModalWorkAreaInnerBounds() {
+    const workArea = getModalWorkAreaBounds();
+    return {
+        left: workArea.left + MODAL_EDGE_MARGIN_PX,
+        top: workArea.top + MODAL_EDGE_MARGIN_PX,
+        right: workArea.right - MODAL_EDGE_MARGIN_PX,
+        bottom: workArea.bottom - MODAL_EDGE_MARGIN_PX,
+        width: Math.max(0, workArea.width - (2 * MODAL_EDGE_MARGIN_PX)),
+        height: Math.max(0, workArea.height - (2 * MODAL_EDGE_MARGIN_PX))
+    };
+}
+
+function clampModalViewportRect(left, top, width, height) {
+    const bounds = getModalWorkAreaInnerBounds();
+    let newLeft = left;
+    let newTop = top;
+
+    if (width > bounds.width) {
+        newLeft = bounds.left;
+    } else {
+        if (newLeft < bounds.left) {
+            newLeft = bounds.left;
+        }
+        if (newLeft + width > bounds.right) {
+            newLeft = bounds.right - width;
+        }
+    }
+
+    if (height > bounds.height) {
+        newTop = bounds.top;
+    } else {
+        if (newTop < bounds.top) {
+            newTop = bounds.top;
+        }
+        if (newTop + height > bounds.bottom) {
+            newTop = bounds.bottom - height;
+        }
+    }
+
+    return {
+        left: roundToDevicePixel(newLeft),
+        top: roundToDevicePixel(newTop)
+    };
+}
+
+function isModalMaximized(modal) {
+    return !!(modal && modal.classList.contains('modal-maximized'));
+}
+
+function captureModalLayoutState(modal) {
+    if (!modal) {
+        return null;
+    }
+    const rect = modal.getBoundingClientRect();
+    const computedStyle = getComputedStyle(modal);
+    return {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        offsetX: modal.style.getPropertyValue('--modal-offset-x') || computedStyle.getPropertyValue('--modal-offset-x') || '0px',
+        offsetY: modal.style.getPropertyValue('--modal-offset-y') || computedStyle.getPropertyValue('--modal-offset-y') || '0px'
+    };
+}
+
+function updateModalMaximizeButtonIcon(modal) {
+    if (!modal) {
+        return;
+    }
+    const btn = modal.querySelector('.modal-window-controls .modal-work-area-maximize');
+    if (!btn) {
+        return;
+    }
+    const icon = btn.querySelector('i');
+    if (!icon) {
+        return;
+    }
+    if (isModalMaximized(modal)) {
+        icon.className = 'fa-regular fa-window-restore';
+        btn.title = 'Restore window';
+    } else {
+        icon.className = 'fa-regular fa-window-maximize';
+        btn.title = 'Maximize';
+    }
+}
+
+function maximizeModalToWorkArea(modal) {
+    if (!modal || isModalMaximized(modal)) {
+        return;
+    }
+
+    modal._preMaximizeLayout = captureModalLayoutState(modal);
+    modal.classList.add('modal-maximized');
+
+    // Drop pixel-settled anchor so size/position updates apply (Lumen and other settled windows)
+    clearModalPixelAnchor(modal);
+
+    const workArea = getModalWorkAreaInnerBounds();
+    modal.style.width = `${roundCssPixel(workArea.width)}px`;
+    modal.style.height = `${roundCssPixel(workArea.height)}px`;
+    void modal.offsetHeight;
+    setModalOffsetsFromViewportTopLeft(modal, workArea.left, workArea.top);
+
+    modal.setAttribute('data-modal-moved', 'true');
+    updateModalMaximizeButtonIcon(modal);
+    modal.dispatchEvent(new CustomEvent('modalMaximized', {
+        bubbles: false,
+        detail: { modal }
+    }));
+    debouncedSaveWindowPositions();
+}
+
+function restoreModalFromMaximize(modal) {
+    if (!modal || !isModalMaximized(modal)) {
+        return;
+    }
+
+    const layout = modal._preMaximizeLayout;
+    modal.classList.remove('modal-maximized');
+    delete modal._preMaximizeLayout;
+
+    if (layout) {
+        setModalPositionFromViewportRect(modal, {
+            left: layout.left,
+            top: layout.top,
+            width: layout.width,
+            height: layout.height
+        });
+        ensureModalEdgesWithinWorkArea(modal);
+    }
+
+    updateModalMaximizeButtonIcon(modal);
+    modal.dispatchEvent(new CustomEvent('modalRestored', {
+        bubbles: false,
+        detail: { modal }
+    }));
+    debouncedSaveWindowPositions();
+}
+
+function toggleModalMaximize(modal) {
+    if (!modal) {
+        return;
+    }
+    if (isModalMaximized(modal)) {
+        restoreModalFromMaximize(modal);
+    } else {
+        maximizeModalToWorkArea(modal);
+    }
+}
+
+function wireModalMaximizeButton(modal) {
+    if (!modal) {
+        return;
+    }
+    const maxBtn = modal.querySelector('.modal-window-controls .modal-work-area-maximize');
+    if (!maxBtn || maxBtn.dataset.modalMaximizeWired === 'true') {
+        return;
+    }
+    maxBtn.dataset.modalMaximizeWired = 'true';
+    maxBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleModalMaximize(modal);
+    });
+    updateModalMaximizeButtonIcon(modal);
+}
+
+/** Taskbar / programmatic maximize — .modal-work-area-maximize (Lumen) vs custom handlers (Glancewell fullscreen, gallery mode, etc.) */
+function handleWindowMaximizeAction(modal) {
+    if (!modal) {
+        return;
+    }
+    if (modal.querySelector('.modal-window-controls .modal-work-area-maximize')) {
+        toggleModalMaximize(modal);
+        return;
+    }
+    if (modal.id === 'galleryWindow') {
+        maximizeGalleryWindow();
+        return;
+    }
+    // Glancewell (PhotoSwipe shell) — fullscreen via togglePhotoSwipeShellWindowed, not work-area maximize
+    if (modal.id === 'photoSwipeWindow' && typeof togglePhotoSwipeShellWindowed === 'function') {
+        togglePhotoSwipeShellWindowed();
+    }
+}
+
+function shouldPersistWindowPosition(modal) {
+    if (!modal || !window.isDesktop) {
+        return false;
+    }
+    if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')) {
+        return true;
+    }
+    // Glancewell shell — only persist layout while windowed (public/scripts/comp/lightbox.js)
+    if (modal.dataset.windowIdentifier === 'photoSwipeShell') {
+        return modal.classList.contains('windowed');
+    }
+    if (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)) {
+        return true;
+    }
+    if (!modal.classList.contains('transient') && modal.querySelector('.modal-window-title') && modal.hasAttribute('data-modal-moved')) {
+        return true;
+    }
+    return false;
+}
+
+function shouldSaveShellBoundsFromRect(modal) {
+    if (!modal) {
+        return false;
+    }
+    if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')) {
+        return true;
+    }
+    if (modal.dataset.windowIdentifier === 'photoSwipeShell' && modal.classList.contains('windowed')) {
+        return true;
+    }
+    return false;
+}
+
+function flushSaveWindowPositions() {
+    if (windowPositionSaveTimer) {
+        clearTimeout(windowPositionSaveTimer);
+        windowPositionSaveTimer = null;
+    }
+    if (windowPositionSaveMaxTimer) {
+        clearTimeout(windowPositionSaveMaxTimer);
+        windowPositionSaveMaxTimer = null;
+    }
+    saveWindowPositions();
+}
+
+function applyDesktopWindowPositionsAfterLoad() {
+    if (!window.isDesktop) {
+        return;
+    }
+
+    const gallery = document.getElementById('galleryWindow');
+    if (gallery && gallery.classList.contains('windowed') && !gallery.classList.contains('hidden')) {
+        restoreWindowPosition(gallery);
+        ensureModalEdgesWithinWorkArea(gallery);
+    }
+
+    const photoSwipeShell = document.getElementById('photoSwipeWindow');
+    if (photoSwipeShell && !photoSwipeShell.classList.contains('hidden')) {
+        restoreWindowPosition(photoSwipeShell);
+        ensureModalEdgesWithinWorkArea(photoSwipeShell);
+    }
 }
 
 function clearModalPixelAnchor(modal) {
@@ -56,6 +328,101 @@ function clearModalPixelAnchor(modal) {
     modal.classList.remove('modal-pixel-settled');
     modal.style.removeProperty('--modal-pixel-left');
     modal.style.removeProperty('--modal-pixel-top');
+}
+
+/** Drop pixel-settled positioning back to offset mode without moving the window on screen. */
+function revertModalToOffsetAnchor(modal) {
+    if (!modal || !modal.classList.contains('modal-pixel-settled')) {
+        return;
+    }
+    const rect = modal.getBoundingClientRect();
+    clearModalPixelAnchor(modal);
+
+    const trueInsetTop = getModalTrueInsetTop();
+    if (isModalTopAnchored(modal)) {
+        const offsetX = (rect.left + rect.width / 2) - (window.innerWidth / 2);
+        const offsetY = rect.top - trueInsetTop;
+        setModalOffsetPx(modal, offsetX, offsetY, { snap: false, settle: false });
+        return;
+    }
+
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const offsetX = centerX - (window.innerWidth / 2);
+    const offsetY = centerY - (window.innerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+    setModalOffsetPx(modal, offsetX, offsetY, { snap: false, settle: false });
+}
+
+function prepareModalForDragOrResize(modal) {
+    if (!modal) {
+        return;
+    }
+    if (isModalMaximized(modal)) {
+        restoreModalFromMaximize(modal);
+    }
+    if (modal.classList.contains('modal-pixel-settled')) {
+        revertModalToOffsetAnchor(modal);
+        return;
+    }
+    clearModalPixelAnchor(modal);
+}
+
+/** Re-sync pixel anchor after programmatic width/height changes (e.g. Lumen image load, maximize). */
+function refreshModalLayoutAfterSizeChange(modal) {
+    if (!modal || modal.classList.contains('hidden')) {
+        return;
+    }
+    if (modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
+        return;
+    }
+
+    const applyRefresh = () => {
+        if (!modal || modal.classList.contains('hidden')) {
+            return;
+        }
+        if (modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
+            return;
+        }
+        if (modal.classList.contains('opening') || modal.classList.contains('closing') ||
+            modal.classList.contains('minimising') || modal.classList.contains('unminimising')) {
+            return;
+        }
+
+        if (modal.classList.contains('modal-pixel-settled')) {
+            revertModalToOffsetAnchor(modal);
+        } else {
+            clearModalPixelAnchor(modal);
+        }
+        void modal.offsetHeight;
+
+        requestAnimationFrame(() => {
+            if (modal.hasAttribute('data-dragging') || modal.hasAttribute('data-resizing')) {
+                return;
+            }
+            if (!isModalWithinViewportBounds(modal)) {
+                ensureModalWithinViewport(modal);
+            } else {
+                settleModalPixelAnchor(modal);
+            }
+        });
+    };
+
+    if (modal.classList.contains('opening') || modal.classList.contains('closing') ||
+        modal.classList.contains('minimising') || modal.classList.contains('unminimising')) {
+        const waitForAnimation = (e) => {
+            if (e.target !== modal) return;
+            if (e.animationName !== 'modalSlideIn' && e.animationName !== 'modalSlideInTopAnchor' &&
+                e.animationName !== 'modalSlideOut' && e.animationName !== 'modalSlideOutTopAnchor') {
+                return;
+            }
+            modal.removeEventListener('animationend', waitForAnimation);
+            requestAnimationFrame(applyRefresh);
+        };
+        modal.addEventListener('animationend', waitForAnimation);
+        return;
+    }
+
+    applyRefresh();
 }
 
 function snapModalOffsetsToDevicePixels(modal) {
@@ -282,42 +649,71 @@ function getModalLayoutDimensions(modal) {
     }
 }
 
-function clampModalOffsetsForRect(offsetX, offsetY, width, height) {
+function clampModalOffsetsForRect(offsetX, offsetY, width, height, options = {}) {
+    const allowOffscreen = options.allowOffscreen === true;
+    const minVisible = options.minVisible != null ? options.minVisible : MODAL_MIN_VISIBLE_PX;
+    const workArea = getModalWorkAreaBounds();
     const containerWidth = window.innerWidth;
     const containerHeight = window.innerHeight;
     const trueInsetTop = getModalTrueInsetTop();
-    const minVisible = 85;
 
-    const actualCenterX = containerWidth / 2 + offsetX;
-    const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - getDesktopModalTopBias();
-
-    const leftEdge = actualCenterX - width / 2;
-    const rightEdge = actualCenterX + width / 2;
-    const topEdge = actualCenterY - height / 2;
-    const bottomEdge = actualCenterY + height / 2;
+    const centerYFromOffset = (oy) =>
+        containerHeight / 2 + (0.5 * trueInsetTop) + oy - getDesktopModalTopBias();
 
     let constrainedX = offsetX;
     let constrainedY = offsetY;
+    let centerX = containerWidth / 2 + offsetX;
+    let centerY = centerYFromOffset(offsetY);
+    let leftEdge = centerX - width / 2;
+    let rightEdge = centerX + width / 2;
 
-    if (leftEdge < -width + minVisible) {
-        const desiredCenterX = (-width + minVisible) + width / 2;
-        constrainedX = desiredCenterX - containerWidth / 2;
-    } else if (rightEdge > containerWidth - minVisible) {
-        const desiredCenterX = (containerWidth - minVisible) - width / 2;
-        constrainedX = desiredCenterX - containerWidth / 2;
+    if (allowOffscreen) {
+        const minLeft = -width + minVisible;
+        const maxLeft = containerWidth - minVisible;
+        if (leftEdge < minLeft) {
+            leftEdge = minLeft;
+        } else if (leftEdge > maxLeft) {
+            leftEdge = maxLeft;
+        }
+    } else if (width <= workArea.width) {
+        if (leftEdge < workArea.left + MODAL_EDGE_MARGIN_PX) {
+            leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
+        } else if (rightEdge > workArea.right - MODAL_EDGE_MARGIN_PX) {
+            leftEdge = workArea.right - MODAL_EDGE_MARGIN_PX - width;
+        }
+    } else {
+        leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
+    }
+    constrainedX = (leftEdge + width / 2) - (containerWidth / 2);
+
+    centerY = centerYFromOffset(constrainedY);
+    let topEdge = centerY - height / 2;
+    let bottomEdge = centerY + height / 2;
+
+    if (allowOffscreen) {
+        const minTop = -height + minVisible;
+        if (topEdge < minTop) {
+            topEdge = minTop;
+        }
+        if (bottomEdge > workArea.bottom) {
+            bottomEdge = workArea.bottom;
+            topEdge = bottomEdge - height;
+        }
+        if (topEdge < workArea.top && bottomEdge > workArea.top) {
+            topEdge = workArea.top;
+        }
+    } else if (height <= workArea.height) {
+        if (topEdge < workArea.top + MODAL_EDGE_MARGIN_PX) {
+            topEdge = workArea.top + MODAL_EDGE_MARGIN_PX;
+        } else if (bottomEdge > workArea.bottom - MODAL_EDGE_MARGIN_PX) {
+            topEdge = workArea.bottom - MODAL_EDGE_MARGIN_PX - height;
+        }
+    } else {
+        topEdge = workArea.top + MODAL_EDGE_MARGIN_PX;
     }
 
-    const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - getDesktopModalTopBias();
-    const recalculatedTopEdge = recalculatedCenterY - height / 2;
-    const recalculatedBottomEdge = recalculatedCenterY + height / 2;
-
-    if (recalculatedTopEdge < 0) {
-        const desiredCenterY = height / 2;
-        constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-    } else if (recalculatedBottomEdge > containerHeight - minVisible) {
-        const desiredCenterY = (containerHeight - minVisible) - height / 2;
-        constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-    }
+    centerY = topEdge + height / 2;
+    constrainedY = centerY - (containerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
     return { offsetX: constrainedX, offsetY: constrainedY };
 }
@@ -326,34 +722,56 @@ function isModalTopAnchored(modal) {
     return modal && modal.dataset.windowContentAnchor === 'top';
 }
 
-function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height) {
+function clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height, options = {}) {
+    const allowOffscreen = options.allowOffscreen === true;
+    const minVisible = options.minVisible != null ? options.minVisible : MODAL_MIN_VISIBLE_PX;
+    const workArea = getModalWorkAreaBounds();
     const containerWidth = window.innerWidth;
-    const containerHeight = window.innerHeight;
     const trueInsetTop = getModalTrueInsetTop();
-    const minVisible = 85;
 
     let constrainedX = offsetX;
     let constrainedY = offsetY;
 
-    const actualCenterX = containerWidth / 2 + offsetX;
-    const leftEdge = actualCenterX - width / 2;
-    const rightEdge = actualCenterX + width / 2;
+    let centerX = containerWidth / 2 + offsetX;
+    let leftEdge = centerX - width / 2;
+    let rightEdge = centerX + width / 2;
 
-    if (leftEdge < -width + minVisible) {
-        const desiredCenterX = (-width + minVisible) + width / 2;
-        constrainedX = desiredCenterX - containerWidth / 2;
-    } else if (rightEdge > containerWidth - minVisible) {
-        const desiredCenterX = (containerWidth - minVisible) - width / 2;
-        constrainedX = desiredCenterX - containerWidth / 2;
+    if (allowOffscreen) {
+        const minLeft = -width + minVisible;
+        const maxLeft = containerWidth - minVisible;
+        if (leftEdge < minLeft) {
+            leftEdge = minLeft;
+        } else if (leftEdge > maxLeft) {
+            leftEdge = maxLeft;
+        }
+    } else if (width <= workArea.width) {
+        if (leftEdge < workArea.left + MODAL_EDGE_MARGIN_PX) {
+            leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
+        } else if (rightEdge > workArea.right - MODAL_EDGE_MARGIN_PX) {
+            leftEdge = workArea.right - MODAL_EDGE_MARGIN_PX - width;
+        }
+    } else {
+        leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
     }
+    constrainedX = (leftEdge + width / 2) - (containerWidth / 2);
 
-    const topEdge = trueInsetTop + offsetY;
-    const bottomEdge = topEdge + height;
+    let topEdge = trueInsetTop + offsetY;
+    let bottomEdge = topEdge + height;
 
-    if (topEdge < 0) {
-        constrainedY = -trueInsetTop;
-    } else if (bottomEdge > containerHeight - minVisible) {
-        constrainedY = containerHeight - minVisible - height - trueInsetTop;
+    if (allowOffscreen) {
+        if (topEdge < 0) {
+            constrainedY = -trueInsetTop;
+        } else if (bottomEdge > workArea.bottom) {
+            constrainedY = workArea.bottom - height - trueInsetTop;
+        }
+    } else if (height <= workArea.height) {
+        if (topEdge < workArea.top + MODAL_EDGE_MARGIN_PX) {
+            constrainedY = workArea.top + MODAL_EDGE_MARGIN_PX - trueInsetTop;
+        } else if (bottomEdge > workArea.bottom - MODAL_EDGE_MARGIN_PX) {
+            constrainedY = workArea.bottom - MODAL_EDGE_MARGIN_PX - height - trueInsetTop;
+        }
+    } else {
+        constrainedY = workArea.top + MODAL_EDGE_MARGIN_PX - trueInsetTop;
     }
 
     return { offsetX: constrainedX, offsetY: constrainedY };
@@ -364,10 +782,13 @@ function setModalPositionFromViewportRect(modal, rect) {
         return;
     }
 
+    clearModalPixelAnchor(modal);
+
     const width = roundCssPixel(rect.width);
     const height = roundCssPixel(rect.height);
-    const left = roundToDevicePixel(rect.left);
-    const top = roundToDevicePixel(rect.top);
+    const clamped = clampModalViewportRect(rect.left, rect.top, width, height);
+    const left = roundToDevicePixel(clamped.left);
+    const top = roundToDevicePixel(clamped.top);
 
     modal.style.width = `${width}px`;
     modal.style.height = `${height}px`;
@@ -379,8 +800,43 @@ function setModalPositionFromViewportRect(modal, rect) {
     let offsetX = centerX - window.innerWidth / 2;
     let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
 
-    const clamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
-    setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
+    const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+    setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+    modal.setAttribute('data-modal-moved', 'true');
+}
+
+function setModalOffsetsFromViewportTopLeft(modal, left, top) {
+    if (!modal) {
+        return;
+    }
+
+    clearModalPixelAnchor(modal);
+
+    const layout = getModalLayoutDimensions(modal);
+    const width = layout.width;
+    const height = layout.height;
+    const clamped = clampModalViewportRect(left, top, width, height);
+    left = clamped.left;
+    top = clamped.top;
+    const trueInsetTop = getModalTrueInsetTop();
+
+    if (isModalTopAnchored(modal)) {
+        const centerX = left + width / 2;
+        let offsetX = centerX - window.innerWidth / 2;
+        let offsetY = top - trueInsetTop;
+        const offsetClamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
+        setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
+        modal.setAttribute('data-modal-moved', 'true');
+        return;
+    }
+
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    let offsetX = centerX - window.innerWidth / 2;
+    let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+
+    const offsetClamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
+    setModalOffsetPx(modal, offsetClamped.offsetX, offsetClamped.offsetY, { snap: true, settle: true });
     modal.setAttribute('data-modal-moved', 'true');
 }
 
@@ -398,6 +854,7 @@ function positionModalCascadeFromParent(childModal, parentModal, options = {}) {
     const childLayout = getModalLayoutDimensions(childModal);
     let childWidth = childLayout.width;
     let childHeight = childLayout.height;
+    const workArea = getModalWorkAreaBounds();
 
     let left;
     let top;
@@ -407,24 +864,24 @@ function positionModalCascadeFromParent(childModal, parentModal, options = {}) {
     } else {
         left = parentRect.right + cascadeX;
         top = parentRect.top;
-        if (left + childWidth > window.innerWidth - 85) {
+        if (left + childWidth > workArea.right - MODAL_MIN_VISIBLE_PX) {
             left = parentRect.left + cascadeX;
             top = parentRect.top + cascadeY;
         }
     }
 
-    const minVisible = 85;
-    if (left + childWidth > window.innerWidth - minVisible) {
-        left = Math.max(-childWidth + minVisible, window.innerWidth - minVisible - childWidth);
+    const minVisible = MODAL_MIN_VISIBLE_PX;
+    if (left + childWidth > workArea.right - minVisible) {
+        left = Math.max(-childWidth + minVisible, workArea.right - minVisible - childWidth);
     }
     if (left < -childWidth + minVisible) {
         left = -childWidth + minVisible;
     }
-    if (top + childHeight > window.innerHeight - minVisible) {
-        top = Math.max(0, window.innerHeight - minVisible - childHeight);
+    if (top + childHeight > workArea.bottom - minVisible) {
+        top = Math.max(workArea.top, workArea.bottom - minVisible - childHeight);
     }
-    if (top < 0) {
-        top = 0;
+    if (top < workArea.top) {
+        top = workArea.top;
     }
 
     if (options.lockSize === false) {
@@ -439,39 +896,39 @@ function positionModalCascadeFromParent(childModal, parentModal, options = {}) {
     }
 }
 
-function setModalOffsetsFromViewportTopLeft(modal, left, top) {
+/** Resize a window while keeping its visual center fixed (or top edge for top-anchored modals). */
+function setModalSizePreservingCenter(modal, newWidth, newHeight, options = {}) {
     if (!modal) {
         return;
     }
 
     const rect = modal.getBoundingClientRect();
-    let width = rect.width || modal.offsetWidth;
-    let height = rect.height || modal.offsetHeight;
-    if (!width || !height) {
-        const layout = getModalLayoutDimensions(modal);
-        width = layout.width;
-        height = layout.height;
-    }
-    const trueInsetTop = getModalTrueInsetTop();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const roundedWidth = roundCssPixel(newWidth);
+    const roundedHeight = roundCssPixel(newHeight);
+
+    clearModalPixelAnchor(modal);
+    modal.style.width = `${roundedWidth}px`;
+    modal.style.height = `${roundedHeight}px`;
 
     if (isModalTopAnchored(modal)) {
-        const centerX = left + width / 2;
-        let offsetX = centerX - window.innerWidth / 2;
-        let offsetY = top - trueInsetTop;
-        const clamped = clampModalOffsetsForTopAnchor(offsetX, offsetY, width, height);
-        setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
-        modal.setAttribute('data-modal-moved', 'true');
+        setModalPositionFromViewportRect(modal, {
+            left: centerX - roundedWidth / 2,
+            top: rect.top,
+            width: roundedWidth,
+            height: roundedHeight
+        });
         return;
     }
 
-    const centerX = left + width / 2;
-    const centerY = top + height / 2;
-    let offsetX = centerX - window.innerWidth / 2;
-    let offsetY = centerY - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+    setModalOffsetsFromViewportTopLeft(modal, centerX - roundedWidth / 2, centerY - roundedHeight / 2);
 
-    const clamped = clampModalOffsetsForRect(offsetX, offsetY, width, height);
-    setModalOffsetPx(modal, clamped.offsetX, clamped.offsetY, { snap: true, settle: true });
-    modal.setAttribute('data-modal-moved', 'true');
+    if (options.settle === false) {
+        return;
+    }
+
+    ensureModalEdgesWithinWorkArea(modal);
 }
 
 function cascadeModalFromParentIfConfigured(modal) {
@@ -498,7 +955,7 @@ function cascadeModalFromParentIfConfigured(modal) {
     ensureModalWithinViewport(modal);
 }
 
-function isModalWithinViewportBounds(modal, minVisible = 85) {
+function isModalWithinViewportBounds(modal, minVisible = MODAL_MIN_VISIBLE_PX) {
     if (!modal || modal.classList.contains('hidden')) {
         return true;
     }
@@ -510,12 +967,11 @@ function isModalWithinViewportBounds(modal, minVisible = 85) {
         return false;
     }
 
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const visibleLeft = Math.max(0, rect.left);
-    const visibleRight = Math.min(viewportWidth, rect.right);
-    const visibleTop = Math.max(0, rect.top);
-    const visibleBottom = Math.min(viewportHeight, rect.bottom);
+    const workArea = getModalWorkAreaBounds();
+    const visibleLeft = Math.max(workArea.left, rect.left);
+    const visibleRight = Math.min(workArea.right, rect.right);
+    const visibleTop = Math.max(workArea.top, rect.top);
+    const visibleBottom = Math.min(workArea.bottom, rect.bottom);
     const visibleWidth = Math.max(0, visibleRight - visibleLeft);
     const visibleHeight = Math.max(0, visibleBottom - visibleTop);
 
@@ -531,15 +987,12 @@ function resetModalToViewportCenter(modal) {
     modal.style.removeProperty('width');
     modal.style.removeProperty('height');
 
-    const rect = modal.getBoundingClientRect();
     const layout = getModalLayoutDimensions(modal);
     const width = layout.width;
     const height = layout.height;
-    const margin = 12;
-    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
-    const maxTop = Math.max(margin, window.innerHeight - height - margin);
-    const left = Math.min(maxLeft, Math.max(margin, (window.innerWidth - width) / 2));
-    const top = Math.min(maxTop, Math.max(margin, (window.innerHeight - height) / 2));
+    const workArea = getModalWorkAreaBounds();
+    const left = workArea.left + Math.max(0, (workArea.width - width) / 2);
+    const top = workArea.top + Math.max(0, (workArea.height - height) / 2);
 
     if (isModalTopAnchored(modal)) {
         setModalOffsetsFromViewportTopLeft(modal, left, top);
@@ -550,25 +1003,36 @@ function resetModalToViewportCenter(modal) {
     modal.removeAttribute('data-modal-moved');
 }
 
-function ensureModalWithinViewport(modal) {
-    if (!modal || modal.classList.contains('hidden')) {
+function ensureModalEdgesWithinWorkArea(modal) {
+    if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
         return;
     }
 
+    const applyClamp = () => {
+        if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
+            return;
+        }
+
+        const rect = modal.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            return;
+        }
+
+        const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height);
+        if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
+            setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top);
+        } else {
+            settleModalPixelAnchor(modal);
+        }
+    };
+
     requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            if (!isModalWithinViewportBounds(modal)) {
-                const rect = modal.getBoundingClientRect();
-                if (rect.width && rect.height) {
-                    setModalOffsetsFromViewportTopLeft(modal, rect.left, rect.top);
-                } else {
-                    resetModalToViewportCenter(modal);
-                }
-            } else {
-                settleModalPixelAnchor(modal);
-            }
-        });
+        requestAnimationFrame(applyClamp);
     });
+}
+
+function ensureModalWithinViewport(modal) {
+    ensureModalEdgesWithinWorkArea(modal);
 }
 
 // Update window usage stack - add modal to top of stack (most recent at end)
@@ -795,7 +1259,7 @@ function handleModalDragStart(e) {
 
     e.preventDefault();
 
-    clearModalPixelAnchor(modal);
+    prepareModalForDragOrResize(modal);
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -829,6 +1293,8 @@ function handleModalDragStart(e) {
 
     // Check backdrop when starting drag (in case this was the only non-transient modal)
     updateBackdropVisibility();
+
+    return true;
 }
 
 function handleModalDrag(e, draggedModal) {
@@ -860,58 +1326,12 @@ function handleModalDrag(e, draggedModal) {
 
     // Get modal dimensions
     const modalRect = draggedModal.getBoundingClientRect();
-    const titleBar = draggedModal.querySelector('.modal-window-title');
 
-    if (titleBar) {
-        const titleRect = titleBar.getBoundingClientRect();
-
-        // Calculate where the title bar would be positioned with the new offsets
-        // Modal center will be at (window.innerWidth/2 + newOffsetX, window.innerHeight/2 + newOffsetY)
-        // Title bar position relative to modal center
-        const titleBarCenterX = (titleRect.left + titleRect.right) / 2 - modalRect.width / 2;
-        const titleBarCenterY = (titleRect.top + titleRect.bottom) / 2 - modalRect.height / 2;
-
-        // Ensure at least 85px of the modal stays visible on screen in all directions
-
-        // Constrain offset values so modal never goes so far off screen that less than 85px remains visible
-        // Modal left edge = window.innerWidth/2 + offsetX - modalRect.width/2
-        // Modal right edge = window.innerWidth/2 + offsetX + modalRect.width/2
-        // Modal top edge = window.innerHeight/2 + offsetY - modalRect.height/2
-        // Modal bottom edge = window.innerHeight/2 + offsetY + modalRect.height/2
-
-        // Left constraint: modal left edge >= -modalRect.width + 85 (85px visible from left)
-        // window.innerWidth/2 + offsetX - modalRect.width/2 >= -modalRect.width + 85
-        // offsetX >= -modalRect.width + 85 - window.innerWidth/2 + modalRect.width/2
-        // offsetX >= -window.innerWidth/2 + 85
-        const minOffsetX = -window.innerWidth / 2 + 85;
-
-        // Right constraint: modal right edge <= window.innerWidth + modalRect.width - 85 (85px visible from right)
-        // window.innerWidth/2 + offsetX + modalRect.width/2 <= window.innerWidth + modalRect.width - 85
-        // offsetX <= window.innerWidth + modalRect.width - 85 - window.innerWidth/2 - modalRect.width/2
-        // offsetX <= window.innerWidth/2 - 85 + modalRect.width
-        const maxOffsetX = window.innerWidth / 2 - 85 + modalRect.width / 2;
-
-        // Up constraint: ensure title bar stays visible (can't go completely off screen at top)
-        // Title bar is at the top of the modal, so modal top edge should stay within viewport
-        // window.innerHeight/2 + offsetY - modalRect.height/2 >= 0 (title bar visible)
-        // offsetY >= -window.innerHeight/2 + modalRect.height/2
-        const minOffsetY = -window.innerHeight / 2 + modalRect.height / 2;
-
-        // Down constraint: modal bottom edge <= window.innerHeight + modalRect.height - 85 (85px visible from bottom)
-        // window.innerHeight/2 + offsetY + modalRect.height/2 <= window.innerHeight + modalRect.height - 85
-        // offsetY <= window.innerHeight + modalRect.height - 85 - window.innerHeight/2 - modalRect.height/2
-        // offsetY <= window.innerHeight/2 - 85 + modalRect.height
-        const maxOffsetY = window.innerHeight / 2 - 85 + modalRect.height / 2;
-
-        if (isModalTopAnchored(draggedModal)) {
-            const clamped = clampModalOffsetsForTopAnchor(newOffsetX, newOffsetY, modalRect.width, modalRect.height);
-            newOffsetX = clamped.offsetX;
-            newOffsetY = clamped.offsetY;
-        } else {
-            newOffsetX = Math.max(minOffsetX, Math.min(maxOffsetX, newOffsetX));
-            newOffsetY = Math.max(minOffsetY, Math.min(maxOffsetY, newOffsetY));
-        }
-    }
+    const clamped = isModalTopAnchored(draggedModal)
+        ? clampModalOffsetsForTopAnchor(newOffsetX, newOffsetY, modalRect.width, modalRect.height, { allowOffscreen: true })
+        : clampModalOffsetsForRect(newOffsetX, newOffsetY, modalRect.width, modalRect.height, { allowOffscreen: true });
+    newOffsetX = clamped.offsetX;
+    newOffsetY = clamped.offsetY;
 
     setModalOffsetPx(draggedModal, newOffsetX, newOffsetY, { snap: false, settle: false });
 }
@@ -961,7 +1381,7 @@ function handleModalResizeStart(e) {
 
     e.preventDefault();
 
-    clearModalPixelAnchor(modal);
+    prepareModalForDragOrResize(modal);
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -1077,8 +1497,26 @@ function handleModalResize(e, resizedModal) {
     newWidth = Math.max(minWidth, Math.min(newWidth, maxWidth));
     newHeight = Math.max(minHeight, Math.min(newHeight, maxHeight));
 
-    newWidth = roundCssPixel(newWidth);
-    newHeight = roundCssPixel(newHeight);
+    const workArea = getModalWorkAreaBounds();
+    if (resizeDirection.includes('e') && !resizeDirection.includes('w')) {
+        newWidth = Math.min(newWidth, workArea.right - resizeStartLeft);
+    }
+    if (resizeDirection.includes('w') && !resizeDirection.includes('e')) {
+        const maxWidthFromWorkArea = resizeStartLeft + resizeStartWidth - workArea.left;
+        newWidth = Math.min(newWidth, maxWidthFromWorkArea);
+        newLeft = resizeStartLeft + resizeStartWidth - newWidth;
+    }
+    if (resizeDirection.includes('s') && !resizeDirection.includes('n')) {
+        newHeight = Math.min(newHeight, workArea.bottom - resizeStartTop);
+    }
+    if (resizeDirection.includes('n') && !resizeDirection.includes('s')) {
+        const maxHeightFromWorkArea = resizeStartTop + resizeStartHeight - workArea.top;
+        newHeight = Math.min(newHeight, maxHeightFromWorkArea);
+        newTop = resizeStartTop + resizeStartHeight - newHeight;
+    }
+
+    newWidth = Math.max(minWidth, roundCssPixel(newWidth));
+    newHeight = Math.max(minHeight, roundCssPixel(newHeight));
 
     resizedModal.style.width = `${newWidth}px`;
     resizedModal.style.height = `${newHeight}px`;
@@ -1098,7 +1536,7 @@ function handleModalResize(e, resizedModal) {
         return;
     }
 
-    // Only update position if we actually moved the window (left/top edge resize)
+    // Update position so the anchored edge/corner stays fixed while resizing
     if (shouldUpdatePosition) {
         const trueInsetTop = getModalTrueInsetTop();
         let offsetX = (newLeft + newWidth / 2) - (window.innerWidth / 2);
@@ -1167,9 +1605,12 @@ function openModal(modal) {
     // This ensures the position is set before the opening animation starts
     // Restore for non-transient windows, or transient windows with dataset identifier
     if (isMoveable && window.isDesktop) {
-        const skipRestore = modal.dataset.windowPositionMode === 'cascade-parent';
+        const skipRestore = modal.dataset.windowPositionMode === 'cascade-parent'
+            || modal.dataset.windowPositionMode === 'run-open'
+            || modal.dataset.windowPositionMode === 'manual-only';
         const isTransient = modal.classList.contains('transient');
-        if (!skipRestore && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
+        const isLumenViewer = modal.classList.contains('image-viewer-modal');
+        if (!skipRestore && !isLumenViewer && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
             restoreWindowPosition(modal);
         }
     }
@@ -1218,7 +1659,10 @@ function openModal(modal) {
         addResizeHandles(modal);
     }
 
-    clearModalPixelAnchor(modal);
+    // Wire work-area maximize only for .modal-work-area-maximize (Lumen image viewer)
+    wireModalMaximizeButton(modal);
+
+    // Lumen restores after visible — openModal skips .image-viewer-modal (public/scripts/comp/imageViewer.js)
 
     // Add opening class to trigger animation
     modal.classList.add('opening');
@@ -1260,7 +1704,7 @@ function openModal(modal) {
             modal.removeEventListener('animationend', openingAnimationHandler);
             modal.classList.remove('opening');
             if (isMoveable && !modal.classList.contains('hidden')) {
-                settleModalPixelAnchor(modal);
+                ensureModalEdgesWithinWorkArea(modal);
             }
         }
     };
@@ -1268,7 +1712,7 @@ function openModal(modal) {
 
     if (modal.dataset.windowPositionMode === 'cascade-parent') {
         requestAnimationFrame(() => requestAnimationFrame(() => cascadeModalFromParentIfConfigured(modal)));
-    } else if (isMoveable) {
+    } else if (isMoveable && modal.dataset.windowPositionMode !== 'manual-only') {
         ensureModalWithinViewport(modal);
     }
 }
@@ -1301,6 +1745,10 @@ async function closeModal(modal) {
 
 function closeMainModal(modal) {
     if (!modal) return Promise.resolve();
+
+    if (shouldPersistWindowPosition(modal)) {
+        flushSaveWindowPositions();
+    }
 
     // Check if this modal should trigger backdrop changes
     // Modals that are transient OR have been moved don't trigger backdrop
@@ -1337,11 +1785,16 @@ function closeMainModal(modal) {
 
     // Function to clean up after animation completes
     const cleanup = () => {
-        // Reset modal position offsets
-        modal.style.removeProperty('--modal-offset-x');
-        modal.style.removeProperty('--modal-offset-y');
-        modal.style.removeProperty('width');
-        modal.style.removeProperty('height');
+        // Reset modal position offsets (persistable windows restore size/position from saved data on reopen)
+        if (!shouldPersistWindowPosition(modal)) {
+            modal.style.removeProperty('--modal-offset-x');
+            modal.style.removeProperty('--modal-offset-y');
+            modal.style.removeProperty('width');
+            modal.style.removeProperty('height');
+        } else {
+            // Drop pixel-settled so reopen applies saved offsets/rect instead of stale pixel vars
+            clearModalPixelAnchor(modal);
+        }
         modal.removeAttribute('data-resizing');
         modal.removeAttribute('data-resize-start-x');
         modal.removeAttribute('data-resize-start-y');
@@ -1696,9 +2149,10 @@ function initializeGalleryWindow() {
 
     galleryWindow.addEventListener('modalResized', () => { updateGalleryGrid(true, true); }); // onlyIfChanged=true, updatePlaceholders=true
 
-    // Add maximize button handler
+    // Add maximize button handler (windowed ↔ fullscreen gallery mode)
     const maximizeBtn = document.getElementById('maximizeGalleryBtn');
-    if (maximizeBtn) {
+    if (maximizeBtn && maximizeBtn.dataset.modalMaximizeWired !== 'true') {
+        maximizeBtn.dataset.modalMaximizeWired = 'true';
         maximizeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             maximizeGalleryWindow();
@@ -1808,6 +2262,7 @@ function updateGalleryWindowMode() {
         }
 
         restoreWindowPosition(galleryWindow);
+        ensureModalEdgesWithinWorkArea(galleryWindow);
 
         // Add gallery window to modal stack for z-index management
         if (modalStack.indexOf(galleryWindow) === -1) {
@@ -2004,6 +2459,9 @@ async function hideGalleryWindow() {
         return;
     }
 
+    galleryWindow.setAttribute('data-modal-moved', 'true');
+    flushSaveWindowPositions();
+
     await closeModal(galleryWindow);
 
     // Clear gallery content like manual modal does
@@ -2025,8 +2483,9 @@ function showGalleryWindow() {
         return;
     }
 
-    // Mark gallery as visible
+    // Mark gallery as visible (openModal restores saved size/position)
     openModal(galleryWindow);
+    ensureModalEdgesWithinWorkArea(galleryWindow);
 
     // Reload gallery content like manual modal close does
     const savedPosition = window.savedGalleryPosition || 0;
@@ -2120,7 +2579,7 @@ const desktopIconsConfig = [
         id: 'editor',
         icon: 'fa-duotone fa-compass-drafting',
         imageIcon: 'studio.png',
-        label: 'Editor',
+        label: 'Studio',
         action: () => {
             openManualModalWithContent();
         }
@@ -2474,7 +2933,7 @@ function updateTaskbarWindows() {
             } else {
                 // Create new group item
                 const { icon, imageIcon } = getModalIcons(modals[0]);
-                const typeName = groupType === 'imageViewer' ? 'Glancewell' :
+                const typeName = groupType === 'imageViewer' ? 'Lumen' :
                     groupType === 'notepad' ? 'Notepad' : groupType;
 
                 groupItem = document.createElement('div');
@@ -3297,7 +3756,10 @@ function showTaskbarItemContextMenu(e, modal, taskbarItem) {
                     itemData.action = 'taskbar-window-close';
                     bottomItems.push(itemData);
                     return;
-                } else if (control.id === 'maximizeGalleryBtn' || control.id === 'restoreManualBtn' || title.toLowerCase().includes('maximize')) {
+                } else if (control.classList.contains('modal-work-area-maximize')
+                    || control.id === 'maximizeGalleryBtn'
+                    || control.id === 'maximizePhotoSwipeBtn'
+                    || control.id === 'restoreManualBtn') {
                     itemData.action = 'taskbar-window-maximize';
                     itemData.hidden = modal.id === 'galleryWindow';
                     bottomItems.push(itemData);
@@ -3426,7 +3888,10 @@ function showTaskbarGroupContextMenu(e, groupItem, modals) {
                         itemData.action = 'taskbar-window-close';
                         bottomItems.push(itemData);
                         return;
-                    } else if (control.id === 'maximizeGalleryBtn' || control.id === 'restoreManualBtn' || title.toLowerCase().includes('maximize')) {
+                    } else if (control.classList.contains('modal-work-area-maximize')
+                    || control.id === 'maximizeGalleryBtn'
+                    || control.id === 'maximizePhotoSwipeBtn'
+                    || control.id === 'restoreManualBtn') {
                         itemData.action = 'taskbar-window-maximize';
                         itemData.hidden = activeModalInGroup.id === 'galleryWindow';
                         bottomItems.push(itemData);
@@ -3614,10 +4079,7 @@ document.addEventListener('contextMenuAction', (e) => {
 
     switch (action) {
         case 'taskbar-window-maximize':
-            clearModalPixelAnchor(modal);
-            modal.style.width = '90vw';
-            modal.style.height = '90vh';
-            setModalOffsetPx(modal, 0, 0, { snap: true, settle: true });
+            handleWindowMaximizeAction(modal);
             break;
 
         case 'taskbar-window-center':
@@ -3700,13 +4162,9 @@ const startMenuConfig = [
     },
     { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
-    {
-        launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', action: () => { window.notepadManager.openNotebook(); },
-        rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } }
-    },
+    { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
     { launchId: 'naxt', icon: 'fas fa-flask', imageIcon: 'test_tube.png', text: 'Atelier', action: () => { if (window.naxtApplet) { window.naxtApplet.open(); } else { const modal = document.getElementById('naxtModal'); if (modal) openModal(modal); } } },
-    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'studio.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'chat.png', text: 'Chat', action: () => { if (window.chatSystem) window.chatSystem.showAllChats(); } },
     { separator: true },
     {
@@ -3717,7 +4175,8 @@ const startMenuConfig = [
         hasSubmenu: true,
         submenu: 'planets'
     },
-    { icon: 'fas fa-toolbox', imageIcon: 'slider.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' }
+    { icon: 'fas fa-toolbox', imageIcon: 'slider.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' },
+    { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
 ];
 
 const startMenuSubmenus = {
@@ -3810,6 +4269,7 @@ function collectStartMenuLaunchables() {
             if (!Array.isArray(submenuItems)) return;
             submenuItems.forEach((subItem) => {
                 if (!subItem || typeof subItem.action !== 'function') return;
+                if (subItem.desktopOnly && !isDesktopStartMenuEnvironment()) return;
                 const label = subItem.text || 'Item';
                 out.push({
                     launchId: subItem.launchId || `${item.submenu}-${label}`,
@@ -5172,7 +5632,7 @@ function saveWindowPositions() {
     const containerHeight = window.innerHeight;
 
     // Get all modals that should have positions saved
-    const allModals = document.querySelectorAll('.modal');
+    const allModals = document.querySelectorAll('.modal, #galleryWindow.windowed');
 
     allModals.forEach(modal => {
         // Skip if modal is hidden or doesn't have a title bar (not a window)
@@ -5224,27 +5684,28 @@ function saveWindowPositions() {
         // Convert top-left to quadrant position
         const topLeftQuadrant = pixelToQuadrantPosition(topLeftX, topLeftY, containerWidth, containerHeight);
 
-        // Get bottom-right corner for size (if window is resizable and has custom size)
+        // Get bottom-right corner for size from rendered rect (resizeable / desktop shells)
         let bottomRightQuadrant = null;
-        if (modal.classList.contains('resizeable-window')) {
-            const width = modal.style.width || computedStyle.width;
-            const height = modal.style.height || computedStyle.height;
-
-            if (width && height) {
-                // Parse width/height (could be "500px" or "50%")
-                const widthPx = width.includes('px') ? parseFloat(width) : (parseFloat(width) / 100) * containerWidth;
-                const heightPx = height.includes('px') ? parseFloat(height) : (parseFloat(height) / 100) * containerHeight;
-
-                // Round to whole numbers for consistency
-                const bottomRightX = Math.round(topLeftX + widthPx);
-                const bottomRightY = Math.round(topLeftY + heightPx);
-
-                bottomRightQuadrant = pixelToQuadrantPosition(bottomRightX, bottomRightY, containerWidth, containerHeight);
-            }
+        if (shouldSaveShellBoundsFromRect(modal) || modal.classList.contains('resizeable-window')) {
+            bottomRightQuadrant = pixelToQuadrantPosition(
+                Math.round(modalRect.right),
+                Math.round(modalRect.bottom),
+                containerWidth,
+                containerHeight
+            );
         }
 
-        // Only save if window has been moved or resized
-        if (modal.hasAttribute('data-modal-moved') || bottomRightQuadrant) {
+        // Only save if window has been moved or resized, or is a persistable desktop shell
+        const shouldForceSave = shouldSaveShellBoundsFromRect(modal)
+            || (modal.dataset.windowIdentifier
+                && modal.dataset.windowIdentifier !== 'photoSwipeShell'
+                && transientWindowsWithPositions.has(modal.dataset.windowIdentifier));
+
+        if (shouldForceSave) {
+            modal.setAttribute('data-modal-moved', 'true');
+        }
+
+        if (shouldForceSave || modal.hasAttribute('data-modal-moved') || bottomRightQuadrant) {
             const position = {
                 topLeft: topLeftQuadrant
             };
@@ -5266,7 +5727,7 @@ function saveWindowPositions() {
     // Saves to the same file as desktop shortcuts (workspaceDesktop config) as global object
     if (wsClient && wsClient.isConnected() && Object.keys(windowPositions).length > 0) {
         try {
-            wsClient.saveWindowPositions(null, windowPositions); // null workspaceId = global
+            wsClient.saveWindowPositions(null, globalWindowPositions); // full merged map — partial saves wiped other windows
         } catch (error) {
             console.warn('Failed to save window positions:', error);
         }
@@ -5305,6 +5766,8 @@ function restoreWindowPosition(modal) {
         // Convert top-left quadrant position to pixel position
         const topLeftPixel = quadrantToPixelPosition(savedPosition.topLeft, containerWidth, containerHeight);
 
+        clearModalPixelAnchor(modal);
+
         const measureState = beginModalLayoutMeasure(modal);
 
         try {
@@ -5320,20 +5783,23 @@ function restoreWindowPosition(modal) {
                 targetWidth = Math.min(targetWidth, maxWidth);
                 targetHeight = Math.min(targetHeight, maxHeight);
 
-                modal.style.width = `${roundCssPixel(targetWidth)}px`;
-                modal.style.height = `${roundCssPixel(targetHeight)}px`;
-                void modal.offsetHeight;
+                setModalPositionFromViewportRect(modal, {
+                    left: topLeftPixel.x,
+                    top: topLeftPixel.y,
+                    width: targetWidth,
+                    height: targetHeight
+                });
+            } else {
+                setModalOffsetsFromViewportTopLeft(modal, topLeftPixel.x, topLeftPixel.y);
             }
 
-            setModalOffsetsFromViewportTopLeft(modal, topLeftPixel.x, topLeftPixel.y);
             modal.setAttribute('data-modal-moved', 'true');
+            modal.setAttribute('data-window-position-restored', 'true');
         } finally {
             endModalLayoutMeasure(modal, measureState);
         }
 
-        requestAnimationFrame(() => {
-            settleModalPixelAnchor(modal);
-        });
+        ensureModalEdgesWithinWorkArea(modal);
     }
 }
 

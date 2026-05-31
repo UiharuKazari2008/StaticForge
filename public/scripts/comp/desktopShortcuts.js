@@ -1639,7 +1639,7 @@ class DesktopShortcutsManager {
                         },
                         {
                             icon: 'fas fa-film-canister',
-                            text: 'Jump to Workspace',
+                            text: 'Jump to Image',
                             action: 'jump-to-workspace'
                         },
                         {
@@ -2524,6 +2524,7 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
             desktopShortcuts.currentWorkspace = activeWorkspace;
             await desktopShortcuts.loadShortcuts(activeWorkspace);
             desktopShortcuts.renderShortcuts();
+            applyDesktopWindowPositionsAfterLoad();
         }
     }
 });

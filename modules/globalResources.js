@@ -11,6 +11,7 @@ const AnimeTagSearch = require('./animeTagSearch');
 const FurryTagSearch = require('./furryTagSearch');
 const FastTagSearch = require('./fastTagSearch');
 const SpellChecker = require('./spellChecker');
+const WordLookupService = require('./wordLookupService');
 const t5TokenizerService = require('./t5-tokenizer-service');
 const { buildPresetTokenCountCache } = require('./presetTokenCountCache');
 const knowledgeMemoryDb = require('./knowledgeMemoryDatabase');
@@ -33,6 +34,7 @@ const chatDatabase = require('./chatDatabase');
 const directorDatabase = require('./directorDatabase');
 const notesDatabase = require('./notesDatabase');
 const TagLookup = require('./tag-lookup');
+const TagAutofillSearch = require('./tagAutofillSearch');
 const logger = require('./logger');
 const { asyncSQLiteManager } = require('./sqliteAsyncWrapper');
 const { WebSocketServer } = require('./websocket');
@@ -104,6 +106,7 @@ class GlobalResources {
         this.directorDatabase = null;
         this.notesDatabase = null;
         this.tagDatabase = null;
+        this.tagAutofillSearch = null;
 
         // Async SQLite manager
         this.asyncSQLiteManager = null;
@@ -726,6 +729,9 @@ class GlobalResources {
             // STEP 5: Initialize spell checker
             await this.initializeSpellChecker();
 
+            // STEP 5a: Dictionary / thesaurus lookup (needs spell checker)
+            await this.initializeWordLookupService();
+
             // STEP 5b: Auxiliary services (T5 vocabulary, tag cache)
             await this.initializeAuxiliaryServices();
 
@@ -833,7 +839,9 @@ class GlobalResources {
     }
 
     /**
-     * Initialize tag search services (AnimeTagSearch, FurryTagSearch, FastTagSearch)
+     * Initialize legacy JSON tag indexes (AnimeTagSearch, FurryTagSearch, FastTagSearch).
+     * Prompt autofill local tags use TagLookup via tagAutofillSearch (not these modules).
+     * Still required by fastTagSearch.js and promptLogitAnalyzer.js until migrated.
      */
     async initializeTagSearchServices() {
         try {
@@ -981,6 +989,20 @@ class GlobalResources {
             console.log('✓ SpellChecker loaded');
         } catch (error) {
             console.error('  ❌ Failed to load spell checker:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Initialize dictionary / thesaurus lookup service
+     */
+    async initializeWordLookupService() {
+        try {
+            this.wordLookupService = new WordLookupService(this);
+            this.initializationProgress.wordLookupService = true;
+            console.log('✓ WordLookupService loaded');
+        } catch (error) {
+            console.error('  ❌ Failed to load word lookup service:', error);
             throw error;
         }
     }
@@ -1882,7 +1904,8 @@ class GlobalResources {
     }
 
     /**
-     * Get AnimeTagSearch instance (lazy-loads if not already loaded)
+     * Legacy JSON tag index (dataset_tags.json). Not used for prompt autofill — see getTagAutofillSearch().
+     * @deprecated Migrate callers to TagLookup; remove after fastTagSearch and promptLogitAnalyzer are migrated.
      */
     async getAnimeTagSearch() {
         if (!this.initialized) {
@@ -1890,21 +1913,16 @@ class GlobalResources {
         }
 
         if (!this.animeTagSearch) {
-            console.log('⚡ Initializing Danbooru Anime Tag Search (Sleeping)...');
+            console.log('⚡ Initializing Danbooru Anime Tag Search (legacy JSON)...');
             await this.initializeTagSearchServices();
-        }
-
-        if (!this.notesDatabase) {
-            this.notesDatabase = new NotesDatabase(this);
-            await this.notesDatabase.init();
-            this.logger.bootSubStep('Notes database initialized');
         }
 
         return this.animeTagSearch;
     }
 
     /**
-     * Get FurryTagSearch instance (lazy-loads if not already loaded)
+     * Legacy JSON tag index (dataset_tags_furry.json). Not used for prompt autofill — see getTagAutofillSearch().
+     * @deprecated Migrate callers to TagLookup; remove after fastTagSearch and promptLogitAnalyzer are migrated.
      */
     async getFurryTagSearch() {
         if (!this.initialized) {
@@ -1920,7 +1938,7 @@ class GlobalResources {
     }
 
     /**
-     * Get FastTagSearch instance (lazy-loads if not already loaded)
+     * @deprecated Legacy JSON wrapper. Migrate to TagLookup before removing animeTagSearch/furryTagSearch.
      */
     async getFastTagSearch() {
         if (!this.initialized) {
@@ -1943,6 +1961,16 @@ class GlobalResources {
             throw new Error('SpellChecker not initialized - call initializeSpellChecker() first');
         }
         return this.spellChecker;
+    }
+
+    /**
+     * Get WordLookupService instance
+     */
+    getWordLookupService() {
+        if (!this.wordLookupService) {
+            throw new Error('WordLookupService not initialized - call initializeWordLookupService() first');
+        }
+        return this.wordLookupService;
     }
 
     /**
@@ -2159,6 +2187,19 @@ class GlobalResources {
             throw new Error('Global resources not initialized - call initialize() first');
         }
         return this.tagDatabase;
+    }
+
+    /**
+     * Autofill tag search (unified tag wiki database; modules/tagAutofillSearch.js)
+     */
+    getTagAutofillSearch() {
+        if (!this.initialized || !this.tagDatabase) {
+            throw new Error('Global resources not initialized - call initialize() first');
+        }
+        if (!this.tagAutofillSearch) {
+            this.tagAutofillSearch = new TagAutofillSearch(this);
+        }
+        return this.tagAutofillSearch;
     }
 
     /**

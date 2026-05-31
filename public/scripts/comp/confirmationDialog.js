@@ -250,14 +250,23 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         confirmationDialogKeydownInputRef = null;
         registerConfirmationDialogKeydown();
 
+        // Progress/ephemeral dialogs: position manually after open, never restore/clamp automatically
+        if (config.manualPosition) {
+            confirmationDialog.dataset.windowPositionMode = 'manual-only';
+        } else {
+            confirmationDialog.removeAttribute('data-window-position-mode');
+        }
+
         // Apply custom width from config
         if (config.width) {
-            confirmationDialog.style.width = `${config.width}px`;
+            const widthVal = String(config.width);
+            confirmationDialog.style.width = widthVal.includes('px') ? widthVal : `${widthVal}px`;
         } else {
             confirmationDialog.style.width = '';
         }
         if (config.height) {
-            confirmationDialog.style.height = `${config.height}px`;
+            const heightVal = String(config.height);
+            confirmationDialog.style.height = heightVal.includes('px') ? heightVal : `${heightVal}px`;
         } else {
             confirmationDialog.style.height = '';
         }
@@ -433,9 +442,12 @@ async function hideConfirmationDialog() {
         await closeModal(confirmationDialog);
         confirmationDialogActive = false;
 
-        // Reset custom width
+        // Reset custom width and ephemeral position (never restore progress dialog placement)
         confirmationDialog.style.width = '';
         confirmationDialog.style.height = '';
+        confirmationDialog.style.removeProperty('--modal-offset-x');
+        confirmationDialog.style.removeProperty('--modal-offset-y');
+        confirmationDialog.removeAttribute('data-window-position-mode');
 
         if (confirmationDialogKeydownHandler) {
             document.removeEventListener('keydown', confirmationDialogKeydownHandler);
@@ -623,12 +635,14 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
 
         // Apply custom width from config
         if (config.width) {
-            confirmationDialog.style.width = `${config.width}px`;
+            const widthVal = String(config.width);
+            confirmationDialog.style.width = widthVal.includes('px') ? widthVal : `${widthVal}px`;
         } else {
             confirmationDialog.style.width = '';
         }
         if (config.height) {
-            confirmationDialog.style.height = `${config.height}px`;
+            const heightVal = String(config.height);
+            confirmationDialog.style.height = heightVal.includes('px') ? heightVal : `${heightVal}px`;
         } else {
             confirmationDialog.style.height = '';
         }

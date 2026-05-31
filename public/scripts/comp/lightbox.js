@@ -95,17 +95,21 @@ function syncPhotoSwipeShellWindowedClassFromStorage() {
 }
 
 function updatePhotoSwipeMaximizeButtonIcon() {
-    const btn = document.getElementById('maximizePhotoSwipeBtn');
     const shell = getPhotoSwipeShell();
-    if (!btn || !shell) return;
-    const icon = btn.querySelector('i');
-    if (!icon) return;
+    const maxBtn = document.getElementById('maximizePhotoSwipeBtn');
+    if (!shell || !maxBtn) {
+        return;
+    }
+    const icon = maxBtn.querySelector('i');
+    if (!icon) {
+        return;
+    }
     if (shell.classList.contains('windowed')) {
         icon.className = 'fa-regular fa-window-maximize';
-        btn.title = 'Maximize';
+        maxBtn.title = 'Maximize';
     } else {
         icon.className = 'fa-regular fa-window-restore';
-        btn.title = 'Restore window';
+        maxBtn.title = 'Restore window';
     }
 }
 
@@ -145,9 +149,12 @@ function syncPhotoSwipeShellRestoreStripVisibility() {
 function restorePhotoSwipeShellWindowed() {
     const shell = getPhotoSwipeShell();
     if (!shell || !document.body.classList.contains('desktop-mode')) return;
-    shell.classList.add('windowed');
-    localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'windowed');
-    updatePhotoSwipeMaximizeButtonIcon();
+    if (!shell.classList.contains('windowed')) {
+        shell.classList.add('windowed');
+        localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'windowed');
+        restoreWindowPosition(shell);
+        ensureModalEdgesWithinWorkArea(shell);
+    }
     notifyPhotoSwipeShellResized();
 }
 
@@ -163,15 +170,30 @@ function togglePhotoSwipeShellWindowed() {
     const shell = getPhotoSwipeShell();
     if (!shell) return;
     if (shell.classList.contains('windowed')) {
-        shell.classList.remove('windowed');
+        shell.setAttribute('data-modal-moved', 'true');
+        flushSaveWindowPositions();
         localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'maximized');
+        shell.classList.remove('windowed');
+        shell.classList.remove('modal-maximized');
         clearPhotoSwipeShellInlineLayoutForFullMode(shell);
     } else {
         shell.classList.add('windowed');
         localStorage.setItem(PHOTO_SWIPE_WINDOW_MODE_KEY, 'windowed');
+        restoreWindowPosition(shell);
+        ensureModalEdgesWithinWorkArea(shell);
     }
     updatePhotoSwipeMaximizeButtonIcon();
     notifyPhotoSwipeShellResized();
+}
+
+function getActivePhotoSwipe() {
+    if (window.pswp && window.pswp.isOpen && !window.pswp.isDestroying) {
+        return window.pswp;
+    }
+    if (lightbox && lightbox.pswp && lightbox.pswp.isOpen && !lightbox.pswp.isDestroying) {
+        return lightbox.pswp;
+    }
+    return null;
 }
 
 function wirePhotoSwipeShellControlsOnce() {
@@ -191,14 +213,18 @@ function wirePhotoSwipeShellControlsOnce() {
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (window.pswp && window.pswp.isOpen) {
-                window.pswp.close();
+            const pswp = getActivePhotoSwipe();
+            if (pswp) {
+                pswp.close();
+                return;
             }
+            teardownPhotoSwipeDesktopShell();
         });
     }
 
     const maxBtn = document.getElementById('maximizePhotoSwipeBtn');
-    if (maxBtn) {
+    if (maxBtn && maxBtn.dataset.modalMaximizeWired !== 'true') {
+        maxBtn.dataset.modalMaximizeWired = 'true';
         maxBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -212,9 +238,10 @@ function wirePhotoSwipeShellControlsOnce() {
 function preparePhotoSwipeDesktopShellBeforeOpen() {
     const shell = getPhotoSwipeShell();
     if (!shell || !document.body.classList.contains('desktop-mode')) return;
-    syncPhotoSwipeShellWindowedClassFromStorage();
+    shell.classList.add('windowed');
     wirePhotoSwipeShellControlsOnce();
     openModal(shell);
+    ensureModalEdgesWithinWorkArea(shell);
     updatePhotoSwipeMaximizeButtonIcon();
     requestAnimationFrame(() => syncPhotoSwipeShellRestoreStripVisibility());
 }
@@ -223,6 +250,11 @@ function teardownPhotoSwipeDesktopShell() {
     const shell = getPhotoSwipeShell();
     if (!shell || shell.classList.contains('hidden')) return;
     if (!document.body.classList.contains('desktop-mode')) return;
+    // Save windowed layout before close so the next open can restore it
+    if (shell.classList.contains('windowed')) {
+        shell.setAttribute('data-modal-moved', 'true');
+        flushSaveWindowPositions();
+    }
     closeModal(shell);
 }
 
@@ -356,12 +388,17 @@ async function initializePhotoSwipe() {
                 if (!document.body.classList.contains('desktop-mode')) {
                     delete lightbox.options.appendToEl;
                     delete lightbox.options.getViewportSizeFn;
+                    lightbox.options.trapFocus = true;
+                    lightbox.options.returnFocus = true;
                     return Promise.resolve();
                 }
                 preparePhotoSwipeDesktopShellBeforeOpen();
                 const mount = getPhotoSwipeMount();
                 lightbox.options.appendToEl = mount;
                 lightbox.options.getViewportSizeFn = () => getPhotoSwipeMountViewportSize();
+                // Desktop window stack: allow focus/typing in other modals while Glancewell stays open
+                lightbox.options.trapFocus = false;
+                lightbox.options.returnFocus = false;
                 return new Promise((resolve) => requestAnimationFrame(resolve));
             },
         });
@@ -906,9 +943,12 @@ async function openStandalonePhotoSwipe(dataSource) {
             preparePhotoSwipeDesktopShellBeforeOpen();
             opts.appendToEl = mount;
             opts.getViewportSizeFn = () => getPhotoSwipeMountViewportSize();
+            opts.trapFocus = false;
+            opts.returnFocus = false;
         }
 
         const pswp = new PhotoSwipe.default(opts);
+        window.pswp = pswp;
 
         if (useDesktopShell) {
             pswp.addFilter('thumbBounds', (thumbBounds) => adjustThumbBoundsForPhotoSwipeMount(thumbBounds));
@@ -918,6 +958,9 @@ async function openStandalonePhotoSwipe(dataSource) {
         }
 
         pswp.on('close', () => {
+            if (window.pswp === pswp) {
+                delete window.pswp;
+            }
             if (useDesktopShell) {
                 teardownPhotoSwipeDesktopShell();
             }
@@ -964,21 +1007,24 @@ async function showLightbox(input) {
         targetImage = getImageFromLightboxIndex(imageIndex);
     } else if (typeof input === 'object' && input !== null) {
         // Object with filename, url, or element provided
-        if (input.filename) {
+        const lookupFilename = !input.url && !input.element
+            ? (input.filename || input.upscaled || input.original)
+            : null;
+        if (lookupFilename) {
             // Find by filename
             if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
                 // Search mode - use filtered results
                 imageIndex = window.originalAllImages.findIndex(img => {
-                    return img.upscaled === input.filename || 
-                        img.original === input.filename ||
-                        img.filename === input.filename;
+                    return img.upscaled === lookupFilename ||
+                        img.original === lookupFilename ||
+                        img.filename === lookupFilename;
                 });
             } else {
                 // Normal mode - use current allImages
                 imageIndex = allImages.findIndex(img => {
-                    return img.upscaled === input.filename || 
-                        img.original === input.filename ||
-                        img.filename === input.filename;
+                    return img.upscaled === lookupFilename ||
+                        img.original === lookupFilename ||
+                        img.filename === lookupFilename;
                 });
             }
         } else if (input.url) {

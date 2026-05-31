@@ -19,7 +19,11 @@ class ContextMenuController {
         this.touchStartY = null;
         this.hasScrolled = false;
         this.longPressDelay = 500; // ms
-        this.touchThreshold = 10; // pixels
+        this.touchThreshold = (typeof touchSlopUtils !== 'undefined' && touchSlopUtils.TOUCH_SLOP_PX)
+            ? touchSlopUtils.TOUCH_SLOP_PX
+            : 12;
+        this._touchScrollSnapshot = null;
+        this._boundTouchScrollCancel = null;
         this.hoverTimers = {
             openTimer: null,
             closeTimer: null
@@ -48,6 +52,67 @@ class ContextMenuController {
     // Mobile detection methods
     isMobile(breakpoint = 'tablet') {
         return window.innerWidth < this.mobileBreakpoints[breakpoint];
+    }
+
+    _getScrollableScrollSnapshot(element) {
+        const snapshot = [];
+        let node = element;
+        while (node && node !== document.documentElement) {
+            const style = getComputedStyle(node);
+            const scrollableY = /(auto|scroll|overlay)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
+            const scrollableX = /(auto|scroll|overlay)/.test(style.overflowX) && node.scrollWidth > node.clientWidth;
+            if (scrollableY || scrollableX) {
+                snapshot.push({ el: node, top: node.scrollTop, left: node.scrollLeft });
+            }
+            node = node.parentElement;
+        }
+        return snapshot;
+    }
+
+    _hasTouchScrollMoved(snapshot) {
+        if (!snapshot || !snapshot.length) {
+            return false;
+        }
+        return snapshot.some((entry) =>
+            Math.abs(entry.el.scrollTop - entry.top) > 1
+            || Math.abs(entry.el.scrollLeft - entry.left) > 1
+        );
+    }
+
+    _bindTouchScrollCancelListener() {
+        if (this._boundTouchScrollCancel) {
+            return;
+        }
+        this._boundTouchScrollCancel = () => {
+            if (this.touchTimer) {
+                this._cancelTouchLongPress();
+            }
+        };
+        document.addEventListener('scroll', this._boundTouchScrollCancel, { capture: true, passive: true });
+    }
+
+    _removeTouchScrollCancelListener() {
+        if (!this._boundTouchScrollCancel) {
+            return;
+        }
+        document.removeEventListener('scroll', this._boundTouchScrollCancel, { capture: true });
+    }
+
+    _cancelTouchLongPress() {
+        if (this.touchTimer) {
+            clearTimeout(this.touchTimer);
+            this.touchTimer = null;
+        }
+        this.hasScrolled = true;
+        this._removeTouchScrollCancelListener();
+    }
+
+    _clearTouchTracking() {
+        this._cancelTouchLongPress();
+        this.touchStartX = null;
+        this.touchStartY = null;
+        this._touchScrollSnapshot = null;
+        this.hasScrolled = false;
     }
 
     isSmallMobile() {
@@ -351,6 +416,8 @@ class ContextMenuController {
                 this.touchStartX = e.touches[0].clientX;
                 this.touchStartY = e.touches[0].clientY;
                 this.hasScrolled = false;
+                this._touchScrollSnapshot = this._getScrollableScrollSnapshot(target);
+                this._bindTouchScrollCancelListener();
 
                 // Clear any existing timer
                 if (this.touchTimer) {
@@ -370,35 +437,38 @@ class ContextMenuController {
                         };
                         this.showMenu(syntheticTouchEvent, target, true, e._isProxyEvent);
                     }
+                    this._removeTouchScrollCancelListener();
                 }, this.longPressDelay);
             }
         }, { passive: true });
 
         document.addEventListener('touchmove', (e) => {
-            if (this.touchTimer && e.touches.length === 1) {
-                const touch = e.touches[0];
+            if (!this.touchTimer || e.touches.length !== 1) {
+                return;
+            }
+            const touch = e.touches[0];
 
-                // Calculate distance moved from initial touch point
-                const deltaX = Math.abs(touch.clientX - this.touchStartX);
-                const deltaY = Math.abs(touch.clientY - this.touchStartY);
-
-                // Cancel if moved too far (indicates scrolling or dragging)
-                if (deltaX > this.touchThreshold || deltaY > this.touchThreshold) {
-                    this.hasScrolled = true;
-                    clearTimeout(this.touchTimer);
-                    this.touchTimer = null;
-                }
+            // Cancel if the finger moved (scroll/drag) or a scrollable ancestor scrolled (NAX grid, etc.)
+            const deltaX = Math.abs(touch.clientX - this.touchStartX);
+            const deltaY = Math.abs(touch.clientY - this.touchStartY);
+            if (deltaX > this.touchThreshold || deltaY > this.touchThreshold) {
+                this._cancelTouchLongPress();
+                return;
+            }
+            if (this._hasTouchScrollMoved(this._touchScrollSnapshot)) {
+                this._cancelTouchLongPress();
             }
         }, { passive: true });
 
-        document.addEventListener('touchend', (e) => {
+        document.addEventListener('touchend', () => {
             if (this.touchTimer) {
                 clearTimeout(this.touchTimer);
                 this.touchTimer = null;
             }
-            // Reset touch tracking
+            this._removeTouchScrollCancelListener();
             this.touchStartX = null;
             this.touchStartY = null;
+            this._touchScrollSnapshot = null;
             this.hasScrolled = false;
         }, { passive: true });
 
@@ -465,6 +535,14 @@ class ContextMenuController {
 
         // Apply maxHeight setting if specified
         this.applyMaxHeight(config);
+
+        if (config.beforeShow && typeof config.beforeShow === 'function') {
+            try {
+                config.beforeShow(event, target, isTouch);
+            } catch (error) {
+                console.error('Error executing context menu beforeShow:', error);
+            }
+        }
 
         // Call initfn for all sections before rendering to allow dynamic item generation
         this.executeInitFunctions(config, target);

@@ -744,6 +744,8 @@ self.addEventListener('message', (event) => {
         getCachedFiles(event.data.requestId);
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         deleteAndPrecache(event.data.url, event.data.requestId);
+    } else if (event.data && event.data.type === 'DELETE_FROM_CACHE') {
+        deleteFromCache(event.data.url, event.data.requestId);
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {
@@ -1331,17 +1333,17 @@ async function getCacheStatus(requestId) {
   }
 }
 
-// Delete from cache and precache a file
-async function deleteAndPrecache(url, requestId) {
-  try {
-    const urlWithoutQuery = url.split('?')[0];
-    const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
-    const targetCacheName = isImageOrPreview ? IMAGE_CACHE : DYNAMIC_CACHE;
-    const cache = await caches.open(targetCacheName);
+// Delete matching URL entries from static, dynamic, and image caches
+async function deleteUrlFromCaches(url) {
+  const urlWithoutQuery = url.split('?')[0];
+  const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
+  const cacheNames = isImageOrPreview ? [IMAGE_CACHE] : [STATIC_CACHE, DYNAMIC_CACHE];
+  const removedUrls = [];
+
+  for (const cacheName of cacheNames) {
+    const cache = await caches.open(cacheName);
     const keys = await cache.keys();
-    const removedUrls = [];
-    
-    // Delete all cache entries that match this URL (with or without query params)
+
     for (const key of keys) {
       const keyUrl = key.url.split('?')[0];
       if (keyUrl === urlWithoutQuery) {
@@ -1351,9 +1353,57 @@ async function deleteAndPrecache(url, requestId) {
         }
       }
     }
-    if (removedUrls.length > 0) {
-      await deleteImageMetadata(removedUrls);
+  }
+
+  if (removedUrls.length > 0) {
+    await deleteImageMetadata(removedUrls);
+  }
+
+  return removedUrls;
+}
+
+// Delete from cache only (no precache)
+async function deleteFromCache(url, requestId) {
+  try {
+    await deleteUrlFromCaches(url);
+
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'DELETE_FROM_CACHE_COMPLETE',
+          requestId: requestId,
+          url: url
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error deleting from cache:', error);
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'DELETE_FROM_CACHE_ERROR',
+          requestId: requestId,
+          url: url,
+          error: error.message
+        });
+      });
+    });
+  }
+}
+
+// Delete from cache and precache a file
+async function deleteAndPrecache(url, requestId) {
+  try {
+    const urlWithoutQuery = url.split('?')[0];
+    const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
+    let targetCacheName = STATIC_CACHE;
+    if (isImageOrPreview) {
+      targetCacheName = IMAGE_CACHE;
+    } else if (urlWithoutQuery.includes('/cache/')) {
+      targetCacheName = DYNAMIC_CACHE;
     }
+
+    await deleteUrlFromCaches(url);
     
     // Fetch the file to precache it (with timestamp to force fresh fetch)
     const fetchUrl = `${url}?t=${Date.now()}`;
@@ -1367,6 +1417,7 @@ async function deleteAndPrecache(url, requestId) {
     });
     
     if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
+      const cache = await caches.open(targetCacheName);
       // Cache the file without query parameters (strategies will strip queries)
       await cache.put(urlWithoutQuery, response.clone());
       if (isImageOrPreview) {

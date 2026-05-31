@@ -827,6 +827,49 @@ class ServiceWorkerManager {
             }, 10000);
         });
     }
+
+    // Delete from service worker cache only (no precache)
+    async deleteFromCache(url) {
+        if (!this.swRegistration || !this.swRegistration.active) {
+            console.warn('Service Worker not ready - skipping cache delete');
+            return false;
+        }
+
+        return new Promise((resolve, reject) => {
+            const requestId = Date.now().toString();
+
+            const handler = (event) => {
+                if (event.data.type === 'DELETE_FROM_CACHE_COMPLETE' &&
+                    event.data.requestId === requestId) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    resolve(true);
+                } else if (event.data.type === 'DELETE_FROM_CACHE_ERROR' &&
+                    event.data.requestId === requestId) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    reject(new Error(event.data.error || 'Delete from cache failed'));
+                }
+            };
+
+            this.messageHandlers.set(requestId, handler);
+            navigator.serviceWorker.addEventListener('message', handler);
+
+            this.swRegistration.active.postMessage({
+                type: 'DELETE_FROM_CACHE',
+                url: url,
+                requestId: requestId
+            });
+
+            setTimeout(() => {
+                if (this.messageHandlers.has(requestId)) {
+                    this.messageHandlers.delete(requestId);
+                    navigator.serviceWorker.removeEventListener('message', handler);
+                    reject(new Error('Delete from cache operation timed out'));
+                }
+            }, 10000);
+        });
+    }
     
     async getCacheStatus() {
         if (!this.swRegistration || !this.swRegistration.active) {
