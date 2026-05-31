@@ -1144,53 +1144,66 @@ class WorkspaceManager {
         let addedCount = 0;
 
         switch (type) {
-            case 'files':
+            case 'files': {
+                const existingFilesSet = new Set(workspaces[targetId].files);
                 validItems.forEach(item => {
-                    if (!workspaces[targetId].files.includes(item)) {
+                    if (!existingFilesSet.has(item)) {
                         workspaces[targetId].files.push(item);
+                        existingFilesSet.add(item);
                         addedCount++;
                     }
                 });
                 break;
+            }
 
-            case 'scraps':
+            case 'scraps': {
                 // Initialize scraps array if it doesn't exist
                 if (!workspaces[targetId].scraps) {
                     workspaces[targetId].scraps = [];
                 }
+                const existingScrapsSet = new Set(workspaces[targetId].scraps);
                 validItems.forEach(item => {
-                    if (!workspaces[targetId].scraps.includes(item)) {
+                    if (!existingScrapsSet.has(item)) {
                         workspaces[targetId].scraps.push(item);
+                        existingScrapsSet.add(item);
                         // Remove from main files list when adding to scraps
                         workspaces[targetId].files = workspaces[targetId].files.filter(file => file !== item);
                         addedCount++;
                     }
                 });
+                const validItemsSet = new Set(validItems);
                 // Remove from files list of all workspaces (since scraps are shared)
                 Object.keys(workspaces).forEach(workspaceId => {
                     if (workspaces[workspaceId].files) {
-                        workspaces[workspaceId].files = workspaces[workspaceId].files.filter(file => !validItems.includes(file));
+                        workspaces[workspaceId].files = workspaces[workspaceId].files.filter(file => !validItemsSet.has(file));
                     }
                 });
                 break;
+            }
 
-            case 'presets':
+            case 'presets': {
+                const existingPresetsSet = new Set(workspaces[targetId].presets);
                 validItems.forEach(item => {
-                    if (!workspaces[targetId].presets.includes(item)) {
+                    if (!existingPresetsSet.has(item)) {
                         workspaces[targetId].presets.push(item);
+                        existingPresetsSet.add(item);
                         addedCount++;
                     }
                 });
                 break;
+            }
 
-            case 'pinned':
+            case 'pinned': {
+                const existingPinnedSet = new Set(workspaces[targetId].pinned);
                 validItems.forEach(item => {
-                    if (!workspaces[targetId].pinned.includes(item)) {
+                    if (!existingPinnedSet.has(item)) {
                         workspaces[targetId].pinned.push(item);
+                        existingPinnedSet.add(item);
                         addedCount++;
                     }
                 });
                 break;
+            }
 
             default:
                 throw new Error(`Invalid type: ${type}. Must be one of: files, scraps, presets, pinned`);

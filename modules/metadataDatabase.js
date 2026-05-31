@@ -373,11 +373,11 @@ async function scanAndUpdateMetadata(imagesDir) {
         console.log('🔍 Scanning images for missing metadata...');
         
         // Get existing filenames from database
-        const existingFiles = (await db.all('SELECT filename FROM images')).map(row => row.filename);
+        const existingFilesSet = new Set((await db.all('SELECT filename FROM images')).map(row => row.filename));
         
         // Get all image files from directory
         const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
-        const missingFiles = allFiles.filter(f => !existingFiles.includes(f));
+        const missingFiles = allFiles.filter(f => !existingFilesSet.has(f));
         
         let updatedCount = 0;
         let errorCount = 0;

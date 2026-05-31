@@ -1,0 +1,3 @@
+## 2026-05-31 - Modifying Sets During Iteration
+**Learning:** When replacing `.includes()` array lookups with `.has()` Set lookups in a loop that mutates the collection (e.g., adding unique elements), it is critical to `.add()` the item to the Set alongside pushing it to the original array. Otherwise, the Set gets stale during iteration, and duplicates from the incoming payload bypass the `.has()` check.
+**Action:** Always verify if the collection being optimized is mutated within the same iteration loop. If so, apply the mutation to both the target array and the corresponding Set to maintain synchronization.
