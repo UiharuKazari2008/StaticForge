@@ -240,21 +240,26 @@ async function extractImageMetadata(filePath) {
 
 /**
  * Determine if an image is upscaled and find its parent
+ * @param {string} filename - The filename to check
+ * @param {Array|Set} allFiles - Collection of all files for relationship checking
  */
 function determineImageRelationships(filename, allFiles) {
     const isUpscaled = filename.includes('_upscaled');
     let parent = null;
     
+    // Use Set for O(1) lookups if provided, otherwise Array.includes is O(N)
+    const hasFile = (name) => allFiles instanceof Set ? allFiles.has(name) : allFiles.includes(name);
+
     if (isUpscaled) {
         // Find the original image
         const originalName = filename.replace('_upscaled.png', '.png');
-        if (allFiles.includes(originalName)) {
+        if (hasFile(originalName)) {
             parent = originalName;
         }
     } else {
         // Check if this image has an upscaled version
         const upscaledName = filename.replace('.png', '_upscaled.png');
-        if (allFiles.includes(upscaledName)) {
+        if (hasFile(upscaledName)) {
             // This image has an upscaled version
         }
     }
@@ -267,8 +272,11 @@ function determineImageRelationships(filename, allFiles) {
 
 /**
  * Get or create metadata for a single image
+ * @param {string} filename - The filename
+ * @param {string} imagesDir - Directory containing images
+ * @param {Array|Set} allFiles - Optional collection of all files to avoid re-scanning directory
  */
-async function getImageMetadata(filename, imagesDir) {
+async function getImageMetadata(filename, imagesDir, allFiles = null) {
     try {
         if (!dbInitialized || !db) {
             throw new Error('Database not initialized');
@@ -323,8 +331,10 @@ async function getImageMetadata(filename, imagesDir) {
             extractedMetadata = {};
         }
         
-        // Get all files to determine relationships
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        // Get all files to determine relationships if not provided
+        if (!allFiles) {
+            allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        }
         const relationships = determineImageRelationships(filename, allFiles);
         
         // Create metadata entry
@@ -375,8 +385,9 @@ async function scanAndUpdateMetadata(imagesDir) {
         // Get existing filenames from database
         const existingFilesSet = new Set((await db.all('SELECT filename FROM images')).map(row => row.filename));
         
-        // Get all image files from directory
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        // Get all image files from directory (async)
+        const allFiles = (await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFilesSet = new Set(allFiles); // Use Set for O(1) lookups in relationships
         const missingFiles = allFiles.filter(f => !existingFilesSet.has(f));
         
         let updatedCount = 0;
@@ -384,7 +395,7 @@ async function scanAndUpdateMetadata(imagesDir) {
         
         for (const filename of missingFiles) {
             try {
-                const metadata = await getImageMetadata(filename, imagesDir);
+                const metadata = await getImageMetadata(filename, imagesDir, allFilesSet);
                 if (metadata) {
                     updatedCount++;
                 } else {
@@ -417,8 +428,9 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
             throw new Error('Database not initialized');
         }
         
-        // Get all image files from directory
-        const allFiles = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        // Get all image files from directory (async)
+        const allFiles = (await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg)$/i));
+        const allFilesSet = new Set(allFiles); // Use Set for O(1) lookups in relationships
         
         let updatedCount = 0;
         let errorCount = 0;
@@ -457,7 +469,7 @@ async function rebuildMetadataCache(imagesDir, progressCallback = null) {
                 }
                 
                 // Get all files to determine relationships
-                const relationships = determineImageRelationships(filename, allFiles);
+                const relationships = determineImageRelationships(filename, allFilesSet);
                 
                 // Update in database using INSERT OR REPLACE
                 await db.run(`
