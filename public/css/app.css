@@ -3676,34 +3676,6 @@ body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed 
     transform: translateZ(0);
 }
 
-/* Drag/resize: hide heavy content via visibility (preserves layout), show window shell only (perf) */
-.modal > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle) {
-    transition: opacity 0.12s ease, visibility 0s linear 0.12s;
-}
-
-.modal[data-dragging="true"] > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle),
-.modal[data-resizing="true"] > :not(.modal-window-title):not(.modal-window-controls):not(.resize-handle) {
-    visibility: hidden;
-    pointer-events: none;
-    animation-play-state: paused!important;
-    transition: none;
-}
-
-.modal[data-dragging="true"],
-.modal[data-resizing="true"] {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    animation-play-state: paused!important;
-    transition: none;
-
-}
-
-body.windows-classic-theme .modal[data-dragging="true"],
-body.windows-classic-theme .modal[data-resizing="true"] {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
-
 /* Top-anchored modals: horizontal center via offset-x, vertical grows downward from top edge */
 .modal[data-window-content-anchor="top"] {
     top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 0px));
@@ -3796,6 +3768,17 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     right: -2px;
     width: 8px;
     cursor: e-resize;
+}
+
+.modal-drag-resize-frame {
+    position: fixed;
+    z-index: 4500;
+    pointer-events: none;
+    border: 4px solid rgba(170, 210, 255, 0.9);
+    background: rgba(120, 170, 240, 0.12);
+    border-radius: 12px;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 14px 28px rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(2px);
 }
 
 .modal-padding {
@@ -6060,6 +6043,54 @@ body.desktop-mode .desktop-icons {
     border-top: 1px solid var(--glass-border-2);
     background: var(--glass-layer-dark-3);
     border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
+}
+
+#desktopSettingsModal .desktop-settings-footer {
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle {
+    grid-template-columns: 1fr 1fr;
+    min-width: 11rem;
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider {
+    width: calc(50% - 2px);
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
+    transform: translateX(calc(100% + 1px));
+}
+
+#desktopSettingsModal .desktop-settings-scope-toggle .gallery-toggle-btn .tab-text {
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+#desktopSettingsModal .desktop-settings-startup-row {
+    align-items: flex-start;
+}
+
+#desktopSettingsModal .desktop-settings-window-management-row {
+    align-items: flex-start;
+}
+
+#desktopSettingsModal .desktop-settings-startup-toggle {
+    min-width: 4.5rem;
+}
+
+#desktopSettingsModal .desktop-settings-hint {
+    margin: var(--spacing-xs) 0 0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: var(--text-accent-tinted);
+    opacity: 0.75;
+}
+
+.desktop-settings-scope-toggle .gallery-toggle-btn {
+    min-height: 30px;
 }
 
 /* Monitor Preview Frame */
@@ -8473,6 +8504,27 @@ body.desktop-mode .desktop-icons {
     .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
         box-shadow: 0 0px 40px 5px hsl(0deg 0% 0% / 50%);
     }
+
+    /* Inhibit preview hover zoom until generation completes */
+    .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+        max-width: 75%;
+        max-height: 75%;
+    }
+
+    .generating.manual-preview-dynamic-gen-active .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+        max-width: 65%;
+        max-height: 65%;
+    }
+
+    .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner {
+        max-width: 87.5%;
+        max-height: 87.5%;
+    }
+
+    .generating .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage,
+    .streaming .manual-preview-content:hover:not(:disabled) .manual-preview-image-container-inner #manualPreviewImage {
+        box-shadow: 0 0px 0px 0px hsl(0deg 0% 0% / 0%);
+    }
 }
 
 /* Manual Preview Workspace Overlay */
@@ -8640,6 +8692,35 @@ body.desktop-mode .desktop-icons {
 
 .manual-preview-content:not(:hover) .dynamic-generation-overlay {
     opacity: 0.5;
+}
+
+/* Rentan overlay hover affordances disabled while generating */
+.generating .manual-preview-content .dynamic-generation-overlay,
+.generating .manual-preview-content:hover .dynamic-generation-overlay {
+    opacity: 1;
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .generating .manual-preview-content .dynamic-generation-overlay-body,
+    .generating .manual-preview-content:hover .dynamic-generation-overlay-body {
+        gap: 6px;
+    }
+
+    .generating .manual-preview-content .overlay-time,
+    .generating .manual-preview-content:hover .overlay-time {
+        font-size: 2.5em;
+    }
+
+    .generating .manual-preview-content .overlay-weather-info,
+    .generating .manual-preview-content:hover .overlay-weather-info {
+        opacity: 0;
+    }
+
+    .generating .manual-preview-content .overlay-weather-icon .wi,
+    .generating .manual-preview-content:hover .overlay-weather-icon .wi {
+        font-size: 1.75em;
+        padding-top: 0.25em;
+    }
 }
 
 /* Rentan Overlay */
@@ -22095,7 +22176,7 @@ div#workspaceDropdownMenu {
     flex-direction: column;
     min-height: 450px;
     border-radius: var(--border-radius-xl);
-    max-width: 350px;
+    max-width: 300px;
 }
 
 .gallery-move-background-image {
@@ -22147,6 +22228,8 @@ div#workspaceDropdownMenu {
     font-size: 0.9rem;
     color: white;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .gallery-move-image-info-overlay p:last-child {
@@ -22885,6 +22968,7 @@ div#workspaceDropdownMenu {
     overflow: hidden;
     transition: transform 0.2s ease;
     border: 1px solid var(--glass-border-1);
+    cursor: pointer;
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
@@ -25477,6 +25561,14 @@ body.scraps-grayscale::after {
     width: max-content;
 }
 
+.custom-dropdown-option.naxt-bag-item {
+    gap: 1em;
+}
+
+.custom-dropdown-option.naxt-bag-item > span {
+    white-space: nowrap;
+}
+
 .custom-dropdown-btn.hover-show.active {
     padding: 0.25em 0.6em;
     outline: none;
@@ -27147,6 +27239,56 @@ div#unifiedUploadCommentInputContainer {
 /* Mode-specific explanations - hide all by default, show specific ones */
 [id^="unifiedUploadExplanation"] {
     display: none !important;
+}
+
+#unifiedUploadImportMetadataControls {
+    display: none !important;
+    flex-direction: row;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-sm);
+}
+
+#unifiedUploadModal[data-mode="reference"] #unifiedUploadImportMetadataControls,
+#unifiedUploadModal[data-mode="character"] #unifiedUploadImportMetadataControls,
+#unifiedUploadModal[data-mode="vibe"][data-vibe-type="encode"] #unifiedUploadImportMetadataControls {
+    display: flex !important;
+}
+
+#unifiedUploadModal[data-mode="character"] #unifiedUploadPreciseReferenceToggle {
+    display: none !important;
+}
+
+#unifiedUploadModal[data-mode="character"] #unifiedUploadReferenceTypeGroup {
+    display: flex !important;
+}
+
+#unifiedUploadPreciseReferenceToggle {
+    width: 75px;
+    height: 40px;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+#unifiedUploadReferenceTypeGroup.hidden {
+    display: none !important;
+}
+
+.unified-upload-reference-toggles {
+    gap: var(--spacing-sm);
+    width: 100%;
+}
+
+.unified-upload-reference-toggles .toggle-btn {
+    flex: 1;
+    min-height: 40px;
+    font-size: 0.95rem;
+    justify-content: center;
+    gap: var(--spacing-xs);
+}
+
+#unifiedUploadWorkspaceDropdown .custom-dropdown-btn {
+    gap: var(--spacing-xs);
+    padding-right: var(--spacing-sm);
 }
 
 #unifiedUploadModal[data-mode="reference"] #unifiedUploadExplanationReference,
@@ -30431,6 +30573,79 @@ span.context-menu-item-state {
     cursor: not-allowed;
 }
 
+/* Favorites submenu: list text sets width; Atelier image grid (2 cols) on .prompt-ctx-fav-grid */
+.context-menu-submenu.prompt-ctx-fav-submenu {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: fit-content;
+    min-width: 220px;
+    max-width: 400px;
+}
+
+.context-menu-submenu.prompt-ctx-fav-submenu .context-menu-item-text {
+    white-space: nowrap;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-container,
+.context-menu-grid-container.prompt-ctx-fav-grid-inner {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    box-sizing: border-box;
+    flex-wrap: unset;
+    justify-content: unset;
+    align-items: stretch;
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn.prompt-ctx-fav-grid-cell {
+    display: block;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    aspect-ratio: 1;
+    min-width: 0;
+    min-height: 0;
+    flex: unset;
+    flex-shrink: unset;
+    overflow: hidden;
+    border-radius: var(--border-radius-sm);
+    background: var(--glass-layer-3, rgba(0, 0, 0, 0.08));
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn.prompt-ctx-fav-grid-cell.has-grid-image {
+    position: relative;
+    padding: 0;
+}
+
+.context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn .context-menu-grid-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+}
+
+.dark .context-menu-submenu-grid.prompt-ctx-fav-grid .context-menu-grid-btn.prompt-ctx-fav-grid-cell {
+    background: var(--glass-layer-dark-2, rgba(255, 255, 255, 0.06));
+}
+
 /* Separator Styles */
 .context-menu-separator,
 .custom-dropdown-separator {
@@ -31746,9 +31961,22 @@ span.context-menu-item-state {
 }
 
 .generating .manual-preview-controls,
-.generating .manual-preview-controls-top-left,
-.generating .manual-preview-controls-top-right {
+.generating .manual-preview-controls-top-left {
     opacity: 0;
+}
+
+.generating .manual-preview-controls-top-right > button {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Rentan context overlay stays visible during generation (parent opacity would hide it) */
+.generating .manual-preview-controls-top-right .dynamic-generation-overlay:not(.hidden) {
+    opacity: 1 !important;
+}
+
+.generating .manual-preview-controls-top-right .dynamic-generation-overlay:not(.hidden) .overlay-weather-info {
+    opacity: 1 !important;
 }
 
 .generating .manual-preview-image-container-inner {
@@ -36386,6 +36614,22 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button)[aria
     z-index: var(--z-modal-top) !important;
 }
 
+/* Corner-anchored boot splash: avoid center-based slide (translate -50%) fighting top/left layout */
+#windowsStartupModal.opening {
+    animation: modalFadeIn 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+#windowsStartupModal.closing {
+    animation: modalFadeOut 0.2s cubic-bezier(0.55, 0.06, 0.68, 0.19);
+}
+
+#windowsStartupModal.modal-pixel-settled:not(.opening):not(.closing) {
+    left: var(--modal-offset-x, 20px);
+    top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 20px));
+    transform: none;
+    margin: 0;
+}
+
 #connectionDialModal {
     width: 550px;
 }
@@ -36743,40 +36987,83 @@ body.desktop-mode.windows-startup.boot-from-launch {
     pointer-events: none;
 }
 
-/* NAXT modal (scoped under #naxtModal) */
-#naxtModal .naxt-modal-content {
+/* NAXT + NAX Vibes modals (shared Atelier shell) */
+#naxtModal .naxt-modal-content,
+#naxVibesModal .naxt-modal-content {
     display: flex;
     flex-direction: column;
     height: 100%;
     overflow: hidden;
 }
 
-#naxtModal .naxt-search-header {
+#naxtModal .naxt-search-header,
+#naxVibesModal .naxt-search-header {
     padding: var(--spacing-sm);
     border-bottom: 1px solid var(--glass-border-4);
     flex-shrink: 0;
     background: var(--glass-layer-2);
 }
 
-#naxtModal .naxt-search-controls {
+#naxtModal .naxt-search-controls,
+#naxVibesModal .naxt-search-controls {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
     align-items: center;
 }
 
-#naxtModal .naxt-search-input {
+#naxtModal .naxt-nav-group .btn-secondary.btn-small,
+#naxVibesModal .naxt-nav-group .btn-secondary {
+    min-width: 2rem;
+    padding: 0.35em 0.5em;
+}
+
+#naxtModal .naxt-quick-filters,
+#naxVibesModal .naxt-quick-filters {
+    margin-left: auto;
+}
+
+#naxtModal .naxt-quick-filters .btn-secondary,
+#naxVibesModal .naxt-quick-filters .btn-secondary {
+    min-width: 2.25rem;
+    padding: 0.35em 0.55em;
+}
+
+#naxtModal .naxt-search-input,
+#naxVibesModal .naxt-search-input {
     flex: 1;
     min-width: 120px;
     font-family: inherit;
 }
 
-#naxtModal .naxt-filter-row {
+#naxtModal .naxt-filter-row,
+#naxVibesModal .naxt-filter-row {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
     margin-top: var(--spacing-sm);
     align-items: flex-end;
+    justify-content: space-between;
+}
+
+#naxtModal .naxt-filter-fields,
+#naxVibesModal .naxt-filter-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: flex-end;
+    flex: 1;
+    min-width: 0;
+}
+
+#naxtModal .naxt-filter-actions,
+#naxVibesModal .naxt-filter-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 #naxtModal .naxt-filter-pair {
@@ -36798,25 +37085,91 @@ body.desktop-mode.windows-startup.boot-from-launch {
     color: var(--text-muted);
 }
 
-#naxtModal .naxt-body {
+#naxtModal .naxt-body,
+#naxVibesModal .naxt-body {
     flex: 1;
     min-height: 0;
 }
 
-#naxtModal .naxt-grid {
+#naxtModal .naxt-grid,
+#naxVibesModal .naxt-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(var(--naxt-cell, 140px), 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: var(--spacing-sm);
     padding: var(--spacing-sm);
     transition: opacity 0.2s ease;
 }
 
-#naxtModal .naxt-grid.naxt-loading {
+#naxtModal .naxt-grid.naxt-loading,
+#naxVibesModal .naxt-grid.naxt-loading {
     opacity: 0.45;
     pointer-events: none;
 }
 
 #naxtModal #naxtFilterToggleBtn.indicator[data-filters-active="true"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+#naxVibesModal .naxt-card .cache-badges {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: var(--z-layer-2);
+    pointer-events: none;
+}
+
+#naxVibesModal .naxt-card:hover .cache-badges {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm);
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell {
+    position: relative;
+    border-radius: var(--border-radius-md);
+    overflow: hidden;
+    background: var(--glass-layer-2);
+    border: 1px solid var(--glass-border-4);
+    cursor: pointer;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .nax-vibes-encoding-thumb {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: var(--glass-layer-dark-5);
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .nax-vibes-encoding-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+#naxVibesEncodingPickerModal .nax-vibes-encoding-cell .naxt-card-caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 6px;
+    font-size: 0.7rem;
+    text-align: center;
+}
+
+#naxVibesModal #naxVibesFilterToggleBtn.indicator[data-filters-active="true"]::after {
     background: #7eff7e;
     border: 1px solid #00cd00;
     box-shadow: 0 0 15px 2px #00ff22;
@@ -36828,12 +37181,13 @@ body.desktop-mode.windows-startup.boot-from-launch {
     background: var(--glass-border-4);
 }
 
-#naxtModal .naxt-status-bar {
+#naxtModal .naxt-status-bar,
+#naxVibesModal .naxt-status-bar {
     flex-shrink: 0;
     padding: 0.35rem var(--spacing-sm);
     border-top: 1px solid var(--glass-border-4);
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--text-accent);
     background: var(--glass-layer-2);
 }
 
@@ -36870,7 +37224,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
     text-align: center;
 }
 
-#naxtModal .naxt-card {
+#naxtModal .naxt-card,
+#naxVibesModal .naxt-card {
     position: relative;
     border-radius: var(--border-radius-md);
     overflow: hidden;
@@ -36928,20 +37283,23 @@ body.desktop-mode.windows-startup.boot-from-launch {
     padding-top: 4px;
 }
 
-#naxtModal .naxt-card-img-wrap {
+#naxtModal .naxt-card-img-wrap,
+#naxVibesModal .naxt-card-img-wrap {
     position: relative;
     aspect-ratio: 1 / 1;
     background: var(--glass-layer-dark-5);
 }
 
-#naxtModal .naxt-card-img-wrap img {
+#naxtModal .naxt-card-img-wrap img,
+#naxVibesModal .naxt-card-img-wrap img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
 }
 
-#naxtModal .naxt-card-votes {
+#naxtModal .naxt-card-votes,
+#naxVibesModal .naxt-card-votes {
     position: absolute;
     right: 4px;
     bottom: 4px;
@@ -36955,14 +37313,15 @@ body.desktop-mode.windows-startup.boot-from-launch {
     pointer-events: none;
 }
 
-#naxtModal .naxt-card-caption {
+#naxtModal .naxt-card-caption,
+#naxVibesModal .naxt-card-caption {
     padding: 4px 6px;
     font-size: 0.75rem;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    color: var(--text-primary);
+    color: var(--text-accent-tinted);
 }
 
 #naxtModal .naxt-load-sentinel {
@@ -36970,7 +37329,8 @@ body.desktop-mode.windows-startup.boot-from-launch {
     margin: var(--spacing-sm);
 }
 
-#naxtModal .naxt-empty-state {
+#naxtModal .naxt-empty-state,
+#naxVibesModal .naxt-empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -36981,11 +37341,39 @@ body.desktop-mode.windows-startup.boot-from-launch {
     text-align: center;
 }
 
-#naxtModal .naxt-empty-state.hidden {
+#naxtModal .naxt-empty-state.hidden,
+#naxVibesModal .naxt-empty-state.hidden {
     display: none !important;
 }
 
+#naxVibesModal .naxt-card-caption {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    white-space: normal;
+    line-height: 1.2;
+}
 
+#naxVibesModal .naxt-card-caption > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+#naxVibesModal .naxt-card-caption-sub {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+#naxVibesModal .naxt-card[data-nsfw="1"] {
+    border-color: rgba(220, 80, 120, 0.55);
+}
+
+#naxVibesModal .naxt-card .cache-badges {
+    max-height: calc(100% - 40px);
+}
 
 /* Config Editor Applet */
 body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {

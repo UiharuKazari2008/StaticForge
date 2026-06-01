@@ -1,0 +1,36 @@
+# Runtime data (mount as volumes)
+images
+.previews
+.cache
+logs
+tmp
+
+# Secrets and local config
+config.json
+secure.config.json
+prompt.config.json
+director.config.json
+characters.json
+nax_generation_config.json
+
+# Dependencies and VCS
+node_modules
+.git
+.gitignore
+
+# Large optional import sources
+nax_tags.json
+danbooru_tagwiki.json
+danbooru_tagwiki_merged.json
+e621_wiki_fixed.json
+danbooru_tag_groups_hierarchy.json
+
+# Archives and IDE
+dreamscape-transfer-*.tar.zst
+*.manifest.json
+.cursor
+.vscode
+.agents
+
+# Transfer output on host
+data/wiki_post_thumb_refs.json

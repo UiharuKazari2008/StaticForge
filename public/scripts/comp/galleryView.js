@@ -1246,7 +1246,12 @@ async function regenerateGalleryJumpIndex() {
             card.addEventListener('click', async () => {
                 updateGalleryJumpIndexSummary(entry.index);
                 await displayGalleryFromStartIndex(entry.index, true);
-                refreshGalleryJumpIndexUI();
+                if (!window.isDesktop) {
+                    // closeModal — public/scripts/comp/modalUtils.js
+                    closeModal(galleryJumpIndexToolEl);
+                } else {
+                    refreshGalleryJumpIndexUI();
+                }
             });
             card.addEventListener('mouseenter', () => {
                 galleryJumpIndexHoveredBoundaryIndex = entry.index;
@@ -1695,16 +1700,37 @@ function createGalleryWindowCenterEvent() {
     }
 }
 
-function showGalleryProgressModal(viewType) {
-    const viewName = viewType.charAt(0).toUpperCase() + viewType.slice(1);
+function shouldAutoLaunchWorkspace() {
+    try {
+        return localStorage.getItem('dontAutoLaunchWorkspace') !== 'true';
+    } catch (e) {
+        return true;
+    }
+}
+window.shouldAutoLaunchWorkspace = shouldAutoLaunchWorkspace;
+
+function galleryProgressLeftLabel(viewType) {
+    if (!viewType || viewType === 'images') {
+        return 'Gallery';
+    }
+    return viewType.charAt(0).toUpperCase() + viewType.slice(1);
+}
+
+function showGalleryDataProgressModal(viewType = 'images') {
+    const viewName = galleryProgressLeftLabel(viewType);
 
     if (!window.isDesktop) {
-        // Fall back to toast for non-desktop mode
-        galleryProgressToastId = showGlassToast('info', 'Loading', `Loading ${viewName} gallery...`, false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
+        galleryProgressToastId = showGlassToast(
+            'info',
+            'Loading',
+            `Loading ${viewName} gallery...`,
+            false,
+            false,
+            '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">'
+        );
         return;
     }
 
-    // Create progress modal using confirmation dialog
     const progressHtml = `
         <div style="text-align: left; display: flex; flex-direction: column; gap: 8px;">
             <div role="progressbar" class="marquee animate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Gallery loading progress">
@@ -1717,65 +1743,11 @@ function showGalleryProgressModal(viewType) {
         </div>
     `;
 
-    // Center progress over the workspace (gallery) window — never saved/restored
     const syntheticEvent = createGalleryWindowCenterEvent();
 
     galleryProgressModal = showConfirmationDialog(
         progressHtml,
-        [], // No buttons - this is a progress modal
-        syntheticEvent,
-        {
-            title: `Dreamscape Workspace`,
-            icon: 'fas fa-film-canister',
-            showCloseButton: false,
-            width: 400,
-            manualPosition: true
-        }
-    );
-
-    if (!syntheticEvent) {
-        requestAnimationFrame(() => {
-            const retryEvent = createGalleryWindowCenterEvent();
-            if (retryEvent && typeof positionConfirmationDialog === 'function') {
-                positionConfirmationDialog(retryEvent);
-            }
-        });
-    }
-
-    // Store references to progress elements after modal is created
-    setTimeout(() => {
-        galleryProgressBarElement = document.getElementById('galleryProgressBar');
-        galleryProgressTextElement = document.getElementById('galleryProgressText');
-        galleryProgressContainerElement = galleryProgressBarElement ? galleryProgressBarElement.parentElement : null;
-    }, 100);
-}
-
-// Show gallery loading progress modal (for general gallery loading, not view switching)
-function showGalleryLoadingProgressModal() {
-    if (!window.isDesktop) {
-        // Fall back to toast for non-desktop mode
-        galleryProgressToastId = showGlassToast('info', 'Loading', 'Loading gallery...', false, false, '<img class="loading" src="/static_images/azuspin.gif" alt="Loading" style="width: 34px; height: 34px;">');
-        return;
-    }
-
-    // Create progress modal using confirmation dialog
-    const progressHtml = `
-        <div style="text-align: left; display: flex; flex-direction: column; gap: 8px;">
-            <div role="progressbar" class="marquee animate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Gallery loading progress">
-                <div id="galleryLoadingProgressBar"></div>
-            </div>
-            <div id="galleryLoadingProgressText" style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: var(--text-accent);">Gallery</span>
-                <span style="color: var(--text-accent-tinted);">Loading...</span>
-            </div>
-        </div>
-    `;
-
-    const syntheticEvent = createGalleryWindowCenterEvent();
-
-    galleryProgressModal = showConfirmationDialog(
-        progressHtml,
-        [], // No buttons - this is a progress modal
+        [],
         syntheticEvent,
         {
             title: 'Dreamscape Workspace',
@@ -1795,125 +1767,65 @@ function showGalleryLoadingProgressModal() {
         });
     }
 
-    // Store references to progress elements after modal is created
     setTimeout(() => {
-        galleryProgressBarElement = document.getElementById('galleryLoadingProgressBar');
-        galleryProgressTextElement = document.getElementById('galleryLoadingProgressText');
+        galleryProgressBarElement = document.getElementById('galleryProgressBar');
+        galleryProgressTextElement = document.getElementById('galleryProgressText');
         galleryProgressContainerElement = galleryProgressBarElement ? galleryProgressBarElement.parentElement : null;
     }, 100);
 }
 
-function updateGalleryProgress(progress) {
+function showGalleryProgressModal(viewType) {
+    showGalleryDataProgressModal(viewType);
+}
+
+function showGalleryLoadingProgressModal() {
+    showGalleryDataProgressModal('images');
+}
+
+function updateGalleryDataProgress(progress) {
     if (!galleryProgressModal && !galleryProgressToastId) return;
 
-    // Switch from marquee mode to determinate progress mode on first progress update
-    if (!galleryProgressModeSwitched && galleryProgressContainerElement) {
-        galleryProgressContainerElement.classList.remove('marquee');
-        galleryProgressModeSwitched = true;
-    }
+    const modeRef = { value: galleryProgressModeSwitched };
 
     if (galleryProgressBarElement && galleryProgressTextElement) {
-        const percent = Math.round(progress.progress * 100);
-        galleryProgressBarElement.style.width = `${percent}%`;
-
-        // Update ARIA attributes for accessibility
-        if (galleryProgressContainerElement && galleryProgressContainerElement.hasAttribute('role') && galleryProgressContainerElement.getAttribute('role') === 'progressbar') {
-            galleryProgressContainerElement.setAttribute('aria-valuenow', percent);
-        }
+        galleryProgressModeSwitched = applyGalleryProgressBarState(
+            galleryProgressContainerElement,
+            galleryProgressBarElement,
+            progress,
+            modeRef
+        );
 
         const statusSpan = galleryProgressTextElement.querySelector('span:last-child');
         if (statusSpan) {
-            const detail = formatGalleryBlocksProgressLabel(progress);
-            const suffix = detail ? ` (${detail})` : '';
-            if (progress.phase === 'initial') {
-                statusSpan.textContent = `Loading Gallery${suffix}`;
-            } else {
-                statusSpan.textContent = `Please Wait${suffix}`;
-            }
+            statusSpan.textContent = formatGalleryProgressStatusText(progress);
         }
     } else {
-        // Fallback: try to find elements if not stored yet
         const progressBar = document.getElementById('galleryProgressBar');
         const progressText = document.getElementById('galleryProgressText');
         const progressContainer = progressBar ? progressBar.parentElement : null;
 
-        // Switch from marquee mode to determinate progress mode on first progress update
-        if (!galleryProgressModeSwitched && progressContainer) {
-            progressContainer.classList.remove('marquee');
-            galleryProgressModeSwitched = true;
-        }
-
         if (progressBar && progressText) {
-            const percent = Math.round(progress.progress * 100);
-            progressBar.style.width = `${percent}%`;
-
-            if (progressContainer && progressContainer.hasAttribute('role') && progressContainer.getAttribute('role') === 'progressbar') {
-                progressContainer.setAttribute('aria-valuenow', percent);
-            }
+            galleryProgressModeSwitched = applyGalleryProgressBarState(
+                progressContainer,
+                progressBar,
+                progress,
+                modeRef
+            );
 
             const statusSpan = progressText.querySelector('span:last-child');
             if (statusSpan) {
-                const detail = formatGalleryBlocksProgressLabel(progress);
-                const suffix = detail ? ` (${detail})` : '';
-                if (progress.phase === 'initial') {
-                    statusSpan.textContent = `Loading Gallery${suffix}`;
-                } else {
-                    statusSpan.textContent = `Please Wait${suffix}`;
-                }
+                statusSpan.textContent = formatGalleryProgressStatusText(progress);
             }
         }
     }
 }
 
-// Update gallery loading progress (for general gallery loading, not view switching)
+function updateGalleryProgress(progress) {
+    updateGalleryDataProgress(progress);
+}
+
 function updateGalleryLoadingProgress(progress) {
-    if (!galleryProgressModal && !galleryProgressToastId) return;
-
-    // Switch from marquee mode to determinate progress mode on first progress update
-    if (!galleryProgressModeSwitched && galleryProgressContainerElement) {
-        galleryProgressContainerElement.classList.remove('marquee');
-        galleryProgressModeSwitched = true;
-    }
-
-    if (galleryProgressBarElement && galleryProgressTextElement) {
-        const percent = Math.round(progress.progress * 100);
-        galleryProgressBarElement.style.width = `${percent}%`;
-
-        // Update ARIA attributes for accessibility
-        if (galleryProgressContainerElement && galleryProgressContainerElement.hasAttribute('role') && galleryProgressContainerElement.getAttribute('role') === 'progressbar') {
-            galleryProgressContainerElement.setAttribute('aria-valuenow', percent);
-        }
-
-        const statusSpan = galleryProgressTextElement.querySelector('span:last-child');
-        if (statusSpan) {
-            statusSpan.textContent = formatGalleryBlocksProgressLabel(progress);
-        }
-    } else {
-        // Fallback: try to find elements if not stored yet
-        const progressBar = document.getElementById('galleryLoadingProgressBar');
-        const progressText = document.getElementById('galleryLoadingProgressText');
-        const progressContainer = progressBar ? progressBar.parentElement : null;
-
-        // Switch from marquee mode to determinate progress mode on first progress update
-        if (!galleryProgressModeSwitched && progressContainer) {
-            progressContainer.classList.remove('marquee');
-            galleryProgressModeSwitched = true;
-        }
-
-        if (progressBar && progressText) {
-            const percent = Math.round(progress.progress * 100);
-            progressBar.style.width = `${percent}%`;
-
-            if (progressContainer && progressContainer.hasAttribute('role') && progressContainer.getAttribute('role') === 'progressbar') {
-                progressContainer.setAttribute('aria-valuenow', percent);
-            }
-
-            const statusSpan = progressText.querySelector('span:last-child');
-            if (statusSpan) {
-                statusSpan.textContent = formatGalleryBlocksProgressLabel(progress);
-            }
-        }
-    }
+    updateGalleryDataProgress(progress);
 }
 
 function hideGalleryProgressModal() {
@@ -2240,7 +2152,10 @@ function buildGalleryNavigationCache(images) {
 }
 
 // Load gallery images with optimized rendering to prevent flickering
-async function loadGallery(addLatest, progressCallback = null) {
+async function loadGallery(addLatest, progressCallback = null, loadOptions = null) {
+    const opts = (loadOptions && typeof loadOptions === 'object') ? loadOptions : {};
+    const silentLoad = opts.silent === true;
+
     // Check if spinner already exists (added in step 89)
     const spinner = document.getElementById('galleryLoadingSpinner');
     let galleryLoadingProgressShown = false;
@@ -2297,8 +2212,8 @@ async function loadGallery(addLatest, progressCallback = null) {
 
         // Load complete gallery by getting all pages
         if (window.wsClient && window.wsClient.isConnected()) {
-            // Show progress modal in desktop mode for full gallery loads
-            if (window.isDesktop && !progressCallback) {
+            // Show progress modal in desktop mode for full gallery loads (unless silent or external callback)
+            if (window.isDesktop && !progressCallback && !silentLoad) {
                 showGalleryLoadingProgressModal();
                 galleryLoadingProgressShown = true;
                 progressCallback = updateGalleryLoadingProgress;
@@ -2421,6 +2336,7 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         let probe = null;
         let galleryHash = null;
         let serverDestructiveAt = 0;
+        let galleryResponseWorkspaceId = workspaceId;
 
         // Probe gallery hash first so we can serve the full array from IndexedDB when unchanged.
         if (viewType === 'images') {
@@ -2440,12 +2356,21 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
             }
             await galleryMetadataCache.initPromise;
             probe = await loadGalleryChunk(viewType, 0, 0);
+
+            // Server may still be on default workspace until session restore / client sync completes
+            if (probe.workspaceId && probe.workspaceId !== workspaceId) {
+                // window.wsClient.setActiveWorkspace — public/scripts/websocket.js
+                await window.wsClient.setActiveWorkspace(workspaceId);
+                probe = await loadGalleryChunk(viewType, 0, 0);
+            }
+            galleryResponseWorkspaceId = probe.workspaceId || workspaceId;
+
             galleryHash = probe.galleryHash || null;
             totalItems = probe.total || 0;
             serverDestructiveAt = probe.lastGalleryDestructiveAt || 0;
 
-            if (galleryHash) {
-                const snapshotWorkspaceId = probe.workspaceId || workspaceId;
+            if (galleryHash && galleryResponseWorkspaceId === workspaceId) {
+                const snapshotWorkspaceId = galleryResponseWorkspaceId;
                 const snapshot = await galleryMetadataCache.getGallerySnapshot(
                     snapshotWorkspaceId,
                     viewType,
@@ -2547,8 +2472,19 @@ async function loadCompleteGallery(viewType = 'images', progressCallback = null)
         // Set up gallery state with loaded data
         allImages = dataItems;
 
+        if (progressCallback && totalItems > 0) {
+            progressCallback({
+                loaded: loadedItems,
+                total: totalItems,
+                offset: offset,
+                progress: 1,
+                phase: 'remaining',
+                blocksLeft: 0
+            });
+        }
+
         // Save latest full images gallery snapshot for workspace/hash reuse.
-        if (viewType === 'images' && galleryHash) {
+        if (viewType === 'images' && galleryHash && galleryResponseWorkspaceId === workspaceId) {
             await galleryMetadataCache.initPromise;
             await galleryMetadataCache.setGallerySnapshot(workspaceId, viewType, galleryHash, dataItems, {
                 lastGalleryDestructiveAt: serverDestructiveAt

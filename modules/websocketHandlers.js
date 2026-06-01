@@ -347,6 +347,7 @@ class WebSocketMessageHandlers {
             'delete_vibe_encodings',
             'bulk_delete_vibe_images',
             'import_vibe_bundle',
+            'import_vibe_from_url',
             'encode_vibe',
             'move_vibe_image',
             'bulk_move_vibe_images',
@@ -512,6 +513,14 @@ class WebSocketMessageHandlers {
                 await this.handleGetNaxTags(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'get_nax_marked_tags':
+                await this.handleGetNaxMarkedTags(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_nax_expander_presets':
+                await this.handleGetNaxExpanderPresets(ws, message, clientInfo, wsServer);
+                break;
+
             case 'set_nax_favorite':
                 await this.handleSetNaxFavorite(ws, message, clientInfo, wsServer);
                 break;
@@ -526,6 +535,14 @@ class WebSocketMessageHandlers {
 
             case 'delete_nax_custom_tag':
                 await this.handleDeleteNaxCustomTag(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'get_nax_vibes_gallery':
+                await this.handleGetNaxVibesGallery(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'clear_nax_vibes_gallery_cache':
+                await this.handleClearNaxVibesGalleryCache(ws, message, clientInfo, wsServer);
                 break;
 
             case 'config_editor_list':
@@ -945,6 +962,10 @@ class WebSocketMessageHandlers {
 
             case 'import_vibe_bundle':
                 await this.handleImportVibeBundle(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'import_vibe_from_url':
+                await this.handleImportVibeFromUrl(ws, message, clientInfo, wsServer);
                 break;
 
             case 'check_vibe_encoding':
@@ -2475,6 +2496,45 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleGetNaxMarkedTags(ws, message, clientInfo, wsServer) {
+        const { markFilter = 'favorites', gallerySlug = null, limit = 500 } = message;
+        const markKey = ['favorites', 'try'].includes(markFilter) ? markFilter : 'favorites';
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const items = naxTagsDatabase.queryMarkedTags({
+                markFilter: markKey,
+                gallerySlug,
+                limit
+            });
+            this.sendToClient(ws, {
+                type: 'get_nax_marked_tags_response',
+                requestId: message.requestId,
+                data: { items, markFilter: markKey },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_nax_marked_tags:', error);
+            this.sendError(ws, 'Failed to load marked NAX tags', error.message, message.requestId);
+        }
+    }
+
+    async handleGetNaxExpanderPresets(ws, message, clientInfo, wsServer) {
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const presets = naxTagsDatabase.getNaxExpanderPresetsForClient(message.model || null);
+            this.sendToClient(ws, {
+                type: 'get_nax_expander_presets_response',
+                requestId: message.requestId,
+                data: { presets },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_nax_expander_presets:', error);
+            this.sendError(ws, 'Failed to load NAX expander presets', error.message, message.requestId);
+        }
+    }
+
     async handleSetNaxFavorite(ws, message, clientInfo, wsServer) {
         const { gallerySlug, tag, favorite } = message;
         if (!gallerySlug || !tag) {
@@ -2595,6 +2655,47 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('delete_nax_custom_tag:', error);
             this.sendError(ws, 'Failed to delete custom NAX tag', error.message, message.requestId);
+        }
+    }
+
+    async handleGetNaxVibesGallery(ws, message, clientInfo, wsServer) {
+        try {
+            const naxVibes = this.globalResources.getNaxVibesGallery();
+            const data = await naxVibes.getNaxVibesGallery({
+                preset: message.preset || null,
+                page: message.page,
+                search: message.search,
+                filter45Curated: message.filter45Curated,
+                filter45Full: message.filter45Full,
+                filter4Curated: message.filter4Curated,
+                filter4Full: message.filter4Full,
+                forceRefresh: !!message.forceRefresh
+            });
+            this.sendToClient(ws, {
+                type: 'get_nax_vibes_gallery_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_nax_vibes_gallery:', error);
+            this.sendError(ws, 'Failed to load NAX vibes gallery', error.message, message.requestId);
+        }
+    }
+
+    async handleClearNaxVibesGalleryCache(ws, message, clientInfo, wsServer) {
+        try {
+            const naxVibes = this.globalResources.getNaxVibesGallery();
+            const data = naxVibes.clearNaxVibesGalleryCache();
+            this.sendToClient(ws, {
+                type: 'clear_nax_vibes_gallery_cache_response',
+                requestId: message.requestId,
+                data,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('clear_nax_vibes_gallery_cache:', error);
+            this.sendError(ws, 'Failed to clear NAX vibes cache', error.message, message.requestId);
         }
     }
 
@@ -2811,22 +2912,32 @@ class WebSocketMessageHandlers {
     }
 
     async handleGalleryRequest(ws, message, clientInfo, wsServer) {
-        const { requestId, viewType = 'images', includePinnedStatus = true, light = false, offset = 0, limit = 100 } = message;
+        const { requestId, viewType = 'images', includePinnedStatus = true, light = false, offset = 0, limit = 100, workspaceId: clientWorkspaceId } = message;
 
         try {
             // Start keep-alive for potentially long gallery requests
             this.startKeepAliveInterval(ws, requestId, 10000); // Every 10 seconds for gallery requests
 
-            const activeWorkspaceId = this.globalResources.getWorkspaceManager().getActiveWorkspace(clientInfo.sessionId) || 'default';
+            const wm = this.globalResources.getWorkspaceManager();
+            const workspaces = this.globalResources.getWorkspacesConfig();
+            let activeWorkspaceId = wm.getActiveWorkspace(clientInfo.sessionId) || 'default';
+
+            // Honor client workspace so gallery stays in sync after reconnect (session map may still be default)
+            if (clientWorkspaceId && workspaces[clientWorkspaceId]) {
+                if (clientWorkspaceId !== activeWorkspaceId) {
+                    wm.setActiveWorkspace(clientWorkspaceId, clientInfo.sessionId);
+                }
+                activeWorkspaceId = clientWorkspaceId;
+            }
 
             // Get files based on view type
             let files;
             if (viewType === 'scraps') {
-                files = this.globalResources.getWorkspaceManager().getActiveWorkspaceScraps(clientInfo.sessionId);
+                files = wm.getActiveWorkspaceScraps(clientInfo.sessionId);
             } else if (viewType === 'pinned') {
-                files = this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
+                files = wm.getActiveWorkspacePinned(clientInfo.sessionId);
             } else if (viewType === 'upscaled') {
-                const workspaceFiles = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(clientInfo.sessionId);
+                const workspaceFiles = wm.getActiveWorkspaceFiles(clientInfo.sessionId);
                 files = workspaceFiles;
 
                 // Load metadata only for workspace files to find large resolution images (area > 1024x1024)
@@ -2844,13 +2955,13 @@ class WebSocketMessageHandlers {
                 files = [...new Set([...files, ...specialImages])];
             } else {
                 // Default to regular images
-                files = this.globalResources.getWorkspaceManager().getActiveWorkspaceFiles(clientInfo.sessionId);
+                files = wm.getActiveWorkspaceFiles(clientInfo.sessionId);
             }
 
             // Get pinned status if requested
             let pinnedFiles = [];
             if (includePinnedStatus) {
-                pinnedFiles = this.globalResources.getWorkspaceManager().getActiveWorkspacePinned(clientInfo.sessionId);
+                pinnedFiles = wm.getActiveWorkspacePinned(clientInfo.sessionId);
             }
 
             if (!Array.isArray(files)) {
@@ -2858,7 +2969,6 @@ class WebSocketMessageHandlers {
                 files = [];
             }
 
-            const wm = this.globalResources.getWorkspaceManager();
             const existingOnDisk = wm.filterFilenamesExistingOnDisk(files, pinnedFiles);
             files = files.filter(f => existingOnDisk.has(f));
             if (includePinnedStatus) {
@@ -6811,9 +6921,204 @@ class WebSocketMessageHandlers {
         }
     }
 
+    resolveAbsoluteNaxUrl(url) {
+        if (!url || typeof url !== 'string') return null;
+        const trimmed = url.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+        if (trimmed.startsWith('//')) return `https:${trimmed}`;
+        if (trimmed.startsWith('/')) return `https://nax.moe${trimmed}`;
+        return null;
+    }
+
+    async fetchRemotePreviewDataUrl(url) {
+        const resolved = this.resolveAbsoluteNaxUrl(url);
+        if (!resolved) return null;
+        try {
+            const previewResp = await fetch(resolved, {
+                method: 'GET',
+                signal: AbortSignal.timeout(20000),
+                headers: {
+                    'User-Agent': 'StaticForge/1.0',
+                    Referer: 'https://nax.moe/',
+                    Accept: 'image/*,*/*'
+                }
+            });
+            if (!previewResp.ok) {
+                console.warn(`fetchRemotePreviewDataUrl: HTTP ${previewResp.status} for ${resolved}`);
+                return null;
+            }
+            const previewBuf = Buffer.from(await previewResp.arrayBuffer());
+            if (!previewBuf.length) return null;
+            const ct = (previewResp.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+            return `data:${ct};base64,${previewBuf.toString('base64')}`;
+        } catch (e) {
+            console.warn('fetchRemotePreviewDataUrl:', e.message);
+            return null;
+        }
+    }
+
+    parseVibeThumbnailToBuffer(thumbnail) {
+        if (!thumbnail || typeof thumbnail !== 'string') return null;
+        if (thumbnail.startsWith('data:image/')) {
+            const base64 = thumbnail.split(',')[1];
+            if (!base64) return null;
+            return Buffer.from(base64, 'base64');
+        }
+        if (thumbnail.startsWith('/9j/') || thumbnail.startsWith('iVBORw0KGgo')) {
+            return Buffer.from(thumbnail, 'base64');
+        }
+        return null;
+    }
+
+    async saveVibeThumbnailPreview(thumbnail, overwrite = false) {
+        const thumbnailBuffer = this.parseVibeThumbnailToBuffer(thumbnail);
+        if (!thumbnailBuffer || !thumbnailBuffer.length) return null;
+        const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
+        const thumbnailPath = path.join(this.globalResources.getPath('previewCache'), `${thumbnailHash}.webp`);
+        if (!overwrite && fs.existsSync(thumbnailPath)) {
+            return thumbnailHash;
+        }
+        await sharp(thumbnailBuffer)
+            .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toFile(thumbnailPath);
+        return thumbnailHash;
+    }
+
+    injectVibeJsonPreviewThumbnail(jsonData, dataUrl, force = false) {
+        if (!dataUrl || !jsonData) return;
+        const vibes = jsonData.vibes && Array.isArray(jsonData.vibes) ? jsonData.vibes : [jsonData];
+        vibes.forEach((vibe) => {
+            if (force || !vibe.thumbnail || !String(vibe.thumbnail).startsWith('data:image')) {
+                vibe.thumbnail = dataUrl;
+            }
+        });
+    }
+
+    injectVibeJsonSourceImage(jsonData, dataUrl, force = false) {
+        if (!dataUrl || !jsonData) return;
+        const rawBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        if (!rawBase64) return;
+        const vibes = jsonData.vibes && Array.isArray(jsonData.vibes) ? jsonData.vibes : [jsonData];
+        vibes.forEach((vibe) => {
+            if (force || !vibe.image || String(vibe.image).trim() === '') {
+                vibe.image = rawBase64;
+                vibe.type = 'base64';
+            }
+        });
+    }
+
+    buildNaxVibeBrowserMeta(vibe, encoding) {
+        const lines = ['Imported from NAX.moe community gallery.'];
+        if (vibe && vibe.id) lines.push(`NAX vibe ID: ${vibe.id}`);
+        if (vibe && vibe.nsfw) lines.push('Content: NSFW');
+        if (vibe && (vibe.upvotes != null || vibe.downvotes != null)) {
+            lines.push(`Votes: ↑${vibe.upvotes || 0} ↓${vibe.downvotes || 0}`);
+        }
+        if (encoding) {
+            const modelLabel = encoding.forgeKey || encoding.model || '';
+            const ie = encoding.infoExtracted != null ? encoding.infoExtracted : '';
+            lines.push(`Imported encoding: ${modelLabel} · IE ${ie}`);
+        }
+        return {
+            displayName: (vibe && vibe.name) ? String(vibe.name).trim() : `Vibe ${vibe && vibe.id ? vibe.id : ''}`,
+            description: lines.join('\n'),
+            forceLocked: true
+        };
+    }
+
+    downloadUrlToBuffer(url, timeoutMs = 45000) {
+        return new Promise((resolve, reject) => {
+            const req = https.request(url, {
+                method: 'GET',
+                headers: { 'User-Agent': 'StaticForge/1.0' }
+            }, (res) => {
+                if (res.statusCode !== 200) {
+                    reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+                    return;
+                }
+                const chunks = [];
+                res.on('data', (chunk) => chunks.push(chunk));
+                res.on('end', () => {
+                    resolve({
+                        buffer: Buffer.concat(chunks),
+                        headers: res.headers
+                    });
+                });
+            });
+            req.on('error', reject);
+            req.setTimeout(timeoutMs, () => req.destroy());
+            req.end();
+        });
+    }
+
+    /** Download NAX (or other) vibe JSON from URL, inject preview, import — naxVibesApplet.js */
+    async handleImportVibeFromUrl(ws, message, clientInfo, wsServer) {
+        try {
+            const { downloadUrl, previewUrl, workspaceId, comment, naxBrowserMeta } = message;
+            if (!downloadUrl || typeof downloadUrl !== 'string') {
+                this.sendError(ws, 'Invalid URL', 'downloadUrl is required', message.requestId);
+                return;
+            }
+
+            const maxSize = 100 * 1024 * 1024;
+            const { buffer } = await this.downloadUrlToBuffer(downloadUrl);
+            if (buffer.length > maxSize) {
+                throw new Error(`File too large: ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+            }
+
+            let bundleData;
+            try {
+                bundleData = JSON.parse(buffer.toString('utf8'));
+            } catch (parseError) {
+                this.sendError(ws, 'Invalid vibe file', 'Downloaded file is not valid JSON', message.requestId);
+                return;
+            }
+
+            const detectionResult = this.detectAndParseVibeFile(bundleData);
+            if (!detectionResult.isValid) {
+                this.sendError(ws, 'Invalid vibe file', detectionResult.error, message.requestId);
+                return;
+            }
+
+            const processedJsonData = JSON.parse(JSON.stringify(bundleData));
+            let resolvedNaxMeta = naxBrowserMeta && typeof naxBrowserMeta === 'object' ? naxBrowserMeta : null;
+            if (!resolvedNaxMeta && String(downloadUrl).includes('nax.moe')) {
+                const firstVibe = detectionResult.vibes && detectionResult.vibes[0];
+                if (firstVibe) {
+                    resolvedNaxMeta = this.buildNaxVibeBrowserMeta(firstVibe, null);
+                }
+            }
+            let previewDataUrl = null;
+            if (previewUrl) {
+                previewDataUrl = await this.fetchRemotePreviewDataUrl(previewUrl);
+                if (previewDataUrl) {
+                    this.injectVibeJsonPreviewThumbnail(processedJsonData, previewDataUrl, true);
+                    this.injectVibeJsonSourceImage(processedJsonData, previewDataUrl, true);
+                } else {
+                    console.warn('import_vibe_from_url: could not fetch previewUrl', previewUrl);
+                }
+            }
+
+            await this.handleImportVibeBundle(ws, {
+                bundleData: processedJsonData,
+                workspaceId,
+                comment: comment || '',
+                requestId: message.requestId,
+                previewUrl,
+                forcePreviewOverride: !!previewDataUrl,
+                naxBrowserMeta: resolvedNaxMeta
+            }, clientInfo, wsServer);
+        } catch (error) {
+            console.error('import_vibe_from_url:', error);
+            this.sendError(ws, 'Failed to import vibe from URL', error.message, message.requestId);
+        }
+    }
+
     async handleDownloadUrlFile(ws, message, clientInfo, wsServer) {
         try {
-            const { url } = message;
+            const { url, previewUrl } = message;
 
             // Validate URL
             if (!url || typeof url !== 'string') {
@@ -7024,6 +7329,13 @@ class WebSocketMessageHandlers {
                                 // Keep thumbnail data as-is
                             }
                         });
+
+                        if (previewUrl) {
+                            const previewDataUrl = await this.fetchRemotePreviewDataUrl(previewUrl);
+                            if (previewDataUrl) {
+                                this.injectVibeJsonPreviewThumbnail(processedJsonData, previewDataUrl);
+                            }
+                        }
 
                         fileInfo = {
                             type: detectionResult.type === 'bundle' ? 'vibe_bundle' : 'vibe_single',
@@ -8584,7 +8896,7 @@ class WebSocketMessageHandlers {
 
     async handleImportVibeBundle(ws, message, clientInfo, wsServer) {
         try {
-            const { bundleData, workspaceId, comment, tempFile } = message;
+            const { bundleData, workspaceId, comment, tempFile, previewUrl, forcePreviewOverride, naxBrowserMeta } = message;
 
             // Determine which workspace to use
             let targetWorkspace = workspaceId;
@@ -8634,11 +8946,29 @@ class WebSocketMessageHandlers {
             const vibes = detectionResult.vibes;
             console.log(`📦 Detected ${detectionResult.type} vibe file with ${vibes.length} vibe(s)`);
 
+            const refDb = this.globalResources.getReferenceMetadataDatabase();
+
+            let sharedPreviewDataUrl = null;
+            if (previewUrl) {
+                sharedPreviewDataUrl = await this.fetchRemotePreviewDataUrl(previewUrl);
+                if (!sharedPreviewDataUrl) {
+                    console.warn('import_vibe_bundle: previewUrl fetch failed:', previewUrl);
+                }
+            }
+            const overwritePreviewFile = !!forcePreviewOverride || !!sharedPreviewDataUrl;
+
             // Process each vibe (validation already done in detectAndParseVibeFile)
             const importedVibes = [];
             const errors = [];
             for (const vibe of vibes) {
                 try {
+
+                    if (sharedPreviewDataUrl && (forcePreviewOverride || !vibe.thumbnail || !String(vibe.thumbnail).startsWith('data:image'))) {
+                        vibe.thumbnail = sharedPreviewDataUrl;
+                    }
+                    if (sharedPreviewDataUrl) {
+                        this.injectVibeJsonSourceImage(vibe, sharedPreviewDataUrl, !!forcePreviewOverride);
+                    }
 
                     // Generate ID if it's 'unknown'
                     let vibeId = vibe.id;
@@ -8724,45 +9054,54 @@ class WebSocketMessageHandlers {
                     // Determine locked status using server-side logic
                     vibeData.locked = this.shouldLockVibe(vibeData);
                     
-                    // Save to database
-                    const refDb = this.globalResources.getReferenceMetadataDatabase();
-                    const previewHash = vibe.thumbnail ? crypto.createHash('md5').update(Buffer.from(vibe.thumbnail.split(',')[1], 'base64')).digest('hex') : null;
-                    
-                    // Save thumbnail if provided (before setting metadata so we can include previewHash)
-                    let finalPreviewHash = previewHash;
-                    if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
-                        const thumbnailBase64 = vibe.thumbnail.split(',')[1];
-                        const thumbnailBuffer = Buffer.from(thumbnailBase64, 'base64');
-                        const thumbnailHash = crypto.createHash('md5').update(thumbnailBuffer).digest('hex');
-                        const thumbnailPath = path.join(this.globalResources.getPath("previewCache"), `${thumbnailHash}.webp`);
-                        if (!fs.existsSync(thumbnailPath)) {
-                            await sharp(thumbnailBuffer)
-                                .resize({ width: 512, height: 512, fit: 'inside', withoutEnlargement: true })
-                                .webp({ quality: 80 })
-                                .toFile(thumbnailPath);
+                    let finalPreviewHash = null;
+                    if (vibe.thumbnail) {
+                        try {
+                            finalPreviewHash = await this.saveVibeThumbnailPreview(
+                                vibe.thumbnail,
+                                overwritePreviewFile
+                            );
+                        } catch (thumbErr) {
+                            console.warn(`import_vibe_bundle: thumbnail save failed for ${vibeId}:`, thumbErr.message);
                         }
-                        finalPreviewHash = thumbnailHash;
                     }
+
+                    const naxMeta = naxBrowserMeta && typeof naxBrowserMeta === 'object' ? naxBrowserMeta : null;
+                    const imageSource = (vibe.image && String(vibe.image).trim())
+                        ? String(vibe.image).trim()
+                        : (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')
+                            ? vibe.thumbnail.split(',')[1]
+                            : '');
+                    const vibeLocked = naxMeta && naxMeta.forceLocked ? true : this.shouldLockVibe(vibeData);
+                    const refComment = naxMeta && naxMeta.description
+                        ? naxMeta.description
+                        : (comment || null);
+                    const refDisplayName = naxMeta && naxMeta.displayName
+                        ? naxMeta.displayName
+                        : (vibe.name || null);
                     
                     refDb.setVibeMetadata(vibeId, {
                         type: 'base64',
-                        imageSource: vibe.image || '',
+                        imageSource: imageSource || null,
                         previewHash: finalPreviewHash,
-                        comment: comment || null,
-                        importedFrom: 1, // novelai
-                        encodings: processedEncodings
+                        comment: refComment,
+                        displayName: refDisplayName,
+                        replaceComment: !!naxMeta,
+                        importedFrom: 1,
+                        encodings: processedEncodings,
+                        locked: vibeLocked ? 1 : 0
                     });
 
                     // Add to workspace in database
                     refDb.addVibeToWorkspace(vibeId, targetWorkspace);
                     importedVibes.push({
                         id: vibeId,
-                        name: vibe.name || 'Imported Vibe',
+                        name: refDisplayName || vibe.name || 'Imported Vibe',
                         modelCount: Object.keys(processedEncodings).length,
-                        locked: vibeData.locked,
+                        locked: vibeLocked,
                         createdAt: vibe.createdAt || Date.now()
                     });
-                    console.log(`✅ Imported vibe: ${vibe.name || vibeId}${vibeData.locked ? ' (locked)' : ''}`);
+                    console.log(`✅ Imported vibe: ${refDisplayName || vibe.name || vibeId}${vibeLocked ? ' (locked)' : ''}`);
                 } catch (error) {
                     console.error(`❌ Error importing vibe ${vibe.name || vibe.id}:`, error);
                     errors.push(`${vibe.name || vibe.id}: ${error.message}`);

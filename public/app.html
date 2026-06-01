@@ -16,6 +16,12 @@
 
         galleryWindowPreference = localStorage.getItem('galleryWindowMode');
         const isWideScreen = window.innerWidth >= 1200;
+        if (!galleryWindowPreference) {
+            galleryWindowPreference = isWideScreen ? 'windowed' : 'maximized';
+            try {
+                localStorage.setItem('galleryWindowMode', galleryWindowPreference);
+            } catch (e) { /* ignore */ }
+        }
         window.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
 
         // Detect Shift key on startup for step-by-step mode (desktop mode only)
@@ -4041,7 +4047,7 @@ Examples:
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-spells icon-fa"></i>
-                <img src="/static_images/app_icons/stencil.png" alt="" class="icon-image" />
+                <img src="/static_images/app_icons/presetbook.png" alt="" class="icon-image" />
                 <span>Spellbook</span>
             </div>
         </div>
@@ -4420,8 +4426,11 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="cacheManagerUploadBtn" class="btn-secondary">
+            <button type="button" id="cacheManagerUploadBtn" class="btn-secondary" title="Import file">
                 <i class="nai-import"></i>
+            </button>
+            <button type="button" id="cacheManagerNaxVibesBtn" class="btn-secondary" title="Browse Vibes">
+                <i class="fas fa-square-rss"></i>
             </button>
             <div id="cacheManagerWorkspaceDropdown" class="custom-dropdown">
                 <button type="button" id="cacheManagerWorkspaceDropdownBtn" class="btn-secondary">
@@ -4610,6 +4619,26 @@ Examples:
                             placeholder="Reference Comment (Optional)"></textarea>
                     </div>
 
+                    <div id="unifiedUploadImportMetadataControls" class="unified-upload-import-metadata">
+                        <button type="button" id="unifiedUploadPreciseReferenceToggle" class="btn-secondary indicator"
+                            data-state="off" title="Mark as precise reference">
+                            <i class="nai-precise-reference"></i>
+                        </button>
+                        <div id="unifiedUploadReferenceTypeGroup"
+                            class="precise-reference-type-toggles unified-upload-reference-toggles hidden">
+                            <button type="button" id="unifiedUploadRefTypeCharacterBtn"
+                                class="toggle-btn btn-secondary blur" data-precise-type="character" data-state="on"
+                                title="Character metadata">
+                                <i class="nai-person"></i> Character
+                            </button>
+                            <button type="button" id="unifiedUploadRefTypeStyleBtn"
+                                class="toggle-btn btn-secondary blur" data-precise-type="style" data-state="on"
+                                title="Style metadata">
+                                <i class="nai-precise-reference-style"></i> Style
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Explanation Sections -->
                     <div id="unifiedUploadExplanationReference" class="upload-explanation">
                         <div class="explanation-content">
@@ -4641,7 +4670,7 @@ Examples:
                 <div class="gallery-move-actions">
                     <!-- Workspace Selector -->
                     <div id="unifiedUploadWorkspaceDropdown" class="custom-dropdown dropup">
-                        <button type="button" id="unifiedUploadWorkspaceDropdownBtn" class="btn-secondary">
+                        <button type="button" id="unifiedUploadWorkspaceDropdownBtn" class="btn-secondary" title="Import workspace">
                             <div id="unifiedUploadWorkspaceColorDot" class="workspace-color-indicator"></div>
                         </button>
 
@@ -4674,53 +4703,6 @@ Examples:
                     </button>
                     <button type="button" id="unifiedUploadConfirmBtn" class="btn-primary" disabled>
                         <span id="unifiedUploadConfirmText">Upload</span> <i class="fas fa-upload"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Reference Manager Move Modal -->
-    <div id="cacheManagerMoveModal" class="modal resizeable-window hidden tool-window on-top">
-        <div class="modal-window-controls">
-            <button id="closeCacheManagerMoveBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
-                    class="fa-regular fa-xmark-large"></i></button>
-        </div>
-        <div class="modal-content gallery-move-modal-content dark">
-            <div class="gallery-move-left-panel">
-                <img id="cacheManagerMoveBackgroundImage" src="/static_images/background.jpg" alt="Reference image"
-                    class="gallery-move-background-image">
-                <div class="gallery-move-left-header">
-                    <h3><i class="mdi mdi-1-5 mdi-folder-move"></i> Move Reference</h3>
-                </div>
-                <div class="gallery-move-overlay">
-                    <div class="gallery-move-image-info-overlay">
-                        <p><strong><span id="cacheManagerMoveCount">0</span></strong> Image(s)</p>
-                        <p><strong>Current workspace:</strong> <span
-                                id="cacheManagerMoveCurrentWorkspace">Default</span></p>
-                    </div>
-                </div>
-            </div>
-            <div class="gallery-move-right-panel">
-                <div class="modal-header gallery-move-header">
-                </div>
-                <div class="gallery-move-content">
-                    <div class="gallery-move-instructions">
-                        <h4>Select Target Workspace</h4>
-                        <p>Choose the workspace where you want to move the selected images:</p>
-                    </div>
-                    <div class="gallery-move-workspace-selector">
-                        <div class="custom-dropdown" id="cacheManagerMoveWorkspaceDropdown">
-                            <button class="custom-dropdown-btn" id="cacheManagerMoveWorkspaceDropdownBtn" type="button">
-                                <span id="cacheManagerMoveWorkspaceSelected">Select workspace...</span>
-                            </button>
-                            <div class="custom-dropdown-menu hidden" id="cacheManagerMoveWorkspaceDropdownMenu"></div>
-                        </div>
-                    </div>
-                </div>
-                <div class="gallery-move-actions">
-                    <button type="button" id="cacheManagerMoveConfirmBtn" class="btn-primary" disabled>
-                        <span>Move</span> <i class="mdi mdi-1-5 mdi-folder-move"></i>
                     </button>
                 </div>
             </div>
@@ -5516,7 +5498,7 @@ Examples:
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-hat-wizard icon-fa"></i>
-                <img src="/static_images/app_icons/presetbook.png" alt="" class="icon-image" />
+                <img src="/static_images/app_icons/caster.png" alt="" class="icon-image" />
                 <span>Spellcaster</span>
             </div>
         </div>
@@ -6206,15 +6188,6 @@ Examples:
         </div>
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
-            <button type="button" class="btn-secondary btn-small" id="naxtBackBtn" title="Back">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            <button type="button" class="btn-secondary btn-small" id="naxtForwardBtn" title="Forward">
-                <i class="fas fa-chevron-right"></i>
-            </button>
-            <button type="button" class="btn-secondary btn-small" id="naxtHomeBtn" title="Home">
-                <i class="fas fa-home"></i>
-            </button>
             <div id="naxtDatasetDropdown" class="custom-dropdown">
                 <button type="button" id="naxtDatasetDropdownBtn" class="btn-secondary">
                     <span id="naxtDatasetSelected">Dataset</span>
@@ -6232,6 +6205,17 @@ Examples:
         <div class="modal-content naxt-modal-content dark">
             <div class="naxt-search-header">
                 <div class="naxt-search-controls">
+                    <div class="button-group naxt-nav-group">
+                        <button type="button" class="btn-secondary" id="naxtBackBtn" title="Back">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button type="button" class="btn-secondary" id="naxtForwardBtn" title="Forward">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <button type="button" class="btn-secondary" id="naxtHomeBtn" title="Home">
+                        <i class="fas fa-home"></i>
+                    </button>
                     <div id="naxtBagDropdown" class="custom-dropdown">
                         <button type="button" id="naxtBagDropdownBtn" class="btn-secondary indicator" data-state="off"
                             title="Tag bag">
@@ -6242,18 +6226,19 @@ Examples:
                     </div>
                     <input type="text" id="naxtSearchInput" class="form-control hover-show colored naxt-search-input"
                         placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
-                    <button type="button" id="naxtFilterToggleBtn" class="btn-secondary indicator" data-state="off"
-                        data-filters-active="false"
-                        title="Filters">
-                        <i class="fas fa-sliders"></i>
-                    </button>
-                    <div id="naxtSortDropdown" class="custom-dropdown dark dropright">
-                        <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
-                            title="Date sorts by position in the NAX export (not calendar date)">
-                            <span id="naxtSortSelected">Score</span>
-                            <i class="fas fa-sort"></i>
+                    <div class="button-group naxt-quick-filters">
+                        <button type="button" id="naxtQuickGoatBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="GOAT — up ratio ≥ 75%, min 15 upvotes, sorted by score">
+                            <i class="fas fa-crown"></i>
                         </button>
-                        <div id="naxtSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        <button type="button" id="naxtQuickGemsBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Hidden Gems — max 4 upvotes, 0 downvotes, min 1 upvote, random order">
+                            <i class="fas fa-gem"></i>
+                        </button>
+                        <button type="button" id="naxtQuickDebatedBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Debated — up ratio 50–60%, min 5 up &amp; 5 down, sorted by ratio">
+                            <i class="fas fa-scale-balanced"></i>
+                        </button>
                     </div>
                     <div id="naxtMarkFilterDropdown" class="custom-dropdown dark dropright">
                         <button type="button" id="naxtMarkFilterDropdownBtn" class="btn-secondary" title="Filter by mark">
@@ -6262,9 +6247,10 @@ Examples:
                         </button>
                         <div id="naxtMarkFilterDropdownMenu" class="custom-dropdown-menu hidden"></div>
                     </div>
-                    <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
-                        title="Invert order">
-                        <i class="fas fa-arrow-down-arrow-up"></i>
+                    <button type="button" id="naxtFilterToggleBtn" class="btn-secondary indicator" data-state="off"
+                        data-filters-active="false"
+                        title="Filters">
+                        <i class="fas fa-filter"></i>
                     </button>
                     <button type="button" id="naxtOpenCustomTagBtn" class="btn-secondary hidden"
                         title="Add custom tag (generate preview)">
@@ -6272,40 +6258,54 @@ Examples:
                     </button>
                 </div>
                 <div id="naxtFilterRow" class="naxt-filter-row hidden">
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMinUp">Min up</label>
-                        <input type="number" id="naxtMinUp" class="form-control hover-show colored" min="0" value=""
-                            placeholder="0">
+                    <div class="naxt-filter-fields">
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMinUp">Min up</label>
+                            <input type="number" id="naxtMinUp" class="form-control hover-show colored" min="0" value=""
+                                placeholder="0">
+                        </div>
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMaxUp">Max up</label>
+                            <input type="number" id="naxtMaxUp" class="form-control hover-show colored" min="0" value=""
+                                placeholder="∞">
+                        </div>
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMinDown">Min down</label>
+                            <input type="number" id="naxtMinDown" class="form-control hover-show colored" min="0" value=""
+                                placeholder="0">
+                        </div>
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMaxDown">Max down</label>
+                            <input type="number" id="naxtMaxDown" class="form-control hover-show colored" min="0" value=""
+                                placeholder="∞">
+                        </div>
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMinScore">Min score</label>
+                            <input type="number" id="naxtMinScore" class="form-control hover-show colored" min="-100"
+                                max="100" value="" placeholder="-100">
+                        </div>
+                        <div class="naxt-filter-pair">
+                            <label for="naxtMaxScore">Max score</label>
+                            <input type="number" id="naxtMaxScore" class="form-control hover-show colored" min="-100"
+                                max="100" value="" placeholder="100">
+                        </div>
                     </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMaxUp">Max up</label>
-                        <input type="number" id="naxtMaxUp" class="form-control hover-show colored" min="0" value=""
-                            placeholder="∞">
-                    </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMinDown">Min down</label>
-                        <input type="number" id="naxtMinDown" class="form-control hover-show colored" min="0" value=""
-                            placeholder="0">
-                    </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMaxDown">Max down</label>
-                        <input type="number" id="naxtMaxDown" class="form-control hover-show colored" min="0" value=""
-                            placeholder="∞">
-                    </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMinScore">Min score</label>
-                        <input type="number" id="naxtMinScore" class="form-control hover-show colored" min="-100"
-                            max="100" value="" placeholder="-100">
-                    </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtMaxScore">Max score</label>
-                        <input type="number" id="naxtMaxScore" class="form-control hover-show colored" min="-100"
-                            max="100" value="" placeholder="100">
-                    </div>
-                    <div class="naxt-filter-pair">
-                        <label for="naxtCellSizeInput">Size</label>
-                        <input type="number" id="naxtCellSizeInput" class="form-control hover-show colored" min="96"
-                            max="280" step="4" value="140" title="Thumbnail column width (px)">
+                    <div class="naxt-filter-actions">
+                        <div id="naxtSortDropdown" class="custom-dropdown dark dropright">
+                            <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
+                                title="Date sorts by position in the NAX export (not calendar date)">
+                                <span id="naxtSortSelected">Score</span>
+                                <i class="fas fa-sort"></i>
+                            </button>
+                            <div id="naxtSortDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                        </div>
+                        <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Invert order">
+                            <i class="fas fa-arrow-down-arrow-up"></i>
+                        </button>
+                        <button type="button" id="naxtResetFiltersBtn" class="btn-secondary" title="Clear all filters">
+                            <i class="fas fa-rotate-left"></i>
+                        </button>
                     </div>
                     <input type="hidden" id="naxtMinRatio" value="">
                     <input type="hidden" id="naxtMaxRatio" value="">
@@ -6316,10 +6316,110 @@ Examples:
                 <div id="naxtLoadSentinel" class="naxt-load-sentinel" aria-hidden="true"></div>
                 <div id="naxtEmptyState" class="naxt-empty-state hidden">
                     <i class="fas fa-database"></i>
-                    <p>No tags loaded. Pick a dataset or run <code>node scripts/import-nax-tags.js</code>.</p>
+                    <p id="naxtEmptySetup" data-naxt-empty="setup">No tags loaded. Pick a dataset or run <code>node scripts/import-nax-tags.js</code>.</p>
+                    <p id="naxtEmptyNoResults" data-naxt-empty="no-results" class="hidden">No tags match your search or filters.</p>
                 </div>
             </div>
             <footer id="naxtStatusBar" class="naxt-status-bar" aria-live="polite">0 tags</footer>
+        </div>
+    </div>
+
+    <!-- NAX.moe community vibes browser (layout mirrors naxtModal / Atelier) -->
+    <div id="naxVibesModal" class="modal hidden resizeable-window" data-window-max-width="1800"
+        data-window-max-height="1200" data-window-min-width="800" data-window-min-height="600">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-square-rss icon-fa"></i>
+                <img src="/static_images/app_icons/export.png" alt="" class="icon-image" />
+                <span id="naxVibesModalTitleLabel">Browse Vibes (via nax.moe)</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeNaxVibesModalBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content naxt-modal-content dark">
+            <div class="naxt-search-header">
+                <div class="naxt-search-controls">
+                    <div class="button-group naxt-quick-filters">
+                        <button type="button" id="naxVibesPresetTopBtn" class="btn-secondary toggle-btn" data-state="on"
+                            title="Top votes">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button type="button" id="naxVibesPresetHotBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Hot">
+                            <i class="fas fa-fire"></i>
+                        </button>
+                        <button type="button" id="naxVibesPresetGemsBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Hidden gems">
+                            <i class="fas fa-gem"></i>
+                        </button>
+                        <button type="button" id="naxVibesPresetDebatedBtn" class="btn-secondary toggle-btn" data-state="off"
+                            title="Debated">
+                            <i class="fas fa-scale-balanced"></i>
+                        </button>
+                    </div>
+                    <div id="naxVibesModelDropdown" class="custom-dropdown dark dropright">
+                        <button type="button" id="naxVibesModelDropdownBtn" class="btn-secondary" title="Model filters">
+                            <i class="fas fa-sliders" aria-hidden="true"></i>
+                        </button>
+                        <div id="naxVibesModelDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <input type="text" id="naxVibesSearchInput" class="form-control hover-show colored naxt-search-input"
+                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false" spellcheck="false">
+                    <button type="button" class="btn-secondary" id="naxVibesHomeBtn" title="Top votes (home)">
+                        <i class="fas fa-home"></i>
+                    </button>
+                    <div class="button-group naxt-nav-group">
+                        <button type="button" class="btn-secondary" id="naxVibesPrevPageBtn" title="Previous page"
+                            disabled>
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button type="button" class="btn-secondary" id="naxVibesNextPageBtn" title="Next page"
+                            disabled>
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <button type="button" id="naxVibesRefreshBtn" class="btn-secondary" title="Refresh (bypass cache)">
+                        <i class="fa-regular fa-sync"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="naxt-body form-section-scroll">
+                <div id="naxVibesGrid" class="naxt-grid"></div>
+                <div id="naxVibesEmptyState" class="naxt-empty-state hidden">
+                    <i class="fas fa-square-rss"></i>
+                    <p id="naxVibesEmptyNoResults">No vibes match your search or filters.</p>
+                </div>
+            </div>
+            <footer id="naxVibesStatusBar" class="naxt-status-bar" aria-live="polite">0 vibes</footer>
+        </div>
+    </div>
+
+    <!-- NAX Vibes: pick encoding to import -->
+    <div id="naxVibesEncodingPickerModal" class="modal hidden tool-window on-top"
+        data-parent-modal-id="naxVibesModal" data-window-position-mode="cascade-parent"
+        data-window-min-width="520" data-window-min-height="360" data-window-max-width="1200"
+        data-window-max-height="900">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="nai-import icon-fa"></i>
+                <span id="naxVibesEncodingPickerTitle">Import Encoding</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeNaxVibesEncodingPickerBtn" class="btn-danger close-btn btn-small"
+                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+        </div>
+        <div class="modal-content naxt-modal-content dark">
+            <div class="naxt-body form-section-scroll">
+                <div id="naxVibesEncodingPickerGrid" class="nax-vibes-encoding-grid"></div>
+            </div>
         </div>
     </div>
 
@@ -6437,7 +6537,7 @@ Examples:
             <div class="desktop-settings-layout">
                 <div class="desktop-settings-controls">
                     <!-- Workspace Settings Section -->
-                    <div class="settings-section">
+                    <div class="settings-section" data-desktop-settings-scope="workspace">
                         <h3 class="section-header"><i class="fas fa-planet-ringed"></i> Workspace</h3>
                         <div class="form-row">
                             <div class="form-group">
@@ -6482,10 +6582,10 @@ Examples:
                     </div>
 
                     <!-- Separator -->
-                    <div class="form-section-separator"></div>
+                    <div class="form-section-separator" data-desktop-settings-scope="workspace"></div>
 
                     <!-- Wallpaper Section -->
-                    <div class="settings-section">
+                    <div class="settings-section" data-desktop-settings-scope="workspace">
                         <h3 class="section-header"><i class="fas fa-image"></i> Wallpaper</h3>
 
                         <!-- Two-column layout: Preview (left) and Controls (right) -->
@@ -6568,12 +6668,54 @@ Examples:
                             </div>
                         </div>
                     </div>
+
+                    <!-- Global: Window Management -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-window-restore"></i> Window Management</h3>
+                        <div class="form-row desktop-settings-window-management-row">
+                            <div class="form-group">
+                                <label for="desktopSettingsLiveWindowRepositioningBtn">Live Window Repositioning</label>
+                                <button type="button" id="desktopSettingsLiveWindowRepositioningBtn"
+                                    class="btn-secondary toggle-btn desktop-settings-startup-toggle" data-state="off"
+                                    title="When on, dragging or resizing shows a preview frame and applies on drop">
+                                    Off
+                                </button>
+                                <p class="desktop-settings-hint">When off, windows move and resize directly as you drag.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Global: Startup Behaviour -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-power-off"></i> Startup Behaviour</h3>
+                        <div class="form-row desktop-settings-startup-row">
+                            <div class="form-group">
+                                <label for="desktopSettingsAutoLaunchWorkspaceBtn">Open workspace on startup</label>
+                                <button type="button" id="desktopSettingsAutoLaunchWorkspaceBtn"
+                                    class="btn-secondary toggle-btn desktop-settings-startup-toggle" data-state="on"
+                                    title="When off, gallery data loads in the background and the workspace window stays closed until you open it">
+                                    On
+                                </button>
+                                <p class="desktop-settings-hint">When off, loading continues in the tray and the workspace window stays closed until you open it from the start menu or taskbar.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Footer with Save Button -->
-            <div class="modal-footer-colored">
-                <button type="button" id="desktopSettingsSaveBtn" class="btn-primary btn-small">
+            <!-- Footer with scope toggle and Save -->
+            <div class="modal-footer-colored desktop-settings-footer">
+                <div id="desktopSettingsScopeToggle" class="gallery-toggle-group desktop-settings-scope-toggle"
+                    data-active="workspace">
+                    <button type="button" class="gallery-toggle-btn active" data-scope="workspace">
+                        <span class="tab-text">Workspace</span>
+                    </button>
+                    <button type="button" class="gallery-toggle-btn" data-scope="global">
+                        <span class="tab-text">Global</span>
+                    </button>
+                    <div class="gallery-toggle-slider"></div>
+                </div>
+                <button type="button" id="desktopSettingsSaveBtn" class="btn-primary">
                     <span>Save</span>
                     <i class="fas fa-floppy-disk"></i>
                 </button>
@@ -6921,6 +7063,7 @@ Examples:
     <script src="scripts/comp/emphasisManager.js"></script>
     <script src="scripts/comp/tagWikiSearchModal.js"></script>
     <script src="scripts/comp/naxtApplet.js"></script>
+    <script src="scripts/comp/naxVibesApplet.js"></script>
     <script src="scripts/comp/configEditorApplet.js"></script>
     <script src="scripts/comp/characterSearchModal.js"></script>
     <script src="scripts/comp/websocketRequestsModal.js"></script>

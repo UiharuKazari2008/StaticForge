@@ -1533,6 +1533,8 @@ window.toggleWeatherUnits = function (event) {
 
     // Save preference to localStorage
     localStorage.setItem('weather_units_metric', useMetric.toString());
+
+  updateRentanContextOverlay(resolvePreviewRentanContext());
 };
 
 /**
@@ -1746,90 +1748,7 @@ if (typeof u1 !== 'undefined') {
 
 // Data structures moved to utilities.js
 
-// Function to generate image from a preset
-async function generateFromPreset(presetName) {
-    isGenerating = true;
-    isInModal = false;
-
-    let progressInterval;
-
-    // Create or update progress toast using global pattern
-    if (!progressToastId) {
-        progressToastId = showGlassToast('info', 'Generating Image', 'Generating image...', true, false, '<i class="nai-sparkles"></i>');
-    }
-
-    // Start progress animation (1% per second)
-    let progress = 0;
-    progressInterval = setInterval(() => {
-        progress += 1;
-        updateGlassToastProgress(progressToastId, progress);
-    }, APP_CONSTANTS.TIMEOUT_GENERATION);
-
-    try {
-        // Generate image using WebSocket
-        const result = await window.wsClient.generatePreset(presetName);
-
-        // Extract data from the standard response format
-        const filename = result.filename;
-        const seed = result.seed;
-
-        // Update the existing toast to show completion
-        updateGlassToastComplete(progressToastId, {
-            type: 'success',
-            title: 'Image Generated',
-            message: 'Image generated successfully and added to gallery',
-            customIcon: '<i class="nai-check"></i>',
-            showProgress: false
-        });
-
-        // Clear the global progress toast ID after completion
-        progressToastId = null;
-
-        createConfetti();
-
-        if (!isGalleryWindowHidden()) {
-            await loadGallery(true);
-
-            // Find the generated image in the gallery
-            const found = allImages.find(img => img.original === filename || img.upscaled === filename);
-            if (found) {
-                // Construct proper image object with filename property
-                const imageToShow = {
-                    filename: filename,
-                    base: found.base,
-                    original: found.original,
-                    upscaled: found.upscaled
-                };
-                showLightbox(imageToShow);
-            }
-        }
-
-    } catch (error) {
-        console.error('Generation error:', error);
-        // Update the existing toast to show error
-        updateGlassToastComplete(progressToastId, {
-            type: 'error',
-            title: 'Generation Failed',
-            message: error.message,
-            customIcon: '<i class="nai-cross"></i>',
-            showProgress: false
-        });
-    } finally {
-        // Reset generating state
-        isGenerating = false;
-
-        // Clear progress and loading states
-        if (progressInterval) {
-            clearInterval(progressInterval);
-        }
-        if (isInModal) {
-            showManualLoading(false);
-        }
-
-        // Reset progress toast ID
-        progressToastId = null;
-    }
-}
+// generateFromPreset: public/scripts/comp/presetManager.js
 
 // Handle preset updates (save/delete)
 async function handlePresetUpdate(data) {
@@ -7028,6 +6947,7 @@ function showCompiledPromptModal(compiledPromptData = null) {
 
         // Create period information card
         let periodCardHtml = '';
+        const hasHoliday = context.season?.holiday?.primaryHoliday;
         if (context.season && timePeriodInfo.period) {
             // Determine background class based on season + time period + lighting/atmosphere
             let periodBgClass = 'period-default';
@@ -7035,8 +6955,12 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const seasonName = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
             const season = typeof seasonName === 'string' ? seasonName.toLowerCase() : String(seasonName).toLowerCase();
             const period = timePeriodInfo.period ? timePeriodInfo.period.toLowerCase() : '';
-            const lighting = timePeriodInfo.lighting ? timePeriodInfo.lighting.toLowerCase() : '';
-            const atmosphere = timePeriodInfo.atmosphere ? timePeriodInfo.atmosphere.toLowerCase() : '';
+            const lighting = timePeriodInfo.lighting ? (Array.isArray(timePeriodInfo.lighting)
+                ? timePeriodInfo.lighting.map(el => (typeof el === 'object' ? el.text : el)).join(' ')
+                : String(timePeriodInfo.lighting)).toLowerCase() : '';
+            const atmosphere = timePeriodInfo.atmosphere ? (Array.isArray(timePeriodInfo.atmosphere)
+                ? timePeriodInfo.atmosphere.map(el => (typeof el === 'object' ? el.text : el)).join(' ')
+                : String(timePeriodInfo.atmosphere)).toLowerCase() : '';
 
             // Combine factors for background selection
             if (season.includes('spring')) {
@@ -7165,7 +7089,6 @@ function showCompiledPromptModal(compiledPromptData = null) {
             const seasonProgress = context.season ? calculateSeasonProgress(time, context.season) : 50;
             const seasonNameForTemplate = typeof context.season === 'object' && context.season?.name ? context.season.name : context.season;
             const seasonForTemplate = typeof seasonNameForTemplate === 'string' ? seasonNameForTemplate : String(seasonNameForTemplate || '');
-            const hasHoliday = context.season?.holiday?.primaryHoliday;
 
             periodCardHtml = `
                 <div class="period-info-card ${periodBgClass}">
@@ -13998,7 +13921,8 @@ function collectDialogsFromMetadata(metadata) {
     const seenTimestamps = new Set();
 
     // Collect from main compiled_prompt (timestamp optional — dedupe key falls back so dialogs still count)
-    const mainDialogs = metadata?.dynamic_generation?.compiled_prompt?.dialogs;
+    const mainDialogs = metadata?.dynamic_generation?.compiled_prompt?.dialogs
+        || window.dynamicGenerationData?.compiled_prompt?.dialogs;
     const mainTimestamp = metadata?.dynamic_generation?.compiled_prompt?.timestamp;
     if (mainDialogs && mainDialogs.length > 0) {
         const key = mainTimestamp ?? '__main__';
@@ -14478,12 +14402,12 @@ async function updateManualPreview(index = 0, response = null, metadata = null) 
             // refreshManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
             refreshManualPreviewImageLoupe();
 
-            // Update Rentan overlay
-            const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
+            // Update Rentan overlay from current image metadata only (no stale session cache)
+            const context = resolvePreviewRentanContext();
+            updateRentanContextOverlay(context);
 
             // Update carousel with compiled prompt context if available
             if (context) {
-                // Update compiled context data and switch to compiled mode
                 compiledContextData = context;
                 carouselMode = 'compiled';
                 updateDynamicCarousel(context, 'compiled');
@@ -14725,12 +14649,12 @@ async function updateManualPreviewDirectly(imageObj, metadata = null) {
             // refreshManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
             refreshManualPreviewImageLoupe();
 
-            // Update Rentan overlay
-            const context = window.currentManualPreviewImage?.metadata?.dynamic_generation?.compiled_prompt?.context;
+            // Update Rentan overlay from current image metadata only (no stale session cache)
+            const context = resolvePreviewRentanContext();
+            updateRentanContextOverlay(context);
 
             // Update carousel with compiled prompt context if available
             if (context) {
-                // Update compiled context data and switch to compiled mode
                 compiledContextData = context;
                 carouselMode = 'compiled';
                 updateDynamicCarousel(context, 'compiled');
@@ -14891,6 +14815,8 @@ function resetManualPreview() {
 
         // refreshManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
         refreshManualPreviewImageLoupe();
+
+        clearManualRentanContextOverlay();
 
         // Force preview animation back to default state
         if (generationAnimationActive) {
@@ -27506,8 +27432,8 @@ function setupMainMenuContextMenus() {
                         hideOnBreakpoint: "small-mobile"
                     },
                     {
-                        icon: 'fa-regular fa-book-spells',
-                        text: 'Spellbook',
+                        icon: 'fa-regular fa-hat-wizard',
+                        text: 'Spellcaster',
                         action: 'cast-spell'
                     },
                     {
@@ -27544,11 +27470,6 @@ function setupMainMenuContextMenus() {
                                 hideOnBreakpoint: "small-mobile"
                             },
                             {
-                                icon: 'fa-regular fa-book-copy',
-                                text: 'Spellbook',
-                                action: 'preset-manager'
-                            },
-                            {
                                 icon: 'nai-import',
                                 text: 'Import',
                                 action: 'upload',
@@ -27564,21 +27485,26 @@ function setupMainMenuContextMenus() {
                                 hideOnBreakpoint: "small-mobile"
                             },
                             {
+                                icon: 'fa-regular fa-book-spells',
+                                text: 'Spellbook',
+                                action: 'preset-manager'
+                            },
+                            {
                                 icon: 'fa-regular fa-book-font',
                                 text: 'Text Expanders',
                                 action: 'text-replacement-manager',
                                 hideOnBreakpoint: "small-mobile"
                             },
                             {
-                                icon: 'fa-regular fa-user-doctor-message',
-                                text: 'Chat Persona',
-                                action: 'chat-manager'
-                            },
-                            {
                                 icon: 'fa-regular fa-box-open-full',
                                 text: 'Memories',
                                 action: 'knowledge-memories',
                                 hideOnBreakpoint: "small-mobile"
+                            },
+                            {
+                                icon: 'fa-regular fa-user-doctor-message',
+                                text: 'Chat Persona',
+                                action: 'chat-manager'
                             },
                             {
                                 icon: 'fa-regular fa-key-skeleton-left-right',
@@ -28773,6 +28699,10 @@ if (window.wsClient) {
         }
 
         if (data.data) {
+            // Keep client workspace in sync with server after reconnect restore
+            if (typeof activeWorkspace !== 'undefined' && data.data.id && activeWorkspace !== data.data.id) {
+                activeWorkspace = data.data.id;
+            }
             // Update the current workspace display
             if (window.currentWorkspace !== data.data.id) {
                 window.currentWorkspace = data.data.id;
@@ -29038,60 +28968,35 @@ if (window.wsClient) {
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
     });
 
-    // Open gallery window before loading gallery
-    window.wsClient.registerInitStep(89, 'Opening Gallery Window', async () => {
+    // public/scripts/comp/galleryView.js loadGallery, shouldAutoLaunchWorkspace
+    function beginStartupGalleryLoad() {
         if (window.isEditorStandaloneWindow) {
             return;
         }
-        if (window.isDesktop) {
-            const galleryWindow = document.getElementById('galleryWindow');
-            if (galleryWindow) {
-                // Show gallery window (openModal will handle active-window class)
-                if (typeof openModal === 'function') {
+
+        const autoLaunchWorkspace = typeof shouldAutoLaunchWorkspace === 'function'
+            ? shouldAutoLaunchWorkspace()
+            : true;
+
+        const run = async () => {
+            if (window.isDesktop && autoLaunchWorkspace) {
+                const galleryWindow = document.getElementById('galleryWindow');
+                if (galleryWindow && typeof openModal === 'function') {
                     openModal(galleryWindow);
-                } else {
+                } else if (galleryWindow) {
                     galleryWindow.classList.remove('hidden');
                 }
-
-                // Add loading spinner
-                const spinner = document.getElementById('galleryLoadingSpinner');
-                const galleryContainer = galleryWindow.querySelector('.gallery-container');
-                if (galleryContainer && spinner) {
-                    spinner.classList.remove('hidden');
-                    if (!galleryContainer.contains(spinner)) {
-                        galleryContainer.appendChild(spinner);
-                    }
-                }
             }
-        }
-    }, true);
+            await loadGallery(false, null, { silent: !autoLaunchWorkspace });
+            await updateGalleryGrid(true, true);
+        };
 
-    // Priority 7: Load gallery and finalize UI
-    window.wsClient.registerInitStep(90, 'Loading Gallery', async () => {
-        if (window.isEditorStandaloneWindow) {
-            return;
-        }
-        await loadGallery(false, (state) => {
-            const currentStep = window.wsClient.currentInitStep;
-            const totalSteps = window.wsClient.totalInitSteps;
-
-            // Base progress for current step
-            const baseProgress = window.wsClient.constructor.PROGRESS_INIT_BASE +
-                (((currentStep - 1) / totalSteps) * window.wsClient.constructor.PROGRESS_INIT_STEPS);
-
-            // Reserve remaining progress (from current step to 100%) for gallery loading
-            const reservedProgress = 100 - baseProgress;
-            const totalProgress = baseProgress + (state.progress * reservedProgress);
-
-            window.wsClient.updateProgressNotification('Loading Gallery', Math.min(totalProgress, 100));
+        run().catch((err) => {
+            console.error('Startup gallery load failed:', err);
         });
-        await updateGalleryGrid(true, true); // onlyIfChanged=true, updatePlaceholders=true
-        await updateMenuBarHeight();
-    }, true);
+    }
 
-    // Priority 7: Load gallery and finalize UI
-    window.wsClient.registerInitStep(100, 'Finalizing', async () => {
-        // Initialize background gradient
+    window.wsClient.registerInitStep(85, 'Wiring Application UI', async () => {
         await setupEventListeners();
 
         setupMainMenuContextMenus();
@@ -29100,7 +29005,6 @@ if (window.wsClient) {
 
         initializeSessionValidation();
 
-        // Initialize emphasis highlighting for manual fields
         await initializeEmphasisOverlay(manualPrompt);
         await initializeEmphasisOverlay(manualUc);
         const manualPromptNegativeInit = document.getElementById('manualPromptNegative');
@@ -29108,6 +29012,17 @@ if (window.wsClient) {
             await initializeEmphasisOverlay(manualPromptNegativeInit);
         }
 
+        await updateMenuBarHeight();
+    });
+
+    window.wsClient.registerInitStep(89, 'Loading Gallery', async () => {
+        if (window.isEditorStandaloneWindow) {
+            return;
+        }
+        beginStartupGalleryLoad();
+    }, true, { nonBlocking: true });
+
+    window.wsClient.registerInitStep(100, 'Finalizing', async () => {
         // Activate the Android notification bridge now that all scripts have loaded.
         // This must run last so that window.AndroidNotification (injected by the host)
         // and all toast functions are fully available before we check isReady().

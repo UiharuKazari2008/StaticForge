@@ -728,10 +728,10 @@ class SpellbookModalManager {
         if (!this.modal) return;
 
         await closeModal(this.modal);
-        
-        if (this.dynamicGenerationOverlay) {
-            this.dynamicGenerationOverlay.classList.add('hidden');
-        }
+
+        this.hideSpellbookDynamicGenerationOverlay();
+        this.hideSpellbookDynamicGenerationProgressOverlayImmediate();
+        this.dynamicGenerationActive = false;
     }
 
     async renderCustomPresetDropdown(selectedValue) {
@@ -1227,10 +1227,15 @@ class SpellbookModalManager {
 
             // Stop animations and overlay AFTER image is displayed
             this.stopSpellbookGenerationAnimation();
+            const hadDynamicGenContext = this.dynamicGenerationActive;
             this.dynamicGenerationActive = false;
             this.setProgressCancelVisible(false);
             this.hideSpellbookDynamicGenerationProgressOverlayImmediate();
-            this.hideSpellbookDynamicGenerationOverlay();
+            if (hadDynamicGenContext) {
+                this.showSpellbookDynamicGenerationOverlay();
+            } else {
+                this.hideSpellbookDynamicGenerationOverlay();
+            }
             // Reset generating state
             this.isGenerating = false;
             this.generateBtn.disabled = false;

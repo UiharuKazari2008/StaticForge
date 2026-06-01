@@ -1,0 +1,34 @@
+services:
+  dreamscape:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dreamscape:local
+    container_name: dreamscape
+    ports:
+      - "9220:9220"
+    environment:
+      NEKOAI_JS_SOURCE: registry
+    volumes:
+      - dreamscape-images:/app/images
+      - dreamscape-previews:/app/.previews
+      - dreamscape-cache:/app/.cache
+      - dreamscape-logs:/app/logs
+      - dreamscape-secure-prompts:/app/securePrompts
+      # Create configs on the host first: sudo bash scripts/setup.sh --skip-deps
+      # Bind-mount only when files exist (Docker creates directories if missing).
+      - ./config.json:/app/config.json:ro
+      - ./secure.config.json:/app/secure.config.json:ro
+      - ./prompt.config.json:/app/prompt.config.json:ro
+      - ./director.config.json:/app/director.config.json:ro
+      - ./characters.json:/app/characters.json:ro
+      - ./nax_generation_config.json:/app/nax_generation_config.json:ro
+    restart: unless-stopped
+    mem_limit: 4g
+
+volumes:
+  dreamscape-images:
+  dreamscape-previews:
+  dreamscape-cache:
+  dreamscape-logs:
+  dreamscape-secure-prompts:

@@ -12,7 +12,7 @@ const RUN_CATEGORY_LABELS = {
     'text-replacement': 'Expander',
     'quick-access': 'Tag',
     reference: 'Reference',
-    preset: 'Spellbook',
+    preset: 'Spellcaster',
     'network-deferred': 'Network',
     'naxt-tag': 'Atelier',
     'naxt-artist': 'Artist',
@@ -30,7 +30,7 @@ const RUN_CATEGORY_ICONS = {
     'text-replacement': 'fas fa-book-font',
     'quick-access': 'fas fa-tag',
     reference: 'fas fa-swatchbook',
-    preset: 'fas fa-book-spells',
+    preset: 'fas fa-hat-wizard',
     'network-deferred': 'fas fa-wifi',
     'naxt-tag': 'fas fa-flask',
     'naxt-artist': 'fas fa-wheelchair',
@@ -48,7 +48,7 @@ const RUN_SCOPED_PREFIX_HINTS = new Set([
 const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['editor', 'dream studio', 'dreamstudio', 'manual', 'novelai'], launchIds: ['studio'] },
     { aliases: ['generate', 'generation', 'spellcaster', 'spell caster', 'spell', 'cast'], launchIds: ['studio', 'spellbook'] },
-    { aliases: ['spellbook', 'presets', 'preset book', 'spell book'], launchIds: ['spellbook'] },
+    { aliases: ['spellbook', 'presets', 'preset book', 'spell book', 'caster'], launchIds: ['spellbook'] },
     { aliases: ['gallery', 'images', 'art', 'results'], launchIds: ['workspace'] },
     { aliases: ['reference', 'references', 'vibe', 'style', 'cache', 'swatchbook'], launchIds: ['reference'] },
     { aliases: ['grimoire', 'wiki', 'e621', 'danbooru', 'e6', 'dan', 'encyclopedia', 'books', 'novelai', 'help', 'search'], launchIds: ['encyclopedia'] },
@@ -1587,7 +1587,7 @@ function getRunEntryActionMenu(entry) {
                 {
                     type: 'list',
                     items: [
-                        { icon: 'fas fa-book-spells', text: 'Open in Spellbook', action: 'spellbook' },
+                        { icon: 'fas fa-hat-wizard', text: 'Open in Spellcaster', action: 'spellbook' },
                         { icon: 'fas fa-list', text: 'Preset Manager', action: 'manager' }
                     ]
                 }

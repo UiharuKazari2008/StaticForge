@@ -4,14 +4,12 @@ const cacheGalleryContainer = document.getElementById('cacheGalleryContainer');
 const referencesTab = document.getElementById('references-tab');
 const cacheManagerModal = document.getElementById('cacheManagerModal');
 const unifiedUploadModal = document.getElementById('unifiedUploadModal');
-const cacheManagerMoveModal = document.getElementById('cacheManagerMoveModal');
 const cacheManagerDeleteModal = document.getElementById('cacheManagerDeleteModal');
 const vibeManagerModal = document.getElementById('vibeManagerModal');
 const vibeEncodingModal = document.getElementById('vibeEncodingModal');
 const vibeEncodingModelDropdown = document.getElementById('vibeEncodingModelDropdown');
 const cacheManagerBtn = document.getElementById('cacheManagerBtn');
 const closeCacheManagerBtn = document.getElementById('closeCacheManagerBtn');
-const closeCacheManagerMoveModalBtn = document.getElementById('closeCacheManagerMoveModalBtn');
 const cacheManagerRefreshBtn = document.getElementById('cacheManagerRefreshBtn');
 const cacheManagerUploadBtn = document.getElementById('cacheManagerUploadBtn');
 const showAllReferencesBtn = document.getElementById('showAllReferencesBtn');
@@ -30,7 +28,6 @@ const vibeEncodingReferencePreview = document.getElementById('vibeEncodingRefere
 const closeVibeManagerMoveModalBtn = document.getElementById('closeVibeManagerMoveModalBtn');
 const closeVibeManagerDeleteModalBtn = document.getElementById('closeVibeManagerDeleteModalBtn');
 const vibeManagerDeleteConfirmBtn = document.getElementById('vibeManagerDeleteConfirmBtn');
-const cacheManagerMoveConfirmBtn = document.getElementById('cacheManagerMoveConfirmBtn');
 const vibeManagerMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
 const vibeManagerMoveConfirmBtn = document.getElementById('vibeManagerMoveConfirmBtn');
 const vibeManagerMoveBtn = document.getElementById('vibeManagerMoveBtn');
@@ -41,11 +38,8 @@ const cacheManagerWorkspaceDropdownMenu = document.getElementById('cacheManagerW
 const cacheManagerWorkspaceSelected = document.getElementById('cacheManagerWorkspaceSelected');
 const cacheManagerLoading = document.getElementById('cacheManagerLoading');
 const cacheManagerGallery = document.getElementById('cacheManagerGallery');
-const cacheManagerMoveBtn = document.getElementById('cacheManagerMoveBtn');
 const cacheManagerProgressFill = document.getElementById('cacheManagerProgressFill');
 const cacheManagerProgressText = document.getElementById('cacheManagerProgressText');
-const cacheManagerMoveCount = document.getElementById('cacheManagerMoveCount');
-const cacheManagerMoveTargetSelect = document.getElementById('cacheManagerMoveTargetSelect');
 const vibeManagerFromReferenceModal = document.getElementById('vibeManagerFromReferenceModal');
 const vibeManagerFromReferencePreview = document.getElementById('vibeManagerFromReferencePreview');
 const vibeManagerFromReferenceModelSelected = document.getElementById('vibeManagerFromReferenceModelSelected');
@@ -215,33 +209,53 @@ function appendPrecisionReferenceBadges(badgesContainer, metadata) {
     return true;
 }
 
-function syncCacheMetadataPreciseTypeToggles(type) {
-    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
-    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
+function isPreciseTypeToggleOn(btn) {
+    return btn && btn.getAttribute('data-state') === 'on';
+}
+
+function setPreciseTypeToggleState(btn, on) {
+    if (!btn) return;
+    btn.setAttribute('data-state', on ? 'on' : 'off');
+}
+
+function getPreciseReferenceTypeFromToggles(characterBtn, styleBtn) {
+    const charOn = isPreciseTypeToggleOn(characterBtn);
+    const styleOn = isPreciseTypeToggleOn(styleBtn);
+    if (!charOn && !styleOn) return 1;
+    if (charOn && styleOn) return 1;
+    if (charOn) return 2;
+    return 3;
+}
+
+const PRECISE_TYPE_TOGGLE_IDS = {
+    cache: ['cachePreciseRefTypeCharacterBtn', 'cachePreciseRefTypeStyleBtn'],
+    upload: ['unifiedUploadRefTypeCharacterBtn', 'unifiedUploadRefTypeStyleBtn']
+};
+
+function getPreciseTypeTogglePair(scope) {
+    if (scope instanceof Element) {
+        return [
+            scope.querySelector('[data-precise-type="character"]'),
+            scope.querySelector('[data-precise-type="style"]')
+        ];
+    }
+    const ids = PRECISE_TYPE_TOGGLE_IDS[scope];
+    if (!ids) return [null, null];
+    return [document.getElementById(ids[0]), document.getElementById(ids[1])];
+}
+
+function syncPreciseTypeToggles(scope, type) {
+    const [characterBtn, styleBtn] = getPreciseTypeTogglePair(scope);
     if (!characterBtn || !styleBtn) return;
     const normalized = (type === 2 || type === 3) ? type : 1;
     setPreciseTypeToggleState(characterBtn, normalized === 1 || normalized === 2);
     setPreciseTypeToggleState(styleBtn, normalized === 1 || normalized === 3);
+    if (scope instanceof Element) {
+        scope.dataset.preciseType = String(normalized);
+    }
 }
 
-function getCacheMetadataPreciseReferenceType() {
-    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
-    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
-    return getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
-}
-
-function updateCacheMetadataPreciseTypeGroupVisibility() {
-    const toggle = document.getElementById('preciseReferenceToggle');
-    const group = document.getElementById('cachePreciseReferenceTypeGroup');
-    if (!toggle || !group) return;
-    group.classList.toggle('hidden', toggle.getAttribute('data-state') !== 'on');
-}
-
-function handleCacheMetadataPreciseTypeToggleClick(toggled) {
-    const characterBtn = document.getElementById('cachePreciseRefTypeCharacterBtn');
-    const styleBtn = document.getElementById('cachePreciseRefTypeStyleBtn');
-    if (!characterBtn || !styleBtn) return;
-
+function applyPreciseTypeToggleClick(characterBtn, styleBtn, toggled, syncFn) {
     const charOn = isPreciseTypeToggleOn(characterBtn);
     const styleOn = isPreciseTypeToggleOn(styleBtn);
 
@@ -262,10 +276,112 @@ function handleCacheMetadataPreciseTypeToggleClick(toggled) {
     }
 
     if (!isPreciseTypeToggleOn(characterBtn) && !isPreciseTypeToggleOn(styleBtn)) {
-        syncCacheMetadataPreciseTypeToggles(1);
+        syncFn(1);
     } else {
-        syncCacheMetadataPreciseTypeToggles(getCacheMetadataPreciseReferenceType());
+        syncFn(getPreciseReferenceTypeFromToggles(characterBtn, styleBtn));
     }
+}
+
+function handlePreciseTypeToggleClick(scope, toggled) {
+    const [characterBtn, styleBtn] = getPreciseTypeTogglePair(scope);
+    if (!characterBtn || !styleBtn) return;
+
+    applyPreciseTypeToggleClick(characterBtn, styleBtn, toggled, (type) => {
+        syncPreciseTypeToggles(scope, type);
+    });
+
+    if (scope instanceof Element && typeof updateManualPriceDisplay === 'function') {
+        updateManualPriceDisplay();
+    }
+}
+
+function getCacheMetadataPreciseReferenceType() {
+    const [characterBtn, styleBtn] = getPreciseTypeTogglePair('cache');
+    return getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
+}
+
+function updateCacheMetadataPreciseTypeGroupVisibility() {
+    const toggle = document.getElementById('preciseReferenceToggle');
+    const group = document.getElementById('cachePreciseReferenceTypeGroup');
+    if (!toggle || !group) return;
+    group.classList.toggle('hidden', toggle.getAttribute('data-state') !== 'on');
+}
+
+function updateUnifiedUploadImportMetadataVisibility() {
+    const typeGroup = document.getElementById('unifiedUploadReferenceTypeGroup');
+    const preciseToggle = document.getElementById('unifiedUploadPreciseReferenceToggle');
+    const hasContent = unifiedUploadFiles.length > 0 || unifiedUploadDownloadedFile;
+    if (!typeGroup || !hasContent) return;
+
+    if (unifiedUploadCurrentMode === 'character') {
+        typeGroup.classList.remove('hidden');
+        return;
+    }
+
+    if (unifiedUploadCurrentMode === 'reference' || isUnifiedUploadVibeEncodeIntent()) {
+        const preciseOn = preciseToggle && preciseToggle.getAttribute('data-state') === 'on';
+        typeGroup.classList.toggle('hidden', !preciseOn);
+        return;
+    }
+
+    typeGroup.classList.add('hidden');
+}
+
+function isUnifiedUploadVibeImportMode() {
+    return unifiedUploadFileMetadata.some(meta =>
+        meta.valid && meta.metadata &&
+        (meta.metadata.type === 'vibe_bundle' || meta.metadata.type === 'vibe_single')
+    ) || (unifiedUploadDownloadedFile &&
+        (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
+}
+
+function isUnifiedUploadVibeEncodeIntent() {
+    return unifiedUploadCurrentMode === 'vibe' && !isUnifiedUploadVibeImportMode();
+}
+
+function isUnifiedUploadPreciseReferenceEnabled() {
+    if (unifiedUploadCurrentMode === 'character') return true;
+    const toggle = document.getElementById('unifiedUploadPreciseReferenceToggle');
+    return toggle && toggle.getAttribute('data-state') === 'on';
+}
+
+function applyUnifiedUploadPreciseDefaultsForMode() {
+    const toggle = document.getElementById('unifiedUploadPreciseReferenceToggle');
+    if (!toggle) return;
+
+    if (unifiedUploadCurrentMode === 'character') {
+        syncPreciseTypeToggles('upload', 1);
+        updateUnifiedUploadImportMetadataVisibility();
+        return;
+    }
+
+    if (unifiedUploadCurrentMode === 'reference') {
+        toggle.setAttribute('data-state', 'off');
+        syncPreciseTypeToggles('upload', 1);
+    } else if (unifiedUploadCurrentMode === 'vibe') {
+        if (isUnifiedUploadVibeEncodeIntent()) {
+            toggle.setAttribute('data-state', 'on');
+            syncPreciseTypeToggles('upload', 3);
+        } else {
+            toggle.setAttribute('data-state', 'off');
+        }
+    }
+
+    updateUnifiedUploadImportMetadataVisibility();
+}
+
+function resetUnifiedUploadImportMetadataControls() {
+    syncPreciseTypeToggles('upload', 1);
+    const toggle = document.getElementById('unifiedUploadPreciseReferenceToggle');
+    if (toggle) toggle.setAttribute('data-state', 'off');
+    updateUnifiedUploadImportMetadataVisibility();
+}
+
+function getUnifiedUploadReferenceTags() {
+    if (!isUnifiedUploadPreciseReferenceEnabled()) return [];
+    const [characterBtn, styleBtn] = getPreciseTypeTogglePair('upload');
+    const type = getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
+    return [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(type)];
 }
 
 // Toggle show all references functionality for cache browser
@@ -318,8 +434,6 @@ let cacheManagerShowAllReferences = false;
 let vibeManagerImages = [];
 let vibeManagerMoveTargetImage = null;
 let vibeManagerSelectedImages = new Set();
-let cacheManagerMoveTargetImage = null;
-
 
 async function showCacheBrowser() {
     // Show as container in preview section
@@ -474,7 +588,8 @@ async function loadReferenceImages(workspace = null, showAll = false) {
                     cacheItem.vibes.push(vibe);
                     cacheItem.hasVibes = true;
                 } else {
-                    // This is a standalone vibe (base64)
+                    // Standalone vibe — surface DB metadata on the card (NAX import, etc.)
+                    const vibeMeta = vibe.metadata || null;
                     const standaloneVibe = {
                         hash: vibe.id,
                         filename: vibe.filename,
@@ -488,7 +603,9 @@ async function loadReferenceImages(workspace = null, showAll = false) {
                         isStandalone: true,
                         workspaceId: vibe.workspaceId,
                         importedFrom: vibe.importedFrom,
-                        locked: vibe.locked
+                        locked: vibe.locked,
+                        metadata: vibeMeta,
+                        comment: vibe.comment || (vibeMeta && vibeMeta.comment) || null
                     };
                     cacheMap.set(vibe.id, standaloneVibe);
                 }
@@ -931,75 +1048,6 @@ function updatePreciseReferenceContainerVisibility() {
     }
 }
 
-function isPreciseTypeToggleOn(btn) {
-    return btn && btn.getAttribute('data-state') === 'on';
-}
-
-function setPreciseTypeToggleState(btn, on) {
-    if (!btn) return;
-    btn.setAttribute('data-state', on ? 'on' : 'off');
-}
-
-function getPreciseReferenceTypeFromToggles(characterBtn, styleBtn) {
-    const charOn = isPreciseTypeToggleOn(characterBtn);
-    const styleOn = isPreciseTypeToggleOn(styleBtn);
-    if (!charOn && !styleOn) return 1;
-    if (charOn && styleOn) return 1;
-    if (charOn) return 2;
-    return 3;
-}
-
-function syncPreciseReferenceTypeToggles(item, type) {
-    const characterBtn = item.querySelector('[data-precise-type="character"]');
-    const styleBtn = item.querySelector('[data-precise-type="style"]');
-    if (!characterBtn || !styleBtn) return;
-    const normalized = (type === 2 || type === 3) ? type : 1;
-    const charOn = normalized === 1 || normalized === 2;
-    const styleOn = normalized === 1 || normalized === 3;
-    setPreciseTypeToggleState(characterBtn, charOn);
-    setPreciseTypeToggleState(styleBtn, styleOn);
-    item.dataset.preciseType = String(normalized);
-}
-
-function handlePreciseReferenceTypeToggleClick(item, toggled) {
-    const characterBtn = item.querySelector('[data-precise-type="character"]');
-    const styleBtn = item.querySelector('[data-precise-type="style"]');
-    if (!characterBtn || !styleBtn) return;
-
-    const charOn = isPreciseTypeToggleOn(characterBtn);
-    const styleOn = isPreciseTypeToggleOn(styleBtn);
-
-    if (toggled === 'character') {
-        if (charOn) {
-            if (!styleOn) {
-                setPreciseTypeToggleState(styleBtn, true);
-            }
-            setPreciseTypeToggleState(characterBtn, false);
-        } else {
-            setPreciseTypeToggleState(characterBtn, true);
-        }
-    } else if (toggled === 'style') {
-        if (styleOn) {
-            if (!charOn) {
-                setPreciseTypeToggleState(characterBtn, true);
-            }
-            setPreciseTypeToggleState(styleBtn, false);
-        } else {
-            setPreciseTypeToggleState(styleBtn, true);
-        }
-    }
-
-    if (!isPreciseTypeToggleOn(characterBtn) && !isPreciseTypeToggleOn(styleBtn)) {
-        syncPreciseReferenceTypeToggles(item, 1);
-    } else {
-        const type = getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
-        syncPreciseReferenceTypeToggles(item, type);
-    }
-    if (typeof updateManualPriceDisplay === 'function') {
-        updateManualPriceDisplay();
-    }
-}
-
 function buildPreciseReferencePercentageInput(initialValue, sideClass, peerLabel) {
     const val = Math.max(0, Math.min(1, parseFloat(initialValue) || 1));
     const wrap = document.createElement('div');
@@ -1148,20 +1196,15 @@ function createPreciseReferenceItem(refData, options = {}) {
     overlayBottom.appendChild(typeToggles);
     previewContainer.appendChild(overlayBottom);
 
-    const charOn = type === 1 || type === 2;
-    const styleOn = type === 1 || type === 3;
-    setPreciseTypeToggleState(characterBtn, charOn);
-    setPreciseTypeToggleState(styleBtn, styleOn);
-
     characterBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        handlePreciseReferenceTypeToggleClick(item, 'character');
+        handlePreciseTypeToggleClick(item, 'character');
     });
     styleBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        handlePreciseReferenceTypeToggleClick(item, 'style');
+        handlePreciseTypeToggleClick(item, 'style');
     });
 
     const controls = document.createElement('div');
@@ -1217,7 +1260,7 @@ function createPreciseReferenceItem(refData, options = {}) {
     item.appendChild(controls);
     item.appendChild(info);
 
-    syncPreciseReferenceTypeToggles(item, type);
+    syncPreciseTypeToggles(item, type);
 
     return item;
 }
@@ -1298,12 +1341,11 @@ function collectPreciseReferenceData() {
         const refKey = item.dataset.preciseRefKey;
         if (!refKey) return;
 
-        const characterBtn = item.querySelector('[data-precise-type="character"]');
-        const styleBtn = item.querySelector('[data-precise-type="style"]');
+        const [characterBtn, styleBtn] = getPreciseTypeTogglePair(item);
         let type = getPreciseReferenceTypeFromToggles(characterBtn, styleBtn);
         if (type !== 1 && type !== 2 && type !== 3) {
             type = 1;
-            syncPreciseReferenceTypeToggles(item, type);
+            syncPreciseTypeToggles(item, type);
         }
 
         const strengthInput = item.querySelector('input[data-precise-field="strength"]');
@@ -1513,7 +1555,10 @@ async function refreshReferenceManagerAfterVibeOperation() {
         
         // Refresh cache images to get the latest vibe data
         await loadCacheImages();
-        
+        if (cacheManagerModal && cacheManagerModal.classList.contains('modal-open')) {
+            await loadCacheManagerImages();
+        }
+
         // Refresh the reference browser if it's open
         await refreshReferenceBrowserIfOpen();
         
@@ -2310,12 +2355,16 @@ async function hideCacheManagerModal() {
 
 // Unified workspace dropdown setup
 function setupWorkspaceDropdown(config) {
-    const { dropdown, button, menu, selected, getCurrentWorkspace, onWorkspaceChange, markupId } = config;
+    const { dropdown, button, menu, selected, getCurrentWorkspace, onWorkspaceChange, onDisplayUpdate, markupId } = config;
     
-    if (!dropdown || !button || !menu || !selected) return;
+    if (!dropdown || !button || !menu) return;
 
-    // Update selected workspace
-    selected.textContent = getWorkspaceDisplayName(getCurrentWorkspace());
+    // Refresh display whenever setup runs (including re-open after dataset.setup)
+    if (onDisplayUpdate) {
+        onDisplayUpdate();
+    } else if (selected && typeof selected.textContent !== 'undefined') {
+        selected.textContent = getWorkspaceDisplayName(getCurrentWorkspace());
+    }
 
     // Check if dropdown is already set up
     if (dropdown.dataset.setup === 'true') {
@@ -2332,6 +2381,17 @@ function setupWorkspaceDropdown(config) {
 
     // Mark as set up
     dropdown.dataset.setup = 'true';
+}
+
+function updateUnifiedUploadWorkspaceDisplay() {
+    if (!unifiedUploadWorkspaceDropdown) return;
+    const workspace = workspaces && workspaces[unifiedUploadSelectedWorkspace];
+    if (unifiedUploadWorkspaceColorDot && workspace) {
+        unifiedUploadWorkspaceColorDot.style.backgroundColor = workspace.color || '#6366f1';
+    }
+    if (unifiedUploadWorkspaceDropdownBtn && workspace) {
+        unifiedUploadWorkspaceDropdownBtn.title = `Import to ${workspace.name}`;
+    }
 }
 
 function renderReferenceWorkspaceDropdown(config, selectedValue = null) {
@@ -2415,16 +2475,14 @@ function setupUnifiedUploadWorkspaceDropdown() {
         dropdown: unifiedUploadWorkspaceDropdown,
         button: unifiedUploadWorkspaceDropdownBtn,
         menu: unifiedUploadWorkspaceDropdownMenu,
-        selected: () => unifiedUploadSelectedWorkspace,
         getCurrentWorkspace: () => unifiedUploadSelectedWorkspace,
+        onDisplayUpdate: updateUnifiedUploadWorkspaceDisplay,
         onWorkspaceChange: (workspace) => {
             unifiedUploadSelectedWorkspace = workspace.id;
-            if (unifiedUploadWorkspaceColorDot) {
-                const workspaceColor = workspace.color || '#6366f1';
-                unifiedUploadWorkspaceColorDot.style.backgroundColor = workspaceColor;
-            }
+            updateUnifiedUploadWorkspaceDisplay();
         }
     });
+    updateUnifiedUploadWorkspaceDisplay();
 }
 
 function renderCacheManagerWorkspaceDropdown() {
@@ -2777,8 +2835,8 @@ function createReferenceManagerContextMenuConfig() {
                     {
                         icon: 'fas fa-planet-ringed',
                         text: 'Move to...',
-                        optionsfn: getMoveWorkspaceOptions,
-                        handlerfn: handleMoveWorkspaceAction,
+                        optionsfn: getReferenceMoveWorkspaceOptions,
+                        handlerfn: handleReferenceMoveWorkspaceAction,
                         openOnHover: false
                     },
                     {
@@ -3007,13 +3065,13 @@ function getReferenceBrowserImageFromElement(element) {
 
 // Helper function to get cache manager image from element
 function getCacheManagerImageFromElement(element) {
-    // The context menu is attached directly to the gallery item, so element should be the gallery item
-    if (!element.classList.contains('cache-manager-gallery-item')) {
+    const galleryItem = element && element.closest ? element.closest('.cache-manager-gallery-item') : null;
+    if (!galleryItem) {
         console.warn('Element is not a gallery item:', element);
         return null;
     }
 
-    const hash = element.dataset.hash;
+    const hash = galleryItem.dataset.hash;
     if (!hash) {
         console.warn('Gallery item missing hash:', element);
         return null;
@@ -3028,20 +3086,17 @@ function getCacheManagerImageFromElement(element) {
     return cacheImage || null;
 }
 
-// Get workspace options for move operation
-function getMoveWorkspaceOptions(target) {
+function getReferenceMoveWorkspaceOptions(target) {
     const cacheImage = getCacheManagerImageFromElement(target);
     if (!cacheImage) return [];
 
     const options = [];
     Object.values(workspaces).forEach(workspace => {
-        // Skip current workspace
         if (workspace.id === cacheManagerCurrentWorkspace) {
             return;
         }
 
         const workspaceColor = workspace.color || '#102040';
-
         options.push({
             content: `
                 <div class="workspace-option-content">
@@ -3057,50 +3112,58 @@ function getMoveWorkspaceOptions(target) {
     return options;
 }
 
-// Handle workspace move action from context menu
-async function handleMoveWorkspaceAction(option, target, event) {
+async function handleReferenceMoveWorkspaceAction(option, target, event) {
     const cacheImage = getCacheManagerImageFromElement(target);
     if (!cacheImage) {
         console.error('Could not find cache image for move operation');
         return;
     }
 
-    const targetWorkspace = option.value;
+    const workspace = Object.values(workspaces).find(ws => ws.id === option.value);
+    const workspaceName = workspace ? workspace.name : option.value;
+    let message = `Move this reference to ${workspaceName}?`;
+    if (cacheImage.hasVibes && !cacheImage.isStandalone) {
+        message = `This item contains both a base image and vibe encodings. Both will be moved to ${workspaceName}. Continue?`;
+    }
+
+    const confirmed = await showConfirmationDialog(
+        message,
+        [
+            { text: 'Move', value: true, className: 'btn-primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        event
+    );
+
+    if (!confirmed) return;
+
+    const moved = await executeReferenceMove(cacheImage, option.value);
+    if (moved) {
+        await refreshReferenceBrowserIfOpen();
+        await refreshReferenceManagerAfterVibeOperation();
+    }
+}
+
+async function executeReferenceMove(cacheImage, targetWorkspace) {
+    if (!cacheImage || !targetWorkspace) {
+        console.error('Could not find cache image or target workspace for move operation');
+        return false;
+    }
 
     try {
-        // Check if this item has both base image and vibes
-        if (cacheImage.hasVibes && !cacheImage.isStandalone) {
-            // Show confirmation that both base image and vibes will be moved
-            const confirmed = await showConfirmationDialog(
-                'This item contains both a base image and vibe encodings. Both will be moved to the target workspace. Continue?',
-                [
-                    { text: 'Move', value: true, className: 'btn-primary' },
-                    { text: 'Cancel', value: false, className: 'btn-secondary' }
-                ],
-                event
-            );
-
-            if (!confirmed) return;
-        }
-
-        // Move the image to the target workspace using the correct API calls
         let response;
 
         if (cacheImage.isStandalone) {
-            // For standalone vibe images, use moveVibeImage
             if (cacheImage.vibes && cacheImage.vibes.length > 0) {
                 response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, cacheManagerCurrentWorkspace);
             } else {
                 throw new Error('Standalone image has no vibe data');
             }
         } else {
-            // For cache images (with or without associated vibes), use moveReferences
             response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, cacheManagerCurrentWorkspace);
 
-            // Also move associated vibe images if they exist
-            if (cacheImage.hasVibes && response.success) {
-                let vibeMovePromises = [];
-                // Move each vibe image associated with this cache image
+            if (response.success && cacheImage.hasVibes) {
+                const vibeMovePromises = [];
                 for (const vibe of cacheImage.vibes) {
                     if (vibe.type === 'cache') {
                         vibeMovePromises.push(
@@ -3109,7 +3172,6 @@ async function handleMoveWorkspaceAction(option, target, event) {
                     }
                 }
 
-                // Wait for all vibe moves to complete
                 if (vibeMovePromises.length > 0) {
                     try {
                         await Promise.all(vibeMovePromises);
@@ -3124,21 +3186,18 @@ async function handleMoveWorkspaceAction(option, target, event) {
             throw new Error(`Failed to move image: ${response.message}`);
         }
 
-        // Update local array and refresh display
         cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
-
-        // Refresh the display
         await loadCacheManagerImages();
 
-        // Get workspace name for success message
         const targetWorkspaceObj = Object.values(workspaces).find(ws => ws.id === targetWorkspace);
         const workspaceName = targetWorkspaceObj ? targetWorkspaceObj.name : targetWorkspace;
 
         showGlassToast('success', 'Image Moved', `Image moved to ${workspaceName} workspace`);
-
+        return true;
     } catch (error) {
         console.error('Error moving cache image:', error);
         showError('Failed to move image');
+        return false;
     }
 }
 
@@ -3652,10 +3711,13 @@ const unifiedUploadModalManager = {
         // Clear all state variables
         unifiedUploadDownloadedFile = null;
         unifiedUploadPendingUrl = null;
+        unifiedUploadPendingPreviewUrl = null;
+        window.modifiedVibeData = [];
         unifiedUploadCurrentMode = 'reference';
         unifiedUploadFiles = [];
         unifiedUploadCurrentIndex = 0;
         unifiedUploadFileMetadata = [];
+        resetUnifiedUploadImportMetadataControls();
 
         // Remove data-mode to reset to empty state (CSS handles visibility)
         const modal = document.getElementById('unifiedUploadModal');
@@ -3693,23 +3755,17 @@ const unifiedUploadModalManager = {
         setupUnifiedUploadWorkspaceDropdown();
         populateUnifiedUploadModelDropdown();
 
-        // Set default workspace
-        if (typeof cacheManagerCurrentWorkspace !== 'undefined' && cacheManagerCurrentWorkspace) {
-            unifiedUploadSelectedWorkspace = cacheManagerCurrentWorkspace;
-        } else if (typeof activeWorkspace !== 'undefined' && activeWorkspace) {
+        // Set default workspace — prefer the active workspace the user is working in
+        if (typeof activeWorkspace !== 'undefined' && activeWorkspace) {
             unifiedUploadSelectedWorkspace = activeWorkspace;
+        } else if (typeof cacheManagerCurrentWorkspace !== 'undefined' && cacheManagerCurrentWorkspace) {
+            unifiedUploadSelectedWorkspace = cacheManagerCurrentWorkspace;
         } else {
             unifiedUploadSelectedWorkspace = 'default';
         }
 
-        // Update workspace color dot
-        if (unifiedUploadWorkspaceColorDot && typeof workspaces !== 'undefined' && workspaces) {
-            const workspace = workspaces[unifiedUploadSelectedWorkspace];
-            if (workspace) {
-                const workspaceColor = workspace.color || '#6366f1';
-                unifiedUploadWorkspaceColorDot.style.backgroundColor = workspaceColor;
-            }
-        }
+        updateUnifiedUploadWorkspaceDisplay();
+        resetUnifiedUploadImportMetadataControls();
     },
 
     // Show modal (with full reset and initialization)
@@ -3731,6 +3787,22 @@ const unifiedUploadModalManager = {
         if (unifiedUploadModal) await closeModal(unifiedUploadModal);
         hideGalleryMoveRightPanelCover();
         this.reset();
+    },
+
+    // Open import wizard with a remote URL (e.g. NAX.moe vibe download)
+  // options: { previewUrl, autoLoad } — naxVibesApplet.js
+    async showWithUrl(url, options = {}) {
+        const trimmed = String(url || '').trim();
+        if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+            showError('Invalid URL');
+            return;
+        }
+        unifiedUploadPendingPreviewUrl = options.previewUrl ? String(options.previewUrl).trim() : null;
+        this.show();
+        await prepareUnifiedUploadPendingUrl(trimmed);
+        if (options.autoLoad) {
+            await handlePendingUrlDownload();
+        }
     }
 };
 
@@ -3864,6 +3936,9 @@ function updateUnifiedUploadMode() {
         
         unifiedUploadConfirmBtn.disabled = !(hasFiles || hasDownloadedFile || hasPendingUrl);
     }
+
+    applyUnifiedUploadPreciseDefaultsForMode();
+    updateUnifiedUploadImportMetadataVisibility();
 }
 
 function populateUnifiedUploadModelDropdown() {
@@ -4713,7 +4788,7 @@ async function uploadUnifiedCharacterImages() {
             // For downloaded files, we need to handle them differently based on type
             if (unifiedUploadDownloadedFile.type === 'image') {
                 // Use the downloaded file temp filename with characterOnly tag
-                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename, null, null, null, [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(1)]);
+                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename, null, null, null, getUnifiedUploadReferenceTags());
 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -4728,7 +4803,7 @@ async function uploadUnifiedCharacterImages() {
             const uploadPromises = unifiedUploadFiles.map(async (file, index) => {
                 const base64 = await fileToBase64(file);
 
-                const response = await wsClient.uploadReference(base64, targetWorkspace, null, null, null, null, [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(1)]);
+                const response = await wsClient.uploadReference(base64, targetWorkspace, null, null, null, null, getUnifiedUploadReferenceTags());
 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -4779,8 +4854,10 @@ async function uploadUnifiedReferenceImages() {
     showGalleryMoveRightPanelCover('Uploading Reference...');
     
     try {
-        // Get the selected workspace from the unified upload modal
         let targetWorkspace = unifiedUploadSelectedWorkspace;
+        const referenceTags = getUnifiedUploadReferenceTags();
+        const commentInput = document.getElementById('unifiedUploadCommentInput');
+        const comment = commentInput ? commentInput.value.trim() : '';
         
         let results = [];
         
@@ -4788,8 +4865,7 @@ async function uploadUnifiedReferenceImages() {
         if (unifiedUploadDownloadedFile) {
             // For downloaded files, we need to handle them differently based on type
             if (unifiedUploadDownloadedFile.type === 'image') {
-                // Use the downloaded file temp filename
-                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename);
+                const response = await wsClient.uploadReference(null, targetWorkspace, unifiedUploadDownloadedFile.tempFilename, comment || null, null, null, referenceTags);
                 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -4804,10 +4880,9 @@ async function uploadUnifiedReferenceImages() {
             }
         } else {
             // Use the file input files
-            const uploadPromises = unifiedUploadFiles.map(async (file, index) => {
+            const uploadPromises = unifiedUploadFiles.map(async (file) => {
                 const base64 = await fileToBase64(file);
-                
-                const response = await wsClient.uploadReference(base64, targetWorkspace);
+                const response = await wsClient.uploadReference(base64, targetWorkspace, null, comment || null, null, null, referenceTags);
 
                 if (!response.success) {
                     throw new Error(response.message || 'Upload failed');
@@ -5342,8 +5417,9 @@ async function importDownloadedVibeBundle() {
         const commentInput = document.getElementById('unifiedUploadCommentInput');
         const comment = commentInput ? commentInput.value.trim() : '';
         
-        // Import the vibe bundle using raw JSON data
-        const response = await wsClient.importVibeBundle(unifiedUploadDownloadedFile.jsonData, targetWorkspace, comment);
+        const jsonForImport = mergeModifiedVibeDataIntoBundleJson(unifiedUploadDownloadedFile.jsonData);
+        const previewUrl = unifiedUploadPendingPreviewUrl || null;
+        const response = await wsClient.importVibeBundle(jsonForImport, targetWorkspace, comment, null, previewUrl);
         
         if (!response.success) {
             throw new Error(response.message || 'Vibe bundle import failed');
@@ -5368,6 +5444,8 @@ async function importDownloadedVibeBundle() {
         // Ensure reference manager is refreshed after vibe operation
         await refreshReferenceManagerAfterVibeOperation();
         
+        unifiedUploadPendingPreviewUrl = null;
+
         // Close modal
         unifiedUploadModalManager.hide();
         
@@ -5381,195 +5459,6 @@ async function importDownloadedVibeBundle() {
             showProgress: false
         });
         hideGalleryMoveRightPanelCover();
-    }
-}
-
-function showCacheManagerMoveModal() {
-    if (!cacheManagerMoveModal) return;
-
-    if (!cacheManagerMoveTargetImage) {
-        showError('No image selected for move');
-        return;
-    }
-
-    // Update background image and info
-    const backgroundImage = document.getElementById('cacheManagerMoveBackgroundImage');
-    const moveCount = document.getElementById('cacheManagerMoveCount');
-    const currentWorkspace = document.getElementById('cacheManagerMoveCurrentWorkspace');
-    const confirmBtn = document.getElementById('cacheManagerMoveConfirmBtn');
-    const selectedSpan = document.getElementById('cacheManagerMoveWorkspaceSelected');
-
-    if (backgroundImage) {
-        if (cacheManagerMoveTargetImage.isStandalone) {
-            if (cacheManagerMoveTargetImage.hasPreview) {
-                backgroundImage.src = `/cache/preview/${cacheManagerMoveTargetImage.hasPreview}`;
-            } else {
-                backgroundImage.src = '/static_images/background.jpg';
-            }
-        } else {
-            if (cacheManagerMoveTargetImage.hasPreview) {
-                backgroundImage.src = `/cache/preview/${cacheManagerMoveTargetImage.hash}.webp`;
-            } else {
-                backgroundImage.src = `/cache/${cacheManagerMoveTargetImage.hash}`;
-            }
-        }
-        backgroundImage.alt = `Image to move: ${cacheManagerMoveTargetImage.filename || cacheManagerMoveTargetImage.hash}`;
-    }
-
-    if (moveCount) {
-        moveCount.textContent = '1';
-    }
-
-    if (currentWorkspace) {
-        const workspace = workspaces[cacheManagerCurrentWorkspace];
-        currentWorkspace.textContent = workspace ? workspace.name : 'Default';
-    }
-
-    if (confirmBtn) {
-        confirmBtn.disabled = true;
-    }
-
-    if (selectedSpan) {
-        selectedSpan.textContent = 'Select workspace...';
-        selectedSpan.dataset.value = '';
-    }
-
-    // Setup workspace dropdown
-    setupCacheManagerMoveWorkspaceDropdown();
-
-    openModal(cacheManagerMoveModal);
-}
-
-// Setup workspace dropdown for cache manager move modal
-function setupCacheManagerMoveWorkspaceDropdown() {
-    const modal = document.getElementById('cacheManagerMoveModal');
-    if (!modal) return;
-    
-    setupWorkspaceDropdown({
-        dropdown: modal.querySelector('#cacheManagerMoveWorkspaceDropdown'),
-        button: modal.querySelector('#cacheManagerMoveWorkspaceDropdownBtn'),
-        menu: modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu'),
-        selected: modal.querySelector('#cacheManagerMoveWorkspaceSelected'),
-        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
-        filterCurrentWorkspace: true,
-        onWorkspaceChange: (workspace) => {
-            const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
-            const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
-            
-            const workspaceColor = workspace.color || '#102040';
-            selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                <div class="workspace-name">${workspace.name}</div></div>`;
-            selectedSpan.dataset.value = workspace.id;
-            confirmBtn.disabled = false;
-        }
-    });
-}
-
-// Render function for cache manager move workspace dropdown
-function renderCacheManagerMoveWorkspaceDropdown() {
-    const modal = document.getElementById('cacheManagerMoveModal');
-    if (!modal) return;
-    
-    renderReferenceWorkspaceDropdown({
-        menu: modal.querySelector('#cacheManagerMoveWorkspaceDropdownMenu'),
-        getCurrentWorkspace: () => cacheManagerCurrentWorkspace,
-        filterCurrentWorkspace: true,
-        onWorkspaceChange: (workspace) => {
-            const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
-            const confirmBtn = modal.querySelector('#cacheManagerMoveConfirmBtn');
-            
-            const workspaceColor = workspace.color || '#102040';
-            selectedSpan.innerHTML = `<div class="workspace-option-content"><div class="workspace-color-indicator" style="background-color: ${workspaceColor}"></div>
-                <div class="workspace-name">${workspace.name}</div></div>`;
-            selectedSpan.dataset.value = workspace.id;
-            confirmBtn.disabled = false;
-        }
-    });
-}
-
-function hideCacheManagerMoveModal() {
-    if (cacheManagerMoveModal) {
-        closeModal(cacheManagerMoveModal);
-    }
-}
-
-async function moveCacheManagerImages() {
-    const modal = document.getElementById('cacheManagerMoveModal');
-    if (!modal) return;
-    
-    const selectedSpan = modal.querySelector('#cacheManagerMoveWorkspaceSelected');
-    const targetWorkspace = selectedSpan.dataset.value;
-    
-    if (!targetWorkspace) {
-        showError('Please select a target workspace');
-        return;
-    }
-
-    if (!cacheManagerMoveTargetImage) {
-        showError('No image selected for move');
-        return;
-    }
-
-    const cacheImage = cacheManagerMoveTargetImage;
-
-    try {
-        let response;
-        
-        if (cacheImage.isStandalone) {
-            // For standalone vibe images, use moveVibeImage
-            if (cacheImage.vibes && cacheImage.vibes.length > 0) {
-                // Move the standalone vibe image
-                response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, cacheManagerCurrentWorkspace);
-            } else {
-                throw new Error('Standalone image has no vibe data');
-            }
-        } else {
-            // For cache images (with or without associated vibes), use moveReferences
-            response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, cacheManagerCurrentWorkspace);
-
-        if (response.success) {
-            // Also move associated vibe images if they exist
-            let vibeMovePromises = [];
-                if (cacheImage.hasVibes) {
-                // Move each vibe image associated with this cache image
-                for (const vibe of cacheImage.vibes) {
-                    if (vibe.type === 'cache') {
-                        vibeMovePromises.push(
-                            wsClient.moveVibeImage(vibe.id, targetWorkspace, cacheManagerCurrentWorkspace)
-                        );
-                    }
-                }
-            }
-
-            // Wait for all vibe moves to complete
-            if (vibeMovePromises.length > 0) {
-                try {
-                    await Promise.all(vibeMovePromises);
-                } catch (vibeError) {
-                    console.warn('Some vibe images failed to move:', vibeError);
-                    }
-                }
-                }
-            }
-
-        if (response.success) {
-            showGlassToast('success', null, 'Image moved successfully');
-            hideCacheManagerMoveModal();
-            if (!cacheBrowserContainer.classList.contains('hidden')) {
-                await loadCacheManagerImages();
-            } else {
-                await loadCacheImages();
-            }
-            await refreshReferenceBrowserIfOpen();
-            
-            // Ensure reference manager is refreshed after move operation
-            await refreshReferenceManagerAfterVibeOperation();
-        } else {
-            throw new Error(`Failed to move image: ${response.message}`);
-        }
-    } catch (error) {
-        console.error('Error moving cache image:', error);
-        showError('Failed to move image');
     }
 }
 
@@ -6812,56 +6701,27 @@ async function updateUnifiedUploadPreview() {
                           (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single'));
 
         if (isVibeFile) {
-            // For vibe files, try to set background from thumbnail data
-            let thumbnailFound = false;
-
+            let firstVibe = null;
             if (unifiedUploadDownloadedFile && unifiedUploadDownloadedFile.jsonData) {
-                // For downloaded vibe files, use the raw JSON data
                 try {
                     const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
                     if (detectionResult.isValid && detectionResult.vibes.length > 0) {
-                        const firstVibe = detectionResult.vibes[0];
-                        if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
-                            backgroundImage.src = firstVibe.thumbnail;
-                            thumbnailFound = true;
-                        } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
-                            backgroundImage.src = firstVibe.image;
-                            thumbnailFound = true;
-                        } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
-                            // Handle base64 data without data:image/ prefix
-                            const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-                            backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
-                            thumbnailFound = true;
-                        }
+                        firstVibe = detectionResult.vibes[0];
                     }
                 } catch (error) {
                     console.warn('Error parsing downloaded vibe data for thumbnail:', error);
                 }
             } else if (currentMetadata && currentMetadata.metadata && currentMetadata.metadata.vibes) {
-                // For local vibe files, use the metadata
-                const firstVibe = currentMetadata.metadata.vibes[0];
-                if (firstVibe && firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
-                    backgroundImage.src = firstVibe.thumbnail;
-                    thumbnailFound = true;
-                } else if (firstVibe && firstVibe.image && firstVibe.image.startsWith('data:image/')) {
-                    backgroundImage.src = firstVibe.image;
-                    thumbnailFound = true;
-                } else if (firstVibe && firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
-                    // Handle base64 data without data:image/ prefix
-                    const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-                    backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
-                    thumbnailFound = true;
-                }
+                firstVibe = currentMetadata.metadata.vibes[0];
             }
-
-            // If no thumbnail found, use default background
-            if (!thumbnailFound) {
-                backgroundImage.src = '/static_images/bg-2.jpg';
-            }
+            backgroundImage.src = getVibeWizardPreviewSrc(firstVibe);
+            backgroundImage.onerror = function() {
+                this.src = unifiedUploadPendingPreviewUrl || '/static_images/bg-3.png';
+            };
 
             // Add error handling for background image
             backgroundImage.onerror = function() {
-                this.src = '/static_images/bg-2.jpg';
+                this.src = '/static_images/bg-3.png';
                 console.warn('Failed to load background image for vibe file');
             };
         } else {
@@ -6921,24 +6781,10 @@ async function updateUnifiedUploadPreview() {
             // Show vibe bundle preview
             showVibeBundlePreview(vibes);
             
-            // Set background image to first vibe's thumbnail or image
             const firstVibe = vibes[0];
-            if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
-                backgroundImage.src = firstVibe.thumbnail;
-            } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
-                backgroundImage.src = firstVibe.image;
-            } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
-                // Handle base64 data without data:image/ prefix
-                const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-                backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
-            } else {
-                backgroundImage.src = '/static_images/bg-2.jpg';
-            }
-
-            // Add error handling for background image
+            backgroundImage.src = getVibeWizardPreviewSrc(firstVibe);
             backgroundImage.onerror = function() {
-                this.src = '/static_images/bg-2.jpg';
-                console.warn(`Failed to load background image for vibe: ${firstVibe.name || firstVibe.id}`);
+                this.src = unifiedUploadPendingPreviewUrl || '/static_images/bg-3.png';
             };
         } else if (unifiedUploadDownloadedFile && (unifiedUploadDownloadedFile.type === 'vibe_bundle' || unifiedUploadDownloadedFile.type === 'vibe_single')) {
             // Handle downloaded vibe files
@@ -6947,32 +6793,18 @@ async function updateUnifiedUploadPreview() {
                 if (detectionResult.isValid && detectionResult.vibes.length > 0) {
                     showVibeBundlePreview(detectionResult.vibes);
 
-                    // Set background image to first vibe's thumbnail or image
                     const firstVibe = detectionResult.vibes[0];
-                    if (firstVibe.thumbnail && firstVibe.thumbnail.startsWith('data:image/')) {
-                        backgroundImage.src = firstVibe.thumbnail;
-                    } else if (firstVibe.image && firstVibe.image.startsWith('data:image/')) {
-                        backgroundImage.src = firstVibe.image;
-                    } else if (firstVibe.image && (firstVibe.image.startsWith('/9j/') || firstVibe.image.startsWith('iVBOR'))) {
-                        // Handle base64 data without data:image/ prefix
-                        const mimeType = firstVibe.image.startsWith('/9j/') ? 'image/jpeg' : 'image/png';
-                        backgroundImage.src = `data:${mimeType};base64,${firstVibe.image}`;
-                    } else {
-                        backgroundImage.src = '/static_images/bg-2.jpg';
-                    }
-
-                    // Add error handling for background image
+                    backgroundImage.src = getVibeWizardPreviewSrc(firstVibe);
                     backgroundImage.onerror = function() {
-                        this.src = '/static_images/bg-2.jpg';
-                        console.warn(`Failed to load background image for downloaded vibe: ${firstVibe.name || firstVibe.id}`);
+                        this.src = unifiedUploadPendingPreviewUrl || '/static_images/bg-3.png';
                     };
                 } else {
                     console.warn('Invalid downloaded vibe file format');
-                    backgroundImage.src = '/static_images/bg-2.jpg';
+                    backgroundImage.src = '/static_images/bg-3.png';
                 }
             } catch (error) {
                 console.error('Error processing downloaded vibe file:', error);
-                backgroundImage.src = '/static_images/bg-2.jpg';
+                backgroundImage.src = '/static_images/bg-3.png';
             }
         } else if (currentFile.type === 'application/json' || currentFile.name.toLowerCase().includes('.naiv4')) {
             // Fallback: parse the file directly
@@ -7189,8 +7021,9 @@ function showVibeBundlePreview(vibes) {
         return;
     }
     
-    // Initialize modified vibe data tracking
-    window.modifiedVibeData = [];
+    if (!window.modifiedVibeData || !window.modifiedVibeData.length) {
+        window.modifiedVibeData = [];
+    }
     
     vibeBundleList.innerHTML = '';
     
@@ -7205,8 +7038,9 @@ function showVibeBundlePreview(vibes) {
         if (vibe.thumbnail && vibe.thumbnail.startsWith('data:image/')) {
             img.src = vibe.thumbnail;
         } else if (vibe.thumbnail) {
-            // Use the server-generated thumbnail with indexed filename
             img.src = `/cache/${vibe.thumbnail}.webp`;
+        } else if (unifiedUploadPendingPreviewUrl) {
+            img.src = unifiedUploadPendingPreviewUrl;
         } else {
             img.src = '/static_images/background.jpg';
         }
@@ -7449,7 +7283,7 @@ function hideVibeBundlePreview() {
 
 // Handle invalid bundle
 function handleInvalidBundle(backgroundImage) {
-    backgroundImage.src = '/static_images/bg-2.jpg';
+    backgroundImage.src = '/static_images/bg-3.png';
     // Invalid bundle handling - could show toast notification instead
     console.warn('Invalid vibe bundle format');
 }
@@ -7458,7 +7292,7 @@ function handleInvalidBundle(backgroundImage) {
 function resetUploadModal() {
     const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
     if (backgroundImage) {
-        backgroundImage.src = '/static_images/bg-2.jpg';
+        backgroundImage.src = '/static_images/bg-3.png';
     }
     
     const modalTitle = document.getElementById('unifiedUploadModalTitle');
@@ -7522,9 +7356,16 @@ function initializeCacheManager() {
         });
     }
 
-    // Reference manager move button
-    if (cacheManagerMoveBtn) {
-        cacheManagerMoveBtn.addEventListener('click', showCacheManagerMoveModal);
+    const cacheManagerNaxVibesBtn = document.getElementById('cacheManagerNaxVibesBtn');
+    if (cacheManagerNaxVibesBtn) {
+        cacheManagerNaxVibesBtn.addEventListener('click', () => {
+            if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet) {
+                naxVibesApplet.open();
+            } else {
+                const modal = document.getElementById('naxVibesModal');
+                if (modal && typeof openModal === 'function') openModal(modal);
+            }
+        });
     }
 
     // Unified Upload Modal Controls
@@ -7643,10 +7484,29 @@ function initializeCacheManager() {
         });
     }
 
-    // Move modal controls
+    const unifiedUploadRefTypeCharacterBtn = document.getElementById('unifiedUploadRefTypeCharacterBtn');
+    const unifiedUploadRefTypeStyleBtn = document.getElementById('unifiedUploadRefTypeStyleBtn');
+    if (unifiedUploadRefTypeCharacterBtn) {
+        unifiedUploadRefTypeCharacterBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handlePreciseTypeToggleClick('upload', 'character');
+        });
+    }
+    if (unifiedUploadRefTypeStyleBtn) {
+        unifiedUploadRefTypeStyleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handlePreciseTypeToggleClick('upload', 'style');
+        });
+    }
 
-    if (closeCacheManagerMoveBtn) closeCacheManagerMoveBtn.addEventListener('click', hideCacheManagerMoveModal);
-    if (cacheManagerMoveConfirmBtn) cacheManagerMoveConfirmBtn.addEventListener('click', moveCacheManagerImages);
+    const unifiedUploadPreciseReferenceToggle = document.getElementById('unifiedUploadPreciseReferenceToggle');
+    if (unifiedUploadPreciseReferenceToggle) {
+        unifiedUploadPreciseReferenceToggle.addEventListener('click', () => {
+            const newState = unifiedUploadPreciseReferenceToggle.getAttribute('data-state') === 'on' ? 'off' : 'on';
+            unifiedUploadPreciseReferenceToggle.setAttribute('data-state', newState);
+            updateUnifiedUploadImportMetadataVisibility();
+        });
+    }
 
     // Vibe Manager bulk action controls
 
@@ -7739,13 +7599,13 @@ function initializeCacheManager() {
     if (cachePreciseRefTypeCharacterBtn) {
         cachePreciseRefTypeCharacterBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            handleCacheMetadataPreciseTypeToggleClick('character');
+            handlePreciseTypeToggleClick('cache', 'character');
         });
     }
     if (cachePreciseRefTypeStyleBtn) {
         cachePreciseRefTypeStyleBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            handleCacheMetadataPreciseTypeToggleClick('style');
+            handlePreciseTypeToggleClick('cache', 'style');
         });
     }
 
@@ -7973,6 +7833,95 @@ function formatResolution(resolution, width, height) {
 let unifiedUploadDownloadedFile = null;
 // Global variable to store pending URL for download
 let unifiedUploadPendingUrl = null;
+/** Browser/NAX thumbnail URL to apply as vibe preview override (naxVibesApplet.js) */
+let unifiedUploadPendingPreviewUrl = null;
+
+/** Best preview source for vibe import wizard (NAX thumbnails — naxVibesApplet.js) */
+function getVibeWizardPreviewSrc(vibe) {
+    if (vibe && vibe.thumbnail && String(vibe.thumbnail).startsWith('data:image/')) {
+        return vibe.thumbnail;
+    }
+    if (unifiedUploadPendingPreviewUrl) {
+        return unifiedUploadPendingPreviewUrl;
+    }
+    return '/static_images/bg-3.png';
+}
+
+/** Fetch remote image via server and return a data: URL for vibe thumbnail override */
+async function fetchRemoteImageAsDataUrl(url) {
+    if (!url || !wsClient || !wsClient.isConnected()) return null;
+    try {
+        const resp = await wsClient.fetchUrlInfo(url, { method: 'GET', timeout: 20000 }, 'base64');
+        if (!resp || !resp.success || !resp.data) return null;
+        const mime = (resp.contentType || 'image/jpeg').split(';')[0].trim();
+        return `data:${mime};base64,${resp.data}`;
+    } catch (e) {
+        console.warn('fetchRemoteImageAsDataUrl:', e);
+        return null;
+    }
+}
+
+/** Apply thumbnail data URL to vibe JSON + modifiedVibeData for import wizard */
+function applyVibeThumbnailOverrideToJson(jsonData, dataUrl) {
+    if (!jsonData || !dataUrl) return jsonData;
+    const detectionResult = detectAndParseVibeFile(jsonData);
+    if (!detectionResult.isValid) return jsonData;
+
+    if (!window.modifiedVibeData) window.modifiedVibeData = [];
+
+    const patchVibe = (vibe) => {
+        const id = vibe.id;
+        vibe.thumbnail = dataUrl;
+        const idx = window.modifiedVibeData.findIndex((v) => v.id === id);
+        const patch = { id, thumbnail: dataUrl };
+        if (idx >= 0) {
+            window.modifiedVibeData[idx] = { ...window.modifiedVibeData[idx], ...patch };
+        } else {
+            window.modifiedVibeData.push(patch);
+        }
+    };
+
+    if (detectionResult.type === 'single') {
+        patchVibe(jsonData);
+    } else if (jsonData.vibes && Array.isArray(jsonData.vibes)) {
+        jsonData.vibes.forEach((v) => patchVibe(v));
+    } else {
+        detectionResult.vibes.forEach(patchVibe);
+    }
+    return jsonData;
+}
+
+function mergeModifiedVibeDataIntoBundleJson(jsonData) {
+    if (!jsonData || !window.modifiedVibeData || !window.modifiedVibeData.length) {
+        return jsonData;
+    }
+    const detectionResult = detectAndParseVibeFile(jsonData);
+    if (!detectionResult.isValid) return jsonData;
+
+    const updatedJsonData = { ...jsonData };
+    if (detectionResult.type === 'single') {
+        const modifiedVibe = window.modifiedVibeData.find((v) => v.id === jsonData.id);
+        if (modifiedVibe) {
+            if (modifiedVibe.thumbnail) updatedJsonData.thumbnail = modifiedVibe.thumbnail;
+            if (modifiedVibe.image) {
+                updatedJsonData.image = modifiedVibe.image;
+                updatedJsonData.type = 'base64';
+            }
+        }
+    } else if (detectionResult.type === 'bundle') {
+        updatedJsonData.vibes = detectionResult.vibes.map((vibe) => {
+            const modifiedVibe = window.modifiedVibeData.find((v) => v.id === vibe.id);
+            if (!modifiedVibe) return vibe;
+            return {
+                ...vibe,
+                thumbnail: modifiedVibe.thumbnail || vibe.thumbnail,
+                image: modifiedVibe.image || vibe.image,
+                type: modifiedVibe.image ? 'base64' : vibe.type
+            };
+        });
+    }
+    return updatedJsonData;
+}
 
 // Get file information from URL for confirmation dialog
 async function getFileInfoFromUrl(url) {
@@ -8529,7 +8478,8 @@ async function handlePendingUrlDownload() {
         // Download the file via websocket
         let response;
         try {
-            response = await wsClient.downloadUrlFile(unifiedUploadPendingUrl);
+            const previewForDownload = unifiedUploadPendingPreviewUrl || null;
+            response = await wsClient.downloadUrlFile(unifiedUploadPendingUrl, previewForDownload);
             
             // Check if the response indicates failure even without throwing an error
             if (!response || response.error) {
@@ -8670,11 +8620,31 @@ async function handlePendingUrlDownload() {
                 unifiedUploadCurrentMode = 'vibe';
                 updateUnifiedUploadMode();
 
+                const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+
+                const preDetect = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
+                const needsPreview = preDetect.isValid && preDetect.vibes.some(
+                    (v) => !v.thumbnail || !String(v.thumbnail).startsWith('data:image')
+                );
+                if (needsPreview && unifiedUploadPendingPreviewUrl) {
+                    const dataUrl = await fetchRemoteImageAsDataUrl(unifiedUploadPendingPreviewUrl);
+                    if (dataUrl) {
+                        applyVibeThumbnailOverrideToJson(unifiedUploadDownloadedFile.jsonData, dataUrl);
+                    }
+                }
+
                 // Process the raw JSON data the same way as locally uploaded files
                 try {
                     const detectionResult = detectAndParseVibeFile(unifiedUploadDownloadedFile.jsonData);
                     if (detectionResult.isValid) {
                         showVibeBundlePreview(detectionResult.vibes);
+                        const firstVibe = detectionResult.vibes[0];
+                        if (backgroundImage && firstVibe) {
+                            backgroundImage.src = getVibeWizardPreviewSrc(firstVibe);
+                            backgroundImage.onerror = function() {
+                                this.src = unifiedUploadPendingPreviewUrl || '/static_images/bg-3.png';
+                            };
+                        }
                     } else {
                         console.warn('Invalid vibe file format:', detectionResult.error);
                         handleInvalidBundle(backgroundImage);
@@ -8763,6 +8733,56 @@ async function handlePendingUrlDownload() {
     }
 }
 
+/** Stage unified upload for URL download (naxVibesApplet.js, clipboard paste). */
+async function prepareUnifiedUploadPendingUrl(clipboardText) {
+    const fileInfo = await getFileInfoFromUrl(clipboardText);
+
+    unifiedUploadPendingUrl = clipboardText;
+
+    const subtitle = document.getElementById('unifiedUploadModalSubtitle');
+    const subtitleText = document.getElementById('unifiedUploadModalSubtitleText');
+    if (subtitle && subtitleText) {
+        subtitleText.textContent = 'Download URL';
+        subtitle.classList.remove('hidden');
+    }
+
+    const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
+    const siteDomainText = document.getElementById('unifiedUploadSiteDomainText');
+    if (siteDomainDisplay && siteDomainText) {
+        const urlObj = new URL(clipboardText);
+        const domain = urlObj.hostname;
+        const protocol = urlObj.protocol;
+        const domainDisplay = protocol === 'https:' ?
+            `<i class="fas fa-lock"></i> ${domain}` :
+            `<i class="fas fa-fa-exclamation-triangle"></i> ${domain}`;
+        siteDomainText.innerHTML = domainDisplay;
+        siteDomainDisplay.classList.remove('hidden');
+    }
+
+    const urlPreview = createURLPreviewHTML(clipboardText, fileInfo);
+    const urlPreviewContent = document.getElementById('unifiedUploadUrlPreviewContent');
+    if (urlPreviewContent) {
+        urlPreviewContent.innerHTML = urlPreview;
+    }
+
+    const footerActions = unifiedUploadModal.querySelector('.gallery-move-actions');
+    if (footerActions) {
+        footerActions.classList.remove('hidden');
+    }
+
+    if (unifiedUploadConfirmBtn) {
+        unifiedUploadConfirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
+        unifiedUploadConfirmBtn.disabled = false;
+    }
+
+    updateUnifiedUploadMode();
+
+    const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
+    if (backgroundImage) {
+        backgroundImage.src = unifiedUploadPendingPreviewUrl || '/static_images/bg-3.png';
+    }
+}
+
 // Handle clipboard paste for URL download or file
 async function handleUnifiedUploadClipboard() {
     try {
@@ -8814,61 +8834,7 @@ async function handleUnifiedUploadClipboard() {
             return;
         }
 
-        // Get file information to display in modal
-        const fileInfo = await getFileInfoFromUrl(clipboardText);
-        
-        // Store the URL for later download
-        unifiedUploadPendingUrl = clipboardText;
-        
-        // Show subtitle with "Download URL"
-        const subtitle = document.getElementById('unifiedUploadModalSubtitle');
-        const subtitleText = document.getElementById('unifiedUploadModalSubtitleText');
-        if (subtitle && subtitleText) {
-            subtitleText.textContent = 'Download URL';
-            subtitle.classList.remove('hidden');
-        }
-        
-        // Show site domain in footer
-        const siteDomainDisplay = document.getElementById('unifiedUploadSiteDomain');
-        const siteDomainText = document.getElementById('unifiedUploadSiteDomainText');
-        if (siteDomainDisplay && siteDomainText) {
-            const urlObj = new URL(clipboardText);
-            const domain = urlObj.hostname;
-            const protocol = urlObj.protocol;
-            const domainDisplay = protocol === 'https:' ? 
-                `<i class="fas fa-lock"></i> ${domain}` : 
-                `<i class="fas fa-fa-exclamation-triangle"></i> ${domain}`;
-            siteDomainText.innerHTML = domainDisplay;
-            siteDomainDisplay.classList.remove('hidden');
-        }
-        
-        // Show URL preview in main content area
-        const urlPreview = createURLPreviewHTML(clipboardText, fileInfo);
-        const urlPreviewContent = document.getElementById('unifiedUploadUrlPreviewContent');
-        if (urlPreviewContent) {
-            urlPreviewContent.innerHTML = urlPreview;
-        }
-        
-        // Show footer actions with download/cancel buttons
-        const footerActions = unifiedUploadModal.querySelector('.gallery-move-actions');
-        if (footerActions) {
-            footerActions.classList.remove('hidden');
-        }
-        
-        // Update confirm button to show download state
-        if (unifiedUploadConfirmBtn) {
-            unifiedUploadConfirmBtn.innerHTML = '<i class="fas fa-download"></i> Load File';
-            unifiedUploadConfirmBtn.disabled = false;
-        }
-        
-        // Update the modal mode to show URL-specific elements
-        updateUnifiedUploadMode();
-        
-        // Set background to show URL preview
-        const backgroundImage = document.getElementById('unifiedUploadBackgroundImage');
-        if (backgroundImage) {
-            backgroundImage.src = '/static_images/bg-2.jpg';
-        }
+        await prepareUnifiedUploadPendingUrl(clipboardText);
     } catch (error) {
         console.error('Clipboard download error:', error);
         showGlassToast('error', null, 'Failed to download file from clipboard: ' + (error.message || 'Unknown error'));
@@ -9155,42 +9121,45 @@ function showManageReferenceModal(reference) {
         return;
     }
     
+    const metadata = reference.metadata
+        || (reference.vibes && reference.vibes[0] && reference.vibes[0].metadata)
+        || null;
+    const resolvedComment = (metadata && metadata.comment)
+        || reference.comment
+        || (reference.vibes && reference.vibes[0] && reference.vibes[0].comment)
+        || '';
+
     // Load existing metadata
-    if (reference.metadata) {
-        const metadata = reference.metadata;
-        
+    if (metadata) {
         const isPreciseRef = isPrecisionReferenceMetadata(metadata);
         if (preciseReferenceToggle) {
             preciseReferenceToggle.setAttribute('data-state', isPreciseRef ? 'on' : 'off');
         }
-        syncCacheMetadataPreciseTypeToggles(getPrecisionReferenceTypeFromMetadata(metadata));
+        syncPreciseTypeToggles('cache', getPrecisionReferenceTypeFromMetadata(metadata));
         updateCacheMetadataPreciseTypeGroupVisibility();
 
         const displayTags = metadata.tags ? metadata.tags.filter(tag => !isPrecisionReferenceSystemTag(tag)) : [];
         tagsInput.value = displayTags.join(', ');
         
-        // Comment
-        commentTextarea.value = metadata.comment || '';
-        
-        // Display name
-        displayNameInput.value = metadata.display_name || '';
+        commentTextarea.value = resolvedComment;
+
+        displayNameInput.value = metadata.displayName || metadata.display_name || '';
         
         // Vibe append fields
-        vibeAppendPromptTextarea.value = metadata.vibe_append_prompt || '';
-        vibeAppendUcTextarea.value = metadata.vibe_append_uc || '';
+        vibeAppendPromptTextarea.value = metadata.vibeAppendPrompt || metadata.vibe_append_prompt || '';
+        vibeAppendUcTextarea.value = metadata.vibeAppendUc || metadata.vibe_append_uc || '';
 
-        // Vibe prepend toggles
-        vibeAppendPromptPrependToggle.setAttribute('data-state', metadata.vibe_prepend_prompt ? 'on' : 'off');
-        vibeAppendUcPrependToggle.setAttribute('data-state', metadata.vibe_prepend_uc ? 'on' : 'off');
+        vibeAppendPromptPrependToggle.setAttribute('data-state', (metadata.vibePrependPrompt || metadata.vibe_prepend_prompt) ? 'on' : 'off');
+        vibeAppendUcPrependToggle.setAttribute('data-state', (metadata.vibePrependUc || metadata.vibe_prepend_uc) ? 'on' : 'off');
     } else {
         // Reset form if no metadata
         if (preciseReferenceToggle) {
             preciseReferenceToggle.setAttribute('data-state', 'off');
         }
-        syncCacheMetadataPreciseTypeToggles(1);
+        syncPreciseTypeToggles('cache', 1);
         updateCacheMetadataPreciseTypeGroupVisibility();
         tagsInput.value = '';
-        commentTextarea.value = '';
+        commentTextarea.value = resolvedComment;
         displayNameInput.value = '';
         vibeAppendPromptTextarea.value = '';
         vibeAppendUcTextarea.value = '';

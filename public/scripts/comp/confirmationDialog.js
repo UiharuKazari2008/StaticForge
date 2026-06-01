@@ -12,6 +12,9 @@ let confirmationDialogKeydownOptionsRef = null;
 /** When set, dialog is input mode (Escape → null). */
 let confirmationDialogKeydownInputRef = null;
 
+/** Padding from viewport edges when clamping event-placed dialogs (modalUtils.js). */
+const CONFIRMATION_DIALOG_EDGE_PADDING = 20;
+
 function getConfirmationCancelResolveValue(options) {
     if (!options || !options.length) return null;
     const cancelButton = options.find(option => option.value === null || option.value === false);
@@ -250,12 +253,16 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         confirmationDialogKeydownInputRef = null;
         registerConfirmationDialogKeydown();
 
-        // Progress/ephemeral dialogs: position manually after open, never restore/clamp automatically
-        if (config.manualPosition) {
+        // Event-placed dialogs: position manually after open, never restore/clamp automatically
+        const usesManualPlacement = config.manualPosition || !!event || config.position === 'bottom-right';
+        if (usesManualPlacement) {
             confirmationDialog.dataset.windowPositionMode = 'manual-only';
         } else {
             confirmationDialog.removeAttribute('data-window-position-mode');
         }
+
+        // clearModalPixelAnchor — modalUtils.js
+        clearModalPixelAnchor(confirmationDialog);
 
         // Apply custom width from config
         if (config.width) {
@@ -271,10 +278,14 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
             confirmationDialog.style.height = '';
         }
 
-        // Show dialog - modal system handles positioning
+        if (usesManualPlacement) {
+            layoutConfirmationDialogPlacement(event, config, { usesManualPlacement: true });
+        } else {
+            confirmationDialog.removeAttribute('data-confirmation-preplaced');
+        }
+
         openModal(confirmationDialog);
 
-        // Make it the active tool window (always on top)
         if (typeof setActiveWindow === 'function') {
             setActiveWindow(confirmationDialog);
         } else {
@@ -282,172 +293,158 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         }
 
         confirmationDialogActive = true;
-
-        // Position dialog near event if provided, or use custom positioning
-        if (event) {
-            positionConfirmationDialog(event);
-        } else if (config.position === 'bottom-right') {
-            positionConfirmationDialogBottomRight(config);
-        }
     });
 }
 
+function getConfirmationDialogEventPoint(event) {
+    if (!event) {
+        return null;
+    }
+    if (event.clientX !== undefined && event.clientY !== undefined) {
+        return { x: event.clientX, y: event.clientY };
+    }
+    if (event.target && event.target.getBoundingClientRect) {
+        const rect = event.target.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+    return null;
+}
 
-// Position the dialog near the mouse cursor or button
-function positionConfirmationDialog(event) {
-    if (!confirmationDialog || !event) return;
+function measureConfirmationDialogSize() {
+    if (!confirmationDialog) {
+        return { width: 400, height: 150 };
+    }
+    void confirmationDialog.offsetHeight;
+    const rect = confirmationDialog.getBoundingClientRect();
+    return {
+        width: rect.width || 400,
+        height: rect.height || 150
+    };
+}
 
-    // Check if mobile (under 768px wide) - center on mobile
-    const isMobile = window.innerWidth < 768;
-    if (isMobile) {
-        // Reset to default centering for mobile
-        confirmationDialog.style.removeProperty('--modal-offset-x');
-        confirmationDialog.style.removeProperty('--modal-offset-y');
+// clampModalViewportRect, setModalOffsetsFromViewportTopLeft — modalUtils.js
+function clampConfirmationDialogWithinViewportSync() {
+    if (!confirmationDialog) {
         return;
     }
 
-    // Get click position
-    let x, y;
-    if (event.clientX !== undefined && event.clientY !== undefined) {
-        x = event.clientX;
-        y = event.clientY;
-    } else if (event.target && event.target.getBoundingClientRect) {
-        const rect = event.target.getBoundingClientRect();
-        x = rect.left + rect.width / 2;
-        y = rect.top + rect.height / 2;
-    } else {
-        return; // Can't determine position
+    const rect = confirmationDialog.getBoundingClientRect();
+    if (!rect.width || !rect.height) {
+        return;
     }
 
-    // Wait for modal to be visible to get accurate dimensions
-    requestAnimationFrame(() => {
-        const dialogRect = confirmationDialog.getBoundingClientRect();
-        const dialogWidth = dialogRect.width || 400;
-        const dialogHeight = dialogRect.height || 150;
+    const clamped = clampModalViewportRect(
+        rect.left,
+        rect.top,
+        rect.width,
+        rect.height,
+        CONFIRMATION_DIALOG_EDGE_PADDING
+    );
 
-        // Calculate desired center position (centered on cursor/button)
-        const desiredCenterX = x;
-        const desiredCenterY = y;
+    if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
+        clearModalPixelAnchor(confirmationDialog);
+        setModalOffsetsFromViewportTopLeft(confirmationDialog, clamped.left, clamped.top);
+    }
+}
 
-        // Get CSS variables that affect positioning
-        // --true-inset-top is a calc() expression, so we need to get the computed pixel value
-        const tempEl = document.createElement('div');
-        tempEl.style.position = 'absolute';
-        tempEl.style.top = 'var(--true-inset-top, 0px)';
-        tempEl.style.visibility = 'hidden';
-        tempEl.style.pointerEvents = 'none';
-        document.body.appendChild(tempEl);
-        const trueInsetTop = tempEl.offsetTop || 0;
-        document.body.removeChild(tempEl);
-
-        const containerWidth = window.innerWidth;
-        const containerHeight = window.innerHeight;
-
-        // Calculate required offsets using standard modal positioning formula
-        // CSS formula: centerX = window.innerWidth/2 + offsetX
-        //              centerY = window.innerHeight/2 + 0.5*trueInsetTop + offsetY - (desktopMode ? 17.5 : 0)
-        let offsetX = desiredCenterX - containerWidth / 2;
-        let offsetY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-
-        // Get safe area inset values for bounds checking
-        const safeAreaLeft = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-left')) || 0;
-        const safeAreaRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
-        const safeAreaBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
-
-        // Calculate actual center position using the CSS formula
-        const actualCenterX = containerWidth / 2 + offsetX;
-        const actualCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + offsetY - getDesktopModalTopBias();
-
-        // Calculate window edges from center
-        const leftEdge = actualCenterX - dialogWidth / 2;
-        const rightEdge = actualCenterX + dialogWidth / 2;
-        const topEdge = actualCenterY - dialogHeight / 2;
-        const bottomEdge = actualCenterY + dialogHeight / 2;
-
-        // Ensure dialog stays within viewport bounds, accounting for safe areas
-        const margin = 20;
-        let constrainedX = offsetX;
-        let constrainedY = offsetY;
-
-        // Check horizontal bounds
-        if (leftEdge < margin + safeAreaLeft) {
-            const desiredLeftEdge = margin + safeAreaLeft;
-            const desiredCenterX = desiredLeftEdge + dialogWidth / 2;
-            constrainedX = desiredCenterX - containerWidth / 2;
-        } else if (rightEdge > containerWidth - margin - safeAreaRight) {
-            const desiredRightEdge = containerWidth - margin - safeAreaRight;
-            const desiredCenterX = desiredRightEdge - dialogWidth / 2;
-            constrainedX = desiredCenterX - containerWidth / 2;
-        }
-
-        // Recalculate centerY with potentially constrained offsetX
-        const recalculatedCenterY = containerHeight / 2 + (0.5 * trueInsetTop) + constrainedY - getDesktopModalTopBias();
-        const recalculatedTopEdge = recalculatedCenterY - dialogHeight / 2;
-        const recalculatedBottomEdge = recalculatedCenterY + dialogHeight / 2;
-
-        // Check vertical bounds
-        if (recalculatedTopEdge < margin + trueInsetTop) {
-            const desiredTopEdge = margin + trueInsetTop;
-            const desiredCenterY = desiredTopEdge + dialogHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-        } else if (recalculatedBottomEdge > containerHeight - margin - safeAreaBottom) {
-            const desiredBottomEdge = containerHeight - margin - safeAreaBottom;
-            const desiredCenterY = desiredBottomEdge - dialogHeight / 2;
-            constrainedY = desiredCenterY - containerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
-        }
-
-        // getDesktopModalTopBias, setModalOffsetPx — modalUtils.js
-        setModalOffsetPx(confirmationDialog, constrainedX, constrainedY, { snap: true, settle: true });
+function applyConfirmationDialogOffsets(offsetX, offsetY, dialogWidth, dialogHeight, settle) {
+    const clamped = clampModalOffsetsForRect(offsetX, offsetY, dialogWidth, dialogHeight, {
+        edgeMargin: CONFIRMATION_DIALOG_EDGE_PADDING
     });
+    setModalOffsetPx(confirmationDialog, clamped.offsetX, clamped.offsetY, { snap: true, settle: !!settle });
+    clampConfirmationDialogWithinViewportSync();
+}
+
+// beginModalLayoutMeasure, endModalLayoutMeasure — modalUtils.js
+function layoutConfirmationDialogPlacement(event, config, options) {
+    if (!confirmationDialog) {
+        return false;
+    }
+
+    clearModalPixelAnchor(confirmationDialog);
+
+    const isMobile = window.innerWidth < 768;
+    if (isMobile) {
+        confirmationDialog.style.removeProperty('--modal-offset-x');
+        confirmationDialog.style.removeProperty('--modal-offset-y');
+        confirmationDialog.removeAttribute('data-confirmation-preplaced');
+        return false;
+    }
+
+    const useBottomRight = !event && (
+        config.position === 'bottom-right' ||
+        (options.usesManualPlacement && config.position !== 'center')
+    );
+    const point = getConfirmationDialogEventPoint(event);
+    if (!point && !useBottomRight) {
+        confirmationDialog.removeAttribute('data-confirmation-preplaced');
+        return false;
+    }
+
+    const isHidden = confirmationDialog.classList.contains('hidden')
+        || confirmationDialog.classList.contains('hidden-alt');
+    const measureState = isHidden ? beginModalLayoutMeasure(confirmationDialog) : null;
+
+    try {
+        const { width: dialogWidth, height: dialogHeight } = measureConfirmationDialogSize();
+        const containerWidth = window.innerWidth;
+        const trueInsetTop = getModalTrueInsetTop();
+        let offsetX;
+        let offsetY;
+
+        if (point) {
+            offsetX = point.x - containerWidth / 2;
+            offsetY = point.y - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+        } else {
+            const safeAreaInsetBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
+            const safeAreaInsetRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
+            const sidePadding = config.leftPadding || 20;
+            const bottomPadding = config.bottomPadding || 20;
+            const rightEdge = window.innerWidth - safeAreaInsetRight - sidePadding;
+            const bottomEdge = window.innerHeight - safeAreaInsetBottom - bottomPadding;
+            offsetX = rightEdge - dialogWidth / 2 - containerWidth / 2;
+            offsetY = bottomEdge - dialogHeight / 2 - window.innerHeight / 2 - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+        }
+
+        const settle = !isHidden
+            && !confirmationDialog.classList.contains('opening')
+            && !confirmationDialog.classList.contains('closing');
+        applyConfirmationDialogOffsets(offsetX, offsetY, dialogWidth, dialogHeight, settle);
+        confirmationDialog.dataset.confirmationPreplaced = '1';
+        return true;
+    } finally {
+        if (measureState) {
+            endModalLayoutMeasure(confirmationDialog, measureState);
+        }
+    }
+}
+
+// Position the dialog near the mouse cursor or button (dialog may already be open)
+function positionConfirmationDialog(event) {
+    layoutConfirmationDialogPlacement(event, {}, { usesManualPlacement: true });
 }
 
 // Position the dialog at bottom right with padding
 function positionConfirmationDialogBottomRight(config = {}) {
-    if (!confirmationDialog) return;
-
-    // Force dialog to be visible so we can measure it
-    confirmationDialog.style.display = 'block';
-    confirmationDialog.style.visibility = 'hidden';
-
-    const dialogRect = confirmationDialog.getBoundingClientRect();
-    const dialogWidth = dialogRect.width;
-    const dialogHeight = dialogRect.height;
-
-    // Get safe area insets (for devices with notches, etc.)
-    const safeAreaInsetBottom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-bottom')) || 0;
-    const safeAreaInsetRight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--inset-right')) || 0;
-
-    // Calculate padding from config or defaults
-    const leftPadding = config.leftPadding || 20;
-    const bottomPadding = config.bottomPadding || 20;
-
-    // Position at bottom right with padding, accounting for safe areas
-    const rightEdge = window.innerWidth - safeAreaInsetRight - leftPadding;
-    const bottomEdge = window.innerHeight - safeAreaInsetBottom - bottomPadding;
-
-    // Calculate offset from center (CSS uses center-based positioning)
-    const offsetX = rightEdge - dialogWidth / 2 - window.innerWidth / 2;
-    const offsetY = bottomEdge - dialogHeight / 2 - window.innerHeight / 2;
-
-    setModalOffsetPx(confirmationDialog, offsetX, offsetY, { snap: true, settle: true });
-
-    // Restore visibility
-    confirmationDialog.style.display = '';
-    confirmationDialog.style.visibility = '';
+    layoutConfirmationDialogPlacement(null, config || {}, { usesManualPlacement: true });
 }
 
 // Hide confirmation dialog
 async function hideConfirmationDialog() {
     if (confirmationDialog) {
+        // revertModalToOffsetAnchor — modalUtils.js (sync offsets before .closing drops pixel-settled CSS)
+        revertModalToOffsetAnchor(confirmationDialog);
         await closeModal(confirmationDialog);
         confirmationDialogActive = false;
 
         // Reset custom width and ephemeral position (never restore progress dialog placement)
         confirmationDialog.style.width = '';
         confirmationDialog.style.height = '';
+        clearModalPixelAnchor(confirmationDialog);
         confirmationDialog.style.removeProperty('--modal-offset-x');
         confirmationDialog.style.removeProperty('--modal-offset-y');
         confirmationDialog.removeAttribute('data-window-position-mode');
+        confirmationDialog.removeAttribute('data-confirmation-preplaced');
 
         if (confirmationDialogKeydownHandler) {
             document.removeEventListener('keydown', confirmationDialogKeydownHandler);
@@ -633,6 +630,16 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         confirmationDialogKeydownInputRef = input;
         registerConfirmationDialogKeydown();
 
+        const usesManualPlacement = config.manualPosition || !!event || config.position === 'bottom-right';
+        if (usesManualPlacement) {
+            confirmationDialog.dataset.windowPositionMode = 'manual-only';
+        } else {
+            confirmationDialog.removeAttribute('data-window-position-mode');
+        }
+
+        // clearModalPixelAnchor — modalUtils.js
+        clearModalPixelAnchor(confirmationDialog);
+
         // Apply custom width from config
         if (config.width) {
             const widthVal = String(config.width);
@@ -647,10 +654,14 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
             confirmationDialog.style.height = '';
         }
 
-        // Show dialog - modal system handles positioning
+        if (usesManualPlacement) {
+            layoutConfirmationDialogPlacement(event, config, { usesManualPlacement: true });
+        } else {
+            confirmationDialog.removeAttribute('data-confirmation-preplaced');
+        }
+
         openModal(confirmationDialog);
 
-        // Make it the active tool window (always on top)
         if (typeof setActiveWindow === 'function') {
             setActiveWindow(confirmationDialog);
         } else {
@@ -658,12 +669,5 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         }
 
         confirmationDialogActive = true;
-
-        // Position dialog near event if provided, or use custom positioning
-        if (event) {
-            positionConfirmationDialog(event);
-        } else if (config.position === 'bottom-right') {
-            positionConfirmationDialogBottomRight(config);
-        }
     });
 }

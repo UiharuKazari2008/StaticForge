@@ -550,6 +550,272 @@ function findTagByGalleryFilename(slug, filename) {
     return null;
 }
 
+/** Friendly internal expander presets (!NAX_FAV_CHARA, !NAX_TRY_ARTIST, …). Resolved server-side only. */
+const NAX_EXPANDER_PRESETS = [
+    {
+        id: 'CHARA',
+        label: 'Character',
+        description: 'Random marked character tag (v4 / v4.5 follows model)',
+        resolveSlugs(model) {
+            const v45 = isNaxModelV45(model);
+            const primary = v45 ? 'danbooru-character-tags-v4.5' : 'danbooru-character-tags-v4';
+            return existingGallerySlugs([
+                primary,
+                'danbooru-character-tags-v4.5',
+                'danbooru-character-tags-v4'
+            ]);
+        }
+    },
+    {
+        id: 'ARTIST',
+        label: 'Artist',
+        description: 'Random marked artist tag (v4 / v4.5 follows model; v4.5 pools constrained and loose)',
+        resolveSlugs(model) {
+            return artistGallerySlugsForModel(model);
+        }
+    },
+    {
+        id: 'CURATED',
+        label: 'Curated Artist',
+        description: 'Random marked curated artist (v4.5, plain tag prompt)',
+        resolveSlugs(model) {
+            return curatedArtistGallerySlugsForModel(model);
+        }
+    },
+    {
+        id: 'FACE',
+        label: 'Face',
+        description: 'Random marked face tag (v4 / v4.5 follows model)',
+        resolveSlugs(model) {
+            const v45 = isNaxModelV45(model);
+            const primary = v45 ? 'danbooru-face-tags-v4.5' : 'danbooru-face-tags-v4';
+            return existingGallerySlugs([primary, 'danbooru-face-tags-v4.5', 'danbooru-face-tags-v4']);
+        }
+    },
+    {
+        id: 'COPYRIGHT',
+        label: 'Copyright',
+        description: 'Random marked copyright tag (v4.5)',
+        resolveSlugs(model) {
+            if (!isNaxModelV45(model)) return [];
+            return existingGallerySlugs(['danbooru-copyright-tags-v4.5']);
+        }
+    },
+    {
+        id: 'HAIR',
+        label: 'Hair',
+        description: 'Random marked hair tag (v4.5)',
+        resolveSlugs(model) {
+            if (!isNaxModelV45(model)) return [];
+            return existingGallerySlugs(['danbooru-hair-tags-v4.5']);
+        }
+    }
+];
+
+function isNaxModelV45(model) {
+    if (!model) return true;
+    const m = String(model).toLowerCase();
+    return m.includes('4-5') || m.includes('4_5') || m.includes('4.5');
+}
+
+/** Version-locked danbooru artist-tag galleries (constrained + loose on v4.5). */
+function artistGallerySlugsForModel(model) {
+    if (isNaxModelV45(model)) {
+        return existingGallerySlugs([
+            'danbooru-artist-tags-v4.5',
+            'danbooru-artist-tags-2-v4.5'
+        ]);
+    }
+    return existingGallerySlugs(['danbooru-artist-tags-v4']);
+}
+
+/** Curated artist list — separate prompt style, v4.5 only. */
+function curatedArtistGallerySlugsForModel(model) {
+    if (!isNaxModelV45(model)) return [];
+    return existingGallerySlugs(['artists-v4.5']);
+}
+
+function isNaxCuratedArtistGallery(gallerySlug) {
+    const sl = String(gallerySlug || '').toLowerCase();
+    return /^artists-v[\d.]+$/i.test(sl) || sl === 'artists-v4.5';
+}
+
+function existingGallerySlugs(candidates) {
+    const known = new Set(getGalleries().map((g) => g.slug));
+    const out = [];
+    for (const slug of candidates) {
+        if (slug && known.has(slug) && !out.includes(slug)) {
+            out.push(slug);
+        }
+    }
+    return out;
+}
+
+function getNaxExpanderPreset(presetId) {
+    const id = String(presetId || '').trim().toUpperCase();
+    if (!id) return null;
+    return NAX_EXPANDER_PRESETS.find((p) => p.id === id) || null;
+}
+
+function formatTagForPrompt(tag, gallerySlug) {
+    const name = String(tag || '').trim();
+    if (!name) return '';
+    if (isNaxCuratedArtistGallery(gallerySlug)) {
+        return name;
+    }
+    const sl = String(gallerySlug || '').toLowerCase();
+    if (sl.includes('artist')) {
+        return /\s/.test(name) ? `art by ${name}` : `artist:${name}`;
+    }
+    return name;
+}
+
+/**
+ * @param {string} gallerySlug
+ * @param {'favorites'|'try'} markFilter
+ * @returns {string|null} tag name
+ */
+function pickRandomMarkedTag(gallerySlug, markFilter) {
+    const row = pickRandomMarkedTagFromSlugs([gallerySlug], markFilter);
+    return row ? row.tag : null;
+}
+
+/**
+ * @param {string[]} gallerySlugs
+ * @param {'favorites'|'try'} markFilter
+ * @returns {number}
+ */
+function countMarkedTagsInSlugs(gallerySlugs, markFilter) {
+    const d = getDb();
+    if (!d) return 0;
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return 0;
+    const markCol = markFilter === 'try' ? 'try_mark = 1' : 'favorite = 1';
+    const placeholders = slugs.map(() => '?').join(', ');
+    const row = d.prepare(`
+        SELECT COUNT(*) AS c FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+    `).get(...slugs);
+    return row && row.c != null ? row.c : 0;
+}
+
+/**
+ * @param {string[]} gallerySlugs
+ * @param {'favorites'|'try'} markFilter
+ * @returns {{ tag: string, gallerySlug: string } | null}
+ */
+function pickRandomMarkedTagFromSlugs(gallerySlugs, markFilter) {
+    const d = getDb();
+    if (!d) return null;
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return null;
+    const markCol = markFilter === 'try' ? 'try_mark = 1' : 'favorite = 1';
+    const placeholders = slugs.map(() => '?').join(', ');
+    const row = d.prepare(`
+        SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+        ORDER BY RANDOM() LIMIT 1
+    `).get(...slugs);
+    return row && row.tag ? { tag: row.tag, gallerySlug: row.gallerySlug } : null;
+}
+
+/**
+ * Resolve !NAX_FAV_CHARA / !NAX_TRY_ARTIST at generation time.
+ * @returns {{ tag: string, gallerySlug: string, formatted: string, presetId: string } | null}
+ */
+function resolveNaxInternalExpander(presetId, kind, model) {
+    const preset = getNaxExpanderPreset(presetId);
+    if (!preset) return null;
+    const markFilter = kind === 'TRY' ? 'try' : 'favorites';
+    const slugs = preset.resolveSlugs(model, getGalleries());
+    const row = pickRandomMarkedTagFromSlugs(slugs, markFilter);
+    if (!row) return null;
+    return {
+        tag: row.tag,
+        gallerySlug: row.gallerySlug,
+        formatted: formatTagForPrompt(row.tag, row.gallerySlug),
+        presetId: preset.id
+    };
+}
+
+/**
+ * @param {object} opts
+ * @returns {object[]}
+ */
+function queryMarkedTags(opts = {}) {
+    const d = getDb();
+    if (!d) return [];
+
+    const {
+        markFilter = 'favorites',
+        gallerySlug = null,
+        limit = 500
+    } = opts;
+
+    const where = [];
+    const params = [];
+    if (markFilter === 'favorites') {
+        where.push('favorite = 1');
+    } else if (markFilter === 'try') {
+        where.push('try_mark = 1');
+    } else {
+        return [];
+    }
+
+    if (gallerySlug && isValidSlug(gallerySlug)) {
+        where.push('gallery_slug = ?');
+        params.push(gallerySlug);
+    }
+
+    const lim = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+    return d.prepare(`
+        SELECT gallery_slug AS gallerySlug, tag, filename,
+               favorite, try_mark AS tryMark
+        FROM nax_tags
+        WHERE ${where.join(' AND ')}
+        ORDER BY gallery_slug COLLATE NOCASE, tag COLLATE NOCASE
+        LIMIT ?
+    `).all(...params, lim);
+}
+
+/** Virtual !NAX_FAV_* / !NAX_TRY_* expanders for autocomplete (friendly preset ids). */
+function getInternalNaxTextReplacements() {
+    const out = [];
+    for (const preset of NAX_EXPANDER_PRESETS) {
+        out.push({
+            type: 'FAV',
+            key: `NAX_FAV_${preset.id}`,
+            presetId: preset.id,
+            label: preset.label,
+            description: preset.description
+        });
+        out.push({
+            type: 'TRY',
+            key: `NAX_TRY_${preset.id}`,
+            presetId: preset.id,
+            label: preset.label,
+            description: preset.description
+        });
+    }
+    return out;
+}
+
+/** Client context menu / docs: friendly expander list from server. */
+function getNaxExpanderPresetsForClient(model) {
+    return NAX_EXPANDER_PRESETS.map((preset) => {
+        const slugs = preset.resolveSlugs(model);
+        return {
+            id: preset.id,
+            label: preset.label,
+            description: preset.description,
+            favPattern: `!NAX_FAV_${preset.id}`,
+            tryPattern: `!NAX_TRY_${preset.id}`,
+            favCount: countMarkedTagsInSlugs(slugs, 'favorites'),
+            tryCount: countMarkedTagsInSlugs(slugs, 'try')
+        };
+    });
+}
+
 module.exports = {
     DB_PATH,
     NAX_FAVORITE_MERGE_GROUPS,
@@ -565,6 +831,19 @@ module.exports = {
     getTagRow,
     getTagFilename,
     findTagByGalleryFilename,
+    NAX_EXPANDER_PRESETS,
+    isNaxModelV45,
+    artistGallerySlugsForModel,
+    curatedArtistGallerySlugsForModel,
+    isNaxCuratedArtistGallery,
+    formatTagForPrompt,
+    pickRandomMarkedTag,
+    pickRandomMarkedTagFromSlugs,
+    resolveNaxInternalExpander,
+    getNaxExpanderPreset,
+    queryMarkedTags,
+    getInternalNaxTextReplacements,
+    getNaxExpanderPresetsForClient,
     queryTags,
     setFavorite,
     setTryMark,

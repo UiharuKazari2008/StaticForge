@@ -1,0 +1,15 @@
+{
+  "default": {
+    "name": "Default",
+    "color": "#102040",
+    "backgroundColor": null,
+    "primaryFont": null,
+    "textareaFont": null,
+    "sort": 0,
+    "presets": [],
+    "files": [],
+    "scraps": [],
+    "pinned": [],
+    "groups": {}
+  }
+}

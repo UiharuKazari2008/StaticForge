@@ -1,0 +1,26 @@
+# Scratch / CI test — no host config bind mounts (entrypoint bootstraps templates).
+# Usage: docker compose -f docker-compose.test.yml up --build
+
+services:
+  dreamscape:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dreamscape:test
+    ports:
+      - "9220:9220"
+    environment:
+      NEKOAI_JS_SOURCE: registry
+    volumes:
+      - dreamscape-test-images:/app/images
+      - dreamscape-test-previews:/app/.previews
+      - dreamscape-test-cache:/app/.cache
+      - dreamscape-test-logs:/app/logs
+    restart: "no"
+    mem_limit: 4g
+
+volumes:
+  dreamscape-test-images:
+  dreamscape-test-previews:
+  dreamscape-test-cache:
+  dreamscape-test-logs:

@@ -701,7 +701,9 @@ async function createPresetItem(key, preset) {
             onAction: (actionName, target) => {
                 if (actionName === 'generate') {
                     generateFromPreset(key);
-                    hidePresetManager();
+                    if (!window.isDesktop) {
+                        hidePresetManager();
+                    }
                 } else if (actionName === 'edit-manual') {
                     // Only close preset manager modal if not in desktop mode
                     if (!window.isDesktop) {
@@ -1332,56 +1334,34 @@ async function updatePresetSimple(presetName, updates) {
     }
 }
 
-// Generate image from preset
+// Generate image from preset via Spellcaster (spellbook modal)
 async function generateFromPreset(presetName) {
     try {
-        // Check if queue is blocked using event system
         const queueStatus = await getQueueStatus();
         if (queueStatus.isBlocked) {
             showGlassToast('warning', 'Queue Blocked', 'Generation is currently blocked. Please wait for the queue to clear.', false, 5000);
             return;
         }
-        
+
         const preset = presetData[presetName];
         if (!preset) {
             throw new Error('Preset not found');
         }
-        
-        const toastId = showGlassToast('info', 'Generating...', `Starting generation for preset "${preset.name || presetName}"`, true);
-        
-        // Get current workspace
-        const workspace = currentWorkspace || null;
-        
-        // Generate using WebSocket
-        const result = await wsClient.generatePreset(presetName, workspace);
-        
-        // Update the existing toast to show completion
-        updateGlassToastComplete(toastId, {
-            type: 'success',
-            title: 'Generation Complete',
-            message: `Generated image from preset "${preset.name || presetName}"`,
-            customIcon: '<i class="fas fa-check"></i>',
-            showProgress: false
-        });
-        
-        // Close the preset manager modal
+
         hidePresetManager();
-        
-        return result;
+
+        // spellbookModalManager: public/scripts/comp/spellbookModal.js
+        if (!window.spellbookModalManager) {
+            showGlassToast('error', 'Generation Failed', 'Spellcaster is not available');
+            return;
+        }
+
+        window.spellbookModalManager.openModal();
+        window.spellbookModalManager.selectPreset(presetName);
+        await window.spellbookModalManager.handleGenerate();
     } catch (error) {
         console.error('Preset generation error:', error);
-        // Update the existing toast to show error
-        if (toastId) {
-            updateGlassToastComplete(toastId, {
-                type: 'error',
-                title: 'Generation Failed',
-                message: error.message,
-                customIcon: '<i class="nai-cross"></i>',
-                showProgress: false
-            });
-        } else {
-            showGlassToast('error', 'Generation Failed', error.message);
-        }
+        showGlassToast('error', 'Generation Failed', error.message);
         throw error;
     }
 }

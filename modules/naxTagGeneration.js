@@ -79,11 +79,15 @@ class NaxTagGenerationService {
         return template.split(TAG_PLACEHOLDER).join(token);
     }
 
-    buildPromptFromTemplate(template, tag) {
-        if (!template || !String(template).includes(TAG_PLACEHOLDER)) {
-            throw new Error(`Generation config promptTemplate must contain ${TAG_PLACEHOLDER}`);
+    buildMainPrompt(genCfg, tag) {
+        const template = genCfg.promptTemplate || '';
+        const characterTemplate = genCfg.characterPrompt || '';
+        const tagInMain = template.includes(TAG_PLACEHOLDER);
+        const tagInCharacter = characterTemplate.includes(TAG_PLACEHOLDER);
+        if (!tagInMain && !tagInCharacter) {
+            throw new Error(`Generation config must contain ${TAG_PLACEHOLDER} in promptTemplate or characterPrompt`);
         }
-        return this.applyInputValueToTemplate(template, tag);
+        return tagInMain ? this.applyInputValueToTemplate(template, tag) : template;
     }
 
     naxFilenameForTag(tag) {
@@ -107,7 +111,7 @@ class NaxTagGenerationService {
             throw new Error('NovelAI client is not available. Configure API key in secure.config.json.');
         }
 
-        const prompt = this.buildPromptFromTemplate(genCfg.promptTemplate, tag);
+        const prompt = this.buildMainPrompt(genCfg, tag);
         const filename = this.naxFilenameForTag(tag);
         const outDir = this.naxImageDirForSlug(gallerySlug);
         const absPath = path.join(outDir, filename);

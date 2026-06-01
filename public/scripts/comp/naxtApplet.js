@@ -4,11 +4,13 @@
  */
 
 const NAXT_FILTER_DEBOUNCE_MS = 2000;
-const NAXT_GRID_CELL_MIN = 96;
-const NAXT_GRID_CELL_MAX = 280;
-const NAXT_GRID_CELL_DEFAULT = 140;
-const NAXT_GRID_CELL_LS = 'naxtGridCellPx';
 const NAXT_TAG_BAG_LS = 'naxtTagBag';
+
+const NAXT_QUICK_FILTERS = [
+    { id: 'goat', btnId: 'naxtQuickGoatBtn' },
+    { id: 'gems', btnId: 'naxtQuickGemsBtn' },
+    { id: 'debated', btnId: 'naxtQuickDebatedBtn' }
+];
 
 const NAXT_MARK_FILTER_OPTIONS = [
     { value: 'all', label: 'All' },
@@ -142,9 +144,12 @@ function naxtApplyEmphasisToFragment(fragment, bias) {
     return fragment;
 }
 
-/** Prompt fragment for a NAX tag (artist galleries use artist:/art by). */
+/** Prompt fragment for a NAX tag (artist galleries use artist:/art by; curated artists use plain tag). */
 function naxtFormatTagFragment(tagName, gallerySlug) {
     const sl = String(gallerySlug || '').toLowerCase();
+    if (/^artists-v[\d.]+$/i.test(sl) || sl === 'artists-v4.5') {
+        return tagName;
+    }
     if (sl.includes('artist')) {
         return /\s/.test(tagName) ? `art by ${tagName}` : `artist:${tagName}`;
     }
@@ -179,6 +184,7 @@ class NaxtApplet {
         this.imgVisibilityObserver = null;
         this.customTagGenerating = false;
         this.pendingCustomTag = null;
+        this.activeQuickFilter = '';
         this.init();
     }
 
@@ -202,9 +208,15 @@ class NaxtApplet {
         this.sortMenu = document.getElementById('naxtSortDropdownMenu');
         this.sortSelected = document.getElementById('naxtSortSelected');
         this.invertBtn = document.getElementById('naxtInvertBtn');
+        this.resetFiltersBtn = document.getElementById('naxtResetFiltersBtn');
+        this.quickGoatBtn = document.getElementById('naxtQuickGoatBtn');
+        this.quickGemsBtn = document.getElementById('naxtQuickGemsBtn');
+        this.quickDebatedBtn = document.getElementById('naxtQuickDebatedBtn');
         this.grid = document.getElementById('naxtGrid');
         this.sentinel = document.getElementById('naxtLoadSentinel');
         this.emptyState = document.getElementById('naxtEmptyState');
+        this.emptySetup = document.getElementById('naxtEmptySetup');
+        this.emptyNoResults = document.getElementById('naxtEmptyNoResults');
         this.minUp = document.getElementById('naxtMinUp');
         this.maxUp = document.getElementById('naxtMaxUp');
         this.minDown = document.getElementById('naxtMinDown');
@@ -215,7 +227,6 @@ class NaxtApplet {
         this.maxRatio = document.getElementById('naxtMaxRatio');
         this.statusBar = document.getElementById('naxtStatusBar');
         this.modalTitleLabel = document.getElementById('naxtModalTitleLabel');
-        this.cellSizeInput = document.getElementById('naxtCellSizeInput');
         this.openCustomTagBtn = document.getElementById('naxtOpenCustomTagBtn');
         this.customTagModal = document.getElementById('naxtCustomTagModal');
         this.customTagModalTitle = document.getElementById('naxtCustomTagModalTitle');
@@ -237,7 +248,6 @@ class NaxtApplet {
         this.loadBagFromStorage();
         this.setupDropdowns();
         this.setupListeners();
-        this.readGridCellFromStorage();
         this.updateBagChrome();
         this.updateMarkFilterLabel();
         this.setupHistoryMenus();
@@ -491,6 +501,8 @@ class NaxtApplet {
     }
 
     filtersAreActive() {
+        if (this.activeQuickFilter) return true;
+        if (this.invert) return true;
         if (this.markFilter && this.markFilter !== 'all') return true;
         if (this.sortKey === 'ratio' || this.sortKey === 'random') return true;
         const els = [this.minUp, this.maxUp, this.minDown, this.maxDown, this.minScore, this.maxScore, this.minRatio, this.maxRatio];
@@ -672,10 +684,15 @@ class NaxtApplet {
         } else {
             this.bag.forEach((entry, index) => {
                 const option = document.createElement('div');
-                option.className = 'custom-dropdown-option';
+                option.className = 'custom-dropdown-option naxt-bag-item';
                 option.tabIndex = 0;
                 const icon = naxtGalleryIconClass(entry.gallerySlug);
                 option.innerHTML = `<i class="${icon}"></i> <span>${naxtEscapeHtml(entry.tag)}</span>`;
+                this.syncNaxtTagTargetDataset(option, entry, index);
+                this.attachNaxtTagContextMenu(option, {
+                    inBag: true,
+                    isCustom: option.dataset.isCustom === '1'
+                });
                 this.bindNaxtSortMenuOption(option, () => {
                     this.removeFromBagAt(index);
                     if (typeof closeDropdown === 'function') closeDropdown(this.bagMenu, this.bagBtn);
@@ -785,6 +802,10 @@ class NaxtApplet {
             await window.wsClient.sendMessage('set_nax_favorite', { gallerySlug, tag, favorite }, false);
             const card = this.findVisibleCard(gallerySlug, tag);
             this.applyFavoriteToCard(card, favorite);
+            // invalidatePromptCtxNaxFavoritesCache: public/scripts/comp/promptTextareaContextMenu.js
+            if (invalidatePromptCtxNaxFavoritesCache) invalidatePromptCtxNaxFavoritesCache();
+            // invalidatePromptCtxNaxExpanderPresetsCache: public/scripts/comp/promptTextareaContextMenu.js
+            if (invalidatePromptCtxNaxExpanderPresetsCache) invalidatePromptCtxNaxExpanderPresetsCache();
         } catch (e) {
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, e.message || 'Favorite failed', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -797,6 +818,8 @@ class NaxtApplet {
             await window.wsClient.sendMessage('set_nax_try', { gallerySlug, tag, tryMark }, false);
             const card = this.findVisibleCard(gallerySlug, tag);
             this.applyTryToCard(card, tryMark);
+            // invalidatePromptCtxNaxExpanderPresetsCache: public/scripts/comp/promptTextareaContextMenu.js
+            if (invalidatePromptCtxNaxExpanderPresetsCache) invalidatePromptCtxNaxExpanderPresetsCache();
         } catch (e) {
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, e.message || 'Try mark failed', false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
@@ -838,6 +861,8 @@ class NaxtApplet {
                 this.randomSeed = 0;
             }
             this.sortKey = value;
+            this.activeQuickFilter = '';
+            this.syncQuickFilterButtons();
             const opt = sortOptions.find((o) => o.value === value);
             if (this.sortSelected) this.sortSelected.textContent = opt ? opt.label : 'Score';
             if (typeof closeDropdown === 'function') closeDropdown(this.sortMenu, this.sortBtn);
@@ -853,29 +878,39 @@ class NaxtApplet {
             this.bindNaxtSortMenuOption(option, () => selectSort(item.value));
             menu.appendChild(option);
         });
-        const div = document.createElement('div');
-        div.className = 'naxt-sort-menu-divider';
-        div.setAttribute('role', 'separator');
-        menu.appendChild(div);
-        const gh = document.createElement('div');
-        gh.className = 'custom-dropdown-group';
-        gh.textContent = 'Quick filters';
-        menu.appendChild(gh);
-        const quicks = [
-            { id: 'goat', label: 'GOAT', title: 'Up ratio ≥ 75%, min 15 upvotes, sorted by score' },
-            { id: 'gems', label: 'Hidden Gems', title: 'Max 4 upvotes, 0 downvotes, min 1 upvote, random order' },
-            { id: 'debated', label: 'Debated', title: 'Up ratio between 50% and 60%, min 5 up & 5 down, sorted by ratio' }
-        ];
-        quicks.forEach((q) => {
-            const option = document.createElement('div');
-            option.className = 'custom-dropdown-option';
-            option.tabIndex = 0;
-            option.dataset.naxtQuick = q.id;
-            option.title = q.title;
-            option.innerHTML = `<span>${q.label}</span>`;
-            this.bindNaxtSortMenuOption(option, () => this.applyNaxtQuickPreset(q.id));
-            menu.appendChild(option);
+    }
+
+    syncQuickFilterButtons() {
+        const map = {
+            goat: this.quickGoatBtn,
+            gems: this.quickGemsBtn,
+            debated: this.quickDebatedBtn
+        };
+        Object.entries(map).forEach(([id, btn]) => {
+            if (!btn) return;
+            btn.setAttribute('data-state', this.activeQuickFilter === id ? 'on' : 'off');
         });
+    }
+
+    resetAllFilters(reload = true) {
+        if (this.filterReloadTimer) {
+            clearTimeout(this.filterReloadTimer);
+            this.filterReloadTimer = null;
+        }
+        this.activeQuickFilter = '';
+        this.syncQuickFilterButtons();
+        this.markFilter = 'all';
+        this.updateMarkFilterLabel();
+        this.sortKey = 'score';
+        this.randomSeed = 0;
+        this.invert = false;
+        if (this.invertBtn) this.invertBtn.setAttribute('data-state', 'off');
+        if (this.sortSelected) this.sortSelected.textContent = 'Score';
+        this.clearNaxtNumericFilters();
+        this.syncFilterToggleIndicator();
+        if (reload) {
+            void this.reloadFromTop(false);
+        }
     }
 
     bindNaxtSortMenuOption(option, action) {
@@ -927,52 +962,16 @@ class NaxtApplet {
         this.committedSearchQuery = '';
         this.clearNaxtNumericFilters();
         if (this.sortSelected) this.sortSelected.textContent = 'Score';
-        this.applyGridCellPx(NAXT_GRID_CELL_DEFAULT, true);
+        this.activeQuickFilter = '';
+        this.syncQuickFilterButtons();
         this.syncFilterToggleIndicator();
     }
 
-    readGridCellFromStorage() {
-        let px = NAXT_GRID_CELL_DEFAULT;
-        try {
-            const t = localStorage.getItem(NAXT_GRID_CELL_LS);
-            if (t) {
-                const n = parseInt(t, 10);
-                if (!Number.isNaN(n)) px = n;
-            }
-        } catch {
-            /* */
-        }
-        this.applyGridCellPx(px, false);
-    }
-
-    getGridCellPx() {
-        if (!this.grid) return NAXT_GRID_CELL_DEFAULT;
-        const v = this.grid.style.getPropertyValue('--naxt-cell').trim();
-        if (v) {
-            const n = parseInt(v, 10);
-            if (!Number.isNaN(n)) return n;
-        }
-        return NAXT_GRID_CELL_DEFAULT;
-    }
-
-    applyGridCellPx(px, writeLs) {
-        let n = Math.round(Number(px));
-        if (Number.isNaN(n)) n = NAXT_GRID_CELL_DEFAULT;
-        n = Math.min(NAXT_GRID_CELL_MAX, Math.max(NAXT_GRID_CELL_MIN, n));
-        n = Math.round(n / 4) * 4;
-        if (this.grid) this.grid.style.setProperty('--naxt-cell', `${n}px`);
-        if (this.cellSizeInput) this.cellSizeInput.value = String(n);
-        if (writeLs) {
-            try {
-                localStorage.setItem(NAXT_GRID_CELL_LS, String(n));
-            } catch {
-                /* */
-            }
-        }
-    }
-
     applyNaxtQuickPreset(id) {
-        if (typeof closeDropdown === 'function') closeDropdown(this.sortMenu, this.sortBtn);
+        if (this.activeQuickFilter === id) {
+            this.resetAllFilters(true);
+            return;
+        }
         this.filterRowVisible = false;
         if (this.filterRow) this.filterRow.classList.add('hidden');
         if (this.filterToggleBtn) this.filterToggleBtn.setAttribute('data-state', 'off');
@@ -999,6 +998,8 @@ class NaxtApplet {
             this.sortKey = 'ratio';
             if (this.sortSelected) this.sortSelected.textContent = 'Ratio';
         }
+        this.activeQuickFilter = id;
+        this.syncQuickFilterButtons();
         this.syncFilterToggleIndicator();
         void this.reloadFromTop(true);
     }
@@ -1100,6 +1101,20 @@ class NaxtApplet {
             });
         }
 
+        if (this.resetFiltersBtn) {
+            this.resetFiltersBtn.addEventListener('click', () => this.resetAllFilters(true));
+        }
+
+        const quickBtnMap = [
+            [this.quickGoatBtn, 'goat'],
+            [this.quickGemsBtn, 'gems'],
+            [this.quickDebatedBtn, 'debated']
+        ];
+        quickBtnMap.forEach(([btn, id]) => {
+            if (!btn) return;
+            btn.addEventListener('click', () => this.applyNaxtQuickPreset(id));
+        });
+
         if (this.searchInput) {
             this.searchInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
@@ -1111,22 +1126,14 @@ class NaxtApplet {
             });
         }
 
-        [this.minUp, this.maxUp, this.minDown, this.maxDown, this.minScore, this.maxScore, this.minRatio, this.maxRatio, this.cellSizeInput].forEach((el) => {
+        [this.minUp, this.maxUp, this.minDown, this.maxDown, this.minScore, this.maxScore, this.minRatio, this.maxRatio].forEach((el) => {
             if (!el) return;
-            if (el === this.cellSizeInput) {
-                el.addEventListener('input', () => {
-                    this.applyGridCellPx(el.value, false);
-                });
-                el.addEventListener('change', () => {
-                    this.applyGridCellPx(el.value, true);
-                });
-                this.bindNumberWheel(el, () => {
-                    this.applyGridCellPx(el.value, true);
-                });
-            } else {
-                el.addEventListener('input', () => this.scheduleFilterReload());
-                this.bindNumberWheel(el, null);
-            }
+            el.addEventListener('input', () => {
+                this.activeQuickFilter = '';
+                this.syncQuickFilterButtons();
+                this.scheduleFilterReload();
+            });
+            this.bindNumberWheel(el, null);
         });
 
         if (this.openCustomTagBtn) {
@@ -1204,7 +1211,6 @@ class NaxtApplet {
         const t = String(el.value).trim();
         if (t === '') {
             if (el === this.maxUp || el === this.maxDown) return 0;
-            if (el === this.cellSizeInput) return NAXT_GRID_CELL_DEFAULT;
             return 0;
         }
         const n = parseFloat(t);
@@ -1256,7 +1262,7 @@ class NaxtApplet {
             minRatio: this.minRatio ? this.minRatio.value : '',
             maxRatio: this.maxRatio ? this.maxRatio.value : '',
             randomSeed: this.randomSeed,
-            gridCellPx: this.getGridCellPx()
+            activeQuickFilter: this.activeQuickFilter
         };
     }
 
@@ -1292,12 +1298,10 @@ class NaxtApplet {
         if (this.maxScore) this.maxScore.value = s.maxScore != null ? s.maxScore : '';
         if (this.minRatio) this.minRatio.value = s.minRatio != null ? s.minRatio : '';
         if (this.maxRatio) this.maxRatio.value = s.maxRatio != null ? s.maxRatio : '';
+        this.activeQuickFilter = s.activeQuickFilter || '';
+        this.syncQuickFilterButtons();
         const sortLabels = { score: 'Score', name: 'Name', date: 'Date (export order)', ratio: 'Ratio', random: 'Random' };
         if (this.sortSelected) this.sortSelected.textContent = sortLabels[this.sortKey] || 'Score';
-        if (s.gridCellPx != null && s.gridCellPx !== '') {
-            const g = parseInt(s.gridCellPx, 10);
-            if (!Number.isNaN(g)) this.applyGridCellPx(g, false);
-        }
         this.updateDatasetLabelVisual(this.selectedGallerySlug);
         this.syncFilterToggleIndicator();
     }
@@ -1355,6 +1359,8 @@ class NaxtApplet {
             if (el) el.value = '';
         });
         if (this.sortSelected) this.sortSelected.textContent = 'Score';
+        this.activeQuickFilter = '';
+        this.syncQuickFilterButtons();
         if (this.galleries.length && !this.selectedGallerySlug) {
             this.selectedGallerySlug = this.galleries[0].slug;
         }
@@ -1443,6 +1449,7 @@ class NaxtApplet {
         } catch (e) {
             console.error('get_nax_galleries', e);
             this.galleries = [];
+            this.updateEmptyState();
         }
     }
 
@@ -1556,9 +1563,7 @@ class NaxtApplet {
 
     async loadPage(append, pushHistory) {
         if (!this.selectedGallerySlug || !window.wsClient || !window.wsClient.isConnected()) {
-            if (this.emptyState) {
-                this.emptyState.classList.toggle('hidden', !!this.galleries.length);
-            }
+            this.updateEmptyState();
             this.updateStatusBar();
             return;
         }
@@ -1602,9 +1607,7 @@ class NaxtApplet {
                 }
             }
             this.offset += items.length;
-            if (this.emptyState) {
-                this.emptyState.classList.toggle('hidden', this.offset > 0 || items.length > 0);
-            }
+            this.updateEmptyState();
             if (pushHistory) {
                 this.addToHistory({ type: 'browse', state: this.getBrowseState() });
             }
@@ -1614,6 +1617,9 @@ class NaxtApplet {
             console.error('get_nax_tags', e);
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, e.message || 'Failed to load tags', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+            if (!append) {
+                this.updateEmptyState();
             }
         } finally {
             this.loading = false;
@@ -1637,10 +1643,246 @@ class NaxtApplet {
         this.statusBar.textContent = `Showing ${shown} of ${tot} tags`;
     }
 
+    updateEmptyState() {
+        if (!this.emptyState) return;
+        const hasItems = this.offset > 0;
+        if (hasItems) {
+            this.emptyState.classList.add('hidden');
+            return;
+        }
+        this.emptyState.classList.remove('hidden');
+        const noDb = !this.galleries.length;
+        if (this.emptySetup) {
+            this.emptySetup.classList.toggle('hidden', !noDb);
+        }
+        if (this.emptyNoResults) {
+            this.emptyNoResults.classList.toggle('hidden', noDb);
+        }
+    }
+
     imageUrl(item) {
         const slug = encodeURIComponent(item.gallerySlug);
         const file = encodeURIComponent(item.filename);
         return `/naxCache/${slug}/${file}`;
+    }
+
+    syncNaxtTagTargetDataset(el, entry, bagIndex) {
+        if (!el || !entry) return;
+        el.dataset.tag = entry.tag;
+        el.dataset.gallerySlug = entry.gallerySlug;
+        el.dataset.filename = entry.filename;
+        if (bagIndex != null) {
+            el.dataset.bagIndex = String(bagIndex);
+        } else {
+            delete el.dataset.bagIndex;
+        }
+        const card = this.findVisibleCard(entry.gallerySlug, entry.tag);
+        el.dataset.favorite = card && card.dataset.favorite === '1' ? '1' : '0';
+        el.dataset.try = card && card.dataset.try === '1' ? '1' : '0';
+        if (card && card.dataset.isCustom === '1') {
+            el.dataset.isCustom = '1';
+        } else {
+            delete el.dataset.isCustom;
+        }
+    }
+
+    buildNaxtTagPreviewSection() {
+        return {
+            type: 'custom',
+            initfn: (section, target) => {
+                section.hidden = !(target && target.dataset && target.dataset.gallerySlug && target.dataset.filename);
+            },
+            content: (target) => {
+                if (!target || !target.dataset || !target.dataset.gallerySlug || !target.dataset.filename) {
+                    return '';
+                }
+                const container = document.createElement('div');
+                container.className = 'dyn-gen-preview-container';
+                container.style.cssText = 'padding: 4px 8px 0 8px; display: flex; justify-content: center; align-items: center; min-height: 175px; flex-shrink: 0;';
+
+                const img = document.createElement('img');
+                img.src = this.imageUrl({
+                    gallerySlug: target.dataset.gallerySlug,
+                    filename: target.dataset.filename
+                });
+                img.alt = target.dataset.tag || 'Tag preview';
+                img.style.cssText = 'max-width: 100%; max-height: 175px; border-radius: 4px; object-fit: contain; cursor: pointer;';
+                img.loading = 'lazy';
+
+                img.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (contextMenu) contextMenu.hideMenu();
+                    this.openNaxItemInViewer({
+                        tag: target.dataset.tag,
+                        gallerySlug: target.dataset.gallerySlug,
+                        filename: target.dataset.filename,
+                        favorite: target.dataset.favorite === '1',
+                        tryMark: target.dataset.try === '1'
+                    });
+                });
+
+                img.onerror = function () {
+                    container.style.minHeight = 'auto';
+                    container.innerHTML = '<div style="padding: 8px; text-align: center; color: var(--text-muted);">Preview not available</div>';
+                };
+
+                container.appendChild(img);
+                return container;
+            }
+        };
+    }
+
+    buildNaxtTagContextMenuConfig(options = {}) {
+        const inBag = !!options.inBag;
+        const manualModal = document.getElementById('manualModal');
+        const bagIcon = inBag
+            ? {
+                icon: 'fas fa-shopping-bag',
+                tooltip: 'Remove from bag',
+                action: 'naxt-remove-bag'
+            }
+            : {
+                icon: 'fas fa-shopping-bag',
+                tooltip: 'Add to bag',
+                action: 'naxt-add-bag'
+            };
+
+        const listItems = [
+            {
+                text: 'PhaseWalker',
+                icon: 'fas fa-layer-group',
+                openOnHover: true,
+                optionsfn: (target) => {
+                    const tagText = target && target.dataset && target.dataset.tag;
+                    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
+                    if (typeof buildPhasewalkerContextSubmenuItems === 'function' && tagText) {
+                        return buildPhasewalkerContextSubmenuItems(tagText);
+                    }
+                    return [{ text: 'Unavailable', disabled: true }];
+                },
+                handlerfn: (subItem) => {
+                    // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
+                    if (handlePhasewalkerContextSubmenuAction) {
+                        handlePhasewalkerContextSubmenuAction(subItem);
+                    }
+                }
+            },
+            {
+                text: 'Add to Prompt',
+                icon: 'fas fa-plus',
+                action: 'naxt-add-prompt',
+                disabled: () => manualModal && manualModal.classList.contains('hidden')
+            },
+            {
+                text: 'Replace in Prompt',
+                icon: 'fas fa-arrows-rotate',
+                action: 'naxt-replace-prompt',
+                disabled: () => manualModal && manualModal.classList.contains('hidden')
+            },
+            {
+                text: 'Add to Desktop',
+                icon: 'fas fa-arrow-down-left',
+                action: 'naxt-add-desktop',
+                hidden: () => !document.body.classList.contains('desktop-mode')
+            }
+        ];
+
+        if (inBag) {
+            listItems.push({
+                text: 'Remove from bag',
+                icon: 'fas fa-trash',
+                action: 'naxt-remove-bag'
+            });
+        }
+
+        if (options.isCustom) {
+            listItems.push({
+                text: 'Delete custom tag',
+                icon: 'fas fa-trash',
+                action: 'naxt-delete-custom'
+            });
+        }
+
+        return {
+            sections: [
+                this.buildNaxtTagPreviewSection(),
+                {
+                    type: 'icons',
+                    position: 'outer',
+                    icons: [
+                        {
+                            icon: 'fa-regular fa-star',
+                            tooltip: 'Favorite',
+                            action: 'naxt-fav',
+                            loadfn: (iconDef, target) => {
+                                const fav = target && target.dataset && target.dataset.favorite === '1';
+                                iconDef.icon = fav ? 'fas fa-star' : 'fa-regular fa-star';
+                                iconDef.tooltip = fav ? 'Unfavorite' : 'Favorite';
+                            }
+                        },
+                        {
+                            icon: 'fas fa-flask',
+                            tooltip: 'Try',
+                            action: 'naxt-try',
+                            loadfn: (iconDef, target) => {
+                                const on = target && target.dataset && target.dataset.try === '1';
+                                iconDef.icon = on ? 'fas fa-flask' : 'far fa-flask';
+                                iconDef.tooltip = on ? 'Remove try mark' : 'Mark to try';
+                            }
+                        },
+                        bagIcon,
+                        {
+                            icon: 'nai-clipboard',
+                            tooltip: 'Copy tag',
+                            action: 'naxt-copy'
+                        }
+                    ]
+                },
+                {
+                    type: 'list',
+                    items: listItems
+                }
+            ],
+            onAction: (action, target) => this.handleNaxtTagContextMenuAction(action, target)
+        };
+    }
+
+    handleNaxtTagContextMenuAction(action, target) {
+        if (!target || !target.dataset) return;
+        const { tag, gallerySlug, filename, bagIndex } = target.dataset;
+        if (action === 'naxt-add-prompt') {
+            this.addToPrompt(tag, gallerySlug, 'add');
+        } else if (action === 'naxt-replace-prompt') {
+            this.addToPrompt(tag, gallerySlug, 'replace');
+        } else if (action === 'naxt-add-bag') {
+            void this.addToBag(tag, gallerySlug, filename);
+        } else if (action === 'naxt-remove-bag') {
+            const index = parseInt(bagIndex, 10);
+            if (!Number.isNaN(index)) {
+                this.removeFromBagAt(index);
+                if (typeof closeDropdown === 'function' && this.bagMenu && this.bagBtn) {
+                    closeDropdown(this.bagMenu, this.bagBtn);
+                }
+            }
+        } else if (action === 'naxt-add-desktop') {
+            this.addNaxTagToDesktop(target);
+        } else if (action === 'naxt-copy') {
+            this.copyTag(tag);
+        } else if (action === 'naxt-fav') {
+            void this.toggleFavorite(target);
+        } else if (action === 'naxt-try') {
+            void this.toggleTry(target);
+        } else if (action === 'naxt-delete-custom') {
+            void this.deleteCustomTag(gallerySlug, tag);
+        }
+    }
+
+    attachNaxtTagContextMenu(el, options) {
+        if (!el || !contextMenu) return;
+        if (typeof contextMenu.detachFromElement === 'function') {
+            contextMenu.detachFromElement(el);
+        }
+        contextMenu.attachToElement(el, this.buildNaxtTagContextMenuConfig(options));
     }
 
     createCard(item) {
@@ -1684,6 +1926,7 @@ class NaxtApplet {
         const openCard = () => {
             this.openInWindow(card);
         };
+        card.addEventListener('click', openCard);
         if (typeof touchSlopUtils !== 'undefined') {
             touchSlopUtils.registerTouchSlopTracking(card);
             card.addEventListener('touchend', (e) => {
@@ -1691,117 +1934,12 @@ class NaxtApplet {
                 if (!touchSlopUtils.isTouchSlopTap(maxDelta)) {
                     return;
                 }
+                e.preventDefault();
                 openCard();
-            }, { passive: true });
-        } else {
-            card.addEventListener('click', openCard);
+            }, { passive: false });
         }
 
-        if (contextMenu) {
-            const manualModal = document.getElementById('manualModal');
-            const tagText = card.dataset.tag;
-            const menu = {
-                sections: [
-                    {
-                        type: 'icons',
-                        position: 'outer',
-                        icons: [
-                            {
-                                icon: 'fa-regular fa-star',
-                                tooltip: 'Favorite',
-                                action: 'naxt-fav',
-                                loadfn: (iconDef, target) => {
-                                    const fav = target && target.dataset && target.dataset.favorite === '1';
-                                    iconDef.icon = fav ? 'fas fa-star' : 'fa-regular fa-star';
-                                    iconDef.tooltip = fav ? 'Unfavorite' : 'Favorite';
-                                }
-                            },
-                            {
-                                icon: 'fas fa-flask',
-                                tooltip: 'Try',
-                                action: 'naxt-try',
-                                loadfn: (iconDef, target) => {
-                                    const on = target && target.dataset && target.dataset.try === '1';
-                                    iconDef.icon = on ? 'fas fa-flask' : 'far fa-flask';
-                                    iconDef.tooltip = on ? 'Remove try mark' : 'Mark to try';
-                                }
-                            },
-                            {
-                                icon: 'fas fa-shopping-bag',
-                                tooltip: 'Add to bag',
-                                action: 'naxt-add-bag'
-                            },
-                            {
-                                icon: 'nai-clipboard',
-                                tooltip: 'Copy tag',
-                                action: 'naxt-copy'
-                            }
-                        ]
-                    },
-                    {
-                        type: 'list',
-                        items: [
-                            {
-                                text: 'PhaseWalker',
-                                icon: 'fas fa-layer-group',
-                                openOnHover: true,
-                                optionsfn: () => {
-                                    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
-                                    if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
-                                        return buildPhasewalkerContextSubmenuItems(tagText);
-                                    }
-                                    return [{ text: 'Unavailable', disabled: true }];
-                                },
-                                handlerfn: (subItem) => {
-                                    // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
-                                    if (handlePhasewalkerContextSubmenuAction) {
-                                        handlePhasewalkerContextSubmenuAction(subItem);
-                                    }
-                                }
-                            },
-                            {
-                                text: 'Add to Prompt',
-                                icon: 'fas fa-plus',
-                                action: 'naxt-add-prompt',
-                                disabled: () => manualModal && manualModal.classList.contains('hidden')
-                            },
-                            {
-                                text: 'Replace in Prompt',
-                                icon: 'fas fa-arrows-rotate',
-                                action: 'naxt-replace-prompt',
-                                disabled: () => manualModal && manualModal.classList.contains('hidden')
-                            },
-                            {
-                                text: 'Add to Desktop',
-                                icon: 'fas fa-arrow-down-left',
-                                action: 'naxt-add-desktop',
-                                hidden: () => !document.body.classList.contains('desktop-mode')
-                            },
-                            {
-                                text: 'Delete custom tag',
-                                icon: 'fas fa-trash',
-                                action: 'naxt-delete-custom',
-                                hidden: () => card.dataset.isCustom !== '1'
-                            }
-                        ]
-                    }
-                ],
-                onAction: (action) => {
-                    if (action === 'naxt-add-prompt') this.addToPrompt(card.dataset.tag, card.dataset.gallerySlug, 'add');
-                    else if (action === 'naxt-replace-prompt') this.addToPrompt(card.dataset.tag, card.dataset.gallerySlug, 'replace');
-                    else if (action === 'naxt-add-bag') {
-                        void this.addToBag(card.dataset.tag, card.dataset.gallerySlug, card.dataset.filename);
-                    } else if (action === 'naxt-add-desktop') this.addNaxTagToDesktop(card);
-                    else if (action === 'naxt-copy') this.copyTag(card.dataset.tag);
-                    else if (action === 'naxt-fav') this.toggleFavorite(card);
-                    else if (action === 'naxt-try') this.toggleTry(card);
-                    else if (action === 'naxt-delete-custom') {
-                        void this.deleteCustomTag(card.dataset.gallerySlug, card.dataset.tag);
-                    }
-                }
-            };
-            contextMenu.attachToElement(card, menu);
-        }
+        this.attachNaxtTagContextMenu(card, { inBag: false, isCustom: !!item.isCustom });
 
         return card;
     }
@@ -1916,18 +2054,20 @@ class NaxtApplet {
         card.dataset.favorite = favorite ? '1' : '0';
     }
 
-    async toggleFavorite(card) {
-        const slug = card.dataset.gallerySlug;
-        const tag = card.dataset.tag;
-        const next = card.dataset.favorite !== '1';
+    async toggleFavorite(target) {
+        const slug = target.dataset.gallerySlug;
+        const tag = target.dataset.tag;
+        const next = target.dataset.favorite !== '1';
         await this.setFavoriteForTag(slug, tag, next);
+        target.dataset.favorite = next ? '1' : '0';
     }
 
-    async toggleTry(card) {
-        const slug = card.dataset.gallerySlug;
-        const tag = card.dataset.tag;
-        const next = card.dataset.try !== '1';
+    async toggleTry(target) {
+        const slug = target.dataset.gallerySlug;
+        const tag = target.dataset.tag;
+        const next = target.dataset.try !== '1';
         await this.setTryMarkForTag(slug, tag, next);
+        target.dataset.try = next ? '1' : '0';
     }
 
     openInWindow(card) {

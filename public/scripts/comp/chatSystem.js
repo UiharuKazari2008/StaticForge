@@ -1754,7 +1754,7 @@ class ChatSystem {
 }
 
 if (window.wsClient) {
-    window.wsClient.registerInitStep(99, 'Setting up chat system', async () => {
+    window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
         try {
             // Ensure WebSocket is connected before initializing
             if (!window.wsClient.isConnected()) {
@@ -1788,7 +1788,7 @@ if (window.wsClient) {
     const initInterval = setInterval(() => {
         if (window.wsClient) {
             clearInterval(initInterval);
-            window.wsClient.registerInitStep(99, 'Setting up chat system', async () => {
+            window.wsClient.registerInitStep(88, 'Setting up chat system', async () => {
                 if (!window.chatSystem) {
                     window.chatSystem = new ChatSystem();
                 }

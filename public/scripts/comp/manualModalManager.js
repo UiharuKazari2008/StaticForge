@@ -1298,6 +1298,7 @@ function startPreviewAnimation() {
         generationAnimationActive = true;
 
         manualForm.classList.add('generating');
+        refreshManualPreviewImageLoupe();
 
         const toggleBtn = document.getElementById('previewAnimationToggle');
         if (toggleBtn) {
@@ -1655,6 +1656,7 @@ function clearManualForm() {
     if (window.dynamicGenerationData) {
         delete window.dynamicGenerationData;
     }
+    clearManualRentanContextOverlay();
 
     // Reset new parameters
     selectedDatasets = []; // Default to anime enabled
@@ -2418,18 +2420,107 @@ function getWeatherIcon(condition, isNight = false) {
     return `<i class="wi wi-${iconClass}"></i>`;
 }
 
-// Update dynamic generation overlay in manual preview
+// Normalize Rentan context from compiled_prompt.context or progress-phase payloads
+function normalizeRentanOverlayContext(raw) {
+    if (!raw) return null;
+
+    const weather = raw.weather || {};
+    const location = raw.location || {};
+    let time = raw.time || {};
+    let timePeriod = raw.timePeriod || {};
+
+    if (typeof time === 'string') {
+        const parts = time.split(':');
+        if (parts.length >= 2) {
+            const hour = parseInt(parts[0], 10);
+            const minute = parseInt(parts[1], 10);
+            if (!Number.isNaN(hour) && !Number.isNaN(minute)) {
+                time = { hour, minute };
+            }
+        }
+    }
+
+    if (timePeriod.isDaytime === undefined && time.hour !== undefined) {
+        timePeriod = { ...timePeriod, isDaytime: time.hour >= 6 && time.hour < 20 };
+    }
+
+    const hasContextData = Boolean(
+        weather.condition
+        || weather.temperature !== undefined
+        || weather.feelsLike !== undefined
+        || (time.hour !== undefined && time.minute !== undefined)
+        || location.city
+        || location.country
+    );
+    if (!hasContextData) {
+        return null;
+    }
+
+    return { weather, location, time, timePeriod };
+}
+
+// Context for preview overlay — metadata on the current image only; no stale session/carousel cache
+function resolvePreviewRentanContext() {
+    if (window.currentManualPreviewImage?.metadata) {
+        return window.currentManualPreviewImage.metadata.dynamic_generation?.compiled_prompt?.context || null;
+    }
+    return window.dynamicGenerationData?.compiled_prompt?.context || null;
+}
+
+function clearManualRentanContextOverlay() {
+    updateDynamicGenerationOverlay(null);
+}
+
+function clearSpellbookRentanContextOverlay() {
+    // hideSpellbookDynamicGenerationOverlay: public/scripts/comp/spellbookModal.js
+    window.spellbookModalManager?.hideSpellbookDynamicGenerationOverlay?.();
+}
+
+function clearRentanContextOverlays() {
+    clearManualRentanContextOverlay();
+    clearSpellbookRentanContextOverlay();
+}
+
+// Route Rentan context overlay to manual editor or spellbook based on active generator UI
+function updateRentanContextOverlay(context) {
+    const spellbook = window.spellbookModalManager;
+    const spellbookOpen = spellbook?.modal && !spellbook.modal.classList.contains('hidden');
+
+    if (spellbook?.isGenerating) {
+        // updateSpellbookProgressContext: public/scripts/comp/spellbookModal.js
+        if (context) {
+            spellbook.updateSpellbookProgressContext(context);
+        }
+        return;
+    }
+
+    if (spellbookOpen) {
+        if (context) {
+            spellbook.updateSpellbookProgressContext(context);
+            spellbook.showSpellbookDynamicGenerationOverlay();
+        } else {
+            spellbook.hideSpellbookDynamicGenerationOverlay();
+        }
+        return;
+    }
+
+    updateDynamicGenerationOverlay(context);
+}
+
+// Update dynamic generation overlay in manual preview (manual editor only)
 function updateDynamicGenerationOverlay(context) {
     const overlay = document.getElementById('dynamicGenerationOverlay');
     const overlayBody = document.getElementById('dynamicGenerationOverlayBody');
 
     if (!overlay || !overlayBody) return;
 
-    if (context) {
-        const weather = context.weather || {};
-        const time = context.time || {};
-        const location = context.location || {};
-        const timePeriod = context.timePeriod || {};
+    const normalized = normalizeRentanOverlayContext(context);
+
+    if (normalized) {
+        const weather = normalized.weather;
+        const time = normalized.time;
+        const location = normalized.location;
+        const timePeriod = normalized.timePeriod;
 
         // Format actual time
         const timeString = (time.hour !== undefined && time.minute !== undefined)
@@ -2888,6 +2979,7 @@ async function hideManualModal(e) {
 
     // Reset manual preview
     resetManualPreview();
+    clearRentanContextOverlays();
 
     // Hide stage indicators when modal is closed
     hideStageIndicators();
@@ -3895,7 +3987,10 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
             // Store compiled context and switch to compiled mode
             // Update carousel with compiled context and switch to compiled mode
             updateDynamicCarousel(context, 'compiled');
+            updateRentanContextOverlay(context);
             hasCompiledContext = true;
+        } else {
+            updateRentanContextOverlay(null);
         }
 
         // Update creative directive visibility after dynamic generation visibility changes
@@ -4244,6 +4339,8 @@ async function handleManualGeneration(e, options = {}) {
 
     // Add "generating" class when generation starts
     manualForm.classList.add('generating');
+    // refreshManualPreviewImageLoupe: hide loupe for entire generation session
+    refreshManualPreviewImageLoupe();
 
     const generationParams = {
         model: values.model.toLowerCase(),
@@ -4341,6 +4438,9 @@ async function handleManualGeneration(e, options = {}) {
                 // Update carousel with compiled prompt context and switch to compiled mode
                 if (compiled_prompt?.context) {
                     updateDynamicCarousel(compiled_prompt.context, 'compiled');
+                    updateRentanContextOverlay(compiled_prompt.context);
+                } else {
+                    updateRentanContextOverlay(null);
                 }
 
                 // Update UI to reflect compiled state
@@ -4711,6 +4811,7 @@ function applyManualPreviewDynamicGenPhase(phase) {
     } else if (activePhases.includes(phase)) {
         manualFormEl.classList.add('manual-preview-dynamic-gen-active');
     }
+    refreshManualPreviewImageLoupe();
 }
 
 // Reset progress overlay for new dynamic generation session
@@ -4767,7 +4868,7 @@ function updateDynamicGenerationProgressOverlay(phase, data) {
             overlay.classList.remove('hidden');
             return;
         case 'context':
-            //updateProgressContext(data); // This handles the reset and shows overlay
+            updateRentanContextOverlay(normalizeRentanOverlayContext(data));
             overlay.classList.remove('hidden'); // Ensure overlay is visible for new session
             return; // Skip the general show logic since we handled it here
             break;

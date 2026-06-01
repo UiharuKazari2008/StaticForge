@@ -139,7 +139,7 @@ class WebSocketServer {
 
             // Restore session workspace for reconnection sync (only if authenticated)
             if (clientInfo.authenticated && clientInfo.sessionId) {
-                this.restoreSessionWorkspace(clientInfo.sessionId, ws);
+                await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
                 this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
             }
 

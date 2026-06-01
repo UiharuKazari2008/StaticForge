@@ -16,6 +16,32 @@ const PROMPT_CTX_DYNAMIC_PLACEHOLDERS = [
 ];
 
 const promptCtxThesaurusCache = new Map();
+let promptCtxNaxFavoritesCache = null;
+let promptCtxNaxFavoritesLoadPromise = null;
+let promptCtxNaxGalleriesCache = null;
+let promptCtxNaxGalleriesLoadPromise = null;
+let promptCtxNaxExpanderPresetsCache = null;
+let promptCtxNaxExpanderPresetsCacheModel = null;
+let promptCtxNaxExpanderPresetsLoadPromise = null;
+
+const PROMPT_CTX_FAV_GRID_CLASS = 'prompt-ctx-fav-grid';
+const PROMPT_CTX_FAV_GRID_CELL_CLASS = 'prompt-ctx-fav-grid-cell';
+
+/** Loose slug before constrained — image/data from loose wins when tag exists in both. NAX_FAVORITE_MERGE_GROUPS: modules/naxTagsDatabase.js */
+const PROMPT_CTX_NAX_FAV_MERGE_GROUPS = [
+    {
+        slugs: ['danbooru-artist-tags-2-v4.5', 'danbooru-artist-tags-v4.5'],
+        title: 'Artists'
+    }
+];
+
+function promptCtxGetCurrentModel() {
+    // getMappedManualModel: public/scripts/comp/autocompleteUtils.js
+    if (typeof getMappedManualModel === 'function') {
+        return getMappedManualModel();
+    }
+    return window.currentModel || '';
+}
 
 function promptCtxIsPromptTextarea(el) {
     return el && el.matches && el.matches('textarea.prompt-textarea, textarea.character-prompt-textarea');
@@ -344,6 +370,239 @@ async function promptCtxEnsureFavoritesLoaded() {
     }
 }
 
+async function promptCtxEnsureNaxGalleriesLoaded() {
+    if (promptCtxNaxGalleriesCache) return promptCtxNaxGalleriesCache;
+    if (promptCtxNaxGalleriesLoadPromise) return promptCtxNaxGalleriesLoadPromise;
+    promptCtxNaxGalleriesLoadPromise = (async () => {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            promptCtxNaxGalleriesCache = [];
+            return [];
+        }
+        try {
+            const data = await window.wsClient.sendMessage('get_nax_galleries', {}, false);
+            promptCtxNaxGalleriesCache = (data && data.galleries) || [];
+        } catch {
+            promptCtxNaxGalleriesCache = [];
+        }
+        return promptCtxNaxGalleriesCache;
+    })();
+    return promptCtxNaxGalleriesLoadPromise;
+}
+
+async function promptCtxEnsureNaxFavoritesLoaded() {
+    if (promptCtxNaxFavoritesCache) return promptCtxNaxFavoritesCache;
+    if (promptCtxNaxFavoritesLoadPromise) return promptCtxNaxFavoritesLoadPromise;
+    promptCtxNaxFavoritesLoadPromise = (async () => {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            promptCtxNaxFavoritesCache = [];
+            return [];
+        }
+        try {
+            const data = await window.wsClient.sendMessage('get_nax_marked_tags', { markFilter: 'favorites' }, false);
+            promptCtxNaxFavoritesCache = (data && data.items) || [];
+        } catch {
+            promptCtxNaxFavoritesCache = [];
+        }
+        return promptCtxNaxFavoritesCache;
+    })();
+    return promptCtxNaxFavoritesLoadPromise;
+}
+
+async function promptCtxEnsureNaxExpanderPresetsLoaded() {
+    const model = promptCtxGetCurrentModel();
+    if (promptCtxNaxExpanderPresetsCache && promptCtxNaxExpanderPresetsCacheModel === model) {
+        return promptCtxNaxExpanderPresetsCache;
+    }
+    if (promptCtxNaxExpanderPresetsLoadPromise) return promptCtxNaxExpanderPresetsLoadPromise;
+    promptCtxNaxExpanderPresetsLoadPromise = (async () => {
+        if (!window.wsClient || !window.wsClient.isConnected()) {
+            promptCtxNaxExpanderPresetsCache = [];
+            promptCtxNaxExpanderPresetsCacheModel = model;
+            return [];
+        }
+        try {
+            const data = await window.wsClient.sendMessage('get_nax_expander_presets', { model }, false);
+            promptCtxNaxExpanderPresetsCache = (data && data.presets) || [];
+            promptCtxNaxExpanderPresetsCacheModel = model;
+        } catch {
+            promptCtxNaxExpanderPresetsCache = [];
+            promptCtxNaxExpanderPresetsCacheModel = model;
+        }
+        promptCtxNaxExpanderPresetsLoadPromise = null;
+        return promptCtxNaxExpanderPresetsCache;
+    })();
+    return promptCtxNaxExpanderPresetsLoadPromise;
+}
+
+function promptCtxNaxGalleryLabel(gallerySlug, galleries) {
+    // naxtGalleryBucketLabel: public/scripts/comp/naxtApplet.js
+    if (typeof naxtGalleryBucketLabel === 'function') {
+        return naxtGalleryBucketLabel(gallerySlug, galleries || []);
+    }
+    return gallerySlug || '';
+}
+
+function promptCtxNaxFavGridTitle(gallerySlug, galleries, titleOverride) {
+    const label = titleOverride || promptCtxNaxGalleryLabel(gallerySlug, galleries);
+    if (!label) return 'Atelier';
+    return 'Atelier - ' + label;
+}
+
+function promptCtxFormatNaxTag(tag, gallerySlug) {
+    // naxtFormatTagFragment: public/scripts/comp/naxtApplet.js
+    if (typeof naxtFormatTagFragment === 'function') {
+        return naxtFormatTagFragment(tag, gallerySlug);
+    }
+    return tag;
+}
+
+function promptCtxNaxImageUrl(entry) {
+    if (!entry || !entry.gallerySlug || !entry.filename) return '';
+    const slug = encodeURIComponent(entry.gallerySlug);
+    const file = encodeURIComponent(entry.filename);
+    return `/naxCache/${slug}/${file}`;
+}
+
+function promptCtxMakeFavoriteGridCell({ tooltip, action, data, image, icon = 'fas fa-tag' }) {
+    const cell = {
+        tooltip,
+        action,
+        data,
+        className: PROMPT_CTX_FAV_GRID_CELL_CLASS
+    };
+    if (image) {
+        cell.image = image;
+        cell.imageAlt = tooltip || '';
+    } else {
+        cell.icon = icon;
+    }
+    return cell;
+}
+
+function promptCtxNaxFavMergePriority(slug, mergeGroup) {
+    const idx = mergeGroup.slugs.indexOf(slug);
+    return idx === -1 ? Number.MAX_SAFE_INTEGER : idx;
+}
+
+function promptCtxMergeNaxFavoriteGroup(grouped, mergeGroup) {
+    const byTag = new Map();
+    mergeGroup.slugs.forEach((slug) => {
+        const entries = grouped.get(slug) || [];
+        entries.forEach((entry) => {
+            const tag = entry.tag || '';
+            if (!tag) return;
+            const priority = promptCtxNaxFavMergePriority(slug, mergeGroup);
+            const existing = byTag.get(tag);
+            if (!existing || priority < existing.priority) {
+                byTag.set(tag, { entry, priority });
+            }
+        });
+        grouped.delete(slug);
+    });
+    return Array.from(byTag.values())
+        .map(({ entry }) => entry)
+        .sort((a, b) => String(a.tag || '').localeCompare(String(b.tag || ''), undefined, { sensitivity: 'base' }));
+}
+
+function promptCtxAppendNaxFavoriteGridSection(items, title, entries) {
+    if (!entries.length) return;
+    items.push({
+        type: 'grid',
+        title,
+        className: PROMPT_CTX_FAV_GRID_CLASS,
+        items: entries.map((entry) => {
+            const tag = entry.tag || '';
+            const slug = entry.gallerySlug || '';
+            const imageUrl = promptCtxNaxImageUrl(entry);
+            return promptCtxMakeFavoriteGridCell({
+                tooltip: tag,
+                action: 'prompt-ctx-nax-favorite-insert',
+                data: { tag, gallerySlug: slug },
+                image: imageUrl || null,
+                icon: 'fas fa-star'
+            });
+        })
+    });
+}
+
+function promptCtxAppendNaxFavoriteGrids(items, galleries) {
+    void promptCtxEnsureNaxFavoritesLoaded();
+    if (!promptCtxNaxFavoritesCache && promptCtxNaxFavoritesLoadPromise) {
+        items.push({ text: 'Loading…', disabled: true });
+        return;
+    }
+
+    const favorites = promptCtxNaxFavoritesCache || [];
+    if (!favorites.length) return;
+
+    const grouped = new Map();
+    favorites.forEach((entry) => {
+        const slug = entry.gallerySlug || '';
+        const tag = entry.tag || '';
+        if (!slug || !tag) return;
+        if (!grouped.has(slug)) grouped.set(slug, []);
+        grouped.get(slug).push(entry);
+    });
+
+    PROMPT_CTX_NAX_FAV_MERGE_GROUPS.forEach((mergeGroup) => {
+        const hasAny = mergeGroup.slugs.some((slug) => (grouped.get(slug) || []).length > 0);
+        if (!hasAny) return;
+        const merged = promptCtxMergeNaxFavoriteGroup(grouped, mergeGroup);
+        promptCtxAppendNaxFavoriteGridSection(
+            items,
+            promptCtxNaxFavGridTitle(null, galleries, mergeGroup.title),
+            merged
+        );
+    });
+
+    grouped.forEach((entries, slug) => {
+        promptCtxAppendNaxFavoriteGridSection(
+            items,
+            promptCtxNaxFavGridTitle(slug, galleries),
+            entries
+        );
+    });
+}
+
+function buildNaxtExpanderSubmenuItems(textarea) {
+    void textarea;
+    void promptCtxEnsureNaxExpanderPresetsLoaded();
+    if (!promptCtxNaxExpanderPresetsCache && promptCtxNaxExpanderPresetsLoadPromise) {
+        return [{ text: 'Loading…', disabled: true }];
+    }
+    const presets = promptCtxNaxExpanderPresetsCache || [];
+    if (!presets.length) {
+        return [{ text: 'Atelier expanders unavailable', disabled: true }];
+    }
+
+    const items = [{ separator: true, text: 'Favorites' }];
+    presets.forEach((preset) => {
+        const count = preset.favCount != null ? preset.favCount : 0;
+        items.push({
+            text: preset.label || preset.id || '',
+            icon: 'fas fa-star',
+            badge: count,
+            disabled: count === 0,
+            action: 'prompt-ctx-nax-expander-insert',
+            data: { insertText: preset.favPattern || `!NAX_FAV_${preset.id}` }
+        });
+    });
+
+    items.push({ separator: true, text: 'Test' });
+    presets.forEach((preset) => {
+        const count = preset.tryCount != null ? preset.tryCount : 0;
+        items.push({
+            text: preset.label || preset.id || '',
+            icon: 'fas fa-flask',
+            badge: count,
+            disabled: count === 0,
+            action: 'prompt-ctx-nax-expander-insert',
+            data: { insertText: preset.tryPattern || `!NAX_TRY_${preset.id}` }
+        });
+    });
+    return items;
+}
+
 function buildFavoritesSubmenuItems(textarea) {
     const items = [];
     const state = getPromptTextareaMenuState(textarea);
@@ -359,9 +618,13 @@ function buildFavoritesSubmenuItems(textarea) {
         });
         items.push({ separator: true });
     }
+
     const data = getPromptContextMenuFavorites ? getPromptContextMenuFavorites() : { tags: [], textReplacements: [] };
     const tags = data.tags || [];
     const expanders = data.textReplacements || [];
+    const galleries = promptCtxNaxGalleriesCache || [];
+    void promptCtxEnsureNaxGalleriesLoaded();
+    void promptCtxEnsureNaxFavoritesLoaded();
 
     if (tags.length > 0) {
         items.push({ separator: true, text: 'Tags' });
@@ -376,6 +639,7 @@ function buildFavoritesSubmenuItems(textarea) {
             });
         });
     }
+
     if (expanders.length > 0) {
         items.push({ separator: true, text: 'Genso Expanders' });
         expanders.forEach((exp) => {
@@ -389,6 +653,13 @@ function buildFavoritesSubmenuItems(textarea) {
             });
         });
     }
+
+    const listItemCount = items.length;
+    if (listItemCount > 0) {
+        items.push({ separator: true, text: 'Atelier' });
+    }
+    promptCtxAppendNaxFavoriteGrids(items, galleries);
+
     if (items.length === 0) {
         items.push({ text: 'No favorites', disabled: true });
     }
@@ -595,6 +866,18 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             insertTextAtPromptSelection(textarea, text);
             break;
         }
+        case 'prompt-ctx-nax-favorite-insert': {
+            const data = item && item.data;
+            if (!data || !data.tag || !data.gallerySlug) break;
+            insertTextAtPromptSelection(textarea, promptCtxFormatNaxTag(data.tag, data.gallerySlug));
+            break;
+        }
+        case 'prompt-ctx-nax-expander-insert': {
+            const data = item && item.data;
+            if (!data || !data.insertText) break;
+            insertTextAtPromptSelection(textarea, data.insertText);
+            break;
+        }
         case 'prompt-ctx-add-insert': {
             const ph = item && item.data && item.data.placeholder;
             if (ph) insertDynamicPlaceholderAtCaret(textarea, ph);
@@ -682,6 +965,11 @@ function getPromptTextareaContextMenuConfig() {
                         icon: 'fas fa-square-dashed',
                         tooltip: 'Select all',
                         action: 'prompt-ctx-select-all'
+                    },
+                    {
+                        icon: 'fas fa-search',
+                        tooltip: 'Find Text',
+                        action: 'prompt-ctx-find-in-prompt'
                     }
                 ]
             },
@@ -760,14 +1048,12 @@ function getPromptTextareaContextMenuConfig() {
                 initfn: (section, target) => {
                     if (promptCtxIsPromptTextarea(target)) {
                         promptCtxEnsureFavoritesLoaded();
+                        void promptCtxEnsureNaxGalleriesLoaded();
+                        void promptCtxEnsureNaxFavoritesLoaded();
+                        void promptCtxEnsureNaxExpanderPresetsLoaded();
                     }
                 },
                 items: [
-                    {
-                        icon: 'fas fa-search',
-                        text: 'Find Text',
-                        action: 'prompt-ctx-find-in-prompt'
-                    },
                     {
                         icon: 'fas fa-book-atlas',
                         text: 'Quick Access',
@@ -813,6 +1099,15 @@ function getPromptTextareaContextMenuConfig() {
                         text: 'Favorites',
                         openOnHover: true,
                         optionsfn: (target) => buildFavoritesSubmenuItems(target),
+                        handlerfn: (subItem, target) => {
+                            handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
+                        }
+                    },
+                    {
+                        icon: 'fas fa-book-font',
+                        text: 'Atelier Expanders',
+                        openOnHover: true,
+                        optionsfn: (target) => buildNaxtExpanderSubmenuItems(target),
                         handlerfn: (subItem, target) => {
                             handlePromptTextareaContextMenuAction(subItem.action, target, subItem);
                         }
@@ -880,4 +1175,13 @@ function initPromptTextareaContextMenu() {
 if (typeof window !== 'undefined') {
     window.initPromptTextareaContextMenu = initPromptTextareaContextMenu;
     window.attachPromptTextareaContextMenu = attachPromptTextareaContextMenu;
+    window.invalidatePromptCtxNaxFavoritesCache = function invalidatePromptCtxNaxFavoritesCache() {
+        promptCtxNaxFavoritesCache = null;
+        promptCtxNaxFavoritesLoadPromise = null;
+    };
+    window.invalidatePromptCtxNaxExpanderPresetsCache = function invalidatePromptCtxNaxExpanderPresetsCache() {
+        promptCtxNaxExpanderPresetsCache = null;
+        promptCtxNaxExpanderPresetsCacheModel = null;
+        promptCtxNaxExpanderPresetsLoadPromise = null;
+    };
 }

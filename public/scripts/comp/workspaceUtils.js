@@ -1523,64 +1523,100 @@ function formatGalleryBlocksProgressLabel(progress) {
     return '---';
 }
 
+// Marquee until first gallery block loads (public/scripts/websocket.js formatPaginationGroupTickerText)
+function shouldGalleryProgressUseDeterminate(progress) {
+    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+        return false;
+    }
+    const loaded = Number(progress.loaded) || 0;
+    if (loaded <= 0) {
+        return false;
+    }
+    if (typeof progress.blocksLeft === 'number') {
+        return true;
+    }
+    return progress.progress >= 1;
+}
+
+function formatGalleryProgressStatusText(progress) {
+    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+        return 'Loading...';
+    }
+    const detail = formatGalleryBlocksProgressLabel(progress);
+    const suffix = detail ? ` (${detail})` : '';
+    return `Loading Gallery${suffix}`;
+}
+
+function formatWorkspaceProgressStatusText(progress) {
+    if (!progress || progress.phase === 'hash_probe' || progress.suppressBlocks === true) {
+        return 'Preparing...';
+    }
+    const detail = formatGalleryBlocksProgressLabel(progress);
+    const suffix = detail ? ` (${detail})` : '';
+    if (progress.phase === 'initial') {
+        return `Preparing Workspace${suffix}`;
+    }
+    return formatGalleryProgressStatusText(progress);
+}
+
+function applyGalleryProgressBarState(container, bar, progress, modeSwitchedRef) {
+    if (!container || !bar || !progress) {
+        return modeSwitchedRef.value;
+    }
+
+    const useDeterminate = shouldGalleryProgressUseDeterminate(progress);
+    if (useDeterminate && !modeSwitchedRef.value) {
+        container.classList.remove('marquee');
+        modeSwitchedRef.value = true;
+    }
+
+    if (useDeterminate) {
+        const percent = Math.round(progress.progress * 100);
+        bar.style.width = `${percent}%`;
+        if (container.hasAttribute('role') && container.getAttribute('role') === 'progressbar') {
+            container.setAttribute('aria-valuenow', percent);
+        }
+    } else if (container.hasAttribute('role') && container.getAttribute('role') === 'progressbar') {
+        container.setAttribute('aria-valuenow', 0);
+    }
+
+    return modeSwitchedRef.value;
+}
+
 // Update workspace progress modal
 function updateWorkspaceProgress(progress) {
     if (!workspaceProgressModal) return;
 
-    // Switch from marquee mode to determinate progress mode on first progress update
-    if (!workspaceProgressModeSwitched && workspaceProgressContainerElement) {
-        workspaceProgressContainerElement.classList.remove('marquee');
-        workspaceProgressModeSwitched = true;
-    }
+    const modeRef = { value: workspaceProgressModeSwitched };
 
     if (workspaceProgressBarElement && workspaceProgressTextElement) {
-        const percent = Math.round(progress.progress * 100);
-        workspaceProgressBarElement.style.width = `${percent}%`;
-
-        // Update ARIA attributes for accessibility
-        if (workspaceProgressContainerElement && workspaceProgressContainerElement.hasAttribute('role') && workspaceProgressContainerElement.getAttribute('role') === 'progressbar') {
-            workspaceProgressContainerElement.setAttribute('aria-valuenow', percent);
-        }
+        workspaceProgressModeSwitched = applyGalleryProgressBarState(
+            workspaceProgressContainerElement,
+            workspaceProgressBarElement,
+            progress,
+            modeRef
+        );
 
         const statusSpan = workspaceProgressTextElement.querySelector('span:last-child');
         if (statusSpan) {
-            const detail = formatGalleryBlocksProgressLabel(progress);
-            const suffix = detail ? ` (${detail})` : '';
-            if (progress.phase === 'initial') {
-                statusSpan.textContent = `Preparing Workspace${suffix}`;
-            } else {
-                statusSpan.textContent = `Opening Gallery${suffix}`;
-            }
+            statusSpan.textContent = formatWorkspaceProgressStatusText(progress);
         }
     } else {
-        // Fallback: try to find elements if not stored yet
         const progressBar = document.getElementById('workspaceProgressBar');
         const progressText = document.getElementById('workspaceProgressText');
         const progressContainer = progressBar ? progressBar.parentElement : null;
 
         if (progressBar && progressText) {
-            // Switch from marquee mode to determinate progress mode on first progress update
-            if (!workspaceProgressModeSwitched && progressContainer) {
-                progressContainer.classList.remove('marquee');
-                workspaceProgressModeSwitched = true;
-            }
-
-            const percent = Math.round(progress.progress * 100);
-            progressBar.style.width = `${percent}%`;
-
-            if (progressContainer && progressContainer.hasAttribute('role') && progressContainer.getAttribute('role') === 'progressbar') {
-                progressContainer.setAttribute('aria-valuenow', percent);
-            }
+            workspaceProgressModeSwitched = applyGalleryProgressBarState(
+                progressContainer,
+                progressBar,
+                progress,
+                modeRef
+            );
 
             const statusSpan = progressText.querySelector('span:last-child');
             if (statusSpan) {
-                const detail = formatGalleryBlocksProgressLabel(progress);
-                const suffix = detail ? ` (${detail})` : '';
-                if (progress.phase === 'initial') {
-                    statusSpan.textContent = `Loading Gallery${suffix}`;
-                } else {
-                    statusSpan.textContent = `Please Wait${suffix}`;
-                }
+                statusSpan.textContent = formatWorkspaceProgressStatusText(progress);
             }
         }
     }
@@ -1636,6 +1672,7 @@ async function setActiveWorkspace(id) {
         }
 
         activeWorkspace = id;
+        window.currentWorkspace = id;
 
         // Don't call switchWorkspaceTheme here - let the WebSocket event handle it
         // This prevents duplicate theme switching
@@ -2338,7 +2375,7 @@ if (window.wsClient) {
             taskbar.classList.remove('hidden');
         }
     }, true);
-    window.wsClient.registerInitStep(91, 'Initializing background layers', async () => {
+    window.wsClient.registerInitStep(87, 'Initializing background layers', async () => {
         initializeBackgrounds();
     });
 } else {

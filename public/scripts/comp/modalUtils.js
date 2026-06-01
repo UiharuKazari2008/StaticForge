@@ -84,8 +84,17 @@ function getModalWorkAreaInnerBounds() {
     };
 }
 
-function clampModalViewportRect(left, top, width, height) {
-    const bounds = getModalWorkAreaInnerBounds();
+function clampModalViewportRect(left, top, width, height, edgeMarginPx) {
+    const workArea = getModalWorkAreaBounds();
+    const margin = edgeMarginPx != null ? edgeMarginPx : MODAL_EDGE_MARGIN_PX;
+    const bounds = {
+        left: workArea.left + margin,
+        top: workArea.top + margin,
+        right: workArea.right - margin,
+        bottom: workArea.bottom - margin,
+        width: Math.max(0, workArea.width - (2 * margin)),
+        height: Math.max(0, workArea.height - (2 * margin))
+    };
     let newLeft = left;
     let newTop = top;
 
@@ -652,6 +661,7 @@ function getModalLayoutDimensions(modal) {
 function clampModalOffsetsForRect(offsetX, offsetY, width, height, options = {}) {
     const allowOffscreen = options.allowOffscreen === true;
     const minVisible = options.minVisible != null ? options.minVisible : MODAL_MIN_VISIBLE_PX;
+    const edgeMargin = options.edgeMargin != null ? options.edgeMargin : MODAL_EDGE_MARGIN_PX;
     const workArea = getModalWorkAreaBounds();
     const containerWidth = window.innerWidth;
     const containerHeight = window.innerHeight;
@@ -676,13 +686,13 @@ function clampModalOffsetsForRect(offsetX, offsetY, width, height, options = {})
             leftEdge = maxLeft;
         }
     } else if (width <= workArea.width) {
-        if (leftEdge < workArea.left + MODAL_EDGE_MARGIN_PX) {
-            leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
-        } else if (rightEdge > workArea.right - MODAL_EDGE_MARGIN_PX) {
-            leftEdge = workArea.right - MODAL_EDGE_MARGIN_PX - width;
+        if (leftEdge < workArea.left + edgeMargin) {
+            leftEdge = workArea.left + edgeMargin;
+        } else if (rightEdge > workArea.right - edgeMargin) {
+            leftEdge = workArea.right - edgeMargin - width;
         }
     } else {
-        leftEdge = workArea.left + MODAL_EDGE_MARGIN_PX;
+        leftEdge = workArea.left + edgeMargin;
     }
     constrainedX = (leftEdge + width / 2) - (containerWidth / 2);
 
@@ -703,13 +713,13 @@ function clampModalOffsetsForRect(offsetX, offsetY, width, height, options = {})
             topEdge = workArea.top;
         }
     } else if (height <= workArea.height) {
-        if (topEdge < workArea.top + MODAL_EDGE_MARGIN_PX) {
-            topEdge = workArea.top + MODAL_EDGE_MARGIN_PX;
-        } else if (bottomEdge > workArea.bottom - MODAL_EDGE_MARGIN_PX) {
-            topEdge = workArea.bottom - MODAL_EDGE_MARGIN_PX - height;
+        if (topEdge < workArea.top + edgeMargin) {
+            topEdge = workArea.top + edgeMargin;
+        } else if (bottomEdge > workArea.bottom - edgeMargin) {
+            topEdge = workArea.bottom - edgeMargin - height;
         }
     } else {
-        topEdge = workArea.top + MODAL_EDGE_MARGIN_PX;
+        topEdge = workArea.top + edgeMargin;
     }
 
     centerY = topEdge + height / 2;
@@ -1003,7 +1013,7 @@ function resetModalToViewportCenter(modal) {
     modal.removeAttribute('data-modal-moved');
 }
 
-function ensureModalEdgesWithinWorkArea(modal) {
+function ensureModalEdgesWithinWorkArea(modal, edgeMarginPx) {
     if (!modal || modal.classList.contains('hidden') || isModalMaximized(modal)) {
         return;
     }
@@ -1018,7 +1028,7 @@ function ensureModalEdgesWithinWorkArea(modal) {
             return;
         }
 
-        const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height);
+        const clamped = clampModalViewportRect(rect.left, rect.top, rect.width, rect.height, edgeMarginPx);
         if (Math.abs(clamped.left - rect.left) > 0.5 || Math.abs(clamped.top - rect.top) > 0.5) {
             setModalOffsetsFromViewportTopLeft(modal, clamped.left, clamped.top);
         } else {
@@ -1281,6 +1291,10 @@ function handleModalDragStart(e) {
     // Add dragging class to title bar
     titleBar.classList.add('dragging');
 
+    if (isLiveWindowRepositioningEnabled()) {
+        showWindowFrameForModal(modal);
+    }
+
     // Bring modal to front when dragging starts (only for moveable modals)
     // Manual modal participates in stacking when windowed
     const isBlocked = modal.id === 'manualModal' && !modal.classList.contains('windowed');
@@ -1333,6 +1347,18 @@ function handleModalDrag(e, draggedModal) {
     newOffsetX = clamped.offsetX;
     newOffsetY = clamped.offsetY;
 
+    if (isLiveWindowRepositioningEnabled()) {
+        draggedModal.setAttribute('data-preview-offset-x', String(newOffsetX));
+        draggedModal.setAttribute('data-preview-offset-y', String(newOffsetY));
+        const width = modalRect.width;
+        const height = modalRect.height;
+        const trueInsetTop = getModalTrueInsetTop();
+        const left = (window.innerWidth / 2) + newOffsetX - (width / 2);
+        const top = (window.innerHeight / 2) + newOffsetY + (0.5 * trueInsetTop) - getDesktopModalTopBias() - (height / 2);
+        updateWindowFrameRect({ left, top, width, height });
+        return;
+    }
+
     setModalOffsetPx(draggedModal, newOffsetX, newOffsetY, { snap: false, settle: false });
 }
 
@@ -1351,9 +1377,24 @@ function handleModalDragEnd(e, draggedModal) {
     draggedModal.removeAttribute('data-modal-start-offset-x');
     draggedModal.removeAttribute('data-modal-start-offset-y');
 
-    const computedStyle = getComputedStyle(draggedModal);
-    const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
-    const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+    let offsetX;
+    let offsetY;
+    if (isLiveWindowRepositioningEnabled()) {
+        offsetX = parseFloat(draggedModal.getAttribute('data-preview-offset-x'));
+        offsetY = parseFloat(draggedModal.getAttribute('data-preview-offset-y'));
+        if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+            const computedStyle = getComputedStyle(draggedModal);
+            offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+            offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+        }
+        hideWindowFrame();
+        draggedModal.removeAttribute('data-preview-offset-x');
+        draggedModal.removeAttribute('data-preview-offset-y');
+    } else {
+        const computedStyle = getComputedStyle(draggedModal);
+        offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
+        offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
+    }
     setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: true, settle: true });
 
     // Check backdrop when stopping drag
@@ -1411,6 +1452,10 @@ function handleModalResizeStart(e) {
     else if (resizeHandle.classList.contains('e')) resizeDirection = 'e';
 
     modal.setAttribute('data-resize-direction', resizeDirection);
+
+    if (isLiveWindowRepositioningEnabled()) {
+        showWindowFrameForModal(modal);
+    }
 
     // Bring modal to front when resizing starts (only for moveable modals)
     const isBlocked = modal.id === 'manualModal' && !modal.classList.contains('windowed');
@@ -1518,10 +1563,32 @@ function handleModalResize(e, resizedModal) {
     newWidth = Math.max(minWidth, roundCssPixel(newWidth));
     newHeight = Math.max(minHeight, roundCssPixel(newHeight));
 
+    const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
+    if (isLiveWindowRepositioningEnabled()) {
+        let previewLeft = newLeft;
+        let previewTop = newTop;
+        if (resizeAnchor === 'top') {
+            previewTop = resizeStartTop;
+            previewLeft = resizeDirection.includes('w')
+                ? resizeStartLeft + resizeStartWidth - newWidth
+                : resizeStartLeft;
+        }
+        updateWindowFrameRect({
+            left: previewLeft,
+            top: previewTop,
+            width: newWidth,
+            height: newHeight
+        });
+        resizedModal.setAttribute('data-preview-width', String(newWidth));
+        resizedModal.setAttribute('data-preview-height', String(newHeight));
+        resizedModal.setAttribute('data-preview-left', String(previewLeft));
+        resizedModal.setAttribute('data-preview-top', String(previewTop));
+        return;
+    }
+
     resizedModal.style.width = `${newWidth}px`;
     resizedModal.style.height = `${newHeight}px`;
 
-    const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
     if (resizeAnchor === 'top') {
         let anchorLeft = resizeStartLeft;
         if (resizeDirection.includes('w')) {
@@ -1548,6 +1615,39 @@ function handleModalResize(e, resizedModal) {
 
 function handleModalResizeEnd(e, resizedModal) {
     if (!resizedModal) return;
+
+    if (isLiveWindowRepositioningEnabled()) {
+        const previewWidth = parseFloat(resizedModal.getAttribute('data-preview-width'));
+        const previewHeight = parseFloat(resizedModal.getAttribute('data-preview-height'));
+        const previewLeft = parseFloat(resizedModal.getAttribute('data-preview-left'));
+        const previewTop = parseFloat(resizedModal.getAttribute('data-preview-top'));
+        const resizeAnchor = resizedModal.dataset.windowResizeAnchor;
+
+        if (Number.isFinite(previewWidth) && Number.isFinite(previewHeight) && Number.isFinite(previewLeft) && Number.isFinite(previewTop)) {
+            resizedModal.style.width = `${previewWidth}px`;
+            resizedModal.style.height = `${previewHeight}px`;
+            if (resizeAnchor === 'top') {
+                setModalPositionFromViewportRect(resizedModal, {
+                    left: previewLeft,
+                    top: previewTop,
+                    width: previewWidth,
+                    height: previewHeight
+                });
+            } else {
+                const trueInsetTop = getModalTrueInsetTop();
+                const offsetX = (previewLeft + previewWidth / 2) - (window.innerWidth / 2);
+                const offsetY = (previewTop + previewHeight / 2) - (window.innerHeight / 2) - (0.5 * trueInsetTop) + getDesktopModalTopBias();
+                const clamped = clampModalOffsetsForRect(offsetX, offsetY, previewWidth, previewHeight);
+                setModalOffsetPx(resizedModal, clamped.offsetX, clamped.offsetY, { snap: false, settle: false });
+            }
+        }
+
+        resizedModal.removeAttribute('data-preview-width');
+        resizedModal.removeAttribute('data-preview-height');
+        resizedModal.removeAttribute('data-preview-left');
+        resizedModal.removeAttribute('data-preview-top');
+        hideWindowFrame();
+    }
 
     const computedStyle = getComputedStyle(resizedModal);
     const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
@@ -1704,7 +1804,23 @@ function openModal(modal) {
             modal.removeEventListener('animationend', openingAnimationHandler);
             modal.classList.remove('opening');
             if (isMoveable && !modal.classList.contains('hidden')) {
-                ensureModalEdgesWithinWorkArea(modal);
+                if (modal.dataset.windowPositionMode === 'manual-only') {
+                    // #windowsStartupModal uses top-left offsets, not center + pixel-settle
+                    if (modal.id === 'windowsStartupModal') {
+                        return;
+                    }
+                    if (modal.id === 'confirmationDialog') {
+                        if (modal.dataset.confirmationPreplaced === '1') {
+                            settleModalPixelAnchor(modal);
+                        } else {
+                            ensureModalEdgesWithinWorkArea(modal, 20);
+                        }
+                        return;
+                    }
+                    settleModalPixelAnchor(modal);
+                } else {
+                    ensureModalEdgesWithinWorkArea(modal);
+                }
             }
         }
     };
@@ -1787,6 +1903,7 @@ function closeMainModal(modal) {
     const cleanup = () => {
         // Reset modal position offsets (persistable windows restore size/position from saved data on reopen)
         if (!shouldPersistWindowPosition(modal)) {
+            clearModalPixelAnchor(modal);
             modal.style.removeProperty('--modal-offset-x');
             modal.style.removeProperty('--modal-offset-y');
             modal.style.removeProperty('width');
@@ -2244,8 +2361,15 @@ function updateGalleryWindowMode() {
 
         // Only show gallery window if window positions are already loaded
         // If positions aren't loaded yet, keep it hidden - desktopShortcuts will show it after loading
+        // dontAutoLaunchWorkspace: public/scripts/comp/galleryView.js shouldAutoLaunchWorkspace
         if (Object.keys(globalWindowPositions).length > 0) {
-            galleryWindow.classList.remove('hidden');
+            let autoLaunchGallery = true;
+            try {
+                autoLaunchGallery = localStorage.getItem('dontAutoLaunchWorkspace') !== 'true';
+            } catch (e) { /* ignore */ }
+            if (autoLaunchGallery) {
+                galleryWindow.classList.remove('hidden');
+            }
         } else {
             // Positions not loaded yet - keep hidden until positions load
             // The positions will be loaded by desktopShortcuts manager, which will then show the window
@@ -2587,8 +2711,8 @@ const desktopIconsConfig = [
     {
         id: 'spellbook',
         icon: 'fa-duotone fa-book-spells',
-        imageIcon: 'presetbook.png',
-        label: 'Spellbook',
+        imageIcon: 'caster.png',
+        label: 'Spellcaster',
         action: () => {
             if (window.spellbookModalManager) window.spellbookModalManager.openModal();
         }
@@ -4160,7 +4284,7 @@ const startMenuConfig = [
         desktopOnly: true,
         action: () => { openManualModalWithContent(); }
     },
-    { launchId: 'spellbook', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { window.spellbookModalManager.openModal(); } },
+    { launchId: 'spellbook', icon: 'fas fa-hat-wizard', imageIcon: 'caster.png', text: 'Spellcaster', action: () => { window.spellbookModalManager.openModal(); } },
     { launchId: 'reference', icon: 'fas fa-swatchbook', imageIcon: 'ref.png', text: 'Reference', action: () => { showCacheManagerModal(); } },
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'notebook.png', text: 'Notion', action: () => { window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: () => { window.notepadManager.handleNewNote(); } } },
     { launchId: 'encyclopedia', icon: 'fas fa-book', imageIcon: 'books.png', text: 'Grimoire', action: () => { if (window.tagWikiSearchModal) { window.tagWikiSearchModal.open(); } else { const modal = document.getElementById('tagWikiSearchModal'); if (modal) openModal(modal); } } },
@@ -4175,7 +4299,7 @@ const startMenuConfig = [
         hasSubmenu: true,
         submenu: 'planets'
     },
-    { icon: 'fas fa-toolbox', imageIcon: 'slider.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' },
+    { icon: 'fas fa-toolbox', imageIcon: 'toolbox.png', text: 'Toolbox', hasSubmenu: true, submenu: 'toolbox' },
     { launchId: 'run', icon: 'fas fa-magnifying-glass', imageIcon: 'search.png', text: 'Run', action: () => { if (window.runApplet) { window.runApplet.open(); } } },
 ];
 
@@ -4198,16 +4322,17 @@ const startMenuSubmenus = {
         }));
     },
     toolbox: [
-        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', action: () => { showWorkspaceManagementModal(); } },
-        { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'stencil.png', text: 'Spellbook', action: () => { showPresetManager(); } },
+        { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
+        { launchId: 'nax-vibes', icon: 'fas fa-square-rss', text: 'Browse Vibes', action: () => { if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet) { naxVibesApplet.open(); } else { const modal = document.getElementById('naxVibesModal'); if (modal) openModal(modal); } } },
+        { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { showPresetManager(); } },
         { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', action: () => { showTextReplacementManager(); } },
         { launchId: 'favorites', icon: 'fas fa-star', imageIcon: 'heart.png', text: 'Favorites', action: () => { showFavoritesManager(); } },
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Memories', action: () => { openKnowledgeMemoriesModal(); } },
-        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
         { launchId: 'rules', icon: 'fas fa-book-law', imageIcon: 'rules.png', text: 'Rules', action: () => { showDirectorRulesManager(); } },
         { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', action: () => { window.chatSystem.openPersonaSettingsModal() } },
+        { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
         { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
     ]
 };
@@ -4739,6 +4864,20 @@ let desktopSettingsState = {
     customVertical: 50
 };
 
+let desktopSettingsGlobalState = {
+    autoLaunchWorkspace: true,
+    liveWindowRepositioning: (() => {
+        try {
+            return localStorage.getItem('liveWindowRepositioning') === 'true';
+        } catch (e) {
+            return false;
+        }
+    })()
+};
+
+let desktopSettingsActiveScope = 'workspace';
+let desktopSettingsScopeHandlersWired = false;
+
 // Alignment options for dropdowns
 const ALIGNMENT_OPTIONS = {
     horizontal: [
@@ -4817,6 +4956,151 @@ function setupDesktopContextMenu() {
 
     // Attach context menu to freeform container (empty space)
     contextMenu.attachToElement(freeformContainer, desktopContextMenuConfig);
+}
+
+function getDesktopSettingsActiveScope() {
+    return desktopSettingsActiveScope === 'global' ? 'global' : 'workspace';
+}
+
+function setDesktopSettingsScope(scope) {
+    const nextScope = scope === 'global' ? 'global' : 'workspace';
+    desktopSettingsActiveScope = nextScope;
+
+    const modal = document.getElementById('desktopSettingsModal');
+    if (!modal) return;
+
+    const toggle = document.getElementById('desktopSettingsScopeToggle');
+    if (toggle) {
+        toggle.setAttribute('data-active', nextScope);
+        toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.scope === nextScope);
+        });
+    }
+
+    modal.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
+        section.classList.toggle('hidden', section.dataset.desktopSettingsScope !== nextScope);
+    });
+}
+
+function readDesktopSettingsAutoLaunchPreference() {
+    // shouldAutoLaunchWorkspace — public/scripts/comp/galleryView.js
+    if (typeof shouldAutoLaunchWorkspace === 'function') {
+        return shouldAutoLaunchWorkspace();
+    }
+    try {
+        return localStorage.getItem('dontAutoLaunchWorkspace') !== 'true';
+    } catch (e) {
+        return true;
+    }
+}
+
+function updateDesktopSettingsAutoLaunchToggleUI(autoLaunch) {
+    const btn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
+    if (!btn) return;
+
+    const on = autoLaunch !== false;
+    btn.dataset.state = on ? 'on' : 'off';
+    btn.textContent = on ? 'On' : 'Off';
+}
+
+function readDesktopSettingsLiveWindowRepositioningPreference() {
+    try {
+        return localStorage.getItem('liveWindowRepositioning') === 'true';
+    } catch (e) {
+        return false;
+    }
+}
+
+function updateDesktopSettingsLiveWindowRepositioningToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
+    if (!btn) return;
+
+    const on = enabled === true;
+    btn.dataset.state = on ? 'on' : 'off';
+    btn.textContent = on ? 'On' : 'Off';
+}
+
+function setLiveWindowRepositioningEnabled(enabled) {
+    document.documentElement.classList.toggle('live-window-repositioning-enabled', enabled === true);
+}
+
+function getWindowFrameElement() {
+    let frame = document.getElementById('modalDragResizeFrame');
+    if (frame) {
+        return frame;
+    }
+    frame = document.createElement('div');
+    frame.id = 'modalDragResizeFrame';
+    frame.className = 'modal-drag-resize-frame hidden';
+    document.body.appendChild(frame);
+    return frame;
+}
+
+function updateWindowFrameRect(rect) {
+    const frame = getWindowFrameElement();
+    frame.style.left = `${roundCssPixel(rect.left)}px`;
+    frame.style.top = `${roundCssPixel(rect.top)}px`;
+    frame.style.width = `${Math.max(1, roundCssPixel(rect.width))}px`;
+    frame.style.height = `${Math.max(1, roundCssPixel(rect.height))}px`;
+}
+
+function showWindowFrameForModal(modal) {
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    updateWindowFrameRect(rect);
+    getWindowFrameElement().classList.remove('hidden');
+}
+
+function hideWindowFrame() {
+    const frame = document.getElementById('modalDragResizeFrame');
+    if (frame) {
+        frame.classList.add('hidden');
+    }
+}
+
+function isLiveWindowRepositioningEnabled() {
+    return desktopSettingsGlobalState.liveWindowRepositioning === true;
+}
+
+function setupDesktopSettingsScopeToggle() {
+    if (desktopSettingsScopeHandlersWired) {
+        return;
+    }
+
+    const toggle = document.getElementById('desktopSettingsScopeToggle');
+    if (!toggle) return;
+
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const scope = btn.dataset.scope;
+            if (scope) {
+                setDesktopSettingsScope(scope);
+            }
+        });
+    });
+
+    const autoLaunchBtn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
+    if (autoLaunchBtn) {
+        autoLaunchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = autoLaunchBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.autoLaunchWorkspace = nextOn;
+            updateDesktopSettingsAutoLaunchToggleUI(nextOn);
+        });
+    }
+
+    const liveWindowRepositioningBtn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
+    if (liveWindowRepositioningBtn) {
+        liveWindowRepositioningBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = liveWindowRepositioningBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.liveWindowRepositioning = nextOn;
+            updateDesktopSettingsLiveWindowRepositioningToggleUI(nextOn);
+        });
+    }
+
+    desktopSettingsScopeHandlersWired = true;
 }
 
 // Open Desktop Settings Modal with optional wallpaper path (format: "type:id")
@@ -4920,6 +5204,13 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
         desktopSettingsState.customVertical = 50;
     }
 
+    desktopSettingsGlobalState.autoLaunchWorkspace = readDesktopSettingsAutoLaunchPreference();
+    updateDesktopSettingsAutoLaunchToggleUI(desktopSettingsGlobalState.autoLaunchWorkspace);
+    desktopSettingsGlobalState.liveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
+    updateDesktopSettingsLiveWindowRepositioningToggleUI(desktopSettingsGlobalState.liveWindowRepositioning);
+    setLiveWindowRepositioningEnabled(desktopSettingsGlobalState.liveWindowRepositioning);
+    setDesktopSettingsScope('workspace');
+
     // Initialize dropdowns and button handlers
     initializeDesktopSettingsModal();
 
@@ -4987,6 +5278,8 @@ function updateDesktopSettingsPreview() {
 
 // Initialize modal (dropdowns and button handlers)
 function initializeDesktopSettingsModal() {
+    setupDesktopSettingsScopeToggle();
+
     // Setup dropdowns
     setupDesktopSettingsDropdowns();
 
@@ -5348,8 +5641,44 @@ function setupDesktopSettingsButtonHandlers() {
     }
 }
 
-// Save desktop settings
+// Save desktop settings (workspace or global scope)
 async function saveDesktopSettings() {
+    if (getDesktopSettingsActiveScope() === 'global') {
+        await saveDesktopGlobalSettings();
+        return;
+    }
+    await saveDesktopWorkspaceSettings();
+}
+
+async function saveDesktopGlobalSettings() {
+    const autoLaunch = desktopSettingsGlobalState.autoLaunchWorkspace !== false;
+    const liveWindowRepositioning = desktopSettingsGlobalState.liveWindowRepositioning === true;
+    const previousAutoLaunch = readDesktopSettingsAutoLaunchPreference();
+    const previousLiveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
+
+    if (autoLaunch === previousAutoLaunch && liveWindowRepositioning === previousLiveWindowRepositioning) {
+        const modal = document.getElementById('desktopSettingsModal');
+        closeModal(modal);
+        showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
+        return;
+    }
+
+    try {
+        localStorage.setItem('dontAutoLaunchWorkspace', autoLaunch ? 'false' : 'true');
+        localStorage.setItem('liveWindowRepositioning', liveWindowRepositioning ? 'true' : 'false');
+        setLiveWindowRepositioningEnabled(liveWindowRepositioning);
+    } catch (e) {
+        console.error('Failed to save desktop global settings:', e);
+        showGlassToast('error', 'Save Failed', 'Could not save startup settings', false, 4000, '<i class="fa-light fa-exclamation-triangle"></i>');
+        return;
+    }
+
+    const modal = document.getElementById('desktopSettingsModal');
+    closeModal(modal);
+    showGlassToast('success', null, 'Global Settings Saved', false, 3000, '<i class="fa-light fa-check"></i>');
+}
+
+async function saveDesktopWorkspaceSettings() {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
     const workspace = workspaces[currentWorkspace];
 

@@ -179,8 +179,12 @@ class BannerManager {
             'get_static_wiki_page': 'Get Static Wiki Page',
             'get_nax_galleries': 'Get Datasets (NAX)',
             'get_nax_tags': 'Get Tags (NAX)',
+            'get_nax_marked_tags': 'Get Marked Tags (NAX)',
+            'get_nax_expander_presets': 'Get Expander Presets (NAX)',
             'set_nax_favorite': 'Set Favorite (NAX)',
             'set_nax_try': 'Set Try (NAX)',
+            'get_nax_vibes_gallery': 'Browse Vibes',
+            'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
             'search_files': 'Find Images',
             'search_characters': 'Find Characters',
             'lookup_city': 'Lookup Location',
@@ -268,6 +272,7 @@ class BannerManager {
             'bulk_move_vibe_images': 'Bulk Move Vibe Images',
             'encode_vibe': 'Encode Vibe',
             'import_vibe_bundle': 'Import Vibe Bundle',
+            'import_vibe_from_url': 'Import Vibe from URL',
             'check_vibe_encoding': 'Check Vibe Encoding',
 
             // Cache and system operations
@@ -507,6 +512,8 @@ class WebSocketClient {
         this.pingVariabilityThreshold = 0.3; // Show warning if variability exceeds 30% of average
 
         this.progressToastId = null;
+        /** After gallery handoff hideProgressNotification(); do not reopen startup modal or classic theme. */
+        this.initStartupUiDismissed = false;
         /** Connection dial UI — single source of truth for connect/reconnect/failure dialog. */
         this.connectionPhase = 'idle'; // idle | dialing | failed | connected | auth
         this.connectionDialView = 'transient'; // transient | status
@@ -1526,6 +1533,7 @@ class WebSocketClient {
             await this.hideWindowsStartupModal();
         }
         document.body.classList.remove('initializing');
+        this.initStartupUiDismissed = true;
 
         // Activate all deferred resize listeners after initialization is hidden
         if (typeof activateAllResizeListeners === 'function') {
@@ -1533,7 +1541,45 @@ class WebSocketClient {
         }
     }
 
+    _updateInitProgressToast(message, progress, addInitializingClass = false) {
+        if (!this.progressToastId) {
+            if (typeof showGlassToast === 'function') {
+                this.progressToastId = showGlassToast(
+                    'info',
+                    'Dreamscape',
+                    message,
+                    true,
+                    false,
+                    '<i class="fa-duotone fa-star-christmas"></i>'
+                );
+                if (addInitializingClass) {
+                    document.body.classList.add('initializing');
+                }
+            }
+        }
+        if (!this.progressToastId) return;
+
+        if (typeof updateGlassToastComplete === 'function') {
+            updateGlassToastComplete(this.progressToastId, {
+                type: 'info',
+                title: 'Dreamscape',
+                message: message,
+                customIcon: '<i class="fa-duotone fa-star-christmas"></i>'
+            });
+        }
+
+        if (typeof updateGlassToastProgress === 'function') {
+            updateGlassToastProgress(this.progressToastId, progress);
+        }
+    }
+
     updateProgressNotification(message, progress) {
+        // Post–gallery-handoff: use toast only — never reopen startup modal (re-applies windows-classic-theme)
+        if (window.isDesktop && this.initStartupUiDismissed) {
+            this._updateInitProgressToast(message, progress, false);
+            return;
+        }
+
         if (window.isDesktop) {
             const startupModal = document.getElementById('windowsStartupModal');
             const startupHidden = !startupModal || startupModal.classList.contains('hidden');
@@ -1549,35 +1595,7 @@ class WebSocketClient {
                 this.updateWindowsStartupModal(message, progress);
             }
         } else {
-            if (!this.progressToastId) {
-                if (typeof showGlassToast === 'function') {
-                    this.progressToastId = showGlassToast(
-                        'info',
-                        'Dreamscape',
-                        message,
-                        true,
-                        false,
-                        '<i class="fa-duotone fa-star-christmas"></i>'
-                    );
-                    document.body.classList.add('initializing');
-                }
-            }
-            if (!this.progressToastId) return;
-
-            // Update toast message if updateGlassToastComplete is available
-            if (typeof updateGlassToastComplete === 'function') {
-                updateGlassToastComplete(this.progressToastId, {
-                    type: 'info',
-                    title: 'Dreamscape',
-                    message: message,
-                    customIcon: '<i class="fa-duotone fa-star-christmas"></i>'
-                });
-            }
-
-            // Update progress bar
-            if (typeof updateGlassToastProgress === 'function') {
-                updateGlassToastProgress(this.progressToastId, progress);
-            }
+            this._updateInitProgressToast(message, progress, true);
         }
     }
 
@@ -1611,10 +1629,17 @@ class WebSocketClient {
 
         if (!modal || !statusElement || !progressBar) return;
 
-        // Apply Windows Classic theme initially
-        if (!document.body.classList.contains('windows-classic-theme')) {
+        // Classic theme only during boot splash (windows-startup); loadWorkspaces removes it for Aero
+        if (document.body.classList.contains('windows-startup')
+            && !document.body.classList.contains('windows-classic-theme')) {
             document.body.classList.add('windows-classic-theme');
         }
+
+        // Top-left corner layout (#windowsStartupModal CSS); skip center clamp / pixel-settle — modalUtils.js
+        modal.dataset.windowPositionMode = 'manual-only';
+        clearModalPixelAnchor(modal);
+        modal.style.setProperty('--modal-offset-x', '20px');
+        modal.style.setProperty('--modal-offset-y', '20px');
 
         openModal(modal);
 
@@ -1663,6 +1688,8 @@ class WebSocketClient {
 
         const modal = document.getElementById('windowsStartupModal');
         if (modal) {
+            // clearModalPixelAnchor — modalUtils.js (corner modal; do not use center-based revert)
+            clearModalPixelAnchor(modal);
             // Use normal modal closing process; wait so body background stays in sync with close animation
             if (typeof closeModal === 'function') {
                 await closeModal(modal);
@@ -1797,13 +1824,14 @@ class WebSocketClient {
         }
     }
 
-    registerInitStep(priority, message, stepFunction, runOnReconnect = false) {
+    registerInitStep(priority, message, stepFunction, runOnReconnect = false, options = {}) {
+        const nonBlocking = options && options.nonBlocking === true;
         // Check if step with same message already exists
         const existingStepIndex = this.initSteps.findIndex(step => step.message === message);
         if (existingStepIndex !== -1) {
-            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect };
+            this.initSteps[existingStepIndex] = { priority, message, stepFunction, runOnReconnect, nonBlocking };
         } else {
-            this.initSteps.push({ priority, message, stepFunction, runOnReconnect });
+            this.initSteps.push({ priority, message, stepFunction, runOnReconnect, nonBlocking });
         }
 
         // Sort by priority
@@ -1936,6 +1964,7 @@ class WebSocketClient {
 
         this.currentInitStep = 0;
         this.totalInitSteps = this.initSteps.length;
+        this.initStartupUiDismissed = false;
 
         try {
             for (const step of this.initSteps) {
@@ -1943,7 +1972,9 @@ class WebSocketClient {
                 // Calculate progress: base percentage + steps percentage
                 const stepProgress = WebSocketClient.PROGRESS_INIT_BASE +
                     ((this.currentInitStep / this.totalInitSteps) * WebSocketClient.PROGRESS_INIT_STEPS);
-                this.updateProgressNotification(step.message, stepProgress);
+                if (!step.nonBlocking) {
+                    this.updateProgressNotification(step.message, stepProgress);
+                }
 
                 // On reconnection, only run steps flagged as runOnReconnect
                 if (this.initializationCompleted && !step.runOnReconnect) {
@@ -2164,6 +2195,7 @@ class WebSocketClient {
             this.ws.onopen = async () => {
                 this.isConnecting = false;
                 this.connectionLock = false; // Release connection lock on success
+                const isReconnection = this.initializationCompleted;
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
                 this.circuitBreaker = false; // Reset circuit breaker on successful connection
@@ -2181,15 +2213,26 @@ class WebSocketClient {
                 // Start periodic pings to measure RTT and keep connection alive
                 this.startPeriodicPings();
 
+                // Sync workspace before refresh callbacks so gallery requests use the correct workspace
+                if (isReconnection) {
+                    const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
+                        ? activeWorkspace
+                        : (window.currentWorkspace || 'default');
+                    try {
+                        await this.setActiveWorkspace(workspaceId);
+                    } catch (error) {
+                        console.warn('⚠️ Failed to sync workspace on reconnect:', error.message);
+                    }
+                }
+
                 // Trigger refresh callbacks on reconnection (not initial connection)
-                if (this.initializationCompleted) {
-                    this.executeRefreshCallbacks()
-                        .catch(error => {
-                            console.error('❌ Error triggering refresh callbacks:', error);
-                        })
-                        .finally(() => {
-                            console.log('✅ Refresh callbacks triggered successfully');
-                        });
+                if (isReconnection) {
+                    try {
+                        await this.executeRefreshCallbacks();
+                        console.log('✅ Refresh callbacks triggered successfully');
+                    } catch (error) {
+                        console.error('❌ Error triggering refresh callbacks:', error);
+                    }
                 }
 
                 // Check for updates after successful connection but before authentication
@@ -2212,18 +2255,6 @@ class WebSocketClient {
                     // Complete any remaining initialization steps (includes authentication)
                     // Now with RTT data available for dynamic timeout adjustment
                     this.executeInitSteps();
-                }
-
-                // Sync current workspace with server (only on reconnection, not initial connection)
-                if (this.reconnectAttempts > 0 && window.currentWorkspace) {
-                    try {
-                        // Use setActiveWorkspace to ensure server has the correct workspace
-                        this.setActiveWorkspace(window.currentWorkspace).catch(error => {
-                            console.warn('⚠️ Failed to sync workspace on reconnect:', error.message);
-                        });
-                    } catch (error) {
-                        console.warn('⚠️ Error syncing workspace on reconnect:', error.message);
-                    }
                 }
             };
 
@@ -2692,6 +2723,7 @@ class WebSocketClient {
             message: step.message,
             priority: step.priority,
             runOnReconnect: step.runOnReconnect,
+            nonBlocking: !!step.nonBlocking,
             completed: this.initializationCompleted
         }));
     }
@@ -3702,6 +3734,12 @@ class WebSocketClient {
         if (data?.compiled_prompt?.context && typeof updateDynamicCarousel === 'function') {
             updateDynamicCarousel(data.compiled_prompt.context, 'compiled');
         }
+        if (phase === 'context' && data && typeof updateRentanContextOverlay === 'function') {
+            updateRentanContextOverlay(data);
+        }
+        if (data?.compiled_prompt?.context && typeof updateRentanContextOverlay === 'function') {
+            updateRentanContextOverlay(data.compiled_prompt.context);
+        }
     }
 
     /**
@@ -3715,7 +3753,10 @@ class WebSocketClient {
             return;
         }
 
-        const isDynamicGenerationActive = window.dynamicGenerationData || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on');
+        const manualFormGenerating = document.getElementById('manualForm')?.classList.contains('generating');
+        const isDynamicGenerationActive = window.dynamicGenerationData
+            || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on')
+            || manualFormGenerating;
         if (isDynamicGenerationActive) {
             updateDynamicGenerationProgressOverlay(phase, data);
         }
@@ -4152,9 +4193,13 @@ class WebSocketClient {
     // Method to request gallery data via WebSocket
     async requestGallery(viewType = 'images', includePinnedStatus = true, options = {}) {
         try {
+            const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
+                ? activeWorkspace
+                : (window.currentWorkspace || 'default');
             const requestData = {
                 viewType,
                 includePinnedStatus,
+                workspaceId,
                 ...options // Support light, offset, limit parameters
             };
 
@@ -4700,14 +4745,17 @@ class WebSocketClient {
         return this.sendMessage('update_reference_metadata', { hash, metadata });
     }
 
-    async downloadUrlFile(url) {
+    async downloadUrlFile(url, previewUrl = null) {
         try {
             // Add a timeout to prevent hanging
+            const timeoutMs = previewUrl ? 45000 : 10000;
             const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Download timeout - server took too long to respond')), 10000); // 10 second timeout
+                setTimeout(() => reject(new Error('Download timeout - server took too long to respond')), timeoutMs);
             });
 
-            const downloadPromise = this.sendMessage('download_url_file', { url });
+            const payload = { url };
+            if (previewUrl) payload.previewUrl = previewUrl;
+            const downloadPromise = this.sendMessage('download_url_file', payload);
 
             return await Promise.race([downloadPromise, timeoutPromise]);
         } catch (error) {
@@ -4756,8 +4804,12 @@ class WebSocketClient {
         return this.sendMessage('encode_vibe', params);
     }
 
-    async importVibeBundle(bundleData, workspaceId, comment = '', tempFile = null) {
-        return this.sendMessage('import_vibe_bundle', { bundleData, workspaceId, comment, tempFile });
+    async importVibeBundle(bundleData, workspaceId, comment = '', tempFile = null, previewUrl = null) {
+        return this.sendMessage('import_vibe_bundle', { bundleData, workspaceId, comment, tempFile, previewUrl });
+    }
+
+    async importVibeFromUrl(downloadUrl, previewUrl, workspaceId, comment = '', naxBrowserMeta = null) {
+        return this.sendMessage('import_vibe_from_url', { downloadUrl, previewUrl, workspaceId, comment, naxBrowserMeta });
     }
 
     async checkVibeEncoding(vibeId, workspaceId) {

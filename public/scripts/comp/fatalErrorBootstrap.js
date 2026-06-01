@@ -337,7 +337,7 @@
 
         var titleEl = windowEl.querySelector('.dreamscape-app-error-window-title');
         if (titleEl) {
-            titleEl.textContent = 'Application error #' + entry.id;
+            titleEl.textContent = 'Spectator Fault Detection - Error #' + entry.id;
         }
 
         var bodyEl = windowEl.querySelector('.dreamscape-app-error-body');

@@ -231,6 +231,28 @@ class TextReplacements {
         // Not when followed by "/" — "!PRESET_NAME/foo/..." is slash-syntax, not the preset placeholder
         result = result.replace(/!PRESET_NAME(?!\/)/g, presetName != null && presetName !== '' ? presetName : '');
 
+        // Internal NAX expanders: !NAX_FAV_CHARA / !NAX_TRY_ARTIST (server preset registry in naxTagsDatabase.js)
+        const naxDb = this.globalResources && this.globalResources.getNaxTagsDatabase
+            ? this.globalResources.getNaxTagsDatabase()
+            : null;
+        if (naxDb) {
+            result = result.replace(/!NAX_(FAV|TRY)_([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g, (match, kind, keyPart) => {
+                const resolved = naxDb.resolveNaxInternalExpander(keyPart, kind, model);
+                if (!resolved) return '';
+                replacements.push({
+                    key: `NAX_${kind}_${resolved.presetId}`,
+                    value: resolved.formatted,
+                    presetName: presetName,
+                    index: null,
+                    type: 'nax_internal',
+                    pattern: match,
+                    can_lock: false,
+                    locked: false
+                });
+                return resolved.formatted;
+            });
+        }
+
         // Track which body replacement configs apply to current stage (for metadata preservation)
         const currentStageBodyReplacements = new Map();
         

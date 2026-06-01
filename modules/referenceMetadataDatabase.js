@@ -126,6 +126,12 @@ class ReferenceMetadataDatabase {
 
         this.db.exec(createVibeMetadataTable);
 
+        try {
+            this.db.exec(`ALTER TABLE reference_vibe_metadata ADD COLUMN locked INTEGER DEFAULT 0`);
+        } catch (error) {
+            // Column already exists
+        }
+
         // Vibe encodings table - stores individual encodings linked to vibes
         const createVibeEncodingsTable = `
             CREATE TABLE IF NOT EXISTS reference_vibe_encodings (
@@ -837,6 +843,13 @@ class ReferenceMetadataDatabase {
     // VIBE METADATA METHODS
     // ============================================
 
+    computeVibeLocked(row) {
+        if (!row) return true;
+        if (row.locked === 1 || row.locked === true) return true;
+        const hasImage = row.image_source && String(row.image_source).trim() !== '';
+        return !hasImage;
+    }
+
     /**
      * Get vibe metadata by ID (includes encodings reconstructed from separate table)
      * @param {string} vibeId - Vibe ID (sha256 hash)
@@ -901,8 +914,7 @@ class ReferenceMetadataDatabase {
                     } : null
                 };
                 
-                // Compute locked: no image source = locked
-                vibe.locked = !result.image_source;
+                vibe.locked = this.computeVibeLocked(result);
                 
                 // For client compatibility, add mtime (use created_at for sorting)
                 vibe.mtime = result.created_at * 1000;
@@ -934,12 +946,28 @@ class ReferenceMetadataDatabase {
                 previewHash = vibeData.imageSource;
             }
             
-            // Store vibe metadata (without encodings, comments stored in reference_metadata)
+            let lockedVal;
+            if (vibeData.locked === true || vibeData.locked === 1) {
+                lockedVal = 1;
+            } else if (vibeData.locked === false || vibeData.locked === 0) {
+                lockedVal = 0;
+            } else {
+                const existingRow = this.db.prepare(
+                    'SELECT locked, image_source FROM reference_vibe_metadata WHERE id = ?'
+                ).get(vibeId);
+                if (existingRow) {
+                    lockedVal = this.computeVibeLocked(existingRow) ? 1 : 0;
+                } else {
+                    const hasImage = vibeData.imageSource && String(vibeData.imageSource).trim() !== '';
+                    lockedVal = hasImage ? 0 : 1;
+                }
+            }
+
             const stmt = this.db.prepare(`
                 INSERT OR REPLACE INTO reference_vibe_metadata (
-                    id, type, image_source, preview_hash, imported_from,
+                    id, type, image_source, preview_hash, imported_from, locked,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 
+                ) VALUES (?, ?, ?, ?, ?, ?,
                     COALESCE((SELECT created_at FROM reference_vibe_metadata WHERE id = ?), ?),
                     ?
                 )
@@ -948,25 +976,50 @@ class ReferenceMetadataDatabase {
             stmt.run(
                 vibeId,
                 vibeData.type || 'base64',
-                vibeData.imageSource || null, // NULL allowed for locked vibes without images
+                vibeData.imageSource || null,
                 previewHash,
                 vibeData.importedFrom || 0,
+                lockedVal,
                 vibeId,
                 now,
                 now
             );
             
-            // Store comment in reference_metadata table if provided
-            // Only create/update if no existing metadata entry has a comment (per user requirement)
-            if (vibeData.comment !== undefined && vibeData.comment !== null && vibeData.comment.trim()) {
+            if (vibeData.displayName !== undefined || vibeData.comment !== undefined) {
                 const existingMetadata = this.getMetadata(vibeId);
-                // Only create metadata entry if one doesn't exist, or if existing one has no comment
+                const metaPatch = {};
+                if (vibeData.displayName !== undefined && vibeData.displayName !== null) {
+                    const trimmedName = String(vibeData.displayName).trim();
+                    if (trimmedName || vibeData.replaceComment) {
+                        metaPatch.displayName = trimmedName || null;
+                    }
+                }
+                if (vibeData.comment !== undefined && vibeData.comment !== null && String(vibeData.comment).trim()) {
+                    if (!existingMetadata || !existingMetadata.comment || vibeData.replaceComment) {
+                        metaPatch.comment = String(vibeData.comment).trim();
+                    }
+                } else if (vibeData.replaceComment && vibeData.comment === '') {
+                    metaPatch.comment = null;
+                }
+                if (Object.keys(metaPatch).length) {
+                    const mergeBase = existingMetadata ? {
+                        displayName: existingMetadata.display_name || null,
+                        tags: existingMetadata.tags || [],
+                        comment: existingMetadata.comment || null,
+                        vibeAppendPrompt: existingMetadata.vibe_append_prompt || null,
+                        vibeAppendUc: existingMetadata.vibe_append_uc || null,
+                        vibePrependPrompt: !!existingMetadata.vibe_prepend_prompt,
+                        vibePrependUc: !!existingMetadata.vibe_prepend_uc
+                    } : { tags: [] };
+                    this.setMetadata(vibeId, { ...mergeBase, ...metaPatch });
+                }
+            } else if (vibeData.comment !== undefined && vibeData.comment !== null && String(vibeData.comment).trim()) {
+                const existingMetadata = this.getMetadata(vibeId);
                 if (!existingMetadata || !existingMetadata.comment) {
                     this.setMetadata(vibeId, {
                         comment: vibeData.comment
                     });
                 }
-                // If existing metadata has a comment, disregard the JSON comment (per user requirement)
             }
             
             // Store encodings in separate table if provided
@@ -1056,7 +1109,7 @@ class ReferenceMetadataDatabase {
                     encodings: encodingsMap[result.id] || {},
                     createdAt: result.created_at,
                     updatedAt: result.updated_at,
-                    locked: !result.image_source,
+                    locked: this.computeVibeLocked(result),
                     mtime: result.created_at * 1000,
                     // Include full metadata if it exists
                     metadata: result.display_name || result.tags || result.comment || 
@@ -1405,7 +1458,7 @@ class ReferenceMetadataDatabase {
                 encodings: encodingsMap[result.id] || {},
                 createdAt: result.created_at,
                 updatedAt: result.updated_at,
-                locked: !result.image_source,
+                locked: this.computeVibeLocked(result),
                 mtime: result.created_at * 1000
             };
             return vibe;
@@ -1697,11 +1750,6 @@ class ReferenceMetadataDatabase {
             const resultMap = {};
             results.forEach(row => {
                 if (!resultMap[row.vibe_id]) {
-                    // Calculate locked status: locked if no image_source (NULL or empty string)
-                    // This matches the logic: locked vibes have no original image
-                    const hasImage = row.image_source && row.image_source.trim() !== '';
-                    const isLocked = !hasImage;
-                    
                     resultMap[row.vibe_id] = {
                         id: row.vibe_id,
                         type: row.type,
@@ -1712,7 +1760,7 @@ class ReferenceMetadataDatabase {
                         encodings: encodingsMap[row.vibe_id] || {},
                         createdAt: row.created_at,
                         updatedAt: row.updated_at,
-                        locked: isLocked, // Explicitly calculate as boolean
+                        locked: this.computeVibeLocked(row),
                         mtime: row.created_at * 1000,
                         workspaces: [],
                         metadata: row.display_name || row.tags || row.comment || 

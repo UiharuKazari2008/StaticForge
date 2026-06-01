@@ -2591,6 +2591,7 @@ function getTextReplacementExpandTextFromItem(item) {
         return String(raw);
     }
     const ph = String(item.dataset.placeholder || '').trim();
+    if (/^NAX_(FAV|TRY)_/i.test(ph)) return '';
     if (!ph) return '';
     const map = window.optionsData && window.optionsData.textReplacements;
     if (map && Object.prototype.hasOwnProperty.call(map, ph) && map[ph] !== undefined && map[ph] !== null) {

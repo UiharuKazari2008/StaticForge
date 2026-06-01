@@ -7821,10 +7821,12 @@ class GrokService {
                 
                 // Optimize results - remove redundant model/searchModel metadata
                 const optimizedResults = rawResults.map(tag => {
+                    const count = tag.count ?? tag.n_count ?? tag.d_count ?? tag.e_count ?? 0;
+                    const confidence = tag.confidence ?? tag.score ?? 0;
                     const optimized = {
-                        name: tag.tag || tag.name,
-                        count: tag.count,
-                        confidence: tag.confidence
+                        name: tag.tag || tag.name || tag.title,
+                        count,
+                        confidence
                     };
                     // Only include category if it's meaningful (not just "general")
                     if (tag.category && tag.category !== 'general') {
@@ -7832,6 +7834,12 @@ class GrokService {
                     }
                     return optimized;
                 });
+                
+                const formatCountCell = (value) => {
+                    const num = Number(value);
+                    if (!Number.isFinite(num) || num === 0) return '-';
+                    return num.toLocaleString();
+                };
                 
                 // Format as markdown table
                 let markdownContent = `# Tag Search Results (${optimizedResults.length} found)\n`;
@@ -7842,7 +7850,7 @@ class GrokService {
                         const categoryCol = optimizedResults.some(t => t.category) ? ` | ${tag.category || '-'}` : '';
                         // Handle both decimal (0-1) and percentage (0-100) confidence values
                         const confidenceValue = tag.confidence > 1 ? tag.confidence : (tag.confidence * 100);
-                        markdownContent += `| ${tag.name} | ${tag.count.toLocaleString()} | ${confidenceValue.toFixed(1)}%${categoryCol} |\n`;
+                        markdownContent += `| ${tag.name} | ${formatCountCell(tag.count)} | ${Number.isFinite(confidenceValue) ? confidenceValue.toFixed(1) : '0.0'}%${categoryCol} |\n`;
                     });
                 } else {
                     markdownContent += `No matching tags found.\n`;

@@ -1360,6 +1360,55 @@ class SearchService {
         // Sort by match score (highest first)
         results.sort((a, b) => b.matchScore - a.matchScore);
 
+        // Internal NAX expanders (!NAX_FAV_* / !NAX_TRY_* per dataset)
+        if (this.globalResources && this.globalResources.getNaxTagsDatabase) {
+            const naxDb = this.globalResources.getNaxTagsDatabase();
+            const internal = naxDb.getInternalNaxTextReplacements();
+            const searchLower = searchQuery === '' ? '' : searchQuery.toLowerCase();
+
+            for (const entry of internal) {
+                let matchScore = 0;
+                let matchType = 'none';
+                const keyLower = entry.key.toLowerCase();
+                const labelLower = String(entry.label || '').toLowerCase();
+                const descLower = String(entry.description || '').toLowerCase();
+                const kindLabel = entry.type === 'TRY' ? 'try mark' : 'favorite';
+
+                if (searchQuery === '') {
+                    matchScore = 45;
+                    matchType = 'nax_all';
+                } else if (keyLower === searchLower) {
+                    matchScore = 100;
+                    matchType = 'exact_key';
+                } else if (keyLower.startsWith(searchLower)) {
+                    matchScore = 92;
+                    matchType = 'key_starts_with';
+                } else if (keyLower.includes(searchLower)) {
+                    matchScore = 72;
+                    matchType = 'key_contains';
+                } else if (labelLower.includes(searchLower) || descLower.includes(searchLower)) {
+                    matchScore = 60;
+                    matchType = 'label_contains';
+                }
+
+                if (matchScore > 0) {
+                    results.push({
+                        type: 'textReplacement',
+                        name: entry.key,
+                        description: entry.description || `Random ${kindLabel} from ${entry.label}`,
+                        placeholder: entry.key,
+                        displayName: hasPickSuffix ? `${entry.key}~` : entry.key,
+                        matchScore,
+                        matchType,
+                        replacementValue: entry.description || `Random ${kindLabel} (${entry.label})`,
+                        naxInternal: true
+                    });
+                }
+            }
+
+            results.sort((a, b) => b.matchScore - a.matchScore);
+        }
+
         return results;
     }
 

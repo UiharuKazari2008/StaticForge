@@ -314,25 +314,21 @@ class ContextMenuController {
             // Set up long-press timer for proxy clicking
             this.overlayTouchTimer = setTimeout(() => {
                 if (!this.overlayHasScrolled) {
-                    // Use a delay to ensure the overlay is hidden, then trigger the event on the element below
+                    // Use a delay to ensure the overlay is hidden, then open the menu on the element below
                     setTimeout(() => {
                         const elementBelow = document.elementFromPoint(this.overlayTouchStartX, this.overlayTouchStartY);
                         if (elementBelow && elementBelow !== this.overlay) {
                             const target = elementBelow.closest('[data-context-menu]');
                             if (target) {
-                                // Create and dispatch a new touchstart event on the target element
-                                const newEvent = new TouchEvent('touchstart', {
-                                    bubbles: true,
-                                    cancelable: true,
-                                    touches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }],
-                                    targetTouches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }],
-                                    changedTouches: [{ clientX: this.overlayTouchStartX, clientY: this.overlayTouchStartY }]
-                                });
-
-                                // Mark this as a proxy event from the overlay
-                                newEvent._isProxyEvent = true;
-
-                                target.dispatchEvent(newEvent);
+                                const x = this.overlayTouchStartX;
+                                const y = this.overlayTouchStartY;
+                                const syntheticTouchEvent = {
+                                    touches: [{ clientX: x, clientY: y }],
+                                    clientX: x,
+                                    clientY: y
+                                };
+                                this._suppressDocumentContextMenuUntil = Date.now() + 600;
+                                this.showMenu(syntheticTouchEvent, target, true, true);
                             }
                         }
                     }, 50);
@@ -1271,7 +1267,18 @@ class ContextMenuController {
             btn.appendChild(sw);
         }
 
-        if (cell.icon) {
+        const imageUrl = cell.image != null
+            ? (typeof cell.image === 'function' ? cell.image(target) : cell.image)
+            : null;
+        if (imageUrl) {
+            const img = document.createElement('img');
+            img.className = 'context-menu-grid-image';
+            img.src = imageUrl;
+            img.alt = typeof cell.imageAlt === 'function' ? cell.imageAlt(target) : (cell.imageAlt || '');
+            img.loading = 'lazy';
+            btn.classList.add('has-grid-image');
+            btn.appendChild(img);
+        } else if (cell.icon) {
             const ic = document.createElement('i');
             ic.className = typeof cell.icon === 'function' ? cell.icon(target) : cell.icon;
             btn.appendChild(ic);
@@ -1704,9 +1711,43 @@ class ContextMenuController {
             if (sw && subItem.swatchColor !== undefined && subItem.swatchColor !== null) {
                 sw.style.backgroundColor = typeof subItem.swatchColor === 'function' ? subItem.swatchColor(target) : subItem.swatchColor;
             }
-            const ic = subItemElement.querySelector('i');
-            if (ic && subItem.icon) {
-                ic.className = typeof subItem.icon === 'function' ? subItem.icon(target) : subItem.icon;
+            const imageUrl = subItem.image != null
+                ? (typeof subItem.image === 'function' ? subItem.image(target) : subItem.image)
+                : null;
+            const img = subItemElement.querySelector('.context-menu-grid-image');
+            if (imageUrl) {
+                if (img) {
+                    if (img.getAttribute('src') !== imageUrl) img.setAttribute('src', imageUrl);
+                } else {
+                    const newImg = document.createElement('img');
+                    newImg.className = 'context-menu-grid-image';
+                    newImg.src = imageUrl;
+                    newImg.alt = typeof subItem.imageAlt === 'function' ? subItem.imageAlt(target) : (subItem.imageAlt || '');
+                    newImg.loading = 'lazy';
+                    subItemElement.insertBefore(newImg, subItemElement.firstChild);
+                }
+                subItemElement.classList.add('has-grid-image');
+                if (subItem.className && String(subItem.className).includes('prompt-ctx-fav-grid-cell')) {
+                    subItemElement.classList.add('prompt-ctx-fav-grid-cell');
+                }
+                const ic = subItemElement.querySelector('i');
+                if (ic) ic.remove();
+            } else {
+                if (img) img.remove();
+                subItemElement.classList.remove('has-grid-image');
+                const ic = subItemElement.querySelector('i');
+                if (subItem.icon) {
+                    const iconValue = typeof subItem.icon === 'function' ? subItem.icon(target) : subItem.icon;
+                    if (ic) {
+                        ic.className = iconValue;
+                    } else {
+                        const newIcon = document.createElement('i');
+                        newIcon.className = iconValue;
+                        subItemElement.insertBefore(newIcon, subItemElement.firstChild);
+                    }
+                } else if (ic) {
+                    ic.remove();
+                }
             }
             return;
         }
@@ -2097,6 +2138,12 @@ class ContextMenuController {
             if (subItem.type === 'grid' && Array.isArray(subItem.items)) {
                 const gridWrap = document.createElement('div');
                 gridWrap.className = 'context-menu-submenu-grid';
+                if (subItem.className) {
+                    const gridClasses = Array.isArray(subItem.className) ? subItem.className : subItem.className.split(' ');
+                    gridClasses.forEach((cls) => {
+                        if (cls) gridWrap.classList.add(cls);
+                    });
+                }
                 if (subItem.title) {
                     const titleElement = document.createElement('div');
                     titleElement.className = 'context-menu-section-title';
@@ -2106,6 +2153,9 @@ class ContextMenuController {
                 }
                 const gridInner = document.createElement('div');
                 gridInner.className = 'context-menu-grid-container';
+                if (gridWrap.classList.contains('prompt-ctx-fav-grid')) {
+                    gridInner.classList.add('prompt-ctx-fav-grid-inner');
+                }
 
                 subItem.items.forEach((cell) => {
                     if (cell.separator) {
@@ -2259,7 +2309,17 @@ class ContextMenuController {
                     e.stopPropagation(); // Prevent click from bubbling to click-outside handler
                     const isSubItemClickDisabled = typeof subItem.disabled === 'function' ? subItem.disabled() : subItem.disabled;
                     if (!isSubItemClickDisabled) {
-                        customHandler(subItem, target);
+                        const runHandler = () => {
+                            try {
+                                const result = customHandler(subItem, target, e);
+                                if (result && typeof result.then === 'function') {
+                                    result.catch(err => console.error('Context submenu handler error:', err));
+                                }
+                            } catch (err) {
+                                console.error('Context submenu handler error:', err);
+                            }
+                        };
+                        runHandler();
                         // Only hide menu if keepMenuOpen is not set to true
                         if (!subItem.keepMenuOpen) {
                             this.hideMenu();
@@ -2321,6 +2381,10 @@ class ContextMenuController {
 
             submenu.appendChild(subItemElement);
         });
+
+        if (submenu.querySelector('.prompt-ctx-fav-grid')) {
+            submenu.classList.add('prompt-ctx-fav-submenu');
+        }
 
         // Position the submenu (this also sets opacity to 1)
         this.positionSubmenu(submenu, parentItem);

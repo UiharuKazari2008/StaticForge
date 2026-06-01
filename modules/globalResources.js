@@ -18,6 +18,7 @@ const knowledgeMemoryDb = require('./knowledgeMemoryDatabase');
 const tagSearchDatabase = require('./tagSearchDatabase');
 const naxTagsDatabase = require('./naxTagsDatabase');
 const NaxTagGenerationService = require('./naxTagGeneration');
+const naxVibesGallery = require('./naxVibesGallery');
 const apiKeyManager = require('./apiKeyManager');
 const ReferenceMetadataDatabase = require('./referenceMetadataDatabase');
 const DatasetTagService = require('./datasetTagService');
@@ -84,6 +85,7 @@ class GlobalResources {
         this.tagSearchDatabase = null;
         this.naxTagsDatabase = null;
         this.naxTagGeneration = null;
+        this.naxVibesGallery = null;
         this.referenceMetadataDatabase = null;
         this.datasetTagService = null;
 
@@ -747,6 +749,9 @@ class GlobalResources {
             // STEP 7b: NAX tags SQLite (optional file; WebSocket + image proxy)
             this.initializeNaxTagsDatabase();
 
+            // STEP 7b2: NAX.moe vibes gallery proxy cache (always available)
+            this.initializeNaxVibesGallery();
+
             // STEP 7c: NAX custom tag generation config (optional)
             this.initializeNaxTagGeneration();
 
@@ -1105,6 +1110,15 @@ class GlobalResources {
             console.error('  ❌ Failed to load tag search database:', error);
             throw error;
         }
+    }
+
+    /**
+     * NAX.moe vibes gallery HTML proxy + 2h response cache
+     */
+    initializeNaxVibesGallery() {
+        naxVibesGallery.initNaxVibesGallery(this.getPath('cache'));
+        this.naxVibesGallery = naxVibesGallery;
+        console.log('✓ NAX vibes gallery proxy ready');
     }
 
     /**
@@ -2056,6 +2070,16 @@ class GlobalResources {
             throw new Error('Global resources not initialized - call initialize() first');
         }
         return this.naxTagGeneration;
+    }
+
+    /**
+     * NAX.moe community vibes gallery (HTML proxy + 2h cache)
+     */
+    getNaxVibesGallery() {
+        if (!this.naxVibesGallery) {
+            throw new Error('NAX vibes gallery not initialized');
+        }
+        return this.naxVibesGallery;
     }
 
     /**
