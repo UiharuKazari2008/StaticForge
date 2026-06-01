@@ -31,6 +31,80 @@ class SearchService {
 
         // Active search packet context (requestId + autofillSessionId) for WS responses
         this._searchPacketContext = null;
+
+        // In-process NovelAI suggest-tags cache (SQLite is L2)
+        this.novelAiTagL1Cache = new Map();
+        this.novelAiTagL1CacheMax = 400;
+    }
+
+    _getTagSearchDatabaseModule() {
+        try {
+            return this.globalResources.getTagSearchDatabase();
+        } catch (e) {
+            return null;
+        }
+    }
+
+    _getNovelAiTagCacheKey(normalizedQuery, apiModel) {
+        return `${normalizedQuery}\x00${apiModel}`;
+    }
+
+    _storeNovelAiTagL1Cache(normalizedQuery, apiModel, tags) {
+        const key = this._getNovelAiTagCacheKey(normalizedQuery, apiModel);
+        this.novelAiTagL1Cache.set(key, tags);
+        if (this.novelAiTagL1Cache.size > this.novelAiTagL1CacheMax) {
+            const oldestKey = this.novelAiTagL1Cache.keys().next().value;
+            if (oldestKey !== undefined) {
+                this.novelAiTagL1Cache.delete(oldestKey);
+            }
+        }
+    }
+
+    _lookupNovelAiTagCache(normalizedQuery, apiModel) {
+        const key = this._getNovelAiTagCacheKey(normalizedQuery, apiModel);
+        if (this.novelAiTagL1Cache.has(key)) {
+            return { fromCache: true, tags: this.novelAiTagL1Cache.get(key) };
+        }
+
+        const tagSearchDatabase = this._getTagSearchDatabaseModule();
+        if (!tagSearchDatabase) {
+            return null;
+        }
+
+        let sqliteTags = null;
+        try {
+            sqliteTags = tagSearchDatabase.getCachedTags(normalizedQuery, apiModel);
+        } catch (e) {
+            console.warn('Failed to get cached tags:', e.message);
+        }
+
+        if (!sqliteTags || sqliteTags.length === 0) {
+            return null;
+        }
+
+        const tags = sqliteTags.map((tag) => ({
+            tag: tag.tag,
+            count: tag.count,
+            confidence: tag.confidence ?? 0.95
+        }));
+        this._storeNovelAiTagL1Cache(normalizedQuery, apiModel, tags);
+        return { fromCache: true, tags };
+    }
+
+    _persistNovelAiTagCache(normalizedQuery, apiModel, tags) {
+        if (!tags || tags.length === 0) {
+            return;
+        }
+        this._storeNovelAiTagL1Cache(normalizedQuery, apiModel, tags);
+        const tagSearchDatabase = this._getTagSearchDatabaseModule();
+        if (!tagSearchDatabase) {
+            return;
+        }
+        try {
+            tagSearchDatabase.saveSearchResults(normalizedQuery, apiModel, tags);
+        } catch (e) {
+            console.warn('Failed to save cached tags:', e.message);
+        }
     }
 
     sendSearchWs(ws, payload) {
@@ -789,43 +863,45 @@ class SearchService {
         return [...tagResults, ...characterResults];
     }
 
-    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
-        const https = require('https');
-        const normalizedQuery = (query || '').trim().toLowerCase();
-
-        // Shared tagSearchDatabase instance for all API calls in this request
-        let tagSearchDatabase = null;
-
-        // Initialize tagSearchDatabase once for this request
-        try {
-            // Always use globalResources - context pattern removed
-            tagSearchDatabase = this.globalResources.getTagSearchDatabase();
-        } catch (e) {
-            console.warn('Failed to initialize tagSearchDatabase:', e.message);
-            return [];
+    normalizeNovelAiSuggestTagsResponse(raw) {
+        if (!raw) {
+            return { fromCache: false, tags: [] };
+        }
+        if (raw.fromCache === true && Array.isArray(raw.tags)) {
+            return raw;
         }
 
-        const makeTagRequest = async (apiModel) => {
-            // Check cache first for this specific model
-            let cachedTags = null;
-
-            if (tagSearchDatabase) {
-                try {
-                    cachedTags = tagSearchDatabase.getCachedTags(normalizedQuery, apiModel);
-                } catch (e) {
-                    console.warn('Failed to get cached tags:', e.message);
-                }
+        let tags = raw.tags;
+        if (!Array.isArray(tags)) {
+            if (Array.isArray(raw.results)) {
+                tags = raw.results;
+            } else if (Array.isArray(raw)) {
+                tags = raw;
+            } else {
+                tags = [];
             }
+        }
 
-            if (cachedTags && cachedTags.length > 0) {
-                return {
-                    fromCache: true,
-                    tags: cachedTags.map(tag => ({
-                        tag: tag.tag,
-                        count: tag.count,
-                        confidence: tag.confidence ?? 0.95
-                    }))
-                };
+        const normalized = tags.map((t) => ({
+            tag: String(t?.tag ?? t?.name ?? t?.tag_name ?? '').trim(),
+            count: Number(t?.count ?? t?.n ?? t?.tag_count ?? 0) || 0,
+            confidence: Number(t?.confidence ?? t?.c ?? 0) || 0
+        })).filter((t) => t.tag);
+
+        return { fromCache: false, tags: normalized };
+    }
+
+    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
+        const https = require('https');
+        const tagSearchDatabase = this._getTagSearchDatabaseModule();
+        const normalizedQuery = tagSearchDatabase && typeof tagSearchDatabase.normalizeTagSearchQuery === 'function'
+            ? tagSearchDatabase.normalizeTagSearchQuery(query)
+            : (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+        const makeTagRequest = async (apiModel) => {
+            const cachedResponse = this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+            if (cachedResponse && cachedResponse.tags && cachedResponse.tags.length > 0) {
+                return cachedResponse;
             }
 
             // Use enhanced rate limiting with rolling window for API calls (only if sessionId and ws are provided)
@@ -852,7 +928,7 @@ class SearchService {
                 headers: {
                     'accept': '*/*',
                     'accept-language': 'en-US,en;q=0.9',
-                    'authorization': `Bearer ${getConfig({ path: 'apiKey' })}`,
+                    'authorization': `Bearer ${this._getNovelAiApiKey()}`,
                     'cache-control': 'no-cache',
                     'content-type': 'application/json',
                     'dnt': '1',
@@ -926,7 +1002,7 @@ class SearchService {
                                 const response = JSON.parse(buffer.toString());
                                 // Clean up pending request
                                 this.markRequestCompleted(sessionId, apiModel, requestId);
-                                resolve(response);
+                                resolve(this.normalizeNovelAiSuggestTagsResponse(response));
                             } catch (e) {
                                 // Clean up pending request
                                 this.markRequestCompleted(sessionId, apiModel, requestId);
@@ -1032,11 +1108,12 @@ class SearchService {
                 const apiModel = models[i];
 
                 try {
-                    // Send status update for this model
+                    const cacheHit = !!this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+
                     if (ws) {
-                        this.sendSearchWs(ws,{
+                        this.sendSearchWs(ws, {
                             type: 'search_status_update',
-                            services: [{ name: apiModel, status: 'searching' }],
+                            services: [{ name: apiModel, status: cacheHit ? 'completed' : 'searching' }],
                             requestId: requestId
                         });
                     }
@@ -1079,8 +1156,8 @@ class SearchService {
                             allTags.push(processedTag);
                         });
 
-                        if (!fromCache && tagsToCache.length > 0 && tagSearchDatabase) {
-                            tagSearchDatabase.saveSearchResults(normalizedQuery, apiModel, tagsToCache);
+                        if (!fromCache && tagsToCache.length > 0) {
+                            this._persistNovelAiTagCache(normalizedQuery, apiModel, tagsToCache);
                         }
                     }
 
@@ -1477,9 +1554,12 @@ class SearchService {
                 return [];
             }
 
-            // Always make API requests for tags (cache checking happens in each makeTagRequest)
-            const queryHash = this.generateQueryHash(query.trim().toLowerCase(), model);
-            const tagResults = await this.makeTagRequests(query, model, queryHash, ws, sessionId, requestId);
+            const tagDb = this._getTagSearchDatabaseModule();
+            const normalizedQuery = tagDb && typeof tagDb.normalizeTagSearchQuery === 'function'
+                ? tagDb.normalizeTagSearchQuery(query)
+                : (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            const queryHash = this.generateQueryHash(normalizedQuery, model);
+            const tagResults = await this.makeTagRequests(normalizedQuery, model, queryHash, ws, sessionId, requestId);
             return tagResults;
         } catch (error) {
             console.error('Tag search error:', error);
@@ -1662,16 +1742,41 @@ class SearchService {
             return null;
         }
     }
+
+    _getNovelAiApiKey() {
+        try {
+            const apiKeyManager = this.globalResources.getApiKeyManager();
+            const managedKey = apiKeyManager && typeof apiKeyManager.getActiveApiKey === 'function'
+                ? apiKeyManager.getActiveApiKey('novelai')
+                : null;
+            if (managedKey) {
+                return managedKey;
+            }
+        } catch (e) {
+            // fall through to config.json
+        }
+
+        if (globalResourcesInstance) {
+            const config = globalResourcesInstance.getConfig({ path: 'apiKey' });
+            if (config) {
+                return config;
+            }
+        }
+
+        return require('../config.json').apiKey;
+    }
 }
 
 // Helper function to get config for API calls (used by SearchService)
-function getConfig() {
-    // Try to get from globalResources if available, otherwise fallback
+function getConfig(options) {
     if (globalResourcesInstance) {
-        return globalResourcesInstance.getConfig();
+        return globalResourcesInstance.getConfig(options);
     }
-    // Fallback for initialization phase
-    return require('../config.json');
+    const config = require('../config.json');
+    if (options && options.path) {
+        return config[options.path];
+    }
+    return config;
 }
 
 // NOTE: This module requires globalResources to be set before SearchService can be instantiated

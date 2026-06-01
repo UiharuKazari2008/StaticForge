@@ -13922,10 +13922,20 @@ textarea {
     order: 9980;
 }
 
+.search-status-display.is-searching {
+    background: var(--glass-layer-dark-5);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+
 #characterAutocompleteOverlay.expanded .search-status-display {
     position: sticky;
     bottom: 0;
     background: var(--glass-layer-dark-5);
+}
+
+#characterAutocompleteOverlay.expanded .search-status-display.is-searching {
+    background: var(--glass-layer-dark-5);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent);
 }
 
 /* Animation for search done state */

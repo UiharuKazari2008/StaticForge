@@ -3819,6 +3819,17 @@ async function saveNewApiKey() {
 // TEXT REPLACEMENT LOCK MODAL FUNCTIONS
 let currentTextReplacementSeeds = [];
 
+function copyTextReplacementOptionToSeed(seed, option) {
+    if (!seed || !option) return;
+    seed.value = option.value;
+    seed.key = option.key;
+    seed.index = option.index;
+    if (option.nax_tag != null) seed.nax_tag = option.nax_tag;
+    if (option.nax_gallery_slug != null) seed.nax_gallery_slug = option.nax_gallery_slug;
+    if (option.nax_preset_id != null) seed.nax_preset_id = option.nax_preset_id;
+    if (option.nax_kind != null) seed.nax_kind = option.nax_kind;
+}
+
 // Helper function to get display-friendly replacement type names
 function getReplacementTypeDisplay(type) {
     switch (type) {
@@ -3839,6 +3850,8 @@ function getReplacementTypeDisplay(type) {
             return 'Incrementing (pick)';
         case 'regular':
             return 'Static';
+        case 'nax_internal':
+            return 'Atelier';
         default:
             return type.charAt(0).toUpperCase() + type.slice(1);
     }
@@ -3864,6 +3877,8 @@ function getReplacementTypeIcon(type) {
             return '<i class="fas fa-arrow-up-1-9"></i>';
         case 'regular':
             return '<i class="fas fa-arrows-rotate"></i>';
+        case 'nax_internal':
+            return '<i class="fas fa-flask"></i>';
         default:
             return '<i class="fas fa-tag"></i>';
     }
@@ -3924,6 +3939,8 @@ function getReplacementTypeColor(type) {
             return '#81b4ff'; // Blue for sequential
         case 'regular':
             return '#ffb981'; // Orange for standard replacement
+        case 'nax_internal':
+            return '#c9a0ff'; // Atelier / NAX expanders
         default:
             return '#9ca3af'; // Gray for default
     }
@@ -4561,17 +4578,18 @@ function populateManualSelectionDropdown(options, currentValue) {
         optionElement.dataset.value = option.value;
         optionElement.dataset.key = option.key;
         optionElement.dataset.index = option.index;
+        if (option.nax_tag != null) optionElement.dataset.naxTag = option.nax_tag;
+        if (option.nax_gallery_slug != null) optionElement.dataset.naxGallerySlug = option.nax_gallery_slug;
+        if (option.nax_preset_id != null) optionElement.dataset.naxPresetId = option.nax_preset_id;
+        if (option.nax_kind != null) optionElement.dataset.naxKind = option.nax_kind;
         optionElement.textContent = option.value;
 
         optionElement.addEventListener('click', () => {
             selectedElement.textContent = option.value;
             closeDropdown(menuElement, document.getElementById('manualSelectionDropdownBtn'));
 
-            // Update the current selection with the correct key and index
             if (currentManualSelectionSeed) {
-                currentManualSelectionSeed.value = option.value;
-                currentManualSelectionSeed.key = option.key;
-                currentManualSelectionSeed.index = option.index;
+                copyTextReplacementOptionToSeed(currentManualSelectionSeed, option);
             }
         });
 
@@ -4637,11 +4655,7 @@ function selectRandomTextReplacement(seed, index) {
         if (result && result.success && result.options && result.options.length > 0) {
             const randomOption = result.options[Math.floor(Math.random() * result.options.length)];
 
-            // Update the seed data
-            seed.value = randomOption.value;
-            seed.key = randomOption.key;
-            seed.index = randomOption.index;
-            // Lock the replacement so it gets applied
+            copyTextReplacementOptionToSeed(seed, randomOption);
             seed.locked = true;
             seed.can_lock = true;
 
@@ -10346,19 +10360,18 @@ function setupEventListeners() {
                         // Pick a random option
                         const randomOption = optionElements[Math.floor(Math.random() * optionElements.length)];
 
-                        const randomValue = randomOption.dataset.value;
-                        const randomKey = randomOption.dataset.key;
-                        const randomIndex = parseInt(randomOption.dataset.index);
-
-                        // Update the seed data
-                        currentManualSelectionSeed.value = randomValue;
-                        currentManualSelectionSeed.key = randomKey;
-                        currentManualSelectionSeed.index = randomIndex;
-                        // Lock the replacement so it gets applied
+                        copyTextReplacementOptionToSeed(currentManualSelectionSeed, {
+                            value: randomOption.dataset.value,
+                            key: randomOption.dataset.key,
+                            index: parseInt(randomOption.dataset.index, 10),
+                            nax_tag: randomOption.dataset.naxTag,
+                            nax_gallery_slug: randomOption.dataset.naxGallerySlug,
+                            nax_preset_id: randomOption.dataset.naxPresetId,
+                            nax_kind: randomOption.dataset.naxKind
+                        });
                         currentManualSelectionSeed.locked = true;
 
-                        // Update the dropdown display
-                        selectedElement.textContent = randomValue;
+                        selectedElement.textContent = currentManualSelectionSeed.value;
 
                         // Update the UI in the lock modal
                         updateTextReplacementLockItem(currentManualSelectionIndex, currentManualSelectionSeed);
@@ -28575,7 +28588,7 @@ if (window.wsClient) {
 
         // Add each new item to the top of the gallery
         for (let i = newItems.length - 1; i >= 0; i--) {
-            const newItem = createGalleryItem(newItems[i], i);
+            const newItem = createGalleryItem(newItems[i], i, true);
             newItem.classList.add('gallery-placeholder', 'fade-in');
             gallery.insertBefore(newItem, gallery.children[0]);
 
@@ -28583,6 +28596,9 @@ if (window.wsClient) {
             newItem.addEventListener('animationend', function handler() {
                 newItem.classList.remove('fade-in');
                 newItem.classList.remove('gallery-placeholder');
+                if (!newItem.querySelector('img')) {
+                    addImgToGalleryItemAsync(newItem, newItems[i]);
+                }
                 newItem.classList.add('slide-in');
                 newItem.addEventListener('animationend', function slideHandler() {
                     newItem.classList.remove('slide-in');

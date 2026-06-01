@@ -301,6 +301,9 @@ class NaxtApplet {
 
     closeCustomTagTool() {
         if (!this.customTagModal || typeof closeModal !== 'function') return;
+        if (typeof hideCharacterAutocomplete === 'function') {
+            hideCharacterAutocomplete();
+        }
         closeModal(this.customTagModal);
     }
 
@@ -347,6 +350,9 @@ class NaxtApplet {
         if (this.customTagInput) {
             this.customTagInput.disabled = !!active || !!this.pendingCustomTag;
         }
+        if ((active || this.pendingCustomTag) && typeof hideCharacterAutocomplete === 'function') {
+            hideCharacterAutocomplete();
+        }
         if (this.customTagPreview && active) {
             this.customTagPreview.className = 'weather-location-match naxt-custom-tag-preview loading';
             this.customTagPreview.textContent = 'Generating preview…';
@@ -377,6 +383,9 @@ class NaxtApplet {
         if (this.customTagInput) {
             this.customTagInput.value = item.tag;
             this.customTagInput.disabled = true;
+        }
+        if (typeof hideCharacterAutocomplete === 'function') {
+            hideCharacterAutocomplete();
         }
         if (this.customTagGenerateBtn) {
             this.customTagGenerateBtn.disabled = true;
@@ -1155,7 +1164,19 @@ class NaxtApplet {
             this.customTagDeleteBtn.addEventListener('click', () => void this.deleteCustomTag(null, null, { fromTool: true }));
         }
         if (this.customTagInput) {
+            // handleCharacterAutocompleteInput / handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
+            this.customTagInput.addEventListener('input', (e) => {
+                if (typeof handleCharacterAutocompleteInput === 'function') {
+                    handleCharacterAutocompleteInput(e);
+                }
+            });
             this.customTagInput.addEventListener('keydown', (e) => {
+                if (typeof handleCharacterAutocompleteKeydown === 'function') {
+                    handleCharacterAutocompleteKeydown(e);
+                    if (e.defaultPrevented) {
+                        return;
+                    }
+                }
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     void this.submitCustomTag();

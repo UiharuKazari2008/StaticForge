@@ -1082,12 +1082,93 @@ function getGalleryImageAtFilteredIndex(filteredIndex) {
     return allImages[fileIndex] || null;
 }
 
+function getGalleryImageSrcCandidates(image) {
+    if (!image) return [];
+    const candidates = [];
+    const seen = new Set();
+    const add = (src) => {
+        if (src && !seen.has(src)) {
+            seen.add(src);
+            candidates.push(src);
+        }
+    };
+
+    if (image.preview) {
+        const basePreview = image.preview.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+        const preferredPreview = typeof getGalleryPreviewUrl === 'function'
+            ? getGalleryPreviewUrl(image.preview)
+            : image.preview;
+        add(`/previews/${encodeURIComponent(preferredPreview)}`);
+        add(`/previews/${encodeURIComponent(`${basePreview}.webp`)}`);
+        add(`/previews/${encodeURIComponent(`${basePreview}@2x.webp`)}`);
+    }
+
+    const filename = image.upscaled || image.original || image.filename;
+    if (filename) {
+        add(`/images/${encodeURIComponent(filename)}`);
+    }
+    return candidates;
+}
+
 function getGalleryPreviewSrcForImage(image) {
-    if (!image) return '';
-    const previewName = typeof getGalleryPreviewUrl === 'function' ? getGalleryPreviewUrl(image.preview) : image.preview;
-    if (previewName) return `/previews/${encodeURIComponent(previewName)}`;
-    const filename = image.filename || image.original || image.upscaled || image.base;
-    return filename ? `/images/${encodeURIComponent(filename)}` : '';
+    const candidates = getGalleryImageSrcCandidates(image);
+    return candidates[0] || '';
+}
+
+// public/scripts/comp/galleryView.js — gallery item img with preview/full fallbacks and optional retry
+function applyGalleryItemImage(img, image, options = {}) {
+    const candidates = getGalleryImageSrcCandidates(image);
+    if (!candidates.length || !img) {
+        if (typeof options.onComplete === 'function') options.onComplete();
+        return;
+    }
+
+    let candidateIndex = 0;
+    let previewRetryCount = 0;
+    const maxPreviewRetries = options.maxPreviewRetries != null ? options.maxPreviewRetries : 2;
+
+    img.alt = image.base || '';
+    img.loading = options.eager ? 'eager' : 'lazy';
+    img.classList.add('loading-image');
+
+    const finish = () => {
+        img.classList.remove('loading-image');
+        if (typeof options.onComplete === 'function') options.onComplete();
+    };
+
+    const loadCandidate = () => {
+        if (candidateIndex >= candidates.length) {
+            img.onload = null;
+            img.onerror = null;
+            finish();
+            return;
+        }
+        img.src = candidates[candidateIndex++];
+    };
+
+    img.onload = function () {
+        img.onload = null;
+        img.onerror = null;
+        finish();
+    };
+
+    img.onerror = function () {
+        const failedSrc = img.src || '';
+        const isPreview = failedSrc.includes('/previews/');
+        if (isPreview && previewRetryCount < maxPreviewRetries) {
+            previewRetryCount++;
+            const baseSrc = failedSrc.split('?')[0];
+            setTimeout(() => {
+                if (img.isConnected) {
+                    img.src = `${baseSrc}?galleryRetry=${previewRetryCount}`;
+                }
+            }, 350 * previewRetryCount);
+            return;
+        }
+        loadCandidate();
+    };
+
+    loadCandidate();
 }
 
 function buildGalleryJumpIndexEntries(minTimeMs, maxGroupImages) {
@@ -2511,8 +2592,8 @@ async function addNewGalleryItemAfterGeneration(newImage) {
     // Don't add new gallery items if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
 
-    // Create gallery item with placeholder class and fade-in
-    const newItem = createGalleryItem(newImage, 0);
+    // Skip img until placeholder clears — previews may not exist yet when gallery_updated arrives
+    const newItem = createGalleryItem(newImage, 0, true);
     newItem.classList.add('gallery-placeholder', 'fade-in');
     gallery.insertBefore(newItem, gallery.children[0]);
     // Wait for fade-in animation to finish
@@ -2525,6 +2606,9 @@ async function addNewGalleryItemAfterGeneration(newImage) {
     });
     // Remove placeholder class and show image, slide in
     newItem.classList.remove('gallery-placeholder');
+    if (!newItem.querySelector('img')) {
+        addImgToGalleryItemAsync(newItem, newImage);
+    }
     newItem.classList.add('slide-in');
     newItem.addEventListener('animationend', function handler() {
         newItem.classList.remove('slide-in');
@@ -2969,28 +3053,8 @@ function createGalleryItem(image, index, skipImgElement = false) {
     // Only create img element if not skipping (for placeholders)
     let img = null;
     if (!skipImgElement) {
-        // Use preview image - encode the preview name to handle spaces and special characters
         img = document.createElement('img');
-        const previewUrl = getGalleryPreviewUrl(image.preview);
-        img.alt = image.base;
-        img.loading = 'lazy';
-        img.classList.add('loading-image');
-
-        img.onload = function () {
-            // Image loaded successfully - will be shown via CSS transition when placeholder class is removed
-            img.classList.remove('loading-image');
-        };
-
-        // Check if image is already cached/loaded (complete property)
-        // If so, set src immediately, otherwise wait for onload
-        img.src = `/previews/${encodeURIComponent(previewUrl)}`;
-
-        // If image fails to load, keep it hidden
-        img.onerror = function () {
-            // Keep image hidden when it fails to load
-            this.onerror = null; // Prevent infinite loop
-            img.src = '';
-        };
+        applyGalleryItemImage(img, image);
     }
 
     const overlay = document.createElement('div');
@@ -3610,28 +3674,10 @@ function addImgToGalleryItemAsync(item, image, onComplete) {
         return;
     }
 
-    // Create img element (same logic as in createGalleryItem)
     const img = document.createElement('img');
-    const previewUrl = getGalleryPreviewUrl(image.preview);
-    img.alt = image.base;
-    img.classList.add('loading-image');
-    img.loading = 'lazy';
-
-    img.onload = function () {
-        img.onload = null;
-        img.classList.remove('loading-image');
-        if (typeof onComplete === 'function') {
-            onComplete();
-        }
-    };
-    img.onerror = function () {
-        img.onerror = null; // Prevent infinite loop
-        if (typeof onComplete === 'function') {
-            onComplete();
-        }
-    };
-
-    img.src = `/previews/${encodeURIComponent(previewUrl)}`;
+    applyGalleryItemImage(img, image, {
+        onComplete: onComplete
+    });
 
     // Insert img element before the overlay (same position as in createGalleryItem)
     const overlay = item.querySelector('.gallery-item-overlay');

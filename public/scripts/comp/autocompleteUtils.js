@@ -34,6 +34,17 @@ function isCharacterAutocompleteOverlayOpen() {
     return characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
 }
 
+/** Single-value tag fields (e.g. Atelier Add Tag dialog — public/scripts/comp/naxtApplet.js) */
+function isAutofillTagInput(target) {
+    return !!(target && target.classList && target.classList.contains('autofill-tag-input'));
+}
+
+function isAutofillTarget(target) {
+    if (!target) return false;
+    if (isAutofillTagInput(target)) return true;
+    return target.classList.contains('prompt-textarea') || target.classList.contains('character-prompt-textarea');
+}
+
 function handleAutocompleteOverlayWheel(e) {
     if (!isCharacterAutocompleteOverlayOpen()) return;
     if (!characterAutocompleteList) return;
@@ -527,8 +538,7 @@ function shouldDismissAutofillFromClick(event) {
     if (characterAutocompleteOverlay && characterAutocompleteOverlay.contains(target)) {
         return false;
     }
-    if (target.type === 'textarea' &&
-        (target.classList.contains('prompt-textarea') || target.classList.contains('character-prompt-textarea'))) {
+    if (isAutofillTarget(target)) {
         return false;
     }
     if (target.closest && target.closest('#characterAutocompleteOverlay')) {
@@ -578,6 +588,17 @@ function getAutocompleteSearchBounds(target) {
     if (typeof target.selectionStart !== 'number') return null;
 
     const value = target.value;
+
+    if (isAutofillTagInput(target)) {
+        return {
+            tokenStart: 0,
+            tokenEnd: value.length,
+            query: value.trim(),
+            isTextPrefix: false,
+            isSingleTagInput: true
+        };
+    }
+
     const cursorPosition = target.selectionStart;
     const safeCursor = Math.max(0, Math.min(cursorPosition, value.length));
     const textBeforeCursor = value.substring(0, safeCursor);
@@ -629,6 +650,10 @@ function shouldAbortAutocompleteSearchSession() {
     const liveBounds = getAutocompleteSearchBounds(target);
     if (!liveBounds) return true;
 
+    if (isAutofillTagInput(target)) {
+        return liveBounds.query !== currentSearchSessionBounds.query;
+    }
+
     const cursorPosition = target.selectionStart;
     const withinTrackedToken = cursorPosition >= currentSearchSessionBounds.tokenStart &&
         cursorPosition <= liveBounds.tokenEnd &&
@@ -646,9 +671,8 @@ function abortAutocompleteSearchSession() {
     hideCharacterAutocomplete();
 }
 
-// Selection persistence for tag listings
-let lastSelectedItemData = null; // Store data about the last selected item for restoration
-let lastSelectedItemType = null; // Store the type of the last selected item
+// Main tag-list selection index for restore after overlay rebuild (position only, not tag identity)
+let lastSelectedListIndex = -1;
 
 // Map client model names to server model names
 const searchModelMapping = {
@@ -1972,8 +1996,11 @@ function updateSearchStatusDisplayImmediate() {
         }
     }
 
+    const searchInFlight = isSearching || hasSearchServicesInFlight();
+
     // Keep status visible after completion, then auto-hide
     if (allServicesDone) {
+        statusDisplay.classList.remove('is-searching');
         statusDisplay.classList.remove('hidden');
         statusDisplay.classList.add('search-done');
         scheduleSearchStatusHide();
@@ -1981,6 +2008,7 @@ function updateSearchStatusDisplayImmediate() {
         clearSearchStatusHideTimer();
         statusDisplay.classList.remove('search-done');
         statusDisplay.classList.remove('hidden');
+        statusDisplay.classList.toggle('is-searching', searchInFlight);
     }
 
     let statusHTML = `<div class="search-status-header"><i class="${displayIcon}"></i><span>${displayText}</span></div><div class="search-service-indicators">`;
@@ -2335,6 +2363,36 @@ function handleCharacterAutocompleteInput(e) {
     }
 
     const value = target.value;
+
+    if (isAutofillTagInput(target)) {
+        if (target.disabled) {
+            hideCharacterAutocomplete();
+            return;
+        }
+
+        const searchText = value.trim();
+
+        if (e.inputType === 'deleteContentBackward' && searchText.length < 2) {
+            hideCharacterAutocomplete();
+            return;
+        }
+
+        if (characterAutocompleteTimeout) {
+            clearTimeout(characterAutocompleteTimeout);
+        }
+
+        characterAutocompleteTimeout = setTimeout(() => {
+            if (searchText.length >= 2) {
+                lastSearchText = searchText;
+                searchCharacters(searchText, target);
+            } else {
+                hideCharacterAutocomplete();
+            }
+        }, 1000);
+
+        return;
+    }
+
     const cursorPosition = target.selectionStart;
 
     // Get the text before the cursor
@@ -2771,6 +2829,7 @@ function clearSpellCheckNavigationState() {
 
 function clearMainAutocompleteSelection() {
     selectedCharacterAutocompleteIndex = -1;
+    lastSelectedListIndex = -1;
     updateCharacterAutocompleteSelection();
 }
 
@@ -4096,13 +4155,12 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         isAutocompleteVisible = true;
     }
 
-    // Auto-select first item if there are results and user is in navigation mode
-    if (displayResults.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        // Try to restore previous selection first
-        if (lastSelectedItemData && lastSelectedItemType) {
-            // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
-        } else {
-            // Fallback to first item if no previous selection
+    // Auto-select first item only for main-list navigation (not spell check / thesaurus)
+    if (displayResults.length > 0 &&
+        !spellCheckNavigationMode &&
+        !wordLookupNavigationMode &&
+        (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
+        if (lastSelectedListIndex < 0) {
             selectedCharacterAutocompleteIndex = 0;
             updateCharacterAutocompleteSelection();
         }
@@ -4190,138 +4248,48 @@ function updateAutocompleteDisplayImmediate(results, target) {
         isAutocompleteVisible = true;
     }
 
-    // Auto-select first item if there are results and user is in navigation mode
-    if (displayResults.length > 0 && (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        // Try to restore previous selection first
-        if (lastSelectedItemData && lastSelectedItemType) {
-            // Selection will be restored by rebuildAutocompleteDisplay, don't do it here
-        } else {
-            // Fallback to first item if no previous selection
+    // Auto-select first item only for main-list navigation (not spell check / thesaurus)
+    if (displayResults.length > 0 &&
+        !spellCheckNavigationMode &&
+        !wordLookupNavigationMode &&
+        (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
+        if (lastSelectedListIndex < 0) {
             selectedCharacterAutocompleteIndex = 0;
             updateCharacterAutocompleteSelection();
         }
     }
 }
 
-// Store current selection for restoration after content updates
+// Store main-list selection index for restoration after content updates
 function storeCurrentSelection() {
-    if (selectedCharacterAutocompleteIndex >= 0 && characterAutocompleteList) {
-        const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
-        if (items[selectedCharacterAutocompleteIndex]) {
-            const selectedItem = items[selectedCharacterAutocompleteIndex];
-            const type = selectedItem.dataset.type;
-
-            // Store the original index for relative positioning
-            const originalIndex = selectedCharacterAutocompleteIndex;
-
-            if (type === 'tag') {
-                lastSelectedItemData = {
-                    type: 'tag',
-                    name: selectedItem.dataset.tagName,
-                    originalIndex: originalIndex,
-                    model: selectedItem.dataset.modelType
-                };
-                lastSelectedItemType = 'tag';
-            } else if (type === 'character') {
-                try {
-                    const characterData = JSON.parse(selectedItem.dataset.characterData);
-                    lastSelectedItemData = {
-                        type: 'character',
-                        name: characterData.name,
-                        copyright: characterData.copyright,
-                        tagName: selectedItem.dataset.tagName || undefined,
-                        tagCategory: selectedItem.dataset.category || undefined,
-                        originalIndex: originalIndex
-                    };
-                    lastSelectedItemType = 'character';
-                } catch (e) {
-                    console.warn('Failed to parse character data for selection persistence:', e);
-                }
-            } else if (type === 'textReplacement') {
-                lastSelectedItemData = {
-                    type: 'textReplacement',
-                    placeholder: selectedItem.dataset.placeholder,
-                    originalIndex: originalIndex
-                };
-                lastSelectedItemType = 'textReplacement';
-            } else if (type === 'dynamicPlaceholder') {
-                lastSelectedItemData = {
-                    type: 'dynamicPlaceholder',
-                    placeholder: selectedItem.dataset.placeholder,
-                    originalIndex: originalIndex
-                };
-                lastSelectedItemType = 'dynamicPlaceholder';
-            }
-        }
+    if (spellCheckNavigationMode || wordLookupNavigationMode) {
+        return;
+    }
+    if (selectedCharacterAutocompleteIndex >= 0) {
+        lastSelectedListIndex = selectedCharacterAutocompleteIndex;
     }
 }
 
-// Restore selection after content updates
+// Restore main-list selection by list position index after content updates
 function restoreSelection(displayResults) {
-    if (!lastSelectedItemData || !lastSelectedItemType || !characterAutocompleteList) {
+    if (spellCheckNavigationMode || wordLookupNavigationMode) {
+        lastSelectedListIndex = -1;
+        return;
+    }
+    if (lastSelectedListIndex < 0 || !characterAutocompleteList) {
         return;
     }
 
     const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
-
-    let foundIndex = -1;
-
-    // Find the item that matches our stored selection
-    for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const type = item.dataset.type;
-
-        if (type === lastSelectedItemType) {
-            let matches = false;
-
-            try {
-                if (type === 'tag' && lastSelectedItemData.name === item.dataset.tagName) {
-                    matches = true;
-                } else if (type === 'character' && lastSelectedItemData.name === JSON.parse(item.dataset.characterData).name) {
-                    matches = true;
-                } else if (type === 'textReplacement' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
-                    matches = true;
-                } else if (type === 'dynamicPlaceholder' && lastSelectedItemData.placeholder === item.dataset.placeholder) {
-                    matches = true;
-                }
-            } catch (e) {
-                console.warn('Error comparing selection data:', e);
-            }
-
-            if (matches) {
-                foundIndex = i;
-                break;
-            }
-        }
+    if (!items.length) {
+        lastSelectedListIndex = -1;
+        return;
     }
 
-    // If we found a match, restore the selection
-    if (foundIndex >= 0) {
-        selectedCharacterAutocompleteIndex = foundIndex;
-        updateCharacterAutocompleteSelection();
-    } else {
-        // If no match found, try to maintain relative position if possible
-        // or reset to first item if we were at the beginning
-        if (lastSelectedItemData && lastSelectedItemData.originalIndex !== undefined) {
-            // Try to maintain relative position
-            const targetIndex = Math.min(lastSelectedItemData.originalIndex, items.length - 1);
-            if (targetIndex >= 0) {
-                selectedCharacterAutocompleteIndex = targetIndex;
-                updateCharacterAutocompleteSelection();
-            } else {
-                selectedCharacterAutocompleteIndex = 0;
-                updateCharacterAutocompleteSelection();
-            }
-        } else {
-            // Fallback to first item
-            selectedCharacterAutocompleteIndex = 0;
-            updateCharacterAutocompleteSelection();
-        }
-    }
-
-    // Clear stored selection data
-    lastSelectedItemData = null;
-    lastSelectedItemType = null;
+    const targetIndex = Math.min(lastSelectedListIndex, items.length - 1);
+    selectedCharacterAutocompleteIndex = targetIndex;
+    updateCharacterAutocompleteSelection();
+    lastSelectedListIndex = -1;
 }
 
 // New function to rebuild the autocomplete display
@@ -5148,6 +5116,14 @@ function updateCharacterAutocompleteSelection() {
     if (!characterAutocompleteList) return;
 
     const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+
+    if (spellCheckNavigationMode || wordLookupNavigationMode) {
+        items.forEach((item) => {
+            item.classList.remove('selected');
+            updateTagWikiPreviewScroll(item);
+        });
+        return;
+    }
     items.forEach((item, index) => {
         const isSelected = index === selectedCharacterAutocompleteIndex;
         item.classList.toggle('selected', isSelected);
@@ -5392,6 +5368,23 @@ function selectTag(tagName, category) {
     if (!currentCharacterAutocompleteTarget) return;
 
     const target = currentCharacterAutocompleteTarget;
+
+    let tagToInsert = tagName;
+    if (category && category.toLowerCase() === 'artist') {
+        if (tagName.includes(' ')) {
+            tagToInsert = 'art by ' + tagName;
+        } else {
+            tagToInsert = 'artist:' + tagName;
+        }
+    }
+
+    if (isAutofillTagInput(target)) {
+        target.value = tagToInsert;
+        hideCharacterAutocomplete();
+        target.focus();
+        return;
+    }
+
     const currentValue = target.value;
     const cursorPosition = target.selectionStart;
 
@@ -5409,18 +5402,6 @@ function selectTag(tagName, category) {
     // Keep the text before the current term (trim any trailing delimiters and spaces)
     const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
     newPrompt = textBefore;
-
-    // Apply artist prefix logic if category is artist
-    let tagToInsert = tagName;
-    if (category && category.toLowerCase() === 'artist') {
-        if (tagName.includes(' ')) {
-            // If tag has a space, prepend "art by "
-            tagToInsert = 'art by ' + tagName;
-        } else {
-            // Otherwise, prepend "artist:"
-            tagToInsert = 'artist:' + tagName;
-        }
-    }
 
     // Add the tag name
     if (newPrompt) {
@@ -6209,9 +6190,7 @@ function hideCharacterAutocomplete() {
     // Reset services initialization flag for next autofill session
     servicesInitialized = false;
 
-    // Clear stored selection data
-    lastSelectedItemData = null;
-    lastSelectedItemType = null;
+    lastSelectedListIndex = -1;
 
     updateEmphasisTooltipVisibility();
 }

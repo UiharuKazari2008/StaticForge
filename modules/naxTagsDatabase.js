@@ -720,6 +720,64 @@ function pickRandomMarkedTagFromSlugs(gallerySlugs, markFilter) {
 }
 
 /**
+ * @param {string[]} gallerySlugs
+ * @param {'favorites'|'try'} markFilter
+ * @param {number} [limit]
+ * @returns {{ tag: string, gallerySlug: string }[]}
+ */
+function listMarkedTagsFromSlugs(gallerySlugs, markFilter, limit = 2000) {
+    const d = getDb();
+    if (!d) return [];
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return [];
+    const markCol = markFilter === 'try' ? 'try_mark = 1' : 'favorite = 1';
+    const placeholders = slugs.map(() => '?').join(', ');
+    const lim = Math.min(Math.max(Number(limit) || 2000, 1), 2000);
+    return d.prepare(`
+        SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+        ORDER BY gallery_slug COLLATE NOCASE, tag COLLATE NOCASE
+        LIMIT ?
+    `).all(...slugs, lim);
+}
+
+/**
+ * Rebuild prompt fragment from a locked Atelier expander seed.
+ * @param {object} entry
+ * @returns {string|null}
+ */
+function formatLockedNaxExpander(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (entry.value && typeof entry.value === 'string') return entry.value;
+    if (entry.nax_tag && entry.nax_gallery_slug) {
+        return formatTagForPrompt(entry.nax_tag, entry.nax_gallery_slug);
+    }
+    return null;
+}
+
+/**
+ * Manual lock picker: all marked tags for !NAX_FAV_* / !NAX_TRY_*.
+ * @returns {{ value: string, key: string, index: number, nax_tag: string, nax_gallery_slug: string, nax_preset_id: string, nax_kind: string }[]}
+ */
+function getNaxInternalExpanderOptions(presetId, kind, model) {
+    const preset = getNaxExpanderPreset(presetId);
+    if (!preset) return [];
+    const markFilter = kind === 'TRY' ? 'try' : 'favorites';
+    const slugs = preset.resolveSlugs(model);
+    const lockKey = `NAX_${kind}_${preset.id}`;
+    const rows = listMarkedTagsFromSlugs(slugs, markFilter);
+    return rows.map((row, index) => ({
+        value: formatTagForPrompt(row.tag, row.gallerySlug),
+        key: lockKey,
+        index,
+        nax_tag: row.tag,
+        nax_gallery_slug: row.gallerySlug,
+        nax_preset_id: preset.id,
+        nax_kind: kind
+    }));
+}
+
+/**
  * Resolve !NAX_FAV_CHARA / !NAX_TRY_ARTIST at generation time.
  * @returns {{ tag: string, gallerySlug: string, formatted: string, presetId: string } | null}
  */
@@ -839,6 +897,9 @@ module.exports = {
     formatTagForPrompt,
     pickRandomMarkedTag,
     pickRandomMarkedTagFromSlugs,
+    listMarkedTagsFromSlugs,
+    formatLockedNaxExpander,
+    getNaxInternalExpanderOptions,
     resolveNaxInternalExpander,
     getNaxExpanderPreset,
     queryMarkedTags,

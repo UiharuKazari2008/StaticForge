@@ -10,6 +10,35 @@ const logger = require('./logger');
 let dbPath = null;
 let db = null;
 
+function normalizeTagSearchQuery(query) {
+    return (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Re-open SQLite when the module was reset (e.g. hot reload) but dbPath is known.
+ */
+function ensureTagSearchDatabase() {
+    if (db) {
+        return true;
+    }
+    if (!dbPath || !fs.existsSync(dbPath)) {
+        return false;
+    }
+    try {
+        db = new Database(dbPath);
+        db.pragma('journal_mode = DELETE');
+        db.pragma('synchronous = NORMAL');
+        db.pragma('cache_size = 1000');
+        db.pragma('temp_store = MEMORY');
+        db.pragma('foreign_keys = ON');
+        return true;
+    } catch (error) {
+        console.error('❌ Failed to re-open tag search database:', error.message);
+        db = null;
+        return false;
+    }
+}
+
 /**
  * Initialize the SQLite database for tag search caching
  */
@@ -139,22 +168,43 @@ function closeTagSearchDatabase() {
  * @returns {Array|null} - Array of tag objects or null if not found
  */
 function getCachedTags(query, model) {
+    if (!ensureTagSearchDatabase()) {
+        return null;
+    }
     try {
-        const normalizedQuery = (query || '').trim().toLowerCase();
-        const search = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, model);
-        
+        const normalizedQuery = normalizeTagSearchQuery(query);
+        const apiModel = String(model || '').trim();
+        if (!normalizedQuery || !apiModel) {
+            return null;
+        }
+
+        let search = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, apiModel);
+        if (!search) {
+            const legacyQuery = (query || '').trim().toLowerCase();
+            if (legacyQuery && legacyQuery !== normalizedQuery) {
+                search = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(legacyQuery, apiModel);
+            }
+        }
         if (!search) {
             return null;
         }
-        
-        const tags = db.prepare(`
-            SELECT tag_name as tag, tag_count as count, confidence
-            FROM cached_tags 
-            WHERE search_id = ? 
+
+        const rows = db.prepare(`
+            SELECT tag_name, tag_count, confidence
+            FROM cached_tags
+            WHERE search_id = ?
             ORDER BY result_index ASC
         `).all(search.id);
-        
-        return tags;
+
+        if (!rows || rows.length === 0) {
+            return null;
+        }
+
+        return rows.map((row) => ({
+            tag: row.tag_name,
+            count: row.tag_count,
+            confidence: row.confidence
+        }));
     } catch (error) {
         console.error('❌ Error getting cached tags:', error.message);
         return null;
@@ -168,14 +218,21 @@ function getCachedTags(query, model) {
  * @param {Array} tags - Array of tag objects { tag, count, confidence }
  */
 function saveSearchResults(query, model, tags) {
+    if (!ensureTagSearchDatabase()) {
+        return false;
+    }
     if (!tags || !Array.isArray(tags)) return false;
     
     try {
-        const normalizedQuery = (query || '').trim().toLowerCase();
+        const normalizedQuery = normalizeTagSearchQuery(query);
+        const apiModel = String(model || '').trim();
+        if (!normalizedQuery || !apiModel) {
+            return false;
+        }
         // Use a transaction for atomicity
         const transaction = db.transaction(() => {
             // Check if entry already exists
-            const existing = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, model);
+            const existing = db.prepare('SELECT id FROM search_cache WHERE input_query = ? AND model = ?').get(normalizedQuery, apiModel);
             
             let searchId;
             if (existing) {
@@ -187,7 +244,7 @@ function saveSearchResults(query, model, tags) {
                 db.prepare("UPDATE search_cache SET created_at = strftime('%s', 'now') WHERE id = ?").run(searchId);
             } else {
                 // Insert new search cache entry
-                const result = db.prepare('INSERT INTO search_cache (input_query, model) VALUES (?, ?)').run(normalizedQuery, model);
+                const result = db.prepare('INSERT INTO search_cache (input_query, model) VALUES (?, ?)').run(normalizedQuery, apiModel);
                 searchId = result.lastInsertRowid;
             }
             
@@ -411,6 +468,8 @@ process.on('SIGTERM', () => {
 
 module.exports = {
     initializeTagSearchDatabase,
+    ensureTagSearchDatabase,
+    normalizeTagSearchQuery,
     closeTagSearchDatabase,
     getCachedTags,
     saveSearchResults,

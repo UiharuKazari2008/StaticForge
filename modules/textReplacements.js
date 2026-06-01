@@ -237,19 +237,59 @@ class TextReplacements {
             : null;
         if (naxDb) {
             result = result.replace(/!NAX_(FAV|TRY)_([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g, (match, kind, keyPart) => {
-                const resolved = naxDb.resolveNaxInternalExpander(keyPart, kind, model);
-                if (!resolved) return '';
+                const presetId = String(keyPart || '').trim().toUpperCase();
+                const lockKey = `NAX_${kind}_${presetId}`;
+
+                const isNaxLockEntry = (lr) => (
+                    lr && (lr.type === 'nax_internal' || lr.key === lockKey) &&
+                    (lr.pattern === match || lr.key === lockKey) &&
+                    lr.locked !== false
+                );
+
+                let patternLocked = null;
+                if (lockPool?.length) {
+                    const li = lockPool.findIndex(isNaxLockEntry);
+                    if (li !== -1) patternLocked = lockPool.splice(li, 1)[0];
+                }
+
+                let formatted;
+                let naxTag = null;
+                let naxGallerySlug = null;
+                let resolvedPresetId = presetId;
+                let isLocked = false;
+
+                if (patternLocked) {
+                    formatted = naxDb.formatLockedNaxExpander(patternLocked);
+                    naxTag = patternLocked.nax_tag || null;
+                    naxGallerySlug = patternLocked.nax_gallery_slug || null;
+                    resolvedPresetId = patternLocked.nax_preset_id || presetId;
+                    isLocked = true;
+                } else {
+                    const resolved = naxDb.resolveNaxInternalExpander(presetId, kind, model);
+                    if (!resolved) return '';
+                    formatted = resolved.formatted;
+                    naxTag = resolved.tag;
+                    naxGallerySlug = resolved.gallerySlug;
+                    resolvedPresetId = resolved.presetId;
+                }
+
+                if (!formatted) return '';
+
                 replacements.push({
-                    key: `NAX_${kind}_${resolved.presetId}`,
-                    value: resolved.formatted,
+                    key: lockKey,
+                    value: formatted,
                     presetName: presetName,
                     index: null,
                     type: 'nax_internal',
                     pattern: match,
-                    can_lock: false,
-                    locked: false
+                    nax_kind: kind,
+                    nax_preset_id: resolvedPresetId,
+                    nax_tag: naxTag,
+                    nax_gallery_slug: naxGallerySlug,
+                    locked: isLocked,
+                    can_lock: true
                 });
-                return resolved.formatted;
+                return formatted;
             });
         }
 
@@ -987,6 +1027,18 @@ class TextReplacements {
             periodKey = this.normalizePeriodKey(periodKey);
         }
         if (!this.globalResources) return [];
+
+        const naxPatternMatch = pattern.match(/^!NAX_(FAV|TRY)_([a-zA-Z0-9_]+)$/);
+        if (naxPatternMatch) {
+            const naxDb = this.globalResources.getNaxTagsDatabase
+                ? this.globalResources.getNaxTagsDatabase()
+                : null;
+            if (naxDb && typeof naxDb.getNaxInternalExpanderOptions === 'function') {
+                return naxDb.getNaxInternalExpanderOptions(naxPatternMatch[2], naxPatternMatch[1], model);
+            }
+            return [];
+        }
+
         const currentPromptConfig = this.globalResources.getPromptConfig();
         if (!currentPromptConfig || !currentPromptConfig.text_replacements) return [];
 

@@ -2049,6 +2049,9 @@ class GlobalResources {
         if (!this.initialized || !this.tagSearchDatabase) {
             throw new Error('Global resources not initialized - call initialize() first');
         }
+        if (typeof this.tagSearchDatabase.ensureTagSearchDatabase === 'function') {
+            this.tagSearchDatabase.ensureTagSearchDatabase();
+        }
         return this.tagSearchDatabase;
     }
 
@@ -2396,7 +2399,8 @@ class GlobalResources {
         // Lazy-load SearchService to avoid circular dependency with textReplacements.js
         if (!this.searchService) {
             console.log('  🔍 Lazy-loading SearchService...');
-            const { SearchService } = require('./searchService');
+            const { SearchService, setGlobalResources } = require('./searchService');
+            setGlobalResources(this);
             // Context pattern removed - SearchService now gets everything from globalResources directly
             this.searchService = new SearchService(this);
 
