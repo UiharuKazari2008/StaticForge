@@ -114,7 +114,12 @@ class LoginPage {
     }
 
     async clearCachesAndReload() {
-        if (!confirm('This will clear all application caches, local storage, and service workers to repair the application. Do you want to continue?')) {
+        const confirmed = await showConfirmationDialog('This will clear all application caches, local storage, and service workers to repair the application. Do you want to continue?', [
+            { text: 'Yes, Repair', value: true, className: 'btn-danger primary' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ], null, { title: 'Repair Application', icon: 'fas fa-tools' });
+
+        if (!confirmed) {
             return;
         }
 
