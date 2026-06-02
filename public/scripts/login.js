@@ -75,9 +75,17 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+        const togglePinPad = () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+        };
+
+        this.pinDisplay.addEventListener('click', togglePinPad);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                togglePinPad();
+            }
         });
     }
 
@@ -106,6 +114,10 @@ class LoginPage {
     }
 
     async clearCachesAndReload() {
+        if (!confirm('This will clear all application caches, local storage, and service workers to repair the application. Do you want to continue?')) {
+            return;
+        }
+
         try {
             this.showProgressBar();
             this.updateProgressStatus(0, 'Repairing...', '');
@@ -475,6 +487,9 @@ class LoginPage {
             dot.classList.add('success');
         });
         
+        // Ensure progress status is visible
+        this.showProgressBar();
+
         // Update status if progress container exists
         const progressStatus = document.getElementById('progressStatus');
         if (progressStatus) {

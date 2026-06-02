@@ -304,6 +304,18 @@ body {
     border-color: rgba(128, 191, 255, 0.58);
 }
 
+.pin-button:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+    box-shadow: 0 0 15px #fff;
+}
+
+.pin-display:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 10px;
+    border-radius: 10px;
+}
+
 @supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button:hover {
         color: #6a6a6a;
