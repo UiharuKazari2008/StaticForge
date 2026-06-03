@@ -440,7 +440,10 @@
             background: rgb(38 38 38 / 57%);
             padding: 2rem;
             border-radius: 1rem;
+            -webkit-backdrop-filter: blur(10px);
             backdrop-filter: blur(10px);
+            transform: translateZ(0);
+            backface-visibility: hidden;
             border: 1px solid rgba(255, 255, 255, 0.1);
             justify-content: center;
             align-items: center;
@@ -558,7 +561,10 @@
             background: rgb(38 38 38 / 90%);
             padding: 2rem;
             border-radius: 1rem;
+            -webkit-backdrop-filter: blur(10px);
             backdrop-filter: blur(10px);
+            transform: translateZ(0);
+            backface-visibility: hidden;
             border: 1px solid rgba(255, 255, 255, 0.1);
             text-align: center;
             max-width: 500px;

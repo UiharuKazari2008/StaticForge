@@ -4,6 +4,12 @@
     --titlebar-area-y: env(titlebar-area-y, 0);
     --titlebar-area-width: env(titlebar-area-width, 100%);
     --titlebar-area-height: env(titlebar-area-height, 33px);
+    --transition-pin-dot: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    --transition-pin-button: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, color 0.3s ease;
+    --transition-login-container: padding 0.75s ease;
+    --transition-blur-layer: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);
+    --transition-asset-progress: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
+    --transition-asset-progress-show: max-height 0.4s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.4s ease-in-out, padding 0.4s ease-in-out, gap 0.4s ease-in-out;
 }
 
 /* Window Controls Overlay API - Titlebar Grab Area */
@@ -110,7 +116,10 @@ body {
 .login-container {
     background-color: rgba(255, 255, 255, 0.1);
     border: 1px solid #ffffff75;
+    -webkit-backdrop-filter: blur(5px);
     backdrop-filter: blur(5px);
+    transform: translateZ(0);
+    backface-visibility: hidden;
     padding: 40px 35px;
     border-radius: 10px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
@@ -118,7 +127,7 @@ body {
     max-width: 90vw;
     margin: 25px;
     margin-top: calc(25px + calc(env(safe-area-inset-top, 0) + var(--titlebar-area-height, 0)));
-    transition: padding 0.75s ease;
+    transition: var(--transition-login-container);
 }
 
 .login-dialog {
@@ -147,7 +156,7 @@ body {
     border-radius: 50%;
     background-color: rgba(255, 255, 255, 0.3);
     border: 1px solid rgb(255 255 255 / 17%);
-    transition: all 0.3s ease;
+    transition: var(--transition-pin-dot);
     box-shadow: 0 0 10px inset #00000063;
 }
 
@@ -166,12 +175,14 @@ body {
 .pin-dot.error {
     border-color: #dc3545;
     animation: shake 0.5s ease-in-out;
+    will-change: transform;
 }
 
 .pin-dot.success {
     border-color: #28a745;
     background-color: rgba(40, 167, 69, 0.2);
     animation: success-pulse 0.6s ease-in-out;
+    will-change: transform;
 }
 
 @keyframes shake {
@@ -245,9 +256,11 @@ body {
 
 .transition .pin-pad {
     animation: pin-pad-transition-in 0.25s ease-in-out;
+    will-change: max-height, margin-top, opacity;
 }
 .transition.minimize .pin-pad {
     animation: pin-pad-transition-out 0.3s ease-in-out;
+    will-change: max-height, margin-top, opacity;
 }
 
 .minimize .pin-pad {
@@ -283,7 +296,7 @@ body {
     font-size: 1.5em;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: var(--transition-pin-button);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -306,6 +319,7 @@ body {
 
 @supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button:hover {
+        will-change: background-color, border-color, box-shadow, color;
         color: #6a6a6a;
         background-color: rgb(255 255 255 / 68%);
         box-shadow: 0 0 20px rgb(255 255 255 / 66%);
@@ -410,7 +424,6 @@ body {
     align-items: center;
     position: fixed;
     top: 0;
-    top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
@@ -435,7 +448,6 @@ body {
     height: max(100vh, 100vw);
     object-fit: cover;
     aspect-ratio: 1 / 1;
-    will-change: background-position;
 }
 
 .bg-layer, .blur-layer {
@@ -448,8 +460,8 @@ body {
 .blur-layer {
     z-index: -2; /* Blur layer behind normal image */
     background-position: var(--blur-x-pos) var(--blur-y-pos); /* Use CSS variables */
-    opacity: 0; /* Start hidden */
-    transition: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);; /* Longer fade-out (0.5 seconds) */
+    opacity: 0;
+    transition: var(--transition-blur-layer);
 }
 
 .bg-layer {
@@ -459,6 +471,7 @@ body {
 
 .blur-layer.transitioning {
     opacity: 1;
+    will-change: opacity;
 }
 
 /* Asset Loading Progress */
@@ -482,7 +495,7 @@ body {
     opacity: 0;
     margin-top: 0;
     border-width: 0px;
-    transition: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
+    transition: var(--transition-asset-progress);
 }
 
 .asset-loading-progress.show {
@@ -491,7 +504,7 @@ body {
     margin-top: 25px;
     padding: 0.5rem 0.45rem;
     border-width: 1px;
-    transition: max-height 0.4s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.4s ease-in-out, padding 0.4s ease-in-out, gap 0.4s ease-in-out;
+    transition: var(--transition-asset-progress-show);
 }
 
 .asset-loading-progress.show.show-progress {
@@ -543,4 +556,36 @@ body {
 .asset-loading-progress.show.show-progress .progress-bar {
     border-width: 1px;
     height: 10px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    .login-container {
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        background-color: rgba(32, 32, 32, 0.92);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pin-dot,
+    .pin-button,
+    .login-container,
+    .blur-layer,
+    .asset-loading-progress,
+    .asset-loading-progress.show,
+    .asset-loading-progress .progress-fill,
+    .transition .pin-pad,
+    .transition.minimize .pin-pad {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+
+    .pin-dot.error,
+    .pin-dot.success,
+    .blur-layer.transitioning,
+    .transition .pin-pad,
+    .transition.minimize .pin-pad {
+        will-change: auto;
+    }
 }
