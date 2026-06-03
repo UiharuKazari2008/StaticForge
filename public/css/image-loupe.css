@@ -1,7 +1,7 @@
 /* Reusable image inspection loupe — public/scripts/comp/imageLoupe.js */
 
 .image-loupe-host {
-    overflow: visible;
+    overflow: visible
 }
 
 .image-loupe {
@@ -12,7 +12,7 @@
     --image-loupe-total-size: calc(
         var(--image-loupe-viewport-size) +
         (var(--image-loupe-ring-width) + var(--image-loupe-elevation-width)) * 2
-    );
+    )
 }
 
 .image-loupe {
@@ -25,50 +25,32 @@
     cursor: grab;
     opacity: 1;
     transform: translate(-50%, -50%);
-    transition:
-        opacity 0.35s ease-in-out,
-        width 0.24s ease-out,
-        height 0.24s ease-out,
-        left 0.28s ease-out,
-        top 0.28s ease-out,
-        transform 0.22s ease-out,
-        filter 0.22s ease-out;
+    transition: opacity 0.35s ease-in-out, width 0.24s ease-out, height 0.24s ease-out, left 0.28s ease-out, top 0.28s ease-out, transform 0.22s ease-out, filter 0.22s ease-out;
     filter: drop-shadow(2px 4px 10px hsl(0deg 0% 0% / 42%))
         drop-shadow(0 1px 0 hsl(0deg 0% 100% / 10%));
+    -webkit-filter: drop-shadow(2px 4px 10px hsl(0deg 0% 0% / 42%))
+        drop-shadow(0 1px 0 hsl(0deg 0% 100% / 10%));
+    will-change: filter, opacity, transform
 }
 
 .image-loupe:not(.is-dragging):not(.is-resize-snapping) {
-    transition:
-        opacity 0.35s ease-in-out,
-        width 0.24s ease-out,
-        height 0.24s ease-out,
-        left 0.28s ease-out,
-        top 0.28s ease-out,
-        transform 0.22s ease-out,
-        filter 0.22s ease-out;
+    transition: opacity 0.35s ease-in-out, width 0.24s ease-out, height 0.24s ease-out, left 0.28s ease-out, top 0.28s ease-out, transform 0.22s ease-out, filter 0.22s ease-out;
+    will-change: filter, opacity, transform
 }
 
 .image-loupe.is-dragging {
-    transition:
-        opacity 0.35s ease-in-out,
-        width 0.24s ease-out,
-        height 0.24s ease-out,
-        transform 0.18s ease-out,
-        filter 0.18s ease-out;
+    transition: opacity 0.35s ease-in-out, width 0.24s ease-out, height 0.24s ease-out, transform 0.18s ease-out, filter 0.18s ease-out;
+    will-change: filter, opacity, transform
 }
 
 .image-loupe.is-resize-snapping {
-    transition:
-        opacity 0.35s ease-in-out,
-        width 0.24s ease-out,
-        height 0.24s ease-out,
-        transform 0.22s ease-out,
-        filter 0.22s ease-out;
+    transition: opacity 0.35s ease-in-out, width 0.24s ease-out, height 0.24s ease-out, transform 0.22s ease-out, filter 0.22s ease-out;
+    will-change: filter, opacity, transform
 }
 
 .image-loupe[data-state="idle"][data-corner] {
     left: var(--image-loupe-idle-anchor-x, 0%);
-    top: var(--image-loupe-idle-anchor-y, 100%);
+    top: var(--image-loupe-idle-anchor-y, 100%)
 }
 
 .image-loupe.is-held {
@@ -76,6 +58,10 @@
     filter: drop-shadow(3px 6px 12px hsl(0deg 0% 0% / 48%))
         drop-shadow(0 2px 10px hsl(0deg 0% 0% / 28%))
         drop-shadow(0 1px 0 hsl(0deg 0% 100% / 10%));
+    -webkit-filter: drop-shadow(3px 6px 12px hsl(0deg 0% 0% / 48%))
+        drop-shadow(0 2px 10px hsl(0deg 0% 0% / 28%))
+        drop-shadow(0 1px 0 hsl(0deg 0% 100% / 10%));
+    will-change: filter
 }
 
 .image-loupe.is-park-ready {
@@ -83,28 +69,32 @@
     filter: drop-shadow(2px 4px 10px hsl(0deg 0% 0% / 42%))
         drop-shadow(0 0 12px hsl(0deg 72% 45% / 55%))
         sepia(0.35) saturate(2.2) hue-rotate(-18deg);
+    -webkit-filter: drop-shadow(2px 4px 10px hsl(0deg 0% 0% / 42%))
+        drop-shadow(0 0 12px hsl(0deg 72% 45% / 55%))
+        sepia(0.35) saturate(2.2) hue-rotate(-18deg);
+    will-change: filter
 }
 
 .image-loupe.is-park-ready .image-loupe-elevation {
-    border-color: hsl(0deg 70% 55% / 45%);
+    border-color: hsl(0deg 70% 55% / 45%)
 }
 
 .image-loupe.hidden {
-    display: none;
+    display: none
 }
 
 .image-loupe:active {
-    cursor: grabbing;
+    cursor: grabbing
 }
 
 .image-loupe.is-elevated {
-    z-index: var(--z-layer-5);
+    z-index: var(--z-layer-5)
 }
 
 .image-loupe-body {
     position: relative;
     width: 100%;
-    height: 100%;
+    height: 100%
 }
 
 .image-loupe-elevation {
@@ -123,7 +113,7 @@
         inset 0 -2px 4px hsl(0deg 0% 0% / 16%),
         0 2px 8px hsl(0deg 0% 0% / 30%);
     pointer-events: none;
-    transition: border-color 0.2s ease-out;
+    transition: border-color 0.2s ease-out
 }
 
 .image-loupe-ring {
@@ -140,6 +130,7 @@
     z-index: 1;
     opacity: 1;
     transition: opacity 0.24s ease-out;
+    will-change: opacity
 }
 
 .image-loupe-ring-surface {
@@ -155,7 +146,7 @@
     box-shadow:
         inset 0 1px 2px hsl(0deg 0% 100% / 18%),
         inset 0 -2px 6px hsl(0deg 0% 0% / 62%),
-        0 1px 0 hsl(0deg 0% 100% / 6%);
+        0 1px 0 hsl(0deg 0% 100% / 6%)
 }
 
 .image-loupe-viewport {
@@ -171,7 +162,7 @@
         inset 0 0 calc(var(--image-loupe-viewport-size) * 0.1) hsl(0deg 0% 0% / 50%),
         inset 0 2px 4px hsl(0deg 0% 100% / 10%);
     pointer-events: none;
-    z-index: 2;
+    z-index: 2
 }
 
 .image-loupe-viewport-backdrop,
@@ -181,7 +172,7 @@
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    pointer-events: none;
+    pointer-events: none
 }
 
 .image-loupe-viewport-backdrop {
@@ -189,16 +180,18 @@
     background-color: hsl(0deg 0% 8%);
     background-repeat: no-repeat;
     transition: opacity 0.2s ease-out;
+    will-change: opacity
 }
 
 .image-loupe-viewport-shade {
     z-index: 1;
     background: hsl(0deg 0% 0% / 50%);
     transition: opacity 0.2s ease-out;
+    will-change: opacity
 }
 
 .image-loupe[data-state="idle"] .image-loupe-viewport-shade {
-    opacity: 0.35;
+    opacity: 0.35
 }
 
 .image-loupe-viewport-sample {
@@ -207,17 +200,18 @@
     background-color: transparent;
     transition: opacity 0.15s ease-out;
     image-rendering: auto;
+    will-change: opacity
 }
 
 .image-loupe-viewport-sample.is-pixelated {
     image-rendering: -webkit-optimize-contrast;
     image-rendering: -moz-crisp-edges;
     image-rendering: crisp-edges;
-    image-rendering: pixelated;
+    image-rendering: pixelated
 }
 
 .image-loupe[data-state="idle"] .image-loupe-viewport-sample {
-    opacity: 0;
+    opacity: 0
 }
 
 .image-loupe-scroll-hud {
@@ -234,54 +228,55 @@
     opacity: 0;
     transition: opacity 0.18s ease-out;
     white-space: nowrap;
+    will-change: opacity
 }
 
 .image-loupe-scroll-hud.hidden {
-    display: none;
+    display: none
 }
 
 .image-loupe-scroll-hud.is-visible {
     display: flex;
-    opacity: 1;
+    opacity: 1
 }
 
 .image-loupe-hover-scope:not(:hover) .image-loupe[data-state="idle"] {
     opacity: 0;
-    pointer-events: none;
+    pointer-events: none
 }
 
 .image-loupe-hover-scope:hover .image-loupe[data-state="idle"],
 .image-loupe[data-state="idle"]:hover,
 .image-loupe[data-state="active"] {
     opacity: 1;
-    pointer-events: auto;
+    pointer-events: auto
 }
 
 .image-loupe-hover-scope:hover .image-loupe[data-state="idle"][data-corner],
 .image-loupe[data-state="idle"][data-corner]:hover {
     left: var(--image-loupe-idle-peek-x, 8%);
-    top: var(--image-loupe-idle-peek-y, 92%);
+    top: var(--image-loupe-idle-peek-y, 92%)
 }
 
 .image-loupe-host.is-active .image-loupe[data-state="active"] {
     opacity: 1;
-    pointer-events: auto;
+    pointer-events: auto
 }
 
 /* Compare loupe reveal: collapse ring when preview is not hovered so viewport sits on elevation */
 .image-loupe-hover-scope.compare-loupe-reveal-on:not(:hover) .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) {
-    --image-loupe-ring-width: 0px;
+    --image-loupe-ring-width: 0px
 }
 
 .image-loupe-hover-scope.compare-loupe-reveal-on:not(:hover) .image-loupe[data-state="active"]:not(.is-dragging):not(.is-held) .image-loupe-ring {
-    opacity: 0;
+    opacity: 0
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
     .image-loupe-hover-scope:not(:hover) .image-loupe[data-state="idle"] {
-        opacity: 0.25;
-        pointer-events: auto;
-    }
+    opacity: 0.25;
+    pointer-events: auto
+}
 }
 
 .image-loupe-host[data-corner-zone="top-left"]::before,
@@ -296,30 +291,30 @@
     background: hsl(var(--primary-hue, 210) 80% 55% / 12%);
     border: 1px dashed hsl(var(--primary-hue, 210) 70% 60% / 35%);
     pointer-events: none;
-    z-index: var(--z-layer-2);
+    z-index: var(--z-layer-2)
 }
 
 .image-loupe-host[data-corner-zone="top-left"]::before {
     top: 0;
-    left: 0;
+    left: 0
 }
 
 .image-loupe-host[data-corner-zone="top-right"]::before {
     top: 0;
-    right: 0;
+    right: 0
 }
 
 .image-loupe-host[data-corner-zone="bottom-left"]::before {
     bottom: 0;
-    left: 0;
+    left: 0
 }
 
 .image-loupe-host[data-corner-zone="bottom-right"]::before {
     bottom: 0;
-    right: 0;
+    right: 0
 }
 
 .image-loupe-host[data-corner-zone].is-park-ready-zone::before {
     background: hsl(0deg 72% 45% / 18%);
-    border-color: hsl(0deg 70% 55% / 50%);
+    border-color: hsl(0deg 70% 55% / 50%)
 }

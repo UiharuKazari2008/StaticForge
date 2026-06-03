@@ -11,10 +11,11 @@
     align-items: center;
     justify-content: center;
     transition: opacity 0.3s ease;
+    will-change: opacity
 }
 
 .developer-modal.hidden {
-    display: none;
+    display: none
 }
 
 .developer-modal-overlay {
@@ -25,6 +26,8 @@
     height: 100%;
     background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    will-change: backdrop-filter
 }
 
 .developer-modal-content {
@@ -37,18 +40,18 @@
     width: 90%;
     max-height: 80vh;
     overflow-y: auto;
-    animation: developerModalSlideIn 0.3s ease;
+    animation: developerModalSlideIn 0.3s ease
 }
 
 @keyframes developerModalSlideIn {
     from {
-        opacity: 0;
-        transform: translateY(-20px) scale(0.95);
-    }
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95)
+}
     to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+    opacity: 1;
+    transform: translateY(0) scale(1)
+}
 }
 
 .developer-modal-header {
@@ -58,14 +61,14 @@
     padding: 20px 24px;
     border-bottom: 1px solid #333;
     background: #222;
-    border-radius: 12px 12px 0 0;
+    border-radius: 12px 12px 0 0
 }
 
 .developer-modal-header h2 {
     margin: 0;
     color: #fff;
     font-size: 18px;
-    font-weight: 600;
+    font-weight: 600
 }
 
 .developer-modal-close {
@@ -81,24 +84,25 @@
     align-items: center;
     justify-content: center;
     border-radius: 6px;
-    transition: all 0.2s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease, backdrop-filter 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    will-change: backdrop-filter, filter, opacity, transform
 }
 
 .developer-modal-close:hover {
     background: #333;
-    color: #fff;
+    color: #fff
 }
 
 .developer-modal-body {
-    padding: 24px;
+    padding: 24px
 }
 
 .developer-section {
-    margin-bottom: 24px;
+    margin-bottom: 24px
 }
 
 .developer-section:last-child {
-    margin-bottom: 0;
+    margin-bottom: 0
 }
 
 .developer-section h3 {
@@ -107,13 +111,13 @@
     font-size: 16px;
     font-weight: 600;
     border-bottom: 1px solid #333;
-    padding-bottom: 8px;
+    padding-bottom: 8px
 }
 
 .developer-controls {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 16px
 }
 
 .developer-toggle {
@@ -122,11 +126,11 @@
     cursor: pointer;
     color: #fff;
     font-size: 14px;
-    user-select: none;
+    user-select: none
 }
 
 .developer-toggle input[type="checkbox"] {
-    display: none;
+    display: none
 }
 
 .toggle-slider {
@@ -136,7 +140,7 @@
     background: #333;
     border-radius: 12px;
     margin-right: 12px;
-    transition: background 0.3s ease;
+    transition: background 0.3s ease
 }
 
 .toggle-slider::before {
@@ -149,27 +153,28 @@
     background: #666;
     border-radius: 50%;
     transition: transform 0.3s ease;
+    will-change: transform
 }
 
 .developer-toggle input[type="checkbox"]:checked + .toggle-slider {
-    background: #4f46e5;
+    background: #4f46e5
 }
 
 .developer-toggle input[type="checkbox"]:checked + .toggle-slider::before {
     transform: translateX(24px);
-    background: #fff;
+    background: #fff
 }
 
 .developer-input-group {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 6px
 }
 
 .developer-input-group label {
     color: #ccc;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 500
 }
 
 .developer-input-group input {
@@ -179,19 +184,19 @@
     padding: 10px 12px;
     color: #fff;
     font-size: 14px;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.2s ease
 }
 
 .developer-input-group input:focus {
     outline: none;
     border-color: #4f46e5;
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2)
 }
 
 .developer-status {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 12px
 }
 
 .status-item {
@@ -199,17 +204,17 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 0;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid #2a2a2a
 }
 
 .status-item:last-child {
-    border-bottom: none;
+    border-bottom: none
 }
 
 .status-label {
     color: #ccc;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 500
 }
 
 .status-value {
@@ -218,33 +223,33 @@
     font-weight: 600;
     padding: 4px 8px;
     border-radius: 4px;
-    background: #333;
+    background: #333
 }
 
 .status-value.connected {
     background: #059669;
-    color: #fff;
+    color: #fff
 }
 
 .status-value.disconnected {
     background: #dc2626;
-    color: #fff;
+    color: #fff
 }
 
 .status-value.yes {
     background: #059669;
-    color: #fff;
+    color: #fff
 }
 
 .status-value.no {
     background: #dc2626;
-    color: #fff;
+    color: #fff
 }
 
 .developer-actions {
     display: flex;
     gap: 12px;
-    flex-wrap: wrap;
+    flex-wrap: wrap
 }
 
 .developer-btn {
@@ -254,56 +259,57 @@
     font-size: 14px;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: opacity 0.2s ease, transform 0.2s ease, filter 0.2s ease, backdrop-filter 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     flex: 1;
     min-width: 120px;
+    will-change: backdrop-filter, filter, opacity, transform
 }
 
 .developer-btn.primary {
     background: #4f46e5;
-    color: #fff;
+    color: #fff
 }
 
 .developer-btn.primary:hover {
-    background: #4338ca;
+    background: #4338ca
 }
 
 .developer-btn.secondary {
     background: #374151;
     color: #fff;
-    border: 1px solid #4b5563;
+    border: 1px solid #4b5563
 }
 
 .developer-btn.secondary:hover {
-    background: #4b5563;
+    background: #4b5563
 }
 
 .developer-btn.danger {
     background: #dc2626;
-    color: #fff;
+    color: #fff
 }
 
 .developer-btn.danger:hover {
-    background: #b91c1c;
+    background: #b91c1c
 }
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     .developer-modal-content {
-        width: 95%;
-        margin: 20px;
-    }
+    width: 95%;
+    margin: 20px
+}
     
     .developer-modal-body {
-        padding: 20px;
-    }
+    padding: 20px
+}
     
     .developer-actions {
-        flex-direction: column;
-    }
+    flex-direction: column
+}
     
     .developer-btn {
-        flex: none;
-        width: 100%;
-    }
+    flex: none;
+    width: 100%
+}
 }

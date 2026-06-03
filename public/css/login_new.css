@@ -3,7 +3,7 @@
     --titlebar-area-x: env(titlebar-area-x, 0);
     --titlebar-area-y: env(titlebar-area-y, 0);
     --titlebar-area-width: env(titlebar-area-width, 100%);
-    --titlebar-area-height: env(titlebar-area-height, 33px);
+    --titlebar-area-height: env(titlebar-area-height, 33px)
 }
 
 /* Window Controls Overlay API - Titlebar Grab Area */
@@ -18,7 +18,7 @@
     pointer-events: auto;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: space-between
 }
 
 /* Center grab area - the actual draggable region */
@@ -30,11 +30,11 @@
     app-region: drag;
     cursor: grab;
     flex: 1 1 auto;
-    min-width: 50px;
+    min-width: 50px
 }
 
 #titlebar-grab-center:active {
-    cursor: grabbing;
+    cursor: grabbing
 }
 
 /* Titlebar clickable areas */
@@ -47,19 +47,19 @@
     app-region: no-drag;
     cursor: default;
     flex: 0 0 auto;
-    min-width: 0;
+    min-width: 0
 }
 
 /* Enable and grow left area */
 #titlebar-null-left.enabled {
     flex: 1 1 auto;
-    min-width: 20px;
+    min-width: 20px
 }
 
 /* Enable and grow right area */
 #titlebar-null-right.enabled {
     flex: 1 1 auto;
-    min-width: 20px;
+    min-width: 20px
 }
 
 /* Ensure interactive elements in titlebar are not draggable */
@@ -71,24 +71,25 @@
 #titlebar-grab-area [role="button"] {
     -webkit-app-region: no-drag;
     app-region: no-drag;
-    cursor: default;
+    cursor: default
 }
 
 * {
-    box-sizing: border-box;
+    box-sizing: border-box
 }
 
 body {
     margin: 0;
     padding: 0;
     font-family: Arial, sans-serif;
-    background-color: #000; /* Dark background like Neverthink */
+    background-color: #000;
+    /* Dark background like Neverthink */
     color: #fff;
     display: flex;
     justify-content: flex-end;
     align-items: flex-start;
     height: 100vh;
-    overflow: hidden;
+    overflow: hidden
 }
 
 .login-product-name {
@@ -101,7 +102,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.25em;
+    gap: 0.25em
 }
 
 
@@ -111,6 +112,7 @@ body {
     background-color: rgba(255, 255, 255, 0.1);
     border: 1px solid #ffffff75;
     backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
     padding: 40px 35px;
     border-radius: 10px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
@@ -119,6 +121,7 @@ body {
     margin: 25px;
     margin-top: calc(25px + calc(env(safe-area-inset-top, 0) + var(--titlebar-area-height, 0)));
     transition: padding 0.75s ease;
+    will-change: backdrop-filter
 }
 
 .login-dialog {
@@ -126,19 +129,19 @@ body {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: center;
-    justify-content: center;
+    justify-content: center
 }
 
 /* PIN Display */
 .pin-display {
     display: flex;
-    justify-content: center;
+    justify-content: center
 }
 
 .pin-dots {
     display: flex;
     gap: 15px;
-    justify-content: center;
+    justify-content: center
 }
 
 .pin-dot {
@@ -147,43 +150,44 @@ body {
     border-radius: 50%;
     background-color: rgba(255, 255, 255, 0.3);
     border: 1px solid rgb(255 255 255 / 17%);
-    transition: all 0.3s ease;
+    transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease, backdrop-filter 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     box-shadow: 0 0 10px inset #00000063;
+    will-change: backdrop-filter, filter, opacity, transform
 }
 
 .pin-dot.filled {
     background-color: #fff;
     border-color: #fff;
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5)
 }
 
 .pin-dot.overflow {
     background-color: #87CEEB;
     border-color: #87CEEB;
-    box-shadow: 0 0 10px rgba(135, 206, 235, 0.5);
+    box-shadow: 0 0 10px rgba(135, 206, 235, 0.5)
 }
 
 .pin-dot.error {
     border-color: #dc3545;
-    animation: shake 0.5s ease-in-out;
+    animation: shake 0.5s ease-in-out
 }
 
 .pin-dot.success {
     border-color: #28a745;
     background-color: rgba(40, 167, 69, 0.2);
-    animation: success-pulse 0.6s ease-in-out;
+    animation: success-pulse 0.6s ease-in-out
 }
 
 @keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
-    20%, 40%, 60%, 80% { transform: translateX(5px); }
+    0%, 100% {transform: translateX(0)}
+    10%, 30%, 50%, 70%, 90% {transform: translateX(-5px)}
+    20%, 40%, 60%, 80% {transform: translateX(5px)}
 }
 
 @keyframes success-pulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-    100% { transform: scale(1); }
+    0% {transform: scale(1)}
+    50% {transform: scale(1.1)}
+    100% {transform: scale(1)}
 }
 
 /* PIN Pad */
@@ -197,80 +201,80 @@ body {
     gap: 15px;
     margin-top: 30px;
     max-height: 500px;
-    opacity: 1;
+    opacity: 1
 }
 
 @keyframes pin-pad-transition-out {
     0% {
-        max-height: 500px;
-        margin-top: 30px;
-        opacity: 1;
-        overflow: visible;
-    }
+    max-height: 500px;
+    margin-top: 30px;
+    opacity: 1;
+    overflow: visible
+}
     0.001% {
-        max-height: 500px;
-        margin-top: 30px;
-        opacity: 1;
-        overflow: hidden;
-    }
+    max-height: 500px;
+    margin-top: 30px;
+    opacity: 1;
+    overflow: hidden
+}
     100% {
-        max-height: 0;
-        margin-top: 0;
-        opacity: 0;
-        overflow: hidden;
-    }
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    overflow: hidden
+}
 }
 
 
 @keyframes pin-pad-transition-in {
     0% {
-        max-height: 0;
-        margin-top: 0;
-        opacity: 0;
-        overflow: hidden;
-    }
+    max-height: 0;
+    margin-top: 0;
+    opacity: 0;
+    overflow: hidden
+}
     99.999% {
-        max-height: 500px;
-        margin-top: 30px;
-        opacity: 1;
-        overflow: hidden;
-    }
+    max-height: 500px;
+    margin-top: 30px;
+    opacity: 1;
+    overflow: hidden
+}
     100% {
-        max-height: 500px;
-        margin-top: 30px;
-        opacity: 1;
-        overflow: visible;
-    }
+    max-height: 500px;
+    margin-top: 30px;
+    opacity: 1;
+    overflow: visible
+}
 }
 
 .transition .pin-pad {
-    animation: pin-pad-transition-in 0.25s ease-in-out;
+    animation: pin-pad-transition-in 0.25s ease-in-out
 }
 .transition.minimize .pin-pad {
-    animation: pin-pad-transition-out 0.3s ease-in-out;
+    animation: pin-pad-transition-out 0.3s ease-in-out
 }
 
 .minimize .pin-pad {
     max-height: 0;
     margin-top: 0;
     opacity: 0;
-    overflow: hidden;
+    overflow: hidden
 }
 
 .login-container.minimize {
-    padding: 20px 35px;
+    padding: 20px 35px
 }
 
 .pin-row {
     display: flex;
     justify-content: space-between;
     gap: 15px;
-    width: 100%;
+    width: 100%
 }
 
 .pin-row.options {
     justify-content: flex-end;
-    padding-top: 5px;
+    padding-top: 5px
 }
 
 .pin-button {
@@ -283,45 +287,46 @@ body {
     font-size: 1.5em;
     font-weight: bold;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: opacity 0.3s ease, transform 0.3s ease, filter 0.3s ease, backdrop-filter 0.3s ease, background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    will-change: backdrop-filter, filter, opacity, transform
 }
 
 .pin-button.danger {
     font-size: 1.2em;
     color: #fff;
     background-color: rgba(255, 0, 25, 0.75);
-    border-color: rgba(255, 128, 140, 0.58);
+    border-color: rgba(255, 128, 140, 0.58)
 }
 
 .pin-button.update-static-btn {
     font-size: 1.2em;
     color: #fff;
     background-color: rgba(0, 123, 255, 0.75);
-    border-color: rgba(128, 191, 255, 0.58);
+    border-color: rgba(128, 191, 255, 0.58)
 }
 
 @supports (-webkit-touch-callout: none) or (hover: hover) {
     .pin-button:hover {
-        color: #6a6a6a;
-        background-color: rgb(255 255 255 / 68%);
-        box-shadow: 0 0 20px rgb(255 255 255 / 66%);
-    }
+    color: #6a6a6a;
+    background-color: rgb(255 255 255 / 68%);
+    box-shadow: 0 0 20px rgb(255 255 255 / 66%)
+}
 
     .pin-button:active {
-        background-color: rgb(255 255 255 / 90%);
-    }
+    background-color: rgb(255 255 255 / 90%)
+}
     .pin-button.backspace-btn:hover,
     .pin-button.danger:hover {
-        background-color: rgba(220, 53, 69, 0.5);
-    }
+    background-color: rgba(220, 53, 69, 0.5)
+}
     
     .pin-button.update-static-btn:hover {
-        background-color: rgba(0, 86, 179, 0.5);
-    }
+    background-color: rgba(0, 86, 179, 0.5)
+}
 }
 
 /* Error message */
@@ -332,75 +337,75 @@ body {
     border: 1px solid rgba(220, 53, 69, 0.5);
     border-radius: 5px;
     color: #fff;
-    font-size: 0.9em;
+    font-size: 0.9em
 }
 
 .hidden {
-    display: none;
+    display: none
 }
 
 /* Mobile responsiveness */
 @media (max-width: 768px) {
     body {
-        justify-content: center;
-        align-items: center;
-    }
+    justify-content: center;
+    align-items: center
+}
     .login-container {
-        margin: 0px;
-    }
+    margin: 0px
+}
 }
 @media (max-width: 480px) {    
     .minimize .pin-pad {
-        max-height: 500px;
-        margin-top: 25px;
-        opacity: 1;
-    }
+    max-height: 500px;
+    margin-top: 25px;
+    opacity: 1
+}
 
     .login-container,
     .login-container.minimize {
-        padding: 30px 30px;
-        margin: 0px;
-    }
+    padding: 30px 30px;
+    margin: 0px
+}
 
     .pin-pad {
-        margin-top: 25px;
-    }
+    margin-top: 25px
+}
     
     .pin-button {
-        width: 55px;
-        height: 55px;
-        font-size: 1.3em;
-    }
+    width: 55px;
+    height: 55px;
+    font-size: 1.3em
+}
     
     .pin-row, .pin-pad {
-        gap: 12px;
-    }
+    gap: 12px
+}
     
     .pin-dots {
-        gap: 12px;
-    }
+    gap: 12px
+}
     
     .pin-dot {
-        width: 18px;
-        height: 18px;
-    }
+    width: 18px;
+    height: 18px
+}
 }
 
 @media (max-width: 360px) {
     .login-container,
     .login-container.minimize {
-        padding: 25px 20px;
-    }
+    padding: 25px 20px
+}
     
     .pin-button {
-        width: 50px;
-        height: 50px;
-        font-size: 1.2em;
-    }
+    width: 50px;
+    height: 50px;
+    font-size: 1.2em
+}
     
     .pin-row, .pin-pad {
-        gap: 10px;
-    }
+    gap: 10px
+}
 }
 
 /* Background Image System using CSS Sprite Sheet */
@@ -422,7 +427,7 @@ body {
     --image-sheet: 100% 100%;
     --image-width: 1024px;
     --image-height: 1024px;
-    --image-num: 20;
+    --image-num: 20
 }
 
 .bg-layer, .blur-layer {
@@ -435,30 +440,36 @@ body {
     height: max(100vh, 100vw);
     object-fit: cover;
     aspect-ratio: 1 / 1;
-    will-change: background-position;
+    will-change: background-position
 }
 
 .bg-layer, .blur-layer {
     background-image: url(/.login.jpg);
     background-size: var(--image-sheet, 100% 2000%);
     background-position: var(--bg-x-pos) var(--bg-y-pos);
-    background-repeat: no-repeat;
+    background-repeat: no-repeat
 }
 
 .blur-layer {
-    z-index: -2; /* Blur layer behind normal image */
-    background-position: var(--blur-x-pos) var(--blur-y-pos); /* Use CSS variables */
-    opacity: 0; /* Start hidden */
-    transition: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);; /* Longer fade-out (0.5 seconds) */
+    z-index: -2;
+    /* Blur layer behind normal image */
+    background-position: var(--blur-x-pos) var(--blur-y-pos);
+    /* Use CSS variables */
+    opacity: 0;
+    /* Start hidden */
+    transition: opacity 0.25s cubic-bezier(1, 0, 0.21, 0.86);
+    /* Longer fade-out (0.5 seconds) */
 }
 
 .bg-layer {
-    z-index: -3; /* Normal image behind block-container */
-    background-position: var(--bg-x-pos) var(--bg-y-pos); /* Use CSS variables */
+    z-index: -3;
+    /* Normal image behind block-container */
+    background-position: var(--bg-x-pos) var(--bg-y-pos);
+    /* Use CSS variables */
 }
 
 .blur-layer.transitioning {
-    opacity: 1;
+    opacity: 1
 }
 
 /* Asset Loading Progress */
@@ -483,6 +494,7 @@ body {
     margin-top: 0;
     border-width: 0px;
     transition: max-height 0.25s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.25s ease-in-out, padding 0.25s ease-in-out, gap 0.25s ease-in-out;
+    will-change: opacity
 }
 
 .asset-loading-progress.show {
@@ -492,16 +504,17 @@ body {
     padding: 0.5rem 0.45rem;
     border-width: 1px;
     transition: max-height 0.4s ease-in-out, opacity 0.25s ease-in-out, margin-top 0.25s ease-in-out, border-width 0.4s ease-in-out, padding 0.4s ease-in-out, gap 0.4s ease-in-out;
+    will-change: opacity
 }
 
 .asset-loading-progress.show.show-progress {
-    gap: 0.5rem;
+    gap: 0.5rem
 }
 
 .asset-loading-progress .progress-text {
     font-size: 16px;
     margin-bottom: 10px;
-    font-weight: 500;
+    font-weight: 500
 }
 
 .asset-loading-progress .progress-bar {
@@ -513,7 +526,7 @@ body {
     border-style: solid;
     border-width: 0px;
     height: 0px;
-    overflow: hidden;
+    overflow: hidden
 }
 
 .asset-loading-progress .progress-fill {
@@ -522,25 +535,25 @@ body {
     background: linear-gradient(90deg, #ffffffbd, #ffffff);
     border-radius: 2px;
     width: 0%;
-    transition: width 0.3s ease;
+    transition: width 0.3s ease
 }
 
 .asset-loading-progress .progress-status {
     color: #4f4f4f;
     font-size: 12px;
     line-height: 1;
-    font-weight: bold;
+    font-weight: bold
 }
 
 .asset-loading-progress .progress-status.success {
-    color: #109535;
+    color: #109535
 }
 
 .asset-loading-progress .progress-status.error {
-    color: #c40000;
+    color: #c40000
 }
 
 .asset-loading-progress.show.show-progress .progress-bar {
     border-width: 1px;
-    height: 10px;
+    height: 10px
 }
