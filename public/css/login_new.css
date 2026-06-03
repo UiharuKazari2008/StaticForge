@@ -311,8 +311,10 @@ body {
         box-shadow: 0 0 20px rgb(255 255 255 / 66%);
     }
 
-    .pin-button:active {
+    .pin-button:active,
+    .pin-button.active {
         background-color: rgb(255 255 255 / 90%);
+        transform: scale(0.95);
     }
     .pin-button.backspace-btn:hover,
     .pin-button.danger:hover {

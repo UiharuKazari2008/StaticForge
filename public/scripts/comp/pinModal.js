@@ -24,14 +24,30 @@ class PinModal {
             
             if (e.key >= '0' && e.key <= '9') {
                 this.addDigit(e.key);
+                this.animateButton(e.key);
             } else if (e.key === 'Enter') {
                 if (this.currentPin.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
                 this.removeDigit();
+                this.animateButton(null, 'backspace');
             }
         });
+    }
+
+    animateButton(number, action) {
+        let button;
+        if (number !== null) {
+            button = Array.from(this.pinButtons).find(btn => btn.getAttribute('data-number') === number);
+        } else if (action) {
+            button = Array.from(this.pinButtons).find(btn => btn.getAttribute('data-action') === action);
+        }
+
+        if (button) {
+            button.classList.add('active');
+            setTimeout(() => button.classList.remove('active'), 150);
+        }
     }
 
     setupPinPadListener() {
