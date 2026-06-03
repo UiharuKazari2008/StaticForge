@@ -102,7 +102,8 @@
     "setup": "bash scripts/setup.sh",
     "setup:baremetal": "bash scripts/setup.sh --mode baremetal",
     "setup:docker": "bash scripts/setup.sh --mode docker",
-    "docker:test": "docker compose -f docker-compose.test.yml up --build"
+    "docker:test": "docker compose -f docker-compose.test.yml up --build",
+    "backfill:tag-search": "node scripts/backfill-tag-search-index.js"
   },
   "keywords": [],
   "author": "",

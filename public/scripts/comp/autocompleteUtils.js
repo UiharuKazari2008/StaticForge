@@ -402,7 +402,9 @@ window.handleSearchResponse = function (message) {
             return;
         }
 
-        applyServiceResultsUpdate(serviceName, results);
+        applyServiceResultsUpdate(serviceName, results, {
+            mergeBodyPreviews: message.mergeBodyPreviews === true
+        });
 
         if (serviceName === 'spellcheck') {
             if (results.length > 0) {
@@ -603,9 +605,31 @@ function finalizeSearchServiceStatuses() {
     }
 }
 
-function applyServiceResultsUpdate(serviceName, results) {
+function applyServiceResultsUpdate(serviceName, results, options = {}) {
     if (!serviceName) return;
-    serviceResults.set(serviceName, Array.isArray(results) ? results : []);
+    const incoming = Array.isArray(results) ? results : [];
+    if (options.mergeBodyPreviews) {
+        const existing = serviceResults.get(serviceName) || [];
+        const byKey = new Map();
+        for (const item of existing) {
+            const key = item.id != null ? `id:${item.id}` : `name:${item.name || ''}`;
+            byKey.set(key, item);
+        }
+        for (const item of incoming) {
+            const key = item.id != null ? `id:${item.id}` : `name:${item.name || ''}`;
+            const prev = byKey.get(key);
+            if (prev) {
+                if (item.primaryBody) {
+                    prev.primaryBody = item.primaryBody;
+                }
+            } else {
+                byKey.set(key, item);
+            }
+        }
+        serviceResults.set(serviceName, [...byKey.values()]);
+        return;
+    }
+    serviceResults.set(serviceName, incoming);
 }
 
 function markSearchSessionCompleteIfIdle() {
@@ -1201,6 +1225,12 @@ function getTokenMatchScore(queryToken = '', titleToken = '') {
         if (Math.min(qt.length, tt.length) >= 3) {
             return 55;
         }
+    }
+    const distance = levenshteinDistance(qt, tt);
+    const maxLen = Math.max(qt.length, tt.length);
+    const similarity = 1 - (distance / maxLen);
+    if (similarity >= 0.72) {
+        return Math.round(similarity * 65);
     }
     return 0;
 }

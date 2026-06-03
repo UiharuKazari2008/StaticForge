@@ -1101,7 +1101,7 @@ class WebSocketClient {
         const isTasking = phase !== 'failed'
             && phase !== 'auth'
             && phase !== 'idle'
-            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing Desktop Environment...')
+            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing Melaton...')
             && !this.preStartupAuthBusy;
         const shouldPauseMarquee = !isTasking;
 
@@ -1223,10 +1223,10 @@ class WebSocketClient {
     async _completePreStartupHandoff() {
         if (!this._shouldUsePreStartupDialog()) return;
 
-        this.connectionUi.message = 'Preparing Desktop Environment...';
+        this.connectionUi.message = 'Preparing Melaton...';
         this._setConnectionPhase('connected', {
             beat: 'connected',
-            message: 'Preparing Desktop Environment...'
+            message: 'Preparing Melaton...'
         });
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await this._hidePreStartupDialog();

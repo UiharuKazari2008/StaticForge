@@ -1094,19 +1094,14 @@ class SearchService {
                 });
             }
 
+            // Local search runs immediately; do not wait for NovelAI API before streaming local results
             const localTagsPromise = this.makeLocalDatasetTagRequests(normalizedQuery, currentModel, queryHash, ws, requestId)
                 .catch(error => {
                     console.error('❌ Local dataset tag search error:', error.message);
                     return [];
                 });
 
-            // Start all API calls concurrently - no sequential waiting
-            const allTags = [];
-            const queryTagObjs = [];
-
-            for (let i = 0; i < models.length; i++) {
-                const apiModel = models[i];
-
+            const processApiModel = async (apiModel, serviceOrder) => {
                 try {
                     const cacheHit = !!this._lookupNovelAiTagCache(normalizedQuery, apiModel);
 
@@ -1126,8 +1121,6 @@ class SearchService {
                         const tagsToCache = [];
 
                         response.tags.forEach(tag => {
-                            // Cache stores inverted confidence (0-1, higher = better).
-                            // Live API returns raw confidence where lower = more confident.
                             const invertedConfidence = fromCache
                                 ? (tag.confidence ?? 0.95)
                                 : (1 - (tag.confidence ?? 0));
@@ -1141,19 +1134,13 @@ class SearchService {
                                 });
                             }
 
-                            const processedTag = {
+                            processedTags.push({
                                 tag: tag.tag,
                                 count: tag.count,
                                 confidence: displayConfidence,
                                 model: apiModel,
                                 searchModel: apiModel
-                            };
-
-                            processedTags.push(processedTag);
-
-                            queryTagObjs.push(processedTag);
-
-                            allTags.push(processedTag);
+                            });
                         });
 
                         if (!fromCache && tagsToCache.length > 0) {
@@ -1161,7 +1148,6 @@ class SearchService {
                         }
                     }
 
-                    // Send results for this model immediately with ordering info
                     if (ws) {
                         const modelResults = processedTags.map((tag, index) => ({
                             type: 'tag',
@@ -1170,56 +1156,53 @@ class SearchService {
                             confidence: tag.confidence,
                             model: apiModel,
                             searchModel: apiModel,
-                            serviceOrder: i, // Order of service (0 = first, 1 = second, etc.)
-                            resultOrder: index, // Order within this service's results
+                            serviceOrder,
+                            resultOrder: index,
                             serviceName: apiModel
                         }));
 
-                        this.sendSearchWs(ws,{
+                        this.sendSearchWs(ws, {
                             type: 'search_results_update',
                             service: apiModel,
                             results: modelResults,
-                            serviceOrder: i,
+                            serviceOrder,
                             isComplete: false,
                             requestId: requestId
                         });
-                    }
 
-                    // Send completion status for this model
-                    if (ws) {
-                        this.sendSearchWs(ws,{
+                        this.sendSearchWs(ws, {
                             type: 'search_status_update',
                             services: [{ name: apiModel, status: 'completed' }],
                             requestId: requestId
                         });
                     }
 
+                    return processedTags;
                 } catch (error) {
-                    // Check if this was a cancellation due to being superseded
                     if (error && error.message === 'Request was superseded by a newer search') {
-                        continue;
+                        return [];
                     }
-
-                    // Handle actual API errors
                     console.error(`❌ Tag suggestion API error for ${apiModel}:`, error.message);
-
-                    // Send error status for this model
                     if (ws) {
-                        this.sendSearchWs(ws,{
+                        this.sendSearchWs(ws, {
                             type: 'search_status_update',
                             services: [{ name: apiModel, status: 'error', error: error.message }],
                             requestId: requestId
                         });
                     }
+                    return [];
                 }
-            }
+            };
 
-            const localTags = await localTagsPromise;
+            const apiTagBatches = await Promise.all(
+                models.map((apiModel, i) => processApiModel(apiModel, i))
+            );
+            const allTags = apiTagBatches.flat();
 
-            // Send final completion signal for tag API + local streams
+            // Local results stream on their own schedule; do not block completion on local DB work
             if (ws) {
-                const totalServices = models.length + 2; // anime-local + furry-local
-                this.sendSearchWs(ws,{
+                const totalServices = models.length + 2;
+                this.sendSearchWs(ws, {
                     type: 'search_results_complete',
                     totalServices: totalServices,
                     completedServices: totalServices,
@@ -1227,11 +1210,8 @@ class SearchService {
                 });
             }
 
-            // Query results are already stored in cache per model above
-
-            // Combine API and local results
-            const combinedResults = [...allTags, ...localTags];
-            return combinedResults;
+            const localTags = await localTagsPromise;
+            return [...allTags, ...localTags];
         } catch (error) {
             // Check if this was a cancellation due to being superseded
             if (error && error.message === 'Request was superseded by a newer search') {
@@ -1253,7 +1233,7 @@ class SearchService {
         const animeLocalService = this.tagAutofillSearch?.getAnimeLocalServiceName?.() || 'anime-local';
         const furryLocalService = this.tagAutofillSearch?.getFurryLocalServiceName?.() || 'furry-local';
 
-        const sendLocalStream = (serviceName, tags, isComplete) => {
+        const sendLocalStream = (serviceName, tags, isComplete, mergeBodyPreviews = false) => {
             if (!ws || !this.tagAutofillSearch) return;
             const wsResults = tags.map((tag, index) =>
                 this.tagAutofillSearch.formatWebSocketResult(tag, index, model)
@@ -1265,13 +1245,16 @@ class SearchService {
                 results: wsResults,
                 serviceOrder: 0,
                 isComplete: isComplete,
+                mergeBodyPreviews: mergeBodyPreviews,
                 requestId: requestId
             });
-            this.sendSearchWs(ws,{
-                type: 'search_status_update',
-                services: [{ name: serviceName, status: 'completed' }],
-                requestId: requestId
-            });
+            if (isComplete && !mergeBodyPreviews) {
+                this.sendSearchWs(ws,{
+                    type: 'search_status_update',
+                    services: [{ name: serviceName, status: 'completed' }],
+                    requestId: requestId
+                });
+            }
         };
 
         try {
@@ -1284,6 +1267,11 @@ class SearchService {
 
             sendLocalStream(animeLocalService, anime, true);
             sendLocalStream(furryLocalService, furry, true);
+
+            this.sendLocalTagBodyPreviews(anime, furry, animeLocalService, furryLocalService, model, ws, requestId)
+                .catch(error => {
+                    console.error('❌ Local tag body preview error:', error.message);
+                });
 
             return [...anime, ...furry];
         } catch (error) {
@@ -1302,6 +1290,59 @@ class SearchService {
 
             return [];
         }
+    }
+
+    async sendLocalTagBodyPreviews(anime, furry, animeLocalService, furryLocalService, model, ws, requestId) {
+        if (!ws || !this.tagAutofillSearch) {
+            return;
+        }
+
+        const seen = new Set();
+        const toEnrich = [];
+        for (const tag of [...anime, ...furry]) {
+            if (!tag || !tag.id || seen.has(tag.id) || !tag.hasWiki) {
+                continue;
+            }
+            seen.add(tag.id);
+            toEnrich.push(tag);
+        }
+
+        if (toEnrich.length === 0) {
+            return;
+        }
+
+        await this.tagAutofillSearch.attachBodyPreviewsToTags(toEnrich);
+
+        const bodyById = new Map();
+        for (const tag of toEnrich) {
+            if (tag.id != null && tag.primaryBody) {
+                bodyById.set(tag.id, tag.primaryBody);
+            }
+        }
+        for (const tag of [...anime, ...furry]) {
+            if (tag.id != null && bodyById.has(tag.id)) {
+                tag.primaryBody = bodyById.get(tag.id);
+            }
+        }
+
+        const sendLocalStream = (serviceName, tags) => {
+            const wsResults = tags.map((tag, index) =>
+                this.tagAutofillSearch.formatWebSocketResult(tag, index, model)
+            );
+            this.sendSearchWs(ws, {
+                type: 'search_results_update',
+                service: serviceName,
+                searchModel: model,
+                results: wsResults,
+                serviceOrder: 0,
+                isComplete: true,
+                mergeBodyPreviews: true,
+                requestId: requestId
+            });
+        };
+
+        sendLocalStream(animeLocalService, anime);
+        sendLocalStream(furryLocalService, furry);
     }
 
     calculateSimilarity(searchTerm, text) {

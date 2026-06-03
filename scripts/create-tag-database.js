@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
+const { buildTitleSearchIndexData } = require('../modules/tagTitleIndex');
 
 // Configuration
 const WIKI_DATASET_PATH = path.join(__dirname, '..', 'danbooru_tagwiki.json');
@@ -1701,6 +1702,11 @@ function createSchema(db) {
             FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
             UNIQUE(tag_id, sequence, start_position)
         );
+
+        CREATE TABLE IF NOT EXISTS tag_search_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
     `);
     
     // Tag links - links tags to other tags
@@ -2051,6 +2057,21 @@ function createHeavyIndexes(db) {
         SELECT id, body, title, source FROM wikis
     `);
     console.log('   ✓ FTS5 index created and populated');
+
+    // Trigram FTS on tag titles for substring / near-match title lookup
+    console.log('   Creating tags_title_fts (trigram)...');
+    db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS tags_title_fts USING fts5(
+            tag_id UNINDEXED,
+            title,
+            tokenize='trigram'
+        );
+    `);
+    db.exec(`
+        INSERT INTO tags_title_fts(tag_id, title)
+        SELECT id, LOWER(title) FROM tags
+    `);
+    console.log('   ✓ tags_title_fts created and populated');
     
     // Function-based indexes (LOWER() - expensive to compute)
     console.log('   Creating function-based indexes...');
@@ -2058,6 +2079,7 @@ function createHeavyIndexes(db) {
         CREATE INDEX IF NOT EXISTS idx_tags_title_lower ON tags(LOWER(title));
         CREATE INDEX IF NOT EXISTS idx_other_names_name_lower ON tag_other_names(LOWER(other_name));
         CREATE INDEX IF NOT EXISTS idx_words_word_lower ON tag_words(LOWER(word));
+        CREATE INDEX IF NOT EXISTS idx_tag_words_prefix ON tag_words(substr(word, 1, 3), word);
         CREATE INDEX IF NOT EXISTS idx_tag_word_sequences_sequence_lower ON tag_word_sequences(LOWER(sequence));
         CREATE INDEX IF NOT EXISTS idx_wikis_title_lower ON wikis(LOWER(title));
         CREATE INDEX IF NOT EXISTS idx_wiki_pages_title_lower ON wiki_pages(LOWER(title));
@@ -3374,109 +3396,46 @@ function main() {
                 }
             }
             
-            // Collect words and generate word sequences
-            if (tag.words && Array.isArray(tag.words) && tag.words.length > 0) {
+            // Collect words and word sequences (always from title; merge source tag.words)
+            const indexedWords = new Set();
+            if (tag.words && Array.isArray(tag.words)) {
                 for (const word of tag.words) {
-                    wordsToInsert.push({ tagId, word });
+                    const w = String(word || '').toLowerCase().trim();
+                    if (w && !indexedWords.has(w)) {
+                        indexedWords.add(w);
+                        wordsToInsert.push({ tagId, word: w });
+                    }
                 }
-                
-                // Generate word sequences preserving special character structure (compressed)
-                // Uses generic token "§" for special characters (parentheses, brackets, etc.) to save space
-                // This allows matching patterns like "rapi §" which narrows down to tags with parentheticals
-                // Example: "rapi (red hood) (nikke)" generates:
-                // - "rapi"
-                // - "rapi §"
-                // - "rapi § red"
-                // - "rapi § red hood"
-                // - "rapi § red hood §"
-                // - "rapi § red hood § §"
-                // - "rapi § red hood § § nikke"
-                // - "rapi § red hood § § nikke §"
-                // Plus sequences from within parentheses: "red", "red hood", "hood", "nikke"
-                const SPECIAL_TOKEN = '§'; // Single character token for compression (replaces all special chars)
-                const title = tag.title || '';
-                if (title) {
-                    const lowerTitle = title.toLowerCase().trim();
-                    
-                    // Tokenize title, replacing special characters with generic token
-                    // Special chars: parentheses, brackets, braces, etc. (anything not alphanumeric or space)
-                    const tokens = [];
-                    let currentToken = '';
-                    for (let i = 0; i < lowerTitle.length; i++) {
-                        const char = lowerTitle[i];
-                        // Check if character is special (not alphanumeric or space)
-                        const isSpecial = /[^a-z0-9\s]/.test(char);
-                        
-                        if (isSpecial) {
-                            if (currentToken.trim()) {
-                                tokens.push(currentToken.trim());
-                                currentToken = '';
-                            }
-                            tokens.push(SPECIAL_TOKEN); // Replace all special chars with generic token
-                        } else if (char === ' ') {
-                            if (currentToken.trim()) {
-                                tokens.push(currentToken.trim());
-                                currentToken = '';
-                            }
-                        } else {
-                            currentToken += char;
-                        }
+            }
+
+            const title = tag.title || '';
+            if (title) {
+                const { words: titleWords, sequences } = buildTitleSearchIndexData(title);
+                for (const word of titleWords) {
+                    if (!indexedWords.has(word)) {
+                        indexedWords.add(word);
+                        wordsToInsert.push({ tagId, word });
                     }
-                    if (currentToken.trim()) {
-                        tokens.push(currentToken.trim());
-                    }
-                    
-                    // Generate sequences from tokens (with special token)
-                    for (let startPos = 0; startPos < tokens.length; startPos++) {
-                        let sequence = '';
-                        let wordCount = 0;
-                        
-                        for (let endPos = startPos; endPos < tokens.length; endPos++) {
-                            const token = tokens[endPos];
-                            
-                            // Build sequence with proper spacing
-                            if (sequence) {
-                                // Add space before word tokens, but not before/after special token
-                                if (token !== SPECIAL_TOKEN && 
-                                    sequence[sequence.length - 1] !== SPECIAL_TOKEN && 
-                                    sequence[sequence.length - 1] !== ' ') {
-                                    sequence += ' ';
-                                }
-                            }
-                            sequence += token;
-                            
-                            // Count words (not special tokens)
-                            if (token !== SPECIAL_TOKEN) {
-                                wordCount++;
-                            }
-                            
-                            // Store sequence if it has at least one word
-                            if (wordCount > 0) {
-                                const normalizedSequence = sequence.trim();
-                                if (normalizedSequence.length > 0) {
-                                    wordSequencesToInsert.push({
-                                        tagId,
-                                        sequence: normalizedSequence,
-                                        sequenceLength: wordCount,
-                                        startPosition: startPos
-                                    });
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Fallback: if no title, use words array (less precise but still useful)
-                    const words = tag.words;
-                    for (let startPos = 0; startPos < words.length; startPos++) {
-                        for (let length = 1; length <= words.length - startPos; length++) {
-                            const sequence = words.slice(startPos, startPos + length).join(' ').toLowerCase();
-                            wordSequencesToInsert.push({
-                                tagId,
-                                sequence,
-                                sequenceLength: length,
-                                startPosition: startPos
-                            });
-                        }
+                }
+                for (const seq of sequences) {
+                    wordSequencesToInsert.push({
+                        tagId,
+                        sequence: seq.sequence,
+                        sequenceLength: seq.sequenceLength,
+                        startPosition: seq.startPosition
+                    });
+                }
+            } else if (tag.words && Array.isArray(tag.words) && tag.words.length > 0) {
+                const words = tag.words.map(w => String(w || '').toLowerCase().trim()).filter(Boolean);
+                for (let startPos = 0; startPos < words.length; startPos++) {
+                    for (let length = 1; length <= words.length - startPos; length++) {
+                        const sequence = words.slice(startPos, startPos + length).join(' ');
+                        wordSequencesToInsert.push({
+                            tagId,
+                            sequence,
+                            sequenceLength: length,
+                            startPosition: startPos
+                        });
                     }
                 }
             }

@@ -15,6 +15,11 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
+const Database = require('better-sqlite3');
+const { buildTitleSearchIndexData } = require('./tagTitleIndex');
+
+const AUTOFILL_SEARCH_CACHE_MAX = 500;
+const AUTOFILL_SEARCH_CACHE_TTL_MS = 120000;
 
 class TagLookup {
     constructor(globalResources = null) {
@@ -36,6 +41,9 @@ class TagLookup {
         this.sqlStatements = null;
         this.cachedTagGroupsInfo = null;
         this.tagGroupPresenceCache = new Map();
+        this.searchDb = null;
+        this._searchDbStmts = null;
+        this._autofillSearchCache = new Map();
         this.MAX_USAGE_CAP = 100000;
         this.htmlMarkdownConverter = null;
     }
@@ -101,6 +109,9 @@ class TagLookup {
         
         // Clear expired failed fetches on startup
         await this.clearExpiredFailedFetches();
+
+        await this.ensureTagSearchSchema();
+        this.initSearchDb();
         
         return true;
     } catch (error) {
@@ -342,6 +353,44 @@ class TagLookup {
                 LIMIT ?
             `,
             hasTagGroups: 'SELECT 1 FROM tag_d_groups WHERE tag_id = ? LIMIT 1',
+            tagIdsWithGroups: (placeholders) => `
+                SELECT DISTINCT tag_id FROM tag_d_groups WHERE tag_id IN (${placeholders})
+            `,
+            searchTagWordsExact: `
+                SELECT DISTINCT t.*,
+                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
+                FROM tag_words tw
+                INNER JOIN tags t ON t.id = tw.tag_id
+                LEFT JOIN tag_wikis twi ON twi.tag_id = t.id
+                LEFT JOIN wikis w ON w.id = twi.wiki_id
+                WHERE LOWER(tw.word) = LOWER(?)
+                GROUP BY t.id
+                LIMIT ?
+            `,
+            searchTagWordsFuzzyPrefix: `
+                SELECT DISTINCT t.*,
+                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources,
+                       tw.word AS matched_word
+                FROM tag_words tw
+                INNER JOIN tags t ON t.id = tw.tag_id
+                LEFT JOIN tag_wikis twi ON twi.tag_id = t.id
+                LEFT JOIN wikis w ON w.id = twi.wiki_id
+                WHERE LOWER(tw.word) LIKE LOWER(?) || '%' ESCAPE '\\'
+                  AND ABS(LENGTH(tw.word) - ?) <= 2
+                GROUP BY t.id
+                LIMIT ?
+            `,
+            searchTagsTitleFts: `
+                SELECT t.*,
+                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
+                FROM tags_title_fts fts
+                INNER JOIN tags t ON t.id = fts.tag_id
+                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
+                LEFT JOIN wikis w ON w.id = tw.wiki_id
+                WHERE fts.title MATCH ?
+                GROUP BY t.id
+                LIMIT ?
+            `,
             getWikiPagesReferencingTag: `
                 SELECT DISTINCT wp.id, wp.title
                 FROM wiki_page_links wpl
@@ -1314,6 +1363,509 @@ class TagLookup {
     const result = Boolean(row);
     this.tagGroupPresenceCache.set(tagId, result);
     return result;
+}
+
+    async batchTagHasGroups(tagIds = []) {
+    const uniqueIds = [...new Set(tagIds.filter(id => id != null))];
+    const withGroups = new Set();
+    const uncached = [];
+
+    for (const tagId of uniqueIds) {
+        if (this.tagGroupPresenceCache.has(tagId)) {
+            if (this.tagGroupPresenceCache.get(tagId)) {
+                withGroups.add(tagId);
+            }
+        } else {
+            uncached.push(tagId);
+        }
+    }
+
+    if (uncached.length > 0 && this.db) {
+        const chunkSize = 400;
+        for (let i = 0; i < uncached.length; i += chunkSize) {
+            const chunk = uncached.slice(i, i + chunkSize);
+            const placeholders = chunk.map(() => '?').join(',');
+            const sql = this.getStatements().tagIdsWithGroups(placeholders);
+            const rows = await this.db.all(sql, chunk);
+            const chunkSet = new Set(rows.map(row => row.tag_id));
+            for (const tagId of chunk) {
+                const has = chunkSet.has(tagId);
+                this.tagGroupPresenceCache.set(tagId, has);
+                if (has) {
+                    withGroups.add(tagId);
+                }
+            }
+        }
+    }
+
+    return withGroups;
+}
+
+    async ensureTagSearchSchema() {
+    if (!this.db) return;
+
+    try {
+        await this.db.run(`
+            CREATE TABLE IF NOT EXISTS tag_search_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        `);
+        await this.db.run(`
+            CREATE INDEX IF NOT EXISTS idx_tag_words_prefix ON tag_words(substr(word, 1, 3), word)
+        `);
+    } catch (e) {
+        // Index may already exist with different definition
+    }
+
+    try {
+        const ftsExists = await this.db.get(`
+            SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags_title_fts'
+        `);
+        if (!ftsExists) {
+            await this.db.run(`
+                CREATE VIRTUAL TABLE tags_title_fts USING fts5(
+                    tag_id UNINDEXED,
+                    title,
+                    tokenize='trigram'
+                )
+            `);
+        }
+    } catch (e) {
+        console.warn('Tag title FTS setup skipped:', e.message);
+    }
+}
+
+    /**
+     * Backfill tag_words, tag_word_sequences, and tags_title_fts for tags missing index rows.
+     * Run via: node scripts/backfill-tag-search-index.js
+     */
+    async backfillTagSearchIndex(options = {}) {
+    if (!this.db) {
+        throw new Error('Tag database not initialized');
+    }
+
+    const batchSize = options.batchSize || 2000;
+    const rebuildFts = options.rebuildFts !== false;
+
+    await this.ensureTagSearchSchema();
+
+    const missingCountRow = await this.db.get(`
+        SELECT COUNT(*) AS c FROM tags t
+        WHERE t.title IS NOT NULL AND TRIM(t.title) != ''
+          AND NOT EXISTS (SELECT 1 FROM tag_word_sequences tws WHERE tws.tag_id = t.id LIMIT 1)
+    `);
+    const totalMissing = missingCountRow?.c || 0;
+    console.log(`Tag search backfill: ${totalMissing} tags missing word sequences`);
+
+    const insertWord = 'INSERT OR IGNORE INTO tag_words (tag_id, word) VALUES (?, ?)';
+    const insertSequence = `
+        INSERT OR IGNORE INTO tag_word_sequences (tag_id, sequence, sequence_length, start_position)
+        VALUES (?, ?, ?, ?)
+    `;
+
+    let processed = 0;
+    let lastId = 0;
+
+    while (true) {
+        const rows = await this.db.all(`
+            SELECT t.id, t.title
+            FROM tags t
+            WHERE t.id > ?
+              AND t.title IS NOT NULL AND TRIM(t.title) != ''
+              AND NOT EXISTS (SELECT 1 FROM tag_word_sequences tws WHERE tws.tag_id = t.id LIMIT 1)
+            ORDER BY t.id
+            LIMIT ?
+        `, [lastId, batchSize]);
+
+        if (!rows || rows.length === 0) break;
+
+        for (const row of rows) {
+            const { words, sequences } = buildTitleSearchIndexData(row.title);
+            for (const word of words) {
+                await this.db.run(insertWord, [row.id, word]);
+            }
+            for (const seq of sequences) {
+                await this.db.run(insertSequence, [row.id, seq.sequence, seq.sequenceLength, seq.startPosition]);
+            }
+            lastId = row.id;
+            processed++;
+        }
+
+        if (processed % 10000 === 0 || rows.length < batchSize) {
+            console.log(`  … indexed ${processed}/${totalMissing} tags`);
+        }
+    }
+
+    if (rebuildFts) {
+        try {
+            const ftsExists = await this.db.get(`
+                SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags_title_fts'
+            `);
+            if (ftsExists) {
+                await this.db.run('DELETE FROM tags_title_fts');
+            } else {
+                await this.db.run(`
+                    CREATE VIRTUAL TABLE tags_title_fts USING fts5(
+                        tag_id UNINDEXED,
+                        title,
+                        tokenize='trigram'
+                    )
+                `);
+            }
+            await this.db.run(`
+                INSERT INTO tags_title_fts(tag_id, title)
+                SELECT id, LOWER(title) FROM tags WHERE title IS NOT NULL AND TRIM(title) != ''
+            `);
+            console.log('Tag search backfill: tags_title_fts rebuilt');
+        } catch (e) {
+            console.warn('Tag search backfill: FTS rebuild failed:', e.message);
+        }
+    }
+
+    await this.db.run(`
+        INSERT OR REPLACE INTO tag_search_meta (key, value) VALUES ('words_index_version', ?)
+    `, [String(Date.now())]);
+
+    console.log(`Tag search backfill complete (${processed} tags indexed)`);
+    return { processed, totalMissing };
+}
+
+    getFuzzyWordPrefix(word = '') {
+    const w = String(word || '').toLowerCase().trim();
+    if (w.length < 3) return null;
+    return w.substring(0, Math.min(3, w.length));
+}
+
+    async addFuzzyWordMatches(word, addMatch, limit, normalized) {
+    if (!word || word.length < 3) return;
+
+    const prefix = this.getFuzzyWordPrefix(word);
+    if (!prefix) return;
+
+    const statements = this.getStatements();
+    const pattern = this.escapeLikePattern(prefix) + '%';
+    const rows = await this.db.all(statements.searchTagWordsFuzzyPrefix, [pattern, word.length, Math.min(60, limit * 2)]);
+
+    for (const row of rows) {
+        const matchedWord = row.matched_word || '';
+        const tokenScore = this.getTokenMatchScore(word, matchedWord);
+        if (tokenScore < 40) continue;
+        const fuzzyScore = Math.max(55, Math.min(95, tokenScore));
+        addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
+    }
+}
+
+    async addTitleFtsMatches(query, addMatch, limit, normalized) {
+    if (!query || query.length < 2) return;
+
+    try {
+        const ftsExists = await this.db.get(`
+            SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tags_title_fts'
+        `);
+        if (!ftsExists) return;
+
+        const tokens = this.tokenizeSearchWords(query);
+        const ftsTerms = tokens.length > 0 ? tokens : [query.trim().toLowerCase()];
+        const matchQuery = ftsTerms
+            .map(term => term.replace(/"/g, '""'))
+            .join(' AND ');
+
+        const rows = await this.db.all(this.getStatements().searchTagsTitleFts, [matchQuery, limit * 2]);
+        for (const row of rows) {
+            const titleScore = this.getTitleMatchScore(row.title || '', query);
+            const coverage = this.getQueryTokenCoverageScore(query, row.title || '');
+            const score = Math.max(titleScore, 45, Math.round(coverage * 0.85));
+            addMatch(row, normalized, score, 'title_fts', 2);
+        }
+    } catch (e) {
+        // FTS table empty or query syntax — skip
+    }
+}
+
+    initSearchDb() {
+    if (this.searchDb || !this.dbPath) {
+        return;
+    }
+    try {
+        this.searchDb = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+        this.searchDb.pragma('journal_mode = WAL');
+        this.searchDb.pragma('cache_size = -64000');
+        this.searchDb.pragma('temp_store = MEMORY');
+
+        const tagIdsFromSeqExact = `
+            SELECT DISTINCT t.id FROM tag_word_sequences tws
+            INNER JOIN tags t ON t.id = tws.tag_id
+            WHERE LOWER(tws.sequence) = LOWER(?)
+            LIMIT ?
+        `;
+        const tagIdsFromSeqPrefix = `
+            SELECT DISTINCT t.id FROM tag_word_sequences tws
+            INNER JOIN tags t ON t.id = tws.tag_id
+            WHERE LOWER(tws.sequence) LIKE LOWER(?) || '%' ESCAPE '\\'
+            LIMIT ?
+        `;
+
+        this._searchDbStmts = {
+            getByNormalizedTitle: this.searchDb.prepare(`
+                SELECT t.*, GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
+                FROM tags t
+                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
+                LEFT JOIN wikis w ON w.id = tw.wiki_id
+                WHERE t.normalized_title = ?
+                GROUP BY t.id
+                LIMIT 1
+            `),
+            seqExactIds: this.searchDb.prepare(tagIdsFromSeqExact),
+            seqPrefixIds: this.searchDb.prepare(tagIdsFromSeqPrefix),
+            wordExactIds: this.searchDb.prepare(`
+                SELECT DISTINCT tw.tag_id AS id FROM tag_words tw
+                WHERE LOWER(tw.word) = LOWER(?)
+                LIMIT ?
+            `),
+            wordFuzzyIds: this.searchDb.prepare(`
+                SELECT DISTINCT tw.tag_id AS id FROM tag_words tw
+                WHERE LOWER(tw.word) LIKE LOWER(?) || '%' ESCAPE '\\'
+                  AND ABS(LENGTH(tw.word) - ?) <= 2
+                LIMIT ?
+            `)
+        };
+    } catch (e) {
+        console.warn('Read-only tag search DB unavailable:', e.message);
+        this.searchDb = null;
+        this._searchDbStmts = null;
+    }
+}
+
+    getAutofillSearchCacheEntry(cacheKey) {
+    const entry = this._autofillSearchCache.get(cacheKey);
+    if (!entry) return null;
+    if (Date.now() - entry.at > AUTOFILL_SEARCH_CACHE_TTL_MS) {
+        this._autofillSearchCache.delete(cacheKey);
+        return null;
+    }
+    return entry.tags;
+}
+
+    setAutofillSearchCacheEntry(cacheKey, tags) {
+    if (this._autofillSearchCache.size >= AUTOFILL_SEARCH_CACHE_MAX) {
+        const oldestKey = this._autofillSearchCache.keys().next().value;
+        if (oldestKey !== undefined) {
+            this._autofillSearchCache.delete(oldestKey);
+        }
+    }
+    this._autofillSearchCache.set(cacheKey, { at: Date.now(), tags });
+}
+
+    fetchTagsByIdsSync(tagIds) {
+    if (!this.searchDb || !tagIds || tagIds.length === 0) {
+        return [];
+    }
+    const placeholders = tagIds.map(() => '?').join(',');
+    const sql = `
+        SELECT t.*, GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
+        FROM tags t
+        LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
+        LEFT JOIN wikis w ON w.id = tw.wiki_id
+        WHERE t.id IN (${placeholders})
+        GROUP BY t.id
+    `;
+    return this.searchDb.prepare(sql).all(...tagIds);
+}
+
+    batchTagHasGroupsSync(tagIds = []) {
+    const withGroups = new Set();
+    if (!this.searchDb || tagIds.length === 0) {
+        return withGroups;
+    }
+    const chunkSize = 400;
+    for (let i = 0; i < tagIds.length; i += chunkSize) {
+        const chunk = tagIds.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+        const rows = this.searchDb.prepare(
+            `SELECT DISTINCT tag_id FROM tag_d_groups WHERE tag_id IN (${placeholders})`
+        ).all(...chunk);
+        for (const row of rows) {
+            withGroups.add(row.tag_id);
+        }
+    }
+    return withGroups;
+}
+
+    /**
+     * Fast autofill tag search (read-only better-sqlite3, few queries). Used by prompt autocomplete.
+     */
+    async searchTagsAutofill(searchTerm, options = {}) {
+    const {
+        category,
+        minUseCount,
+        limit = 35
+    } = options;
+
+    const query = searchTerm.trim();
+    if (!query) return [];
+
+    const normalized = this.normalizeTagName(query);
+    const sanitizedLimit = Math.max(limit, 1);
+    const cacheKey = `${normalized}\x00${sanitizedLimit}\x00${category ?? ''}\x00${minUseCount ?? ''}`;
+    const cached = this.getAutofillSearchCacheEntry(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    this.initSearchDb();
+    if (!this.searchDb || !this._searchDbStmts) {
+        return this.searchTags(searchTerm, { ...options, autofill: false });
+    }
+
+    const wordTokens = this.tokenizeSearchWords(query);
+    const candidateScores = new Map();
+
+    const addCandidate = (id, score) => {
+        if (!id) return;
+        const prev = candidateScores.get(id) || 0;
+        if (score > prev) {
+            candidateScores.set(id, score);
+        }
+    };
+
+    const stmts = this._searchDbStmts;
+    const titleRow = stmts.getByNormalizedTitle.get(normalized);
+    if (titleRow) {
+        addCandidate(titleRow.id, 600);
+    } else {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            if (variant === normalized) continue;
+            const variantRow = stmts.getByNormalizedTitle.get(variant);
+            if (variantRow) {
+                addCandidate(variantRow.id, 580);
+                break;
+            }
+        }
+    }
+
+    const perWordLimit = Math.min(80, sanitizedLimit * 3);
+    for (const word of wordTokens) {
+        if (!word) continue;
+
+        for (const row of stmts.wordExactIds.all(word, perWordLimit)) {
+            addCandidate(row.id, 95);
+        }
+
+        const prefix = this.getFuzzyWordPrefix(word);
+        if (prefix) {
+            const pattern = this.escapeLikePattern(prefix) + '%';
+            for (const row of stmts.wordFuzzyIds.all(pattern, word.length, perWordLimit)) {
+                addCandidate(row.id, 70);
+            }
+        }
+
+        for (const row of stmts.seqExactIds.all(word, perWordLimit)) {
+            addCandidate(row.id, 100);
+        }
+    }
+
+    if (wordTokens.length >= 2) {
+        const phrase = wordTokens.join(' ');
+        for (const row of stmts.seqExactIds.all(phrase, perWordLimit)) {
+            addCandidate(row.id, 120 + wordTokens.length * 20);
+        }
+        const prefixPattern = this.escapeLikePattern(phrase) + '%';
+        for (const row of stmts.seqPrefixIds.all(prefixPattern, perWordLimit)) {
+            addCandidate(row.id, 150);
+        }
+    }
+
+    if (candidateScores.size === 0) {
+        return [];
+    }
+
+    const rankedIds = [...candidateScores.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, sanitizedLimit * 4)
+        .map(([id]) => id);
+
+    const rows = this.fetchTagsByIdsSync(rankedIds);
+    const rowById = new Map(rows.map(row => [row.id, row]));
+    const groupSet = this.batchTagHasGroupsSync(rankedIds);
+
+    let results = rankedIds
+        .map(id => {
+            const row = rowById.get(id);
+            if (!row) return null;
+            const base = candidateScores.get(id) || 0;
+            const usage = this.getUsageCount(row);
+            const novelStrength = this.getNovelTrainingCount(row);
+            const usageOnly = Math.max(usage - novelStrength, 0);
+            const usageBonus = Math.min(usageOnly / 1500, 60);
+            const trainingBonus = Math.min(novelStrength / 400, 220);
+            const hasGroups = groupSet.has(id);
+            const categoryAdjustment = this.getCategoryAdjustment(row, { hasGroups, usage, novelStrength });
+            const score = base + usageBonus + trainingBonus + categoryAdjustment;
+            return { row, score };
+        })
+        .filter(Boolean);
+
+    if (category !== undefined) {
+        results = results.filter(entry => entry.row.category === category);
+    }
+    if (minUseCount) {
+        results = results.filter(entry => this.getUsageCount(entry.row) >= minUseCount);
+    }
+
+    results.sort((a, b) => {
+        const tierA = this.getQueryMatchTier(query, a.row.title || '');
+        const tierB = this.getQueryMatchTier(query, b.row.title || '');
+        if (tierB !== tierA) return tierB - tierA;
+        const covA = this.getQueryTokenCoverageScore(query, a.row.title || '');
+        const covB = this.getQueryTokenCoverageScore(query, b.row.title || '');
+        if (covB !== covA) return covB - covA;
+        if (b.score !== a.score) return b.score - a.score;
+        return this.getUsageCount(b.row) - this.getUsageCount(a.row);
+    });
+
+    const tags = results.slice(0, sanitizedLimit).map(entry => {
+        const tag = this.mapRowToTag(entry.row);
+        if (tag) {
+            const matchInfo = this.getQueryMatchInfo(query, tag.title || '');
+            tag.searchScore = entry.score;
+            tag.matchTier = matchInfo.tier;
+            tag.matchCoverage = matchInfo.matchCoverage;
+        }
+        return tag;
+    }).filter(tag => {
+        if (!tag) return false;
+        return (tag.matchTier || 0) >= 1 || (tag.matchCoverage || 0) >= 35;
+    });
+
+    this.setAutofillSearchCacheEntry(cacheKey, tags);
+    return tags;
+}
+
+    async scoreSearchTagEntries(matches) {
+    const entries = Array.from(matches.values());
+    if (entries.length === 0) {
+        return [];
+    }
+
+    const groupSet = await this.batchTagHasGroups(entries.map(e => e.row.id));
+
+    return entries.map(entry => {
+        const base = entry.rawScore;
+        const keywordFactor = entry.keywords.size > 0 ? entry.keywords.size : 1;
+        const usage = this.getUsageCount(entry.row);
+        const novelStrength = this.getNovelTrainingCount(entry.row);
+        const usageOnly = Math.max(usage - novelStrength, 0);
+        const usageBonus = Math.min(usageOnly / 1500, 60);
+        const trainingBonus = Math.min(novelStrength / 400, 220);
+        const hasGroups = groupSet.has(entry.row.id);
+        const categoryAdjustment = this.getCategoryAdjustment(entry.row, { hasGroups, usage, novelStrength });
+        const sourceBonus = entry.sources
+            ? Object.values(entry.sources).reduce((sum, weight) => sum + (weight * 60), 0)
+            : 0;
+        const finalScore = base + (keywordFactor * 50) + usageBonus + trainingBonus + categoryAdjustment + sourceBonus;
+        return { ...entry, score: finalScore };
+    });
 }
 
     getCategoryAdjustment(row, options = {}) {
@@ -2449,80 +3001,68 @@ class TagLookup {
         }
     }
 
-    for (const variant of this.getTagNameLookupVariants(normalized)) {
-        const titlePatterns = this.buildLikePatterns(variant);
-        for (const { pattern, score } of titlePatterns) {
-            const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
-            for (const row of rows) {
-                const calculated = this.getTitleMatchScore(row.title || '', query);
-                let finalScore = Math.max(score, calculated, 25);
-                const boundaryHit = this.hasWordBoundary(row.title || '', variant);
-                if (boundaryHit) {
-                    finalScore += 400;
-                }
-                const sourceWeight = boundaryHit ? 3 : 2;
-                addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
-            }
-        }
-    }
-
-    for (const variant of this.getTagNameLookupVariants(normalized)) {
-        const otherNamePatterns = this.buildLikePatterns(variant);
-        for (const { pattern, score } of otherNamePatterns) {
-            const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
-            for (const row of rows) {
-                addMatch(row, normalized, score, 'other_name', 3);
-            }
-        }
-    }
-
     const wordTokens = this.tokenizeSearchWords(query);
-    // Search each word individually with same ranking as original LIKE search
-    // This matches the behavior of the original searchWordsLike with buildLikePatterns
+    const skipHeavyTitleLike = wordTokens.length >= 2;
+
+    if (!skipHeavyTitleLike) {
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            const titlePatterns = this.buildLikePatterns(variant);
+            for (const { pattern, score } of titlePatterns) {
+                const rows = await this.db.all(statements.searchTitleLike, [pattern, sanitizedLimit]);
+                for (const row of rows) {
+                    const calculated = this.getTitleMatchScore(row.title || '', query);
+                    let finalScore = Math.max(score, calculated, 25);
+                    const boundaryHit = this.hasWordBoundary(row.title || '', variant);
+                    if (boundaryHit) {
+                        finalScore += 400;
+                    }
+                    const sourceWeight = boundaryHit ? 3 : 2;
+                    addMatch(row, normalized, finalScore, 'title_like', sourceWeight);
+                }
+            }
+        }
+
+        for (const variant of this.getTagNameLookupVariants(normalized)) {
+            const otherNamePatterns = this.buildLikePatterns(variant);
+            for (const { pattern, score } of otherNamePatterns) {
+                const rows = await this.db.all(statements.searchOtherNamesLike, [pattern, sanitizedLimit]);
+                for (const row of rows) {
+                    addMatch(row, normalized, score, 'other_name', 3);
+                }
+            }
+        }
+    }
     for (const word of wordTokens) {
         if (!word || word.length === 0) continue;
-        
-        // Use same scoring as buildLikePatterns:
-        // - Exact match: 100
-        // - Word at start: 85 (word%)
-        // - Word at end: 85 (%word)
-        // - Word anywhere: 75 (%word%)
-        
-        // Exact sequence match (highest priority)
-        const exactRows = await this.db.all(statements.searchWordSequencesExact, [word, sanitizedLimit]);
-        for (const row of exactRows) {
-            addMatch(row, normalized, 100, 'word_exact', 2);
-        }
-        
-        // Word at start of sequence (word%)
-        const startRows = await this.db.all(statements.searchWordSequencesStart, [word, sanitizedLimit]);
-        for (const row of startRows) {
-            addMatch(row, normalized, 85, 'word_start', 2);
-        }
-        
-        // Word at end of sequence (%word)
-        const endRows = await this.db.all(statements.searchWordSequencesEnd, [word, sanitizedLimit]);
-        for (const row of endRows) {
-            addMatch(row, normalized, 85, 'word_end', 2);
-        }
-        
-        // Word anywhere in sequence (%word%) - inner match
-        const innerRows = await this.db.all(statements.searchWordSequencesInner, [word, sanitizedLimit]);
-        for (const row of innerRows) {
-            addMatch(row, normalized, 75, 'word_inner', 2);
-        }
 
         const stemPrefix = this.getWordStemPrefix(word);
+        const queryBatch = [
+            this.db.all(statements.searchWordSequencesExact, [word, sanitizedLimit]),
+            this.db.all(statements.searchWordSequencesStart, [word, sanitizedLimit]),
+            this.db.all(statements.searchWordSequencesEnd, [word, sanitizedLimit]),
+            this.db.all(statements.searchWordSequencesInner, [word, sanitizedLimit]),
+            this.db.all(statements.searchTagWordsExact, [word, sanitizedLimit])
+        ];
         if (stemPrefix) {
-            const stemStartRows = await this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]);
-            for (const row of stemStartRows) {
-                addMatch(row, normalized, 70, 'word_stem_start', 2);
-            }
-            const stemInnerRows = await this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit]);
-            for (const row of stemInnerRows) {
-                addMatch(row, normalized, 60, 'word_stem_inner', 2);
-            }
+            queryBatch.push(
+                this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]),
+                this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit])
+            );
         }
+
+        const batchResults = await Promise.all(queryBatch);
+        let bi = 0;
+        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 100, 'word_exact', 2);
+        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 85, 'word_start', 2);
+        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 85, 'word_end', 2);
+        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 75, 'word_inner', 2);
+        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 95, 'tag_word_exact', 2);
+        if (stemPrefix) {
+            for (const row of batchResults[bi++] || []) addMatch(row, normalized, 70, 'word_stem_start', 2);
+            for (const row of batchResults[bi++] || []) addMatch(row, normalized, 60, 'word_stem_inner', 2);
+        }
+
+        await this.addFuzzyWordMatches(word, addMatch, sanitizedLimit, normalized);
     }
     
     // Multi-word sequences: match both space-separated titles and hyphen/special-indexed titles
@@ -2541,20 +3081,9 @@ class TagLookup {
         }
     }
 
-    let results = await Promise.all(Array.from(matches.values()).map(async entry => {
-        const base = entry.rawScore;
-        const keywordFactor = entry.keywords.size > 0 ? entry.keywords.size : 1;
-        const usage = this.getUsageCount(entry.row);
-        const novelStrength = this.getNovelTrainingCount(entry.row);
-        const usageOnly = Math.max(usage - novelStrength, 0);
-        const usageBonus = Math.min(usageOnly / 1500, 60);
-        const trainingBonus = Math.min(novelStrength / 400, 220);
-        const hasGroups = await this.tagHasGroups(entry.row.id);
-        const categoryAdjustment = this.getCategoryAdjustment(entry.row, { hasGroups, usage, novelStrength });
-        const sourceBonus = entry.sources ? Object.values(entry.sources).reduce((sum, weight) => sum + (weight * 60), 0) : 0;
-        const finalScore = base + (keywordFactor * 50) + usageBonus + trainingBonus + categoryAdjustment + sourceBonus;
-        return { ...entry, score: finalScore };
-    }));
+    await this.addTitleFtsMatches(query, addMatch, sanitizedLimit, normalized);
+
+    let results = await this.scoreSearchTagEntries(matches);
 
     if (category !== undefined) {
         results = results.filter(entry => entry.row.category === category);

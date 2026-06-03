@@ -42,10 +42,26 @@ class TagAutofillSearch {
         }
 
         const tagLookup = this.getTagLookup();
-        const rows = await tagLookup.searchTags(trimmed, { limit });
-        await tagLookup.attachPrimaryBodyPreviews(rows);
+        const rows = await tagLookup.searchTagsAutofill(trimmed, { limit });
 
         return rows.map((tag, index) => this.buildAutofillTag(tag, index));
+    }
+
+    /**
+     * Attach wiki body previews to autofill tag results (mutates tags in place).
+     * Call after initial results are sent so search stays fast.
+     */
+    async attachBodyPreviewsToTags(tags) {
+        if (!tags || tags.length === 0) {
+            return tags;
+        }
+        const tagLookup = this.getTagLookup();
+        const withWiki = tags.filter(tag => tag && tag.id && tag.hasWiki);
+        if (withWiki.length === 0) {
+            return tags;
+        }
+        await tagLookup.attachPrimaryBodyPreviews(withWiki);
+        return tags;
     }
 
     buildAutofillTag(tag, index) {
