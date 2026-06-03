@@ -34,14 +34,126 @@ function isCharacterAutocompleteOverlayOpen() {
     return characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
 }
 
-/** Single-value tag fields (e.g. Atelier Add Tag dialog — public/scripts/comp/naxtApplet.js) */
-function isAutofillTagInput(target) {
-    return !!(target && target.classList && target.classList.contains('autofill-tag-input'));
+/** Autofill feature keys for data-autofill-enable / data-autofill-disable on inputs */
+const AUTOFILL_FEATURE_ALIASES = {
+    tags: 'tags',
+    tag: 'tags',
+    characters: 'characters',
+    character: 'characters',
+    expanders: 'expanders',
+    textreplacements: 'expanders',
+    textreplacement: 'expanders',
+    spellcheck: 'spellcheck',
+    spell: 'spellcheck',
+    thesaurus: 'thesaurus',
+    wordlookup: 'thesaurus',
+    dictionary: 'thesaurus',
+    dynamic: 'dynamicPlaceholders',
+    dynamicplaceholders: 'dynamicPlaceholders',
+    single: 'singleToken',
+    singletoken: 'singleToken'
+};
+
+const DEFAULT_AUTOFILL_CONFIG = {
+    tags: true,
+    characters: true,
+    expanders: true,
+    spellcheck: true,
+    thesaurus: true,
+    dynamicPlaceholders: true,
+    singleToken: false
+};
+
+const autofillConfigCache = new WeakMap();
+
+function normalizeAutofillFeatureName(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const key = raw.trim().toLowerCase();
+    if (!key) return null;
+    return AUTOFILL_FEATURE_ALIASES[key] || null;
+}
+
+function parseAutofillFeatureList(raw) {
+    if (!raw || typeof raw !== 'string') return [];
+    return raw.split(',').map(normalizeAutofillFeatureName).filter(Boolean);
+}
+
+function getAutofillConfig(target) {
+    if (!target) return { ...DEFAULT_AUTOFILL_CONFIG };
+
+    const enableRaw = target.dataset ? target.dataset.autofillEnable : '';
+    const disableRaw = target.dataset ? target.dataset.autofillDisable : '';
+    const legacyTagInput = !!(target.classList && target.classList.contains('autofill-tag-input'));
+    const cacheKey = (enableRaw || '') + '|' + (disableRaw || '') + '|' + (legacyTagInput ? '1' : '0');
+    const cached = autofillConfigCache.get(target);
+    if (cached && cached.cacheKey === cacheKey) {
+        return cached.config;
+    }
+
+    let config = { ...DEFAULT_AUTOFILL_CONFIG };
+
+    if (enableRaw) {
+        config = {
+            tags: false,
+            characters: false,
+            expanders: false,
+            spellcheck: false,
+            thesaurus: false,
+            dynamicPlaceholders: false,
+            singleToken: false
+        };
+        parseAutofillFeatureList(enableRaw).forEach(function (feature) {
+            config[feature] = true;
+        });
+    } else if (disableRaw) {
+        parseAutofillFeatureList(disableRaw).forEach(function (feature) {
+            config[feature] = false;
+        });
+    } else if (legacyTagInput) {
+        config = {
+            tags: true,
+            characters: false,
+            expanders: false,
+            spellcheck: false,
+            thesaurus: false,
+            dynamicPlaceholders: false,
+            singleToken: true
+        };
+    }
+
+    autofillConfigCache.set(target, { cacheKey: cacheKey, config: config });
+    return config;
+}
+
+function isAutofillFeatureEnabled(target, feature) {
+    return !!getAutofillConfig(target)[feature];
+}
+
+function isAutofillSingleToken(target) {
+    return isAutofillFeatureEnabled(target, 'singleToken');
+}
+
+function isAutofillTagsOnlyMode(config) {
+    return config.tags && !config.characters && !config.expanders && !config.spellcheck && !config.thesaurus && !config.dynamicPlaceholders;
+}
+
+function filterAutofillDisplayResults(results, config) {
+    const allowed = new Set();
+    if (config.tags) allowed.add('tag');
+    if (config.characters) allowed.add('character');
+    if (config.expanders) allowed.add('textReplacement');
+    if (config.dynamicPlaceholders) allowed.add('dynamicPlaceholder');
+
+    return results.filter(function (result) {
+        if (result.type === 'spellcheck' || result.type === 'wordLookup') return false;
+        return allowed.has(result.type);
+    });
 }
 
 function isAutofillTarget(target) {
     if (!target) return false;
-    if (isAutofillTagInput(target)) return true;
+    if (target.dataset && (target.dataset.autofillEnable || target.dataset.autofillDisable)) return true;
+    if (target.classList && target.classList.contains('autofill-tag-input')) return true;
     return target.classList.contains('prompt-textarea') || target.classList.contains('character-prompt-textarea');
 }
 
@@ -589,7 +701,7 @@ function getAutocompleteSearchBounds(target) {
 
     const value = target.value;
 
-    if (isAutofillTagInput(target)) {
+    if (isAutofillSingleToken(target)) {
         return {
             tokenStart: 0,
             tokenEnd: value.length,
@@ -650,7 +762,7 @@ function shouldAbortAutocompleteSearchSession() {
     const liveBounds = getAutocompleteSearchBounds(target);
     if (!liveBounds) return true;
 
-    if (isAutofillTagInput(target)) {
+    if (isAutofillSingleToken(target)) {
         return liveBounds.query !== currentSearchSessionBounds.query;
     }
 
@@ -698,56 +810,117 @@ function isFurryApiModelSlotNeeded() {
 
 // Function to initialize all autofill services
 function initializeAutofillServices() {
-    searchServices.clear();
-    searchServices.set('characters', 'stalled');
-    searchServices.set(ANIME_LOCAL_SERVICE, 'stalled');
-    searchServices.set(FURRY_LOCAL_SERVICE, 'stalled');
+    initializeAutofillServicesForConfig(DEFAULT_AUTOFILL_CONFIG);
+}
 
-    const currentModel = getMappedManualModel();
-    if (currentModel.startsWith('nai-diffusion')) {
-        searchServices.set(currentModel, 'stalled');
+function initializeAutofillServicesForConfig(config) {
+    searchServices.clear();
+
+    if (config.tags || config.characters) {
+        searchServices.set('characters', 'stalled');
+        searchServices.set(ANIME_LOCAL_SERVICE, 'stalled');
+        searchServices.set(FURRY_LOCAL_SERVICE, 'stalled');
+
+        const currentModel = getMappedManualModel();
+        if (currentModel.startsWith('nai-diffusion')) {
+            searchServices.set(currentModel, 'stalled');
+        }
+        if (isFurryApiModelSlotNeeded()) {
+            searchServices.set('nai-diffusion-furry-3', 'stalled');
+        }
     }
-    if (isFurryApiModelSlotNeeded()) {
-        searchServices.set('nai-diffusion-furry-3', 'stalled');
+
+    if (config.expanders) {
+        searchServices.set('textReplacements', 'stalled');
     }
-    searchServices.set('textReplacements', 'stalled');
-    searchServices.set('spellcheck', 'stalled');
-    searchServices.set('wordLookup', 'stalled');
+    if (config.spellcheck) {
+        searchServices.set('spellcheck', 'stalled');
+    }
+    if (config.thesaurus) {
+        searchServices.set('wordLookup', 'stalled');
+    }
 
     updateSearchStatusDisplay();
 }
 
-function markRegularAutofillServicesSearching() {
-    searchServices.set('characters', 'searching');
-    searchServices.set(ANIME_LOCAL_SERVICE, 'searching');
-    searchServices.set(FURRY_LOCAL_SERVICE, 'searching');
-    searchServices.set('spellcheck', 'searching');
-    searchServices.set('wordLookup', 'searching');
-    searchServices.set('textReplacements', 'searching');
+function markAutofillServicesSearchingForConfig(config) {
+    if (config.tags || config.characters) {
+        searchServices.set('characters', 'searching');
+        searchServices.set(ANIME_LOCAL_SERVICE, 'searching');
+        searchServices.set(FURRY_LOCAL_SERVICE, 'searching');
 
-    const currentModel = getMappedManualModel();
-    if (searchServices.has(currentModel)) {
-        searchServices.set(currentModel, 'searching');
+        const currentModel = getMappedManualModel();
+        if (searchServices.has(currentModel)) {
+            searchServices.set(currentModel, 'searching');
+        }
+        if (isFurryApiModelSlotNeeded()) {
+            searchServices.set('nai-diffusion-furry-3', 'searching');
+        }
     }
-    if (isFurryApiModelSlotNeeded()) {
-        searchServices.set('nai-diffusion-furry-3', 'searching');
+
+    if (config.expanders) {
+        searchServices.set('textReplacements', 'searching');
+    }
+    if (config.spellcheck) {
+        searchServices.set('spellcheck', 'searching');
+    }
+    if (config.thesaurus) {
+        searchServices.set('wordLookup', 'searching');
     }
 }
 
-function markRegularAutofillServicesError() {
-    searchServices.set('characters', 'error');
-    searchServices.set(ANIME_LOCAL_SERVICE, 'error');
-    searchServices.set(FURRY_LOCAL_SERVICE, 'error');
-    searchServices.set('spellcheck', 'error');
-    searchServices.set('wordLookup', 'error');
-    searchServices.set('textReplacements', 'error');
+function markAutofillServicesErrorForConfig(config) {
+    if (config.tags || config.characters) {
+        searchServices.set('characters', 'error');
+        searchServices.set(ANIME_LOCAL_SERVICE, 'error');
+        searchServices.set(FURRY_LOCAL_SERVICE, 'error');
 
-    const currentModel = getMappedManualModel();
-    if (searchServices.has(currentModel)) {
-        searchServices.set(currentModel, 'error');
+        const currentModel = getMappedManualModel();
+        if (searchServices.has(currentModel)) {
+            searchServices.set(currentModel, 'error');
+        }
+        if (isFurryApiModelSlotNeeded()) {
+            searchServices.set('nai-diffusion-furry-3', 'error');
+        }
     }
-    if (isFurryApiModelSlotNeeded()) {
-        searchServices.set('nai-diffusion-furry-3', 'error');
+
+    if (config.expanders) {
+        searchServices.set('textReplacements', 'error');
+    }
+    if (config.spellcheck) {
+        searchServices.set('spellcheck', 'error');
+    }
+    if (config.thesaurus) {
+        searchServices.set('wordLookup', 'error');
+    }
+}
+
+function getAutofillServicesConfigKey(config) {
+    return [
+        (config.tags || config.characters) ? '1' : '0',
+        config.expanders ? '1' : '0',
+        config.spellcheck ? '1' : '0',
+        config.thesaurus ? '1' : '0'
+    ].join('');
+}
+
+let currentAutofillServicesConfigKey = null;
+
+function markRegularAutofillServicesSearching() {
+    markAutofillServicesSearchingForConfig(DEFAULT_AUTOFILL_CONFIG);
+}
+
+function markRegularAutofillServicesError() {
+    markAutofillServicesErrorForConfig(DEFAULT_AUTOFILL_CONFIG);
+}
+
+function ensureAutofillServicesForTarget(target) {
+    const config = getAutofillConfig(target);
+    const configKey = getAutofillServicesConfigKey(config);
+    if (!servicesInitialized || currentAutofillServicesConfigKey !== configKey) {
+        initializeAutofillServicesForConfig(config);
+        servicesInitialized = true;
+        currentAutofillServicesConfigKey = configKey;
     }
 }
 
@@ -1729,6 +1902,28 @@ async function rebuildAndDisplayResults() {
         ? await enhanceTagResultsWithPredictionary(allTagResultsRaw, lastSearchQuery)
         : [];
 
+    const autofillConfig = currentCharacterAutocompleteTarget
+        ? getAutofillConfig(currentCharacterAutocompleteTarget)
+        : DEFAULT_AUTOFILL_CONFIG;
+    if (isAutofillTagsOnlyMode(autofillConfig)) {
+        allSearchResults = allTagResults.map(result => ({ ...result, _isTopTier: false }));
+        allSearchResults.sort((a, b) => {
+            const aRanking = calculateComprehensiveRanking(a, lastSearchQuery, null);
+            const bRanking = calculateComprehensiveRanking(b, lastSearchQuery, null);
+            if (aRanking.score !== bRanking.score) {
+                return bRanking.score - aRanking.score;
+            }
+            const aName = (getTagDisplayLabel(a) || '').toLowerCase();
+            const bName = (getTagDisplayLabel(b) || '').toLowerCase();
+            return aName.localeCompare(bName);
+        });
+        if (currentCharacterAutocompleteTarget) {
+            updateAutocompleteDisplay(allSearchResults, currentCharacterAutocompleteTarget);
+        }
+        updateSearchStatusDisplay();
+        return;
+    }
+
     // Merge text replacement results from all services with predictionary enhancement
     const allTextReplacements = getAllTextReplacementResults();
     const enhancedTextReplacements = await enhanceTextReplacementResults(allTextReplacements, lastSearchQuery);
@@ -2364,13 +2559,19 @@ function handleCharacterAutocompleteInput(e) {
 
     const value = target.value;
 
-    if (isAutofillTagInput(target)) {
+    if (isAutofillSingleToken(target)) {
         if (target.disabled) {
             hideCharacterAutocomplete();
             return;
         }
 
         const searchText = value.trim();
+        const autofillConfig = getAutofillConfig(target);
+
+        if (searchText.includes(',') || (!autofillConfig.expanders && searchText.startsWith('!'))) {
+            hideCharacterAutocomplete();
+            return;
+        }
 
         if (e.inputType === 'deleteContentBackward' && searchText.length < 2) {
             hideCharacterAutocomplete();
@@ -3717,17 +3918,27 @@ async function searchCharacters(query, target, forceRefresh, options) {
         }
 
         // Initialize services if this is the first time in this autofill session
-        if (!servicesInitialized) {
-            initializeAutofillServices();
-            servicesInitialized = true;
-        }
+        ensureAutofillServicesForTarget(target);
 
         // Check if query starts with ! - only return text replacements in this case
         const isTextReplacementSearch = query.startsWith('!');
         const isTextPrefixSearch = query.startsWith('Text:');
+        const autofillConfig = getAutofillConfig(target);
+
+        if (!autofillConfig.expanders && isTextReplacementSearch) {
+            hideCharacterAutocomplete();
+            isSearching = false;
+            return;
+        }
+
+        if (autofillConfig.singleToken && query.includes(',')) {
+            hideCharacterAutocomplete();
+            isSearching = false;
+            return;
+        }
 
         if (!isTextReplacementSearch && !isTextPrefixSearch) {
-            markRegularAutofillServicesSearching();
+            markAutofillServicesSearchingForConfig(autofillConfig);
         }
 
         showAutofillLoadingShell(target);
@@ -3762,7 +3973,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
                     // Results will be processed by the global handleSearchResponse function
                 } catch (wsError) {
                     console.error('WebSocket search failed:', wsError);
-                    markRegularAutofillServicesError();
+                    markAutofillServicesErrorForConfig(autofillConfig);
                     updateSearchStatusDisplay();
                     throw new Error('Search service unavailable');
                 }
@@ -4062,9 +4273,13 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     // Store all results for potential expansion
     window.allAutocompleteResults = results;
 
+    const autofillConfig = getAutofillConfig(target);
+
     // Filter out spell check and dictionary results from main display
-    const displayResults = results.filter(result => result.type !== 'spellcheck' && result.type !== 'wordLookup');
-    const spellCheckResult = results.find(result => result.type === 'spellcheck');
+    let displayResults = filterAutofillDisplayResults(results, autofillConfig);
+    const spellCheckResult = autofillConfig.spellcheck
+        ? results.find(result => result.type === 'spellcheck')
+        : null;
 
     // Show all results if expanded, otherwise show only first 5 items
     const limitedResults = autocompleteExpanded ? displayResults : displayResults.slice(0, 5);
@@ -4078,21 +4293,24 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
 
     // Handle spell check using the new system
     let currentSpellCheckData = null;
-    if (spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
+    if (autofillConfig.spellcheck && spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
         currentSpellCheckData = spellCheckResult.data;
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
-    } else if (spellCheckData && spellCheckData.hasErrors) {
+    } else if (autofillConfig.spellcheck && spellCheckData && spellCheckData.hasErrors) {
         // Legacy support
         currentSpellCheckData = spellCheckData;
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
-    } else if (persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
+    } else if (autofillConfig.spellcheck && persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
         // Use persistent spell check data
         currentSpellCheckData = persistentSpellCheckData;
         window.currentSpellCheckData = currentSpellCheckData;
     } else {
         window.currentSpellCheckData = null;
+        if (!autofillConfig.spellcheck) {
+            persistentSpellCheckData = null;
+        }
     }
 
     // Show spell check suggestions if we have spell check data
@@ -4100,7 +4318,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         showSpellCheckSuggestions(currentSpellCheckData, target);
     }
 
-    const currentWordLookupData = getActiveWordLookupData();
+    const currentWordLookupData = autofillConfig.thesaurus ? getActiveWordLookupData() : null;
     if (currentWordLookupData) {
         showWordLookupSection(currentWordLookupData, target);
     }
@@ -4223,9 +4441,13 @@ function updateAutocompleteDisplayImmediate(results, target) {
     // Store results for potential expansion
     window.allAutocompleteResults = results;
 
+    const autofillConfig = getAutofillConfig(target);
+
     // Filter out spell check and dictionary results from main display
-    const displayResults = results.filter(result => result.type !== 'spellcheck' && result.type !== 'wordLookup');
-    const spellCheckResult = results.find(result => result.type === 'spellcheck');
+    let displayResults = filterAutofillDisplayResults(results, autofillConfig);
+    const spellCheckResult = autofillConfig.spellcheck
+        ? results.find(result => result.type === 'spellcheck')
+        : null;
 
     // Show all results if expanded, otherwise show only first 5 items
     const limitedResults = autocompleteExpanded ? displayResults : displayResults.slice(0, 5);
@@ -4294,6 +4516,7 @@ function restoreSelection(displayResults) {
 
 // New function to rebuild the autocomplete display
 function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckResult, target) {
+    const autofillConfig = getAutofillConfig(target);
     // Force expansion on mobile or when no mouse input is available (e.g. touch only)
     const isMobile = (window.deviceUtils && window.deviceUtils.isMobileDevice()) ||
         (window.matchMedia && !window.matchMedia('(pointer: fine)').matches);
@@ -4317,11 +4540,11 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
 
     // Handle spell check from the merged results system
     let currentSpellCheckData = null;
-    if (spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
+    if (autofillConfig.spellcheck && spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
         currentSpellCheckData = spellCheckResult.data;
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
-    } else {
+    } else if (autofillConfig.spellcheck) {
         // Fallback to persistent spell check data if no new spell check result
         if (persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
             currentSpellCheckData = persistentSpellCheckData;
@@ -4330,6 +4553,9 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
             window.currentSpellCheckData = null;
             persistentSpellCheckData = null;
         }
+    } else {
+        window.currentSpellCheckData = null;
+        persistentSpellCheckData = null;
     }
 
     // Show spell check suggestions if we have spell check data
@@ -4337,7 +4563,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
         showSpellCheckSuggestions(currentSpellCheckData, target);
     }
 
-    const currentWordLookupData = getActiveWordLookupData();
+    const currentWordLookupData = autofillConfig.thesaurus ? getActiveWordLookupData() : null;
     if (currentWordLookupData) {
         showWordLookupSection(currentWordLookupData, target);
     }
@@ -5226,6 +5452,7 @@ function selectDynamicPlaceholder(placeholder) {
 
 function selectTextReplacement(placeholder) {
     if (!currentCharacterAutocompleteTarget) return;
+    if (!isAutofillFeatureEnabled(currentCharacterAutocompleteTarget, 'expanders')) return;
 
     const target = currentCharacterAutocompleteTarget;
     const currentValue = target.value;
@@ -5378,7 +5605,7 @@ function selectTag(tagName, category) {
         }
     }
 
-    if (isAutofillTagInput(target)) {
+    if (isAutofillSingleToken(target)) {
         target.value = tagToInsert;
         hideCharacterAutocomplete();
         target.focus();

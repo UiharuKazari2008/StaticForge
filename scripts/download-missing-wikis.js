@@ -54,8 +54,9 @@ function sleep(ms) {
  */
 function normalizeTitleForUrl(title) {
     if (!title) return '';
-    // Replace spaces with underscores for URL
-    return title.replace(/\s+/g, '_').trim();
+    let normalized = title.trim();
+    normalized = normalized.replace(/^(?:species|invalid):/i, '');
+    return normalized.replace(/\s+/g, '_').trim();
 }
 
 /**

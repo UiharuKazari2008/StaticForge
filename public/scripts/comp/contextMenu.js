@@ -933,10 +933,29 @@ class ContextMenuController {
                 }
 
                 if (item.text) {
+                    const textContainer = document.createElement('div');
+                    textContainer.className = 'context-menu-item-text-container';
+
                     const textElement = document.createElement('span');
                     textElement.className = 'context-menu-item-text';
                     textElement.textContent = item.text;
-                    itemElement.appendChild(textElement);
+                    textContainer.appendChild(textElement);
+
+                    if (item.subtext !== null && item.subtext !== undefined) {
+                        const subtextElement = document.createElement('span');
+                        subtextElement.className = 'context-menu-item-subtext';
+                        subtextElement.textContent = typeof item.subtext === 'function' ? item.subtext(target) : item.subtext;
+                        textContainer.appendChild(subtextElement);
+                    }
+
+                    itemElement.appendChild(textContainer);
+                }
+
+                if (item.badge !== null && item.badge !== undefined) {
+                    const badgeElement = document.createElement('span');
+                    badgeElement.className = 'context-menu-item-badge';
+                    badgeElement.textContent = typeof item.badge === 'function' ? item.badge(target) : String(item.badge);
+                    itemElement.appendChild(badgeElement);
                 }
             }
 
@@ -1577,21 +1596,69 @@ class ContextMenuController {
         }
 
         // Update text if it exists
-        const textElement = itemElement.querySelector('.context-menu-item-text');
+        const textContainer = itemElement.querySelector('.context-menu-item-text-container');
+        const textElement = textContainer
+            ? textContainer.querySelector('.context-menu-item-text')
+            : itemElement.querySelector('.context-menu-item-text');
         if (item.text) {
             const textValue = typeof item.text === 'function' ? item.text(target) : item.text;
             if (textElement) {
                 textElement.textContent = textValue;
             } else {
-                // Create text element if it doesn't exist
+                const newTextContainer = document.createElement('div');
+                newTextContainer.className = 'context-menu-item-text-container';
                 const newTextElement = document.createElement('span');
                 newTextElement.className = 'context-menu-item-text';
                 newTextElement.textContent = textValue;
-                itemElement.appendChild(newTextElement);
+                newTextContainer.appendChild(newTextElement);
+                itemElement.appendChild(newTextContainer);
             }
         } else if (textElement) {
             // Remove text if it no longer exists
-            textElement.remove();
+            if (textContainer) {
+                textContainer.remove();
+            } else {
+                textElement.remove();
+            }
+        }
+
+        // Update subtext if it exists
+        if (item.subtext !== null && item.subtext !== undefined) {
+            const activeTextContainer = itemElement.querySelector('.context-menu-item-text-container');
+            if (activeTextContainer) {
+                let subtextElement = activeTextContainer.querySelector('.context-menu-item-subtext');
+                const subtextValue = typeof item.subtext === 'function' ? item.subtext(target) : item.subtext;
+                if (subtextElement) {
+                    subtextElement.textContent = subtextValue;
+                } else {
+                    subtextElement = document.createElement('span');
+                    subtextElement.className = 'context-menu-item-subtext';
+                    subtextElement.textContent = subtextValue;
+                    activeTextContainer.appendChild(subtextElement);
+                }
+            }
+        } else {
+            const activeTextContainer = itemElement.querySelector('.context-menu-item-text-container');
+            const subtextElement = activeTextContainer ? activeTextContainer.querySelector('.context-menu-item-subtext') : null;
+            if (subtextElement) {
+                subtextElement.remove();
+            }
+        }
+
+        // Update badge if it exists
+        const badgeElement = itemElement.querySelector('.context-menu-item-badge');
+        if (item.badge !== null && item.badge !== undefined) {
+            const badgeValue = typeof item.badge === 'function' ? item.badge(target) : String(item.badge);
+            if (badgeElement) {
+                badgeElement.textContent = badgeValue;
+            } else {
+                const newBadgeElement = document.createElement('span');
+                newBadgeElement.className = 'context-menu-item-badge';
+                newBadgeElement.textContent = badgeValue;
+                itemElement.appendChild(newBadgeElement);
+            }
+        } else if (badgeElement) {
+            badgeElement.remove();
         }
 
         // Update tooltip if it exists

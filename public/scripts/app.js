@@ -4809,6 +4809,7 @@ function renderTextReplacementLockList() {
 
         const isLocked = seed.locked === true;
         const canLock = seed.can_lock !== undefined ? seed.can_lock !== false : true;
+        const canResolve = seed.can_resolve !== undefined ? seed.can_resolve !== false : canLock;
 
         itemDiv.classList.toggle('selected', isLocked);
 
@@ -5180,7 +5181,7 @@ function renderTextReplacementLockList() {
                                     }
                                 },
                                 openOnHover: false,
-                                hidden: !canLock
+                                hidden: !canResolve
                             },
                         ]
                     }],
@@ -12652,6 +12653,7 @@ function setupEventListeners() {
 
             if (confirmed) {
                 isExiting = true;
+                bypassConfirmation = true;
 
                 // For refresh actions, we need to actually refresh the page
                 if (action === 'refresh') {
@@ -12751,6 +12753,7 @@ function setupEventListeners() {
 
     // Function to force refresh the page (used when user confirms refresh)
     window.forceRefresh = () => {
+        bypassConfirmation = true;
         window.location.reload();
     };
 
@@ -16818,6 +16821,7 @@ function initializeSystemTrayIcons() {
     updateWorkspaceTrayIcon();
     updateImageGenerationIndicator();
     updateSearchIndexingIndicator();
+    setupServiceWorkerTrayContextMenu();
 
     // Update subscription indicator periodically
     setInterval(updateSubscriptionRenewalIndicator, 3600000); // Every hour
@@ -17462,6 +17466,144 @@ function updateImageGenerationIndicator() {
         indicator.classList.remove('active');
         indicator.classList.add('hidden');
     }
+}
+
+function setupServiceWorkerTrayContextMenu() {
+    const icon = document.getElementById('serviceWorkerTrayIcon');
+    if (!icon || !contextMenu) return;
+
+    contextMenu.attachToElement(icon, {
+        sections: [
+            {
+                type: 'list',
+                title: 'Storage Usage',
+                items: [
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-total',
+                        text: 'Total',
+                        badge: '—'
+                    },
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-used',
+                        text: 'Used',
+                        badge: '—'
+                    },
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-static',
+                        text: 'Static',
+                        badge: '—'
+                    },
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-dynamic',
+                        text: 'Dynamic',
+                        badge: '—'
+                    },
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-internal',
+                        text: 'Internal',
+                        badge: '—'
+                    },
+                    {
+                        disabled: true,
+                        className: 'sw-storage-item sw-storage-images',
+                        text: 'Images',
+                        badge: '—'
+                    }
+                ],
+                loadfn: async () => {
+                    try {
+                        const setStorageItem = (className, value) => {
+                            const item = document.querySelector(`.${className}`);
+                            if (!item) return;
+                            const badge = item.querySelector('.context-menu-item-badge');
+                            if (badge) badge.textContent = value ?? '—';
+                        };
+
+                        if (navigator.storage && navigator.storage.estimate) {
+                            const est = await navigator.storage.estimate();
+                            const usage = Number.isFinite(est.usage) ? est.usage : null;
+                            const quota = Number.isFinite(est.quota) ? est.quota : null;
+                            if (usage != null && quota != null && quota > 0) {
+                                const pct = Math.round((usage / quota) * 100);
+                                setStorageItem('sw-storage-total', `${formatBytes(usage)} / ${formatBytes(quota)}`);
+                                setStorageItem('sw-storage-used', `${pct}%`);
+                            } else if (usage != null) {
+                                setStorageItem('sw-storage-total', `${formatBytes(usage)}`);
+                                setStorageItem('sw-storage-used', '—');
+                            } else {
+                                setStorageItem('sw-storage-total', '—');
+                                setStorageItem('sw-storage-used', '—');
+                            }
+                        }
+
+                        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.getCacheStats === 'function') {
+                            const status = await window.serviceWorkerManager.getCacheStats();
+                            const s = status || {};
+                            setStorageItem('sw-storage-static', Number.isFinite(s.static) ? String(s.static) : '—');
+                            setStorageItem('sw-storage-dynamic', Number.isFinite(s.dynamic) ? String(s.dynamic) : '—');
+                            setStorageItem('sw-storage-internal', Number.isFinite(s.internal) ? String(s.internal) : '—');
+                            setStorageItem('sw-storage-images', Number.isFinite(s.images) ? String(s.images) : '—');
+                        }
+                    } catch (error) {
+                        console.error('Failed to update service worker tray stats:', error);
+                    }
+                }
+            },
+            {
+                type: 'list',
+                title: 'Updates',
+                items: [
+                    {
+                        icon: 'fa-regular fa-sync',
+                        text: 'Check for Updates',
+                        action: 'sw-check-updates'
+                    },
+                    {
+                        icon: 'fa-regular fa-laptop-arrow-down',
+                        text: 'Reinstall',
+                        action: 'clear-cache'
+                    }
+                ]
+            },
+            {
+                type: 'list',
+                title: 'Clear Cache',
+                items: [
+                    {
+                        icon: 'fas fa-broom',
+                        text: 'Clear…',
+                        openOnHover: false,
+                        submenu: [
+                            { icon: 'fas fa-broom', text: 'Static cache', action: 'sw-clear-cache-static' },
+                            { icon: 'fas fa-broom', text: 'Dynamic cache', action: 'sw-clear-cache-dynamic' },
+                            { icon: 'fas fa-broom', text: 'Internal cache', action: 'sw-clear-cache-internal' },
+                            { icon: 'fas fa-broom', text: 'Image cache', action: 'sw-clear-cache-images' },
+                            { separator: true },
+                            { icon: 'fas fa-broom', text: 'All caches', action: 'sw-clear-cache-all', className: 'text-warning' }
+                        ]
+                    }
+                ]
+            }
+        ]
+    });
+}
+
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let val = bytes;
+    let idx = 0;
+    while (val >= 1024 && idx < units.length - 1) {
+        val /= 1024;
+        idx++;
+    }
+    const rounded = idx === 0 ? Math.round(val) : Math.round(val * 10) / 10;
+    return `${rounded} ${units[idx]}`;
 }
 
 // Initialize on page load
@@ -27999,6 +28141,62 @@ function setupMainMenuContextMenus() {
                 await serviceWorkerManager.refreshServerCacheAndCheck();
                 break;
 
+            case 'sw-check-updates':
+                if (window.serviceWorkerManager) {
+                    await window.serviceWorkerManager.checkStaticFileUpdates(false);
+                }
+                break;
+
+            case 'sw-clear-cache-static':
+            case 'sw-clear-cache-dynamic':
+            case 'sw-clear-cache-internal':
+            case 'sw-clear-cache-images':
+            case 'sw-clear-cache-all': {
+                const cacheNames = [];
+                let label = '';
+
+                if (action === 'sw-clear-cache-static') {
+                    cacheNames.push('static-cache-v1');
+                    label = 'static cache';
+                } else if (action === 'sw-clear-cache-dynamic') {
+                    cacheNames.push('dynamic-cache-v1');
+                    label = 'dynamic cache';
+                } else if (action === 'sw-clear-cache-internal') {
+                    cacheNames.push('internal-cache-v1');
+                    label = 'internal cache';
+                } else if (action === 'sw-clear-cache-images') {
+                    cacheNames.push('image-cache-v1');
+                    label = 'image cache';
+                } else if (action === 'sw-clear-cache-all') {
+                    cacheNames.push('static-cache-v1', 'dynamic-cache-v1', 'internal-cache-v1', 'image-cache-v1');
+                    label = 'all caches';
+                }
+
+                const confirmed = await showConfirmationDialog(
+                    `Are you sure you want to clear ${label}?`,
+                    [
+                        { text: 'Clear Cache', value: true, className: 'btn-danger' },
+                        { text: 'Cancel', value: false, className: 'btn-secondary' }
+                    ],
+                    event
+                );
+                if (!confirmed) break;
+
+                try {
+                    if ('caches' in window) {
+                        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+                    }
+                    if (window.serviceWorkerManager) {
+                        await window.serviceWorkerManager.checkStaticFileUpdates(false);
+                    }
+                    showGlassToast('success', null, `Cleared ${label}.`, false, 3000, '<i class="fas fa-broom"></i>');
+                } catch (error) {
+                    console.error('Failed to clear caches:', error);
+                    showGlassToast('error', null, `Failed to clear ${label}: ${error.message}`, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+                break;
+            }
+
             case 'clear-cache':
                 // Clear cache directly
                 const confirmedClear = await showConfirmationDialog(
@@ -28384,20 +28582,8 @@ if (window.wsClient) {
         console.log('📢 System message received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-
-            // Desktop mode: use Windows Update Modal for update-related messages
-            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
-                window.wsClient.showWindowsUpdateModal('System Update', 0);
-                window.wsClient.updateWindowsUpdateModal(message, 0);
-                window.wsClient.setUpdateModalCallbacks(
-                    () => window.wsClient.hideWindowsUpdateModal(),
-                    null,
-                    () => window.wsClient.hideWindowsUpdateModal()
-                );
-            } else {
-                // Show system message as toast
-                showGlassToast(data.data.level || 'info', null, message);
-            }
+            // Show system message as toast
+            showGlassToast(data.data.level || 'info', null, message);
         }
     });
 
@@ -28406,19 +28592,7 @@ if (window.wsClient) {
         console.log('🔔 Notification received:', data);
         if (data.data && data.data.message) {
             const message = data.data.message;
-
-            // Desktop mode: use Windows Update Modal for update-related messages
-            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
-                window.wsClient.showWindowsUpdateModal('Update Notification', 0);
-                window.wsClient.updateWindowsUpdateModal(message, 0);
-                window.wsClient.setUpdateModalCallbacks(
-                    () => window.wsClient.hideWindowsUpdateModal(),
-                    null,
-                    () => window.wsClient.hideWindowsUpdateModal()
-                );
-            } else {
-                showGlassToast(data.data.type || 'info', null, message);
-            }
+            showGlassToast(data.data.type || 'info', null, message);
         }
     });
 
@@ -28426,19 +28600,7 @@ if (window.wsClient) {
     wsClient.on('receipt', (data) => {
         if (data.data && data.data.message) {
             const message = data.data.message;
-
-            // Desktop mode: use Windows Update Modal for update-related messages
-            if (window.isDesktop && window.wsClient && isUpdateRelatedMessage(message) && window.wsClient.showWindowsUpdateModal) {
-                window.wsClient.showWindowsUpdateModal('Update Receipt', 0);
-                window.wsClient.updateWindowsUpdateModal(message, 0);
-                window.wsClient.setUpdateModalCallbacks(
-                    () => window.wsClient.hideWindowsUpdateModal(),
-                    null,
-                    () => window.wsClient.hideWindowsUpdateModal()
-                );
-            } else {
-                showGlassToast(data.data.type || 'info', null, message, false);
-            }
+            showGlassToast(data.data.type || 'info', null, message, false);
         }
     });
 
@@ -28831,6 +28993,13 @@ if (window.wsClient) {
         return null;
     }
 
+    // Priority 0.45: User global settings (startup behaviour, Atelier, etc.) from server config
+    window.wsClient.registerInitStep(0.45, 'Loading user global settings', async () => {
+        if (typeof loadUserGlobalSettingsFromServer === 'function') {
+            await loadUserGlobalSettingsFromServer();
+        }
+    }, true);
+
     // Priority 0.5: Load desktop settings early (desktop mode only) - before other initialization
     if (window.isDesktop) {
         window.wsClient.registerInitStep(0.5, 'Loading Desktop Settings', async () => {
@@ -29138,7 +29307,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Notify the Android host of the correct caption-bar button colors based on current UI state.
+    // Native Android caption button chrome (not in-app .modal-window-controls).
+    // Maximized caption/gutter blackout: public/css/app.css (:has(.modal-maximized) on #titlebar-grab-area-container).
     // Rules:
     //   - Desktop mode: always both transparent
     //   - manualModal open + width > 1101: both transparent

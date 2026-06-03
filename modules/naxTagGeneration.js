@@ -63,11 +63,17 @@ class NaxTagGenerationService {
         return String(tag || '').trim();
     }
 
-    isValidCustomTag(tag) {
+    getCustomTagValidationError(tag) {
         const t = this.prepareTagInput(tag);
-        if (!t.length || t.length > 120) return false;
-        if (t.includes('..') || /[\x00-\x1f\/\\]/.test(t)) return false;
-        return true;
+        if (!t.length) return 'Enter a tag name';
+        if (t.length > 120) return 'Tag name is too long';
+        if (t.includes(',')) return 'Enter a single tag only (no commas)';
+        if (t.includes('..') || /[\x00-\x1f\/\\]/.test(t)) return 'Invalid tag';
+        return null;
+    }
+
+    isValidCustomTag(tag) {
+        return this.getCustomTagValidationError(tag) === null;
     }
 
     applyInputValueToTemplate(template, tag) {

@@ -593,11 +593,24 @@ function buildNaxtExpanderSubmenuItems(textarea) {
         const count = preset.tryCount != null ? preset.tryCount : 0;
         items.push({
             text: preset.label || preset.id || '',
-            icon: 'fas fa-flask',
+            icon: 'fas fa-vial',
             badge: count,
             disabled: count === 0,
             action: 'prompt-ctx-nax-expander-insert',
             data: { insertText: preset.tryPattern || `!NAX_TRY_${preset.id}` }
+        });
+    });
+
+    items.push({ separator: true, text: 'Any' });
+    presets.forEach((preset) => {
+        const count = preset.anyCount != null ? preset.anyCount : 0;
+        items.push({
+            text: preset.label || preset.id || '',
+            icon: 'fas fa-layer-group',
+            badge: count,
+            disabled: count === 0,
+            action: 'prompt-ctx-nax-expander-insert',
+            data: { insertText: preset.anyPattern || `!NAX_ANY_${preset.id}` }
         });
     });
     return items;

@@ -1449,7 +1449,7 @@ class SearchService {
                 const keyLower = entry.key.toLowerCase();
                 const labelLower = String(entry.label || '').toLowerCase();
                 const descLower = String(entry.description || '').toLowerCase();
-                const kindLabel = entry.type === 'TRY' ? 'try mark' : 'favorite';
+                const kindLabel = entry.type === 'TRY' ? 'try mark' : entry.type === 'ANY' ? 'any tag' : 'favorite';
 
                 if (searchQuery === '') {
                     matchScore = 45;

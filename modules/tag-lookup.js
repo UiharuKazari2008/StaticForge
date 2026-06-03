@@ -1064,14 +1064,15 @@ class TagLookup {
         if (!title || !this.db) return null;
         
         const statements = this.getStatements();
-        const wikiRow = await this.db.get(statements.getWikiByTitleAndSource, [title, sourceId]);
-        
-        if (wikiRow && wikiRow.body) {
-            return {
-                body: wikiRow.body,
-                fetchedOnline: !!wikiRow.fetched_online,
-                wikiId: wikiRow.id
-            };
+        for (const variant of this.getWikiTitleLookupVariants(title)) {
+            const wikiRow = await this.db.get(statements.getWikiByTitleAndSource, [variant, sourceId]);
+            if (wikiRow && wikiRow.body) {
+                return {
+                    body: wikiRow.body,
+                    fetchedOnline: !!wikiRow.fetched_online,
+                    wikiId: wikiRow.id
+                };
+            }
         }
         
         return null;
@@ -4835,11 +4836,42 @@ class TagLookup {
 }
 
     /**
-     * Normalize title for URL encoding
+     * Normalize title for booru API lookup (Danbooru/e621).
+     * Strips NovelAI namespace prefixes and converts spaces to underscores.
      */
     normalizeTitleForUrl(title) {
         if (!title) return '';
-        return title.replace(/\s+/g, '_').trim();
+        let normalized = title.trim();
+        normalized = normalized.replace(/\\/g, '');
+        normalized = normalized.replace(/^(?:species|invalid):/i, '');
+        return normalized.replace(/\s+/g, '_').trim();
+    }
+
+    /**
+     * Canonical underscore tag name for booru wiki/tag API calls.
+     */
+    resolveBooruWikiTagName(title) {
+        return this.normalizeTitleForUrl(title);
+    }
+
+    /**
+     * Title variants for wiki row lookup (DB may store spaces or underscores).
+     */
+    getWikiTitleLookupVariants(title) {
+        const variants = new Set();
+        if (!title) return [];
+        const raw = String(title).trim();
+        const booru = this.resolveBooruWikiTagName(raw);
+        const spaced = booru.replace(/_/g, ' ');
+        variants.add(raw.toLowerCase());
+        if (booru) variants.add(booru.toLowerCase());
+        if (spaced) variants.add(spaced.toLowerCase());
+        return [...variants];
+    }
+
+    formatBooruTagDisplayTitle(booruName) {
+        if (!booruName) return '';
+        return String(booruName).replace(/_/g, ' ').trim();
     }
 
     /**
@@ -4922,18 +4954,19 @@ class TagLookup {
      */
     async fetchDanbooruWikiByTitle(title) {
         const DANBOORU_API_BASE = 'https://danbooru.donmai.us';
-        const encodedTitle = encodeURIComponent(this.normalizeTitleForUrl(title));
+        const urlTitle = this.normalizeTitleForUrl(title);
+        const encodedTitle = encodeURIComponent(urlTitle);
         const url = `${DANBOORU_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=1`;
         
         try {
             const results = await this.fetchJson(url);
             if (results && Array.isArray(results) && results.length > 0) {
-                const normalizedSearch = title.toLowerCase().replace(/\s+/g, '_');
+                const normalizedSearch = urlTitle.toLowerCase();
                 const exactMatch = results.find(w => {
                     if (!w.title) return false;
                     const normalizedWiki = w.title.toLowerCase().replace(/\s+/g, '_');
                     return normalizedWiki === normalizedSearch || 
-                        w.title.toLowerCase() === title.toLowerCase();
+                        w.title.toLowerCase() === urlTitle.toLowerCase();
                 });
                 if (exactMatch) {
                     return exactMatch;
@@ -4968,18 +5001,19 @@ class TagLookup {
      */
     async fetchE621WikiByTitle(title) {
         const E621_API_BASE = 'https://e621.net';
-        const encodedTitle = encodeURIComponent(this.normalizeTitleForUrl(title));
+        const urlTitle = this.normalizeTitleForUrl(title);
+        const encodedTitle = encodeURIComponent(urlTitle);
         const url = `${E621_API_BASE}/wiki_pages.json?search[title]=${encodedTitle}&limit=10`;
         
         try {
             const results = await this.fetchJson(url);
             if (results && Array.isArray(results) && results.length > 0) {
-                const normalizedTitle = title.toLowerCase().replace(/\s+/g, '_');
+                const normalizedTitle = urlTitle.toLowerCase();
                 const exactMatch = results.find(w => {
                     if (!w.title) return false;
                     const normalizedWikiTitle = w.title.toLowerCase().replace(/\s+/g, '_');
                     return normalizedWikiTitle === normalizedTitle || 
-                        w.title.toLowerCase() === title.toLowerCase();
+                        w.title.toLowerCase() === urlTitle.toLowerCase();
                 });
                 if (exactMatch) {
                     return exactMatch;
@@ -5000,6 +5034,316 @@ class TagLookup {
             console.error(`Error fetching e621 wiki "${title}": ${error.message}`);
             return null;
         }
+    }
+
+    /**
+     * Build wildcard pattern for booru tag name search from user query.
+     */
+    buildOnlineSearchPattern(query) {
+        const normalized = this.normalizeTitleForUrl(query);
+        if (!normalized) return '';
+        const tokens = normalized.split('_').filter(Boolean);
+        if (tokens.length === 0) return '';
+        if (tokens.length === 1) return `*${tokens[0]}*`;
+        return `*${tokens.join('*')}*`;
+    }
+
+    normalizeTagMatchKey(title) {
+        return this.normalizeTitleForUrl(title).toLowerCase();
+    }
+
+    mapOnlineTagResult(tag, sourceName) {
+        const name = this.resolveBooruWikiTagName(tag.name || '');
+        return {
+            id: null,
+            title: this.formatBooruTagDisplayTitle(name),
+            name,
+            category: tag.category,
+            categoryName: this.getCategoryName(tag.category),
+            source: [sourceName],
+            hasWiki: false,
+            onlineOnly: true,
+            matchType: 'online-tag'
+        };
+    }
+
+    mapOnlineWikiPageResult(page, sourceName) {
+        const name = this.resolveBooruWikiTagName(page.title || page.name || '');
+        return {
+            id: null,
+            title: this.formatBooruTagDisplayTitle(name),
+            name,
+            category: page.category_id ?? page.category,
+            categoryName: this.getCategoryName(page.category_id ?? page.category),
+            source: [sourceName],
+            hasWiki: true,
+            onlineOnly: true,
+            matchType: 'online'
+        };
+    }
+
+    async searchDanbooruTagsOnline(query, limit = 25) {
+        const pattern = this.buildOnlineSearchPattern(query);
+        const normalized = this.normalizeTitleForUrl(query);
+        if (!pattern && !normalized) return [];
+
+        const DANBOORU_API_BASE = 'https://danbooru.donmai.us';
+        const urls = [];
+        if (normalized) {
+            urls.push(`${DANBOORU_API_BASE}/tags.json?search[name]=${encodeURIComponent(normalized)}&limit=${limit}`);
+        }
+        if (pattern) {
+            urls.push(`${DANBOORU_API_BASE}/tags.json?search[name_matches]=${encodeURIComponent(pattern)}&limit=${limit}`);
+        }
+
+        try {
+            const byName = new Map();
+            for (const url of urls) {
+                const results = await this.fetchJson(url);
+                if (!results || !Array.isArray(results)) continue;
+                for (const tag of results) {
+                    if (!tag.name) continue;
+                    byName.set(tag.name.toLowerCase(), tag);
+                }
+            }
+            return [...byName.values()].map(tag => this.mapOnlineTagResult(tag, 'danbooru'));
+        } catch (error) {
+            console.error(`Error searching Danbooru tags online for "${query}": ${error.message}`);
+            return [];
+        }
+    }
+
+    async searchDanbooruWikiPagesOnline(query, limit = 25) {
+        const normalized = this.normalizeTitleForUrl(query);
+        const pattern = this.buildOnlineSearchPattern(query);
+        if (!normalized && !pattern) return [];
+
+        const DANBOORU_API_BASE = 'https://danbooru.donmai.us';
+        const urls = [];
+        if (normalized) {
+            urls.push(`${DANBOORU_API_BASE}/wiki_pages.json?search[title]=${encodeURIComponent(normalized)}&limit=${limit}`);
+        }
+        if (pattern) {
+            urls.push(`${DANBOORU_API_BASE}/wiki_pages.json?search[title_matches]=${encodeURIComponent(pattern)}&limit=${limit}`);
+        }
+
+        try {
+            const byTitle = new Map();
+            for (const url of urls) {
+                const results = await this.fetchJson(url);
+                if (!results || !Array.isArray(results)) continue;
+                for (const page of results) {
+                    if (!page.title) continue;
+                    byTitle.set(page.title.toLowerCase(), page);
+                }
+            }
+            return [...byTitle.values()].map(page => this.mapOnlineWikiPageResult(page, 'danbooru'));
+        } catch (error) {
+            console.error(`Error searching Danbooru wiki pages online for "${query}": ${error.message}`);
+            return [];
+        }
+    }
+
+    async searchE621TagsOnline(query, limit = 25) {
+        const pattern = this.buildOnlineSearchPattern(query);
+        const normalized = this.normalizeTitleForUrl(query);
+        if (!pattern && !normalized) return [];
+
+        const E621_API_BASE = 'https://e621.net';
+        const urls = [];
+        if (normalized) {
+            urls.push(`${E621_API_BASE}/tags.json?search[name]=${encodeURIComponent(normalized)}&limit=${limit}`);
+        }
+        if (pattern) {
+            urls.push(`${E621_API_BASE}/tags.json?search[name_matches]=${encodeURIComponent(pattern)}&limit=${limit}`);
+        }
+
+        try {
+            const byName = new Map();
+            for (const url of urls) {
+                const results = await this.fetchJson(url);
+                if (!results || !Array.isArray(results)) continue;
+                for (const tag of results) {
+                    if (!tag.name) continue;
+                    byName.set(tag.name.toLowerCase(), tag);
+                }
+            }
+            return [...byName.values()].map(tag => this.mapOnlineTagResult(tag, 'e621'));
+        } catch (error) {
+            console.error(`Error searching e621 tags online for "${query}": ${error.message}`);
+            return [];
+        }
+    }
+
+    async searchE621WikiPagesOnline(query, limit = 25) {
+        const normalized = this.normalizeTitleForUrl(query);
+        const pattern = this.buildOnlineSearchPattern(query);
+        if (!normalized && !pattern) return [];
+
+        const E621_API_BASE = 'https://e621.net';
+        const urls = [];
+        if (normalized) {
+            urls.push(`${E621_API_BASE}/wiki_pages.json?search[title]=${encodeURIComponent(normalized)}&limit=${limit}`);
+        }
+        if (pattern) {
+            urls.push(`${E621_API_BASE}/wiki_pages.json?search[title_matches]=${encodeURIComponent(pattern)}&limit=${limit}`);
+        }
+
+        try {
+            const byTitle = new Map();
+            for (const url of urls) {
+                const results = await this.fetchJson(url);
+                if (!results || !Array.isArray(results)) continue;
+                for (const page of results) {
+                    if (!page.title) continue;
+                    byTitle.set(page.title.toLowerCase(), page);
+                }
+            }
+            return [...byTitle.values()].map(page => this.mapOnlineWikiPageResult(page, 'e621'));
+        } catch (error) {
+            console.error(`Error searching e621 wiki pages online for "${query}": ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Search Danbooru and e621 tag/wiki APIs in parallel.
+     * @param {string} query - User search query (spaces/species: prefix normalized internally)
+     * @param {Object} options - { source: 'both'|'danbooru'|'e621', limit: number }
+     */
+    async searchOnlineWikiTags(query, options = {}) {
+        const { source = 'both', limit = 25 } = options;
+
+        const tasks = [];
+        if (source === 'both' || source === 'danbooru') {
+            tasks.push(this.searchDanbooruTagsOnline(query, limit));
+            tasks.push(this.searchDanbooruWikiPagesOnline(query, limit));
+        }
+        if (source === 'both' || source === 'e621') {
+            tasks.push(this.searchE621TagsOnline(query, limit));
+            tasks.push(this.searchE621WikiPagesOnline(query, limit));
+        }
+
+        const resultSets = await Promise.all(tasks);
+        const byKey = new Map();
+
+        for (const set of resultSets) {
+            for (const tag of set) {
+                const key = this.normalizeTagMatchKey(tag.name || tag.title);
+                if (!key) continue;
+                if (byKey.has(key)) {
+                    const existing = byKey.get(key);
+                    existing.source = [...new Set([...existing.source, ...tag.source])];
+                } else {
+                    byKey.set(key, { ...tag, source: [...tag.source] });
+                }
+            }
+        }
+
+        return [...byKey.values()];
+    }
+
+    /**
+     * Merge local tag search results with online booru tag search results.
+     */
+    mergeLocalAndOnlineWikiSearch(localResults, onlineResults) {
+        const localWithWiki = [];
+        const localNoWiki = [];
+
+        for (const tag of localResults) {
+            const key = this.normalizeTagMatchKey(tag.title || tag.name);
+            if (!key) continue;
+            if (tag.hasWiki) {
+                localWithWiki.push(tag);
+            } else {
+                localNoWiki.push(tag);
+            }
+        }
+
+        const onlineByKey = new Map();
+        for (const tag of onlineResults) {
+            const key = this.normalizeTagMatchKey(tag.name || tag.title);
+            if (!key) continue;
+            if (onlineByKey.has(key)) {
+                const existing = onlineByKey.get(key);
+                existing.source = [...new Set([...existing.source, ...tag.source])];
+            } else {
+                onlineByKey.set(key, { ...tag, source: [...(tag.source || [])] });
+            }
+        }
+
+        const merged = [];
+        const localOnly = [];
+        const remainingNoWiki = [];
+
+        const absorbOnline = (tag, localSources) => {
+            const key = this.normalizeTagMatchKey(tag.title || tag.name);
+            const online = onlineByKey.get(key);
+            if (!online) return false;
+            const combinedHasWiki = !!(tag.hasWiki || online.hasWiki);
+            merged.push({
+                ...tag,
+                name: tag.name || online.name || this.resolveBooruWikiTagName(tag.title),
+                source: [...new Set([...localSources, ...online.source])],
+                hasWiki: combinedHasWiki,
+                onlineOnly: false,
+                matchType: 'merged'
+            });
+            onlineByKey.delete(key);
+            return true;
+        };
+
+        for (const tag of localWithWiki) {
+            const localSources = tag.wikiSources || tag.source || [];
+            if (!absorbOnline(tag, localSources)) {
+                localOnly.push({
+                    ...tag,
+                    source: localSources,
+                    matchType: 'local'
+                });
+            }
+        }
+
+        for (const tag of localNoWiki) {
+            const localSources = tag.wikiSources || tag.source || [];
+            if (!absorbOnline(tag, localSources)) {
+                remainingNoWiki.push(tag);
+            }
+        }
+
+        const onlineWikiOnly = [];
+        const onlineTagOnly = [];
+        for (const tag of onlineByKey.values()) {
+            const entry = {
+                ...tag,
+                onlineOnly: true,
+                matchType: tag.matchType || (tag.hasWiki ? 'online' : 'online-tag')
+            };
+            if (entry.hasWiki) {
+                onlineWikiOnly.push(entry);
+            } else {
+                onlineTagOnly.push(entry);
+            }
+        }
+
+        const noWiki = remainingNoWiki.map(tag => ({
+            ...tag,
+            source: tag.wikiSources || tag.source || [],
+            matchType: 'no-wiki',
+            hasWiki: false
+        }));
+
+        const onlineOnly = [...onlineWikiOnly, ...onlineTagOnly];
+
+        return {
+            results: [...merged, ...localOnly, ...onlineOnly, ...noWiki],
+            merged,
+            localOnly,
+            onlineOnly,
+            onlineWikiOnly,
+            onlineTagOnly,
+            noWiki
+        };
     }
 
     /**
@@ -5049,18 +5393,21 @@ class TagLookup {
      */
     async fetchAndSaveWikiForTag(tagId, tagTitle, sourceId) {
         // Allow fetching even if tagId is null (tag doesn't exist in database yet)
+        tagTitle = this.resolveBooruWikiTagName(tagTitle);
         if (!tagTitle || !this.db) {
             console.log(`[Wiki Fetch] Skipping fetch: tagId=${tagId}, tagTitle=${tagTitle}, db=${!!this.db}`);
             return { wikiId: null, body: null, fetchedOnline: false };
         }
         
+        const onlineTitle = tagTitle;
+
         // Check failed fetch cache (7 days)
-        const cacheKey = `${tagTitle}|${sourceId}`;
+        const cacheKey = `${onlineTitle}|${sourceId}`;
         const failedFetch = await this.getFailedFetchCache(cacheKey);
         if (failedFetch) {
             const daysSince = (Date.now() - failedFetch.timestamp) / (1000 * 60 * 60 * 24);
             if (daysSince < 7) {
-                console.log(`[Wiki Fetch] Skipping fetch for "${tagTitle}" - failed ${Math.floor(daysSince)} days ago (cache expires in ${Math.floor(7 - daysSince)} days)`);
+                console.log(`[Wiki Fetch] Skipping fetch for "${onlineTitle}" - failed ${Math.floor(daysSince)} days ago (cache expires in ${Math.floor(7 - daysSince)} days)`);
                 return { wikiId: null, body: null, fetchedOnline: false };
             } else {
                 // Cache expired, remove it
@@ -5069,7 +5416,7 @@ class TagLookup {
         }
         
         try {
-            console.log(`[Wiki Fetch] Fetching wiki for tag "${tagTitle}" from source ${sourceId === this.SOURCE_DANBOORU ? 'Danbooru' : 'e621'}`);
+            console.log(`[Wiki Fetch] Fetching wiki for tag "${onlineTitle}" from source ${sourceId === this.SOURCE_DANBOORU ? 'Danbooru' : 'e621'}`);
             
             // Fetch from API
             let apiResult = null;
@@ -5083,7 +5430,7 @@ class TagLookup {
             }
             
             if (!apiResult) {
-                console.log(`[Wiki Fetch] No API result for "${tagTitle}" from source ${sourceId}`);
+                console.log(`[Wiki Fetch] No API result for "${onlineTitle}" from source ${sourceId}`);
                 // Cache the failed fetch
                 await this.setFailedFetchCache(cacheKey);
                 return { wikiId: null, body: null, fetchedOnline: false };

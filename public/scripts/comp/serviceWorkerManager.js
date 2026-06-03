@@ -4,6 +4,17 @@ class ServiceWorkerManager {
         this.updateAvailable = false;
         this.updateProgress = 0;
         this.isUpdating = false;
+        this.lastUpdateCounts = { completed: 0, total: 0 };
+        this.lastUpdateFilesTotal = 0;
+        this.trayPopup = {
+            el: null,
+            anchorEl: null,
+            state: 'hidden', // hidden | checking | downloading | available | complete
+            dismissedUntilComplete: false,
+            progress: 0,
+            message: '',
+            filesTotal: 0
+        };
         this.messageHandlers = new Map();
         this.pendingRequests = new Map();
         this.updateToastId = null;
@@ -22,6 +33,260 @@ class ServiceWorkerManager {
         this.healthCheckStartTime = null;
 
         this.init();
+    }
+
+    _isDesktopTrayMode() {
+        return Boolean(window.isDesktop && document.body.classList.contains('desktop-mode'));
+    }
+
+    _getServiceWorkerTrayAnchor() {
+        const icon = document.getElementById('serviceWorkerTrayIcon');
+        return icon || null;
+    }
+
+    _ensureServiceWorkerTrayPopup() {
+        if (this.trayPopup.el) {
+            return;
+        }
+
+        const el = document.createElement('div');
+        el.className = 'popover arrow-bottom-right service-worker-tray-popup';
+        el.id = 'serviceWorkerUpdateTrayPopup';
+
+        // We control show/hide manually; do not rely on PopoverManager click toggles.
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+
+        document.body.appendChild(el);
+        this.trayPopup.el = el;
+
+        // Close on outside click (but never auto-dismiss otherwise).
+        document.addEventListener('click', (e) => {
+            if (!this.trayPopup.el || !this.trayPopup.el.classList.contains('show')) return;
+            if (this.trayPopup.el.contains(e.target)) return;
+            // Ignore clicks on the tray icon; close is only via explicit close button.
+        }, { passive: true });
+    }
+
+    _positionServiceWorkerTrayPopup() {
+        if (!this.trayPopup.el) return;
+        const anchor = this._getServiceWorkerTrayAnchor();
+        if (!anchor) return;
+
+        const popover = this.trayPopup.el;
+        const rect = anchor.getBoundingClientRect();
+
+        // Show temporarily for sizing.
+        const wasHidden = !popover.classList.contains('show');
+        if (wasHidden) {
+            popover.style.visibility = 'hidden';
+            popover.style.opacity = '0';
+            popover.classList.add('show');
+        }
+
+        const popoverRect = popover.getBoundingClientRect();
+        const arrowOffset = 18;
+        const arrowRightOffset = parseFloat(getComputedStyle(popover).fontSize) || 16;
+
+        let top = rect.top - popoverRect.height - arrowOffset;
+        let left = rect.right - popoverRect.width + arrowRightOffset;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const padding = 8;
+
+        if (left < padding) left = padding;
+        if (left + popoverRect.width > viewportWidth - padding) left = viewportWidth - popoverRect.width - padding;
+        if (top < padding) top = padding;
+        if (top + popoverRect.height > viewportHeight - padding) top = viewportHeight - popoverRect.height - padding;
+
+        // Match PopoverManager’s visual alignment tweak.
+        left -= 10;
+
+        popover.style.top = `${top}px`;
+        popover.style.left = `${left}px`;
+
+        if (wasHidden) {
+            popover.classList.remove('show');
+            popover.style.visibility = '';
+            popover.style.opacity = '';
+        }
+    }
+
+    _hideServiceWorkerTrayPopup() {
+        if (!this.trayPopup.el) return;
+        this.trayPopup.el.classList.remove('show');
+        this.trayPopup.state = 'hidden';
+    }
+
+    _renderServiceWorkerTrayPopup() {
+        this._ensureServiceWorkerTrayPopup();
+        const popover = this.trayPopup.el;
+        const state = this.trayPopup.state;
+
+        const titleByState = {
+            checking: 'Checking for updates',
+            available: 'Updates available',
+            downloading: 'Downloading updates',
+            complete: 'Updates complete'
+        };
+
+        const showProgress = state === 'downloading';
+        const progressVal = Math.max(0, Math.min(100, Math.round(this.trayPopup.progress || 0)));
+
+        const message = this.trayPopup.message || '';
+        const filesTotal = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
+        const headerTitle = titleByState[state] || 'Service Worker';
+
+        const wrap = document.createElement('div');
+        wrap.className = 'popover-content';
+
+        const header = document.createElement('div');
+        header.className = 'popover-header';
+        header.innerHTML = `<i class="fa-regular fa-laptop-arrow-down"></i><span>${headerTitle}</span>`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'context-menu-icon-btn service-worker-tray-popup-close';
+        closeBtn.title = 'Close';
+        closeBtn.innerHTML = '<i class="fa-regular fa-xmark"></i>';
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.trayPopup.state === 'downloading') {
+                this.trayPopup.dismissedUntilComplete = true;
+            }
+            this._hideServiceWorkerTrayPopup();
+        });
+
+        const headerRow = document.createElement('div');
+        headerRow.className = 'service-worker-tray-popup-header-row';
+        headerRow.appendChild(header);
+        headerRow.appendChild(closeBtn);
+        wrap.appendChild(headerRow);
+
+        const body = document.createElement('div');
+        body.className = 'popover-body';
+
+        if (state === 'available') {
+            body.innerHTML = message || 'Resource updates are available.';
+        } else if (state === 'downloading') {
+            body.innerHTML = filesTotal > 0
+                ? `Downloading ${filesTotal} files…`
+                : (message || 'Downloading updates…');
+        } else if (state === 'checking') {
+            body.innerHTML = message || 'Scanning for available updates…';
+        } else if (state === 'complete') {
+            const count = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
+            body.innerHTML = `Completed updating ${count} files. Restart to apply changes.`;
+        } else {
+            body.innerHTML = message;
+        }
+
+        wrap.appendChild(body);
+
+        if (showProgress) {
+            const progressWrap = document.createElement('div');
+            progressWrap.className = 'service-worker-tray-popup-progress-wrap';
+
+            const bar = document.createElement('div');
+            bar.setAttribute('role', 'progressbar');
+            bar.className = 'animate';
+
+            const fill = document.createElement('div');
+            fill.style.width = `${progressVal}%`;
+            bar.appendChild(fill);
+            progressWrap.appendChild(bar);
+            wrap.appendChild(progressWrap);
+        }
+
+        if (state === 'available') {
+            const actions = document.createElement('div');
+            actions.className = 'service-worker-tray-popup-actions';
+
+            const laterBtn = document.createElement('button');
+            laterBtn.type = 'button';
+            laterBtn.className = 'btn-standard btn-small';
+            laterBtn.textContent = 'Later';
+            laterBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._hideServiceWorkerTrayPopup();
+            });
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.type = 'button';
+            downloadBtn.className = 'btn-standard btn-small';
+            downloadBtn.textContent = 'Download now';
+            downloadBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._hideServiceWorkerTrayPopup();
+                this.checkStaticFileUpdates(false);
+            });
+
+            actions.appendChild(downloadBtn);
+            actions.appendChild(laterBtn);
+            wrap.appendChild(actions);
+        }
+
+        if (state === 'complete') {
+            const actions = document.createElement('div');
+            actions.className = 'service-worker-tray-popup-actions';
+
+            const laterBtn = document.createElement('button');
+            laterBtn.type = 'button';
+            laterBtn.className = 'btn-standard btn-small';
+            laterBtn.textContent = 'Later';
+            laterBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._hideServiceWorkerTrayPopup();
+            });
+
+            const restartBtn = document.createElement('button');
+            restartBtn.type = 'button';
+            restartBtn.className = 'btn-standard btn-small';
+            restartBtn.textContent = 'Restart';
+            restartBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.forceRestart();
+            });
+
+            actions.appendChild(restartBtn);
+            actions.appendChild(laterBtn);
+            wrap.appendChild(actions);
+        }
+
+        popover.innerHTML = '';
+        popover.appendChild(wrap);
+    }
+
+    _showServiceWorkerTrayPopup(nextState, { message = '', progress = null, filesTotal = null } = {}) {
+        if (!this._isDesktopTrayMode()) {
+            return false;
+        }
+
+        if (nextState === 'downloading' && this.trayPopup.dismissedUntilComplete) {
+            // Stay hidden until completion.
+            this.trayPopup.state = 'hidden';
+            return false;
+        }
+
+        this.trayPopup.anchorEl = this._getServiceWorkerTrayAnchor();
+        if (!this.trayPopup.anchorEl) return false;
+
+        this.trayPopup.state = nextState;
+        if (typeof message === 'string') this.trayPopup.message = message;
+        if (progress !== null) this.trayPopup.progress = progress;
+        if (filesTotal !== null) this.trayPopup.filesTotal = filesTotal;
+
+        this._renderServiceWorkerTrayPopup();
+        this._positionServiceWorkerTrayPopup();
+        this.trayPopup.el.classList.add('show');
+        return true;
     }
     
     async init() {
@@ -501,11 +766,10 @@ class ServiceWorkerManager {
     }
     
     showCheckingForUpdatesToast() {
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
-            window.wsClient.showWindowsUpdateModal('Checking for Updates', 0);
-            window.wsClient.updateWindowsUpdateModal('Scanning for available updates...', 0);
-            this.checkingToastId = 'windows-update-modal'; // Mark as using modal
+        // Desktop mode: use tray popup
+        if (this._isDesktopTrayMode()) {
+            this._showServiceWorkerTrayPopup('checking', { message: 'Scanning for available updates…', progress: 0 });
+            this.checkingToastId = 'service-worker-tray-popup';
         } else {
             // Non-desktop mode: use toast
             if (typeof showGlassToast === 'function') {
@@ -594,19 +858,12 @@ class ServiceWorkerManager {
         this.isUpdating = true;
         this.updateProgress = 0;
 
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
-            if (this.checkingToastId === 'windows-update-modal') {
-                // Update existing modal
-                window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
-                this.updateToastId = 'windows-update-modal';
-                this.checkingToastId = null;
-            } else {
-                // Show new modal
-                window.wsClient.showWindowsUpdateModal('Downloading Updates', 0);
-                window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
-                this.updateToastId = 'windows-update-modal';
-            }
+        // Desktop mode: tray popup
+        if (this._isDesktopTrayMode()) {
+            this.trayPopup.dismissedUntilComplete = false;
+            this._showServiceWorkerTrayPopup('downloading', { message: `Downloading ${files.length} files…`, progress: 0, filesTotal: files.length });
+            this.updateToastId = 'service-worker-tray-popup';
+            this.checkingToastId = null;
         } else {
             // Non-desktop mode: use toast
             if (this.checkingToastId && typeof updateGlassToastComplete === 'function') {
@@ -625,17 +882,10 @@ class ServiceWorkerManager {
     }
 
     showNoUpdatesFromChecking() {
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
-            if (this.checkingToastId === 'windows-update-modal') {
-                window.wsClient.updateWindowsUpdateModal('Your app is already up to date!', 100);
-                // Auto-hide after 3 seconds
-                setTimeout(() => {
-                    if (window.wsClient && window.wsClient.hideWindowsUpdateModal) {
-                        window.wsClient.hideWindowsUpdateModal();
-                    }
-                }, 3000);
-            }
+        // Desktop mode: tray popup (auto-hide after short delay)
+        if (this._isDesktopTrayMode()) {
+            this._showServiceWorkerTrayPopup('checking', { message: 'Your app is already up to date!', progress: 100 });
+            setTimeout(() => this._hideServiceWorkerTrayPopup(), 2200);
             this.checkingToastId = null;
         } else {
             // Non-desktop mode: use toast
@@ -655,11 +905,10 @@ class ServiceWorkerManager {
     }
 
     showCacheUpdateErrorFromChecking(error) {
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
-            if (this.checkingToastId === 'windows-update-modal') {
-                window.wsClient.updateWindowsUpdateModal('Failed to check for updates. Please try again.', 0);
-            }
+        // Desktop mode: tray popup (auto-hide)
+        if (this._isDesktopTrayMode()) {
+            this._showServiceWorkerTrayPopup('checking', { message: 'Failed to check for updates. Please try again.', progress: 0 });
+            setTimeout(() => this._hideServiceWorkerTrayPopup(), 3500);
             this.checkingToastId = null;
         } else {
             // Non-desktop mode: use toast
@@ -679,7 +928,7 @@ class ServiceWorkerManager {
 
     showUpdateToast(files) {
         // Hide checking toast if it exists
-        if (this.checkingToastId && this.checkingToastId !== 'windows-update-modal' && typeof removeGlassToast === 'function') {
+        if (this.checkingToastId && this.checkingToastId !== 'service-worker-tray-popup' && typeof removeGlassToast === 'function') {
             removeGlassToast(this.checkingToastId);
             this.checkingToastId = null;
         }
@@ -688,11 +937,11 @@ class ServiceWorkerManager {
         this.isUpdating = true;
         this.updateProgress = 0;
 
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateModal) {
-            window.wsClient.showWindowsUpdateModal('Downloading Updates', 0);
-            window.wsClient.updateWindowsUpdateModal(`Downloading ${files.length} updates...`, 0);
-            this.updateToastId = 'windows-update-modal';
+        // Desktop mode: tray popup
+        if (this._isDesktopTrayMode()) {
+            this.trayPopup.dismissedUntilComplete = false;
+            this._showServiceWorkerTrayPopup('downloading', { message: `Downloading ${files.length} files…`, progress: 0, filesTotal: files.length });
+            this.updateToastId = 'service-worker-tray-popup';
         } else {
             // Non-desktop mode: use toast
             if (typeof showGlassToast === 'function') {
@@ -711,12 +960,11 @@ class ServiceWorkerManager {
     
     updateProgressToast(progress) {
         this.updateProgress = progress;
-        
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.updateWindowsUpdateModal) {
-            if (this.updateToastId === 'windows-update-modal') {
-                const message = `Downloading updates... ${Math.round(progress)}%`;
-                window.wsClient.updateWindowsUpdateModal(message, progress);
+
+        // Desktop mode: tray popup
+        if (this._isDesktopTrayMode()) {
+            if (this.updateToastId === 'service-worker-tray-popup') {
+                this._showServiceWorkerTrayPopup('downloading', { progress: progress });
             }
         } else {
             // Non-desktop mode: use toast
@@ -727,10 +975,10 @@ class ServiceWorkerManager {
     }
     
     hideUpdateToast() {
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.hideWindowsUpdateModal) {
-            if (this.updateToastId === 'windows-update-modal') {
-                window.wsClient.hideWindowsUpdateModal();
+        // Desktop mode: tray popup
+        if (this._isDesktopTrayMode()) {
+            if (this.updateToastId === 'service-worker-tray-popup') {
+                this._hideServiceWorkerTrayPopup();
             }
         } else {
             // Non-desktop mode: use toast
@@ -918,9 +1166,12 @@ class ServiceWorkerManager {
         
         switch (type) {
             case 'STATIC_CACHE_STARTED':
+                this.updateAvailable = true;
                 this.isUpdating = true;
                 this.updateProgress = 0;
                 this.lastProgressUpdate = Date.now();
+                this.lastUpdateCounts = { completed: 0, total: event.data.total || 0 };
+                this.lastUpdateFilesTotal = event.data.total || 0;
                 console.log('Service worker started downloading updates');
                 // Clear any stall detection timeout
                 if (this.stallDetectionTimeout) {
@@ -937,6 +1188,8 @@ class ServiceWorkerManager {
                 const progress = Math.round((completed / total) * 100);
                 this.updateProgress = progress;
                 this.lastProgressUpdate = Date.now();
+                this.lastUpdateCounts = { completed: completed || 0, total: total || 0 };
+                this.lastUpdateFilesTotal = total || this.lastUpdateFilesTotal || 0;
                 this.updateProgressToast(progress);
                 
                 console.log(`Progress update: ${completed}/${total} (${progress}%)`);
@@ -963,6 +1216,7 @@ class ServiceWorkerManager {
                 this.isUpdating = false;
                 this.updateProgress = 100;
                 this.updateProgressToast(100);
+                this.lastUpdateCounts = { completed: event.data.completed || 0, total: event.data.total || 0 };
                 
                 // Stop periodic state checking
                 this.stopPeriodicStateCheck();
@@ -985,6 +1239,8 @@ class ServiceWorkerManager {
                 // Use files.length as fallback if total is 0 (handles race condition)
                 const filesCount = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
                 if (filesCount > 0) {
+                    this.trayPopup.dismissedUntilComplete = false;
+                    this.trayPopup.filesTotal = filesCount;
                     // Show completion message with restart button
                     setTimeout(() => {
                         this.showUpdateCompleteToast();
@@ -1759,73 +2015,6 @@ class ServiceWorkerManager {
             let skipRequested = false;
             let downloadCompleted = false;
 
-            // Setup update UI based on desktop mode
-            if (window.isDesktop && window.wsClient) {
-                // Desktop mode: use update modal
-                window.wsClient.showWindowsUpdateModal('Checking for updates...', 0);
-                
-                // Setup callbacks for update modal buttons
-                window.wsClient.setUpdateModalCallbacks(
-                    // Skip callback
-                    () => {
-                        console.log('User chose to skip update download during startup');
-                        skipRequested = true;
-                        if (window.wsClient) {
-                            window.wsClient.hideWindowsUpdateModal();
-                        }
-                        // Show the normal update toast
-                        this.showUpdateToast(files);
-                        // Resolve immediately when skipped
-                        if (!downloadCompleted) {
-                            downloadCompleted = true;
-                            resolve({ success: false, skipped: true });
-                        }
-                    },
-                    // Restart callback
-                    () => {
-                        console.log('User chose to restart after update during startup');
-                        this.forceRestart();
-                    },
-                    // Later callback
-                    () => {
-                        console.log('User chose to skip restart after update during startup');
-                        if (window.wsClient) {
-                            window.wsClient.hideWindowsUpdateModal();
-                        }
-                        resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'skip' });
-                    }
-                );
-            } else {
-                // Non-desktop mode: use toast with Skip button
-                if (window.wsClient && window.wsClient.progressToastId && typeof updateGlassToastButtons === 'function') {
-                    const skipButton = {
-                        text: 'Skip',
-                        type: 'secondary',
-                        onClick: () => {
-                            console.log('User chose to skip update download during startup');
-                            skipRequested = true;
-
-                            // Hide the progress notification buttons
-                            if (typeof updateGlassToastButtons === 'function') {
-                                updateGlassToastButtons(window.wsClient.progressToastId, []);
-                            }
-
-                            // Show the normal update toast
-                            this.showUpdateToast(files);
-
-                            // Resolve immediately when skipped
-                            if (!downloadCompleted) {
-                                downloadCompleted = true;
-                                resolve({ success: false, skipped: true });
-                            }
-                        },
-                        closeOnClick: false
-                    };
-
-                    updateGlassToastButtons(window.wsClient.progressToastId, [skipButton]);
-                }
-            }
-
             // Listen for progress updates
             const progressHandler = (event) => {
                 if (skipRequested || downloadCompleted) return; // Ignore if already handled
@@ -1834,17 +2023,7 @@ class ServiceWorkerManager {
                     // Download started
                     console.log('Download started in service worker');
                 } else if (event.data.type === 'STATIC_CACHE_PROGRESS') {
-                    const progress = Math.round((event.data.completed / event.data.total) * 100);
-                    // Update progress notification
-                    if (window.wsClient) {
-                        if (window.isDesktop) {
-                            // Desktop mode: use update modal
-                            window.wsClient.updateWindowsUpdateModal(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress);
-                        } else {
-                            // Non-desktop mode: use startup progress
-                            window.wsClient.updateProgressNotification(`Downloading updates... (${event.data.completed}/${event.data.total})`, progress);
-                        }
-                    }
+                    // UI is handled by the service worker tray popup (desktop) or existing startup UI (mobile).
                 } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
                     // Use files.length as fallback if total is 0 (handles race condition with fast downloads)
                     updatesDownloaded = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
@@ -1854,15 +2033,6 @@ class ServiceWorkerManager {
                     this.isUpdating = false;
                     this.updateProgress = 100;
 
-                    if (window.wsClient) {
-                        if (window.isDesktop) {
-                            // Desktop mode: use update modal
-                            window.wsClient.updateWindowsUpdateModal('Downloading updates...', 100);
-                        } else {
-                            // Non-desktop mode: use startup progress
-                            window.wsClient.updateProgressNotification(`Downloading updates...`, 100);
-                        }
-                    }
                     if (!skipRequested && !downloadCompleted) {
                         downloadCompleted = true;
                         console.log(`Update download completed with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
@@ -1874,28 +2044,9 @@ class ServiceWorkerManager {
                             // Use actual files count if we have it
                             const actualFilesCount = event.data.files ? event.data.files.length : updatesDownloaded;
                             updatesDownloaded = actualFilesCount;
-                            
-                            if (window.isDesktop && window.wsClient) {
-                                // Desktop mode: show restart prompt in update modal
-                                // Update the Later callback to resolve with user choice
-                                window.wsClient.setUpdateModalCallbacks(
-                                    window.wsClient.onUpdateSkip,
-                                    window.wsClient.onUpdateRestart,
-                                    () => {
-                                        console.log('User chose to skip restart after update during startup');
-                                        if (window.wsClient) {
-                                            window.wsClient.hideWindowsUpdateModal();
-                                        }
-                                        resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'skip' });
-                                    }
-                                );
-                                window.wsClient.showWindowsUpdateRestartPrompt('Updates have been installed. Restart is required.');
-                            } else {
-                                // Non-desktop mode: use existing toast buttons
-                                this.showRestartSkipButtonsForInit((choice) => {
-                                    resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: choice.action });
-                                });
-                            }
+
+                            // The tray completion popup prompts restart/later. Continue init regardless.
+                            resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'later' });
                         } else {
                             // No files downloaded or had errors - resolve but don't show restart buttons
                             resolve({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
@@ -1909,6 +2060,11 @@ class ServiceWorkerManager {
             };
 
             navigator.serviceWorker.addEventListener('message', progressHandler);
+
+            // Desktop mode: show tray popup immediately for init downloads.
+            if (this._isDesktopTrayMode()) {
+                this.showUpdateToast(files);
+            }
 
             // Start caching
             this.swRegistration.active.postMessage({
@@ -2027,22 +2183,11 @@ class ServiceWorkerManager {
     
     // Show update complete toast with restart button
     showUpdateCompleteToast() {
-        // Desktop mode: use Windows Update Modal
-        if (window.isDesktop && window.wsClient && window.wsClient.showWindowsUpdateRestartPrompt) {
-            if (this.updateToastId === 'windows-update-modal') {
-                window.wsClient.showWindowsUpdateRestartPrompt('Updates have been downloaded. Restart to apply changes.');
-                window.wsClient.setUpdateModalCallbacks(
-                    null, // Skip callback (not used for restart prompt)
-                    () => {
-                        console.log('Restart requested by user');
-                        this.forceRestart();
-                    },
-                    () => {
-                        console.log('User chose to restart later');
-                        window.wsClient.hideWindowsUpdateModal();
-                    }
-                );
-            }
+        // Desktop mode: tray popup completion prompt
+        if (this._isDesktopTrayMode()) {
+            const filesTotal = this.trayPopup.filesTotal || this.lastUpdateFilesTotal || 0;
+            this._showServiceWorkerTrayPopup('complete', { filesTotal, progress: 100 });
+            this.updateToastId = 'service-worker-tray-popup';
         } else {
             // Non-desktop mode: use toast
             if (this.updateToastId && typeof updateGlassToastButtons === 'function') {
@@ -2100,6 +2245,17 @@ class ServiceWorkerManager {
             console.error('❌ Error during force restart:', error);
             alert('Restart failed. Please refresh the page manually to apply updates.');
         }
+    }
+
+    showUpdateAvailableTrayPrompt(message) {
+        if (!this._isDesktopTrayMode()) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('info', null, message || 'Updates are available.', false, 8000, '<i class="fas fa-download"></i>');
+            }
+            return;
+        }
+        this.trayPopup.dismissedUntilComplete = false;
+        this._showServiceWorkerTrayPopup('available', { message: message || 'Resource updates are available.' });
     }
 }
 

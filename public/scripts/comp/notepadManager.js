@@ -48,6 +48,10 @@ class NotepadManager {
         this.notebookTextarea = null;
         this.notebookTitleElement = null;
         this.notebookCurrentNote = null;
+        this.notebookCurrentWorkspace = null;
+
+        // Open note dialog state
+        this.openNoteSelectedWorkspace = null;
 
         // Notes metadata cache (global - all notes from all workspaces)
         this.notesMetadataCache = new Map(); // noteId -> noteData (includes workspaceId in data)
@@ -69,11 +73,27 @@ class NotepadManager {
         // Get open note modal elements
         this.openNoteModal = document.getElementById('openNoteModal');
         this.openNoteList = document.getElementById('openNoteList');
+        this.openNoteLayout = document.getElementById('openNoteLayout');
+        this.openNoteWorkspaceList = document.getElementById('openNoteWorkspaceList');
+        this.openNoteSidebarBackdrop = document.getElementById('openNoteSidebarBackdrop');
         const closeOpenNoteModalBtn = document.getElementById('closeOpenNoteModalBtn');
+        const openNoteSidebarToggleBtn = document.getElementById('openNoteSidebarToggleBtn');
 
         if (closeOpenNoteModalBtn) {
             closeOpenNoteModalBtn.addEventListener('click', () => {
                 closeModal(this.openNoteModal);
+            });
+        }
+
+        if (openNoteSidebarToggleBtn) {
+            openNoteSidebarToggleBtn.addEventListener('click', () => {
+                this.toggleOpenNoteSidebar();
+            });
+        }
+
+        if (this.openNoteSidebarBackdrop) {
+            this.openNoteSidebarBackdrop.addEventListener('click', () => {
+                this.closeOpenNoteSidebar();
             });
         }
 
@@ -103,6 +123,9 @@ class NotepadManager {
 
         // Save pending changes before page unload
         window.addEventListener('beforeunload', (e) => {
+            if (typeof bypassConfirmation !== 'undefined' && bypassConfirmation) {
+                return;
+            }
             const hasUnsaved = Array.from(this.notepads.values()).some(n => n.hasUnsavedChanges)
                 || this.notebookHasUnsavedChanges;
             if (hasUnsaved) {
@@ -562,36 +585,14 @@ class NotepadManager {
         }
 
         try {
-            const workspaceId = activeWorkspace || 'default';
-
-            // Use cached notes metadata instead of making server call
-            const notes = await this.getNotesSortedByName(workspaceId);
-
-            if (notes.length === 0) {
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('info', 'No notes found', 'No notes in this workspace', false, 3000, '<i class="fas fa-info-circle"></i>');
-                }
-                return;
+            if (!this.notesMetadataCacheLoaded) {
+                await this.loadNotesMetadataCache();
             }
 
-            // Populate note list
-            this.openNoteList.innerHTML = notes.map(note => `
-                <div class="note-selection-item" data-note-id="${note.id}" style="background: linear-gradient(135deg, color-mix(in srgb, ${note.color} 15%, var(--glass-layer-3)) 0%, var(--glass-layer-3) 100%);">
-                    <i class="${this.escapeHtml(note.icon)}" style="color: ${note.color};"></i>
-                    <span class="note-name">${this.escapeHtml(note.name)}</span>
-                </div>
-            `).join('');
-
-            // Add click handlers
-            this.openNoteList.querySelectorAll('.note-selection-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const noteId = item.getAttribute('data-note-id');
-                    this.openExistingNote(noteId);
-                    closeModal(this.openNoteModal);
-                });
-            });
-
-            // Show modal
+            this.openNoteSelectedWorkspace = activeWorkspace || 'default';
+            this.closeOpenNoteSidebar();
+            await this.renderOpenNoteWorkspaceList();
+            await this.renderOpenNoteList(this.openNoteSelectedWorkspace);
             openModal(this.openNoteModal);
         } catch (error) {
             console.error('Error loading notes:', error);
@@ -599,6 +600,86 @@ class NotepadManager {
                 showGlassToast('error', 'Failed to load notes', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }
         }
+    }
+
+    getSortedWorkspacesList() {
+        const workspacesData = workspaces || {};
+        return Object.values(workspacesData).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    }
+
+    async renderOpenNoteWorkspaceList() {
+        if (!this.openNoteWorkspaceList) return;
+
+        const workspacesList = this.getSortedWorkspacesList();
+        const selectedId = this.openNoteSelectedWorkspace;
+
+        this.openNoteWorkspaceList.innerHTML = workspacesList.map(ws => {
+            const noteCount = Array.from(this.notesMetadataCache.values())
+                .filter(note => note.workspaceId === ws.id).length;
+            return `
+                <div class="open-note-workspace-item${ws.id === selectedId ? ' active' : ''}"
+                    data-workspace-id="${ws.id}">
+                    <div class="workspace-color-indicator" style="background-color: ${ws.color || '#102040'}"></div>
+                    <span class="workspace-name">${this.escapeHtml(ws.name)}</span>
+                    <span class="open-note-workspace-count">${noteCount}</span>
+                </div>
+            `;
+        }).join('');
+
+        this.openNoteWorkspaceList.querySelectorAll('.open-note-workspace-item').forEach(item => {
+            item.addEventListener('click', async () => {
+                const workspaceId = item.getAttribute('data-workspace-id');
+                if (workspaceId === this.openNoteSelectedWorkspace) {
+                    this.closeOpenNoteSidebar();
+                    return;
+                }
+                this.openNoteSelectedWorkspace = workspaceId;
+                await this.renderOpenNoteWorkspaceList();
+                await this.renderOpenNoteList(workspaceId);
+                this.closeOpenNoteSidebar();
+            });
+        });
+    }
+
+    async renderOpenNoteList(workspaceId) {
+        if (!this.openNoteList) return;
+
+        const notes = await this.getNotesSortedByName(workspaceId);
+
+        if (notes.length === 0) {
+            this.openNoteList.innerHTML = `
+                <div class="open-note-empty-state">
+                    <i class="fas fa-file-lines"></i>
+                    <p>No notes in this workspace</p>
+                </div>
+            `;
+            return;
+        }
+
+        this.openNoteList.innerHTML = notes.map(note => `
+            <div class="note-selection-item" data-note-id="${note.id}" style="background: linear-gradient(135deg, color-mix(in srgb, ${note.color} 15%, var(--glass-layer-3)) 0%, var(--glass-layer-3) 100%);">
+                <i class="${this.escapeHtml(note.icon)}" style="color: ${note.color};"></i>
+                <span class="note-name">${this.escapeHtml(note.name)}</span>
+            </div>
+        `).join('');
+
+        this.openNoteList.querySelectorAll('.note-selection-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const noteId = item.getAttribute('data-note-id');
+                this.openExistingNote(noteId);
+                closeModal(this.openNoteModal);
+            });
+        });
+    }
+
+    toggleOpenNoteSidebar() {
+        if (!this.openNoteLayout) return;
+        this.openNoteLayout.classList.toggle('sidebar-open');
+    }
+
+    closeOpenNoteSidebar() {
+        if (!this.openNoteLayout) return;
+        this.openNoteLayout.classList.remove('sidebar-open');
     }
 
     // Show update note modal
@@ -894,6 +975,57 @@ class NotepadManager {
                 this.notebookRefreshNotesList();
             }
         });
+
+        this.setupNotebookWorkspaceDropdown();
+    }
+
+    setupNotebookWorkspaceDropdown() {
+        const dropdown = document.getElementById('notebookWorkspaceDropdown');
+        const button = document.getElementById('notebookWorkspaceDropdownBtn');
+        const menu = document.getElementById('notebookWorkspaceDropdownMenu');
+        const selected = document.getElementById('notebookWorkspaceSelected');
+
+        if (!dropdown || !button || !menu) return;
+
+        // setupWorkspaceDropdown — public/scripts/comp/referenceManager.js
+        setupWorkspaceDropdown({
+            dropdown,
+            button,
+            menu,
+            selected,
+            getCurrentWorkspace: () => this.notebookCurrentWorkspace || activeWorkspace || 'default',
+            onWorkspaceChange: async (workspace) => {
+                if (workspace.id === this.notebookCurrentWorkspace) return;
+
+                const shouldContinue = await this.checkUnsavedChanges(
+                    this.notebookHasUnsavedChanges && this.notebookCurrentNote,
+                    () => this.notebookSaveCurrentNote()
+                );
+                if (!shouldContinue) return;
+
+                this.notebookCurrentWorkspace = workspace.id;
+                this.notebookCurrentNote = null;
+                this.notebookTextarea.value = '';
+                this.notebookHasUnsavedChanges = false;
+                this.notebookUpdateTitle();
+                this.notebookUpdateSaveButton();
+
+                if (selected) {
+                    selected.textContent = workspace.name;
+                }
+
+                await this.notebookRefreshNotesList();
+            }
+        });
+    }
+
+    updateNotebookWorkspaceDisplay() {
+        const selected = document.getElementById('notebookWorkspaceSelected');
+        const workspaceId = this.notebookCurrentWorkspace || activeWorkspace || 'default';
+        const workspace = workspaces && workspaces[workspaceId];
+        if (selected && workspace) {
+            selected.textContent = workspace.name;
+        }
     }
 
     // Open notebook modal
@@ -902,6 +1034,8 @@ class NotepadManager {
             console.error('Notebook modal not initialized');
             return;
         }
+        this.notebookCurrentWorkspace = activeWorkspace || 'default';
+        this.updateNotebookWorkspaceDisplay();
         await this.notebookRefreshNotesList();
         this.notebookUpdateSaveButton();
         openModal(this.notebookModal);
@@ -1322,7 +1456,7 @@ class NotepadManager {
      */
     async createNote(name, content = '') {
         const noteId = this.generateUUID();
-        const workspaceId = activeWorkspace || 'default';
+        const workspaceId = this.notebookCurrentWorkspace || activeWorkspace || 'default';
 
         const response = await wsClient.createNote({
             id: noteId,
@@ -1368,7 +1502,7 @@ class NotepadManager {
      * @returns {Promise<Array>} - Array of notes metadata
      */
     async getNotesByWorkspace() {
-        const workspaceId = activeWorkspace || 'default';
+        const workspaceId = this.notebookCurrentWorkspace || activeWorkspace || 'default';
 
         // Use cached metadata (will load cache if needed)
         const notesMap = await this.getNotesMetadata(workspaceId);
@@ -1626,7 +1760,7 @@ class Notepad {
                 }
 
                 const noteId = this.manager.generateUUID();
-                const targetWorkspace = this.manager.currentWorkspace || 'default';
+                const targetWorkspace = activeWorkspace || 'default';
 
                 const response = await wsClient.createNote({
                     id: noteId,

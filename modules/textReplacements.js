@@ -236,7 +236,7 @@ class TextReplacements {
             ? this.globalResources.getNaxTagsDatabase()
             : null;
         if (naxDb) {
-            result = result.replace(/!NAX_(FAV|TRY)_([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g, (match, kind, keyPart) => {
+            result = result.replace(/!NAX_(FAV|TRY|ANY)_([a-zA-Z0-9_]+)(?=[,\s|\[\]{}:]|$)/g, (match, kind, keyPart) => {
                 const presetId = String(keyPart || '').trim().toUpperCase();
                 const lockKey = `NAX_${kind}_${presetId}`;
 
@@ -257,6 +257,7 @@ class TextReplacements {
                 let naxGallerySlug = null;
                 let resolvedPresetId = presetId;
                 let isLocked = false;
+                let canResolve = true;
 
                 if (patternLocked) {
                     formatted = naxDb.formatLockedNaxExpander(patternLocked);
@@ -264,6 +265,7 @@ class TextReplacements {
                     naxGallerySlug = patternLocked.nax_gallery_slug || null;
                     resolvedPresetId = patternLocked.nax_preset_id || presetId;
                     isLocked = true;
+                    canResolve = patternLocked.can_resolve !== false;
                 } else {
                     const resolved = naxDb.resolveNaxInternalExpander(presetId, kind, model);
                     if (!resolved) return '';
@@ -271,6 +273,9 @@ class TextReplacements {
                     naxTag = resolved.tag;
                     naxGallerySlug = resolved.gallerySlug;
                     resolvedPresetId = resolved.presetId;
+                    if (typeof naxDb.canResolveNaxInternalExpander === 'function') {
+                        canResolve = naxDb.canResolveNaxInternalExpander(presetId, kind, model);
+                    }
                 }
 
                 if (!formatted) return '';
@@ -287,7 +292,8 @@ class TextReplacements {
                     nax_tag: naxTag,
                     nax_gallery_slug: naxGallerySlug,
                     locked: isLocked,
-                    can_lock: true
+                    can_lock: true,
+                    can_resolve: canResolve
                 });
                 return formatted;
             });
@@ -1028,7 +1034,7 @@ class TextReplacements {
         }
         if (!this.globalResources) return [];
 
-        const naxPatternMatch = pattern.match(/^!NAX_(FAV|TRY)_([a-zA-Z0-9_]+)$/);
+        const naxPatternMatch = pattern.match(/^!NAX_(FAV|TRY|ANY)_([a-zA-Z0-9_]+)$/);
         if (naxPatternMatch) {
             const naxDb = this.globalResources.getNaxTagsDatabase
                 ? this.globalResources.getNaxTagsDatabase()

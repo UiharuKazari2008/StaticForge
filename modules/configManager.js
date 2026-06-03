@@ -536,6 +536,16 @@ class ConfigManager {
             case 'config':
                 return {
                     port: 9220,
+                    userGlobalSettings: {
+                        desktop: {
+                            autoLaunchWorkspace: true,
+                            liveWindowRepositioning: false,
+                            exitDesktopOnWorkspaceMaximise: false
+                        },
+                        naxt: {
+                            elevatePins: 0
+                        }
+                    },
                     selectedApiKeys: {
                         novelai: 0,
                         grok: 0,

@@ -48,6 +48,8 @@ const MODAL_DESKTOP_TOP_BIAS_PX = 18;
 const MODAL_MIN_VISIBLE_PX = 27;
 // Inset from work-area edges when opening/restoring/clamping window position
 const MODAL_EDGE_MARGIN_PX = 0;
+// WCO / Android: nudge maximized bounds up slightly so the window meets the caption (few px gap).
+const MODAL_MAXIMIZE_CAPTION_NUDGE_PX = 3;
 
 function getDesktopModalTopBias() {
     return window.isDesktop ? MODAL_DESKTOP_TOP_BIAS_PX : 0;
@@ -130,6 +132,14 @@ function isModalMaximized(modal) {
     return !!(modal && modal.classList.contains('modal-maximized'));
 }
 
+function getModalMaximizeCaptionNudgePx() {
+    if (document.documentElement.classList.contains('titlebar-android')
+        || document.documentElement.classList.contains('window-controls-overlay')) {
+        return MODAL_MAXIMIZE_CAPTION_NUDGE_PX;
+    }
+    return 0;
+}
+
 function captureModalLayoutState(modal) {
     if (!modal) {
         return null;
@@ -175,14 +185,14 @@ function maximizeModalToWorkArea(modal) {
     modal._preMaximizeLayout = captureModalLayoutState(modal);
     modal.classList.add('modal-maximized');
 
-    // Drop pixel-settled anchor so size/position updates apply (Lumen and other settled windows)
     clearModalPixelAnchor(modal);
 
     const workArea = getModalWorkAreaInnerBounds();
+    const nudge = getModalMaximizeCaptionNudgePx();
     modal.style.width = `${roundCssPixel(workArea.width)}px`;
-    modal.style.height = `${roundCssPixel(workArea.height)}px`;
+    modal.style.height = `${roundCssPixel(workArea.height + nudge)}px`;
     void modal.offsetHeight;
-    setModalOffsetsFromViewportTopLeft(modal, workArea.left, workArea.top);
+    setModalOffsetsFromViewportTopLeft(modal, workArea.left, workArea.top - nudge);
 
     modal.setAttribute('data-modal-moved', 'true');
     updateModalMaximizeButtonIcon(modal);
@@ -190,7 +200,6 @@ function maximizeModalToWorkArea(modal) {
         bubbles: false,
         detail: { modal }
     }));
-    debouncedSaveWindowPositions();
 }
 
 function restoreModalFromMaximize(modal) {
@@ -1402,7 +1411,8 @@ function handleModalDragEnd(e, draggedModal) {
 
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = draggedModal.classList.contains('transient');
-    if (!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier))) {
+    if ((!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier)))
+        && !draggedModal.classList.contains('modal-maximized')) {
         debouncedSaveWindowPositions();
     }
 }
@@ -1673,7 +1683,8 @@ function handleModalResizeEnd(e, resizedModal) {
 
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = resizedModal.classList.contains('transient');
-    if (!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier))) {
+    if ((!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier)))
+        && !resizedModal.classList.contains('modal-maximized')) {
         debouncedSaveWindowPositions();
     }
 }
@@ -2263,6 +2274,7 @@ function initializeGalleryWindow() {
 
     // Check and update gallery window mode based on viewport and preference
     updateGalleryWindowMode();
+    updateGalleryMaximizeButtonIcon();
 
     galleryWindow.addEventListener('modalResized', () => { updateGalleryGrid(true, true); }); // onlyIfChanged=true, updatePlaceholders=true
 
@@ -2553,7 +2565,18 @@ function updateGalleryWindowMode() {
 function maximizeGalleryWindow() {
     if (!galleryWindow) return;
 
-    // Toggle between windowed and maximized
+    if (galleryWindow.classList.contains('windowed') && !shouldExitDesktopOnWorkspaceMaximise()) {
+        if (isModalMaximized(galleryWindow)) {
+            restoreModalFromMaximize(galleryWindow);
+        } else {
+            maximizeModalToWorkArea(galleryWindow);
+        }
+        updateGalleryMaximizeButtonIcon();
+        updateGalleryGrid(true, true);
+        return;
+    }
+
+    // Toggle between windowed and maximized (exit desktop)
     if (galleryWindow.classList.contains('windowed')) {
         // Switch to maximized mode
         galleryWindowPreference = 'maximized';
@@ -2567,6 +2590,7 @@ function maximizeGalleryWindow() {
             updateGalleryWindowMode();
         }
     }
+    updateGalleryMaximizeButtonIcon();
 }
 
 function toggleGalleryWindowMode() {
@@ -4872,6 +4896,13 @@ let desktopSettingsGlobalState = {
         } catch (e) {
             return false;
         }
+    })(),
+    exitDesktopOnWorkspaceMaximise: (() => {
+        try {
+            return localStorage.getItem('exitDesktopOnWorkspaceMaximise') === 'true';
+        } catch (e) {
+            return false;
+        }
     })()
 };
 
@@ -4994,13 +5025,15 @@ function readDesktopSettingsAutoLaunchPreference() {
     }
 }
 
+function updateDesktopSettingsGlobalToggleUI(btn, on) {
+    if (!btn) return;
+    btn.dataset.state = on ? 'on' : 'off';
+}
+
 function updateDesktopSettingsAutoLaunchToggleUI(autoLaunch) {
     const btn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
     if (!btn) return;
-
-    const on = autoLaunch !== false;
-    btn.dataset.state = on ? 'on' : 'off';
-    btn.textContent = on ? 'On' : 'Off';
+    updateDesktopSettingsGlobalToggleUI(btn, autoLaunch !== false);
 }
 
 function readDesktopSettingsLiveWindowRepositioningPreference() {
@@ -5011,13 +5044,48 @@ function readDesktopSettingsLiveWindowRepositioningPreference() {
     }
 }
 
-function updateDesktopSettingsLiveWindowRepositioningToggleUI(enabled) {
+function readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference() {
+    try {
+        return localStorage.getItem('exitDesktopOnWorkspaceMaximise') === 'true';
+    } catch (e) {
+        return false;
+    }
+}
+
+function shouldExitDesktopOnWorkspaceMaximise() {
+    return desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise === true;
+}
+
+function updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsExitDesktopOnWorkspaceMaximiseBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
+}
+
+function updateGalleryMaximizeButtonIcon() {
+    if (!galleryWindow) return;
+    const btn = document.getElementById('maximizeGalleryBtn');
+    if (!btn) return;
+    const icon = btn.querySelector('i');
+    if (!icon) return;
+    const workAreaMax = galleryWindow.classList.contains('windowed')
+        && !shouldExitDesktopOnWorkspaceMaximise()
+        && isModalMaximized(galleryWindow);
+    const fullscreenMax = !galleryWindow.classList.contains('windowed');
+    if (workAreaMax || fullscreenMax) {
+        icon.className = 'fa-regular fa-window-restore';
+        btn.title = 'Restore window';
+    } else {
+        icon.className = 'fa-regular fa-window-maximize';
+        btn.title = 'Maximize';
+    }
+}
+
+function updateDesktopSettingsLiveWindowRepositioningToggleUI(previewModeEnabled) {
     const btn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
     if (!btn) return;
-
-    const on = enabled === true;
-    btn.dataset.state = on ? 'on' : 'off';
-    btn.textContent = on ? 'On' : 'Off';
+    // Stored value is preview mode; toggle ON means live repositioning (direct drag).
+    updateDesktopSettingsGlobalToggleUI(btn, previewModeEnabled !== true);
 }
 
 function setLiveWindowRepositioningEnabled(enabled) {
@@ -5094,9 +5162,19 @@ function setupDesktopSettingsScopeToggle() {
     if (liveWindowRepositioningBtn) {
         liveWindowRepositioningBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const nextOn = liveWindowRepositioningBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.liveWindowRepositioning = nextOn;
-            updateDesktopSettingsLiveWindowRepositioningToggleUI(nextOn);
+            const nextLiveOn = liveWindowRepositioningBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.liveWindowRepositioning = !nextLiveOn;
+            updateDesktopSettingsLiveWindowRepositioningToggleUI(desktopSettingsGlobalState.liveWindowRepositioning);
+        });
+    }
+
+    const exitDesktopOnWorkspaceMaximiseBtn = document.getElementById('desktopSettingsExitDesktopOnWorkspaceMaximiseBtn');
+    if (exitDesktopOnWorkspaceMaximiseBtn) {
+        exitDesktopOnWorkspaceMaximiseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = exitDesktopOnWorkspaceMaximiseBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = nextOn;
+            updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(nextOn);
         });
     }
 
@@ -5209,6 +5287,8 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     desktopSettingsGlobalState.liveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
     updateDesktopSettingsLiveWindowRepositioningToggleUI(desktopSettingsGlobalState.liveWindowRepositioning);
     setLiveWindowRepositioningEnabled(desktopSettingsGlobalState.liveWindowRepositioning);
+    desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
+    updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise);
     setDesktopSettingsScope('workspace');
 
     // Initialize dropdowns and button handlers
@@ -5650,13 +5730,150 @@ async function saveDesktopSettings() {
     await saveDesktopWorkspaceSettings();
 }
 
+function normalizeNaxtElevatePinsClient(value) {
+    if (value === true || value === 'true') return 1;
+    const n = Number(value);
+    if (n === 1 || n === 2 || n === 3) return n;
+    return 0;
+}
+
+function buildUserGlobalSettingsSnapshotFromClient() {
+    let elevatePins = 0;
+    try {
+        const raw = localStorage.getItem('naxtElevatePins');
+        if (raw !== null && raw !== '') {
+            elevatePins = normalizeNaxtElevatePinsClient(raw);
+        } else if (localStorage.getItem('naxtElevateFavorites') === 'true') {
+            elevatePins = 1;
+        }
+    } catch (e) {
+        elevatePins = 0;
+    }
+    if (window.naxtApplet && typeof window.naxtApplet.elevatePins !== 'undefined') {
+        elevatePins = normalizeNaxtElevatePinsClient(window.naxtApplet.elevatePins);
+    }
+    return {
+        desktop: {
+            autoLaunchWorkspace: readDesktopSettingsAutoLaunchPreference(),
+            liveWindowRepositioning: readDesktopSettingsLiveWindowRepositioningPreference(),
+            exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference()
+        },
+        naxt: {
+            elevatePins
+        }
+    };
+}
+
+function applyUserGlobalSettingsToClient(settings) {
+    if (!settings || typeof settings !== 'object') {
+        return;
+    }
+
+    if (settings.desktop && typeof settings.desktop === 'object') {
+        const desktop = settings.desktop;
+        if (typeof desktop.autoLaunchWorkspace === 'boolean') {
+            desktopSettingsGlobalState.autoLaunchWorkspace = desktop.autoLaunchWorkspace;
+            try {
+                localStorage.setItem('dontAutoLaunchWorkspace', desktop.autoLaunchWorkspace ? 'false' : 'true');
+            } catch (e) {
+                /* */
+            }
+        }
+        if (typeof desktop.liveWindowRepositioning === 'boolean') {
+            desktopSettingsGlobalState.liveWindowRepositioning = desktop.liveWindowRepositioning;
+            try {
+                localStorage.setItem('liveWindowRepositioning', desktop.liveWindowRepositioning ? 'true' : 'false');
+            } catch (e) {
+                /* */
+            }
+            setLiveWindowRepositioningEnabled(desktop.liveWindowRepositioning);
+        }
+        if (typeof desktop.exitDesktopOnWorkspaceMaximise === 'boolean') {
+            desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = desktop.exitDesktopOnWorkspaceMaximise;
+            try {
+                localStorage.setItem('exitDesktopOnWorkspaceMaximise', desktop.exitDesktopOnWorkspaceMaximise ? 'true' : 'false');
+            } catch (e) {
+                /* */
+            }
+            updateGalleryMaximizeButtonIcon();
+        }
+    }
+
+    if (settings.naxt && typeof settings.naxt === 'object') {
+        let elevatePins = 0;
+        if (typeof settings.naxt.elevatePins !== 'undefined') {
+            elevatePins = normalizeNaxtElevatePinsClient(settings.naxt.elevatePins);
+        } else if (settings.naxt.elevateFavorites === true) {
+            elevatePins = 1;
+        }
+        try {
+            localStorage.setItem('naxtElevatePins', String(elevatePins));
+        } catch (e) {
+            /* */
+        }
+        if (window.naxtApplet) {
+            window.naxtApplet.elevatePins = elevatePins;
+            if (typeof window.naxtApplet.updateElevatePinsButton === 'function') {
+                window.naxtApplet.updateElevatePinsButton();
+            }
+        }
+    }
+}
+
+async function loadUserGlobalSettingsFromServer() {
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        return null;
+    }
+    try {
+        const data = await window.wsClient.sendMessage('get_user_global_settings', {}, false);
+        const settings = data && data.settings;
+        if (settings) {
+            applyUserGlobalSettingsToClient(settings);
+            window.userGlobalSettingsHydrated = true;
+        }
+        return settings || null;
+    } catch (e) {
+        console.error('get_user_global_settings', e);
+        return null;
+    }
+}
+
+async function persistUserGlobalSettingsPatch(patch) {
+    if (!patch || typeof patch !== 'object') {
+        return;
+    }
+    const snap = buildUserGlobalSettingsSnapshotFromClient();
+    if (patch.desktop && typeof patch.desktop === 'object') {
+        Object.assign(snap.desktop, patch.desktop);
+    }
+    if (patch.naxt && typeof patch.naxt === 'object') {
+        Object.assign(snap.naxt, patch.naxt);
+    }
+    applyUserGlobalSettingsToClient(snap);
+
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        return;
+    }
+    try {
+        await window.wsClient.sendMessage('update_user_global_settings', { settings: patch }, false);
+        window.userGlobalSettingsHydrated = true;
+    } catch (e) {
+        console.error('update_user_global_settings', e);
+        throw e;
+    }
+}
+
 async function saveDesktopGlobalSettings() {
     const autoLaunch = desktopSettingsGlobalState.autoLaunchWorkspace !== false;
     const liveWindowRepositioning = desktopSettingsGlobalState.liveWindowRepositioning === true;
+    const exitDesktopOnWorkspaceMaximise = desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise === true;
     const previousAutoLaunch = readDesktopSettingsAutoLaunchPreference();
     const previousLiveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
+    const previousExitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
 
-    if (autoLaunch === previousAutoLaunch && liveWindowRepositioning === previousLiveWindowRepositioning) {
+    if (autoLaunch === previousAutoLaunch
+        && liveWindowRepositioning === previousLiveWindowRepositioning
+        && exitDesktopOnWorkspaceMaximise === previousExitDesktopOnWorkspaceMaximise) {
         const modal = document.getElementById('desktopSettingsModal');
         closeModal(modal);
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
@@ -5664,9 +5881,13 @@ async function saveDesktopGlobalSettings() {
     }
 
     try {
-        localStorage.setItem('dontAutoLaunchWorkspace', autoLaunch ? 'false' : 'true');
-        localStorage.setItem('liveWindowRepositioning', liveWindowRepositioning ? 'true' : 'false');
-        setLiveWindowRepositioningEnabled(liveWindowRepositioning);
+        await persistUserGlobalSettingsPatch({
+            desktop: {
+                autoLaunchWorkspace: autoLaunch,
+                liveWindowRepositioning,
+                exitDesktopOnWorkspaceMaximise
+            }
+        });
     } catch (e) {
         console.error('Failed to save desktop global settings:', e);
         showGlassToast('error', 'Save Failed', 'Could not save startup settings', false, 4000, '<i class="fa-light fa-exclamation-triangle"></i>');
@@ -5966,6 +6187,11 @@ function saveWindowPositions() {
     allModals.forEach(modal => {
         // Skip if modal is hidden or doesn't have a title bar (not a window)
         if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt') || !modal.querySelector('.modal-window-title')) {
+            return;
+        }
+
+        // Maximize is a temporary layout override — never persist work-area bounds
+        if (modal.classList.contains('modal-maximized')) {
             return;
         }
 

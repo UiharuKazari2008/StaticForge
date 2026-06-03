@@ -140,6 +140,10 @@ function getCanonicalUrl(input) {
   return url.split('?')[0];
 }
 
+function isManagedImageCacheUrl(url) {
+  return url.includes('/images/') || url.includes('/previews/') || url.includes('/naxCache/');
+}
+
 function getApproximateResponseSize(response) {
   const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
   return Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0;
@@ -256,7 +260,7 @@ async function enforceImageCachePolicy() {
 
   for (const key of keys) {
     const url = getCanonicalUrl(key.url);
-    if (!url.includes('/images/') && !url.includes('/previews/')) {
+    if (!isManagedImageCacheUrl(url)) {
       continue;
     }
 
@@ -283,7 +287,7 @@ async function enforceImageCachePolicy() {
   if (totalEntries > IMAGE_CACHE_POLICY.maxEntries || totalSize > IMAGE_CACHE_POLICY.maxSizeBytes) {
     const candidates = Object.entries(metadata.entries)
       .filter(([url, entry]) => {
-        if (!url.includes('/images/') && !url.includes('/previews/')) return false;
+        if (!isManagedImageCacheUrl(url)) return false;
         return !isPinnedImageUrl(url, metadata);
       })
       .map(([url, entry]) => ({ url, seq: entry.seq || 0, size: entry.size || 0 }))
@@ -608,6 +612,10 @@ workbox.routing.registerRoute(
       else if (url.pathname.startsWith('/images/')) {
         response = await createImageStrategy().handle(event);
       }
+      // Handle nax gallery cache images with image strategy
+      else if (url.pathname.startsWith('/naxCache/')) {
+        response = await createImageStrategy().handle(event);
+      }
       // Handle all other static files with static strategy
       else {
         response = await createCacheBustingStrategy(staticStrategy).handle(event);
@@ -644,6 +652,7 @@ workbox.routing.registerRoute(
                            !url.pathname.startsWith('/previews/') && 
                            !url.pathname.startsWith('/cache/') && 
                            !url.pathname.startsWith('/images/') && 
+                           !url.pathname.startsWith('/naxCache/') && 
                            !url.pathname.startsWith('/internal/') &&
                            url.pathname !== '/' &&
                            url.pathname !== '/app';
@@ -1336,7 +1345,7 @@ async function getCacheStatus(requestId) {
 // Delete matching URL entries from static, dynamic, and image caches
 async function deleteUrlFromCaches(url) {
   const urlWithoutQuery = url.split('?')[0];
-  const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
+  const isImageOrPreview = isManagedImageCacheUrl(urlWithoutQuery);
   const cacheNames = isImageOrPreview ? [IMAGE_CACHE] : [STATIC_CACHE, DYNAMIC_CACHE];
   const removedUrls = [];
 
@@ -1395,7 +1404,7 @@ async function deleteFromCache(url, requestId) {
 async function deleteAndPrecache(url, requestId) {
   try {
     const urlWithoutQuery = url.split('?')[0];
-    const isImageOrPreview = urlWithoutQuery.includes('/images/') || urlWithoutQuery.includes('/previews/');
+    const isImageOrPreview = isManagedImageCacheUrl(urlWithoutQuery);
     let targetCacheName = STATIC_CACHE;
     if (isImageOrPreview) {
       targetCacheName = IMAGE_CACHE;

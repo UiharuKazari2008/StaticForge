@@ -5,6 +5,21 @@
 
 const NAXT_FILTER_DEBOUNCE_MS = 2000;
 const NAXT_TAG_BAG_LS = 'naxtTagBag';
+const NAXT_ELEVATE_PINS_LS = 'naxtElevatePins';
+
+const NAXT_ELEVATE_PIN_OPTIONS = [
+    { value: 0, label: 'None', icon: 'fa-regular fa-thumbtack' },
+    { value: 1, label: 'Favorites', icon: 'fas fa-star' },
+    { value: 2, label: 'Try', icon: 'fas fa-vial' },
+    { value: 3, label: 'Both', icon: 'fas fa-thumbtack' }
+];
+
+function naxtNormalizeElevatePins(value) {
+    if (value === true || value === 'true') return 1;
+    const n = Number(value);
+    if (n === 1 || n === 2 || n === 3) return n;
+    return 0;
+}
 
 const NAXT_QUICK_FILTERS = [
     { id: 'goat', btnId: 'naxtQuickGoatBtn' },
@@ -13,10 +28,12 @@ const NAXT_QUICK_FILTERS = [
 ];
 
 const NAXT_MARK_FILTER_OPTIONS = [
-    { value: 'all', label: 'All' },
-    { value: 'favorites', label: 'Favorites' },
-    { value: 'try', label: 'Try' },
-    { value: 'unmarked', label: 'Unmarked' }
+    { value: 'all', label: 'Show All', icon: 'fa-regular fa-bookmark' },
+    { value: 'favorites', label: 'Favorites', icon: 'fas fa-star' },
+    { value: 'try', label: 'Try', icon: 'fas fa-vial' },
+    { value: 'unmarked', label: 'Unmarked', icon: 'fas fa-empty-set' },
+    { value: 'custom', label: 'Custom', icon: 'fas fa-user-plus' },
+    { value: 'hidden', label: 'Hidden', icon: 'fas fa-trash' }
 ];
 
 function naxtEscapeHtml(s) {
@@ -159,12 +176,12 @@ function naxtFormatTagFragment(tagName, gallerySlug) {
 class NaxtApplet {
     constructor() {
         this.modal = null;
-        this.history = [];
-        this.historyIndex = -1;
+        this.browseSessionActive = false;
         this.galleries = [];
         this.selectedGallerySlug = '';
         this.sortKey = 'score';
         this.markFilter = 'all';
+        this.elevatePins = 0;
         this.bag = [];
         this.invert = false;
         this.filterRowVisible = false;
@@ -177,13 +194,11 @@ class NaxtApplet {
         this.committedSearchQuery = '';
         this.loadRequestsActive = 0;
         this.randomSeed = 0;
-        this.backMenuConfig = null;
-        this.forwardMenuConfig = null;
-        this.contextMenuElements = [];
         this.sentinelObserver = null;
         this.imgVisibilityObserver = null;
         this.customTagGenerating = false;
         this.pendingCustomTag = null;
+        this.pendingCustomTagAlreadyExists = false;
         this.activeQuickFilter = '';
         this.init();
     }
@@ -192,8 +207,6 @@ class NaxtApplet {
         this.modal = document.getElementById('naxtModal');
         if (!this.modal) return;
 
-        this.backBtn = document.getElementById('naxtBackBtn');
-        this.forwardBtn = document.getElementById('naxtForwardBtn');
         this.homeBtn = document.getElementById('naxtHomeBtn');
         this.closeBtn = document.getElementById('closeNaxtModalBtn');
         this.datasetDropdown = document.getElementById('naxtDatasetDropdown');
@@ -231,9 +244,16 @@ class NaxtApplet {
         this.customTagModal = document.getElementById('naxtCustomTagModal');
         this.customTagModalTitle = document.getElementById('naxtCustomTagModalTitle');
         this.customTagInput = document.getElementById('naxtCustomTagInput');
-        this.customTagPreview = document.getElementById('naxtCustomTagPreview');
+        this.customTagPreviewContainer = document.getElementById('naxtCustomTagPreviewContainer');
+        this.customTagPreviewPlaceholder = document.getElementById('naxtCustomTagPreviewPlaceholder');
+        this.customTagPreviewLoading = document.getElementById('naxtCustomTagPreviewLoading');
+        this.customTagPreviewError = document.getElementById('naxtCustomTagPreviewError');
+        this.customTagPreviewImg = document.getElementById('naxtCustomTagPreviewImg');
+        this.customTagPreviewCaption = document.getElementById('naxtCustomTagPreviewCaption');
+        this.customTagOverlayButtons = document.getElementById('naxtCustomTagOverlayButtons');
+        this.customTagFavoriteBtn = document.getElementById('naxtCustomTagFavoriteBtn');
+        this.customTagTryBtn = document.getElementById('naxtCustomTagTryBtn');
         this.customTagGenerateBtn = document.getElementById('naxtCustomTagGenerateBtn');
-        this.customTagAcceptBtn = document.getElementById('naxtCustomTagAcceptBtn');
         this.customTagDeleteBtn = document.getElementById('naxtCustomTagDeleteBtn');
         this.closeCustomTagBtn = document.getElementById('closeNaxtCustomTagModalBtn');
         this.bagDropdown = document.getElementById('naxtBagDropdown');
@@ -243,14 +263,18 @@ class NaxtApplet {
         this.markFilterDropdown = document.getElementById('naxtMarkFilterDropdown');
         this.markFilterBtn = document.getElementById('naxtMarkFilterDropdownBtn');
         this.markFilterMenu = document.getElementById('naxtMarkFilterDropdownMenu');
-        this.markFilterSelected = document.getElementById('naxtMarkFilterSelected');
+        this.markFilterIcon = document.getElementById('naxtMarkFilterIcon');
+        this.elevatePinsDropdown = document.getElementById('naxtElevatePinsDropdown');
+        this.elevatePinsBtn = document.getElementById('naxtElevatePinsDropdownBtn');
+        this.elevatePinsMenu = document.getElementById('naxtElevatePinsDropdownMenu');
+        this.elevatePinsIcon = document.getElementById('naxtElevatePinsIcon');
 
         this.loadBagFromStorage();
+        this.loadElevatePinsFromLocal();
         this.setupDropdowns();
         this.setupListeners();
         this.updateBagChrome();
-        this.updateMarkFilterLabel();
-        this.setupHistoryMenus();
+        this.updateMarkFilterButton();
     }
 
     getScrollRoot() {
@@ -309,57 +333,86 @@ class NaxtApplet {
 
     resetCustomTagPreview() {
         this.pendingCustomTag = null;
+        this.pendingCustomTagAlreadyExists = false;
         if (this.customTagInput) {
             this.customTagInput.value = '';
             this.customTagInput.disabled = false;
         }
-        if (this.customTagGenerateBtn) {
-            this.customTagGenerateBtn.disabled = false;
-        }
-        if (this.customTagPreview) {
-            this.customTagPreview.className = 'weather-location-match naxt-custom-tag-preview';
-            this.customTagPreview.textContent = 'Enter a tag and click Generate to preview.';
-            this.customTagPreview.onclick = null;
-            this.customTagPreview.removeAttribute('title');
-        }
-        this.syncCustomTagFooter();
+        this.setCustomTagPreviewState('empty');
+        this.syncCustomTagControls();
     }
 
-    syncCustomTagFooter() {
-        const hasPreview = !!this.pendingCustomTag;
+    setCustomTagPreviewState(state, message = '') {
+        const show = (el, visible) => {
+            if (el) el.classList.toggle('hidden', !visible);
+        };
+
+        show(this.customTagPreviewPlaceholder, state === 'empty');
+        show(this.customTagPreviewLoading, state === 'loading');
+        show(this.customTagPreviewError, state === 'error');
+        show(this.customTagPreviewImg, state === 'preview');
+        show(this.customTagPreviewCaption, state === 'preview');
+
+        if (this.customTagPreviewContainer) {
+            this.customTagPreviewContainer.classList.toggle('has-preview', state === 'preview');
+            this.customTagPreviewContainer.onclick = null;
+        }
+        if (this.customTagPreviewError && state === 'error') {
+            this.customTagPreviewError.textContent = message || 'Generation failed';
+        }
+        if (this.customTagOverlayButtons) {
+            this.customTagOverlayButtons.classList.toggle('hidden', state !== 'preview');
+        }
+    }
+
+    syncCustomTagControls() {
         const generating = this.customTagGenerating;
         if (this.customTagGenerateBtn) {
-            this.customTagGenerateBtn.classList.toggle('hidden', hasPreview);
-            this.customTagGenerateBtn.disabled = generating || hasPreview;
+            this.customTagGenerateBtn.disabled = generating;
         }
-        if (this.customTagAcceptBtn) {
-            this.customTagAcceptBtn.classList.toggle('hidden', !hasPreview);
-            this.customTagAcceptBtn.disabled = !hasPreview;
+        if (this.customTagInput) {
+            this.customTagInput.disabled = generating;
         }
         if (this.customTagDeleteBtn) {
-            this.customTagDeleteBtn.classList.toggle('hidden', !hasPreview);
-            this.customTagDeleteBtn.disabled = !hasPreview || generating;
+            const canDelete = !!(this.pendingCustomTag && this.pendingCustomTag.isCustom);
+            this.customTagDeleteBtn.disabled = generating || !this.pendingCustomTag || !canDelete;
+            this.customTagDeleteBtn.title = canDelete ? 'Delete tag' : 'Only custom tags can be deleted';
+        }
+        this.syncCustomTagOverlayButtons();
+    }
+
+    syncCustomTagOverlayButtons() {
+        const item = this.pendingCustomTag;
+        const favorite = !!(item && item.favorite);
+        const tryMark = !!(item && item.tryMark);
+
+        if (this.customTagFavoriteBtn) {
+            this.customTagFavoriteBtn.dataset.state = favorite ? 'on' : 'off';
+            const icon = this.customTagFavoriteBtn.querySelector('i');
+            if (icon) {
+                icon.className = favorite ? 'fas fa-star' : 'fa-regular fa-star';
+            }
+            this.customTagFavoriteBtn.title = favorite ? 'Unfavorite' : 'Favorite';
+        }
+        if (this.customTagTryBtn) {
+            this.customTagTryBtn.dataset.state = tryMark ? 'on' : 'off';
+            const icon = this.customTagTryBtn.querySelector('i');
+            if (icon) {
+                icon.className = tryMark ? 'fas fa-vial-circle-check' : 'fas fa-vial';
+            }
+            this.customTagTryBtn.title = tryMark ? 'Remove try mark' : 'Mark to try';
         }
     }
 
     setCustomTagGenerating(active) {
         this.customTagGenerating = !!active;
-        if (this.customTagGenerateBtn) {
-            this.customTagGenerateBtn.disabled = !!active;
-        }
-        if (this.customTagInput) {
-            this.customTagInput.disabled = !!active || !!this.pendingCustomTag;
-        }
-        if ((active || this.pendingCustomTag) && typeof hideCharacterAutocomplete === 'function') {
-            hideCharacterAutocomplete();
-        }
-        if (this.customTagPreview && active) {
-            this.customTagPreview.className = 'weather-location-match naxt-custom-tag-preview loading';
-            this.customTagPreview.textContent = 'Generating preview…';
-        }
         if (active) {
-            this.syncCustomTagFooter();
+            this.setCustomTagPreviewState('loading');
+            if (typeof hideCharacterAutocomplete === 'function') {
+                hideCharacterAutocomplete();
+            }
         }
+        this.syncCustomTagControls();
     }
 
     openNaxItemInViewer(item) {
@@ -377,44 +430,86 @@ class NaxtApplet {
         }
     }
 
-    showCustomTagPreview(item) {
+    showCustomTagPreview(item, opts = {}) {
         if (!item) return;
+        const alreadyExists = !!opts.alreadyExists;
         this.pendingCustomTag = item;
-        if (this.customTagInput) {
+        this.pendingCustomTagAlreadyExists = alreadyExists;
+
+        if (this.customTagInput && item.tag) {
             this.customTagInput.value = item.tag;
-            this.customTagInput.disabled = true;
         }
         if (typeof hideCharacterAutocomplete === 'function') {
             hideCharacterAutocomplete();
         }
-        if (this.customTagGenerateBtn) {
-            this.customTagGenerateBtn.disabled = true;
+
+        if (this.customTagPreviewImg) {
+            this.customTagPreviewImg.src = this.imageUrl(item);
+            this.customTagPreviewImg.alt = item.tag || 'Tag preview';
         }
-        if (this.customTagPreview) {
-            this.customTagPreview.className = 'weather-location-match naxt-custom-tag-preview success naxt-custom-tag-preview-clickable';
-            this.customTagPreview.title = 'Open preview';
-            this.customTagPreview.innerHTML = '';
-            const img = document.createElement('img');
-            img.src = this.imageUrl(item);
-            img.alt = item.tag;
-            const cap = document.createElement('span');
-            cap.className = 'naxt-custom-tag-preview-caption';
-            cap.textContent = item.tag;
-            this.customTagPreview.appendChild(img);
-            this.customTagPreview.appendChild(cap);
-            this.customTagPreview.onclick = () => this.openNaxItemInViewer(item);
+        if (this.customTagPreviewCaption) {
+            this.customTagPreviewCaption.textContent = alreadyExists
+                ? `${item.tag} — already in gallery`
+                : item.tag;
+            this.customTagPreviewCaption.classList.toggle('is-notice', alreadyExists);
         }
-        this.syncCustomTagFooter();
+
+        this.setCustomTagPreviewState('preview');
+        if (this.customTagPreviewContainer) {
+            this.customTagPreviewContainer.onclick = () => this.openNaxItemInViewer(item);
+        }
+        this.syncCustomTagControls();
+    }
+
+    validateCustomTagInput(raw) {
+        const value = String(raw || '').trim();
+        if (!value) {
+            return { ok: false, message: 'Enter a tag name' };
+        }
+        if (value.includes(',')) {
+            return { ok: false, message: 'Enter a single tag only (no commas)' };
+        }
+        if (value.length > 120) {
+            return { ok: false, message: 'Tag name is too long' };
+        }
+        if (value.includes('..') || /[\x00-\x1f\/\\]/.test(value)) {
+            return { ok: false, message: 'Invalid tag name' };
+        }
+        return { ok: true, value };
+    }
+
+    customTagInputLooksLikeTextExpander(raw) {
+        return String(raw || '').trim().startsWith('!');
+    }
+
+    async confirmCustomTagTextExpanderUse(tagName) {
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        const result = await showConfirmationDialog(
+            `The tag "${tagName}" starts with "!". In prompts that can be treated as a text expander. Use this tag name anyway?`,
+            [
+                { text: 'Use anyway', value: 'confirm', className: 'btn-primary', primary: true },
+                { text: 'Cancel', value: null, className: 'btn-secondary' }
+            ]
+        );
+        return result === 'confirm';
     }
 
     async submitCustomTag() {
-        if (this.customTagGenerating || this.pendingCustomTag || !this.customTagInput) return;
-        const raw = String(this.customTagInput.value || '').trim();
-        if (!raw) {
+        if (this.customTagGenerating || !this.customTagInput) return;
+        const validation = this.validateCustomTagInput(this.customTagInput.value);
+        if (!validation.ok) {
             if (typeof showGlassToast === 'function') {
-                showGlassToast('warning', null, 'Enter a tag name', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
+                showGlassToast('error', null, validation.message, false, 4000, '<i class="fas fa-exclamation-triangle"></i>');
             }
+            this.setCustomTagPreviewState('error', validation.message);
             return;
+        }
+        const raw = validation.value;
+        if (this.customTagInputLooksLikeTextExpander(raw)) {
+            const confirmed = await this.confirmCustomTagTextExpanderUse(raw);
+            if (!confirmed) {
+                return;
+            }
         }
         if (!window.wsClient || !window.wsClient.isConnected()) {
             if (typeof showGlassToast === 'function') {
@@ -433,30 +528,41 @@ class NaxtApplet {
             if (!item) {
                 throw new Error('No preview returned');
             }
-            this.showCustomTagPreview(item);
-        } catch (e) {
-            if (this.customTagPreview) {
-                this.customTagPreview.className = 'weather-location-match naxt-custom-tag-preview error';
-                this.customTagPreview.textContent = e.message || 'Generation failed';
+            this.showCustomTagPreview(item, { alreadyExists: !!data.alreadyExists });
+            if (data.alreadyExists) {
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('info', null, 'Tag already exists in this gallery', false, 3500, '<i class="fas fa-info-circle"></i>');
+                }
+            } else {
+                await this.reloadFromTop();
             }
+        } catch (e) {
+            this.setCustomTagPreviewState('error', e.message || 'Generation failed');
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, e.message || 'Generation failed', false, 6000, '<i class="fas fa-exclamation-triangle"></i>');
             }
         } finally {
             this.customTagGenerating = false;
-            this.syncCustomTagFooter();
+            this.syncCustomTagControls();
         }
     }
 
-    async acceptCustomTag() {
+    async toggleCustomTagFavorite() {
         if (!this.pendingCustomTag) return;
-        const tagName = this.pendingCustomTag.tag;
-        this.closeCustomTagTool();
-        this.resetCustomTagPreview();
-        await this.reloadFromTop(false);
-        if (typeof showGlassToast === 'function') {
-            showGlassToast('success', null, `Added "${tagName}"`, false, 2500, '<i class="fas fa-check"></i>');
-        }
+        const { gallerySlug, tag } = this.pendingCustomTag;
+        const next = !this.pendingCustomTag.favorite;
+        await this.setFavoriteForTag(gallerySlug, tag, next);
+        this.pendingCustomTag.favorite = next;
+        this.syncCustomTagOverlayButtons();
+    }
+
+    async toggleCustomTagTry() {
+        if (!this.pendingCustomTag) return;
+        const { gallerySlug, tag } = this.pendingCustomTag;
+        const next = !this.pendingCustomTag.tryMark;
+        await this.setTryMarkForTag(gallerySlug, tag, next);
+        this.pendingCustomTag.tryMark = next;
+        this.syncCustomTagOverlayButtons();
     }
 
     async deleteCustomTag(gallerySlug, tag, opts = {}) {
@@ -472,7 +578,7 @@ class NaxtApplet {
         }
 
         const fromTool = !!opts.fromTool;
-        if (this.customTagDeleteBtn) this.customTagDeleteBtn.disabled = true;
+        if (fromTool && this.customTagDeleteBtn) this.customTagDeleteBtn.disabled = true;
 
         try {
             await window.wsClient.sendMessage('delete_nax_custom_tag', {
@@ -480,9 +586,17 @@ class NaxtApplet {
                 tag: tagName
             }, false);
             if (fromTool) {
-                this.resetCustomTagPreview();
+                const keepTag = this.customTagInput ? this.customTagInput.value : tagName;
+                this.pendingCustomTag = null;
+                this.pendingCustomTagAlreadyExists = false;
+                this.setCustomTagPreviewState('empty');
+                if (this.customTagInput) {
+                    this.customTagInput.value = keepTag;
+                    this.customTagInput.disabled = false;
+                }
+                this.syncCustomTagControls();
             }
-            await this.reloadFromTop(false);
+            await this.reloadFromTop();
             if (typeof showGlassToast === 'function') {
                 showGlassToast('success', null, `Deleted "${tagName}"`, false, 2500, '<i class="fas fa-check"></i>');
             }
@@ -490,12 +604,8 @@ class NaxtApplet {
             if (typeof showGlassToast === 'function') {
                 showGlassToast('error', null, e.message || 'Delete failed', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
             }
-            if (fromTool && this.pendingCustomTag) {
-                this.syncCustomTagFooter();
-            }
-        } finally {
-            if (fromTool && this.customTagDeleteBtn && this.pendingCustomTag) {
-                this.customTagDeleteBtn.disabled = false;
+            if (fromTool) {
+                this.syncCustomTagControls();
             }
         }
     }
@@ -504,7 +614,7 @@ class NaxtApplet {
         if (this.filterReloadTimer) clearTimeout(this.filterReloadTimer);
         this.filterReloadTimer = setTimeout(() => {
             this.filterReloadTimer = null;
-            void this.reloadFromTop(false);
+            void this.reloadFromTop();
             this.syncFilterToggleIndicator();
         }, NAXT_FILTER_DEBOUNCE_MS);
     }
@@ -523,7 +633,7 @@ class NaxtApplet {
 
     syncFilterToggleIndicator() {
         if (!this.filterToggleBtn) return;
-        this.filterToggleBtn.setAttribute('data-filters-active', this.filtersAreActive() ? 'true' : 'false');
+        this.filterToggleBtn.setAttribute('data-state', this.filtersAreActive() ? 'open' : 'off');
     }
 
     setGridLoading(active) {
@@ -573,12 +683,99 @@ class NaxtApplet {
                 { preventFocusTransfer: true }
             );
         }
+
+        if (this.elevatePinsDropdown && this.elevatePinsBtn && this.elevatePinsMenu && typeof setupDropdown === 'function') {
+            setupDropdown(
+                this.elevatePinsDropdown,
+                this.elevatePinsBtn,
+                this.elevatePinsMenu,
+                () => this.renderNaxtElevatePinsMenu(),
+                () => this.elevatePins,
+                { preventFocusTransfer: true }
+            );
+        }
     }
 
-    updateMarkFilterLabel() {
-        if (!this.markFilterSelected) return;
-        const opt = NAXT_MARK_FILTER_OPTIONS.find((o) => o.value === this.markFilter);
-        this.markFilterSelected.textContent = opt ? opt.label : 'All';
+    updateMarkFilterButton() {
+        const opt = NAXT_MARK_FILTER_OPTIONS.find((o) => o.value === this.markFilter) || NAXT_MARK_FILTER_OPTIONS[0];
+        if (this.markFilterIcon) {
+            this.markFilterIcon.className = (opt.icon || 'fas fa-bookmark') + ' naxt-mark-filter-icon';
+        }
+        if (this.markFilterBtn) {
+            this.markFilterBtn.setAttribute('data-state', this.markFilter !== 'all' ? 'open' : 'off');
+            this.markFilterBtn.title = `Filter by mark: ${opt.label}`;
+        }
+    }
+
+    loadElevatePinsFromLocal() {
+        try {
+            const raw = localStorage.getItem(NAXT_ELEVATE_PINS_LS);
+            if (raw !== null && raw !== '') {
+                this.elevatePins = naxtNormalizeElevatePins(raw);
+            } else {
+                const legacy = localStorage.getItem('naxtElevateFavorites');
+                if (legacy === 'true') this.elevatePins = 1;
+                else if (legacy === 'false') this.elevatePins = 0;
+            }
+        } catch {
+            this.elevatePins = 0;
+        }
+        this.updateElevatePinsButton();
+    }
+
+    updateElevatePinsButton() {
+        const mode = naxtNormalizeElevatePins(this.elevatePins);
+        this.elevatePins = mode;
+        const opt = NAXT_ELEVATE_PIN_OPTIONS.find((o) => o.value === mode) || NAXT_ELEVATE_PIN_OPTIONS[0];
+        if (this.elevatePinsIcon) {
+            this.elevatePinsIcon.className = (opt.icon || 'fas fa-thumbtack') + ' naxt-elevate-pins-icon';
+        }
+        if (this.elevatePinsBtn) {
+            this.elevatePinsBtn.setAttribute('data-state', mode !== 0 ? 'open' : 'off');
+            this.elevatePinsBtn.title = `Pin to top: ${opt.label}`;
+        }
+    }
+
+    renderNaxtElevatePinsMenu() {
+        if (!this.elevatePinsMenu) return;
+        const menu = this.elevatePinsMenu;
+        menu.innerHTML = '';
+        const selectMode = (value) => {
+            this.elevatePins = naxtNormalizeElevatePins(value);
+            this.updateElevatePinsButton();
+            if (typeof closeDropdown === 'function') closeDropdown(this.elevatePinsMenu, this.elevatePinsBtn);
+            void this.persistElevatePinsSetting();
+            void this.reloadFromTop();
+        };
+        NAXT_ELEVATE_PIN_OPTIONS.forEach((item) => {
+            const option = document.createElement('div');
+            option.className = 'custom-dropdown-option' + (this.elevatePins === item.value ? ' selected' : '');
+            option.tabIndex = 0;
+            option.dataset.value = String(item.value);
+            const icon = item.icon ? `<i class="${item.icon}" aria-hidden="true"></i> ` : '';
+            option.innerHTML = `<span>${icon}${naxtEscapeHtml(item.label)}</span>`;
+            this.bindNaxtSortMenuOption(option, () => selectMode(item.value));
+            menu.appendChild(option);
+        });
+    }
+
+    async persistElevatePinsSetting() {
+        // persistUserGlobalSettingsPatch: public/scripts/comp/modalUtils.js
+        if (typeof persistUserGlobalSettingsPatch === 'function') {
+            try {
+                await persistUserGlobalSettingsPatch({
+                    naxt: { elevatePins: naxtNormalizeElevatePins(this.elevatePins) }
+                });
+            } catch (e) {
+                console.error('update_user_global_settings', e);
+            }
+            return;
+        }
+        try {
+            localStorage.setItem(NAXT_ELEVATE_PINS_LS, String(naxtNormalizeElevatePins(this.elevatePins)));
+        } catch {
+            /* */
+        }
     }
 
     renderNaxtMarkFilterMenu() {
@@ -587,9 +784,9 @@ class NaxtApplet {
         menu.innerHTML = '';
         const selectMark = (value) => {
             this.markFilter = value;
-            this.updateMarkFilterLabel();
+            this.updateMarkFilterButton();
             if (typeof closeDropdown === 'function') closeDropdown(this.markFilterMenu, this.markFilterBtn);
-            void this.reloadFromTop(true);
+            void this.reloadFromTop();
             this.syncFilterToggleIndicator();
         };
         NAXT_MARK_FILTER_OPTIONS.forEach((item) => {
@@ -597,7 +794,8 @@ class NaxtApplet {
             option.className = 'custom-dropdown-option' + (this.markFilter === item.value ? ' selected' : '');
             option.tabIndex = 0;
             option.dataset.value = item.value;
-            option.innerHTML = `<span>${item.label}</span>`;
+            const icon = item.icon ? `<i class="${item.icon}" aria-hidden="true"></i> ` : '';
+            option.innerHTML = `<span>${icon}${naxtEscapeHtml(item.label)}</span>`;
             this.bindNaxtSortMenuOption(option, () => selectMark(item.value));
             menu.appendChild(option);
         });
@@ -806,6 +1004,32 @@ class NaxtApplet {
         card.dataset.try = tryMark ? '1' : '0';
     }
 
+    applyHiddenToCard(card, hidden) {
+        if (!card) return;
+        card.dataset.hidden = hidden ? '1' : '0';
+    }
+
+    async setHiddenForTag(gallerySlug, tag, hidden) {
+        try {
+            await window.wsClient.sendMessage('set_nax_hidden', { gallerySlug, tag, hidden }, false);
+            const card = this.findVisibleCard(gallerySlug, tag);
+            if (card) {
+                if (hidden && this.markFilter !== 'hidden') {
+                    card.remove();
+                    this.updateStatusBar();
+                } else {
+                    this.applyHiddenToCard(card, hidden);
+                }
+            } else if (this.markFilter === 'hidden' && !hidden) {
+                await this.reloadFromTop();
+            }
+        } catch (e) {
+            if (typeof showGlassToast === 'function') {
+                showGlassToast('error', null, e.message || 'Failed to update hidden mark', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            }
+        }
+    }
+
     async setFavoriteForTag(gallerySlug, tag, favorite) {
         try {
             await window.wsClient.sendMessage('set_nax_favorite', { gallerySlug, tag, favorite }, false);
@@ -875,7 +1099,7 @@ class NaxtApplet {
             const opt = sortOptions.find((o) => o.value === value);
             if (this.sortSelected) this.sortSelected.textContent = opt ? opt.label : 'Score';
             if (typeof closeDropdown === 'function') closeDropdown(this.sortMenu, this.sortBtn);
-            void this.reloadFromTop(true);
+            void this.reloadFromTop();
             this.syncFilterToggleIndicator();
         };
         sortOptions.forEach((item) => {
@@ -909,7 +1133,7 @@ class NaxtApplet {
         this.activeQuickFilter = '';
         this.syncQuickFilterButtons();
         this.markFilter = 'all';
-        this.updateMarkFilterLabel();
+        this.updateMarkFilterButton();
         this.sortKey = 'score';
         this.randomSeed = 0;
         this.invert = false;
@@ -918,7 +1142,7 @@ class NaxtApplet {
         this.clearNaxtNumericFilters();
         this.syncFilterToggleIndicator();
         if (reload) {
-            void this.reloadFromTop(false);
+            void this.reloadFromTop();
         }
     }
 
@@ -961,8 +1185,8 @@ class NaxtApplet {
             this.filterReloadTimer = null;
         }
         this.filterRowVisible = false;
-        if (this.filterToggleBtn) this.filterToggleBtn.setAttribute('data-state', 'off');
         if (this.filterRow) this.filterRow.classList.add('hidden');
+        this.syncFilterToggleIndicator();
         this.sortKey = 'score';
         this.randomSeed = 0;
         this.invert = false;
@@ -983,7 +1207,6 @@ class NaxtApplet {
         }
         this.filterRowVisible = false;
         if (this.filterRow) this.filterRow.classList.add('hidden');
-        if (this.filterToggleBtn) this.filterToggleBtn.setAttribute('data-state', 'off');
         this.clearNaxtNumericFilters();
         this.invert = false;
         if (this.invertBtn) this.invertBtn.setAttribute('data-state', 'off');
@@ -1010,7 +1233,7 @@ class NaxtApplet {
         this.activeQuickFilter = id;
         this.syncQuickFilterButtons();
         this.syncFilterToggleIndicator();
-        void this.reloadFromTop(true);
+        void this.reloadFromTop();
     }
 
     renderDatasetMenu() {
@@ -1058,7 +1281,7 @@ class NaxtApplet {
                     if (typeof closeDropdown === 'function') {
                         closeDropdown(this.datasetMenu, this.datasetBtn);
                     }
-                    this.reloadFromTop(true);
+                    void this.reloadFromTop();
                 },
                 () => {
                     if (typeof closeDropdown === 'function') {
@@ -1072,8 +1295,6 @@ class NaxtApplet {
     }
 
     setupListeners() {
-        if (this.backBtn) this.backBtn.addEventListener('click', () => this.goBack());
-        if (this.forwardBtn) this.forwardBtn.addEventListener('click', () => this.goForward());
         if (this.homeBtn) this.homeBtn.addEventListener('click', () => void this.goHome());
         if (this.closeBtn) {
             this.closeBtn.addEventListener('click', (e) => {
@@ -1087,16 +1308,14 @@ class NaxtApplet {
                 if (!this.filterRowVisible && this.sortKey === 'ratio') {
                     this.sortKey = 'score';
                     if (this.sortSelected) this.sortSelected.textContent = 'Score';
-                    void this.reloadFromTop(false);
+                    void this.reloadFromTop();
                     this.syncFilterToggleIndicator();
                     return;
                 }
                 this.filterRowVisible = !this.filterRowVisible;
-                this.filterToggleBtn.setAttribute('data-state', this.filterRowVisible ? 'on' : 'off');
                 if (this.filterRow) {
                     this.filterRow.classList.toggle('hidden', !this.filterRowVisible);
                 }
-                this.syncFilterToggleIndicator();
             });
         }
 
@@ -1105,7 +1324,7 @@ class NaxtApplet {
                 if (this.sortKey === 'random') return;
                 this.invert = !this.invert;
                 this.invertBtn.setAttribute('data-state', this.invert ? 'on' : 'off');
-                void this.reloadFromTop(true);
+                void this.reloadFromTop();
                 this.syncFilterToggleIndicator();
             });
         }
@@ -1129,7 +1348,7 @@ class NaxtApplet {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     this.committedSearchQuery = this.searchInput ? this.searchInput.value.trim() : '';
-                    void this.reloadFromTop(true);
+                    void this.reloadFromTop();
                     this.syncFilterToggleIndicator();
                 }
             });
@@ -1157,11 +1376,23 @@ class NaxtApplet {
         if (this.customTagGenerateBtn) {
             this.customTagGenerateBtn.addEventListener('click', () => void this.submitCustomTag());
         }
-        if (this.customTagAcceptBtn) {
-            this.customTagAcceptBtn.addEventListener('click', () => void this.acceptCustomTag());
-        }
         if (this.customTagDeleteBtn) {
-            this.customTagDeleteBtn.addEventListener('click', () => void this.deleteCustomTag(null, null, { fromTool: true }));
+            this.customTagDeleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                void this.deleteCustomTag(null, null, { fromTool: true });
+            });
+        }
+        if (this.customTagFavoriteBtn) {
+            this.customTagFavoriteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                void this.toggleCustomTagFavorite();
+            });
+        }
+        if (this.customTagTryBtn) {
+            this.customTagTryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                void this.toggleCustomTagTry();
+            });
         }
         if (this.customTagInput) {
             // handleCharacterAutocompleteInput / handleCharacterAutocompleteKeydown: public/scripts/comp/autocompleteUtils.js
@@ -1238,138 +1469,10 @@ class NaxtApplet {
         return Number.isNaN(n) ? 0 : n;
     }
 
-    setupHistoryMenus() {
-        if (!this.backBtn || !contextMenu) return;
-        this.backMenuConfig = {
-            sections: [{ type: 'list', items: [] }],
-            onAction: (action) => {
-                if (action.startsWith('naxt-back-to-')) {
-                    const index = parseInt(action.replace('naxt-back-to-', ''), 10);
-                    this.goToHistoryIndex(index);
-                }
-            }
-        };
-        contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
-        this.contextMenuElements.push(this.backBtn);
-
-        if (!this.forwardBtn) return;
-        this.forwardMenuConfig = {
-            sections: [{ type: 'list', items: [] }],
-            onAction: (action) => {
-                if (action.startsWith('naxt-forward-to-')) {
-                    const index = parseInt(action.replace('naxt-forward-to-', ''), 10);
-                    this.goToHistoryIndex(index);
-                }
-            }
-        };
-        contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
-        this.contextMenuElements.push(this.forwardBtn);
-    }
-
-    getBrowseState() {
-        return {
-            gallerySlug: this.selectedGallerySlug,
-            query: this.committedSearchQuery,
-            sortKey: this.sortKey,
-            markFilter: this.markFilter,
-            invert: this.invert,
-            filterRowVisible: this.filterRowVisible,
-            minUp: this.minUp ? this.minUp.value : '',
-            maxUp: this.maxUp ? this.maxUp.value : '',
-            minDown: this.minDown ? this.minDown.value : '',
-            maxDown: this.maxDown ? this.maxDown.value : '',
-            minScore: this.minScore ? this.minScore.value : '',
-            maxScore: this.maxScore ? this.maxScore.value : '',
-            minRatio: this.minRatio ? this.minRatio.value : '',
-            maxRatio: this.maxRatio ? this.maxRatio.value : '',
-            randomSeed: this.randomSeed,
-            activeQuickFilter: this.activeQuickFilter
-        };
-    }
-
-    applyBrowseState(s) {
-        if (!s) return;
-        this.selectedGallerySlug = s.gallerySlug || this.selectedGallerySlug;
-        const q = s.query != null ? s.query : '';
-        this.committedSearchQuery = String(q).trim();
-        if (this.searchInput) this.searchInput.value = s.query || '';
-        this.sortKey = s.sortKey || 'score';
-        this.markFilter = NAXT_MARK_FILTER_OPTIONS.some((o) => o.value === s.markFilter) ? s.markFilter : 'all';
-        if (this.sortKey === 'random') {
-            const rs = s.randomSeed;
-            if (rs != null && rs !== '' && Number.isFinite(Number(rs))) {
-                this.randomSeed = Math.floor(Number(rs));
-            } else {
-                this.randomSeed = (Math.random() * 2147483647) | 0;
-            }
-        } else {
-            this.randomSeed = 0;
-        }
-        this.invert = !!s.invert;
-        this.updateMarkFilterLabel();
-        this.filterRowVisible = !!s.filterRowVisible;
-        if (this.filterToggleBtn) this.filterToggleBtn.setAttribute('data-state', this.filterRowVisible ? 'on' : 'off');
-        if (this.filterRow) this.filterRow.classList.toggle('hidden', !this.filterRowVisible);
-        if (this.invertBtn) this.invertBtn.setAttribute('data-state', this.invert ? 'on' : 'off');
-        if (this.minUp) this.minUp.value = s.minUp != null ? s.minUp : '';
-        if (this.maxUp) this.maxUp.value = s.maxUp != null ? s.maxUp : '';
-        if (this.minDown) this.minDown.value = s.minDown != null ? s.minDown : '';
-        if (this.maxDown) this.maxDown.value = s.maxDown != null ? s.maxDown : '';
-        if (this.minScore) this.minScore.value = s.minScore != null ? s.minScore : '';
-        if (this.maxScore) this.maxScore.value = s.maxScore != null ? s.maxScore : '';
-        if (this.minRatio) this.minRatio.value = s.minRatio != null ? s.minRatio : '';
-        if (this.maxRatio) this.maxRatio.value = s.maxRatio != null ? s.maxRatio : '';
-        this.activeQuickFilter = s.activeQuickFilter || '';
-        this.syncQuickFilterButtons();
-        const sortLabels = { score: 'Score', name: 'Name', date: 'Date (export order)', ratio: 'Ratio', random: 'Random' };
-        if (this.sortSelected) this.sortSelected.textContent = sortLabels[this.sortKey] || 'Score';
-        this.updateDatasetLabelVisual(this.selectedGallerySlug);
-        this.syncFilterToggleIndicator();
-    }
-
-    addToHistory(entry) {
-        if (this.historyIndex < this.history.length - 1) {
-            this.history = this.history.slice(0, this.historyIndex + 1);
-        }
-        this.history.push(entry);
-        this.historyIndex = this.history.length - 1;
-        this.updateHistoryMenus();
-    }
-
-    goToHistoryIndex(index) {
-        if (index >= 0 && index < this.history.length && index !== this.historyIndex) {
-            this.historyIndex = index;
-            void this.restoreHistoryEntry(this.history[this.historyIndex]);
-        }
-    }
-
-    goBack() {
-        if (this.historyIndex > 0) {
-            this.historyIndex--;
-            void this.restoreHistoryEntry(this.history[this.historyIndex]);
-        }
-    }
-
-    goForward() {
-        if (this.historyIndex < this.history.length - 1) {
-            this.historyIndex++;
-            void this.restoreHistoryEntry(this.history[this.historyIndex]);
-        }
-    }
-
-    async restoreHistoryEntry(entry) {
-        if (!entry) return;
-        if (entry.type === 'browse' && entry.state) {
-            this.applyBrowseState(entry.state);
-            await this.reloadFromTop(false);
-        }
-        this.updateHistoryMenus();
-    }
-
     applyHomeDefaults() {
         this.filterRowVisible = false;
-        if (this.filterToggleBtn) this.filterToggleBtn.setAttribute('data-state', 'off');
         if (this.filterRow) this.filterRow.classList.add('hidden');
+        this.syncFilterToggleIndicator();
         this.sortKey = 'score';
         this.invert = false;
         this.randomSeed = 0;
@@ -1391,67 +1494,15 @@ class NaxtApplet {
 
     async goHome() {
         this.applyHomeDefaults();
-        this.history = [{ type: 'browse', state: this.getBrowseState() }];
-        this.historyIndex = 0;
-        await this.reloadFromTop(false);
-        this.updateHistoryMenus();
-    }
-
-    updateHistoryMenus() {
-        if (!contextMenu) return;
-        if (this.backMenuConfig && this.backBtn) {
-            const backItems = [];
-            for (let i = 0; i < this.historyIndex; i++) {
-                const entry = this.history[i];
-                backItems.push({
-                    text: this.getHistoryLabel(entry, i),
-                    icon: this.getHistoryIcon(entry),
-                    action: `naxt-back-to-${i}`
-                });
-            }
-            if (!backItems.length) {
-                backItems.push({ text: 'No history', icon: 'fas fa-info-circle', action: 'naxt-no', disabled: true });
-            }
-            this.backMenuConfig.sections[0].items = backItems;
-            contextMenu.detachFromElement(this.backBtn);
-            contextMenu.attachToElement(this.backBtn, this.backMenuConfig);
-        }
-        if (this.forwardMenuConfig && this.forwardBtn) {
-            const forwardItems = [];
-            for (let i = this.historyIndex + 1; i < this.history.length; i++) {
-                const entry = this.history[i];
-                forwardItems.push({
-                    text: this.getHistoryLabel(entry, i),
-                    icon: this.getHistoryIcon(entry),
-                    action: `naxt-forward-to-${i}`
-                });
-            }
-            if (!forwardItems.length) {
-                forwardItems.push({ text: 'No history', icon: 'fas fa-info-circle', action: 'naxt-no', disabled: true });
-            }
-            this.forwardMenuConfig.sections[0].items = forwardItems;
-            contextMenu.detachFromElement(this.forwardBtn);
-            contextMenu.attachToElement(this.forwardBtn, this.forwardMenuConfig);
-        }
-    }
-
-    getHistoryLabel(entry, index) {
-        if (!entry) return `Entry ${index + 1}`;
-        if (entry.type === 'browse' && entry.state) {
-            const slug = entry.state.gallerySlug || '';
-            const name = slug ? naxtGalleryBucketLabel(slug, this.galleries) : '';
-            const q = (entry.state.query || '').trim();
-            return q ? `${name}: ${q}` : name || `Browse ${index + 1}`;
-        }
-        return `Entry ${index + 1}`;
-    }
-
-    getHistoryIcon(entry) {
-        if (!entry || entry.type !== 'browse' || !entry.state) return 'fas fa-grid';
-        return naxtGalleryIconClass(entry.state.gallerySlug || '');
+        await this.reloadFromTop();
     }
 
     async ensureGalleries() {
+        if (!window.userGlobalSettingsHydrated && window.wsClient && window.wsClient.isConnected()) {
+            if (typeof loadUserGlobalSettingsFromServer === 'function') {
+                await loadUserGlobalSettingsFromServer();
+            }
+        }
         if (this.galleries.length) return;
         if (!window.wsClient || !window.wsClient.isConnected()) {
             if (typeof showGlassToast === 'function') {
@@ -1477,13 +1528,13 @@ class NaxtApplet {
     async open() {
         if (!this.modal) return;
         await this.ensureGalleries();
-        const wasNew = this.history.length === 0;
-        if (wasNew) {
+        if (!this.browseSessionActive) {
             this.applyHomeDefaults();
             if (!this.selectedGallerySlug && this.galleries.length) {
                 this.selectedGallerySlug = this.galleries[0].slug;
             }
             this.updateDatasetLabelVisual(this.selectedGallerySlug);
+            this.browseSessionActive = true;
         }
         if (typeof openModal === 'function') {
             openModal(this.modal);
@@ -1496,12 +1547,7 @@ class NaxtApplet {
             this.setupSentinelObserver();
             this.setupImgObserver();
         }, 80);
-        await this.reloadFromTop(false);
-        if (wasNew) {
-            this.history = [{ type: 'browse', state: this.getBrowseState() }];
-            this.historyIndex = 0;
-        }
-        this.updateHistoryMenus();
+        await this.reloadFromTop();
         this.syncFilterToggleIndicator();
         this.updateStatusBar();
     }
@@ -1509,8 +1555,7 @@ class NaxtApplet {
     close() {
         if (!this.modal || typeof closeModal !== 'function') return;
         closeModal(this.modal).then(() => {
-            this.history = [];
-            this.historyIndex = -1;
+            this.browseSessionActive = false;
             if (this.grid) this.grid.innerHTML = '';
         });
     }
@@ -1562,16 +1607,16 @@ class NaxtApplet {
         });
     }
 
-    async reloadFromTop(pushHistory) {
+    async reloadFromTop() {
         this.offset = 0;
         this.hasMore = true;
         if (this.grid) this.grid.innerHTML = '';
-        await this.loadPage(false, pushHistory);
+        await this.loadPage(false);
     }
 
     loadMore() {
         if (!this.hasMore || this.loading) return;
-        this.loadPage(true, false);
+        this.loadPage(true);
     }
 
     numOrNull(el) {
@@ -1582,7 +1627,7 @@ class NaxtApplet {
         return Number.isNaN(n) ? null : n;
     }
 
-    async loadPage(append, pushHistory) {
+    async loadPage(append) {
         if (!this.selectedGallerySlug || !window.wsClient || !window.wsClient.isConnected()) {
             this.updateEmptyState();
             this.updateStatusBar();
@@ -1612,6 +1657,7 @@ class NaxtApplet {
         if (this.sortKey === 'random') {
             payload.randomSeed = this.randomSeed;
         }
+        payload.elevatePins = naxtNormalizeElevatePins(this.elevatePins);
         try {
             const data = await window.wsClient.sendMessage('get_nax_tags', payload, !append);
             if (gen !== this.requestGen) return;
@@ -1629,9 +1675,6 @@ class NaxtApplet {
             }
             this.offset += items.length;
             this.updateEmptyState();
-            if (pushHistory) {
-                this.addToHistory({ type: 'browse', state: this.getBrowseState() });
-            }
             this.observeNewImages();
             this.updateStatusBar();
         } catch (e) {
@@ -1648,7 +1691,6 @@ class NaxtApplet {
             if (this.loadRequestsActive === 0) {
                 this.setGridLoading(false);
             }
-            this.updateHistoryMenus();
             this.syncFilterToggleIndicator();
         }
     }
@@ -1700,6 +1742,7 @@ class NaxtApplet {
         const card = this.findVisibleCard(entry.gallerySlug, entry.tag);
         el.dataset.favorite = card && card.dataset.favorite === '1' ? '1' : '0';
         el.dataset.try = card && card.dataset.try === '1' ? '1' : '0';
+        el.dataset.hidden = card && card.dataset.hidden === '1' ? '1' : '0';
         if (card && card.dataset.isCustom === '1') {
             el.dataset.isCustom = '1';
         } else {
@@ -1847,8 +1890,18 @@ class NaxtApplet {
                             action: 'naxt-try',
                             loadfn: (iconDef, target) => {
                                 const on = target && target.dataset && target.dataset.try === '1';
-                                iconDef.icon = on ? 'fas fa-flask' : 'far fa-flask';
+                                iconDef.icon = on ? 'fas fa-vial-circle-check' : 'fas fa-vial';
                                 iconDef.tooltip = on ? 'Remove try mark' : 'Mark to try';
+                            }
+                        },
+                        {
+                            icon: 'fas fa-eye-slash',
+                            tooltip: 'Hide tag',
+                            action: 'naxt-hide',
+                            loadfn: (iconDef, target) => {
+                                const on = target && target.dataset && target.dataset.hidden === '1';
+                                iconDef.icon = on ? 'fas fa-eye' : 'fas fa-eye-slash';
+                                iconDef.tooltip = on ? 'Unhide tag' : 'Hide tag';
                             }
                         },
                         bagIcon,
@@ -1893,6 +1946,8 @@ class NaxtApplet {
             void this.toggleFavorite(target);
         } else if (action === 'naxt-try') {
             void this.toggleTry(target);
+        } else if (action === 'naxt-hide') {
+            void this.toggleHidden(target);
         } else if (action === 'naxt-delete-custom') {
             void this.deleteCustomTag(gallerySlug, tag);
         }
@@ -1914,6 +1969,7 @@ class NaxtApplet {
         card.dataset.filename = item.filename;
         card.dataset.favorite = item.favorite ? '1' : '0';
         card.dataset.try = item.tryMark ? '1' : '0';
+        card.dataset.hidden = item.hidden ? '1' : '0';
         card.dataset.id = String(item.id);
         if (item.isCustom) {
             card.dataset.isCustom = '1';
@@ -2089,6 +2145,14 @@ class NaxtApplet {
         const next = target.dataset.try !== '1';
         await this.setTryMarkForTag(slug, tag, next);
         target.dataset.try = next ? '1' : '0';
+    }
+
+    async toggleHidden(target) {
+        const slug = target.dataset.gallerySlug;
+        const tag = target.dataset.tag;
+        const next = target.dataset.hidden !== '1';
+        await this.setHiddenForTag(slug, tag, next);
+        target.dataset.hidden = next ? '1' : '0';
     }
 
     openInWindow(card) {

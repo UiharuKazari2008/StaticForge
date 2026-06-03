@@ -50,6 +50,46 @@ function migrateSchema(d) {
     if (!cols.some((c) => c.name === 'try_mark')) {
         d.exec('ALTER TABLE nax_tags ADD COLUMN try_mark INTEGER NOT NULL DEFAULT 0');
     }
+    if (!cols.some((c) => c.name === 'hidden_mark')) {
+        d.exec('ALTER TABLE nax_tags ADD COLUMN hidden_mark INTEGER NOT NULL DEFAULT 0');
+    }
+}
+
+const NAX_ANY_RESOLVE_TAG_LIMIT = 100;
+const NAX_HIDDEN_WHERE = '(hidden_mark = 0 OR hidden_mark IS NULL)';
+
+/** Pin-to-top mode for Atelier sort: 0 none, 1 favorites, 2 try, 3 both */
+const NAX_ELEVATE_NONE = 0;
+const NAX_ELEVATE_FAVORITES = 1;
+const NAX_ELEVATE_TRY = 2;
+const NAX_ELEVATE_BOTH = 3;
+
+function normalizeElevatePins(value) {
+    if (value === true || value === 'true') return NAX_ELEVATE_FAVORITES;
+    const n = Number(value);
+    if (n === NAX_ELEVATE_FAVORITES || n === NAX_ELEVATE_TRY || n === NAX_ELEVATE_BOTH) return n;
+    return NAX_ELEVATE_NONE;
+}
+
+function naxPinMatchSql(elevatePins) {
+    const mode = normalizeElevatePins(elevatePins);
+    if (mode === NAX_ELEVATE_NONE) return null;
+    const parts = [];
+    if (mode === NAX_ELEVATE_FAVORITES || mode === NAX_ELEVATE_BOTH) parts.push('favorite = 1');
+    if (mode === NAX_ELEVATE_TRY || mode === NAX_ELEVATE_BOTH) parts.push('try_mark = 1');
+    return parts.length ? parts.join(' OR ') : null;
+}
+
+function naxPinnedFirstExpr(elevatePins) {
+    const match = naxPinMatchSql(elevatePins);
+    if (!match) return '1';
+    return `(CASE WHEN ${match} THEN 0 ELSE 1 END)`;
+}
+
+function naxPinnedBoostExpr(elevatePins, boostValue, elseExpr) {
+    const match = naxPinMatchSql(elevatePins);
+    if (!match) return elseExpr;
+    return `(CASE WHEN ${match} THEN ${boostValue} ELSE ${elseExpr} END)`;
 }
 
 function getSlugsInMergeGroupFor(slug, d) {
@@ -165,6 +205,7 @@ function mapTagRow(r) {
         score: r.score,
         favorite: !!r.favorite,
         tryMark: !!(r.tryMark != null ? r.tryMark : r.try_mark),
+        hidden: !!(r.hiddenMark != null ? r.hiddenMark : r.hidden_mark),
         exportIndex: r.exportIndex,
         isCustom: !!r.isCustom
     };
@@ -204,7 +245,7 @@ function getTagRow(gallerySlug, tag) {
     if (!d) return null;
     const row = d.prepare(`
         SELECT id, gallery_slug AS gallerySlug, tag, filename, upvotes, downvotes, score,
-               favorite, try_mark AS tryMark, export_index AS exportIndex, is_custom AS isCustom
+               favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex, is_custom AS isCustom
         FROM nax_tags WHERE gallery_slug = ? AND tag = ?
     `).get(gallerySlug, tag);
     return row ? mapTagRow(row) : null;
@@ -244,6 +285,7 @@ function queryTags(opts) {
         maxRatio = null,
         randomSeed = null,
         markFilter = 'all',
+        elevatePins = 0,
         offset = 0,
         limit = 50
     } = opts;
@@ -289,21 +331,29 @@ function queryTags(opts) {
     addRatio(minRatio, maxRatio);
 
     const mark = String(markFilter || 'all').toLowerCase();
-    if (mark === 'favorites') {
-        where.push('favorite = 1');
-    } else if (mark === 'try') {
-        where.push('try_mark = 1');
-    } else if (mark === 'unmarked') {
-        where.push('favorite = 0 AND try_mark = 0');
+    if (mark === 'hidden') {
+        where.push('hidden_mark = 1');
+    } else {
+        where.push(NAX_HIDDEN_WHERE);
+        if (mark === 'favorites') {
+            where.push('favorite = 1');
+        } else if (mark === 'try') {
+            where.push('try_mark = 1');
+        } else if (mark === 'unmarked') {
+            where.push('favorite = 0 AND try_mark = 0');
+        } else if (mark === 'custom') {
+            where.push('is_custom = 1');
+        }
     }
 
     const whereSql = where.join(' AND ');
+    const pinMode = normalizeElevatePins(elevatePins);
 
     const totalRow = d.prepare(`SELECT COUNT(*) AS c FROM nax_tags WHERE ${whereSql}`).get(...params);
     const total = totalRow ? totalRow.c : 0;
 
     const ratioOrderExpr = 'COALESCE(1.0 * upvotes / NULLIF(upvotes + downvotes, 0), -1)';
-    const pinnedFirstExpr = '(CASE WHEN favorite = 1 OR is_custom = 1 OR try_mark = 1 THEN 0 ELSE 1 END)';
+    const pinnedFirstExpr = naxPinnedFirstExpr(pinMode);
 
     const orderExtraParams = [];
     let orderBy;
@@ -314,14 +364,14 @@ function queryTags(opts) {
         orderBy = `${pinnedFirstExpr} ASC, export_index ${dateDir}, tag COLLATE NOCASE ASC`;
     } else if (sort === 'ratio') {
         const ratioDir = invert ? 'ASC' : 'DESC';
-        orderBy = `(CASE WHEN favorite = 1 OR is_custom = 1 OR try_mark = 1 THEN 2.0 ELSE ${ratioOrderExpr} END) ${ratioDir}, tag COLLATE NOCASE ASC`;
+        orderBy = `${naxPinnedBoostExpr(pinMode, '2.0', ratioOrderExpr)} ${ratioDir}, tag COLLATE NOCASE ASC`;
     } else if (sort === 'random') {
         const seed = Number.isFinite(Number(randomSeed)) ? Math.floor(Number(randomSeed)) : 0;
         orderBy = `${pinnedFirstExpr} ASC, ((id * 1103515245) + ?) & 2147483647, id`;
         orderExtraParams.push(seed);
     } else {
         const scoreDir = invert ? 'ASC' : 'DESC';
-        orderBy = `(CASE WHEN favorite = 1 OR is_custom = 1 OR try_mark = 1 THEN 100000 ELSE score END) ${scoreDir}, tag COLLATE NOCASE ASC`;
+        orderBy = `${naxPinnedBoostExpr(pinMode, '100000', 'score')} ${scoreDir}, tag COLLATE NOCASE ASC`;
     }
 
     const lim = Math.min(Math.max(Number(limit) || 50, 1), 100);
@@ -329,7 +379,7 @@ function queryTags(opts) {
 
     const rows = d.prepare(`
         SELECT id, gallery_slug AS gallerySlug, tag, filename, upvotes, downvotes, score,
-               favorite, try_mark AS tryMark, export_index AS exportIndex, is_custom AS isCustom
+               favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex, is_custom AS isCustom
         FROM nax_tags
         WHERE ${whereSql}
         ORDER BY ${orderBy}
@@ -405,6 +455,29 @@ function setTryMark(gallerySlug, tag, tryMark) {
     tx();
 
     return { tryMark: mark === 1 };
+}
+
+function setHiddenMark(gallerySlug, tag, hidden) {
+    const d = getDb();
+    if (!d) {
+        throw new Error('NAX database not found; run scripts/import-nax-tags.js');
+    }
+    if (!isValidSlug(gallerySlug) || !tag) {
+        throw new Error('Invalid gallery or tag');
+    }
+    const exists = d.prepare(
+        'SELECT 1 AS ok FROM nax_tags WHERE gallery_slug = ? AND tag = ?'
+    ).get(gallerySlug, tag);
+    if (!exists) {
+        throw new Error('Tag not found');
+    }
+
+    const mark = hidden ? 1 : 0;
+    d.prepare(
+        'UPDATE nax_tags SET hidden_mark = ? WHERE gallery_slug = ? AND tag = ?'
+    ).run(mark, gallerySlug, tag);
+
+    return { hidden: mark === 1 };
 }
 
 function insertCustomTag(gallerySlug, tag, filename) {
@@ -694,7 +767,7 @@ function countMarkedTagsInSlugs(gallerySlugs, markFilter) {
     const placeholders = slugs.map(() => '?').join(', ');
     const row = d.prepare(`
         SELECT COUNT(*) AS c FROM nax_tags
-        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol} AND ${NAX_HIDDEN_WHERE}
     `).get(...slugs);
     return row && row.c != null ? row.c : 0;
 }
@@ -713,10 +786,68 @@ function pickRandomMarkedTagFromSlugs(gallerySlugs, markFilter) {
     const placeholders = slugs.map(() => '?').join(', ');
     const row = d.prepare(`
         SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
-        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol} AND ${NAX_HIDDEN_WHERE}
         ORDER BY RANDOM() LIMIT 1
     `).get(...slugs);
     return row && row.tag ? { tag: row.tag, gallerySlug: row.gallerySlug } : null;
+}
+
+/**
+ * Visible tag count for !NAX_ANY_* (excludes hidden_mark).
+ * @param {string[]} gallerySlugs
+ * @returns {number}
+ */
+function countTagsInSlugs(gallerySlugs) {
+    const d = getDb();
+    if (!d) return 0;
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return 0;
+    const placeholders = slugs.map(() => '?').join(', ');
+    const row = d.prepare(`
+        SELECT COUNT(*) AS c FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${NAX_HIDDEN_WHERE}
+    `).get(...slugs);
+    return row && row.c != null ? row.c : 0;
+}
+
+/**
+ * Random visible tag for !NAX_ANY_* resolution (excludes hidden_mark).
+ * @param {string[]} gallerySlugs
+ * @returns {{ tag: string, gallerySlug: string } | null}
+ */
+function pickRandomTagFromSlugs(gallerySlugs) {
+    const d = getDb();
+    if (!d) return null;
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return null;
+    const placeholders = slugs.map(() => '?').join(', ');
+    const row = d.prepare(`
+        SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${NAX_HIDDEN_WHERE}
+        ORDER BY RANDOM() LIMIT 1
+    `).get(...slugs);
+    return row && row.tag ? { tag: row.tag, gallerySlug: row.gallerySlug } : null;
+}
+
+/**
+ * Lock-picker list for !NAX_ANY_* (excludes hidden_mark).
+ * @param {string[]} gallerySlugs
+ * @param {number} [limit]
+ * @returns {{ tag: string, gallerySlug: string }[]}
+ */
+function listAllTagsFromSlugs(gallerySlugs, limit = NAX_ANY_RESOLVE_TAG_LIMIT) {
+    const d = getDb();
+    if (!d) return [];
+    const slugs = (gallerySlugs || []).filter((s) => isValidSlug(s));
+    if (!slugs.length) return [];
+    const placeholders = slugs.map(() => '?').join(', ');
+    const lim = Math.min(Math.max(Number(limit) || NAX_ANY_RESOLVE_TAG_LIMIT, 1), NAX_ANY_RESOLVE_TAG_LIMIT);
+    return d.prepare(`
+        SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
+        WHERE gallery_slug IN (${placeholders}) AND ${NAX_HIDDEN_WHERE}
+        ORDER BY gallery_slug COLLATE NOCASE, tag COLLATE NOCASE
+        LIMIT ?
+    `).all(...slugs, lim);
 }
 
 /**
@@ -735,7 +866,7 @@ function listMarkedTagsFromSlugs(gallerySlugs, markFilter, limit = 2000) {
     const lim = Math.min(Math.max(Number(limit) || 2000, 1), 2000);
     return d.prepare(`
         SELECT tag, gallery_slug AS gallerySlug FROM nax_tags
-        WHERE gallery_slug IN (${placeholders}) AND ${markCol}
+        WHERE gallery_slug IN (${placeholders}) AND ${markCol} AND ${NAX_HIDDEN_WHERE}
         ORDER BY gallery_slug COLLATE NOCASE, tag COLLATE NOCASE
         LIMIT ?
     `).all(...slugs, lim);
@@ -762,10 +893,16 @@ function formatLockedNaxExpander(entry) {
 function getNaxInternalExpanderOptions(presetId, kind, model) {
     const preset = getNaxExpanderPreset(presetId);
     if (!preset) return [];
-    const markFilter = kind === 'TRY' ? 'try' : 'favorites';
     const slugs = preset.resolveSlugs(model);
     const lockKey = `NAX_${kind}_${preset.id}`;
-    const rows = listMarkedTagsFromSlugs(slugs, markFilter);
+    let rows;
+    if (kind === 'ANY') {
+        if (countTagsInSlugs(slugs) > NAX_ANY_RESOLVE_TAG_LIMIT) return [];
+        rows = listAllTagsFromSlugs(slugs, NAX_ANY_RESOLVE_TAG_LIMIT);
+    } else {
+        const markFilter = kind === 'TRY' ? 'try' : 'favorites';
+        rows = listMarkedTagsFromSlugs(slugs, markFilter);
+    }
     return rows.map((row, index) => ({
         value: formatTagForPrompt(row.tag, row.gallerySlug),
         key: lockKey,
@@ -784,9 +921,14 @@ function getNaxInternalExpanderOptions(presetId, kind, model) {
 function resolveNaxInternalExpander(presetId, kind, model) {
     const preset = getNaxExpanderPreset(presetId);
     if (!preset) return null;
-    const markFilter = kind === 'TRY' ? 'try' : 'favorites';
     const slugs = preset.resolveSlugs(model, getGalleries());
-    const row = pickRandomMarkedTagFromSlugs(slugs, markFilter);
+    let row;
+    if (kind === 'ANY') {
+        row = pickRandomTagFromSlugs(slugs);
+    } else {
+        const markFilter = kind === 'TRY' ? 'try' : 'favorites';
+        row = pickRandomMarkedTagFromSlugs(slugs, markFilter);
+    }
     if (!row) return null;
     return {
         tag: row.tag,
@@ -794,6 +936,13 @@ function resolveNaxInternalExpander(presetId, kind, model) {
         formatted: formatTagForPrompt(row.tag, row.gallerySlug),
         presetId: preset.id
     };
+}
+
+function canResolveNaxInternalExpander(presetId, kind, model) {
+    if (kind !== 'ANY') return true;
+    const preset = getNaxExpanderPreset(presetId);
+    if (!preset) return false;
+    return countTagsInSlugs(preset.resolveSlugs(model)) <= NAX_ANY_RESOLVE_TAG_LIMIT;
 }
 
 /**
@@ -819,6 +968,7 @@ function queryMarkedTags(opts = {}) {
     } else {
         return [];
     }
+    where.push(NAX_HIDDEN_WHERE);
 
     if (gallerySlug && isValidSlug(gallerySlug)) {
         where.push('gallery_slug = ?');
@@ -854,6 +1004,13 @@ function getInternalNaxTextReplacements() {
             label: preset.label,
             description: preset.description
         });
+        out.push({
+            type: 'ANY',
+            key: `NAX_ANY_${preset.id}`,
+            presetId: preset.id,
+            label: preset.label,
+            description: `${preset.description} (any non-hidden tag in dataset)`
+        });
     }
     return out;
 }
@@ -862,14 +1019,18 @@ function getInternalNaxTextReplacements() {
 function getNaxExpanderPresetsForClient(model) {
     return NAX_EXPANDER_PRESETS.map((preset) => {
         const slugs = preset.resolveSlugs(model);
+        const anyCount = countTagsInSlugs(slugs);
         return {
             id: preset.id,
             label: preset.label,
             description: preset.description,
             favPattern: `!NAX_FAV_${preset.id}`,
             tryPattern: `!NAX_TRY_${preset.id}`,
+            anyPattern: `!NAX_ANY_${preset.id}`,
             favCount: countMarkedTagsInSlugs(slugs, 'favorites'),
-            tryCount: countMarkedTagsInSlugs(slugs, 'try')
+            tryCount: countMarkedTagsInSlugs(slugs, 'try'),
+            anyCount,
+            canResolveAny: anyCount <= NAX_ANY_RESOLVE_TAG_LIMIT
         };
     });
 }
@@ -896,18 +1057,30 @@ module.exports = {
     isNaxCuratedArtistGallery,
     formatTagForPrompt,
     pickRandomMarkedTag,
+    countMarkedTagsInSlugs,
+    countTagsInSlugs,
+    pickRandomTagFromSlugs,
+    listAllTagsFromSlugs,
     pickRandomMarkedTagFromSlugs,
     listMarkedTagsFromSlugs,
     formatLockedNaxExpander,
     getNaxInternalExpanderOptions,
     resolveNaxInternalExpander,
+    canResolveNaxInternalExpander,
     getNaxExpanderPreset,
+    NAX_ANY_RESOLVE_TAG_LIMIT,
+    NAX_ELEVATE_NONE,
+    NAX_ELEVATE_FAVORITES,
+    NAX_ELEVATE_TRY,
+    NAX_ELEVATE_BOTH,
+    normalizeElevatePins,
     queryMarkedTags,
     getInternalNaxTextReplacements,
     getNaxExpanderPresetsForClient,
     queryTags,
     setFavorite,
     setTryMark,
+    setHiddenMark,
     insertCustomTag,
     deleteCustomTag,
     isValidSlug,

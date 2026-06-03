@@ -106,8 +106,8 @@ importers:
         specifier: ^8.1.0
         version: 8.1.0(socks@2.8.7)
       nekoai-js:
-        specifier: ^1.2.5
-        version: 1.2.5(encoding@0.1.13)
+        specifier: file:../NekoAI-JS
+        version: file:../NekoAI-JS(encoding@0.1.13)
       node-fetch:
         specifier: ^3.3.2
         version: 3.3.2
@@ -3112,8 +3112,8 @@ packages:
     resolution: {integrity: sha512-myRT3DiWPHqho5PrJaIRyaMv2kgYf0mUVgBNOYMuCH5Ki1yEiQaf/ZJuQ62nvpc44wL5WDbTX7yGJi1Neevw8w==}
     engines: {node: '>= 0.6'}
 
-  nekoai-js@1.2.5:
-    resolution: {integrity: sha512-7Rkz9HsbfXU0FubCcK6TqDdN2mIi4AzfRDapFT7WjKUIeBp1y+iudXE8KA8iPjGDew/+UX+LYxxcxVF7SXSAoA==}
+  nekoai-js@file:../NekoAI-JS:
+    resolution: {directory: ../NekoAI-JS, type: directory}
     engines: {node: '>=18.0.0'}
 
   neo-async@2.6.2:
@@ -8033,7 +8033,7 @@ snapshots:
 
   negotiator@0.6.4: {}
 
-  nekoai-js@1.2.5(encoding@0.1.13):
+  nekoai-js@file:../NekoAI-JS(encoding@0.1.13):
     dependencies:
       '@msgpack/msgpack': 3.1.2
       exifreader: 4.31.1

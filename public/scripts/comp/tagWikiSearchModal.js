@@ -3,6 +3,8 @@
 
 const DREAMWIKI_RECENT_STORAGE_KEY = 'dreamWikiRecentPages';
 const DREAMWIKI_RECENT_MAX = 20;
+const GRIMOIRE_RIGHT_PANE_LS = 'grimoireRightPaneState';
+const GRIMOIRE_ONLINE_SEARCH_LS = 'grimoireIncludeOnlineSearch';
 
 function dreamWikiRecentRead() {
     try {
@@ -83,6 +85,26 @@ class WikiDisplayBase {
                             icon: 'fas fa-window-restore',
                             action: 'wiki-link-open-new-window'
                         },
+                        {
+                            text: 'Open on Right',
+                            icon: 'fas fa-arrow-right',
+                            action: 'wiki-link-open-on-right',
+                            hidden: () => {
+                                const host = window.tagWikiSearchModal;
+                                return !host || typeof host.isSplitMode !== 'function' || !host.isSplitMode()
+                                    || host.isRightPaneDisplay(this.displayArea);
+                            }
+                        },
+                        {
+                            text: 'Open on Left',
+                            icon: 'fas fa-arrow-left',
+                            action: 'wiki-link-open-on-left',
+                            hidden: () => {
+                                const host = window.tagWikiSearchModal;
+                                return !host || typeof host.isSplitMode !== 'function' || !host.isSplitMode()
+                                    || !host.isRightPaneDisplay(this.displayArea);
+                            }
+                        },
                         { separator: true },
                         {
                             text: 'Add to Prompt',
@@ -134,6 +156,14 @@ class WikiDisplayBase {
                     }
                 } else if (action === 'wiki-link-open-new-window') {
                     this.openLinkInNewWindow(tagName);
+                } else if (action === 'wiki-link-open-on-right') {
+                    if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.openLinkOnPane === 'function') {
+                        window.tagWikiSearchModal.openLinkOnPane(tagName, 'right');
+                    }
+                } else if (action === 'wiki-link-open-on-left') {
+                    if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.openLinkOnPane === 'function') {
+                        window.tagWikiSearchModal.openLinkOnPane(tagName, 'left');
+                    }
                 } else if (action === 'wiki-link-add-to-desktop') {
                     this.addWikiPageToDesktop(tagName);
                 }
@@ -654,6 +684,136 @@ class WikiDisplayBase {
         }
     }
 
+    showDreamWikiHomepage() {
+        if (!this.displayArea) return;
+
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        this.currentStaticWiki = null;
+
+        const recents = dreamWikiRecentRead();
+        const recentRows = recents.length
+            ? recents
+                  .map((name) => {
+                      const safe = this.escapeHtml(name);
+                      const enc = encodeURIComponent(name);
+                      return `<div class="tag-wiki-result-item dreamwiki-recent-item" role="button" tabindex="0" data-dreamwiki-recent="${enc}"><span class="tag-wiki-result-name">${safe}</span></div>`;
+                  })
+                  .join('')
+            : `<div class="dreamwiki-recent-empty">No pages yet.</div>`;
+
+        this.displayArea.innerHTML = `
+<div class="dreamwiki-home">
+    <div class="dreamwiki-home-hero form-row center-align">
+        <div class="about-logo-container">
+            <img src="/static_images/logo_icon.png" alt="Dreamscape Logo" class="about-logo">
+            <h2 class="logo-text">Dreamscape</h2>
+        </div>
+    </div>
+    <p class="dreamwiki-home-subtitle">The central home of Knowledge, The Grimoire</p>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
+    <div class="dreamwiki-home-border-dotted"></div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
+    <div class="dreamwiki-home-actions-center">
+        <div class="dreamwiki-home-actions-block">
+            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Tag Groups</div>
+            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack">
+                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">Anime</button>
+                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">Furry</button>
+            </div>
+        </div>
+        <div class="dreamwiki-home-actions-block">
+            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Documentation</div>
+            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack dreamwiki-static-wiki-sites">
+                <span class="dreamwiki-docs-loading"><i class="fas fa-spinner-third fa-spin"></i></span>
+            </div>
+        </div>
+    </div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
+    <div class="dreamwiki-home-direct-wrap">
+        <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Open wiki page</div>
+        <input type="text" class="form-control hover-show colored dreamwiki-direct-page-input" placeholder="Exact page name (Enter to open)" autocapitalize="false" autocorrect="false" spellcheck="false">
+    </div>
+    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
+    <div class="dreamwiki-recent-panel">
+        <div class="tag-wiki-no-wiki-header">Recently visited</div>
+        <div class="dreamwiki-recent-list dreamwiki-recent-list-cols-3">${recentRows}</div>
+    </div>
+</div>`;
+
+        this.bindDreamWikiHomepageEvents();
+    }
+
+    bindDreamWikiHomepageEvents() {
+        if (!this.displayArea) return;
+
+        this.displayArea.querySelectorAll('[data-dreamwiki-page]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const page = btn.getAttribute('data-dreamwiki-page');
+                if (page) {
+                    this.getTagWikiPageDirectly(page);
+                }
+            });
+        });
+
+        this.loadStaticWikiHomeSites();
+
+        const directInput = this.displayArea.querySelector('.dreamwiki-direct-page-input');
+        if (directInput) {
+            directInput.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const q = directInput.value.trim();
+                if (q) {
+                    this.getTagWikiPageDirectly(q);
+                }
+            });
+        }
+
+        const list = this.displayArea.querySelector('.dreamwiki-recent-list');
+        if (list) {
+            const activateRecent = (el) => {
+                const raw = el.getAttribute('data-dreamwiki-recent');
+                let name = '';
+                if (raw) {
+                    try {
+                        name = decodeURIComponent(raw);
+                    } catch (e) {
+                        name = raw;
+                    }
+                }
+                if (name) {
+                    this.getTagWikiPageDirectly(name);
+                }
+            };
+            list.querySelectorAll('[data-dreamwiki-recent]').forEach((row) => {
+                row.addEventListener('click', () => activateRecent(row));
+                row.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        activateRecent(row);
+                    }
+                });
+            });
+        }
+    }
+
+    rebindDisplayContent() {
+        if (!this.displayArea) return;
+        if (this.displayArea.querySelector('.tag-wiki-split-blank-state')) {
+            return;
+        }
+        if (this.displayArea.querySelector('.dreamwiki-home')) {
+            this.bindDreamWikiHomepageEvents();
+            return;
+        }
+        if (this.displayArea.querySelector('.static-wiki-index')) {
+            this.setupStaticWikiIndexLinks(this.displayArea);
+            return;
+        }
+        this.setupLinkHandlers();
+    }
+
     async showStaticWikiSiteIndex(siteId) {
         if (!this.displayArea || !siteId) return;
         if (!wsClient || !wsClient.isConnected()) {
@@ -750,23 +910,44 @@ class WikiDisplayBase {
         }
     }
     
+    resolveBooruWikiTagName(tag) {
+        const raw = String(tag?.name || tag?.title || '').trim();
+        return raw
+            .replace(/\\/g, '')
+            .replace(/^(?:species|invalid):/i, '')
+            .replace(/\s+/g, '_')
+            .trim();
+    }
+
+    resolveWikiPageSource(tag) {
+        const filter = this.currentSource || 'both';
+        const tagSources = Array.isArray(tag?.source) ? tag.source : [];
+        if (filter !== 'both') {
+            if (tagSources.length > 0 && !tagSources.includes(filter)) {
+                return tagSources.length === 1 ? tagSources[0] : undefined;
+            }
+            return filter;
+        }
+        return undefined;
+    }
+
     async getTagWikiPage(tag) {
         if (!window.wsClient || !window.wsClient.isConnected()) {
             throw new Error('WebSocket not connected');
         }
         
-        const tagName = tag.title || tag.name || '';
-        const source = this.currentSource || 'both';
+        const wikiLookupName = this.resolveBooruWikiTagName(tag);
+        const wikiSource = this.resolveWikiPageSource(tag);
         
         try {
             const result = await window.wsClient.sendMessage('get_tag_wiki_page', {
-                tagName,
-                source: source === 'both' ? undefined : source,
+                tagName: wikiLookupName,
+                source: wikiSource,
                 format: 'html'
             });
             
             // Store tag name for refresh functionality
-            this.currentTagName = tagName;
+            this.currentTagName = wikiLookupName;
             
             return result || {};
         } catch (error) {
@@ -1611,6 +1792,144 @@ class WikiDisplayBase {
 }
 
 // Wiki Window Manager - manages multiple wiki window instances
+class GrimoireSplitPane extends WikiDisplayBase {
+    constructor(opts) {
+        super();
+        this.displayArea = opts.displayArea;
+        this.history = [];
+        this.historyIndex = -1;
+        this.blank = true;
+        this.attachWikiDisplayContextMenu();
+    }
+
+    isStandaloneWindow() {
+        return true;
+    }
+
+    isBlank() {
+        return this.blank === true;
+    }
+
+    showBlankPlaceholder() {
+        this.blank = true;
+        this.history = [];
+        this.historyIndex = -1;
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        if (this.displayArea) {
+            this.displayArea.innerHTML = `
+                <div class="tag-wiki-split-blank-state">
+                    <i class="fas fa-book-open"></i>
+                    <p>Open a link on the right, or swap panels to browse here.</p>
+                </div>
+            `;
+        }
+    }
+
+    captureState() {
+        return {
+            blank: this.blank === true,
+            history: this.history.map((entry) => ({ ...entry })),
+            historyIndex: this.historyIndex,
+            currentSelectedTag: this.currentSelectedTag,
+            currentTagName: this.currentTagName,
+            displayHtml: this.displayArea ? this.displayArea.innerHTML : ''
+        };
+    }
+
+    applyState(state) {
+        if (!state) return;
+        this.blank = state.blank === true;
+        this.history = (state.history || []).map((entry) => ({ ...entry }));
+        this.historyIndex = state.historyIndex;
+        this.currentSelectedTag = state.currentSelectedTag || null;
+        this.currentTagName = state.currentTagName || null;
+        if (this.displayArea) {
+            this.displayArea.innerHTML = state.displayHtml || '';
+            if (!this.blank) {
+                this.rebindDisplayContent();
+            }
+        }
+    }
+
+    async openTagByName(tagName) {
+        const t = String(tagName || '').trim();
+        if (!t) return;
+        this.blank = false;
+        await this.getTagWikiPageDirectly(t);
+    }
+
+    addToHistory(entry) {
+        if (this.historyIndex < this.history.length - 1) {
+            this.history = this.history.slice(0, this.historyIndex + 1);
+        }
+        this.history.push(entry);
+        this.historyIndex = this.history.length - 1;
+        this.blank = false;
+    }
+
+    goBack() {
+        if (this.historyIndex > 0) {
+            this.historyIndex--;
+            this.restoreHistoryEntry(this.history[this.historyIndex]);
+        }
+    }
+
+    goForward() {
+        if (this.historyIndex < this.history.length - 1) {
+            this.historyIndex++;
+            this.restoreHistoryEntry(this.history[this.historyIndex]);
+        }
+    }
+
+    restoreHistoryEntry(entry) {
+        if (!entry) return;
+        this.blank = false;
+        if (entry.type === 'home') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showDreamWikiHomepage();
+            return;
+        }
+        if (entry.type === 'static-wiki-index') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            this.showStaticWikiSiteIndex(entry.siteId);
+            return;
+        }
+        if (entry.type === 'static-wiki-page') {
+            this.currentSelectedTag = null;
+            this.currentTagName = null;
+            if (entry.content) {
+                this.renderWikiPage(entry.content);
+            } else {
+                this.openStaticWikiPage(entry.siteId, entry.pageId);
+            }
+            return;
+        }
+        if (entry.type === 'wiki') {
+            if (entry.tag) {
+                this.currentSelectedTag = entry.tag;
+                if (entry.content) {
+                    this.renderWikiPage(entry.content);
+                } else {
+                    this.getTagWikiPageDirectly(entry.tag.title || entry.tag.name);
+                }
+            }
+        }
+    }
+
+    goHome() {
+        this.blank = false;
+        this.currentSelectedTag = null;
+        this.currentTagName = null;
+        this.currentStaticWiki = null;
+        this.history = [{ type: 'home' }];
+        this.historyIndex = 0;
+        this.showDreamWikiHomepage();
+    }
+}
+
 class WikiWindowManager {
     constructor() {
         this.windows = new Map(); // Map of window IDs to window instances
@@ -2124,6 +2443,13 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.resultsScrollPanel = null;
         this.resultsCollapseBtn = null;
         this.resultsExpandBtn = null;
+        this.splitSwapBtn = null;
+        this.splitDividerEl = null;
+        this.rightPaneEl = null;
+        this.rightPane = null;
+        this.resultsOverlayBackdrop = null;
+        this.onlineToggleBtn = null;
+        this.hasEverMaximized = false;
         
         this.history = [];
         this.historyIndex = -1;
@@ -2134,6 +2460,15 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // Current filter values
         this.currentFilter = '';
         this.currentSearchType = 'name';
+        this.includeOnline = false;
+        this.lastOnlineSectionCount = null;
+        this.lastOnlineTagOnlyCount = null;
+        
+        try {
+            this.includeOnline = localStorage.getItem(GRIMOIRE_ONLINE_SEARCH_LS) === 'true';
+        } catch (e) {
+            this.includeOnline = false;
+        }
         
         this.init();
     }
@@ -2165,11 +2500,212 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.resultsScrollPanel = this.modal.querySelector('.tag-wiki-search-results.form-section-scroll');
         this.resultsCollapseBtn = document.getElementById('tagWikiSearchResultsCollapseBtn');
         this.resultsExpandBtn = document.getElementById('tagWikiSearchResultsExpandBtn');
+        this.splitSwapBtn = document.getElementById('tagWikiSearchSplitSwapBtn');
+        this.splitDividerEl = document.getElementById('tagWikiSearchSplitDivider');
+        this.rightPaneEl = document.getElementById('tagWikiSearchRightPane');
+        this.resultsOverlayBackdrop = document.getElementById('tagWikiSearchResultsOverlayBackdrop');
+        this.onlineToggleBtn = document.getElementById('tagWikiSearchOnlineToggleBtn');
         
+        this.setupOnlineToggle();
         this.setupDropdowns();
         this.setupResultsSidebar();
         this.setupEventListeners();
+        this.setupSplitModeListeners();
         this.setupContextMenu();
+    }
+
+    setupOnlineToggle() {
+        if (!this.onlineToggleBtn) return;
+        this.onlineToggleBtn.dataset.state = this.includeOnline ? 'on' : 'off';
+        this.onlineToggleBtn.title = this.includeOnline
+            ? 'Online search enabled (Danbooru & e621)'
+            : 'Search online (Danbooru & e621)';
+        this.onlineToggleBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.includeOnline = !this.includeOnline;
+            this.onlineToggleBtn.dataset.state = this.includeOnline ? 'on' : 'off';
+            try {
+                localStorage.setItem(GRIMOIRE_ONLINE_SEARCH_LS, this.includeOnline ? 'true' : 'false');
+            } catch (err) {
+                /* */
+            }
+            this.updateOnlineToggleState();
+            if (this.searchInput && this.searchInput.value.trim()) {
+                this.performSearch();
+            }
+        });
+        this.updateOnlineToggleState();
+    }
+
+    updateOnlineToggleState() {
+        if (!this.onlineToggleBtn) return;
+        const nameSearch = (this.currentSearchType || 'name') === 'name';
+        this.onlineToggleBtn.disabled = !nameSearch;
+        this.onlineToggleBtn.title = !nameSearch
+            ? 'Online search is only available for name searches'
+            : (this.includeOnline
+                ? 'Online search enabled (Danbooru & e621)'
+                : 'Search online (Danbooru & e621)');
+    }
+
+    setupSplitModeListeners() {
+        if (!this.modal) return;
+        this.modal.addEventListener('modalMaximized', () => this.enterSplitMode());
+        this.modal.addEventListener('modalRestored', () => this.exitSplitMode());
+        if (this.splitSwapBtn) {
+            this.splitSwapBtn.addEventListener('click', () => this.swapSplitPanes());
+        }
+    }
+
+    needsResultsOverlay() {
+        const modalWidth = this.modal ? (this.modal.offsetWidth || 0) : 0;
+        const tooSmall = modalWidth > 0 && modalWidth <= this.RESULTS_SIDEBAR_AUTO_COLLAPSE_WIDTH;
+        return this.isSplitMode() || tooSmall;
+    }
+
+    setResultsOverlayOpen(open) {
+        if (!this.modal) return;
+        const on = !!open;
+        this.modal.classList.toggle('tag-wiki-results-overlay-open', on);
+        if (this.resultsOverlayBackdrop) {
+            this.resultsOverlayBackdrop.classList.toggle('hidden', !on);
+        }
+        if (on && this.resultsScrollPanel && window.customScrollbar) {
+            window.customScrollbar.forceReinit(this.resultsScrollPanel);
+        }
+        if (this.needsResultsOverlay()) {
+            const overlayOpen = on;
+            if (this.resultsExpandBtn) {
+                this.resultsExpandBtn.classList.toggle('hidden', overlayOpen);
+                this.resultsExpandBtn.disabled = false;
+                this.resultsExpandBtn.title = 'Show search results';
+            }
+            if (this.resultsCollapseBtn) {
+                this.resultsCollapseBtn.disabled = !overlayOpen;
+                this.resultsCollapseBtn.title = overlayOpen ? 'Hide search results' : 'Collapse results';
+            }
+        }
+    }
+
+    saveRightPaneStateToStorage() {
+        if (!this.rightPane) return;
+        try {
+            localStorage.setItem(GRIMOIRE_RIGHT_PANE_LS, JSON.stringify(this.rightPane.captureState()));
+        } catch (e) {
+            /* */
+        }
+    }
+
+    loadRightPaneStateFromStorage() {
+        try {
+            const raw = localStorage.getItem(GRIMOIRE_RIGHT_PANE_LS);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    clearRightPaneStateFromStorage() {
+        try {
+            localStorage.removeItem(GRIMOIRE_RIGHT_PANE_LS);
+        } catch (e) {
+            /* */
+        }
+    }
+
+    isSplitMode() {
+        return !!(this.modal && this.modal.classList.contains('modal-maximized'));
+    }
+
+    isRightPaneDisplay(displayArea) {
+        return !!(this.rightPane && displayArea === this.rightPane.displayArea);
+    }
+
+    enterSplitMode() {
+        if (!this.rightPaneEl || !this.splitDividerEl) return;
+        this.hasEverMaximized = true;
+        this.modal.classList.add('tag-wiki-split-active');
+        this.modal.classList.remove('tag-wiki-results-overlay-open');
+        this.rightPaneEl.classList.remove('hidden');
+        this.splitDividerEl.classList.remove('hidden');
+        if (!this.rightPane) {
+            this.rightPane = new GrimoireSplitPane({
+                displayArea: document.getElementById('tagWikiSearchRightDisplay')
+            });
+            const saved = this.loadRightPaneStateFromStorage();
+            if (saved && saved.blank !== true) {
+                this.rightPane.applyState(saved);
+            } else {
+                this.rightPane.showBlankPlaceholder();
+            }
+        }
+        this.updateResultsSidebar();
+        if (window.customScrollbar) {
+            setTimeout(() => {
+                const panel = this.rightPaneEl.querySelector('.tag-wiki-search-display.form-section-scroll');
+                if (panel) window.customScrollbar.forceReinit(panel);
+            }, 50);
+        }
+    }
+
+    exitSplitMode() {
+        this.setResultsOverlayOpen(false);
+        if (this.modal) {
+            this.modal.classList.remove('tag-wiki-split-active', 'tag-wiki-results-overlay-open');
+        }
+        if (this.rightPaneEl) this.rightPaneEl.classList.add('hidden');
+        if (this.splitDividerEl) this.splitDividerEl.classList.add('hidden');
+        this.updateResultsSidebar();
+    }
+
+    captureLeftWikiState() {
+        return {
+            blank: false,
+            history: this.history.map((entry) => ({ ...entry })),
+            historyIndex: this.historyIndex,
+            currentSelectedTag: this.currentSelectedTag,
+            currentTagName: this.currentTagName,
+            displayHtml: this.displayArea ? this.displayArea.innerHTML : ''
+        };
+    }
+
+    applyLeftWikiState(state) {
+        if (!state) return;
+        this.history = (state.history || []).map((entry) => ({ ...entry }));
+        this.historyIndex = state.historyIndex;
+        this.currentSelectedTag = state.currentSelectedTag || null;
+        this.currentTagName = state.currentTagName || null;
+        if (this.displayArea) {
+            this.displayArea.innerHTML = state.displayHtml || '';
+            this.rebindDisplayContent();
+        }
+        this.updateNavigationButtons();
+    }
+
+    swapSplitPanes() {
+        if (!this.isSplitMode() || !this.rightPane) return;
+        const rightWasBlank = this.rightPane.isBlank();
+        const leftState = this.captureLeftWikiState();
+        const rightState = this.rightPane.captureState();
+        this.rightPane.applyState(leftState);
+        this.applyLeftWikiState(rightState);
+        if (rightWasBlank) {
+            this.goHome();
+        }
+    }
+
+    async openLinkOnPane(tagName, side) {
+        const t = String(tagName || '').trim();
+        if (!t) return;
+        if (side === 'right') {
+            if (!this.isSplitMode()) return;
+            if (!this.rightPane) this.enterSplitMode();
+            await this.rightPane.openTagByName(t);
+            return;
+        }
+        await this.getTagWikiPageDirectly(t);
     }
     
     setupContextMenu() {
@@ -2245,6 +2781,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                                     this.searchTypeIcon.className = 'fas fa-tag';
                                 }
                             }
+                            this.updateOnlineToggleState();
                             if (this.searchInput && this.searchInput.value.trim()) {
                                 this.performSearch();
                             }
@@ -2307,14 +2844,28 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (this.resultsCollapseBtn) {
             this.resultsCollapseBtn.addEventListener('click', () => {
                 this.resultsSidebarManualCollapsed = true;
-                this.updateResultsSidebar();
+                if (this.needsResultsOverlay()) {
+                    this.setResultsOverlayOpen(false);
+                } else {
+                    this.updateResultsSidebar();
+                }
             });
         }
 
         if (this.resultsExpandBtn) {
             this.resultsExpandBtn.addEventListener('click', () => {
                 this.resultsSidebarManualCollapsed = false;
-                this.updateResultsSidebar();
+                if (this.needsResultsOverlay()) {
+                    this.setResultsOverlayOpen(true);
+                } else {
+                    this.updateResultsSidebar();
+                }
+            });
+        }
+
+        if (this.resultsOverlayBackdrop) {
+            this.resultsOverlayBackdrop.addEventListener('click', () => {
+                this.setResultsOverlayOpen(false);
             });
         }
 
@@ -2328,6 +2879,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         const modalWidth = this.modal.offsetWidth || 0;
         const tooSmall = modalWidth > 0 && modalWidth <= this.RESULTS_SIDEBAR_AUTO_COLLAPSE_WIDTH;
+        const overlayMode = this.needsResultsOverlay();
+
         const hasResults = this.currentSearchResults.length > 0 ||
             (this.resultsList && (
                 this.resultsList.querySelector('.tag-wiki-result-item') ||
@@ -2335,6 +2888,28 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 this.resultsList.querySelector('.tag-wiki-empty-results') ||
                 this.resultsList.querySelector('.tag-wiki-error')
             ));
+
+        if (expandForResults && hasResults && overlayMode) {
+            this.resultsSidebarManualCollapsed = false;
+            this.setResultsOverlayOpen(true);
+        }
+
+        if (overlayMode) {
+            this.searchBody.classList.add('results-sidebar-collapsed');
+            const overlayOpen = this.modal.classList.contains('tag-wiki-results-overlay-open');
+            if (this.resultsExpandBtn) {
+                this.resultsExpandBtn.classList.toggle('hidden', overlayOpen);
+                this.resultsExpandBtn.disabled = false;
+                this.resultsExpandBtn.title = 'Show search results';
+            }
+            if (this.resultsCollapseBtn) {
+                this.resultsCollapseBtn.disabled = !overlayOpen;
+                this.resultsCollapseBtn.title = overlayOpen ? 'Hide search results' : 'Collapse results';
+            }
+            return;
+        }
+
+        this.setResultsOverlayOpen(false);
 
         if (expandForResults && hasResults && !tooSmall) {
             this.resultsSidebarManualCollapsed = false;
@@ -2405,120 +2980,15 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
     }
 
-    showDreamWikiHomepage() {
-        if (!this.displayArea) return;
-
-        this.currentSelectedTag = null;
-        this.currentTagName = null;
-        this.currentStaticWiki = null;
-
-        const recents = dreamWikiRecentRead();
-        const recentRows = recents.length
-            ? recents
-                  .map((name) => {
-                      const safe = this.escapeHtml(name);
-                      const enc = encodeURIComponent(name);
-                      return `<div class="tag-wiki-result-item dreamwiki-recent-item" role="button" tabindex="0" data-dreamwiki-recent="${enc}"><span class="tag-wiki-result-name">${safe}</span></div>`;
-                  })
-                  .join('')
-            : `<div class="dreamwiki-recent-empty">No pages yet.</div>`;
-
-        this.displayArea.innerHTML = `
-<div class="dreamwiki-home">
-    <div class="dreamwiki-home-hero form-row center-align">
-        <div class="about-logo-container">
-            <img src="/static_images/logo_icon.png" alt="Dreamscape Logo" class="about-logo">
-            <h2 class="logo-text">Dreamscape</h2>
-        </div>
-    </div>
-    <p class="dreamwiki-home-subtitle">The central home of Knowledge, The Grimoire</p>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
-    <div class="dreamwiki-home-border-dotted"></div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
-    <div class="dreamwiki-home-actions-center">
-        <div class="dreamwiki-home-actions-block">
-            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Tag Groups</div>
-            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack">
-                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag groups">Anime</button>
-                <button type="button" class="btn-secondary btn-small dreamwiki-start-row" data-dreamwiki-page="tag_group:index">Furry</button>
-            </div>
-        </div>
-        <div class="dreamwiki-home-actions-block">
-            <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Documentation</div>
-            <div class="dreamwiki-starting-points dreamwiki-starting-points-stack dreamwiki-static-wiki-sites">
-                <span class="dreamwiki-docs-loading"><i class="fas fa-spinner-third fa-spin"></i></span>
-            </div>
-        </div>
-    </div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-sm"></div>
-    <div class="dreamwiki-home-direct-wrap">
-        <div class="tag-wiki-no-wiki-header dreamwiki-home-section-label">Open wiki page</div>
-        <input type="text" class="form-control hover-show colored dreamwiki-direct-page-input" placeholder="Exact page name (Enter to open)" autocapitalize="false" autocorrect="false" spellcheck="false">
-    </div>
-    <div class="dreamwiki-home-pad dreamwiki-home-pad-md"></div>
-    <div class="dreamwiki-recent-panel">
-        <div class="tag-wiki-no-wiki-header">Recently visited</div>
-        <div class="dreamwiki-recent-list dreamwiki-recent-list-cols-3">${recentRows}</div>
-    </div>
-</div>`;
-
-        this.displayArea.querySelectorAll('[data-dreamwiki-page]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const page = btn.getAttribute('data-dreamwiki-page');
-                if (page) {
-                    this.getTagWikiPageDirectly(page);
-                }
-            });
-        });
-
-        this.loadStaticWikiHomeSites();
-
-        const directInput = this.displayArea.querySelector('.dreamwiki-direct-page-input');
-        if (directInput) {
-            directInput.addEventListener('keydown', (e) => {
-                if (e.key !== 'Enter') return;
-                e.preventDefault();
-                const q = directInput.value.trim();
-                if (q) {
-                    this.getTagWikiPageDirectly(q);
-                }
-            });
-        }
-
-        const list = this.displayArea.querySelector('.dreamwiki-recent-list');
-        if (list) {
-            const activateRecent = (el) => {
-                const raw = el.getAttribute('data-dreamwiki-recent');
-                let name = '';
-                if (raw) {
-                    try {
-                        name = decodeURIComponent(raw);
-                    } catch (e) {
-                        name = raw;
-                    }
-                }
-                if (name) {
-                    this.getTagWikiPageDirectly(name);
-                }
-            };
-            list.querySelectorAll('[data-dreamwiki-recent]').forEach((row) => {
-                row.addEventListener('click', () => activateRecent(row));
-                row.addEventListener('keydown', (e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        activateRecent(row);
-                    }
-                });
-            });
-        }
-    }
-
     open(initialQuery = '', options = {}) {
         if (!this.modal) return;
         const wasClosed = this.modal.classList.contains('hidden');
         const trimmedQuery = String(initialQuery || '').trim();
         const skipInitialHome = options && options.skipInitialHome;
         openModal(this.modal);
+        if (this.isSplitMode()) {
+            this.enterSplitMode();
+        }
         
         if (wasClosed) {
             // Initialize custom scrollbars after modal is opened
@@ -2667,14 +3137,49 @@ class TagWikiSearchModal extends WikiDisplayBase {
     
     async close() {
         if (!this.modal) return;
+
+        const rightHasState = this.rightPane && !this.rightPane.isBlank();
+        if (this.hasEverMaximized && rightHasState) {
+            const result = await showConfirmationDialog(
+                'Save the right panel state for the next time you maximise Grimoire?',
+                [
+                    {
+                        text: 'Save',
+                        value: 'save',
+                        className: 'btn-primary',
+                        icon: 'fas fa-floppy-disk'
+                    },
+                    {
+                        text: "Don't save",
+                        value: 'discard',
+                        className: 'btn-secondary',
+                        icon: 'fas fa-trash'
+                    },
+                    {
+                        text: 'Cancel',
+                        value: null,
+                        className: 'btn-secondary'
+                    }
+                ]
+            );
+            if (result === null) return;
+            if (result === 'save') {
+                this.saveRightPaneStateToStorage();
+            } else if (result === 'discard') {
+                this.clearRightPaneStateFromStorage();
+            }
+        }
+
         closeModal(this.modal).then(() => {
-            // Clear state
             this.currentSearchResults = [];
             this.currentSelectedTag = null;
             this.history = [];
             this.historyIndex = -1;
+            this.hasEverMaximized = false;
+            this.rightPane = null;
             this.clearResults();
             this.clearDisplay();
+            this.setResultsOverlayOpen(false);
         });
     }
     
@@ -2690,10 +3195,14 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const filter = this.currentFilter || '';
         const searchType = this.currentSearchType || 'name';
         const source = this.currentSource || 'both';
+        const includeOnline = this.includeOnline && searchType === 'name';
         
         // Show loading state
         if (this.resultsList) {
-            this.resultsList.innerHTML = '<div class="tag-wiki-loading"><i class="fas fa-spinner-third fa-spin"></i> Searching...</div>';
+            const loadingHint = includeOnline
+                ? '<i class="fas fa-spinner-third fa-spin"></i> Searching local &amp; online...'
+                : '<i class="fas fa-spinner-third fa-spin"></i> Searching...';
+            this.resultsList.innerHTML = `<div class="tag-wiki-loading">${loadingHint}</div>`;
         }
         this.updateResultsSidebar(true);
         
@@ -2702,7 +3211,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 category: filter === '' ? undefined : (filter === 'non-tag' ? null : parseInt(filter, 10)),
                 searchType: searchType,
                 source: source,
-                includeNonTag: filter === 'non-tag'
+                includeNonTag: filter === 'non-tag',
+                includeOnline: includeOnline
             });
             
             this.currentSearchResults = results || [];
@@ -2714,6 +3224,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 filter,
                 searchType,
                 source,
+                includeOnline,
                 results: this.currentSearchResults
             });
         } catch (error) {
@@ -2730,7 +3241,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
             throw new Error('WebSocket not connected');
         }
         
-        const { category, searchType, source, includeNonTag } = options;
+        const { category, searchType, source, includeNonTag, includeOnline } = options;
         
         try {
             const result = await window.wsClient.sendMessage('search_tag_wiki', {
@@ -2739,10 +3250,13 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 searchType: searchType || 'name',
                 source: source || 'both',
                 includeNonTag: includeNonTag || false,
+                includeOnline: includeOnline === true,
                 limit: 50
             });
             
             // WebSocket sendMessage returns the data directly (message.data from server)
+            this.lastOnlineSectionCount = result?.sections?.onlineOnly ?? null;
+            this.lastOnlineTagOnlyCount = result?.sections?.onlineTagOnly ?? null;
             return result?.results || [];
         } catch (error) {
             console.error('Tag wiki search request failed:', error);
@@ -2750,47 +3264,116 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
     }
     
+    renderResultItem(result, index, extraClass = '') {
+        const sourceIcon = this.getSourceIcon(result.source);
+        const category = result.categoryName || 'Uncategorized';
+        const tagName = result.title || result.name || 'Unknown';
+        const wikiName = result.name || tagName.replace(/\s+/g, '_');
+        const cloudBadge = (result.matchType === 'merged' || result.onlineOnly)
+            ? '<i class="fas fa-cloud tag-wiki-online-icon" title="Online"></i>'
+            : '';
+        return `
+            <div class="tag-wiki-result-item ${extraClass}" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${tagName}" data-wiki-name="${wikiName}">
+                <div class="tag-wiki-result-name">${this.escapeHtml(tagName)}</div>
+                <div class="tag-wiki-result-source">${cloudBadge}${sourceIcon}</div>
+                <div class="tag-wiki-result-category">${this.escapeHtml(category)}</div>
+            </div>
+        `;
+    }
+
+    updateResultsPanelTitle() {
+        const titleEl = this.modal && this.modal.querySelector('.tag-wiki-results-panel-title');
+        if (!titleEl) return;
+        if (this.includeOnline && this.currentSearchType === 'name') {
+            let onlineNote = '';
+            if (this.lastOnlineSectionCount != null) {
+                onlineNote += ` · ${this.lastOnlineSectionCount} online wiki`;
+            }
+            if (this.lastOnlineTagOnlyCount > 0) {
+                onlineNote += ` · ${this.lastOnlineTagOnlyCount} online tags`;
+            }
+            titleEl.textContent = `Results (local + cloud${onlineNote})`;
+        } else {
+            titleEl.textContent = 'Results';
+        }
+    }
+
     renderResults(results) {
         if (!this.resultsList) return;
         
         if (!results || results.length === 0) {
             this.resultsList.innerHTML = '<div class="tag-wiki-empty-results"><i class="fas fa-search"></i> No results found</div>';
+            this.updateResultsPanelTitle();
             this.updateResultsSidebar(true);
             return;
         }
         
-        // Separate items with and without wiki pages
-        const itemsWithWiki = [];
+        const mergedItems = [];
+        const localOnlyItems = [];
+        const onlineWikiItems = [];
+        const onlineTagItems = [];
         const itemsWithoutWiki = [];
         
         results.forEach((result, index) => {
-            if (result.hasWiki) {
-                itemsWithWiki.push({ result, index });
+            if (!result.hasWiki) {
+                if (result.matchType === 'online-tag' || (result.onlineOnly && result.matchType !== 'online')) {
+                    onlineTagItems.push({ result, index });
+                } else {
+                    itemsWithoutWiki.push({ result, index });
+                }
+            } else if (result.matchType === 'online' || (result.onlineOnly && result.hasWiki)) {
+                onlineWikiItems.push({ result, index });
+            } else if (result.matchType === 'merged') {
+                mergedItems.push({ result, index });
             } else {
-                itemsWithoutWiki.push({ result, index });
+                localOnlyItems.push({ result, index });
             }
         });
         
         let html = '';
         
-        // Render items with wiki pages (clickable)
-        if (itemsWithWiki.length > 0) {
-            html += itemsWithWiki.map(({ result, index }) => {
-                const sourceIcon = this.getSourceIcon(result.source);
+        if (mergedItems.length > 0) {
+            html += mergedItems.map(({ result, index }) =>
+                this.renderResultItem(result, index, 'tag-wiki-result-item-merged')
+            ).join('');
+        }
+
+        if (onlineWikiItems.length > 0) {
+            html += '<div class="tag-wiki-online-section">';
+            html += `<div class="tag-wiki-online-header">Online Wiki Pages (${onlineWikiItems.length})</div>`;
+            html += onlineWikiItems.map(({ result, index }) =>
+                this.renderResultItem(result, index, 'tag-wiki-result-item-online')
+            ).join('');
+            html += '</div>';
+        }
+
+        if (onlineTagItems.length > 0) {
+            html += '<div class="tag-wiki-online-section tag-wiki-online-tags-section">';
+            html += `<div class="tag-wiki-online-header">Online Tags (no wiki page)</div>`;
+            html += onlineTagItems.map(({ result, index }) => {
                 const category = result.categoryName || 'Uncategorized';
                 const tagName = result.title || result.name || 'Unknown';
-                
                 return `
-                    <div class="tag-wiki-result-item" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${tagName}">
+                    <div class="tag-wiki-result-item tag-wiki-result-item-no-wiki tag-wiki-result-item-online-tag" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${tagName}">
                         <div class="tag-wiki-result-name">${this.escapeHtml(tagName)}</div>
-                        <div class="tag-wiki-result-source">${sourceIcon}</div>
+                        <div class="tag-wiki-result-source">${this.getSourceIcon(result.source)}</div>
                         <div class="tag-wiki-result-category">${this.escapeHtml(category)}</div>
                     </div>
                 `;
             }).join('');
+            html += '</div>';
+        } else if (this.includeOnline && this.currentSearchType === 'name' && onlineWikiItems.length === 0) {
+            html += '<div class="tag-wiki-online-section">';
+            html += '<div class="tag-wiki-online-header tag-wiki-online-header-empty">No additional online wiki pages</div>';
+            html += '</div>';
+        }
+
+        if (localOnlyItems.length > 0) {
+            html += localOnlyItems.map(({ result, index }) =>
+                this.renderResultItem(result, index, '')
+            ).join('');
         }
         
-        // Render items without wiki pages (non-clickable, at bottom)
         if (itemsWithoutWiki.length > 0) {
             html += '<div class="tag-wiki-no-wiki-section">';
             html += '<div class="tag-wiki-no-wiki-header">Other Results (No Wiki Pages)</div>';
@@ -2799,7 +3382,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 const tagName = result.title || result.name || 'Unknown';
                 
                 return `
-                    <div class="tag-wiki-result-item tag-wiki-result-item-no-wiki" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${tagName}">
+                    <div class="tag-wiki-result-item tag-wiki-result-item-no-wiki" data-index="${index}" data-tag-id="${result.id || ''}" data-tag-name="${this.escapeHtml(tagName)}">
                         <div class="tag-wiki-result-name">${this.escapeHtml(tagName)}</div>
                         <div class="tag-wiki-result-source"><i class="fas fa-question-circle" title="No Wiki"></i></div>
                         <div class="tag-wiki-result-category">${this.escapeHtml(category)}</div>
@@ -2811,7 +3394,6 @@ class TagWikiSearchModal extends WikiDisplayBase {
         
         this.resultsList.innerHTML = html;
         
-        // Add click handlers only for items with wiki pages
         const clickableItems = this.resultsList.querySelectorAll('.tag-wiki-result-item:not(.tag-wiki-result-item-no-wiki)');
         clickableItems.forEach(item => {
             item.addEventListener('click', () => {
@@ -2823,8 +3405,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
             });
         });
         
-        // Check for direct match and auto-open if found
+        const itemsWithWiki = [...mergedItems, ...localOnlyItems, ...onlineWikiItems];
         this.checkAndOpenDirectMatch(results, itemsWithWiki);
+        this.updateResultsPanelTitle();
         this.updateResultsSidebar(true);
     }
     
@@ -2834,14 +3417,19 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const query = this.searchInput.value.trim().toLowerCase();
         if (!query) return;
         
-        // Normalize query (same as tag normalization)
-        const normalizedQuery = query.replace(/[_\s]+/g, ' ').toLowerCase();
+        const normalizedQuery = query
+            .replace(/^(?:species|invalid):/i, '')
+            .replace(/[_\s]+/g, ' ')
+            .trim();
+        
+        const normalizedQueryKey = normalizedQuery.replace(/\s+/g, '_');
         
         // Find exact match
         const directMatch = itemsWithWiki.find(({ result }) => {
             const tagName = (result.title || result.name || '').toLowerCase();
             const normalizedTagName = tagName.replace(/[_\s]+/g, ' ');
-            return normalizedTagName === normalizedQuery;
+            const tagKey = (result.name || tagName).replace(/[_\s]+/g, '_');
+            return normalizedTagName === normalizedQuery || tagKey === normalizedQueryKey;
         });
         
         if (directMatch && directMatch.result.hasWiki) {
@@ -2878,6 +3466,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!tag) return;
         
         this.currentSelectedTag = tag;
+
+        if (this.needsResultsOverlay()) {
+            this.setResultsOverlayOpen(false);
+        }
         
         // Update selected state in results
         const items = this.resultsList.querySelectorAll('.tag-wiki-result-item');
@@ -3136,6 +3728,15 @@ class TagWikiSearchModal extends WikiDisplayBase {
                     } else {
                         this.sourceIcon.className = 'fas fa-globe';
                     }
+                }
+            }
+            if (entry.includeOnline !== undefined) {
+                this.includeOnline = !!entry.includeOnline;
+                if (this.onlineToggleBtn) {
+                    this.onlineToggleBtn.dataset.state = this.includeOnline ? 'on' : 'off';
+                    this.onlineToggleBtn.title = this.includeOnline
+                        ? 'Online search enabled (Danbooru & e621)'
+                        : 'Search online (Danbooru & e621)';
                 }
             }
             if (entry.results) {

@@ -183,6 +183,9 @@ class BannerManager {
             'get_nax_expander_presets': 'Get Expander Presets (NAX)',
             'set_nax_favorite': 'Set Favorite (NAX)',
             'set_nax_try': 'Set Try (NAX)',
+            'set_nax_hidden': 'Hide Tag (NAX)',
+            'get_user_global_settings': 'Get User Settings',
+            'update_user_global_settings': 'Save User Settings',
             'get_nax_vibes_gallery': 'Browse Vibes',
             'clear_nax_vibes_gallery_cache': 'Refresh Browse Vibes Cache',
             'search_files': 'Find Images',
@@ -517,6 +520,10 @@ class WebSocketClient {
         /** Connection dial UI — single source of truth for connect/reconnect/failure dialog. */
         this.connectionPhase = 'idle'; // idle | dialing | failed | connected | auth
         this.connectionDialView = 'transient'; // transient | status
+        this.preStartupHandoffCompleted = false;
+        this.preStartupAuthBusy = false;
+        this.preStartupAuthHandlersSetup = false;
+        this.preStartupMarqueeManualPause = false;
         this.connectionUi = {
             beat: 'initializing',
             message: '',
@@ -779,6 +786,12 @@ class WebSocketClient {
             this._updateServiceWorkerTrayIcon();
             return;
         }
+        if (window.isDesktop && this.preStartupHandoffCompleted && !this.initializationCompleted) {
+            this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
+            this.updateWebSocketStatus('connected');
+            this._setConnectionPhase('idle');
+            return;
+        }
         await this._runConnectionBeat('connected');
         this.bannerManager.showWebSocketTicker('connected', 'Connected to Server', 'fa-phone', true, 3000);
         this.updateWebSocketStatus('connected');
@@ -851,15 +864,26 @@ class WebSocketClient {
             available: false,
             isResponding: false,
             heartbeatMissed: false,
-            timeSinceLastPingResponse: null
+            timeSinceLastPingResponse: null,
+            isUpdating: false,
+            updateProgress: 0,
+            updateAvailable: false
         };
         if (window.serviceWorkerManager) {
             swStatus = window.serviceWorkerManager.getServiceWorkerHeartbeatStatus();
+            swStatus.isUpdating = Boolean(window.serviceWorkerManager.isUpdating);
+            swStatus.updateProgress = Number.isFinite(window.serviceWorkerManager.updateProgress) ? window.serviceWorkerManager.updateProgress : 0;
+            swStatus.updateAvailable = Boolean(window.serviceWorkerManager.updateAvailable);
         }
 
-        let iconClass = 'fas fa-cog';
+        let iconClass = 'fas fa-hard-drive';
         let title = 'Service Worker: Active';
-        trayIcon.classList.remove('sw-unavailable', 'sw-heartbeat-missed');
+        trayIcon.classList.remove(
+            'sw-unavailable',
+            'sw-heartbeat-missed',
+            'sw-update-downloading',
+            'sw-update-complete'
+        );
 
         if (!swStatus.available) {
             iconClass = 'fas fa-times-circle';
@@ -869,6 +893,16 @@ class WebSocketClient {
             iconClass = 'fas fa-exclamation-triangle';
             title = 'Service Worker: Not Responding';
             trayIcon.classList.add('sw-heartbeat-missed');
+        } else if (swStatus.isUpdating) {
+            iconClass = 'fa-regular fa-laptop-arrow-down';
+            trayIcon.classList.add('sw-update-downloading');
+            const pct = Math.round(Math.max(0, Math.min(100, swStatus.updateProgress || 0)));
+            title = `Service Worker: Updating (${pct}%)`;
+        } else if (swStatus.updateAvailable) {
+            // Updates are downloaded and pending restart.
+            iconClass = 'fa-regular fa-laptop-arrow-down';
+            trayIcon.classList.add('sw-update-complete');
+            title = 'Service Worker: Update ready (restart to apply)';
         }
 
         glyph.className = iconClass;
@@ -986,7 +1020,226 @@ class WebSocketClient {
         }
     }
 
+    _shouldUsePreStartupDialog() {
+        return Boolean(window.isDesktop && !this.preStartupHandoffCompleted && this.connectionDialView !== 'status');
+    }
+
+    _setupPreStartupModalHandlers() {
+        if (this.preStartupAuthHandlersSetup) return;
+        this.preStartupAuthHandlersSetup = true;
+
+        const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
+        const passwordInput = document.getElementById('desktopPreStartupPassword');
+        const usernameInput = document.getElementById('desktopPreStartupUsername');
+
+        if (loginBtn) {
+            loginBtn.addEventListener('click', () => {
+                this._submitPreStartupCredentials();
+            });
+        }
+
+        if (passwordInput) {
+            passwordInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    this._submitPreStartupCredentials();
+                }
+            });
+        }
+
+        if (usernameInput) {
+            usernameInput.addEventListener('focus', () => {
+                usernameInput.select();
+            });
+        }
+
+    }
+
+    _updatePreStartupAuthError(message = '') {
+        const errorEl = document.getElementById('desktopPreStartupAuthError');
+        if (!errorEl) return;
+        if (message) {
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+        } else {
+            errorEl.textContent = '';
+            errorEl.classList.add('hidden');
+        }
+    }
+
+    _renderPreStartupDialog() {
+        const modal = document.getElementById('desktopPreStartupModal');
+        const statusEl = document.getElementById('desktopPreStartupStatus');
+        const progressWrap = modal?.querySelector('.desktop-prestartup-progress');
+        const authSection = document.getElementById('desktopPreStartupAuth');
+        const usernameInput = document.getElementById('desktopPreStartupUsername');
+        const passwordInput = document.getElementById('desktopPreStartupPassword');
+        const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
+
+        if (!modal || !statusEl || !progressWrap) {
+            console.warn('Pre-startup modal elements not found');
+            return;
+        }
+
+        this._setupPreStartupModalHandlers();
+
+        if (typeof openModal === 'function') {
+            openModal(modal);
+        } else {
+            modal.classList.remove('hidden');
+        }
+        if (!modal.dataset.prestartupOpened) {
+            this.preStartupMarqueeManualPause = false;
+            modal.dataset.prestartupOpened = 'true';
+        }
+
+        const phase = this.connectionPhase;
+        const beat = this.connectionUi.beat || 'initializing';
+        const beatDef = WebSocketClient.CONNECTION_BEATS[beat] || {};
+        const statusMessage = this.connectionUi.message || beatDef.message || 'Connecting...';
+        const authVisible = phase === 'auth';
+        const isTasking = phase !== 'failed'
+            && phase !== 'auth'
+            && phase !== 'idle'
+            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing Desktop Environment...')
+            && !this.preStartupAuthBusy;
+        const shouldPauseMarquee = !isTasking;
+
+        statusEl.textContent = statusMessage;
+        progressWrap.classList.toggle('paused', shouldPauseMarquee);
+        modal.classList.toggle('auth-active', authVisible);
+
+        if (authSection) {
+            authSection.classList.toggle('hidden', !authVisible);
+        }
+        if (authVisible) {
+            if (usernameInput && !usernameInput.value) {
+                usernameInput.value = 'Administrator';
+            }
+            if (passwordInput && !this.preStartupAuthBusy && document.activeElement !== passwordInput) {
+                passwordInput.focus();
+            }
+        } else {
+            this._updatePreStartupAuthError('');
+            if (passwordInput && !this.preStartupAuthBusy) {
+                passwordInput.value = '';
+            }
+        }
+
+        if (usernameInput) {
+            usernameInput.readOnly = true;
+            usernameInput.value = 'Administrator';
+        }
+        if (passwordInput) {
+            passwordInput.disabled = !authVisible || this.preStartupAuthBusy;
+        }
+        if (loginBtn) {
+            loginBtn.disabled = !authVisible || this.preStartupAuthBusy;
+            loginBtn.textContent = this.preStartupAuthBusy ? 'Please wait...' : 'OK';
+        }
+    }
+
+    async _hidePreStartupDialog() {
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        delete modal.dataset.prestartupOpened;
+        if (typeof closeModal === 'function') {
+            await closeModal(modal);
+        } else {
+            modal.classList.add('hidden');
+        }
+    }
+
+    async _submitPreStartupCredentials() {
+        if (this.preStartupAuthBusy) return;
+
+        const usernameInput = document.getElementById('desktopPreStartupUsername');
+        const passwordInput = document.getElementById('desktopPreStartupPassword');
+        const username = usernameInput ? String(usernameInput.value || '').trim() : '';
+        const password = passwordInput ? String(passwordInput.value || '') : '';
+
+        if (username.toLowerCase() !== 'administrator') {
+            this._updatePreStartupAuthError('Only the Administrator account can sign in during startup.');
+            if (usernameInput) {
+                usernameInput.value = 'Administrator';
+                usernameInput.focus();
+                usernameInput.select();
+            }
+            return;
+        }
+        if (!password) {
+            this._updatePreStartupAuthError('Password is required.');
+            if (passwordInput) {
+                passwordInput.focus();
+            }
+            return;
+        }
+
+        this.preStartupAuthBusy = true;
+        this._updatePreStartupAuthError('');
+        this._setConnectionPhase('auth', {
+            beat: 'establishing',
+            message: 'Verifying credentials...'
+        });
+
+        try {
+            const response = await fetch('/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'login',
+                    data: { pin: password }
+                })
+            });
+            const payload = await response.json();
+
+            if (!response.ok) {
+                throw new Error(payload?.error || 'Authentication failed.');
+            }
+            if (payload?.userType && payload.userType !== 'admin') {
+                throw new Error('Administrator credentials are required.');
+            }
+
+            this._updatePreStartupAuthError('');
+            if (passwordInput) {
+                passwordInput.value = '';
+            }
+            this.preStartupAuthBusy = false;
+            this.forceReconnect();
+        } catch (error) {
+            this.preStartupAuthBusy = false;
+            this._updatePreStartupAuthError(error.message || 'Authentication failed.');
+            this._setConnectionPhase('auth', {
+                beat: 'establishing',
+                message: 'Authentication required. Enter your password.'
+            });
+            if (passwordInput) {
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
+        }
+    }
+
+    async _completePreStartupHandoff() {
+        if (!this._shouldUsePreStartupDialog()) return;
+
+        this.connectionUi.message = 'Preparing Desktop Environment...';
+        this._setConnectionPhase('connected', {
+            beat: 'connected',
+            message: 'Preparing Desktop Environment...'
+        });
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await this._hidePreStartupDialog();
+        await new Promise((resolve) => setTimeout(resolve, 750));
+        this.preStartupHandoffCompleted = true;
+    }
+
     _renderConnectionDial() {
+        if (this._shouldUsePreStartupDialog()) {
+            this._renderPreStartupDialog();
+            return;
+        }
+
         const modal = document.getElementById('connectionDialModal');
         const statusEl = document.getElementById('connectionDialStatus');
         const attemptEl = document.getElementById('connectionDialAttempt');
@@ -2249,6 +2502,7 @@ class WebSocketClient {
                     }
                 }
 
+                await this._completePreStartupHandoff();
                 await this._completeConnectionDialHandoff();
 
                 if (!this.initializationCompleted) {
@@ -2959,42 +3213,14 @@ class WebSocketClient {
             if (message.success) {
                 const successMessage = `Server cache refreshed successfully. ${message.data?.assetsCount || 0} assets updated.`;
 
-                // Desktop mode: use Windows Update Modal
-                if (window.isDesktop && this.showWindowsUpdateModal) {
-                    this.showWindowsUpdateModal('Cache Refreshed', 100);
-                    this.updateWindowsUpdateModal(successMessage, 100);
-                    this.setUpdateModalCallbacks(
-                        () => this.hideWindowsUpdateModal(),
-                        null,
-                        () => this.hideWindowsUpdateModal()
-                    );
-                    // Auto-hide after 3 seconds
-                    setTimeout(() => {
-                        this.hideWindowsUpdateModal();
-                    }, 3000);
-                } else {
-                    // Non-desktop mode: use toast
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('success', 'Cache Refreshed', successMessage, false, 5000, '<i class="fas fa-sync"></i>');
-                    }
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('success', 'Cache Refreshed', successMessage, false, 5000, '<i class="fas fa-sync"></i>');
                 }
             } else {
                 const errorMessage = message.error || 'Failed to refresh server cache';
 
-                // Desktop mode: use Windows Update Modal
-                if (window.isDesktop && this.showWindowsUpdateModal) {
-                    this.showWindowsUpdateModal('Cache Refresh Failed', 0);
-                    this.updateWindowsUpdateModal(errorMessage, 0);
-                    this.setUpdateModalCallbacks(
-                        () => this.hideWindowsUpdateModal(),
-                        null,
-                        () => this.hideWindowsUpdateModal()
-                    );
-                } else {
-                    // Non-desktop mode: use toast
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('error', 'Cache Refresh Failed', errorMessage, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                    }
+                if (typeof showGlassToast === 'function') {
+                    showGlassToast('error', 'Cache Refresh Failed', errorMessage, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 }
                 console.error('❌ Server cache refresh failed:', message.error);
             }
@@ -3023,83 +3249,36 @@ class WebSocketClient {
         if (message.type === 'resource_update_available') {
             const updateMessage = message.data.message || 'Resource updates are available for download';
 
-            // Desktop mode: use Windows Update Modal
-            if (window.isDesktop && this.showWindowsUpdateModal) {
-                this.showWindowsUpdateModal('Updates Available', 0);
-                this.updateWindowsUpdateModal(updateMessage, 0);
-
-                // Setup callbacks for update modal buttons
-                this.setUpdateModalCallbacks(
-                    // Skip callback (maps to "Later" button behavior)
-                    () => {
-                        console.log('User chose to download updates later');
-                        this.hideWindowsUpdateModal();
-                    },
-                    // Restart callback (not used for resource updates)
-                    null,
-                    // Later callback (maps to "Later" button)
-                    () => {
-                        console.log('User chose to download updates later');
-                        this.hideWindowsUpdateModal();
-                    }
-                );
-
-                // Override skip button to trigger download
-                const skipBtn = document.getElementById('windowsUpdateSkipBtn');
-                if (skipBtn) {
-                    // Remove existing listeners by cloning
-                    const newSkipBtn = skipBtn.cloneNode(true);
-                    skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
-
-                    newSkipBtn.addEventListener('click', () => {
-                        console.log('User chose to download updates now');
-                        // Trigger the service worker update check
+            if (window.serviceWorkerManager && typeof window.serviceWorkerManager.showUpdateAvailableTrayPrompt === 'function') {
+                window.serviceWorkerManager.showUpdateAvailableTrayPrompt(updateMessage);
+            } else if (typeof showGlassToast === 'function') {
+                const downloadButton = {
+                    text: 'Download Now',
+                    type: 'primary',
+                    onClick: () => {
                         if (window.serviceWorkerManager) {
                             window.serviceWorkerManager.checkStaticFileUpdates();
                         }
-                        this.hideWindowsUpdateModal();
-                    });
+                    },
+                    closeOnClick: true
+                };
 
-                    // Change button text to "Download Now"
-                    newSkipBtn.textContent = 'Download Now';
-                    newSkipBtn.classList.remove('btn-secondary');
-                    newSkipBtn.classList.add('btn-primary');
-                }
-            } else {
-                // Non-desktop mode: use toast notification
-                if (typeof showGlassToast === 'function') {
-                    const downloadButton = {
-                        text: 'Download Now',
-                        type: 'primary',
-                        onClick: () => {
-                            console.log('User chose to download updates now');
-                            // Trigger the service worker update check
-                            if (window.serviceWorkerManager) {
-                                window.serviceWorkerManager.checkStaticFileUpdates();
-                            }
-                        },
-                        closeOnClick: true
-                    };
+                const laterButton = {
+                    text: 'Later',
+                    type: 'default',
+                    onClick: () => {},
+                    closeOnClick: true
+                };
 
-                    const laterButton = {
-                        text: 'Later',
-                        type: 'default',
-                        onClick: () => {
-                            console.log('User chose to download updates later');
-                        },
-                        closeOnClick: true
-                    };
-
-                    showGlassToast(
-                        'warning',
-                        'Updates Available',
-                        updateMessage,
-                        false,
-                        false,
-                        '<i class="fas fa-download"></i>',
-                        [downloadButton, laterButton]
-                    );
-                }
+                showGlassToast(
+                    'warning',
+                    'Updates Available',
+                    updateMessage,
+                    false,
+                    false,
+                    '<i class="fas fa-download"></i>',
+                    [downloadButton, laterButton]
+                );
             }
 
             return;
@@ -3379,16 +3558,25 @@ class WebSocketClient {
         // Trigger authentication event for other parts of the app to handle
         this.triggerEvent('authentication_required', message);
 
+        if (this._shouldUsePreStartupDialog()) {
+            this.preStartupAuthBusy = false;
+            this._setConnectionPhase('auth', {
+                beat: 'establishing',
+                message: 'Authentication required. Enter your password.'
+            });
+            return;
+        }
+
         // Show PIN modal for authentication
-        if (typeof window.showPinModal === 'function') {
-            window.showPinModal().then(() => {
+        if (typeof showPinModal === 'function') {
+            showPinModal().then(() => {
                 this.forceReconnect();
             }).catch((error) => {
                 console.error('❌ PIN modal error:', error);
             });
         } else {
             // Fallback: redirect to login page
-            window.location.href = '/';
+            location.href = '/';
         }
     }
 
@@ -4048,32 +4236,29 @@ class WebSocketClient {
             case 'indexing':
             case 'cache_init':
                 indicator.classList.add('indexing');
-                icon.className = 'fas fa-sync fa-spin';
+                icon.className = 'fas fa-magnifying-glass-arrows-rotate';
                 break;
             case 'complete':
             case 'up_to_date':
             case 'cache_ready':
                 indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-sync';
+                icon.className = 'fas fa-folder-magnifying-glass';
                 break;
             case 'paused':
                 indicator.classList.add('paused');
-                icon.className = 'fas fa-sync';
-                icon.classList.remove('fa-spin');
+                icon.className = 'fas fa-magnifying-glass-minus';
                 break;
             case 'resumed':
             case 'idle':
                 indicator.classList.add('up_to_date');
-                icon.className = 'fas fa-sync';
+                icon.className = 'fas fa-folder-magnifying-glass';
                 break;
             case 'error':
                 indicator.classList.add('error');
                 icon.className = 'fas fa-rotate-exclamation';
-                // Remove spin animation on error
-                icon.classList.remove('fa-spin');
                 break;
             default:
-                icon.className = 'fas fa-sync';
+                icon.className = 'fas fa-folder-magnifying-glass';
                 break;
         }
 
@@ -4950,6 +5135,14 @@ class WebSocketClient {
 
     async savePersonaSettings(settings) {
         return this.sendMessage('save_persona_settings', { settings });
+    }
+
+    async getUserGlobalSettings() {
+        return this.sendMessage('get_user_global_settings', {}, false);
+    }
+
+    async updateUserGlobalSettings(settings) {
+        return this.sendMessage('update_user_global_settings', { settings });
     }
 
     async createChatSession(sessionData) {

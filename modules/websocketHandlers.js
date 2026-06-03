@@ -410,8 +410,71 @@ class WebSocketMessageHandlers {
             'generate_nax_custom_tag',
             'delete_nax_custom_tag',
             'config_editor_save',
+            'update_user_global_settings',
         ];
         return destructiveOperations.includes(messageType);
+    }
+
+    normalizeUserGlobalSettings(raw) {
+        const base = raw && typeof raw === 'object' ? raw : {};
+        const naxt = base.naxt && typeof base.naxt === 'object' ? base.naxt : {};
+        const desktop = base.desktop && typeof base.desktop === 'object' ? base.desktop : {};
+        return {
+            desktop: {
+                autoLaunchWorkspace: desktop.autoLaunchWorkspace !== false,
+                liveWindowRepositioning: desktop.liveWindowRepositioning === true,
+                exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true
+            },
+            naxt: {
+                elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
+            }
+        };
+    }
+
+    mergeUserGlobalSettingsPatch(existing, patch) {
+        const out = this.normalizeUserGlobalSettings(existing);
+        if (!patch || typeof patch !== 'object') {
+            return out;
+        }
+        if (patch.desktop && typeof patch.desktop === 'object') {
+            if (typeof patch.desktop.autoLaunchWorkspace === 'boolean') {
+                out.desktop.autoLaunchWorkspace = patch.desktop.autoLaunchWorkspace;
+            }
+            if (typeof patch.desktop.liveWindowRepositioning === 'boolean') {
+                out.desktop.liveWindowRepositioning = patch.desktop.liveWindowRepositioning;
+            }
+            if (typeof patch.desktop.exitDesktopOnWorkspaceMaximise === 'boolean') {
+                out.desktop.exitDesktopOnWorkspaceMaximise = patch.desktop.exitDesktopOnWorkspaceMaximise;
+            }
+        }
+        if (patch.naxt && typeof patch.naxt === 'object') {
+            if (typeof patch.naxt.elevatePins === 'number' || typeof patch.naxt.elevatePins === 'string') {
+                out.naxt.elevatePins = this.normalizeNaxtElevatePinsSetting(patch.naxt);
+            } else if (typeof patch.naxt.elevateFavorites === 'boolean') {
+                out.naxt.elevatePins = patch.naxt.elevateFavorites ? 1 : 0;
+            }
+        }
+        return out;
+    }
+
+    normalizeNaxtElevatePinsSetting(naxt) {
+        const naxTagsDatabase = this.globalResources && this.globalResources.getNaxTagsDatabase
+            ? this.globalResources.getNaxTagsDatabase()
+            : null;
+        const normalize = naxTagsDatabase && typeof naxTagsDatabase.normalizeElevatePins === 'function'
+            ? naxTagsDatabase.normalizeElevatePins.bind(naxTagsDatabase)
+            : null;
+        if (normalize) {
+            if (naxt && typeof naxt.elevatePins !== 'undefined') {
+                return normalize(naxt.elevatePins);
+            }
+            if (naxt && naxt.elevateFavorites === true) return 1;
+            return 0;
+        }
+        if (naxt && typeof naxt.elevatePins === 'number' && naxt.elevatePins >= 0 && naxt.elevatePins <= 3) {
+            return Math.floor(naxt.elevatePins);
+        }
+        return naxt && naxt.elevateFavorites === true ? 1 : 0;
     }
 
     // Route messages to appropriate handlers
@@ -513,6 +576,14 @@ class WebSocketMessageHandlers {
                 await this.handleGetNaxTags(ws, message, clientInfo, wsServer);
                 break;
 
+            case 'get_user_global_settings':
+                await this.handleGetUserGlobalSettings(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'update_user_global_settings':
+                await this.handleUpdateUserGlobalSettings(ws, message, clientInfo, wsServer);
+                break;
+
             case 'get_nax_marked_tags':
                 await this.handleGetNaxMarkedTags(ws, message, clientInfo, wsServer);
                 break;
@@ -527,6 +598,10 @@ class WebSocketMessageHandlers {
 
             case 'set_nax_try':
                 await this.handleSetNaxTry(ws, message, clientInfo, wsServer);
+                break;
+
+            case 'set_nax_hidden':
+                await this.handleSetNaxHidden(ws, message, clientInfo, wsServer);
                 break;
 
             case 'generate_nax_custom_tag':
@@ -1989,6 +2064,8 @@ class WebSocketMessageHandlers {
     // Handle tag wiki search requests
     async handleSearchTagWiki(ws, message, clientInfo, wsServer) {
         const { query, category, searchType = 'name', source = 'both', includeNonTag = false, limit = 50 } = message;
+        const includeOnline = message.includeOnline === true || message.includeOnline === 'true';
+        const localLimit = includeOnline && searchType === 'name' ? Math.min(limit, 30) : limit;
 
         if (!query) {
             this.sendError(ws, 'Missing query parameter', 'search_tag_wiki', message.requestId);
@@ -2001,29 +2078,37 @@ class WebSocketMessageHandlers {
                 throw new Error('Tag lookup service not available');
             }
 
-            let results = [];
+            const localSearchPromise = (async () => {
+                if (searchType === 'description') {
+                    const searchResults = await tagLookup.handleSearchByDescription({
+                        description: query,
+                        category: category !== undefined ? category : undefined,
+                        limit: limit
+                    }, {});
+                    return searchResults.json || [];
+                }
 
-            if (searchType === 'description') {
-                // Search by description
-                const searchResults = await tagLookup.handleSearchByDescription({
-                    description: query,
-                    category: category !== undefined ? category : undefined,
-                    limit: limit
-                }, {});
-
-                results = searchResults.json || [];
-            } else {
-                // Search by name
                 const searchOptions = {
                     category: category !== undefined ? category : undefined,
-                    limit: limit
+                    limit: localLimit
                 };
+                const tags = await tagLookup.searchTags(query, searchOptions) || [];
+                return tagLookup.enrichTagsWithWikiSources(tags);
+            })();
 
-                const searchResults = await tagLookup.searchTags(query, searchOptions);
-                results = searchResults || [];
+            const onlineSearchPromise = (includeOnline && searchType === 'name')
+                ? tagLookup.searchOnlineWikiTags(query, { source, limit })
+                : Promise.resolve([]);
+
+            const [localResults, onlineResults] = await Promise.all([localSearchPromise, onlineSearchPromise]);
+
+            if (includeOnline && searchType === 'name') {
+                console.log(`[Wiki Search] Online search for "${query}": ${onlineResults.length} result(s) (source=${source})`);
             }
 
-            // Filter by source if needed
+            let results = localResults;
+
+            // Filter by source if needed (local results only)
             if (source !== 'both') {
                 results = results.filter(tag => {
                     const wikiSources = tag.wikiSources || [];
@@ -2037,21 +2122,39 @@ class WebSocketMessageHandlers {
                 // This feature can be implemented later if needed
             }
 
+            let mergeMeta = null;
+            if (includeOnline && searchType === 'name') {
+                mergeMeta = tagLookup.mergeLocalAndOnlineWikiSearch(results, onlineResults);
+                results = mergeMeta.results;
+            }
+
             // Project results to include only needed fields
             const projectedResults = results.map(tag => ({
-                id: tag.id,
+                id: tag.id ?? null,
                 title: tag.title || tag.name,
                 name: tag.name || tag.title,
                 category: tag.category,
                 categoryName: tag.categoryName || 'Uncategorized',
-                source: tag.wikiSources || [],
-                hasWiki: tag.hasWiki || false
+                source: tag.source || tag.wikiSources || [],
+                hasWiki: tag.hasWiki || false,
+                onlineOnly: tag.onlineOnly || false,
+                matchType: tag.matchType || (tag.hasWiki ? 'local' : 'no-wiki')
             }));
 
             this.sendToClient(ws, {
                 type: 'search_tag_wiki_response',
                 requestId: message.requestId,
-                data: { results: projectedResults },
+                data: {
+                    results: projectedResults,
+                    includeOnline: !!includeOnline,
+                    sections: mergeMeta ? {
+                        merged: mergeMeta.merged.length,
+                        localOnly: mergeMeta.localOnly.length,
+                        onlineOnly: mergeMeta.onlineWikiOnly.length,
+                        onlineTagOnly: mergeMeta.onlineTagOnly.length,
+                        noWiki: mergeMeta.noWiki.length
+                    } : null
+                },
                 timestamp: new Date().toISOString()
             });
         } catch (error) {
@@ -2064,9 +2167,9 @@ class WebSocketMessageHandlers {
     async handleGetTagWikiPage(ws, message, clientInfo, wsServer) {
         console.log(`[Wiki Handler] handleGetTagWikiPage called with tagName="${message.tagName}", source="${message.source}"`);
         
-        const { tagName, source, format = 'html' } = message;
+        const { tagName: rawTagName, source, format = 'html' } = message;
 
-        if (!tagName) {
+        if (!rawTagName) {
             this.sendError(ws, 'Missing tagName parameter', 'get_tag_wiki_page', message.requestId);
             return;
         }
@@ -2077,8 +2180,17 @@ class WebSocketMessageHandlers {
                 throw new Error('Tag lookup service not available');
             }
 
-            // Get tag directly
-            let tag = await tagLookup.findTagExact(tagName);
+            const tagName = tagLookup.resolveBooruWikiTagName(rawTagName);
+            const tagNameDisplay = tagLookup.formatBooruTagDisplayTitle(tagName) || rawTagName;
+
+            // Get tag directly (try raw and booru-normalized forms)
+            let tag = await tagLookup.findTagExact(rawTagName);
+            if (!tag && tagName !== rawTagName) {
+                tag = await tagLookup.findTagExact(tagName);
+            }
+            if (!tag && tagNameDisplay) {
+                tag = await tagLookup.findTagExact(tagNameDisplay);
+            }
 
             const SOURCE_DANBOORU = 1;
             const SOURCE_E621 = 2;
@@ -2108,9 +2220,8 @@ class WebSocketMessageHandlers {
                     }
                 } else {
                     // Tag doesn't exist - query wikis directly by title
-                    const normalizedTitle = tagName.replace(/_/g, ' ').toLowerCase();
-                    const danbooruResult = await tagLookup.getWikiByTitleAndSource(normalizedTitle, SOURCE_DANBOORU);
-                    const e621Result = await tagLookup.getWikiByTitleAndSource(normalizedTitle, SOURCE_E621);
+                    const danbooruResult = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_DANBOORU);
+                    const e621Result = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_E621);
                     
                     if (danbooruResult) {
                         danbooruBody = danbooruResult.body;
@@ -2126,14 +2237,14 @@ class WebSocketMessageHandlers {
 
                 // Fetch from API if not found in database (or if tag doesn't exist)
                 if (!danbooruBody) {
-                    const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tag ? (tag.title || tagName) : tagName, SOURCE_DANBOORU);
+                    const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, SOURCE_DANBOORU);
                     if (fetched.body) {
                         danbooruBody = fetched.body;
                         danbooruFetchedOnline = fetched.fetchedOnline || false;
                     }
                 }
                 if (!e621Body) {
-                    const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tag ? (tag.title || tagName) : tagName, SOURCE_E621);
+                    const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, SOURCE_E621);
                     if (fetched.body) {
                         e621Body = fetched.body;
                         e621FetchedOnline = fetched.fetchedOnline || false;
@@ -2182,15 +2293,13 @@ class WebSocketMessageHandlers {
                     // Tag doesn't exist - wiki IDs should already be set from getWikiByTitleAndSource
                     // If we just fetched, get the wiki ID from the fetched result
                     if (danbooruBody && !danbooruWikiId) {
-                        const normalizedTitle = tagName.replace(/_/g, ' ').toLowerCase();
-                        const result = await tagLookup.getWikiByTitleAndSource(normalizedTitle, SOURCE_DANBOORU);
+                        const result = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_DANBOORU);
                         if (result) {
                             danbooruWikiId = result.wikiId;
                         }
                     }
                     if (e621Body && !e621WikiId) {
-                        const normalizedTitle = tagName.replace(/_/g, ' ').toLowerCase();
-                        const result = await tagLookup.getWikiByTitleAndSource(normalizedTitle, SOURCE_E621);
+                        const result = await tagLookup.getWikiByTitleAndSource(tagName, SOURCE_E621);
                         if (result) {
                             e621WikiId = result.wikiId;
                         }
@@ -2216,7 +2325,7 @@ class WebSocketMessageHandlers {
                     this.sendToClient(ws, {
                         type: 'get_tag_wiki_page_response',
                         requestId: message.requestId,
-                        data: { error: `Tag "${tagName}" has no wiki body` },
+                        data: { error: `Tag "${tagNameDisplay}" has no wiki page on the selected source(s)` },
                         timestamp: new Date().toISOString()
                     });
                     return;
@@ -2226,7 +2335,7 @@ class WebSocketMessageHandlers {
                     type: 'get_tag_wiki_page_response',
                     requestId: message.requestId,
                     data: {
-                        tagName: tag ? (tag.title || tagName) : tagName,
+                        tagName: tag ? (tag.title || tagNameDisplay) : tagNameDisplay,
                         bodies: bodies,
                         bodySource: 'both',
                         fetchedOnline: danbooruFetchedOnline || e621FetchedOnline
@@ -2255,7 +2364,7 @@ class WebSocketMessageHandlers {
                         
             // Fetch from API if not found in database (or if tag doesn't exist)
             if (!bodyText) {
-                const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tag ? (tag.title || tagName) : tagName, sourceId);
+                const fetched = await tagLookup.fetchAndSaveWikiForTag(tag ? tag.id : null, tagName, sourceId);
                 if (fetched.body) {
                     bodyText = fetched.body;
                     fetchedOnline = fetched.fetchedOnline || false;
@@ -2266,7 +2375,7 @@ class WebSocketMessageHandlers {
                 this.sendToClient(ws, {
                     type: 'get_tag_wiki_page_response',
                     requestId: message.requestId,
-                    data: { error: `Tag "${tagName}" has no wiki body for source "${source}"` },
+                    data: { error: `Tag "${tagNameDisplay}" has no wiki page for source "${source}"` },
                     timestamp: new Date().toISOString()
                 });
                 return;
@@ -2462,10 +2571,16 @@ class WebSocketMessageHandlers {
         }
 
         const sortKey = ['score', 'name', 'date', 'ratio', 'random'].includes(sort) ? sort : 'score';
-        const markKey = ['all', 'favorites', 'try', 'unmarked'].includes(markFilter) ? markFilter : 'all';
+        const markKey = ['all', 'favorites', 'try', 'unmarked', 'hidden', 'custom'].includes(markFilter) ? markFilter : 'all';
+        const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+        let elevatePins = 0;
+        if (typeof message.elevatePins !== 'undefined') {
+            elevatePins = naxTagsDatabase.normalizeElevatePins(message.elevatePins);
+        } else if (message.elevateFavorites === true) {
+            elevatePins = 1;
+        }
 
         try {
-            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
             const result = naxTagsDatabase.queryTags({
                 gallerySlug,
                 query,
@@ -2481,6 +2596,7 @@ class WebSocketMessageHandlers {
                 maxRatio,
                 randomSeed: sortKey === 'random' ? randomSeed : null,
                 markFilter: markKey,
+                elevatePins,
                 offset,
                 limit
             });
@@ -2493,6 +2609,47 @@ class WebSocketMessageHandlers {
         } catch (error) {
             console.error('get_nax_tags:', error);
             this.sendError(ws, 'Failed to load NAX tags', error.message, message.requestId);
+        }
+    }
+
+    async handleGetUserGlobalSettings(ws, message, clientInfo, wsServer) {
+        try {
+            const config = this.globalResources.getConfig() || {};
+            const settings = this.normalizeUserGlobalSettings(config.userGlobalSettings);
+            this.sendToClient(ws, {
+                type: 'get_user_global_settings_response',
+                requestId: message.requestId,
+                data: { settings },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('get_user_global_settings:', error);
+            this.sendError(ws, 'Failed to load user settings', error.message, message.requestId);
+        }
+    }
+
+    async handleUpdateUserGlobalSettings(ws, message, clientInfo, wsServer) {
+        try {
+            const patch = message.settings;
+            if (!patch || typeof patch !== 'object') {
+                this.sendError(ws, 'Missing settings object', 'update_user_global_settings', message.requestId);
+                return;
+            }
+            const config = this.globalResources.getConfig() || {};
+            const merged = this.mergeUserGlobalSettingsPatch(config.userGlobalSettings, patch);
+            await this.globalResources.modifyConfig('config', (cfg) => {
+                cfg.userGlobalSettings = merged;
+                return cfg;
+            });
+            this.sendToClient(ws, {
+                type: 'update_user_global_settings_response',
+                requestId: message.requestId,
+                data: { success: true, settings: merged },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('update_user_global_settings:', error);
+            this.sendError(ws, 'Failed to save user settings', error.message, message.requestId);
         }
     }
 
@@ -2579,6 +2736,28 @@ class WebSocketMessageHandlers {
         }
     }
 
+    async handleSetNaxHidden(ws, message, clientInfo, wsServer) {
+        const { gallerySlug, tag, hidden } = message;
+        if (!gallerySlug || !tag) {
+            this.sendError(ws, 'Missing gallerySlug or tag', 'set_nax_hidden', message.requestId);
+            return;
+        }
+
+        try {
+            const naxTagsDatabase = this.globalResources.getNaxTagsDatabase();
+            const out = naxTagsDatabase.setHiddenMark(gallerySlug, tag, !!hidden);
+            this.sendToClient(ws, {
+                type: 'set_nax_hidden_response',
+                requestId: message.requestId,
+                data: { success: true, hidden: out.hidden },
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            console.error('set_nax_hidden:', error);
+            this.sendError(ws, 'Failed to update hidden mark', error.message, message.requestId);
+        }
+    }
+
     async handleGenerateNaxCustomTag(ws, message, clientInfo, wsServer) {
         const { gallerySlug, tag } = message;
         if (!gallerySlug || !tag) {
@@ -2590,7 +2769,8 @@ class WebSocketMessageHandlers {
         const fs = require('fs');
 
         if (!naxTagGeneration.isValidCustomTag(tag)) {
-            this.sendError(ws, 'Invalid tag', 'generate_nax_custom_tag', message.requestId);
+            const validationError = naxTagGeneration.getCustomTagValidationError(tag) || 'Invalid tag';
+            this.sendError(ws, validationError, 'generate_nax_custom_tag', message.requestId);
             return;
         }
 
@@ -2603,7 +2783,13 @@ class WebSocketMessageHandlers {
                 return;
             }
             if (naxTagsDatabase.tagExists(gallerySlug, tagValue)) {
-                this.sendError(ws, 'Tag already exists in this gallery', 'generate_nax_custom_tag', message.requestId);
+                const existing = naxTagsDatabase.getTagRow(gallerySlug, tagValue);
+                this.sendToClient(ws, {
+                    type: 'generate_nax_custom_tag_response',
+                    requestId: message.requestId,
+                    data: { success: true, item: existing, alreadyExists: true },
+                    timestamp: new Date().toISOString()
+                });
                 return;
             }
 

@@ -494,12 +494,12 @@ class ImageViewer {
                     }
                 },
                 {
-                    icon: 'far fa-flask',
+                    icon: 'fas fa-vial',
                     tooltip: 'Try',
                     action: 'image-viewer-nax-try',
                     loadfn: (menuItem) => {
                         const on = !!(this.metadata && this.metadata.naxTryMark);
-                        menuItem.icon = on ? 'fas fa-flask' : 'far fa-flask';
+                        menuItem.icon = on ? 'fas fa-vial-circle-check' : 'fas fa-vial';
                         menuItem.tooltip = on ? 'Remove try mark' : 'Mark to try';
                     }
                 },

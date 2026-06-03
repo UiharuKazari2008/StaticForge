@@ -3672,6 +3672,40 @@ body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed 
     border-radius: 0 !important;
 }
 
+/*
+ * Work-area maximized: black native WCO / Android caption band + side gutters.
+ * Driven by :has(.modal-maximized) only — no JS class on html.
+ */
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).window-controls-overlay #titlebar-grab-area-container,
+html:has(.gallery-window.modal-maximized.windowed).window-controls-overlay #titlebar-grab-area-container,
+html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).window-controls-overlay #titlebar-grab-area-container {
+    left: 0;
+    width: 100vw;
+    max-width: 100vw;
+    background-color: #000000;
+}
+
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter {
+    background-color: #000000;
+}
+
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
+html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
+html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter {
+    background-color: #000000;
+}
+
 .modal[data-window-content-anchor="top"].modal-pixel-settled:not(.opening):not(.closing):not(.minimising):not(.unminimising) {
     transform: translateZ(0);
 }
@@ -3778,7 +3812,7 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     background: rgba(120, 170, 240, 0.12);
     border-radius: 12px;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35), 0 14px 28px rgba(0, 0, 0, 0.34);
-    backdrop-filter: blur(2px);
+    backdrop-filter: none;
 }
 
 .modal-padding {
@@ -5747,7 +5781,7 @@ body.desktop-mode .desktop-icons {
     z-index: var(--z-modal);
 }
 
-.modal.initializing .prompt-options-container .spinner-overlay .fa-spinner {
+.modal.initializing .prompt-options-container .spinner-overlay [class*="fa-spinner"] {
     font-size: 5rem;
     color: var(--text-accent-tinted);
 }
@@ -5806,6 +5840,10 @@ body.desktop-mode .desktop-icons {
 #updateNoteModal,
 #imageExpansionDialog {
     width: 500px;
+}
+
+#openNoteModal {
+    height: 520px;
 }
 
 #expansionCompiledPromptDialog {
@@ -5949,6 +5987,10 @@ body.desktop-mode .desktop-icons {
     max-height: 90vh;
 }
 
+#desktopSettingsModal:has([data-desktop-settings-scope="global"]:not(.hidden)) {
+    width: 680px;
+}
+
 /* Desktop Settings Modal */
 /* Desktop Settings Modal Layout */
 .desktop-settings-layout {
@@ -6069,16 +6111,39 @@ body.desktop-mode .desktop-icons {
     letter-spacing: 0.02em;
 }
 
-#desktopSettingsModal .desktop-settings-startup-row {
-    align-items: flex-start;
+.desktop-settings-options-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-md);
 }
 
-#desktopSettingsModal .desktop-settings-window-management-row {
+.desktop-settings-option {
+    display: flex;
+    flex-direction: row;
     align-items: flex-start;
+    gap: var(--spacing-sm);
 }
 
-#desktopSettingsModal .desktop-settings-startup-toggle {
-    min-width: 4.5rem;
+.desktop-settings-option-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.desktop-settings-option-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    font-variation-settings: "wght" 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+#desktopSettingsModal .desktop-settings-global-toggle {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    flex-shrink: 0;
 }
 
 #desktopSettingsModal .desktop-settings-hint {
@@ -6087,6 +6152,16 @@ body.desktop-mode .desktop-icons {
     line-height: 1.35;
     color: var(--text-accent-tinted);
     opacity: 0.75;
+}
+
+@media (max-width: 640px) {
+    .desktop-settings-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #desktopSettingsModal:has([data-desktop-settings-scope="global"]:not(.hidden)) {
+        width: 550px;
+    }
 }
 
 .desktop-settings-scope-toggle .gallery-toggle-btn {
@@ -6298,71 +6373,97 @@ body.desktop-mode .desktop-icons {
 #naxtCustomTagModal {
     display: flex;
     flex-direction: column;
-    width: 450px;
-    height: 420px;
-    min-width: 450px;
-    max-width: 450px;
+    width: calc(min(100vw, 450px) - 16px);
+    max-width: calc(min(100vh, 100vw, 450px) - 16px);
+    min-width: 320px;
+    height: auto;
     min-height: 420px;
-    max-height: 420px;
+    max-height: calc(min(100vh, 100vw, 650px) - 16px);
 }
 
-#naxtCustomTagModal .weather-location-modal-content {
-    flex: 1;
-    min-height: 0;
-}
-
-#naxtCustomTagModal .weather-location-modal-body {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#naxtCustomTagModal .naxt-custom-tag-preview-group {
+#naxtCustomTagModal .modal-body {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
 }
 
-#naxtCustomTagModal .modal-footer {
-    flex-shrink: 0;
-    margin-top: auto;
-}
-
-#naxtCustomTagModal .modal-actions.btn-group {
-    flex-wrap: nowrap;
-    width: 100%;
-}
-
-.naxt-custom-tag-preview {
+.naxt-custom-tag-layout {
     flex: 1;
-    flex-direction: column;
-    justify-content: center;
-    min-height: 8em;
-    text-align: center;
+    min-height: 0;
 }
 
-.naxt-custom-tag-preview-clickable {
+.naxt-custom-tag-preview-container {
+    cursor: default;
+}
+
+.naxt-custom-tag-preview-container.has-preview {
     cursor: pointer;
 }
 
-.naxt-custom-tag-preview-clickable:hover img {
-    opacity: 0.92;
+.naxt-custom-tag-preview-placeholder,
+.naxt-custom-tag-preview-loading,
+.naxt-custom-tag-preview-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+    text-align: center;
+    color: var(--text-muted);
+    z-index: var(--z-layer-2);
+    position: relative;
 }
 
-.naxt-custom-tag-preview img {
-    display: block;
-    max-width: 100%;
-    max-height: 160px;
-    margin: 0 auto var(--spacing-xs);
-    object-fit: contain;
-    border-radius: var(--border-radius-sm);
+.naxt-custom-tag-preview-placeholder i {
+    font-size: 2rem;
+    opacity: 0.45;
+}
+
+.naxt-custom-tag-preview-loading img.loading {
+    width: 48px;
+    height: 48px;
+}
+
+.naxt-custom-tag-preview-error {
+    color: var(--danger-color, #f44336);
 }
 
 .naxt-custom-tag-preview-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0.75rem;
+    padding: 0 var(--spacing-md);
+    text-align: center;
     font-family: var(--font-mono);
     font-size: 0.85em;
-    opacity: 0.9;
+    color: var(--text-primary);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+    z-index: var(--z-layer-2);
+    pointer-events: none;
+}
+
+.naxt-custom-tag-preview-caption.is-notice {
+    color: var(--warning-color, #ffc107);
+}
+
+.naxt-custom-tag-controls {
+    flex-shrink: 0;
+}
+
+.naxt-custom-tag-controls .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.naxt-custom-tag-overlay-buttons .indicator[data-state="on"] {
+    color: var(--accent-color);
+}
+
+.naxt-custom-tag-overlay-buttons .indicator[data-state="on"] i {
+    color: var(--accent-color);
 }
 
 /* Genso Lock Modal Content */
@@ -33904,6 +34005,19 @@ div#spellbookCustomPresetDropdown {
     align-items: flex-start;
 }
 
+.tag-wiki-nav-group {
+    flex-shrink: 0;
+}
+
+.tag-wiki-nav-group .btn-secondary {
+    min-width: 2rem;
+    padding: 0.35em 0.5em;
+}
+
+.tag-wiki-results-overlay-btn {
+    flex-shrink: 0;
+}
+
 .tag-wiki-search-controls input[type="text"] {
     flex: 1;
     font-family: inherit;
@@ -33918,6 +34032,121 @@ div#spellbookCustomPresetDropdown {
     flex: 1;
     overflow: hidden;
     min-height: 0;
+    position: relative;
+}
+
+.tag-wiki-panels-wrap {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+#tagWikiSearchModal.modal-maximized .tag-wiki-panels-wrap {
+    gap: 0;
+}
+
+#tagWikiSearchModal.modal-maximized.tag-wiki-split-active .tag-wiki-split-pane-left {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+#tagWikiSearchModal.modal-maximized.tag-wiki-split-active .tag-wiki-split-pane-right {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+#tagWikiSearchModal.modal-maximized.tag-wiki-split-active .tag-wiki-split-divider {
+    display: block;
+}
+
+.tag-wiki-split-divider {
+    position: relative;
+    flex-shrink: 0;
+    width: 2px;
+    align-self: stretch;
+}
+
+.tag-wiki-split-swap-btn {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    min-width: 1rem;
+    min-height: 6em;
+    padding: 0.35em 0.45em;
+    border: 1px solid var(--glass-border-4);
+    background: var(--glass-windows-full-bg);
+    box-shadow: 0 0 0 2px var(--glass-layer-1);
+}
+
+.tag-wiki-results-overlay-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 17;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: default;
+}
+
+#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-results-overlay-backdrop:not(.hidden) {
+    display: block;
+}
+
+#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-search-results-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 92%);
+    max-width: none;
+    min-width: 0;
+    z-index: 19;
+    opacity: 1;
+    pointer-events: auto;
+    flex: none;
+    border-right: 1px solid var(--glass-border-4);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+    background: var(--glass-layer-dark-menu);
+}
+
+#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-search-body.results-sidebar-collapsed .tag-wiki-search-results-panel {
+    flex: none;
+    min-width: 0;
+    max-width: none;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.tag-wiki-split-blank-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xl);
+    min-height: 12rem;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.tag-wiki-split-blank-state i {
+    font-size: 2.5rem;
+    opacity: 0.45;
+}
+
+.tag-wiki-split-blank-state p {
+    margin: 0;
+    max-width: 18rem;
+    line-height: 1.45;
 }
 
 .tag-wiki-search-results-panel {
@@ -34041,6 +34270,34 @@ div#spellbookCustomPresetDropdown {
     color: var(--text-muted);
     margin-bottom: var(--spacing-sm);
     padding: 0 var(--spacing-md);
+}
+
+.tag-wiki-online-section {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--glass-border-4);
+}
+
+.tag-wiki-online-header {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-sm);
+    padding: 0 var(--spacing-md);
+}
+
+.tag-wiki-online-header-empty {
+    font-weight: 500;
+    font-style: italic;
+    opacity: 0.85;
+}
+
+.tag-wiki-result-item-online {
+    border-color: var(--glass-border-3);
+}
+
+.tag-wiki-result-item-merged .tag-wiki-result-source {
+    gap: 2px;
 }
 
 .tag-wiki-result-item-no-wiki {
@@ -34333,6 +34590,10 @@ div#spellbookCustomPresetDropdown {
     font-size: 1rem;
     color: var(--accent-color);
     opacity: 0.7;
+}
+
+.tag-wiki-result-source .tag-wiki-online-icon {
+    font-size: 0.9em
 }
 
 /* Offline NovelAI / static wiki docs */
@@ -35505,12 +35766,136 @@ div#spellbookCustomPresetDropdown {
 }
 
 /* Note selection dialog */
-.note-selection-list {
+.open-note-modal-content {
+    padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    max-height: 400px;
+    overflow: hidden;
+    height: 100%;
+}
+
+.open-note-layout {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.open-note-sidebar-backdrop {
+    display: none;
+}
+
+.open-note-sidebar {
+    width: 200px;
+    min-width: 180px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-layer-dark-bg);
+    border-right: 1px solid var(--glass-border);
+    overflow: hidden;
+    border-bottom-left-radius: var(--border-radius-xl);
+}
+
+.open-note-sidebar-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+
+.open-note-workspace-list {
+    flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--spacing-xs);
+}
+
+.open-note-workspace-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
+    .open-note-workspace-item:hover:not(:disabled) {
+        background: var(--glass-layer-dark-4);
+    }
+}
+
+.open-note-workspace-item.active {
+    background: var(--btn-hover-bg-primary);
+}
+
+.open-note-workspace-item .workspace-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.9rem;
+}
+
+.open-note-workspace-count {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.open-note-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-bottom-right-radius: var(--border-radius-xl);
+}
+
+.open-note-list-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: var(--spacing-sm);
+}
+
+.open-note-sidebar-toggle {
+    display: none;
+}
+
+.open-note-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-xl);
+    color: var(--text-muted);
+    column-span: all;
+}
+
+.open-note-empty-state i {
+    font-size: 2.5em;
+    opacity: 0.5;
+}
+
+.note-selection-list {
+    column-width: 180px;
+    column-gap: var(--spacing-sm);
+    column-fill: auto;
+    height: 100%;
+    padding: 0;
 }
 
 .note-selection-item {
@@ -35518,10 +35903,13 @@ div#spellbookCustomPresetDropdown {
     align-items: center;
     gap: 12px;
     padding: 12px;
+    margin-bottom: var(--spacing-sm);
+    break-inside: avoid;
     background: var(--glass-layer-3);
     border: 1px solid var(--glass-border-3);
     border-radius: var(--border-radius-md);
     transition: all var(--transition-fast);
+    cursor: pointer;
 }
 
 
@@ -35545,6 +35933,68 @@ div#spellbookCustomPresetDropdown {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+#notebookWorkspaceDropdown .custom-dropdown-btn {
+    gap: var(--spacing-xs);
+    max-width: 140px;
+}
+
+#notebookWorkspaceDropdown #notebookWorkspaceSelected {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    #openNoteModal {
+        width: 100%;
+        max-width: 100%;
+        height: 85vh;
+    }
+
+    .open-note-sidebar-toggle {
+        display: inline-flex;
+    }
+
+    .open-note-sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 5;
+        transform: translateX(-100%);
+        transition: transform var(--transition-normal);
+        box-shadow: 4px 0 16px rgba(0, 0, 0, 0.35);
+        border-bottom-left-radius: 0;
+    }
+
+    .open-note-layout.sidebar-open .open-note-sidebar {
+        transform: translateX(0);
+    }
+
+    .open-note-sidebar-backdrop {
+        display: none;
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 4;
+    }
+
+    .open-note-layout.sidebar-open .open-note-sidebar-backdrop {
+        display: block;
+    }
+
+    .open-note-list-scroll {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .note-selection-list {
+        columns: 1;
+        column-width: auto;
+        height: auto;
+    }
 }
 
 /* Color option in dropdown */
@@ -36615,6 +37065,185 @@ body.windows-classic-theme .modal button:not(.modal-window-controls button)[aria
     box-shadow: -1px -1px 0px 1px var(--ButtonShadow), 0px 0px 0px 1px var(--ButtonShadow), -1px -1px 0px 2px var(--WindowFrame), 0px 0px 0px 2px var(--WindowFrame);
 }
 
+#desktopPreStartupModal {
+    width: 530px;
+    max-width: calc(100vw - 48px);
+}
+
+#desktopPreStartupModal .desktop-prestartup-content {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#desktopPreStartupModal .desktop-prestartup-hero {
+    min-height: 102px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 14px;
+    box-sizing: border-box;
+    background: #084f8d url('/static_images/header.png') center/cover no-repeat;
+}
+
+#desktopPreStartupModal .desktop-prestartup-hero-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 11px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-text-wrap {
+    display: flex;
+    flex-direction: column;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-text {
+    margin: 0;
+    font-size: 1.8rem;
+    line-height: 1;
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+#desktopPreStartupModal .desktop-prestartup-logo-subtext {
+    margin: 2px 0 0;
+    color: #ffffff;
+    font-size: 0.83rem;
+    line-height: 1.2;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress {
+    height: 10px;
+    margin: 0;
+    background: transparent;
+    overflow: hidden;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress > div {
+    width: 100%;
+    height: 100%;
+    background-image: linear-gradient(90deg, #054793 0%, #8ec4ef 25%, #0a4f9e 50%, #8ec4ef 75%, #0a4f9e 100%);
+    background-size: 200% 100%;
+    background-repeat: repeat;
+    background-position-x: 100%;
+    animation: desktop-prestartup-marquee 3s linear infinite!important;
+    animation-play-state: running!important;
+    animation-timing-function: linear;
+    will-change: background-position;
+}
+
+#desktopPreStartupModal .desktop-prestartup-progress.paused > div {
+    animation-play-state: paused;
+}
+
+#desktopPreStartupModal .desktop-prestartup-main {
+    display: flex;
+    flex-direction: row;
+    gap: 14px;
+    padding: 14px;
+    min-height: 52px;
+    box-sizing: border-box;
+    background: var(--button-face, #d4d0c8);
+}
+
+#desktopPreStartupModal.auth-active .desktop-prestartup-main {
+    min-height: 102px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+}
+
+#desktopPreStartupModal .desktop-prestartup-status {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--WindowText, #000000);
+    text-align: left;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth {
+    flex: 0 0 274px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth.hidden {
+    display: none;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-label {
+    width: 68px;
+    text-align: left;
+    font-size: 12px;
+    color: var(--WindowText, #000000);
+    flex-shrink: 0;
+}
+
+#desktopPreStartupModal .desktop-prestartup-input {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 5px;
+    font-size: 12px;
+    border: 1px solid var(--ButtonShadow, #808080);
+    background: var(--Window, #ffffff);
+    color: var(--WindowText, #000000);
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-error {
+    color: #a30000;
+    font-size: 11px;
+    min-height: 14px;
+    line-height: 1.3;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-error.hidden {
+    display: none;
+}
+
+#desktopPreStartupModal .desktop-prestartup-auth-actions {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 2px;
+}
+
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-status,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-label,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-input,
+body.windows-classic-theme #desktopPreStartupModal .desktop-prestartup-auth-error {
+    font-family: 'Tahoma', 'MS Sans Serif', sans-serif;
+    font-size: 11px;
+}
+
+@keyframes desktop-prestartup-marquee {
+    from {
+        background-position-x: 100%;
+    }
+
+    to {
+        background-position-x: 0%;
+    }
+}
+
 #windowsStartupModal {
     position: fixed;
     top: calc(var(--true-inset-top, 0px) + var(--modal-offset-y, 20px));
@@ -36826,6 +37455,68 @@ body.windows-classic-theme .connection-dial-attempt {
     color: #ff9800;
 }
 
+.service-worker-tray-icon.sw-update-downloading {
+    color: var(--text-secondary);
+    opacity: 0.85;
+    animation: pulse-credits 1.2s ease-in-out infinite;
+}
+
+.service-worker-tray-icon.sw-update-complete {
+    color: #81ff9d;
+    opacity: 1;
+    animation: none;
+}
+
+.service-worker-tray-popup {
+    min-width: 300px;
+    max-width: 360px;
+    padding: 0.65em 0.75em;
+    font-size: 0.85em;
+}
+
+.service-worker-tray-popup .popover-content {
+    gap: 0.4em;
+}
+
+.service-worker-tray-popup .popover-header {
+    justify-content: flex-start;
+    margin-bottom: 0;
+    font-size: 1em;
+}
+
+.service-worker-tray-popup .popover-body {
+    font-size: 0.95em;
+    line-height: 1.3;
+}
+
+.service-worker-tray-popup-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
+}
+
+.service-worker-tray-popup-close.context-menu-icon-btn {
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0;
+    border-radius: 2px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.service-worker-tray-popup-progress-wrap {
+    margin-top: 6px;
+}
+
+.service-worker-tray-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+}
+
 .connection-dial-stats {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -37022,15 +37713,13 @@ body.desktop-mode.windows-startup.boot-from-launch {
     align-items: center;
 }
 
-#naxtModal .naxt-nav-group .btn-secondary.btn-small,
-#naxVibesModal .naxt-nav-group .btn-secondary {
-    min-width: 2rem;
-    padding: 0.35em 0.5em;
+#naxtModal .naxt-toolbar-dataset {
+    flex-shrink: 0;
 }
 
 #naxtModal .naxt-quick-filters,
 #naxVibesModal .naxt-quick-filters {
-    margin-left: auto;
+    flex-shrink: 0;
 }
 
 #naxtModal .naxt-quick-filters .btn-secondary,
@@ -37110,20 +37799,23 @@ body.desktop-mode.windows-startup.boot-from-launch {
     transition: opacity 0.2s ease;
 }
 
+#naxtModal.modal-maximized .naxt-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+#naxVibesModal.modal-maximized .naxt-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
 #naxtModal .naxt-grid.naxt-loading,
 #naxVibesModal .naxt-grid.naxt-loading {
     opacity: 0.45;
     pointer-events: none;
 }
 
-#naxtModal #naxtFilterToggleBtn.indicator[data-filters-active="true"]::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
+#naxtModal #naxtMarkFilterDropdownBtn .naxt-mark-filter-icon,
+#naxtModal #naxtElevatePinsDropdownBtn .naxt-elevate-pins-icon {
+    pointer-events: none;
 }
 
 #naxVibesModal .naxt-card .cache-badges {
@@ -37177,12 +37869,6 @@ body.desktop-mode.windows-startup.boot-from-launch {
     padding: 4px 6px;
     font-size: 0.7rem;
     text-align: center;
-}
-
-#naxVibesModal #naxVibesFilterToggleBtn.indicator[data-filters-active="true"]::after {
-    background: #7eff7e;
-    border: 1px solid #00cd00;
-    box-shadow: 0 0 15px 2px #00ff22;
 }
 
 #naxtModal .naxt-sort-menu-divider {
@@ -37246,17 +37932,17 @@ body.desktop-mode.windows-startup.boot-from-launch {
 
 #naxtModal .naxt-card[data-favorite="1"] {
     border-color: #e6c200;
-    box-shadow: 0 0 0 1px rgba(230, 194, 0, 0.45);
+    box-shadow: 0 0 6px 3px rgb(230, 194, 0);
 }
 
 #naxtModal .naxt-card[data-try="1"] {
     border-color: #6eb5ff;
-    box-shadow: 0 0 0 1px rgba(110, 181, 255, 0.45);
+    box-shadow: 0 0 6px 3px rgb(110 181 255);
 }
 
 #naxtModal .naxt-card[data-favorite="1"][data-try="1"] {
     border-color: #9ad4a0;
-    box-shadow: 0 0 0 1px rgba(154, 212, 160, 0.5);
+    box-shadow: 0 0 6px 3px rgb(154, 212, 160);
 }
 
 #naxtModal #naxtBagDropdownBtn {
