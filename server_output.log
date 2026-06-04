@@ -1,0 +1,122 @@
+✅ Data saved successfully to /app/config.json
+✓ Created config with default structure
+✅ Data saved successfully to /app/secure.config.json
+✓ Created secureConfig with default structure
+✅ Data saved successfully to /app/prompt.config.json
+✓ Created promptConfig with default structure
+✅ Data saved successfully to /app/director.config.json
+✓ Created directorConfig with default structure
+✅ Data saved successfully to /app/.cache/favorites.json
+✓ Created favorites with default structure
+✅ Data saved successfully to /app/.cache/workspace.json
+✓ Created workspaces with default structure
+✓ Configs loaded and validated
+✓ HTTP Server ready
+✓ SQLite Session Store ready
+✓ LRU caches initialized
+✓ API key manager initialized
+✓ DText to HTML Parser (Ruby Module) registered via Polymorphic module manager
+✓ HTML to Markdown converter initialized
+✓ T5 Tokenizer ready
+✓ SpellChecker loaded
+✓ WordLookupService loaded
+⚠️ T5 vocabulary file not found, local optimization disabled
+✓ LocalPromptOptimizer loaded
+✓ TagSuggestionsCache loaded
+✓ SQLite Manager ready
+✓ ForgeData and Sidechannel (Metadata) database ready
+✓ Persona Chat (LinkXi) database ready
+✓ Enshutsuka Sessions (Image Director) database ready
+✓ Notes database ready
+Error initializing tag database: Error: Tag database not found at /app/.cache/tag_wiki.db
+    at TagLookup.initializeDatabase (/app/modules/tag-lookup.js:94:19)
+    at GlobalResources.initializeDatabases (/app/modules/globalResources.js:1367:29)
+    at async GlobalResources.initialize (/app/modules/globalResources.js:741:13)
+    at async /app/web_server.js:2877:9
+    at async logger.bootStep (/app/modules/logger.js:280:13)
+    at async /app/web_server.js:2875:5
+Full error stack: Error: Tag database not found at /app/.cache/tag_wiki.db
+    at TagLookup.initializeDatabase (/app/modules/tag-lookup.js:94:19)
+    at GlobalResources.initializeDatabases (/app/modules/globalResources.js:1367:29)
+    at async GlobalResources.initialize (/app/modules/globalResources.js:741:13)
+    at async /app/web_server.js:2877:9
+    at async logger.bootStep (/app/modules/logger.js:280:13)
+    at async /app/web_server.js:2875:5
+✓ Tag Wiki database ready
+✓ Knowledge memory database ready
+✓ Tag search database ready
+   - NAX tags database not found (optional); run scripts/import-nax-tags.js to enable NAXT
+✓ NAX tags database ready
+✓ NAX vibes gallery proxy ready
+   - NAX generation config not found (optional); custom tag previews disabled
+✓ Reference metadata database ready
+✓ Memory manager ready
+✓ Prompt manager ready
+✓ LLM / AI service manager ready
+✓ Grok service ready
+✓ psudo-Logit analyzer ready
+✓ SolarSystem (Workspaces) module ready
+✓ Queue module ready
+✓ Favorite Tags and Groups Database ready
+✓ Registered database checkpoint manager: chat (stagger: 0.0min)
+✓ Registered database checkpoint manager: metadata (stagger: 5.0min)
+✓ Registered database checkpoint manager: director (stagger: 10.0min)
+✓ Periodic checkpoints started (interval: 60.0min)
+✓ Checkpoint manager ready
+Tag-to-path index file not found, building new index...
+Tag-to-path index saved successfully
+✓ Master Tag Database (Danbooru + e621 + NovelAI + Wiki) service ready
+✓ Added custom resolution: XLARGE_PORTRAIT (1408x2112)
+✓ Added custom resolution: XLARGE_LANDSCAPE (2112x1408)
+✓ Added custom resolution: XLARGE_SQUARE (1728x1728)
+✓ Registered 3 DreamScene custom resolution(s)
+    ⚠️  Missing API keys for: NovelAI, Grok
+       Add keys to secure.config.json to enable these services
+✓ Character Data Loaded (1423 characters)
+   - Skipping tag search services (saves ~380MB memory)
+     They will lazy-load if needed
+✓ System info cache initialized (refreshes hourly)
+✓ Global Resources ready in 0.31s
+✓ HTTP server listening on port 9220
+✓ System info cache refreshed at 2026-06-04T12:10:15.967Z
+⚠️ Skipping NovelAI user data fetch - no API key configured.
+12:10:15 [31merror[39m: Failed to load account data
+⚠️ No image files found in images directory
+✓ Image selection: 0 pinned + 0 random available
+⚠️ No images found for sprite sheet, skipping generation
+✓ WebSocket server initialized
+
+Server Initialization
+├─┬─ Global Resources Initialization (309ms)
+│ ├── Polymodule dtext_parser registered (will start on first request)
+│ ├── T5 Tokenizer initialized
+│ ├── Metadata database ready
+│ ├── Chat database ready
+│ ├── Director database ready
+│ ├── Notes database ready
+│ ├── Knowledge memory database ready
+│ ├── Tag search database initialized
+│ ├── Reference metadata database initialized
+│ ├── Memory manager ready
+│ ├── Chat database connection verified
+│ ├── Workspace system loaded (1 workspaces)
+│ ├── DatasetTagService initialized
+│ └── Created new generation log file
+├─┬─ Preview Synchronization (2ms)
+│ ├── Found 0 images and 0 existing previews
+│ ├── All previews are up to date
+│ ├── Found 0 cache files
+│ └── All cache previews are up to date
+├─┬─ Account & Cache (661ms)
+│ └── Cached 463 assets
+├─┬─ Service Initialization (1ms)
+│ └── Login sprite sheet generated
+├─┬─ WebSocket Server (22ms)
+│ └── WebSocket server initialized
+└─┬─ Finalizing (0ms)
+  ├── Security system initialized
+  └── Server listening on port 9220
+
+Server ready (1.0s)
+
+✅ All files already have search indexes

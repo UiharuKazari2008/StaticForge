@@ -79,6 +79,12 @@ class LoginPage {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
         });
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.pinDisplay.click();
+            }
+        });
     }
 
     addDigit(digit) {
