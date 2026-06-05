@@ -301,6 +301,18 @@ body {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    outline: none;
+}
+
+.pin-button:focus-visible {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5), 0 0 0 4px #fff;
+}
+
+.pin-button.active-kb {
+    background-color: rgb(255 255 255 / 90%);
+    color: #000;
+    transform: scale(0.95);
 }
 
 .pin-button.danger {
@@ -336,6 +348,11 @@ body {
     .pin-button.update-static-btn:hover {
         background-color: rgba(0, 86, 179, 0.5);
     }
+}
+
+.pin-button:active,
+.pin-button.active-kb {
+    transition: none;
 }
 
 /* Error message */

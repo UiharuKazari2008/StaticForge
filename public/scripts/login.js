@@ -43,13 +43,21 @@ class LoginPage {
         document.addEventListener('keydown', (e) => {
             if (this.isLoading) return;
             if (e.key >= '0' && e.key <= '9') {
+                this.showPinPad();
+                this.triggerButtonFeedback(`.pin-button[data-number="${e.key}"]`);
                 this.addDigit(e.key);
             } else if (e.key === 'Enter') {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
             } else if (e.key === 'Backspace') {
+                this.showPinPad();
+                this.triggerButtonFeedback('.pin-button[data-action="backspace"]');
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.showPinPad();
+                this.triggerButtonFeedback('.pin-button[data-action="clear"]');
+                this.clearPin();
             }
         });
     }
@@ -58,6 +66,7 @@ class LoginPage {
         this.pinButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 if (this.isLoading) return;
+                this.showPinPad();
                 
                 const number = button.getAttribute('data-number');
                 const action = button.getAttribute('data-action');
@@ -79,6 +88,21 @@ class LoginPage {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
         });
+    }
+
+    showPinPad() {
+        if (this.loginContainer.classList.contains('minimize')) {
+            this.loginContainer.classList.add('transition');
+            this.loginContainer.classList.remove('minimize');
+        }
+    }
+
+    triggerButtonFeedback(selector) {
+        const button = document.querySelector(selector);
+        if (button) {
+            button.classList.add('active-kb');
+            setTimeout(() => button.classList.remove('active-kb'), 100);
+        }
     }
 
     addDigit(digit) {
