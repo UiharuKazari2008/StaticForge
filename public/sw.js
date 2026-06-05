@@ -25,6 +25,13 @@ const IMAGE_CACHE_POLICY = {
 // Debounce and rate-limit enforcement to keep the cache warm.
 const IMAGE_POLICY_ENFORCE_DEBOUNCE_MS = 2000;
 const IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS = 30000;
+
+// Admin log viewer API — must bypass SW (SSE streams + live backlog)
+const LOG_VIEWER_API_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(?:stream|backlog|sources|pm2\/(?:status|flush|restart))$/i;
+
+function isLogViewerApiRequest(url) {
+  return LOG_VIEWER_API_RE.test(url.pathname);
+}
 let imagePolicyEnforceTimer = null;
 let imagePolicyLastEnforcedAt = 0;
 
@@ -541,6 +548,9 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
+    if (isLogViewerApiRequest(url)) {
+      return false;
+    }
     // Always handle requests that start with /
     return url.pathname.startsWith('/');
   },
@@ -643,6 +653,9 @@ workbox.routing.registerRoute(
   ({ url, request }) => {
     // Never handle /preset or /pending routes
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
+    if (isLogViewerApiRequest(url)) {
       return false;
     }
     // Check if this is an HTML request that might be a client-side route

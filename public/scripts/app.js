@@ -1971,23 +1971,7 @@ function updateManualPresetPlaceholder() {
 // Rentan Functions
 function updateDynamicGenerationToggleBtn() {
     const isOpen = !dynamicGenerationGroup.classList.contains('hidden');
-    const hasActiveOverrides = ['todBtn', 'weatherBtn', 'seasonBtn', 'creativeBtn']
-        .some(btnId => {
-            const btn = document.getElementById(btnId);
-            return btn && btn.dataset.state === 'on' && btn.getAttribute('data-override');
-        }) || (dynamicCarousel && dynamicCarousel.dataset.optimizeEnabled === 'true');
-    const hasCompiledPrompt = window.dynamicGenerationData && window.dynamicGenerationData.compiled_prompt;
-
-    let state = 'off'; // default
-
-    if (isOpen) {
-        state = 'open'; // group is open but no active overrides
-    } else if (hasActiveOverrides && hasCompiledPrompt) {
-        state = 'on'; // has active overrides
-    }
-
-    // Update button state
-    dynamicGenerationToggleBtn.setAttribute('data-state', state);
+    dynamicGenerationToggleBtn.setAttribute('data-state', isOpen ? 'open' : 'off');
 }
 
 // Rentan Carousel
@@ -2566,8 +2550,7 @@ function updateCarouselIndicators() {
         // Show/hide lock icon based on freeze state
         // Priority: Freeze Changes (lock icon) > Freeze Context (icicles icon)
         if (lockIcon && dynamicCarousel) {
-            const isChangesLocked = dynamicCarousel.dataset.state === 'on'; // Freeze Changes
-            const isContextLocked = dynamicCarousel.dataset.contextLocked === 'true'; // Freeze Context
+            const { cacheLocked: isChangesLocked, contextLocked: isContextLocked } = getDynamicGenerationLockState();
 
             if (isChangesLocked) {
                 // Freeze Changes takes priority - show lock icon
@@ -7376,8 +7359,8 @@ async function clearCompiledPrompt() {
     delete window.dynamicGenerationData.compiled_prompt;
     if (dynamicCarousel) {
         dynamicCarousel.setAttribute('data-use-cache', 'false');
-        dynamicCarousel.setAttribute('data-state', 'off');
     }
+    clearDynamicGenerationLockState();
 
     // Clear stage seeds array (used for rerolling with compiled prompts)
     if (window.lastGenerationStageSeeds) {
@@ -7385,9 +7368,7 @@ async function clearCompiledPrompt() {
         console.log('🗑️ Cleared stage seeds array');
     }
 
-    // Update UI
     updateDynamicGenerationToggleBtn();
-    updateCarouselIndicators();
 }
 
 // Director Feedback Modal Functions
@@ -8891,13 +8872,12 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-icicles',
                         keepMenuOpen: true,
                         loadfn: function (item, target) {
-                            const isContextLocked = dynamicCarousel?.dataset.contextLocked === 'true';
+                            const { cacheLocked, contextLocked } = getDynamicGenerationLockState();
                             const hasContext = Boolean(window.dynamicGenerationData?.compiled_prompt) &&
                                 Boolean(window.dynamicGenerationData?.compiled_prompt?.context);
-                            const isLocked = dynamicCarousel?.dataset.state === 'on';
 
-                            item.disabled = !hasContext || isLocked;
-                            item.checked = isContextLocked || isLocked;
+                            item.disabled = !hasContext || cacheLocked;
+                            item.checked = contextLocked || cacheLocked;
                         }
                     },
                     {
@@ -8906,11 +8886,11 @@ function setupDynamicGenerationContextMenus() {
                         icon: 'fas fa-lock',
                         keepMenuOpen: true,
                         loadfn: function (item, target) {
-                            const isResultsLocked = dynamicCarousel?.dataset.state === 'on';
+                            const { cacheLocked } = getDynamicGenerationLockState();
                             const hasCache = Boolean(window.dynamicGenerationData?.compiled_prompt);
 
                             item.disabled = !hasCache;
-                            item.checked = isResultsLocked;
+                            item.checked = cacheLocked;
                         }
                     },
                     {
@@ -8953,6 +8933,13 @@ function setupDynamicGenerationContextMenus() {
                             const compiledPrompt = Boolean(window.dynamicGenerationData?.compiled_prompt);
                             item.disabled = !compiledPrompt;
                         }
+                    },
+                    { separator: true },
+                    {
+                        text: 'Disable',
+                        action: 'disableDynamicGeneration',
+                        className: 'text-danger',
+                        icon: 'fas fa-power-off'
                     }
                 ]
             }]
@@ -9235,6 +9222,9 @@ document.addEventListener('contextMenuAction', (e) => {
         showCompiledPromptModal();
     } else if (action === 'clearCompiledPrompt') {
         clearCompiledPrompt();
+    } else if (action === 'disableDynamicGeneration') {
+        // disableDynamicGeneration: public/scripts/comp/manualModalManager.js
+        disableDynamicGeneration();
     } else if (action === 'toggleUseCache') {
         const currentUseCache = dynamicCarousel.getAttribute('data-use-cache') === 'true';
         const newUseCache = !currentUseCache;
@@ -9308,15 +9298,11 @@ document.addEventListener('contextMenuAction', (e) => {
         }
         updateCarouselIndicators();
     } else if (action === 'toggleLockContext') {
-        const isContextLocked = dynamicCarousel.dataset.contextLocked === 'true';
-        dynamicCarousel.dataset.contextLocked = isContextLocked ? 'false' : 'true';
-        // Update carousel lock icon visibility
-        updateCarouselIndicators();
+        const { contextLocked } = getDynamicGenerationLockState();
+        setDynamicGenerationLockState({ contextLocked: !contextLocked });
     } else if (action === 'toggleLockResults') {
-        const isResultsLocked = dynamicCarousel.dataset.state === 'on';
-        dynamicCarousel.dataset.state = isResultsLocked ? 'off' : 'on';
-        // Update carousel lock icon visibility and type
-        updateCarouselIndicators();
+        const { cacheLocked } = getDynamicGenerationLockState();
+        setDynamicGenerationLockState({ cacheLocked: !cacheLocked });
     } else if (action === 'toggleChainUpdates') {
         // Default to false (disabled) if not set
         const chainUpdatesEnabled = dynamicCarousel.dataset.chainUpdates === 'true';
@@ -11053,7 +11039,7 @@ function setupEventListeners() {
     }, 'blur');
 
     // TEXTAREA AUTOCOMPLETE SYSTEM - Auto-resize functionality for manual UC field
-    addSafeEventListener(manualUc, 'input', () => autoResizeTextarea(manualUc), 'resize');
+    addSafeEventListener(manualUc, 'input', () => scheduleAutoResizeTextarea(manualUc), 'resize');
 
     const manualPromptNegative = document.getElementById('manualPromptNegative');
     if (manualPromptNegative) {
@@ -11066,7 +11052,7 @@ function setupEventListeners() {
             autoResizeTextarea(manualPromptNegative);
             stopEmphasisHighlighting();
         }, 'blur');
-        addSafeEventListener(manualPromptNegative, 'input', () => autoResizeTextarea(manualPromptNegative), 'resize');
+        addSafeEventListener(manualPromptNegative, 'input', () => scheduleAutoResizeTextarea(manualPromptNegative), 'resize');
     }
 
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
@@ -13184,16 +13170,14 @@ function updateBalanceDisplay(balance) {
                 : '';
 
             if (message) {
-                const indicator = document.getElementById('fixedCreditsIndicator');
-                if (window.isDesktop && indicator && PopoverManager) {
-                    showPopover(indicator, 'info', 'Balance Updated', message, false, false, '<i class="fas fa-sync-alt"></i>', null, {
-                        position: 'top',
-                        arrowPosition: 'bottom-right'
-                    });
-                    startPopoverAutoHideTimer(indicator);
-                } else {
-                    showGlassToast('info', 'Balance Updated', message, false, 10000, '<i class="fas fa-sync-alt"></i>');
-                }
+                showGlassToast(
+                    'info',
+                    'Balance Updated',
+                    message,
+                    false,
+                    window.isDesktop ? false : 10000,
+                    '<i class="fas fa-sync-alt"></i>'
+                );
             }
         }
     }
@@ -13673,6 +13657,7 @@ async function handleLogout() {
                 localStorage.removeItem('userType');
                 localStorage.removeItem('userData');
                 localStorage.removeItem('loginTimestamp');
+                localStorage.removeItem('logViewerPathUuid');
 
                 // Remove master window/session data
                 localStorage.removeItem('staticforge_master_window');
@@ -16441,13 +16426,6 @@ function sproutHasGensoSeedList() {
 }
 
 
-// Carousel lock flags live on `#dynamicCarousel` (see manualModalManager.js addSharedFieldsToRequestBody cache_locked / context_locked)
-function sproutHasTendaiCompileCache() {
-    const dc = document.getElementById('dynamicCarousel');
-    return !!(window.dynamicGenerationData?.compiled_prompt)
-        && dc && dc.getAttribute('data-has-cache') === 'true';
-}
-
 /** At least one lockable expander is still unlocked — "Text Expanders +" still does something. */
 function sproutNeedsExpandersLockChoice() {
     const seeds = window.lastGenerationTextReplacements;
@@ -16455,16 +16433,6 @@ function sproutNeedsExpandersLockChoice() {
     const lockable = seeds.filter(r => (r.can_lock !== undefined ? r.can_lock !== false : true));
     if (lockable.length === 0) return false;
     return lockable.some(r => r.locked !== true);
-}
-
-/** Tendai carousel could still pin cache/context — "Tendai +" still does something. */
-function sproutNeedsTendaiLockChoice() {
-    if (!sproutHasTendaiCompileCache()) return false;
-    const dc = document.getElementById('dynamicCarousel');
-    if (!dc) return false;
-    const cacheOn = dc.getAttribute('data-state') === 'on';
-    const contextOn = dc.dataset.contextLocked === 'true';
-    return !(cacheOn && contextOn);
 }
 
 function loadSproutExpandersFromPreviewMetadata() {
@@ -16515,7 +16483,7 @@ async function toggleSproutSeed() {
     }
 
     const wantsExpanders = sproutNeedsExpandersLockChoice();
-    const wantsTendai = sproutNeedsTendaiLockChoice();
+    const wantsTendai = dynamicGenerationNeedsTendaiLockChoice();
     /** No extra pinning exists beyond the seed → lock seed without a dialog */
     let scope = 'seed';
     if (wantsExpanders || wantsTendai) {
@@ -16567,11 +16535,9 @@ async function toggleSproutSeed() {
         manualSeed.placeholder = window.lastLoadedSeed || 'Randomize';
     }
 
-    const dc = document.getElementById('dynamicCarousel');
-
     if (scope === 'seed') {
         // Seed only — keep in-memory Genso locks. If there is no list yet, match older behavior: pull from preview metadata when nothing else is in play.
-        if (!sproutHasGensoSeedList() && !sproutHasTendaiCompileCache()) {
+        if (!sproutHasGensoSeedList() && !dynamicGenerationHasCompileCache()) {
             loadSproutExpandersFromPreviewMetadata();
         }
     } else if (scope === 'expanders') {
@@ -16580,10 +16546,7 @@ async function toggleSproutSeed() {
         if (sproutNeedsExpandersLockChoice()) {
             applySproutExpandersLockFromMemoryOrMetadata();
         }
-        if (dc) {
-            dc.setAttribute('data-state', 'on');
-            dc.setAttribute('data-context-locked', 'true');
-        }
+        setDynamicGenerationLockState({ cacheLocked: true, contextLocked: true });
     }
 
     manualSeed.dispatchEvent(new Event('input', { bubbles: true }));
@@ -18398,7 +18361,7 @@ function wireCharacterPromptTextarea(textarea, blurExtra) {
         stopEmphasisHighlighting();
         if (blurExtra) blurExtra();
     }, 'blur');
-    const debouncedResize = debounce(() => autoResizeTextarea(textarea), 50);
+    const debouncedResize = debounce(() => scheduleAutoResizeTextarea(textarea), 50);
     addSafeEventListener(textarea, 'input', debouncedResize, 'resize');
     initializeEmphasisOverlay(textarea);
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js
@@ -28066,6 +28029,9 @@ function setupMainMenuContextMenus() {
                     updateMainLockButtonState();
                     showGlassToast('success', null, `Locked ${lockableReplacements.length} Expander${lockableReplacements.length === 1 ? '' : 's'}.`);
                 }
+                if (dynamicGenerationHasCompileCache()) {
+                    setDynamicGenerationLockState({ cacheLocked: true, contextLocked: true });
+                }
                 break;
 
             case 'unlockAllReplacements':
@@ -28830,26 +28796,16 @@ if (window.wsClient) {
             }
 
             if (message) {
-                const indicator = document.getElementById('fixedCreditsIndicator');
-                if (window.isDesktop && indicator && PopoverManager) {
-                    // Choose icon based on receipt type
-                    let icon = '<i class="fas fa-file-invoice-dollar"></i>';
-                    if (receipt.type === 'generation') {
-                        icon = '<i class="fas fa-sparkles"></i>';
-                    } else if (receipt.type === 'upscaling') {
-                        icon = '<i class="fas fa-expand"></i>';
-                    } else if (receipt.type === 'deposit') {
-                        icon = '<i class="fas fa-plus-circle"></i>';
-                    }
-
-                    showPopover(indicator, type, header, message, false, false, icon, null, {
-                        position: 'top',
-                        arrowPosition: 'bottom-right'
-                    });
-                    startPopoverAutoHideTimer(indicator);
-                } else {
-                    showGlassToast(type, header, message, false, 10000, '<i class="fas fa-file-invoice-dollar"></i>');
+                let icon = '<i class="fas fa-file-invoice-dollar"></i>';
+                if (receipt.type === 'generation') {
+                    icon = '<i class="fas fa-sparkles"></i>';
+                } else if (receipt.type === 'upscaling') {
+                    icon = '<i class="fas fa-expand"></i>';
+                } else if (receipt.type === 'deposit') {
+                    icon = '<i class="fas fa-plus-circle"></i>';
                 }
+
+                showGlassToast(type, header, message, false, window.isDesktop ? false : 10000, icon);
             }
         }
     });
@@ -29220,6 +29176,9 @@ if (window.wsClient) {
 
 // Window Controls Overlay API - OS Detection and class addition
 document.addEventListener('DOMContentLoaded', async () => {
+    // initVirtualKeyboard: public/scripts/comp/virtualKeyboard.js
+    initVirtualKeyboard();
+
     // Initialize websocket client (update check will happen after connection, before authentication)
     if (window.wsClient && !window.wsClient.initializationStarted) {
         window.wsClient.init();

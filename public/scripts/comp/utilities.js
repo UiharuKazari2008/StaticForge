@@ -1313,6 +1313,29 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0)
     }
 }
 
+const autoResizeTextareaRafIds = new WeakMap();
+
+/** Layout reflow after input — defer so native autocorrect/IME can commit first. */
+function scheduleAutoResizeTextarea(textarea, minHeight = 70, extraContainerHeight = 0) {
+    if (!textarea) return;
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea)) {
+        return;
+    }
+
+    const prevId = autoResizeTextareaRafIds.get(textarea);
+    if (prevId) {
+        cancelAnimationFrame(prevId);
+    }
+
+    const rafId = requestAnimationFrame(() => {
+        autoResizeTextareaRafIds.delete(textarea);
+        if (!textarea.isConnected) return;
+        autoResizeTextarea(textarea, minHeight, extraContainerHeight);
+    });
+    autoResizeTextareaRafIds.set(textarea, rafId);
+}
+
 
 /**
  * Update prompt status icons based on current state
@@ -1664,8 +1687,8 @@ function updatePromptStatusIcons() {
     const dynamicGenerationGroup = document.getElementById('dynamicGenerationGroup');
     const isDynamicGenVisible = dynamicGenerationGroup && !dynamicGenerationGroup.classList.contains('hidden');
 
-    if (isDynamicGenVisible && dynamicGenerationToggleBtn?.getAttribute('data-state') !== 'off') {
-        // Hide dynamic generation feature icons when controls are visible
+    if (isDynamicGenVisible) {
+        // Hide dynamic generation feature icons while the Enshutsuka panel is open
         const dynamicGenIcons = ['time-of-day-enabled', 'weather-enabled', 'location-set', 'custom-date-set', 'season-enabled', 'clothing-enabled', 'activity-enabled', 'creative-enabled'];
 
         // Hide on main prompt

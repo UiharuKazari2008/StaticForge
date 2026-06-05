@@ -17,7 +17,7 @@ const WINDOW_POSITION_SAVE_MAX_WAIT = 300000; // 5 minutes max wait time
 let globalWindowPositions = {}; // windowId -> { topLeft: { index, x, y }, bottomRight: { index, x, y } }
 
 // Track which transient windows should restore positions
-const transientWindowsWithPositions = new Set(['photoSwipeShell']); // Set of window IDs that are transient but should restore positions
+const transientWindowsWithPositions = new Set(['photoSwipeShell', 'virtualKeyboard']); // Set of window IDs that are transient but should restore positions
 
 // Active window management
 let currentActiveWindowId = null; // ID of the currently active window (null if no window is active)
@@ -276,8 +276,19 @@ function handleWindowMaximizeAction(modal) {
     }
 }
 
+function windowRestoresPosition(modal) {
+    return !!(modal && modal.dataset.windowRestorePosition !== 'false');
+}
+
+function windowRestoresSize(modal) {
+    return !!(modal && modal.dataset.windowRestoreSize !== 'false');
+}
+
 function shouldPersistWindowPosition(modal) {
     if (!modal || !window.isDesktop) {
+        return false;
+    }
+    if (!windowRestoresPosition(modal) && !windowRestoresSize(modal)) {
         return false;
     }
     if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')) {
@@ -297,7 +308,7 @@ function shouldPersistWindowPosition(modal) {
 }
 
 function shouldSaveShellBoundsFromRect(modal) {
-    if (!modal) {
+    if (!modal || !windowRestoresSize(modal)) {
         return false;
     }
     if (modal.id === 'galleryWindow' && modal.classList.contains('windowed')) {
@@ -1411,7 +1422,8 @@ function handleModalDragEnd(e, draggedModal) {
 
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = draggedModal.classList.contains('transient');
-    if ((!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier)))
+    if (windowRestoresPosition(draggedModal)
+        && (!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier)))
         && !draggedModal.classList.contains('modal-maximized')) {
         debouncedSaveWindowPositions();
     }
@@ -1683,7 +1695,8 @@ function handleModalResizeEnd(e, resizedModal) {
 
     // Save window position if this is a non-transient window, or transient window with dataset identifier
     const isTransient = resizedModal.classList.contains('transient');
-    if ((!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier)))
+    if ((windowRestoresPosition(resizedModal) || windowRestoresSize(resizedModal))
+        && (!isTransient || (resizedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(resizedModal.dataset.windowIdentifier)))
         && !resizedModal.classList.contains('modal-maximized')) {
         debouncedSaveWindowPositions();
     }
@@ -1721,7 +1734,8 @@ function openModal(modal) {
             || modal.dataset.windowPositionMode === 'manual-only';
         const isTransient = modal.classList.contains('transient');
         const isLumenViewer = modal.classList.contains('image-viewer-modal');
-        if (!skipRestore && !isLumenViewer && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
+        if (!skipRestore && !isLumenViewer && windowRestoresPosition(modal)
+            && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))) {
             restoreWindowPosition(modal);
         }
     }
@@ -2559,6 +2573,11 @@ function updateGalleryWindowMode() {
     } else if (!shouldBeWindowed && document.body.classList.contains('desktop-mode')) {
         document.body.classList.remove('desktop-mode');
         window.isDesktop = false;
+    }
+
+    // syncVirtualKeyboardPresentation: public/scripts/comp/virtualKeyboard.js
+    if (typeof syncVirtualKeyboardPresentation === 'function') {
+        syncVirtualKeyboardPresentation();
     }
 }
 
@@ -3554,15 +3573,13 @@ function getModalType(modal) {
 }
 
 function isModalActive(modal) {
-    // Modal is active if currentActiveWindowId matches (supports no active window case)
     if (!currentActiveWindowId) return false;
     if (!modal || !modal.id) return false;
     if (modal.id === currentActiveWindowId) return true;
-    // Gallery shortcuts while a linked tool window (e.g. Jump Index) was focused last
-    if (modal.id === 'galleryWindow') {
-        const activeEl = document.getElementById(currentActiveWindowId);
-        if (activeEl && activeEl.classList.contains('tool-window')
-            && activeEl.getAttribute('data-parent-modal-id') === 'galleryWindow') {
+    const activeEl = document.getElementById(currentActiveWindowId);
+    if (activeEl && isToolWindow(activeEl)) {
+        const parentId = activeEl.getAttribute('data-parent-modal-id');
+        if (parentId && modal.id === parentId) {
             return true;
         }
     }
@@ -4348,7 +4365,6 @@ const startMenuSubmenus = {
     toolbox: [
         { launchId: 'solar-system', icon: 'fas fa-solar-system', imageIcon: 'planet.png', text: 'Solar System', action: () => { showWorkspaceManagementModal(); } },
         { launchId: 'import', icon: 'nai-import', imageIcon: 'export.png', text: 'Import', action: () => { unifiedUploadModalManager.show(); } },
-        { launchId: 'nax-vibes', icon: 'fas fa-square-rss', text: 'Browse Vibes', action: () => { if (typeof naxVibesApplet !== 'undefined' && naxVibesApplet) { naxVibesApplet.open(); } else { const modal = document.getElementById('naxVibesModal'); if (modal) openModal(modal); } } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', action: () => { showPresetManager(); } },
         { launchId: 'bracket-generation', icon: 'fas fa-layer-group', imageIcon: 'stack.png', text: 'Phasewalker', desktopOnly: true, action: () => { if (window.bracketGenerationApplet) { window.bracketGenerationApplet.open(); } else { const modal = document.getElementById('bracketGenerationModal'); if (modal) openModal(modal); } } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', action: () => { showTextReplacementManager(); } },
@@ -4357,6 +4373,7 @@ const startMenuSubmenus = {
         { launchId: 'rules', icon: 'fas fa-book-law', imageIcon: 'rules.png', text: 'Rules', action: () => { showDirectorRulesManager(); } },
         { launchId: 'chat-persona', icon: 'fas fa-user-doctor-message', imageIcon: 'me.png', text: 'Chat Persona', action: () => { window.chatSystem.openPersonaSettingsModal() } },
         { launchId: 'config-editor', icon: 'fas fa-gears', imageIcon: 'slider.png', text: 'Config Editor', desktopOnly: true, action: () => { if (window.configEditorApplet) { window.configEditorApplet.open(); } else { const modal = document.getElementById('configEditorModal'); if (modal) openModal(modal); } } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'event_viewer.png', text: 'Event Viewer', desktopOnly: true, action: () => { if (logViewerApplet) { logViewerApplet.open(); } else { const modal = document.getElementById('logViewerModal'); if (modal) openModal(modal); } } },
         { launchId: 'keychain', icon: 'fas fa-key-skeleton-left-right', imageIcon: 'key.png', text: 'Keychain', action: () => { openApiKeyModal(); } },
     ]
 };
@@ -4443,6 +4460,50 @@ function collectStartMenuLaunchables() {
         }
     });
     return out;
+}
+
+function fadeClientShutdownOverlay(run) {
+    let overlay = document.getElementById('clientShutdownOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'clientShutdownOverlay';
+        overlay.className = 'client-shutdown-overlay';
+        document.body.appendChild(overlay);
+    }
+    overlay.classList.add('show');
+    setTimeout(() => {
+        if (run) run();
+    }, 580);
+}
+
+async function confirmClientRestart() {
+    if (typeof showConfirmationDialog !== 'function') return;
+    const confirmed = await showConfirmationDialog(
+        'Restart the application? The page will reload.',
+        [
+            { text: 'Restart', value: true, icon: 'fas fa-rotate-right', className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        { title: 'Restart', icon: 'fas fa-rotate-right' }
+    );
+    if (!confirmed) return;
+    fadeClientShutdownOverlay(() => location.reload());
+}
+
+async function confirmClientShutdown() {
+    if (typeof showConfirmationDialog !== 'function') return;
+    const confirmed = await showConfirmationDialog(
+        'Shut down and close this tab?',
+        [
+            { text: 'Shutdown', value: true, icon: 'fas fa-power-off', className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        { title: 'Shutdown', icon: 'fas fa-power-off' }
+    );
+    if (!confirmed) return;
+    fadeClientShutdownOverlay(() => window.close());
 }
 
 const startMenuIconRow = [
@@ -4606,6 +4667,39 @@ function buildStartMenu() {
             startMenuItems.appendChild(menuItem);
         }
     });
+
+    const actionBar = document.createElement('div');
+    actionBar.className = 'start-menu-action-bar';
+
+    const restartBtn = document.createElement('button');
+    restartBtn.type = 'button';
+    restartBtn.className = 'start-menu-action-btn';
+    restartBtn.innerHTML = '<i class="fas fa-rotate-right"></i><span>Restart</span>';
+    restartBtn.title = 'Restart application';
+    restartBtn.addEventListener('click', () => {
+        confirmClientRestart();
+        closeAllStartMenuSubmenus();
+        startMenu.classList.add('hidden');
+        const startBtn = document.getElementById('taskbarStartBtn');
+        if (startBtn) startBtn.classList.remove('active');
+    });
+
+    const shutdownBtn = document.createElement('button');
+    shutdownBtn.type = 'button';
+    shutdownBtn.className = 'start-menu-action-btn start-menu-action-danger';
+    shutdownBtn.innerHTML = '<i class="fas fa-power-off"></i><span>Shutdown</span>';
+    shutdownBtn.title = 'Close this tab';
+    shutdownBtn.addEventListener('click', () => {
+        confirmClientShutdown();
+        closeAllStartMenuSubmenus();
+        startMenu.classList.add('hidden');
+        const startBtn = document.getElementById('taskbarStartBtn');
+        if (startBtn) startBtn.classList.remove('active');
+    });
+
+    actionBar.appendChild(restartBtn);
+    actionBar.appendChild(shutdownBtn);
+    startMenuItems.appendChild(actionBar);
 
     // Add icon row at bottom
     const iconRow = document.createElement('div');
@@ -4903,6 +4997,27 @@ let desktopSettingsGlobalState = {
         } catch (e) {
             return false;
         }
+    })(),
+    virtualKeyboardEnabled: (() => {
+        try {
+            return localStorage.getItem('virtualKeyboardEnabled') === 'true';
+        } catch (e) {
+            return false;
+        }
+    })(),
+    notificationBridgeEnabled: (() => {
+        // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
+        if (typeof readNotificationBridgeEnabledPreference === 'function') {
+            return readNotificationBridgeEnabledPreference();
+        }
+        return true;
+    })(),
+    bypassNotificationBridgeInDesktopMode: (() => {
+        // readBypassNotificationBridgeInDesktopPreference — public/scripts/comp/toastManager.js
+        if (typeof readBypassNotificationBridgeInDesktopPreference === 'function') {
+            return readBypassNotificationBridgeInDesktopPreference();
+        }
+        return false;
     })()
 };
 
@@ -5009,6 +5124,12 @@ function setDesktopSettingsScope(scope) {
     }
 
     modal.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
+        if (section.id === 'desktopSettingsNotificationBridgeSection') {
+            const bridgeVisible = typeof isAndroidNotificationBridgeDetected === 'function'
+                && isAndroidNotificationBridgeDetected();
+            section.classList.toggle('hidden', nextScope !== 'global' || !bridgeVisible);
+            return;
+        }
         section.classList.toggle('hidden', section.dataset.desktopSettingsScope !== nextScope);
     });
 }
@@ -5050,6 +5171,55 @@ function readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference() {
     } catch (e) {
         return false;
     }
+}
+
+function readDesktopSettingsVirtualKeyboardPreference() {
+    try {
+        return localStorage.getItem('virtualKeyboardEnabled') === 'true';
+    } catch (e) {
+        return false;
+    }
+}
+
+function updateDesktopSettingsVirtualKeyboardToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsVirtualKeyboardBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
+}
+
+function readDesktopSettingsNotificationBridgeEnabledPreference() {
+    // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
+    if (typeof readNotificationBridgeEnabledPreference === 'function') {
+        return readNotificationBridgeEnabledPreference();
+    }
+    return true;
+}
+
+function readDesktopSettingsBypassNotificationBridgeDesktopPreference() {
+    // readBypassNotificationBridgeInDesktopPreference — public/scripts/comp/toastManager.js
+    if (typeof readBypassNotificationBridgeInDesktopPreference === 'function') {
+        return readBypassNotificationBridgeInDesktopPreference();
+    }
+    return false;
+}
+
+function updateDesktopSettingsNotificationBridgeEnabledToggleUI(enabled) {
+    const btn = document.getElementById('desktopSettingsNotificationBridgeEnabledBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, enabled !== false);
+}
+
+function updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(bypass) {
+    const btn = document.getElementById('desktopSettingsBypassNotificationBridgeDesktopBtn');
+    if (!btn) return;
+    updateDesktopSettingsGlobalToggleUI(btn, bypass === true);
+}
+
+function syncDesktopSettingsNotificationBridgeToggleUI() {
+    updateDesktopSettingsNotificationBridgeEnabledToggleUI(desktopSettingsGlobalState.notificationBridgeEnabled);
+    updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(
+        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode
+    );
 }
 
 function shouldExitDesktopOnWorkspaceMaximise() {
@@ -5178,6 +5348,45 @@ function setupDesktopSettingsScopeToggle() {
         });
     }
 
+    const virtualKeyboardBtn = document.getElementById('desktopSettingsVirtualKeyboardBtn');
+    if (virtualKeyboardBtn) {
+        virtualKeyboardBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = virtualKeyboardBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.virtualKeyboardEnabled = nextOn;
+            updateDesktopSettingsVirtualKeyboardToggleUI(nextOn);
+            try {
+                localStorage.setItem('virtualKeyboardEnabled', nextOn ? 'true' : 'false');
+            } catch (err) {
+                /* */
+            }
+            // setVirtualKeyboardEnabled: public/scripts/comp/virtualKeyboard.js
+            if (typeof setVirtualKeyboardEnabled === 'function') {
+                setVirtualKeyboardEnabled(nextOn);
+            }
+        });
+    }
+
+    const notificationBridgeEnabledBtn = document.getElementById('desktopSettingsNotificationBridgeEnabledBtn');
+    if (notificationBridgeEnabledBtn) {
+        notificationBridgeEnabledBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = notificationBridgeEnabledBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.notificationBridgeEnabled = nextOn;
+            updateDesktopSettingsNotificationBridgeEnabledToggleUI(nextOn);
+        });
+    }
+
+    const bypassNotificationBridgeDesktopBtn = document.getElementById('desktopSettingsBypassNotificationBridgeDesktopBtn');
+    if (bypassNotificationBridgeDesktopBtn) {
+        bypassNotificationBridgeDesktopBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const nextOn = bypassNotificationBridgeDesktopBtn.dataset.state !== 'on';
+            desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode = nextOn;
+            updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(nextOn);
+        });
+    }
+
     desktopSettingsScopeHandlersWired = true;
 }
 
@@ -5289,6 +5498,14 @@ async function openDesktopSettingsModal(wallpaperPath = null) {
     setLiveWindowRepositioningEnabled(desktopSettingsGlobalState.liveWindowRepositioning);
     desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
     updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise);
+    desktopSettingsGlobalState.virtualKeyboardEnabled = readDesktopSettingsVirtualKeyboardPreference();
+    updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
+    if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {
+        desktopSettingsGlobalState.notificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
+        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode =
+            readDesktopSettingsBypassNotificationBridgeDesktopPreference();
+        syncDesktopSettingsNotificationBridgeToggleUI();
+    }
     setDesktopSettingsScope('workspace');
 
     // Initialize dropdowns and button handlers
@@ -5756,7 +5973,9 @@ function buildUserGlobalSettingsSnapshotFromClient() {
         desktop: {
             autoLaunchWorkspace: readDesktopSettingsAutoLaunchPreference(),
             liveWindowRepositioning: readDesktopSettingsLiveWindowRepositioningPreference(),
-            exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference()
+            exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference(),
+            notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
+            bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference()
         },
         naxt: {
             elevatePins
@@ -5796,6 +6015,18 @@ function applyUserGlobalSettingsToClient(settings) {
                 /* */
             }
             updateGalleryMaximizeButtonIcon();
+        }
+        if (typeof desktop.notificationBridgeEnabled === 'boolean') {
+            desktopSettingsGlobalState.notificationBridgeEnabled = desktop.notificationBridgeEnabled;
+        }
+        if (typeof desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
+            desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode = desktop.bypassNotificationBridgeInDesktopMode;
+        }
+        if (typeof applyNotificationBridgePreferences === 'function') {
+            applyNotificationBridgePreferences(
+                desktopSettingsGlobalState.notificationBridgeEnabled !== false,
+                desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true
+            );
         }
     }
 
@@ -5867,27 +6098,45 @@ async function saveDesktopGlobalSettings() {
     const autoLaunch = desktopSettingsGlobalState.autoLaunchWorkspace !== false;
     const liveWindowRepositioning = desktopSettingsGlobalState.liveWindowRepositioning === true;
     const exitDesktopOnWorkspaceMaximise = desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise === true;
+    const notificationBridgeEnabled = desktopSettingsGlobalState.notificationBridgeEnabled !== false;
+    const bypassNotificationBridgeInDesktopMode =
+        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true;
     const previousAutoLaunch = readDesktopSettingsAutoLaunchPreference();
     const previousLiveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
     const previousExitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
+    const previousNotificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
+    const previousBypassNotificationBridgeInDesktopMode =
+        readDesktopSettingsBypassNotificationBridgeDesktopPreference();
+    const bridgeDetected = typeof isAndroidNotificationBridgeDetected === 'function'
+        && isAndroidNotificationBridgeDetected();
 
     if (autoLaunch === previousAutoLaunch
         && liveWindowRepositioning === previousLiveWindowRepositioning
-        && exitDesktopOnWorkspaceMaximise === previousExitDesktopOnWorkspaceMaximise) {
+        && exitDesktopOnWorkspaceMaximise === previousExitDesktopOnWorkspaceMaximise
+        && (!bridgeDetected
+            || (notificationBridgeEnabled === previousNotificationBridgeEnabled
+                && bypassNotificationBridgeInDesktopMode === previousBypassNotificationBridgeInDesktopMode))) {
         const modal = document.getElementById('desktopSettingsModal');
         closeModal(modal);
         showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
         return;
     }
 
+    const desktopPatch = {
+        autoLaunchWorkspace: autoLaunch,
+        liveWindowRepositioning,
+        exitDesktopOnWorkspaceMaximise
+    };
+    if (bridgeDetected) {
+        desktopPatch.notificationBridgeEnabled = notificationBridgeEnabled;
+        desktopPatch.bypassNotificationBridgeInDesktopMode = bypassNotificationBridgeInDesktopMode;
+    }
+
     try {
-        await persistUserGlobalSettingsPatch({
-            desktop: {
-                autoLaunchWorkspace: autoLaunch,
-                liveWindowRepositioning,
-                exitDesktopOnWorkspaceMaximise
-            }
-        });
+        await persistUserGlobalSettingsPatch({ desktop: desktopPatch });
+        if (bridgeDetected && typeof applyNotificationBridgePreferences === 'function') {
+            applyNotificationBridgePreferences(notificationBridgeEnabled, bypassNotificationBridgeInDesktopMode);
+        }
     } catch (e) {
         console.error('Failed to save desktop global settings:', e);
         showGlassToast('error', 'Save Failed', 'Could not save startup settings', false, 4000, '<i class="fa-light fa-exclamation-triangle"></i>');
@@ -6216,6 +6465,10 @@ function saveWindowPositions() {
             windowKey = modal.id || modalType;
         }
 
+        if (!windowRestoresPosition(modal) && !windowRestoresSize(modal)) {
+            return;
+        }
+
         // Get current position and size in pixels
         const modalRect = modal.getBoundingClientRect();
         const computedStyle = getComputedStyle(modal);
@@ -6241,7 +6494,7 @@ function saveWindowPositions() {
 
         // Get bottom-right corner for size from rendered rect (resizeable / desktop shells)
         let bottomRightQuadrant = null;
-        if (shouldSaveShellBoundsFromRect(modal) || modal.classList.contains('resizeable-window')) {
+        if (windowRestoresSize(modal) && (shouldSaveShellBoundsFromRect(modal) || modal.classList.contains('resizeable-window'))) {
             bottomRightQuadrant = pixelToQuadrantPosition(
                 Math.round(modalRect.right),
                 Math.round(modalRect.bottom),
@@ -6261,17 +6514,20 @@ function saveWindowPositions() {
         }
 
         if (shouldForceSave || modal.hasAttribute('data-modal-moved') || bottomRightQuadrant) {
-            const position = {
-                topLeft: topLeftQuadrant
-            };
+            const position = {};
+
+            if (windowRestoresPosition(modal)) {
+                position.topLeft = topLeftQuadrant;
+            }
 
             // Add bottom-right corner if window has custom size
             if (bottomRightQuadrant) {
                 position.bottomRight = bottomRightQuadrant;
             }
 
-            // Use windowKey (ID for non-transient, dataset identifier for transient)
-            windowPositions[windowKey] = position;
+            if (position.topLeft || position.bottomRight) {
+                windowPositions[windowKey] = position;
+            }
         }
     });
 
@@ -6291,7 +6547,7 @@ function saveWindowPositions() {
 
 // Restore position for a single window (only called when opening, if not already open)
 function restoreWindowPosition(modal) {
-    if (Object.keys(globalWindowPositions).length === 0) {
+    if (!windowRestoresPosition(modal) || Object.keys(globalWindowPositions).length === 0) {
         return;
     }
 
@@ -6326,7 +6582,7 @@ function restoreWindowPosition(modal) {
         const measureState = beginModalLayoutMeasure(modal);
 
         try {
-            if (savedPosition.bottomRight && modal.classList.contains('resizeable-window')) {
+            if (savedPosition.bottomRight && windowRestoresSize(modal) && modal.classList.contains('resizeable-window')) {
                 const bottomRightPixel = quadrantToPixelPosition(savedPosition.bottomRight, containerWidth, containerHeight);
                 const { minWidth, minHeight } = getModalMinDimensions(modal);
                 let targetWidth = Math.max(minWidth, bottomRightPixel.x - topLeftPixel.x);

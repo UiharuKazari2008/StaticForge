@@ -940,42 +940,34 @@ class WebSocketClient {
 
     _showLatencyTrayPopup(reason) {
         const message = reason || 'High latency detected on the network link.';
-        const indicator = document.getElementById('pingWarningIndicator');
+        if (typeof showGlassToast !== 'function') return;
 
-        if (this._isDesktopTrayMode() && indicator && window.PopoverManager && typeof showPopover === 'function') {
-            showPopover(
-                indicator,
-                'warning',
-                'High Latency Detected',
-                message,
-                false,
-                8000,
-                '<i class="fas fa-satellite"></i>',
-                null,
-                { position: 'top', arrowPosition: 'bottom-right' }
-            );
-            if (typeof startPopoverAutoHideTimer === 'function') {
-                startPopoverAutoHideTimer(indicator);
-            }
-            return;
-        }
-
-        if (typeof showGlassToast === 'function') {
+        if (this._isDesktopTrayMode()) {
             showGlassToast(
                 'warning',
                 'High Latency Detected',
                 message,
                 false,
                 8000,
-                '<i class="fas fa-satellite"></i>',
-                [{
-                    text: 'View Connection',
-                    onClick: () => {
-                        this.openConnectionDialStatus();
-                    }
-                }]
+                '<i class="fas fa-satellite"></i>'
             );
+            return;
         }
+
+        showGlassToast(
+            'warning',
+            'High Latency Detected',
+            message,
+            false,
+            8000,
+            '<i class="fas fa-satellite"></i>',
+            [{
+                text: 'View Connection',
+                onClick: () => {
+                    this.openConnectionDialStatus();
+                }
+            }]
+        );
     }
 
     _updateMelatonLinkIndicators() {
@@ -2993,6 +2985,13 @@ class WebSocketClient {
     }
 
     handleMessage(message) {
+        if (message.type === 'connection') {
+            if (message.logViewerPathUuid && localStorage.getItem('userType') === 'admin') {
+                localStorage.setItem('logViewerPathUuid', message.logViewerPathUuid);
+            }
+            return;
+        }
+
         // Handle pong responses with requestId for authentication checking
         if (message.type === 'pong') {
             if (message.requestId) {
@@ -3943,7 +3942,7 @@ class WebSocketClient {
 
         const manualFormGenerating = document.getElementById('manualForm')?.classList.contains('generating');
         const isDynamicGenerationActive = window.dynamicGenerationData
-            || (document.getElementById('dynamicGenerationToggleBtn')?.getAttribute('data-state') === 'on')
+            || isDynamicGenerationEnabled()
             || manualFormGenerating;
         if (isDynamicGenerationActive) {
             updateDynamicGenerationProgressOverlay(phase, data);
@@ -4543,7 +4542,9 @@ class WebSocketClient {
                 query,
                 model,
                 requestId: options.requestId,
-                autofillSessionId: options.autofillSessionId || null
+                autofillSessionId: options.autofillSessionId || null,
+                spellCheckText: options.spellCheckText || query,
+                isContinuation: options.isContinuation === true
             });
             return { success: true };
         } catch (error) {
@@ -5878,13 +5879,13 @@ class WebSocketClient {
         });
     }
 
-    // Open requests modal
+    // Open Event Viewer tasks sidebar (replaces legacy Task Manager modal)
     openRequestsModal() {
-        if (typeof websocketRequestsModal !== 'undefined' && websocketRequestsModal) {
-            websocketRequestsModal.open();
-        } else {
-            console.warn('WebSocket Requests Modal not initialized');
+        if (typeof logViewerApplet !== 'undefined' && logViewerApplet) {
+            logViewerApplet.open({ showTasksSidebar: true });
+            return;
         }
+        console.warn('Event Viewer not initialized');
     }
 
     // Refresh websocket indicators (useful if new indicators are added to DOM dynamically)

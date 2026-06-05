@@ -23,8 +23,40 @@ class WebSocketRequestsModal {
         this.observer = null;
         this.lastActiveHash = null;
         this.lastPreviousHash = null;
+        this.renderTarget = null;
         
         this.init();
+    }
+
+    setRenderTarget(target) {
+        this.renderTarget = target || null;
+        this.lastActiveHash = null;
+        this.lastPreviousHash = null;
+    }
+
+    clearRenderTarget() {
+        this.renderTarget = null;
+        this.lastActiveHash = null;
+        this.lastPreviousHash = null;
+    }
+
+    _getLists() {
+        if (this.renderTarget) {
+            return {
+                activeList: this.renderTarget.activeList,
+                previousList: this.renderTarget.previousList,
+                previousCount: this.renderTarget.previousCount || null,
+                activeEmpty: this.renderTarget.activeEmpty || null,
+                previousEmpty: this.renderTarget.previousEmpty || null
+            };
+        }
+        return {
+            activeList: this.activeRequestsList,
+            previousList: this.previousRequestsList,
+            previousCount: this.previousRequestsCount,
+            activeEmpty: this.activeRequestsEmptyState,
+            previousEmpty: this.previousRequestsEmptyState
+        };
     }
 
     init() {
@@ -139,14 +171,17 @@ class WebSocketRequestsModal {
         }
     }
 
-    update() {
+    update(force) {
         // Prevent concurrent updates
         if (this.isUpdating) {
             return;
         }
         
-        // Only update if modal is visible
-        if (!this.modal || this.modal.classList.contains('hidden')) {
+        const usingSidebar = !!this.renderTarget;
+        if (!usingSidebar && (!this.modal || this.modal.classList.contains('hidden'))) {
+            return;
+        }
+        if (!force && usingSidebar && !this.renderTarget.activeList) {
             return;
         }
         
@@ -297,48 +332,39 @@ class WebSocketRequestsModal {
     }
 
     renderActiveRequests(requests) {
-        if (!this.activeRequestsList) return;
+        const lists = this._getLists();
+        const activeRequestsList = lists.activeList;
+        if (!activeRequestsList) return;
 
-        // Update count (if element exists - header was removed)
-        if (this.activeRequestsCount) {
-            this.activeRequestsCount.textContent = requests.length;
-        }
-
-        // Create a hash of current requests to avoid unnecessary re-renders
-        // Include isPending flag to detect when requests transition from pending to completed
         const currentHash = requests.map(r => `${r.id}:${r.age}:${r.isPending ? 'p' : 'c'}`).join('|');
-        if (this.lastActiveHash === currentHash && this.activeRequestsList.children.length > 0) {
-            // Only update the age for existing items without full re-render
-            this.updateActiveRequestAges(requests);
+        const hashKey = this.renderTarget ? 'sidebar-active' : 'modal-active';
+        if (this.lastActiveHash === `${hashKey}:${currentHash}` && activeRequestsList.querySelectorAll('.request-item').length > 0) {
+            this.updateActiveRequestAges(requests, activeRequestsList);
             return;
         }
         
-        this.lastActiveHash = currentHash;
+        this.lastActiveHash = `${hashKey}:${currentHash}`;
 
         if (requests.length === 0) {
-            // Clear any existing request items
-            const existingItems = this.activeRequestsList.querySelectorAll('.request-item');
+            const existingItems = activeRequestsList.querySelectorAll('.request-item');
             existingItems.forEach(item => item.remove());
             
-            // Show empty state
-            if (this.activeRequestsEmptyState) {
-                this.activeRequestsEmptyState.classList.remove('hidden');
-            } else {
-                // Create empty state if it doesn't exist
+            const emptyEl = lists.activeEmpty;
+            if (emptyEl) {
+                emptyEl.classList.remove('hidden');
+            } else if (!activeRequestsList.querySelector('.empty-state')) {
                 const emptyState = document.createElement('div');
                 emptyState.className = 'empty-state';
-                emptyState.id = 'activeRequestsEmptyState';
                 emptyState.textContent = 'No active requests';
-                this.activeRequestsList.appendChild(emptyState);
-                this.activeRequestsEmptyState = emptyState;
+                activeRequestsList.appendChild(emptyState);
             }
             return;
         }
 
-        // Hide empty state when there are requests
-        if (this.activeRequestsEmptyState) {
-            this.activeRequestsEmptyState.classList.add('hidden');
+        if (lists.activeEmpty) {
+            lists.activeEmpty.classList.add('hidden');
         }
+        activeRequestsList.querySelectorAll('.empty-state').forEach((el) => el.classList.add('hidden'));
 
         const html = requests.map(req => {
             const displayName = this.formatRequestType(req.type);
@@ -371,21 +397,21 @@ class WebSocketRequestsModal {
         }).join('');
 
         // Clear existing request items (but keep empty state)
-        const existingItems = this.activeRequestsList.querySelectorAll('.request-item');
+        const existingItems = activeRequestsList.querySelectorAll('.request-item');
         existingItems.forEach(item => item.remove());
         
-        // Add new request items
         if (html) {
-            this.activeRequestsList.insertAdjacentHTML('beforeend', html);
+            activeRequestsList.insertAdjacentHTML('beforeend', html);
         }
 
-        this.attachRequestItemContextMenus(this.activeRequestsList, requests);
+        this.attachRequestItemContextMenus(activeRequestsList, requests);
     }
     
-    updateActiveRequestAges(requests) {
-        // Update ages and icons without full re-render
+    updateActiveRequestAges(requests, listEl) {
+        const activeRequestsList = listEl || this._getLists().activeList;
+        if (!activeRequestsList) return;
         requests.forEach(req => {
-            const item = this.activeRequestsList.querySelector(`[data-request-id="${req.id}"]`);
+            const item = activeRequestsList.querySelector(`[data-request-id="${req.id}"]`);
             if (item) {
                 const ageElement = item.querySelector('.request-age');
                 
@@ -427,36 +453,35 @@ class WebSocketRequestsModal {
     }
 
     renderPreviousRequests(requests) {
-        if (!this.previousRequestsList) return;
+        const lists = this._getLists();
+        const previousRequestsList = lists.previousList;
+        if (!previousRequestsList) return;
 
-        // Update count
-        if (this.previousRequestsCount) {
-            this.previousRequestsCount.textContent = requests.length;
+        if (lists.previousCount) {
+            lists.previousCount.textContent = String(requests.length);
         }
 
-        // Create a hash of current requests to avoid unnecessary re-renders
         const currentHash = requests.map(r => `${r.id}:${r.completedAt}`).join('|');
-        if (this.lastPreviousHash === currentHash && this.previousRequestsList.children.length > 0) {
-            // No changes, skip re-render
+        const hashKey = this.renderTarget ? 'sidebar-prev' : 'modal-prev';
+        if (this.lastPreviousHash === `${hashKey}:${currentHash}` && previousRequestsList.querySelectorAll('.request-item').length > 0) {
             return;
         }
         
-        this.lastPreviousHash = currentHash;
+        this.lastPreviousHash = `${hashKey}:${currentHash}`;
 
         if (requests.length === 0) {
-            if (this.previousRequestsEmptyState) {
-                this.previousRequestsEmptyState.classList.remove('hidden');
+            if (lists.previousEmpty) {
+                lists.previousEmpty.classList.remove('hidden');
             }
-            // Clear any existing request items
-            const existingItems = this.previousRequestsList.querySelectorAll('.request-item');
+            const existingItems = previousRequestsList.querySelectorAll('.request-item');
             existingItems.forEach(item => item.remove());
             return;
         }
 
-        // Hide empty state when there are requests
-        if (this.previousRequestsEmptyState) {
-            this.previousRequestsEmptyState.classList.add('hidden');
+        if (lists.previousEmpty) {
+            lists.previousEmpty.classList.add('hidden');
         }
+        previousRequestsList.querySelectorAll('.empty-state').forEach((el) => el.classList.add('hidden'));
 
         const html = requests.map(req => {
             const displayName = this.formatRequestType(req.type);
@@ -487,15 +512,14 @@ class WebSocketRequestsModal {
         }).join('');
 
         // Clear existing request items (but keep empty state)
-        const existingItems = this.previousRequestsList.querySelectorAll('.request-item');
+        const existingItems = previousRequestsList.querySelectorAll('.request-item');
         existingItems.forEach(item => item.remove());
         
-        // Add new request items
         if (html) {
-            this.previousRequestsList.insertAdjacentHTML('beforeend', html);
+            previousRequestsList.insertAdjacentHTML('beforeend', html);
         }
 
-        this.attachRequestItemContextMenus(this.previousRequestsList, requests, false);
+        this.attachRequestItemContextMenus(previousRequestsList, requests, false);
     }
 
     attachRequestItemContextMenus(listEl, requests, allowAbort = true) {

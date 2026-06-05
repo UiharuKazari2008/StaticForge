@@ -1,6 +1,9 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const util = require('util');
+const pm2LogPaths = require('./pm2LogPaths');
+const pm2CombinedLogs = require('./pm2CombinedLogs');
 
 // NOTE: This module is required by globalResources, so we use a setter pattern to avoid circular dependency
 // TODO: Consider migrating this module to a class that takes globalResources in constructor
@@ -8,6 +11,7 @@ let globalResourcesInstance = null;
 
 function setGlobalResources(gr) {
     globalResourcesInstance = gr;
+    pm2LogPaths.setGlobalResources(gr);
     // Update verbosity from config after globalResources is set
     updateVerbosityFromConfig();
 }
@@ -83,6 +87,286 @@ const GENERATION_ARCHIVE_SUFFIX = '.log';
 const MAX_GENERATION_ARCHIVES = 5;
 const GENERATION_LOG_MIN_LINES = 100;
 let generationLogStream = null;
+
+// Console stdout/stderr capture
+const CONSOLE_LOG_FILENAME = 'console.log';
+const CONSOLE_LOG_MAX_SIZE = 10485760; // 10MB
+const CONSOLE_LOG_MAX_FILES = 14;
+const consoleLogPath = path.join(logsDir, CONSOLE_LOG_FILENAME);
+let consoleLogStream = null;
+const consoleCaptureBuffers = { STDOUT: '', STDERR: '' };
+
+const LOG_SOURCE_FILES = {
+    console: CONSOLE_LOG_FILENAME,
+    server: 'server.log',
+    error: 'error.log',
+    generation: 'generation-detailed.log'
+};
+
+const LOG_SOURCE_LABELS = {
+    console: 'Console (stdout/stderr)',
+    server: 'Server',
+    error: 'Errors',
+    generation: 'Generation (active)'
+};
+
+function formatConsoleTimestamp() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function rotateConsoleLogIfNeeded() {
+    try {
+        if (!fs.existsSync(consoleLogPath)) return;
+        const stats = fs.statSync(consoleLogPath);
+        if (stats.size < CONSOLE_LOG_MAX_SIZE) return;
+
+        const rotatedName = `console-${new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').split('.')[0]}.log`;
+        const rotatedPath = path.join(logsDir, rotatedName);
+        fs.renameSync(consoleLogPath, rotatedPath);
+
+        const archives = fs.readdirSync(logsDir)
+            .filter((f) => f.startsWith('console-') && f.endsWith('.log') && f !== CONSOLE_LOG_FILENAME)
+            .map((f) => ({ f, mtime: fs.statSync(path.join(logsDir, f)).mtime }))
+            .sort((a, b) => b.mtime - a.mtime);
+
+        for (let i = CONSOLE_LOG_MAX_FILES - 1; i < archives.length; i++) {
+            try {
+                fs.unlinkSync(path.join(logsDir, archives[i].f));
+            } catch (_) { /* ignore */ }
+        }
+    } catch (error) {
+        // Non-fatal — console capture continues
+    }
+}
+
+function writeConsoleCaptureLine(tag, line) {
+    const prefix = `${formatConsoleTimestamp()} [${tag}] `;
+    consoleLogStream.write(prefix + line + '\n');
+}
+
+function writeConsoleCapture(tag, chunk) {
+    if (!consoleLogStream) return;
+    rotateConsoleLogIfNeeded();
+    const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    consoleCaptureBuffers[tag] = (consoleCaptureBuffers[tag] || '') + text;
+    const buf = consoleCaptureBuffers[tag];
+    if (!buf.includes('\n')) return;
+    const parts = buf.split('\n');
+    consoleCaptureBuffers[tag] = parts.pop() || '';
+    for (const line of parts) {
+        writeConsoleCaptureLine(tag, line);
+    }
+}
+
+function flushConsoleCaptureBuffers() {
+    if (!consoleLogStream) return;
+    for (const tag of ['STDOUT', 'STDERR']) {
+        const remainder = consoleCaptureBuffers[tag];
+        if (remainder) {
+            writeConsoleCaptureLine(tag, remainder);
+            consoleCaptureBuffers[tag] = '';
+        }
+    }
+}
+
+function patchStreamWrite(stream, tag) {
+    const originalWrite = stream.write.bind(stream);
+    stream.write = function patchedWrite(chunk, encoding, callback) {
+        try {
+            writeConsoleCapture(tag, chunk);
+        } catch (_) { /* ignore capture errors */ }
+        return originalWrite(chunk, encoding, callback);
+    };
+}
+
+function stripAnsiEscapes(text) {
+    return String(text).replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function formatLogContent(content, source) {
+    const normalized = content.replace(/\r\n/g, '\n');
+    if (source && (source === 'pm2:out' || source === 'pm2:err' || source === 'pm2:combined' || source.startsWith('pm2'))) {
+        return stripAnsiEscapes(normalized).replace(/\n{2,}/g, '\n');
+    }
+    return normalized;
+}
+
+function formatGenerationArchiveLabel(key) {
+    if (!key || key === 'current') return 'Current';
+    const m = key.match(/^(\d{4})_(\d{2})_(\d{2})/);
+    if (m) {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[parseInt(m[2], 10) - 1] || m[2];
+        return `${month} ${parseInt(m[3], 10)}, ${m[1]}`;
+    }
+    return key.replace(/_/g, ' ');
+}
+
+function installProcessOutputCapture() {
+    if (pm2LogPaths.isRunningUnderPm2()) return;
+    if (consoleLogStream) return;
+    try {
+        consoleLogStream = fs.createWriteStream(consoleLogPath, { flags: 'a' });
+        patchStreamWrite(process.stdout, 'STDOUT');
+        patchStreamWrite(process.stderr, 'STDERR');
+    } catch (error) {
+        // Capture is optional — server still runs
+    }
+}
+
+function resolveLogFilePath(source) {
+    if (!source || typeof source !== 'string') return null;
+
+    if (pm2CombinedLogs.isPm2CombinedSource(source)) {
+        return pm2LogPaths.getPm2LogPaths() ? 'pm2:combined' : null;
+    }
+
+    const pm2Path = pm2LogPaths.resolvePm2LogSource(source);
+    if (pm2Path) return pm2Path;
+
+    if (LOG_SOURCE_FILES[source]) {
+        const filePath = path.join(logsDir, LOG_SOURCE_FILES[source]);
+        const resolved = path.resolve(filePath);
+        if (!resolved.startsWith(path.resolve(logsDir))) return null;
+        return resolved;
+    }
+
+    if (source.startsWith('generation:')) {
+        const archiveKey = source.slice('generation:'.length);
+        if (!archiveKey || !/^[0-9A-Za-z._-]+$/.test(archiveKey)) return null;
+        const basename = `${GENERATION_ARCHIVE_PREFIX}${archiveKey}${GENERATION_ARCHIVE_SUFFIX}`;
+        const filePath = path.join(logsDir, basename);
+        const resolved = path.resolve(filePath);
+        if (!resolved.startsWith(path.resolve(logsDir))) return null;
+        return resolved;
+    }
+
+    return null;
+}
+
+function readFileTailLines(filePath, lineCount) {
+    const maxLines = Math.min(Math.max(1, lineCount || 500), 5000);
+    let fd = null;
+    try {
+        if (!fs.existsSync(filePath)) {
+            return { content: '', byteOffset: 0, fileSize: 0, lineCount: 0 };
+        }
+        const stats = fs.statSync(filePath);
+        if (stats.size === 0) {
+            return { content: '', byteOffset: 0, fileSize: 0, lineCount: 0 };
+        }
+
+        const estimateBytes = Math.min(stats.size, maxLines * 256 + 8192);
+        const start = stats.size - estimateBytes;
+        const buffer = Buffer.allocUnsafe(estimateBytes);
+        fd = fs.openSync(filePath, 'r');
+        fs.readSync(fd, buffer, 0, estimateBytes, start);
+        let text = buffer.toString('utf8');
+        const lines = text.split('\n');
+        if (start > 0 && lines.length) lines.shift();
+        const selected = lines.slice(-maxLines);
+        const content = selected.join('\n') + (selected.length ? '\n' : '');
+        return { content, byteOffset: stats.size, fileSize: stats.size, lineCount: selected.length };
+    } catch (error) {
+        throw new Error(`Failed to read log tail: ${error.message}`);
+    } finally {
+        if (fd !== null) {
+            try { fs.closeSync(fd); } catch (_) { /* ignore */ }
+        }
+    }
+}
+
+function readLogFromOffset(filePath, byteOffset, maxBytes = 65536) {
+    const cap = Math.min(Math.max(1024, maxBytes), 65536);
+    try {
+        if (!fs.existsSync(filePath)) {
+            return { content: '', nextOffset: 0, fileSize: 0, rotated: false };
+        }
+        const stats = fs.statSync(filePath);
+        const fileSize = stats.size;
+
+        if (byteOffset > fileSize) {
+            return { content: '', nextOffset: 0, fileSize, rotated: true };
+        }
+
+        if (byteOffset === fileSize) {
+            return { content: '', nextOffset: fileSize, fileSize, rotated: false };
+        }
+
+        const readLen = Math.min(cap, fileSize - byteOffset);
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buffer = Buffer.allocUnsafe(readLen);
+            fs.readSync(fd, buffer, 0, readLen, byteOffset);
+            return {
+                content: buffer.toString('utf8'),
+                nextOffset: byteOffset + readLen,
+                fileSize,
+                rotated: false
+            };
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (error) {
+        throw new Error(`Failed to read log from offset: ${error.message}`);
+    }
+}
+
+function listLogSources() {
+    const sources = [];
+    const groups = [];
+
+    const pm2 = pm2LogPaths.getPm2LogPaths();
+    if (pm2) {
+        const systemSources = [
+            { id: 'pm2:combined', label: 'System', group: 'system' },
+            { id: 'pm2:out', label: 'System (Standard)', group: 'system' },
+            { id: 'pm2:err', label: 'System (Error)', group: 'system' }
+        ];
+        groups.push({ header: 'System', sources: systemSources });
+        sources.push(...systemSources);
+    }
+
+    const tendaiSources = [];
+    const activeGenPath = path.join(logsDir, LOG_SOURCE_FILES.generation);
+    if (fs.existsSync(activeGenPath)) {
+        tendaiSources.push({ id: 'generation', label: 'Current', group: 'tendai' });
+    }
+    try {
+        const archives = fs.readdirSync(logsDir)
+            .filter((f) => f.startsWith(GENERATION_ARCHIVE_PREFIX) && f.endsWith(GENERATION_ARCHIVE_SUFFIX))
+            .map((f) => {
+                const key = f.slice(GENERATION_ARCHIVE_PREFIX.length, -GENERATION_ARCHIVE_SUFFIX.length);
+                return {
+                    id: `generation:${key}`,
+                    label: formatGenerationArchiveLabel(key),
+                    group: 'tendai'
+                };
+            })
+            .sort((a, b) => b.id.localeCompare(a.id));
+        tendaiSources.push(...archives);
+    } catch (_) { /* ignore */ }
+    if (tendaiSources.length) {
+        groups.push({ header: 'Tendai Logs', sources: tendaiSources });
+        sources.push(...tendaiSources);
+    }
+
+    const appSources = [];
+    for (const id of Object.keys(LOG_SOURCE_FILES)) {
+        if (id === 'generation') continue;
+        if (id === 'console' && pm2LogPaths.isRunningUnderPm2()) continue;
+        const entry = { id, label: LOG_SOURCE_LABELS[id] || id, group: 'application' };
+        appSources.push(entry);
+        sources.push(entry);
+    }
+    if (appSources.length) {
+        groups.push({ header: 'Application', sources: appSources });
+    }
+
+    return { sources, groups };
+}
 
 // Boot tree state
 const bootState = {
@@ -930,27 +1214,32 @@ logger.logGenerationSummary = function(summary, requestId = null) {
     generationLogStream.write(summary + '\n');
 };
 
-// Conditional console logging based on verbosity
+function formatLogArgs(message, args) {
+    if (!args.length) return String(message);
+    return util.format(message, ...args);
+}
+
+// Conditional logging based on verbosity (winston file + stdout capture)
 logger.verbose = function(message, ...args) {
     if (currentVerbosity >= VERBOSITY_LEVELS.VERBOSE) {
-        console.log(message, ...args);
+        originalInfo(formatLogArgs(message, args));
     }
 };
 
 logger.detailed = function(message, ...args) {
     if (currentVerbosity >= VERBOSITY_LEVELS.DETAILED) {
-        console.log(message, ...args);
+        originalInfo(formatLogArgs(message, args));
     }
 };
 
 logger.normal = function(message, ...args) {
     if (currentVerbosity >= VERBOSITY_LEVELS.NORMAL) {
-        console.log(message, ...args);
+        originalInfo(formatLogArgs(message, args));
     }
 };
 
 logger.minimal = function(message, ...args) {
-    console.log(message, ...args);
+    originalInfo(formatLogArgs(message, args));
 };
 
 // Rotate generation log on startup
@@ -1010,8 +1299,60 @@ logger.shutdown = function() {
         generationLogStream.end();
         generationLogStream = null;
     }
+    flushConsoleCaptureBuffers();
+    if (consoleLogStream) {
+        consoleLogStream.end();
+        consoleLogStream = null;
+    }
     // Winston handles cleanup automatically
 };
+
+logger.resolveLogSource = resolveLogFilePath;
+logger.isCombinedLogSource = (source) => pm2CombinedLogs.isPm2CombinedSource(source);
+logger.parseLogStreamOffset = function(source, raw) {
+    if (pm2CombinedLogs.isPm2CombinedSource(source)) {
+        return pm2CombinedLogs.parseCombinedOffset(raw);
+    }
+    const n = parseInt(raw, 10);
+    return Number.isNaN(n) ? null : Math.max(0, n);
+};
+logger.readLogTail = function(source, lineCount) {
+    if (pm2CombinedLogs.isPm2CombinedSource(source)) {
+        const result = pm2CombinedLogs.readCombinedTail(lineCount, formatLogContent);
+        return { ...result, source };
+    }
+    const filePath = resolveLogFilePath(source);
+    if (!filePath) throw new Error('Invalid log source');
+    const result = readFileTailLines(filePath, lineCount);
+    result.content = formatLogContent(result.content, source);
+    return { ...result, source };
+};
+logger.readLogFromOffset = function(source, byteOffset, maxBytes) {
+    if (pm2CombinedLogs.isPm2CombinedSource(source)) {
+        throw new Error('Use readCombinedLogChunk for pm2:combined');
+    }
+    const filePath = resolveLogFilePath(source);
+    if (!filePath || filePath === 'pm2:combined') throw new Error('Invalid log source');
+    const result = readLogFromOffset(filePath, byteOffset, maxBytes);
+    result.content = formatLogContent(result.content, source);
+    return result;
+};
+logger.readCombinedLogChunk = function(state, maxBytes) {
+    return pm2CombinedLogs.readCombinedChunk(state, maxBytes, readLogFromOffset, formatLogContent);
+};
+logger.createCombinedStreamState = function(startOffset) {
+    return pm2CombinedLogs.createCombinedStreamState(startOffset);
+};
+logger.pollCombinedRotation = function(state) {
+    const paths = pm2LogPaths.getPm2LogPaths();
+    if (!paths) return false;
+    return pm2CombinedLogs.pollCombinedRotation(paths, state);
+};
+logger.isPm2Logging = () => pm2LogPaths.isRunningUnderPm2() || pm2LogPaths.getPm2LogPaths() != null;
+logger.listLogSources = listLogSources;
+logger.getLogsDir = () => logsDir;
+
+installProcessOutputCapture();
 
 // Export verbosity levels for use in other modules
 logger.VERBOSITY_LEVELS = VERBOSITY_LEVELS;

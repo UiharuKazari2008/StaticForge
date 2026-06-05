@@ -59,6 +59,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
     { aliases: ['config', 'settings editor', 'settings'], launchIds: ['config-editor'] },
+    { aliases: ['log', 'logs', 'console', 'server log', 'log viewer', 'event viewer', 'events'], launchIds: ['event-viewer'] },
     { aliases: ['request', 'body', 'replacements', 'stages', 'pipeline'], launchIds: ['request-body-replacements'] },
     { aliases: ['wallpaper', 'desktop', 'background'], launchIds: ['desktop-settings'] },
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },

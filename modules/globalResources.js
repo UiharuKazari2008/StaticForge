@@ -5,6 +5,7 @@
  */
 
 const path = require('path');
+const crypto = require('crypto');
 const nekoaijs = require('nekoai-js');
 const OpenAI = require('openai');
 const AnimeTagSearch = require('./animeTagSearch');
@@ -669,6 +670,9 @@ class GlobalResources {
 
             // STEP 0: Initialize logger FIRST (no dependencies, needed by everything else)
             this.initializeLogger();
+
+            // Log viewer path UUID (secure config, needed before route registration)
+            this.ensureLogViewerPathUuid();
         } catch (error) {
             console.error('❌ Error preparing global resources:', error.message);
             return false;
@@ -2314,6 +2318,29 @@ class GlobalResources {
             }
         }
         return this.logger;
+    }
+
+    /**
+     * Ensure logViewerPathUuid exists in secure config (auto-generated on first boot).
+     */
+    ensureLogViewerPathUuid() {
+        let uuid = this.getSecureConfig({ path: 'logViewerPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            uuid = crypto.randomUUID();
+            this.modifyConfig('secureConfig').assign('logViewerPathUuid', uuid);
+        }
+        return uuid;
+    }
+
+    /**
+     * Get persisted UUID base path for admin log viewer HTTP routes.
+     */
+    getLogViewerPathUuid() {
+        const uuid = this.getSecureConfig({ path: 'logViewerPathUuid' });
+        if (!uuid || typeof uuid !== 'string') {
+            return this.ensureLogViewerPathUuid();
+        }
+        return uuid;
     }
 
     /**

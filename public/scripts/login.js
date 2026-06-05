@@ -419,6 +419,9 @@ class LoginPage {
                 if (data.userType) {
                     localStorage.setItem('userType', data.userType);
                 }
+                if (data.userType === 'admin' && data.logViewerPathUuid) {
+                    localStorage.setItem('logViewerPathUuid', data.logViewerPathUuid);
+                }
                 
                 // Store any additional user data that might be returned
                 if (data.userData) {

@@ -540,7 +540,9 @@ class ConfigManager {
                         desktop: {
                             autoLaunchWorkspace: true,
                             liveWindowRepositioning: false,
-                            exitDesktopOnWorkspaceMaximise: false
+                            exitDesktopOnWorkspaceMaximise: false,
+                            notificationBridgeEnabled: true,
+                            bypassNotificationBridgeInDesktopMode: false
                         },
                         naxt: {
                             elevatePins: 0

@@ -41,6 +41,41 @@ export LOG_VERBOSITY=DETAILED
 
 ## Log Files
 
+### PM2 Process Logs (recommended when using PM2)
+**Locations**: `~/.pm2/logs/{process}-out.log`, `~/.pm2/logs/{process}-error.log`
+
+When the server runs under PM2, stdout/stderr are captured by PM2 into these files. The in-app **Log Viewer** uses them as **PM2 stdout** / **PM2 stderr** sources (process name from `pm2_process_name` in `config.json`, default `Dreamscape`, or from PM2 env vars when running in-process).
+
+Internal `logs/console.log` capture is **disabled** under PM2 to avoid duplicate streams.
+
+### Console Capture Log (non-PM2)
+**Location**: `logs/console.log`
+
+When not running under PM2, captures process **stdout** and **stderr** via a tee at logger module load. Rotates at 10MB (keeps 14 archives).
+
+Also available in the app via **Toolbox → Log Viewer** (admin only).
+
+### Server and Error Logs
+**Locations**: `logs/server.log`, `logs/error.log`
+
+Winston file transports for structured logger output. Error log contains error-level entries only.
+
+### Log Viewer (In-App)
+
+Admin-only applet that tails server logs over HTTP (not WebSocket):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /{logViewerPathUuid}/sources` | List available log sources |
+| `GET /{logViewerPathUuid}/backlog?source=&lines=` | Initial trailing lines |
+| `GET /{logViewerPathUuid}/stream?source=&offset=` | SSE realtime tail |
+
+`logViewerPathUuid` is stored in `secure.config.json` (auto-generated on first boot). It is delivered to admin clients on login and WebSocket connect — not exposed to readonly users. Wrong UUID paths return 404.
+
+**Sources**: `pm2:out`, `pm2:err` (when PM2 logs are available), `server`, `error`, `generation`, `generation:<archive-timestamp>`, and `console` (only when not running under PM2).
+
+When PM2 is detected, the Log Viewer toolbar also shows **CPU/RAM usage** (polled every 3s), **Flush logs** (`POST /{uuid}/pm2/flush`), and **Restart server** (`POST /{uuid}/pm2/restart`). Status: `GET /{uuid}/pm2/status`.
+
 ### Generation Detailed Log
 **Location**: `logs/generation-detailed.log`
 

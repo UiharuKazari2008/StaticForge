@@ -2434,15 +2434,13 @@ function compileAllTendaiReplacements() {
         dynamicGenerationSection.classList.add('hidden');
     }
     if (dynamicCarouselElement) {
-        dynamicCarouselElement.setAttribute('data-state', 'off');
         dynamicCarouselElement.setAttribute('data-use-cache', 'false');
     }
+    // clearDynamicGenerationLockState: public/scripts/comp/dynamicGenerationLockState.js
+    clearDynamicGenerationLockState();
 
     if (window.updateDynamicGenerationToggleBtn) {
         window.updateDynamicGenerationToggleBtn();
-    }
-    if (window.updateCarouselIndicators) {
-        window.updateCarouselIndicators();
     }
 
     if (window.lockedDynamicReplacements) {

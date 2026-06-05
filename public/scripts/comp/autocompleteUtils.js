@@ -12,6 +12,8 @@ let characterSearchResults = [];
 let userActivelyNavigating = false;
 let selectedEnhancerGroupIndex = -1;
 let lastSearchText = '';
+const AUTOFILL_SEARCH_DEBOUNCE_MS = 450;
+const AUTOFILL_SEARCH_CONTINUATION_DEBOUNCE_MS = 100;
 
 // Spell check navigation state
 let spellCheckNavigationMode = false;
@@ -198,15 +200,14 @@ function handleAutocompleteOverlayWheel(e) {
         autocompleteNavigationMode = true;
         userActivelyNavigating = true;
 
-        const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+        const items = getAutocompleteResultItems();
         if (!items || items.length === 0) continue;
 
         if (isDown) {
             if (selectedCharacterAutocompleteIndex === -1) {
                 expandAutocompleteInstantly();
 
-                // Re-query after rebuild
-                const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                const updatedItems = getAutocompleteResultItems();
                 selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
             } else {
                 selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
@@ -513,8 +514,14 @@ let autofillSessionPacketRequestId = null;
 let autofillLastCaretPos = -1;
 let autofillLastCaretTime = 0;
 let autofillCaretFastUntil = 0;
+let autofillInputRaf = 0;
+let autofillInputPendingEvent = null;
+let autofillSelectionRaf = 0;
+let autofillLastInputTime = 0;
+let autofillLastCtrlKeydownTime = 0;
 const AUTOFILL_CARET_SPEED_CHARS_PER_MS = 0.45;
 const AUTOFILL_CARET_FAST_COOLDOWN_MS = 320;
+const AUTOFILL_DOUBLE_CTRL_MS = 400;
 
 function isCaretMovingTooFastForAutofill() {
     return Date.now() < autofillCaretFastUntil;
@@ -522,6 +529,9 @@ function isCaretMovingTooFastForAutofill() {
 
 function trackAutofillCaretMotion(target) {
     if (!target || typeof target.selectionStart !== 'number') return;
+    if (Date.now() - autofillLastInputTime < 100) {
+        return;
+    }
     const pos = target.selectionStart;
     const now = Date.now();
     if (autofillLastCaretTime > 0 && autofillLastCaretPos >= 0) {
@@ -553,7 +563,6 @@ function shouldShowAutofillResultsForTarget(target) {
 function ensureAutofillSession(target, explicit) {
     if (!target || !autofillEnabled) return false;
     if (document.activeElement !== target) return false;
-    if (isCaretMovingTooFastForAutofill() && !explicit) return false;
 
     if (!autofillSessionId || autofillSessionTarget !== target) {
         autofillSessionId = 'af_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -696,13 +705,29 @@ function markAutofillSearchPacketSent() {
 }
 
 function handleAutofillSelectionChange() {
+    if (autofillSelectionRaf) return;
+    autofillSelectionRaf = requestAnimationFrame(() => {
+        autofillSelectionRaf = 0;
+        processAutofillSelectionChange();
+    });
+}
+
+function processAutofillSelectionChange() {
     const target = document.activeElement;
     if (!target || target.type !== 'textarea') return;
     if (!target.classList.contains('prompt-textarea') && !target.classList.contains('character-prompt-textarea')) {
         return;
     }
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(target)) {
+        return;
+    }
 
     trackAutofillCaretMotion(target);
+
+    if (isCaretMovingTooFastForAutofill()) {
+        return;
+    }
 
     // Don't abort overlay while keyboard-navigating spell-check, dictionary, or autocomplete results.
     if (spellCheckNavigationMode || wordLookupNavigationMode || autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
@@ -726,10 +751,12 @@ function getAutocompleteSearchBounds(target) {
     const value = target.value;
 
     if (isAutofillSingleToken(target)) {
+        const trimmed = value.trim();
         return {
             tokenStart: 0,
             tokenEnd: value.length,
-            query: value.trim(),
+            query: trimmed,
+            spellCheckText: trimmed,
             isTextPrefix: false,
             isSingleTagInput: true
         };
@@ -742,38 +769,196 @@ function getAutocompleteSearchBounds(target) {
     const textPrefixIndex = textBeforeCursor.lastIndexOf('Text:');
     if (textPrefixIndex >= 0) {
         const tokenStart = textPrefixIndex + 5;
+        const spellCheckText = value.substring(tokenStart, value.length).trim();
         return {
             tokenStart,
             tokenEnd: value.length,
             query: 'Text:' + value.substring(tokenStart, safeCursor).trim(),
+            spellCheckText: spellCheckText,
             isTextPrefix: true
         };
     }
 
     const tokenStart = findAutocompleteTermStart(textBeforeCursor);
-    const textAfterCursor = value.substring(safeCursor);
     const tokenEnd = findAutocompleteTermEnd(value, safeCursor);
-    let query = value.substring(tokenStart, safeCursor).trim();
+    const termSlice = value.substring(tokenStart, tokenEnd);
+    const leadingTrim = termSlice.length - termSlice.trimStart().length;
+    const spellCheckTermOffset = tokenStart + leadingTrim;
+    let query = termSlice.trim();
+    let spellCheckText = query;
 
     if (query.startsWith('<')) {
         // Keep < for replacement lookups.
     } else {
-        const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
-        if (lastLessThanIndex > tokenStart) {
-            query = value.substring(lastLessThanIndex, safeCursor).trim();
+        const lastLessThanIndex = termSlice.lastIndexOf('<');
+        if (lastLessThanIndex >= 0) {
+            query = termSlice.substring(lastLessThanIndex).trim();
+            spellCheckText = query;
         }
-    }
-
-    const searchWords = query.split(/\s+/).filter(function (w) { return w.length > 0; });
-    if (searchWords.length > 8) {
-        query = searchWords.slice(-8).join(' ');
     }
 
     return {
         tokenStart,
         tokenEnd,
+        spellCheckTermOffset,
         query,
+        spellCheckText,
         isTextPrefix: false
+    };
+}
+
+function getWordRangesInSpan(text) {
+    const ranges = [];
+    const re = /\S+/g;
+    let match;
+    while ((match = re.exec(text)) !== null) {
+        ranges.push({
+            start: match.index,
+            end: match.index + match[0].length,
+            word: match[0]
+        });
+    }
+    return ranges;
+}
+
+/** Resolve replace range for a misspelled word inside the current autofill term (handles caret at word/term end). */
+function findMisspelledWordReplaceRange(value, cursorPos, originalWord, termStart, termEnd) {
+    if (!originalWord || termStart == null || termEnd == null) {
+        return null;
+    }
+    const termText = value.substring(termStart, termEnd);
+    const localCursor = Math.max(0, Math.min(cursorPos - termStart, termText.length));
+    const origLower = originalWord.toLowerCase();
+    const ranges = getWordRangesInSpan(termText);
+    const matching = ranges.filter(function (r) {
+        const w = r.word.toLowerCase();
+        return w === origLower || w.startsWith(origLower) || origLower.startsWith(w);
+    });
+
+    if (matching.length === 0) {
+        let idx = termText.toLowerCase().indexOf(origLower);
+        while (idx >= 0) {
+            matching.push({
+                start: idx,
+                end: idx + originalWord.length,
+                word: termText.substring(idx, idx + originalWord.length)
+            });
+            idx = termText.toLowerCase().indexOf(origLower, idx + 1);
+        }
+    }
+
+    if (matching.length === 0) {
+        return null;
+    }
+
+    for (let i = 0; i < matching.length; i++) {
+        const r = matching[i];
+        if (localCursor >= r.start && localCursor <= r.end) {
+            return { start: termStart + r.start, end: termStart + r.end };
+        }
+    }
+
+    const trimmedEnd = termText.trimEnd().length;
+    if (localCursor >= trimmedEnd) {
+        const last = matching[matching.length - 1];
+        return { start: termStart + last.start, end: termStart + last.end };
+    }
+
+    let best = matching[0];
+    let bestDist = Infinity;
+    for (let j = 0; j < matching.length; j++) {
+        const r = matching[j];
+        const center = r.start + (r.end - r.start) / 2;
+        const dist = Math.abs(localCursor - center);
+        if (dist < bestDist) {
+            bestDist = dist;
+            best = r;
+        }
+    }
+    return { start: termStart + best.start, end: termStart + best.end };
+}
+
+function attachSpellCheckTermBounds(spellData, target) {
+    if (!spellData || !target) {
+        return spellData;
+    }
+    const bounds = getAutocompleteSearchBounds(target);
+    if (!bounds) {
+        return spellData;
+    }
+    return Object.assign({}, spellData, {
+        termStart: bounds.tokenStart,
+        termEnd: bounds.tokenEnd,
+        spellCheckTermOffset: bounds.spellCheckTermOffset != null ? bounds.spellCheckTermOffset : bounds.tokenStart
+    });
+}
+
+function scheduleAutofillSearchDebounced(target, searchText, runSearch) {
+    if (characterAutocompleteTimeout) {
+        clearTimeout(characterAutocompleteTimeout);
+    }
+    const isContinuation = !!(lastSearchText && searchText.startsWith(lastSearchText) && searchText.length > lastSearchText.length);
+    const delay = isContinuation ? AUTOFILL_SEARCH_CONTINUATION_DEBOUNCE_MS : AUTOFILL_SEARCH_DEBOUNCE_MS;
+    characterAutocompleteTimeout = setTimeout(runSearch, delay);
+}
+
+function tokenizeOverlayWords(text) {
+    return (text || '').trim().split(/\s+/).filter(function (w) { return w.length > 0; });
+}
+
+function findBestOverlayWordMatch(queryWords, tagWords) {
+    let best = null;
+    for (let qi = 0; qi < queryWords.length; qi++) {
+        let matched = 0;
+        let ti = 0;
+        while (qi + matched < queryWords.length && ti < tagWords.length) {
+            if (getTokenMatchScore(queryWords[qi + matched], tagWords[ti]) >= 40) {
+                matched++;
+                ti++;
+            } else {
+                break;
+            }
+        }
+        if (matched > 0 && (!best || matched > best.matched)) {
+            best = { queryStart: qi, matched: matched };
+        }
+    }
+    return best;
+}
+
+/** Word-aligned replace range for tag/spell overlay (leaves non-matching words in the term). */
+function computeTagOverlayReplaceRange(value, tokenStart, tokenEnd, insertText) {
+    const termText = value.substring(tokenStart, tokenEnd);
+    const queryWords = tokenizeOverlayWords(termText);
+    const tagWords = tokenizeOverlayWords(String(insertText).replace(/_/g, ' '));
+    if (queryWords.length === 0 || tagWords.length === 0) {
+        return null;
+    }
+    const match = findBestOverlayWordMatch(queryWords, tagWords);
+    if (!match) {
+        return null;
+    }
+    const coverage = match.matched / tagWords.length;
+    const minMatch = tagWords.length >= 2 ? 2 : 1;
+    if (match.matched < minMatch || (coverage < 0.5 && match.matched < 2)) {
+        return null;
+    }
+    const wordCharRanges = [];
+    let pos = 0;
+    for (const w of queryWords) {
+        const idx = termText.indexOf(w, pos);
+        if (idx < 0) {
+            return null;
+        }
+        wordCharRanges.push({ start: idx, end: idx + w.length });
+        pos = idx + w.length;
+    }
+    const startIdx = match.queryStart;
+    const endIdx = match.queryStart + match.matched - 1;
+    return {
+        start: tokenStart + wordCharRanges[startIdx].start,
+        end: tokenStart + wordCharRanges[endIdx].end,
+        text: insertText
     };
 }
 
@@ -787,7 +972,8 @@ function shouldAbortAutocompleteSearchSession() {
     if (!liveBounds) return true;
 
     if (isAutofillSingleToken(target)) {
-        return liveBounds.query !== currentSearchSessionBounds.query;
+        // Query grows on every keystroke; session stays valid while focus remains on this input.
+        return false;
     }
 
     const cursorPosition = target.selectionStart;
@@ -796,6 +982,30 @@ function shouldAbortAutocompleteSearchSession() {
         liveBounds.tokenStart === currentSearchSessionBounds.tokenStart;
 
     return !withinTrackedToken;
+}
+
+function resetStaleAutofillSessionForNewInput() {
+    currentSearchRequestId = null;
+    currentSearchQuery = '';
+    currentSearchTimestamp = null;
+    currentSearchSessionBounds = null;
+    isSearching = false;
+    clearAutofillSessionState();
+    if (characterAutocompleteOverlay) {
+        characterAutocompleteOverlay.classList.add('hidden');
+        characterAutocompleteOverlay.classList.remove('expanded');
+    }
+    isAutocompleteVisible = false;
+    selectedCharacterAutocompleteIndex = -1;
+    autocompleteNavigationMode = false;
+    spellCheckNavigationMode = false;
+    wordLookupNavigationMode = false;
+    selectedSpellCheckWordIndex = -1;
+    selectedSpellCheckSuggestionIndex = -1;
+    selectedWordLookupWordIndex = -1;
+    selectedWordLookupSuggestionIndex = -1;
+    activeWordLookupWordIndex = 0;
+    autocompleteExpanded = false;
 }
 
 function abortAutocompleteSearchSession() {
@@ -2547,15 +2757,42 @@ function handleCharacterAutocompleteInput(e) {
         return;
     }
 
-    trackAutofillCaretMotion(target);
-
-    if (isCaretMovingTooFastForAutofill()) {
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(target, e)) {
         return;
     }
 
-    if (autofillSessionId && autofillSessionTarget === target && shouldAbortAutocompleteSearchSession()) {
-        hideCharacterAutocomplete();
+    autofillLastInputTime = Date.now();
+    trackAutofillCaretMotion(target);
+
+    autofillInputPendingEvent = e;
+    if (autofillInputRaf) return;
+    autofillInputRaf = requestAnimationFrame(() => {
+        autofillInputRaf = 0;
+        const pending = autofillInputPendingEvent;
+        autofillInputPendingEvent = null;
+        if (pending) {
+            processCharacterAutocompleteInput(pending);
+        }
+    });
+}
+
+function processCharacterAutocompleteInput(e) {
+    const target = e.target;
+    if (!target || document.activeElement !== target) {
         return;
+    }
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(target, e)) {
+        return;
+    }
+
+    if (autofillSessionId && autofillSessionTarget === target) {
+        if (shouldAbortAutocompleteSearchSession()) {
+            // Caret moved to a new token — tear down the stale session but keep processing this keystroke.
+            resetStaleAutofillSessionForNewInput();
+        } else {
+            currentSearchSessionBounds = getAutocompleteSearchBounds(target);
+        }
     }
 
     // Don't trigger autocomplete if we're in navigation mode and user is actively navigating
@@ -2608,18 +2845,14 @@ function handleCharacterAutocompleteInput(e) {
             return;
         }
 
-        if (characterAutocompleteTimeout) {
-            clearTimeout(characterAutocompleteTimeout);
-        }
-
-        characterAutocompleteTimeout = setTimeout(() => {
+        scheduleAutofillSearchDebounced(target, searchText, function () {
             if (searchText.length >= 2) {
                 lastSearchText = searchText;
                 searchCharacters(searchText, target);
             } else {
                 hideCharacterAutocomplete();
             }
-        }, 1000);
+        });
 
         return;
     }
@@ -2639,19 +2872,13 @@ function handleCharacterAutocompleteInput(e) {
         if (e.inputType === 'deleteContentBackward') {
             // If user is actively navigating or has an item selected, start normal search
             if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
-                // Clear existing timeout
-                if (characterAutocompleteTimeout) {
-                    clearTimeout(characterAutocompleteTimeout);
-                }
-
-                // Set timeout to search after user stops typing (normal delay)
-                characterAutocompleteTimeout = setTimeout(() => {
+                scheduleAutofillSearchDebounced(target, 'Text:' + textAfterPrefix, function () {
                     if (textAfterPrefix.length >= 1) {
                         searchCharacters('Text:' + textAfterPrefix, target);
                     } else {
                         hideCharacterAutocomplete();
                     }
-                }, 1000); // 1 second debounce for search requests
+                });
 
                 return;
             } else {
@@ -2661,64 +2888,36 @@ function handleCharacterAutocompleteInput(e) {
             }
         }
 
-        // Clear existing timeout
-        if (characterAutocompleteTimeout) {
-            clearTimeout(characterAutocompleteTimeout);
-        }
-
-        // Set timeout to search after user stops typing
-        characterAutocompleteTimeout = setTimeout(() => {
-            // For "Text:" searches, search immediately even with 1 character after the prefix
+        scheduleAutofillSearchDebounced(target, 'Text:' + textAfterPrefix, function () {
             if (textAfterPrefix.length >= 1) {
                 lastSearchText = 'Text:' + textAfterPrefix;
                 searchCharacters('Text:' + textAfterPrefix, target);
             } else {
                 hideCharacterAutocomplete();
             }
-        }, 1000); // 1 second debounce for search requests
+        });
 
         return;
     }
 
-    let searchText = textBeforeCursor.substring(findAutocompleteTermStart(textBeforeCursor)).trim();
-
-    // Limit search to last 8 words
-    const searchWords = searchText.split(/\s+/).filter(function (w) { return w.length > 0; });
-    if (searchWords.length > 8) {
-        searchText = searchWords.slice(-8).join(' ');
+    const bounds = getAutocompleteSearchBounds(target);
+    if (!bounds || !bounds.query) {
+        hideCharacterAutocomplete();
+        return;
     }
-
-    // Special handling for text replacement searches starting with <
-    // If the search text starts with <, we need to preserve it for the search
-    if (searchText.startsWith('<')) {
-        // Keep the < in the search text
-        searchText = searchText;
-    } else {
-        // Check if there's a < character before the cursor that should be included
-        const lastLessThanIndex = textBeforeCursor.lastIndexOf('<');
-        if (lastLessThanIndex > findAutocompleteTermStart(textBeforeCursor)) {
-            // There's a < after the last delimiter, include it in the search
-            searchText = textBeforeCursor.substring(lastLessThanIndex).trim();
-        }
-    }
+    const searchText = bounds.query;
 
     // Handle backspace - if actively navigating, start normal search delay
     if (e.inputType === 'deleteContentBackward') {
         // If user is actively navigating or has an item selected, start normal search
         if (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0) {
-            // Clear existing timeout
-            if (characterAutocompleteTimeout) {
-                clearTimeout(characterAutocompleteTimeout);
-            }
-
-            // Set timeout to search after user stops typing (normal delay)
-            characterAutocompleteTimeout = setTimeout(() => {
+            scheduleAutofillSearchDebounced(target, searchText, function () {
                 if (searchText.startsWith('<') || searchText.length >= 2) {
                     searchCharacters(searchText, target);
                 } else {
                     hideCharacterAutocomplete();
                 }
-            }, 1000); // 1 second debounce for search requests
+            });
 
             return;
         } else {
@@ -2728,21 +2927,14 @@ function handleCharacterAutocompleteInput(e) {
         }
     }
 
-    // Clear existing timeout
-    if (characterAutocompleteTimeout) {
-        clearTimeout(characterAutocompleteTimeout);
-    }
-
-    // Set timeout to search after user stops typing
-    characterAutocompleteTimeout = setTimeout(() => {
-        // For text replacement searches (starting with <), search immediately even with 1 character
+    scheduleAutofillSearchDebounced(target, searchText, function () {
         if (searchText.startsWith('<') || searchText.length >= 2) {
             lastSearchText = searchText;
             searchCharacters(searchText, target);
         } else {
             hideCharacterAutocomplete();
         }
-    }, 1000); // 1 second debounce for search requests
+    });
 
 }
 
@@ -2785,6 +2977,24 @@ function getWikiTermFromPromptTextareaForKeyboard(textarea) {
         t = sanitizePromptFragmentForWikiSearch(t.slice(5));
     }
     return t;
+}
+
+/** Fresh autofill at caret without editing text (double Ctrl, or Alt+Space with force). */
+function triggerAutofillFreshSearchAtCaret(target) {
+    if (!target || !autofillEnabled) return;
+    if (characterAutocompleteTimeout) {
+        clearTimeout(characterAutocompleteTimeout);
+        characterAutocompleteTimeout = null;
+    }
+    lastSearchQuery = '';
+    lastSearchText = '';
+    currentSearchQuery = '';
+    serviceResults.clear();
+    clearDynamicResults();
+    allSearchResults = [];
+    persistentSpellCheckData = null;
+    persistentWordLookupData = null;
+    triggerCharacterAutofillSearchAtCaret(target, true);
 }
 
 /** Immediate autofill search at caret (Alt+Space); forceRefresh re-runs same query when overlay already open. */
@@ -3064,6 +3274,53 @@ function clearMainAutocompleteSelection() {
     updateCharacterAutocompleteSelection();
 }
 
+function getAutocompleteResultItems() {
+    if (!characterAutocompleteList) return [];
+    return Array.from(characterAutocompleteList.querySelectorAll('.character-autocomplete-item:not(.no-results)'));
+}
+
+function hasAutocompleteResultItemsForNavigation() {
+    return getAutocompleteResultItems().length > 0;
+}
+
+function canSpellCheckNavigationEnter() {
+    const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
+    return spellCheckSectionHasSuggestions(spellCheckSection);
+}
+
+function canWordLookupNavigationEnter() {
+    const wordLookupSection = getWordLookupSection();
+    return !!(wordLookupSection && getWordLookupWordCount(wordLookupSection) > 0);
+}
+
+function shouldAutocompleteConsumeVerticalArrow() {
+    if (spellCheckNavigationMode || wordLookupNavigationMode) return true;
+    if (autocompleteNavigationMode && selectedCharacterAutocompleteIndex >= 0 && hasAutocompleteResultItemsForNavigation()) {
+        return true;
+    }
+    if (canSpellCheckNavigationEnter()) return true;
+    if (canWordLookupNavigationEnter()) return true;
+    if (hasAutocompleteResultItemsForNavigation()) return true;
+    return false;
+}
+
+function dismissAutocompleteForTextareaNavigation() {
+    if (characterAutocompleteTimeout) {
+        clearTimeout(characterAutocompleteTimeout);
+        characterAutocompleteTimeout = null;
+    }
+    if (currentSearchTimeout) {
+        clearTimeout(currentSearchTimeout);
+        currentSearchTimeout = null;
+    }
+    autocompleteNavigationMode = false;
+    autocompleteExpanded = false;
+    userActivelyNavigating = false;
+    clearSpellCheckNavigationState();
+    clearWordLookupNavigationState();
+    hideCharacterAutocomplete();
+}
+
 function enterSpellCheckNavigation(preferLastWord = false) {
     const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
     if (!spellCheckSectionHasSuggestions(spellCheckSection)) {
@@ -3256,6 +3513,8 @@ function handleCharacterAutocompleteBeforeinput(e) {
     const target = e.target;
     if (!target || target.type !== 'textarea') return;
     if (!target.classList.contains('prompt-textarea') && !target.classList.contains('character-prompt-textarea')) return;
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(target, e)) return;
     if (!isCharacterAutocompleteOverlayOpen()) return;
     if (currentCharacterAutocompleteTarget && target !== currentCharacterAutocompleteTarget) return;
 
@@ -3302,8 +3561,46 @@ function handleCharacterAutocompleteKeydown(e) {
 
     const characterAutocompleteOverlayOpen = characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden');
 
+    // Plain typing on prompt fields — do not run overlay/shortcut logic on keydown (input/beforeinput handle autofill).
+    if (!characterAutocompleteOverlayOpen) {
+        const t = e.target;
+        const isPromptTextarea = t && t.type === 'textarea' &&
+            (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'));
+        if (isPromptTextarea && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const k = e.key;
+            const isPlainTypingKey = k.length === 1 || k === 'Backspace' || k === 'Delete' || k === 'Space' || k === ' ';
+            if (isPlainTypingKey && k !== 'Tab' && !(k === 'Backspace' && e.shiftKey)) {
+                return;
+            }
+        }
+        if (isPromptTextarea && e.key === 'Control' && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat) {
+            const now = Date.now();
+            if (now - autofillLastCtrlKeydownTime < AUTOFILL_DOUBLE_CTRL_MS) {
+                e.preventDefault();
+                autofillLastCtrlKeydownTime = 0;
+                triggerAutofillFreshSearchAtCaret(e.target);
+            } else {
+                autofillLastCtrlKeydownTime = now;
+            }
+        }
+    }
+
     // Handle autocomplete navigation - only when autocomplete is visible
     if (characterAutocompleteOverlayOpen) {
+        const promptTargetOpen = e.target && e.target.type === 'textarea' &&
+            (e.target.classList.contains('prompt-textarea') || e.target.classList.contains('character-prompt-textarea'));
+        if (promptTargetOpen && e.key === 'Control' && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat) {
+            const now = Date.now();
+            if (now - autofillLastCtrlKeydownTime < AUTOFILL_DOUBLE_CTRL_MS) {
+                e.preventDefault();
+                e.stopPropagation();
+                autofillLastCtrlKeydownTime = 0;
+                triggerAutofillFreshSearchAtCaret(e.target);
+                return;
+            }
+            autofillLastCtrlKeydownTime = now;
+        }
+
         // Check if we're in character detail view (enhancers list)
         const characterDetailContent = characterAutocompleteList?.querySelector('.character-detail-content');
         if (characterDetailContent) {
@@ -3338,10 +3635,15 @@ function handleCharacterAutocompleteKeydown(e) {
 
         const spellCheckSection = characterAutocompleteList?.querySelector('.spell-check-section');
         const wordLookupSection = getWordLookupSection();
-        const items = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+        const resultItems = getAutocompleteResultItems();
 
         switch (e.key) {
             case 'ArrowDown':
+                if (!shouldAutocompleteConsumeVerticalArrow()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
                 e.preventDefault();
 
                 if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex === -1) {
@@ -3384,21 +3686,20 @@ function handleCharacterAutocompleteKeydown(e) {
                 autocompleteNavigationMode = true;
                 userActivelyNavigating = true;
 
-                // Check if we have results (either in DOM or in stored results)
-                const hasResultsDownKey = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
-                if (!hasResultsDownKey) {
-                    return;
+                const itemsDown = getAutocompleteResultItems();
+                if (!itemsDown.length) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
                 }
 
                 if (selectedCharacterAutocompleteIndex === -1) {
                     expandAutocompleteInstantly();
-                    // After expansion, get the updated items count
-                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    const updatedItems = getAutocompleteResultItems();
                     selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
-                    selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, items.length - 1);
-                    updateCharacterAutocompleteSelection();
+                    selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 1, itemsDown.length - 1);
                 }
+                updateCharacterAutocompleteSelection();
                 updateEmphasisTooltipVisibility();
 
                 // Reset the actively navigating flag after a short delay
@@ -3408,70 +3709,70 @@ function handleCharacterAutocompleteKeydown(e) {
                 }, 500);
                 break;
 
-            case 'ArrowUp':
-                if (autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode) {
-                    e.preventDefault();
+            case 'ArrowUp': {
+                const inAutocompleteNav = autocompleteNavigationMode || spellCheckNavigationMode || wordLookupNavigationMode;
 
-                    if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex <= 0) {
-                        if (enterWordLookupNavigation(true)) {
-                            return;
-                        }
-                        if (enterSpellCheckNavigation(true)) {
-                            return;
-                        }
+                if (!inAutocompleteNav) {
+                    if (characterAutocompleteOverlayOpen) {
+                        dismissAutocompleteForTextareaNavigation();
                     }
-
-                    if (wordLookupNavigationMode) {
-                        if (selectedWordLookupWordIndex > 0) {
-                            selectedWordLookupWordIndex--;
-                            selectedWordLookupSuggestionIndex = 0;
-                            updateWordLookupSelection();
-                            return;
-                        }
-
-                        clearWordLookupNavigationState();
-                        if (enterSpellCheckNavigation(true)) {
-                            return;
-                        }
-
-                        hideCharacterAutocomplete();
-                        autocompleteNavigationMode = false;
-                        autocompleteExpanded = false;
-                        return;
-                    }
-
-                    if (spellCheckNavigationMode) {
-                        if (selectedSpellCheckWordIndex > 0) {
-                            selectedSpellCheckWordIndex--;
-                            selectedSpellCheckSuggestionIndex = 0;
-                            updateSpellCheckSelection();
-                            return;
-                        }
-
-                        clearSpellCheckNavigationState();
-                        hideCharacterAutocomplete();
-                        autocompleteNavigationMode = false;
-                        autocompleteExpanded = false;
-                        return;
-                    }
-
-                    autocompleteNavigationMode = true;
-                    if (selectedCharacterAutocompleteIndex <= 0) {
-                        hideCharacterAutocomplete();
-                        autocompleteNavigationMode = false;
-                        return;
-                    }
-                    selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
-                    updateCharacterAutocompleteSelection();
-                    updateEmphasisTooltipVisibility();
-                } else if (characterAutocompleteOverlay && !characterAutocompleteOverlay.classList.contains('hidden')) {
-                    hideCharacterAutocomplete();
-                    autocompleteNavigationMode = false;
-                    autocompleteExpanded = false;
+                    break;
                 }
+
+                if (wordLookupNavigationMode && selectedWordLookupWordIndex <= 0) {
+                    if (enterSpellCheckNavigation(true)) break;
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
+                if (spellCheckNavigationMode && selectedSpellCheckWordIndex <= 0) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
+                if (!spellCheckNavigationMode && !wordLookupNavigationMode && selectedCharacterAutocompleteIndex <= 0) {
+                    if (enterWordLookupNavigation(true)) break;
+                    if (enterSpellCheckNavigation(true)) break;
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
+                if (!spellCheckNavigationMode && !wordLookupNavigationMode &&
+                    !hasAutocompleteResultItemsForNavigation() &&
+                    !canSpellCheckNavigationEnter() && !canWordLookupNavigationEnter()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
+                e.preventDefault();
+
+                if (wordLookupNavigationMode) {
+                    selectedWordLookupWordIndex--;
+                    selectedWordLookupSuggestionIndex = 0;
+                    updateWordLookupSelection();
+                    break;
+                }
+
+                if (spellCheckNavigationMode) {
+                    selectedSpellCheckWordIndex--;
+                    selectedSpellCheckSuggestionIndex = 0;
+                    updateSpellCheckSelection();
+                    break;
+                }
+
+                autocompleteNavigationMode = true;
+                selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 1, -1);
+                updateCharacterAutocompleteSelection();
+                updateEmphasisTooltipVisibility();
                 break;
+            }
 
             case 'PageDown':
+                if (!shouldAutocompleteConsumeVerticalArrow()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
                 e.preventDefault();
 
                 if (spellCheckNavigationMode) {
@@ -3485,25 +3786,29 @@ function handleCharacterAutocompleteKeydown(e) {
                 autocompleteNavigationMode = true;
                 userActivelyNavigating = true;
 
-                // Check if we have results (either in DOM or in stored results)
-                const hasResultsPageDown = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
-                if (!hasResultsPageDown) {
-                    return;
+                const itemsPageDown = getAutocompleteResultItems();
+                if (!itemsPageDown.length) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
                 }
 
                 if (selectedCharacterAutocompleteIndex === -1) {
                     expandAutocompleteInstantly();
-                    // After expansion, get the updated items count
-                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    const updatedItems = getAutocompleteResultItems();
                     selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
-                    selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 10, items.length - 1);
+                    selectedCharacterAutocompleteIndex = Math.min(selectedCharacterAutocompleteIndex + 10, itemsPageDown.length - 1);
                 }
                 updateCharacterAutocompleteSelection();
                 updateEmphasisTooltipVisibility();
                 break;
 
             case 'PageUp':
+                if (!shouldAutocompleteConsumeVerticalArrow()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
                 e.preventDefault();
 
                 // If in spell check mode, exit to main list
@@ -3518,16 +3823,15 @@ function handleCharacterAutocompleteKeydown(e) {
                 autocompleteNavigationMode = true;
                 userActivelyNavigating = true;
 
-                // Check if we have results (either in DOM or in stored results)
-                const hasResultsPageUp = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
-                if (!hasResultsPageUp) {
-                    return;
+                const itemsPageUp = getAutocompleteResultItems();
+                if (!itemsPageUp.length) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
                 }
 
                 if (selectedCharacterAutocompleteIndex === -1) {
                     expandAutocompleteInstantly();
-                    // After expansion, get the updated items count
-                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    const updatedItems = getAutocompleteResultItems();
                     selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? 0 : -1;
                 } else {
                     selectedCharacterAutocompleteIndex = Math.max(selectedCharacterAutocompleteIndex - 10, 0);
@@ -3537,6 +3841,11 @@ function handleCharacterAutocompleteKeydown(e) {
                 break;
 
             case 'Home':
+                if (!shouldAutocompleteConsumeVerticalArrow()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
                 e.preventDefault();
 
                 // If in spell check mode, exit to main list
@@ -3551,10 +3860,10 @@ function handleCharacterAutocompleteKeydown(e) {
                 autocompleteNavigationMode = true;
                 userActivelyNavigating = true;
 
-                // Check if we have results (either in DOM or in stored results)
-                const hasResultsHome = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
-                if (!hasResultsHome) {
-                    return;
+                const itemsHome = getAutocompleteResultItems();
+                if (!itemsHome.length) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
                 }
 
                 if (selectedCharacterAutocompleteIndex === -1) {
@@ -3566,6 +3875,11 @@ function handleCharacterAutocompleteKeydown(e) {
                 break;
 
             case 'End':
+                if (!shouldAutocompleteConsumeVerticalArrow()) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
+                }
+
                 e.preventDefault();
 
                 // If in spell check mode, exit to main list
@@ -3580,19 +3894,18 @@ function handleCharacterAutocompleteKeydown(e) {
                 autocompleteNavigationMode = true;
                 userActivelyNavigating = true;
 
-                // Check if we have results (either in DOM or in stored results)
-                const hasResultsEnd = (items && items.length > 0) || (window.allAutocompleteResults && window.allAutocompleteResults.length > 0);
-                if (!hasResultsEnd) {
-                    return;
+                const itemsEnd = getAutocompleteResultItems();
+                if (!itemsEnd.length) {
+                    dismissAutocompleteForTextareaNavigation();
+                    break;
                 }
 
                 if (selectedCharacterAutocompleteIndex === -1) {
                     expandAutocompleteInstantly();
-                    // After expansion, get the updated items count
-                    const updatedItems = characterAutocompleteList ? characterAutocompleteList.querySelectorAll('.character-autocomplete-item') : [];
+                    const updatedItems = getAutocompleteResultItems();
                     selectedCharacterAutocompleteIndex = updatedItems.length > 0 ? updatedItems.length - 1 : -1;
                 } else {
-                    selectedCharacterAutocompleteIndex = items.length - 1;
+                    selectedCharacterAutocompleteIndex = itemsEnd.length - 1;
                 }
                 updateCharacterAutocompleteSelection();
                 updateEmphasisTooltipVisibility();
@@ -3665,8 +3978,8 @@ function handleCharacterAutocompleteKeydown(e) {
 
                     // Inject suggestion: comma + suffix if space before cursor, else replace query span.
                     // Genso (!) expanders: insert expanded text (same as insertTextReplacement), not literal !placeholder.
-                    if (selectedCharacterAutocompleteIndex >= 0 && items && items.length > 0) {
-                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                    if (selectedCharacterAutocompleteIndex >= 0 && resultItems.length > 0) {
+                        const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
                         if (selectedItem.dataset.type === 'textReplacement') {
                             const expandText = getTextReplacementExpandTextFromItem(selectedItem);
                             if (expandText && currentCharacterAutocompleteTarget) {
@@ -3716,8 +4029,8 @@ function handleCharacterAutocompleteKeydown(e) {
             case 'Q':
                 if (e.altKey && !e.ctrlKey && !e.metaKey) {
                     e.preventDefault();
-                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
-                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                    if (selectedCharacterAutocompleteIndex >= 0 && resultItems.length > 0) {
+                        const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
                         const wikiTerm = getWikiSearchTermFromAutocompleteItem(selectedItem);
                         if (wikiTerm && window.tagWikiSearchModal) {
                             hideCharacterAutocomplete();
@@ -3733,8 +4046,8 @@ function handleCharacterAutocompleteKeydown(e) {
             case 'W':
                 if (e.altKey && !e.ctrlKey && !e.metaKey) {
                     e.preventDefault();
-                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
-                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                    if (selectedCharacterAutocompleteIndex >= 0 && resultItems.length > 0) {
+                        const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
                         const wikiTerm = getWikiSearchTermFromAutocompleteItem(selectedItem);
                         if (wikiTerm && window.tagWikiSearchModal) {
                             window.tagWikiSearchModal.openStandaloneWikiIfDirectMatch(wikiTerm);
@@ -3762,8 +4075,8 @@ function handleCharacterAutocompleteKeydown(e) {
                     e.preventDefault();
 
                     // Add selected item to favorites
-                    if (selectedCharacterAutocompleteIndex >= 0 && items.length > 0) {
-                        const selectedItem = items[selectedCharacterAutocompleteIndex];
+                    if (selectedCharacterAutocompleteIndex >= 0 && resultItems.length > 0) {
+                        const selectedItem = resultItems[selectedCharacterAutocompleteIndex];
                         if (selectedItem) {
                             addToFavorites(selectedItem);
                         }
@@ -3800,6 +4113,16 @@ function handleCharacterAutocompleteKeydown(e) {
         const t = e.target;
         const isPromptTextarea = t && t.type === 'textarea' &&
             (t.classList.contains('prompt-textarea') || t.classList.contains('character-prompt-textarea'));
+        if (isPromptTextarea && e.key === 'Control' && !e.altKey && !e.metaKey && !e.shiftKey && !e.repeat) {
+            const now = Date.now();
+            if (now - autofillLastCtrlKeydownTime < AUTOFILL_DOUBLE_CTRL_MS) {
+                e.preventDefault();
+                autofillLastCtrlKeydownTime = 0;
+                triggerAutofillFreshSearchAtCaret(t);
+            } else {
+                autofillLastCtrlKeydownTime = now;
+            }
+        }
         if (isPromptTextarea && e.altKey && !e.ctrlKey && !e.metaKey) {
             if (e.code === 'Space' || e.key === ' ') {
                 if (!autofillEnabled) {
@@ -3916,10 +4239,7 @@ async function searchCharacters(query, target, forceRefresh, options) {
                     servicesInitialized = false;
                 }
             } else {
-                // This is a continuation, just clear results but keep services
-                serviceResults.clear();
                 clearDynamicResults();
-                allSearchResults = [];
             }
 
             lastSearchQuery = query;
@@ -3941,6 +4261,11 @@ async function searchCharacters(query, target, forceRefresh, options) {
         // Set the current target for autocomplete
         currentCharacterAutocompleteTarget = target;
         currentSearchSessionBounds = getAutocompleteSearchBounds(target);
+        const searchBounds = currentSearchSessionBounds;
+        const spellCheckText = searchBounds && searchBounds.spellCheckText
+            ? searchBounds.spellCheckText
+            : query;
+        const wsIsContinuation = !forceRefresh && !!(lastSearchQuery && query.startsWith(lastSearchQuery) && query.length > lastSearchQuery.length);
 
         if (shouldAbortAutocompleteSearchSession()) {
             abortAutocompleteSearchSession();
@@ -3985,7 +4310,9 @@ async function searchCharacters(query, target, forceRefresh, options) {
                     // Send ack-less search request (responses handled by global handler)
                     await window.wsClient.searchCharacters(query, manualModel.value, {
                         requestId: currentSearchRequestId,
-                        autofillSessionId: autofillSessionId
+                        autofillSessionId: autofillSessionId,
+                        spellCheckText: spellCheckText,
+                        isContinuation: wsIsContinuation
                     });
                     markAutofillSearchPacketSent();
 
@@ -4037,7 +4364,9 @@ async function searchCharacters(query, target, forceRefresh, options) {
                 try {
                     await window.wsClient.searchCharacters(query, manualModel.value, {
                         requestId: currentSearchRequestId,
-                        autofillSessionId: autofillSessionId
+                        autofillSessionId: autofillSessionId,
+                        spellCheckText: spellCheckText,
+                        isContinuation: wsIsContinuation
                     });
                     markAutofillSearchPacketSent();
 
@@ -4078,7 +4407,9 @@ async function searchCharacters(query, target, forceRefresh, options) {
                     // Send ack-less search request - spell check results will come via real-time updates
                     await window.wsClient.searchCharacters(query, manualModel.value, {
                         requestId: currentSearchRequestId,
-                        autofillSessionId: autofillSessionId
+                        autofillSessionId: autofillSessionId,
+                        spellCheckText: spellCheckText,
+                        isContinuation: wsIsContinuation
                     });
                     markAutofillSearchPacketSent();
 
@@ -4298,8 +4629,6 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         storeCurrentSelection();
     }
 
-    selectedCharacterAutocompleteIndex = -1;
-
     // Store all results for potential expansion
     window.allAutocompleteResults = results;
 
@@ -4324,12 +4653,12 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
     // Handle spell check using the new system
     let currentSpellCheckData = null;
     if (autofillConfig.spellcheck && spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
-        currentSpellCheckData = spellCheckResult.data;
+        currentSpellCheckData = attachSpellCheckTermBounds(spellCheckResult.data, target);
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
     } else if (autofillConfig.spellcheck && spellCheckData && spellCheckData.hasErrors) {
         // Legacy support
-        currentSpellCheckData = spellCheckData;
+        currentSpellCheckData = attachSpellCheckTermBounds(spellCheckData, target);
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
     } else if (autofillConfig.spellcheck && persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
@@ -4382,10 +4711,7 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
             characterAutocompleteList.appendChild(moreItem);
         }
 
-        // Same as rebuildAutocompleteDisplay: restore highlight after list rebuild
-        setTimeout(() => {
-            restoreSelection(displayResults);
-        }, 10);
+        restoreSelection(displayResults);
     }
 
     // Position overlay relative to viewport
@@ -4403,15 +4729,15 @@ function showCharacterAutocompleteSuggestions(results, target, spellCheckData = 
         isAutocompleteVisible = true;
     }
 
-    // Auto-select first item only for main-list navigation (not spell check / thesaurus)
+    // Auto-select first item only when entering list navigation with no prior selection
     if (displayResults.length > 0 &&
         !spellCheckNavigationMode &&
         !wordLookupNavigationMode &&
-        (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        if (lastSelectedListIndex < 0) {
-            selectedCharacterAutocompleteIndex = 0;
-            updateCharacterAutocompleteSelection();
-        }
+        autocompleteNavigationMode &&
+        selectedCharacterAutocompleteIndex < 0 &&
+        lastSelectedListIndex < 0) {
+        selectedCharacterAutocompleteIndex = 0;
+        updateCharacterAutocompleteSelection();
     }
 }
 
@@ -4500,15 +4826,15 @@ function updateAutocompleteDisplayImmediate(results, target) {
         isAutocompleteVisible = true;
     }
 
-    // Auto-select first item only for main-list navigation (not spell check / thesaurus)
+    // Auto-select first item only when entering list navigation with no prior selection
     if (displayResults.length > 0 &&
         !spellCheckNavigationMode &&
         !wordLookupNavigationMode &&
-        (autocompleteNavigationMode || selectedCharacterAutocompleteIndex >= 0)) {
-        if (lastSelectedListIndex < 0) {
-            selectedCharacterAutocompleteIndex = 0;
-            updateCharacterAutocompleteSelection();
-        }
+        autocompleteNavigationMode &&
+        selectedCharacterAutocompleteIndex < 0 &&
+        lastSelectedListIndex < 0) {
+        selectedCharacterAutocompleteIndex = 0;
+        updateCharacterAutocompleteSelection();
     }
 }
 
@@ -4532,7 +4858,7 @@ function restoreSelection(displayResults) {
         return;
     }
 
-    const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+    const items = getAutocompleteResultItems();
     if (!items.length) {
         lastSelectedListIndex = -1;
         return;
@@ -4571,13 +4897,13 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
     // Handle spell check from the merged results system
     let currentSpellCheckData = null;
     if (autofillConfig.spellcheck && spellCheckResult && spellCheckResult.data && spellCheckResult.data.hasErrors) {
-        currentSpellCheckData = spellCheckResult.data;
+        currentSpellCheckData = attachSpellCheckTermBounds(spellCheckResult.data, target);
         window.currentSpellCheckData = currentSpellCheckData;
         persistentSpellCheckData = currentSpellCheckData;
     } else if (autofillConfig.spellcheck) {
         // Fallback to persistent spell check data if no new spell check result
         if (persistentSpellCheckData && persistentSpellCheckData.hasErrors) {
-            currentSpellCheckData = persistentSpellCheckData;
+            currentSpellCheckData = attachSpellCheckTermBounds(persistentSpellCheckData, target);
             window.currentSpellCheckData = currentSpellCheckData;
         } else {
             window.currentSpellCheckData = null;
@@ -4627,11 +4953,7 @@ function rebuildAutocompleteDisplay(displayResults, limitedResults, spellCheckRe
             characterAutocompleteList.appendChild(moreItem);
         }
 
-        // Restore selection after rebuilding the display
-        // Use a small delay to ensure DOM elements are fully created
-        setTimeout(() => {
-            restoreSelection(displayResults);
-        }, 10);
+        restoreSelection(displayResults);
     }
 
     // Add search status at the bottom if we're currently searching
@@ -4675,11 +4997,14 @@ function wireSpellCheckSuggestionButtons(container, target) {
 
 function buildSpellCheckSuggestionButtons(word, suggestions) {
     if (!suggestions || suggestions.length === 0) return '';
-    return suggestions.map(suggestion => `
-        <button class="suggestion-btn" data-original="${word}" data-suggestion="${suggestion}">
+    return suggestions.map(function (suggestion) {
+        const phraseClass = /\s/.test(suggestion) ? ' suggestion-phrase' : '';
+        return `
+        <button class="suggestion-btn${phraseClass}" data-original="${word}" data-suggestion="${suggestion}" title="${/\s/.test(suggestion) ? 'Tag phrase' : ''}">
             ${suggestion}
         </button>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function wireSpellCheckAddWordButton(container, word) {
@@ -5047,9 +5372,75 @@ function applyWordLookupInsert(target, originalWord, synonym) {
 function applySpellCorrection(target, originalWord, suggestion) {
     const currentValue = target.value;
     const cursorPos = target.selectionStart;
+    const bounds = getAutocompleteSearchBounds(target);
+    const spellMeta = persistentSpellCheckData || {};
+    const termStart = bounds ? bounds.tokenStart : (spellMeta.termStart != null ? spellMeta.termStart : 0);
+    const termEnd = bounds ? bounds.tokenEnd : (spellMeta.termEnd != null ? spellMeta.termEnd : currentValue.length);
+    const spellOffset = bounds && bounds.spellCheckTermOffset != null
+        ? bounds.spellCheckTermOffset
+        : (spellMeta.spellCheckTermOffset != null ? spellMeta.spellCheckTermOffset : termStart);
 
-    // Store the original cursor position for restoration
-    const originalCursorPos = cursorPos;
+    if (suggestion && /\s/.test(suggestion)) {
+        if (bounds) {
+            const overlay = computeTagOverlayReplaceRange(
+                currentValue,
+                bounds.tokenStart,
+                bounds.tokenEnd,
+                suggestion
+            );
+            if (overlay) {
+                const before = currentValue.substring(0, overlay.start);
+                const after = currentValue.substring(overlay.end);
+                const newValue = before + overlay.text + after;
+                setTextareaValuePreservingUndo(target, newValue);
+                const newCursorPos = overlay.start + overlay.text.length;
+                setTimeout(function () {
+                    target.setSelectionRange(newCursorPos, newCursorPos);
+                    target.focus();
+                }, 0);
+                const event = new Event('input', { bubbles: true });
+                target.dispatchEvent(event);
+                hideCharacterAutocomplete();
+                return true;
+            }
+        }
+    }
+
+    const termRange = findMisspelledWordReplaceRange(currentValue, cursorPos, originalWord, termStart, termEnd);
+    if (termRange) {
+        const newValue = currentValue.substring(0, termRange.start) + suggestion + currentValue.substring(termRange.end);
+        setTextareaValuePreservingUndo(target, newValue);
+        const newCursorPos = termRange.start + suggestion.length;
+        setTimeout(function () {
+            target.setSelectionRange(newCursorPos, newCursorPos);
+            target.focus();
+        }, 0);
+        const event = new Event('input', { bubbles: true });
+        target.dispatchEvent(event);
+        hideCharacterAutocomplete();
+        return true;
+    }
+
+    if (spellMeta.wordPositions && Array.isArray(spellMeta.wordPositions)) {
+        const wp = spellMeta.wordPositions.find(function (p) {
+            return p.word && p.word.toLowerCase() === originalWord.toLowerCase();
+        });
+        if (wp && typeof wp.start === 'number' && typeof wp.end === 'number') {
+            const absStart = spellOffset + wp.start;
+            const absEnd = spellOffset + wp.end;
+            const newValue = currentValue.substring(0, absStart) + suggestion + currentValue.substring(absEnd);
+            setTextareaValuePreservingUndo(target, newValue);
+            const newCursorPos = absStart + suggestion.length;
+            setTimeout(function () {
+                target.setSelectionRange(newCursorPos, newCursorPos);
+                target.focus();
+            }, 0);
+            const event = new Event('input', { bubbles: true });
+            target.dispatchEvent(event);
+            hideCharacterAutocomplete();
+            return true;
+        }
+    }
 
     // Check if this is a "Text:" prefixed query
     const textPrefixIndex = currentValue.lastIndexOf('Text:');
@@ -5371,7 +5762,7 @@ function scrollToAutocompleteOption(optionElement) {
 function updateCharacterAutocompleteSelection() {
     if (!characterAutocompleteList) return;
 
-    const items = characterAutocompleteList.querySelectorAll('.character-autocomplete-item');
+    const items = getAutocompleteResultItems();
 
     if (spellCheckNavigationMode || wordLookupNavigationMode) {
         items.forEach((item) => {
@@ -5644,25 +6035,55 @@ function selectTag(tagName, category) {
 
     const currentValue = target.value;
     const cursorPosition = target.selectionStart;
-
-    // Get the text before the cursor
     const textBeforeCursor = currentValue.substring(0, cursorPosition);
+    const bounds = getAutocompleteSearchBounds(target);
+    const startOfCurrentTerm = bounds ? bounds.tokenStart : findAutocompleteTermStart(textBeforeCursor);
+    const endOfCurrentTerm = bounds ? bounds.tokenEnd : findAutocompleteTermEnd(currentValue, cursorPosition);
+    const overlay = computeTagOverlayReplaceRange(currentValue, startOfCurrentTerm, endOfCurrentTerm, tagToInsert);
 
-    const startOfCurrentTerm = findAutocompleteTermStart(textBeforeCursor);
+    if (overlay) {
+        const textBefore = currentValue.substring(0, overlay.start).replace(/[,\s]*$/, '');
+        const textAfterTerm = currentValue.substring(overlay.end);
+        let newPrompt = textBefore;
+        if (newPrompt) {
+            if (shouldAddCommaBefore(currentValue, cursorPosition)) {
+                newPrompt += ', ' + overlay.text;
+            } else {
+                newPrompt += overlay.text;
+            }
+        } else {
+            newPrompt = overlay.text;
+        }
+        const textAfter = textAfterTerm.replace(/^[,\s]*/, '');
+        const isAtEndOfEmphasis = textAfter.startsWith('::');
+        const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']') || textAfter.startsWith('%');
+        if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
+            if (shouldAddCommaAfter(currentValue, cursorPosition)) {
+                newPrompt += ', ' + textAfter;
+            } else {
+                newPrompt += textAfter;
+            }
+        } else if (textAfter) {
+            newPrompt += textAfter;
+        }
+        setTextareaValuePreservingUndo(target, newPrompt);
+        const newCursorPosition = newPrompt.length - textAfter.length;
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+        hideCharacterAutocomplete();
+        if (target) {
+            target.focus();
+            autoResizeTextarea(target);
+            updateEmphasisHighlighting(target);
+        }
+        return;
+    }
 
-    // Get the text before the cursor
     const textAfterCursor = currentValue.substring(cursorPosition);
-
-    // Build the new prompt
     let newPrompt = '';
-
-    // Keep the text before the current term (trim any trailing delimiters and spaces)
     const textBefore = currentValue.substring(0, startOfCurrentTerm).replace(/[,\s]*$/, '');
     newPrompt = textBefore;
 
-    // Add the tag name
     if (newPrompt) {
-        // Check if we should add a comma before the text
         if (shouldAddCommaBefore(currentValue, cursorPosition)) {
             newPrompt += ', ' + tagToInsert;
         } else {
@@ -5672,29 +6093,22 @@ function selectTag(tagName, category) {
         newPrompt = tagToInsert;
     }
 
-    // Check if we're at the end of an emphasis block or brace block
     const textAfter = textAfterCursor.replace(/^[,\s]*/, '');
     const isAtEndOfEmphasis = textAfter.startsWith('::');
     const isAtEndOfBrace = textAfter.startsWith('}') || textAfter.startsWith(']') || textAfter.startsWith('%');
 
-    // Add comma and space after tag unless at end of emphasis or brace block
     if (textAfter && !isAtEndOfEmphasis && !isAtEndOfBrace) {
-        // Check if we should add a comma after the inserted text
         if (shouldAddCommaAfter(currentValue, cursorPosition)) {
             newPrompt += ', ' + textAfter;
         } else {
             newPrompt += textAfter;
         }
     } else if (textAfter) {
-        // At end of emphasis or brace block, don't add comma
         newPrompt += textAfter;
     }
 
-    // Update the target field
-    // setTextareaValuePreservingUndo: public/scripts/comp/textareaUtils.js
     setTextareaValuePreservingUndo(target, newPrompt);
 
-    // Set cursor position after the inserted tag
     const newCursorPosition = newPrompt.length - textAfter.length;
     target.setSelectionRange(newCursorPosition, newCursorPosition);
 

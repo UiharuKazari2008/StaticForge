@@ -17,7 +17,9 @@ class SearchService {
 
         // Session-based rate limiting with rolling window
         this.sessionRateLimiters = new Map(); // Track rate limiters by session ID
-        this.requestThrottleMs = 1000; // 1000ms between completed requests
+        this.requestThrottleMs = 1000; // 1000ms between completed NovelAI tag API requests
+        this.continuationThrottleMs = 120; // shorter gap when the user extends the same query
+        this.tagSearchMaxWords = 8;
 
         // Track active requests for cancellation
         this.activeRequests = new Map(); // Track active requests by requestId
@@ -58,6 +60,22 @@ class SearchService {
                 this.novelAiTagL1Cache.delete(oldestKey);
             }
         }
+    }
+
+    _lookupNovelAiTagPrefixCache(normalizedQuery, apiModel) {
+        const direct = this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+        if (direct && direct.tags && direct.tags.length > 0) {
+            return direct;
+        }
+        const words = (normalizedQuery || '').split(/\s+/).filter(Boolean);
+        for (let len = words.length - 1; len >= 1; len--) {
+            const prefix = words.slice(0, len).join(' ');
+            const hit = this._lookupNovelAiTagCache(prefix, apiModel);
+            if (hit && hit.tags && hit.tags.length >= 3) {
+                return hit;
+            }
+        }
+        return null;
     }
 
     _lookupNovelAiTagCache(normalizedQuery, apiModel) {
@@ -153,8 +171,17 @@ class SearchService {
         return this.sessionRateLimiters.get(key);
     }
 
+    truncateTagSearchQuery(query, maxWords = null) {
+        const limit = maxWords != null ? maxWords : this.tagSearchMaxWords;
+        const words = (query || '').trim().split(/\s+/).filter(Boolean);
+        if (words.length <= limit) {
+            return (query || '').trim();
+        }
+        return words.slice(-limit).join(' ');
+    }
+
     // Simple rate limiting: Only process the last request, discard expired ones
-    async throttleTagRequest(sessionId, query, model, requestId, ws = null) {
+    async throttleTagRequest(sessionId, query, model, requestId, ws = null, options = {}) {
         // Validate sessionId
         if (!sessionId || sessionId === 'null' || sessionId === 'undefined' || !ws) {
             console.error(`❌ Invalid sessionId: ${sessionId} for query "${query}" on model ${model}`);
@@ -187,9 +214,11 @@ class SearchService {
             rateLimiter.pendingRequestId = null;
         }
 
+        const throttleMs = options.isContinuation ? this.continuationThrottleMs : this.requestThrottleMs;
+
         // Check if we can process this request immediately
         const timeSinceLastCompleted = now - rateLimiter.lastCompletedRequest;
-        const canProcessImmediately = !rateLimiter.isProcessing && timeSinceLastCompleted >= this.requestThrottleMs;
+        const canProcessImmediately = !rateLimiter.isProcessing && timeSinceLastCompleted >= throttleMs;
 
         if (canProcessImmediately) {
             // Can process immediately
@@ -206,7 +235,7 @@ class SearchService {
         } else {
             // Cannot process immediately - wait for the required delay
             // This ensures we only process the last request after the delay
-            const delay = this.requestThrottleMs - timeSinceLastCompleted;
+            const delay = throttleMs - timeSinceLastCompleted;
 
             // Create an AbortController for this request
             const abortController = new AbortController();
@@ -387,8 +416,10 @@ class SearchService {
     }
 
     // Search for characters and tags - Latest Request Wins Pattern
-    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null, requestId = null, autofillSessionId = null) {
+    async searchCharacters(query, model, ws = null, sessionId = null, abortSignal = null, requestId = null, autofillSessionId = null, options = {}) {
         const key = `${sessionId}_${model}`;
+        const searchOptions = options || {};
+        const previous = this.latestRequests.get(key);
 
         // Store the latest request (overwrites previous)
         this.latestRequests.set(key, {
@@ -398,6 +429,9 @@ class SearchService {
             sessionId,
             requestId,
             autofillSessionId: autofillSessionId || null,
+            spellCheckText: searchOptions.spellCheckText || query,
+            isContinuation: searchOptions.isContinuation === true,
+            priorQuery: previous && previous.query ? previous.query : '',
             timestamp: Date.now()
         });
 
@@ -444,7 +478,9 @@ class SearchService {
             return { results: [], spellCheck: null };
         }
 
-        const { query, model, ws, sessionId, requestId, autofillSessionId } = latestRequest;
+        const { query, model, ws, sessionId, requestId, autofillSessionId, spellCheckText, isContinuation, priorQuery } = latestRequest;
+        const tagSearchQuery = this.truncateTagSearchQuery(query);
+        const spellCheckInput = (spellCheckText || query || '').trim();
 
         this._searchPacketContext = {
             requestId: requestId || null,
@@ -491,7 +527,7 @@ class SearchService {
                 // Start all services independently and send results as they complete
 
                 // Start character search as independent service
-                const characterPromise = this.performCharacterSearch(query, model, ws, requestId).then(results => {
+                const characterPromise = this.performCharacterSearch(tagSearchQuery, model, ws, requestId).then(results => {
                     return results;
                 }).catch(error => {
                     console.error('Character search error:', error);
@@ -509,19 +545,22 @@ class SearchService {
                 });
 
                 // Tag results stream per-model via makeTagRequests(); aggregate only for complete payload
-                const tagPromise = this.performTagSearch(query, model, ws, sessionId, requestId).catch(error => {
+                const tagPromise = this.performTagSearch(tagSearchQuery, model, ws, sessionId, requestId, {
+                    isContinuation: isContinuation,
+                    priorQuery: priorQuery || ''
+                }).catch(error => {
                     console.error('Tag search error:', error);
                     return [];
                 });
 
                 // Start spellcheck first; thesaurus runs after spell check so corrections apply
-                const spellcheckPromise = this.performSpellCheckAsync(query, ws, requestId).catch(error => {
+                const spellcheckPromise = this.performSpellCheckAsync(spellCheckInput, ws, requestId).catch(error => {
                     console.error('Spellcheck error:', error);
                     return null;
                 });
 
                 const wordLookupPromise = spellcheckPromise.then(spellCheckData =>
-                    this.performWordLookupAsync(query, ws, requestId, spellCheckData)
+                    this.performWordLookupAsync(spellCheckInput, ws, requestId, spellCheckData)
                 ).catch(error => {
                     console.error('Word lookup error:', error);
                     return null;
@@ -593,7 +632,7 @@ class SearchService {
                 // Only perform spell checking for "Text:" searches
                 try {
                     if (this.spellChecker && typeof this.spellChecker.checkText === 'function') {
-                        spellCheckData = this.performSpellCheck(textAfterPrefix);
+                        spellCheckData = await this.performSpellCheckWithTagHints(textAfterPrefix);
 
                         // Send spell check results separately if WebSocket is available
                         if (ws && spellCheckData) {
@@ -891,7 +930,9 @@ class SearchService {
         return { fromCache: false, tags: normalized };
     }
 
-    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null) {
+    async makeTagRequests(query, model, queryHash, ws = null, sessionId = null, requestId = null, options = {}) {
+        const isContinuation = options.isContinuation === true;
+        const priorQuery = options.priorQuery || '';
         const https = require('https');
         const tagSearchDatabase = this._getTagSearchDatabaseModule();
         const normalizedQuery = tagSearchDatabase && typeof tagSearchDatabase.normalizeTagSearchQuery === 'function'
@@ -899,7 +940,16 @@ class SearchService {
             : (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
         const makeTagRequest = async (apiModel) => {
-            const cachedResponse = this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+            let cachedResponse = this._lookupNovelAiTagCache(normalizedQuery, apiModel);
+            if (isContinuation && (!cachedResponse || !cachedResponse.tags || cachedResponse.tags.length === 0)) {
+                const prefixHit = this._lookupNovelAiTagPrefixCache(normalizedQuery, apiModel);
+                if (prefixHit && prefixHit.tags && prefixHit.tags.length > 0) {
+                    const grewBy = normalizedQuery.length - (priorQuery || '').trim().length;
+                    if (grewBy >= 0 && grewBy <= 4) {
+                        cachedResponse = prefixHit;
+                    }
+                }
+            }
             if (cachedResponse && cachedResponse.tags && cachedResponse.tags.length > 0) {
                 return cachedResponse;
             }
@@ -910,7 +960,7 @@ class SearchService {
 
             if (sessionId && ws) {
                 // Use rate limiting for WebSocket-based requests
-                abortSignal = await this.throttleTagRequest(sessionId, normalizedQuery, apiModel, localRequestId, ws);
+                abortSignal = await this.throttleTagRequest(sessionId, normalizedQuery, apiModel, localRequestId, ws, { isContinuation });
 
                 // Check if this request was aborted while waiting
                 if (!abortSignal || abortSignal?.aborted) {
@@ -1391,6 +1441,81 @@ class SearchService {
         }
     }
 
+    async performSpellCheckWithTagHints(spellCheckText) {
+        const base = this.performSpellCheck(spellCheckText);
+        if (!base || !base.hasErrors) {
+            return base;
+        }
+
+        await this.ensureServicesInitialized();
+        const suggestions = { ...(base.suggestions || {}) };
+        const tagLookup = this.globalResources && typeof this.globalResources.getTagDatabase === 'function'
+            ? this.globalResources.getTagDatabase()
+            : null;
+
+        const mergeSuggestions = (word, incoming) => {
+            if (!word || !incoming || incoming.length === 0) return;
+            const existing = suggestions[word] || [];
+            const merged = [];
+            const seen = new Set();
+            for (const item of [...incoming, ...existing]) {
+                const key = String(item).toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                merged.push(item);
+            }
+            suggestions[word] = merged.slice(0, 10);
+        };
+
+        const addTagTitleSuggestions = (word, titles) => {
+            for (const title of titles) {
+                const normalized = String(title || '').replace(/_/g, ' ').trim();
+                if (!normalized) continue;
+                const titleTokens = normalized.split(/\s+/).filter(Boolean);
+                if (titleTokens.length === 1) {
+                    if (tagLookup && tagLookup.getTokenMatchScore(word, titleTokens[0]) >= 40) {
+                        mergeSuggestions(word, [normalized]);
+                    }
+                } else if (tagLookup) {
+                    const coverage = tagLookup.getQueryTokenCoverageScore(spellCheckText, normalized);
+                    if (coverage >= 50) {
+                        mergeSuggestions(word, [normalized]);
+                    }
+                }
+            }
+        };
+
+        if (this.tagAutofillSearch) {
+            for (const word of base.misspelled) {
+                try {
+                    const rows = await this.tagAutofillSearch.searchTags(word, { limit: 6 });
+                    addTagTitleSuggestions(word, rows.map(r => r.name || r.title));
+                } catch (e) {
+                    // non-fatal
+                }
+            }
+            if (base.misspelled.length >= 2) {
+                try {
+                    const phraseRows = await this.tagAutofillSearch.searchTags(spellCheckText, { limit: 4 });
+                    addTagTitleSuggestions(base.misspelled[0], phraseRows.map(r => r.name || r.title));
+                } catch (e) {
+                    // non-fatal
+                }
+            }
+        }
+
+        const tagDb = this._getTagSearchDatabaseModule();
+        const normalizedPhrase = tagDb && typeof tagDb.normalizeTagSearchQuery === 'function'
+            ? tagDb.normalizeTagSearchQuery(spellCheckText)
+            : spellCheckText.trim().toLowerCase();
+        const cached = this._lookupNovelAiTagCache(normalizedPhrase, 'nai-diffusion-3');
+        if (cached && cached.tags) {
+            addTagTitleSuggestions(base.misspelled[0], cached.tags.map(t => t.tag));
+        }
+
+        return { ...base, suggestions };
+    }
+
     searchTextReplacements(searchQuery, hasPickSuffix) {
         // Access text replacements from globalResources instance
         if (!this.globalResources) return [];
@@ -1586,7 +1711,8 @@ class SearchService {
     }
 
     // New helper method for independent tag search
-    async performTagSearch(query, model, ws = null, sessionId = null, requestId = null) {
+    async performTagSearch(query, model, ws = null, sessionId = null, requestId = null, options = {}) {
+        const tagOptions = options || {};
         // Lazy-load tag search services if not already loaded
         await this.ensureServicesInitialized();
 
@@ -1600,7 +1726,7 @@ class SearchService {
                 ? tagDb.normalizeTagSearchQuery(query)
                 : (query || '').trim().toLowerCase().replace(/\s+/g, ' ');
             const queryHash = this.generateQueryHash(normalizedQuery, model);
-            const tagResults = await this.makeTagRequests(normalizedQuery, model, queryHash, ws, sessionId, requestId);
+            const tagResults = await this.makeTagRequests(normalizedQuery, model, queryHash, ws, sessionId, requestId, options);
             return tagResults;
         } catch (error) {
             console.error('Tag search error:', error);
@@ -1624,8 +1750,7 @@ class SearchService {
                 });
             }
 
-            // Perform spell checking
-            const spellCheckData = this.performSpellCheck(query);
+            const spellCheckData = await this.performSpellCheckWithTagHints(query);
 
             if (ws) {
                 if (spellCheckData && spellCheckData.hasErrors) {

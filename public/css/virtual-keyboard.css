@@ -1,0 +1,226 @@
+/* Virtual on-screen keyboard — chromeless panel; drag header on desktop, dock on mobile */
+
+#virtualKeyboardModal.virtual-keyboard {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    box-shadow: 0 10px 36px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    background: var(--glass-windows-semi-bg, var(--glass-layer-dark-bg));
+    overflow: hidden;
+    -webkit-backdrop-filter: saturate(2) blur(12px);
+    backdrop-filter: saturate(2) blur(12px);
+}
+
+#virtualKeyboardModal.virtual-keyboard .modal-focus-overlay,
+#virtualKeyboardModal.virtual-keyboard .modal-window-controls,
+#virtualKeyboardModal.virtual-keyboard .resize-handle {
+    display: none !important;
+    pointer-events: none !important;
+}
+
+/* Drag header (uses .modal-window-title for modalUtils drag) */
+#virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-header.modal-window-title {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: 100%;
+    min-height: 28px;
+    margin: 0;
+    padding: 6px 12px;
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.22);
+    box-shadow: none;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+    z-index: 1;
+}
+
+#virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-header.dragging {
+    cursor: grabbing;
+}
+
+#virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-grip {
+    display: block;
+    width: 28px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow:
+        0 -6px 0 rgba(255, 255, 255, 0.28),
+        0 6px 0 rgba(255, 255, 255, 0.28);
+    flex-shrink: 0;
+}
+
+#virtualKeyboardModal.virtual-keyboard .virtual-keyboard-drag-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.75);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: none;
+    filter: none;
+}
+
+#virtualKeyboardModal.virtual-keyboard .virtual-keyboard-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--spacing-sm);
+    overflow: hidden;
+    border-radius: 0 0 10px 10px;
+    background: transparent;
+}
+
+.virtual-keyboard-keys {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.virtual-keyboard-row {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    flex-wrap: nowrap;
+    width: 100%;
+}
+
+.virtual-keyboard-row.hidden {
+    display: none;
+}
+
+/* Uniform character keys */
+.virtual-keyboard-key--std {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 36px;
+}
+
+.virtual-keyboard-key {
+    min-height: 36px;
+    padding: 6px 4px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary, #eee);
+    font-size: 0.85rem;
+    font-family: var(--font-mono, monospace);
+    line-height: 1.2;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.virtual-keyboard-key:active {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.virtual-keyboard-key[data-active="on"] {
+    background: rgba(120, 170, 255, 0.35);
+    border-color: rgba(170, 210, 255, 0.5);
+}
+
+/* Larger special keys */
+.virtual-keyboard-key--wide {
+    flex: 1.75 1 0;
+    min-width: 44px;
+    max-width: none;
+}
+
+.virtual-keyboard-key--space {
+    flex: 5.5 1 0;
+    min-width: 120px;
+}
+
+.virtual-keyboard-key--close {
+    color: rgba(255, 180, 180, 0.95);
+    border-color: rgba(255, 120, 120, 0.25);
+}
+
+.virtual-keyboard-key--close:active {
+    background: rgba(200, 80, 80, 0.35);
+}
+
+.virtual-keyboard-key.trackpad-active {
+    background: rgba(120, 200, 255, 0.4);
+}
+
+.virtual-keyboard-keys--wide {
+    gap: 5px;
+}
+
+.virtual-keyboard-keys--wide .virtual-keyboard-key {
+    min-height: 38px;
+    font-size: 0.9rem;
+}
+
+.virtual-keyboard-keys--wide .virtual-keyboard-key--std {
+    max-width: none;
+}
+
+.virtual-keyboard-keys--wide .virtual-keyboard-key--space {
+    flex: 7 1 0;
+    min-width: 160px;
+}
+
+body.desktop-mode #virtualKeyboardModal.virtual-keyboard:not(.virtual-keyboard--docked) .virtual-keyboard-content {
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+body.desktop-mode #virtualKeyboardModal.virtual-keyboard:not(.virtual-keyboard--docked) .virtual-keyboard-keys {
+    gap: 6px;
+}
+
+body.desktop-mode #virtualKeyboardModal.virtual-keyboard:not(.virtual-keyboard--docked) .virtual-keyboard-key {
+    min-height: 34px;
+}
+
+body.desktop-mode #virtualKeyboardModal.virtual-keyboard:not(.virtual-keyboard--docked) .virtual-keyboard-keys--wide .virtual-keyboard-key {
+    min-height: 40px;
+}
+
+/* Mobile docked presentation */
+#virtualKeyboardModal.virtual-keyboard--docked {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    transform: none;
+    border-radius: 12px 12px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    z-index: calc(var(--z-modal, 1100) + 50);
+    contain: none;
+}
+
+#virtualKeyboardModal.virtual-keyboard--docked .virtual-keyboard-drag-header {
+    display: none;
+}
+
+#virtualKeyboardModal.virtual-keyboard--docked .virtual-keyboard-content {
+    border-radius: 0;
+    padding-bottom: calc(var(--spacing-sm) + env(safe-area-inset-bottom, 0px));
+}
+
+html.virtual-keyboard-dock-padding body {
+    padding-bottom: var(--virtual-keyboard-height, 0px);
+}

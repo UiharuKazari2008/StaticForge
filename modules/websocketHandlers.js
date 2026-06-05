@@ -423,7 +423,9 @@ class WebSocketMessageHandlers {
             desktop: {
                 autoLaunchWorkspace: desktop.autoLaunchWorkspace !== false,
                 liveWindowRepositioning: desktop.liveWindowRepositioning === true,
-                exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true
+                exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
+                notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
+                bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true
             },
             naxt: {
                 elevatePins: this.normalizeNaxtElevatePinsSetting(naxt)
@@ -445,6 +447,12 @@ class WebSocketMessageHandlers {
             }
             if (typeof patch.desktop.exitDesktopOnWorkspaceMaximise === 'boolean') {
                 out.desktop.exitDesktopOnWorkspaceMaximise = patch.desktop.exitDesktopOnWorkspaceMaximise;
+            }
+            if (typeof patch.desktop.notificationBridgeEnabled === 'boolean') {
+                out.desktop.notificationBridgeEnabled = patch.desktop.notificationBridgeEnabled;
+            }
+            if (typeof patch.desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
+                out.desktop.bypassNotificationBridgeInDesktopMode = patch.desktop.bypassNotificationBridgeInDesktopMode;
             }
         }
         if (patch.naxt && typeof patch.naxt === 'object') {
@@ -1362,7 +1370,7 @@ class WebSocketMessageHandlers {
 
     // Handle character search requests - Ack-less Latest Request Wins Pattern
     async handleCharacterSearch(ws, message, clientInfo, wsServer) {
-        const { query, model, requestId, autofillSessionId } = message;
+        const { query, model, requestId, autofillSessionId, spellCheckText, isContinuation } = message;
 
         if (!query) {
             this.sendError(ws, 'Missing query parameter', 'search_characters');
@@ -1372,7 +1380,8 @@ class WebSocketMessageHandlers {
         try {
             // Perform search with latest-request-wins pattern
             const result = await this.globalResources.getSearchService().searchCharacters(
-                query, model, ws, clientInfo.sessionId, null, requestId, autofillSessionId
+                query, model, ws, clientInfo.sessionId, null, requestId, autofillSessionId,
+                { spellCheckText, isContinuation }
             );
 
             if (result && result.superseded) {

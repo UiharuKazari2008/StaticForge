@@ -1556,6 +1556,97 @@ function showManualPreviewNavigationLoading(show) {
     }
 }
 
+function resetDynamicGenerationControls() {
+    const dynamicGenButtons = [
+        { btn: todBtn, defaultState: 'off' },
+        { btn: weatherBtn, defaultState: 'off' },
+        { btn: seasonBtn, defaultState: 'off' },
+        { btn: dynamicCarousel, defaultState: 'off' },
+        { btn: creativeBtn, defaultState: 'off' }
+    ];
+
+    dynamicGenButtons.forEach(({ btn, defaultState }) => {
+        if (!btn) return;
+
+        btn.setAttribute('data-state', defaultState);
+        btn.classList.toggle('active', defaultState === 'on');
+        btn.removeAttribute('data-override');
+        btn.removeAttribute('data-context-locked');
+        btn.removeAttribute('data-chain-updates');
+
+        if (btn === weatherBtn) {
+            btn.removeAttribute('data-location');
+            delete btn.dataset.locationDisplay;
+        }
+
+        if (btn.id === 'todBtn' && typeof updateTodButtonIcon === 'function') {
+            updateTodButtonIcon();
+        }
+
+        if (btn.id === 'creativeBtn') {
+            btn.removeAttribute('data-toggle-clothing');
+            btn.removeAttribute('data-toggle-action');
+        }
+
+        if (btn.id === 'seasonBtn') {
+            btn.setAttribute('data-toggle-holiday', 'true');
+            btn.setAttribute('data-toggle-guidance', 'true');
+        }
+
+        if (btn === dynamicCarousel) {
+            btn.removeAttribute('data-fast-mode');
+            btn.removeAttribute('data-chain-updates');
+            btn.removeAttribute('data-expire-preview');
+            btn.removeAttribute('data-force-refresh');
+            btn.removeAttribute('data-use-cache');
+            btn.removeAttribute('data-has-cache');
+            btn.removeAttribute('data-creative-directive-strategy');
+            btn.removeAttribute('data-creative-directive-tool-passes');
+            btn.removeAttribute('data-creative-directive-dialogs');
+            btn.removeAttribute('data-ai-temperature');
+            delete btn.dataset.optimizeEnabled;
+            delete btn.dataset.tokenCount;
+            delete btn.dataset.twoStage;
+            delete btn.dataset.pipelineAware;
+            delete btn.dataset.initialPromptAware;
+            delete btn.dataset.lockSubject;
+            clearDynamicGenerationLockState();
+        }
+    });
+}
+
+function disableDynamicGeneration() {
+    resetDynamicGenerationControls();
+
+    if (window.dynamicGenerationData) {
+        delete window.dynamicGenerationData;
+    }
+
+    if (creativeDirectiveInput) {
+        creativeDirectiveInput.value = '';
+    }
+
+    if (dynamicGenerationGroup) {
+        dynamicGenerationGroup.classList.add('hidden');
+    }
+
+    if (dynamicGenerationToggleBtn) {
+        dynamicGenerationToggleBtn.setAttribute('data-state', 'off');
+    }
+
+    clearManualRentanContextOverlay();
+
+    if (typeof updateDynamicGenerationToggleBtn === 'function') {
+        updateDynamicGenerationToggleBtn();
+    }
+    if (typeof updatePromptStatusIcons === 'function') {
+        updatePromptStatusIcons();
+    }
+    if (typeof updateCarouselIndicators === 'function') {
+        updateCarouselIndicators();
+    }
+}
+
 /**
  * Clear manual form - MOVED FROM app.js
  * TODO: Move function implementation from app.js
@@ -1598,61 +1689,8 @@ function clearManualForm() {
     window.lastGeneratedImageName = null;
     updateGeneratedImageNameDisplay(null);
 
-    // Reset dynamic generation buttons to default states
-    const dynamicGenButtons = [
-        { btn: todBtn, defaultState: 'off' },
-        { btn: weatherBtn, defaultState: 'off' },
-        { btn: seasonBtn, defaultState: 'off' },
-        { btn: dynamicCarousel, defaultState: 'off' },
-        { btn: creativeBtn, defaultState: 'off' }
-    ];
+    resetDynamicGenerationControls();
 
-    dynamicGenButtons.forEach(({ btn, defaultState }) => {
-        if (btn) {
-            btn.setAttribute('data-state', defaultState);
-            btn.classList.toggle('active', defaultState === 'on');
-            btn.removeAttribute('data-override'); // Clear any overrides
-            btn.removeAttribute('data-context-locked'); // Clear context lock
-
-            // Clear weather location data for weather button
-            if (btn === weatherBtn) {
-                btn.removeAttribute('data-location');
-                delete btn.dataset.locationDisplay;
-            }
-
-            // Update TOD button icon when reset
-            if (btn.id === 'todBtn') {
-                updateTodButtonIcon();
-            }
-
-            // Clear creative button options
-            if (btn.id === 'creativeBtn') {
-                btn.removeAttribute('data-toggle-clothing');
-                btn.removeAttribute('data-toggle-action');
-            }
-
-            // Reset season button holiday and guidance toggles to default (true)
-            if (btn.id === 'seasonBtn') {
-                btn.setAttribute('data-toggle-holiday', 'true');
-                btn.setAttribute('data-toggle-guidance', 'true');
-            }
-
-            // Reset dynamicCarousel specific attributes
-            if (btn === dynamicCarousel) {
-                btn.removeAttribute('data-fast-mode');
-                btn.removeAttribute('data-chain-updates');
-                btn.removeAttribute('data-expire-preview');
-                btn.removeAttribute('data-force-refresh');
-                btn.removeAttribute('data-use-cache');
-                btn.removeAttribute('data-creative-directive-strategy');
-                btn.removeAttribute('data-creative-directive-tool-passes');
-                btn.removeAttribute('data-creative-directive-dialogs');
-                btn.removeAttribute('data-ai-temperature');
-            }
-        }
-    });
-
-    // Clear dynamic generation data
     if (window.dynamicGenerationData) {
         delete window.dynamicGenerationData;
     }
@@ -2183,6 +2221,8 @@ function addSharedFieldsToRequestBody(requestBody, values) {
     const seasonBtn = document.getElementById('seasonBtn');
     const creativeBtn = document.getElementById('creativeBtn');
 
+    const dynamicGenerationLocks = getDynamicGenerationLockState();
+
     // Collect current button states
     const dynamicData = {
         tod: collectDynamicButtonState(todBtn),
@@ -2204,8 +2244,8 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         initialPromptAware: dynamicCarousel?.dataset.initialPromptAware === 'true',
         lockSubject: dynamicCarousel?.dataset.lockSubject === 'true',
         fast_mode: dynamicCarousel?.dataset.fastMode === 'true',
-        cache_locked: dynamicCarousel?.dataset.state === 'on',
-        context_locked: dynamicCarousel?.dataset.contextLocked === 'true',
+        cache_locked: dynamicGenerationLocks.cacheLocked,
+        context_locked: dynamicGenerationLocks.contextLocked,
         expire_preview: dynamicCarousel?.dataset.expirePreview === 'true',
         use_cache_responses: dynamicCarousel?.getAttribute('data-use-cache') === 'false' ? false : undefined,
         chain_updates: dynamicCarousel?.dataset.chainUpdates === 'true' ? true : false, // Default to false
@@ -2228,7 +2268,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         value !== undefined && value !== false && value !== null && value !== ''
     );
 
-    if (hasAnyConfiguration && dynamicGenerationToggleBtn?.getAttribute('data-state') !== 'off') {
+    if (hasAnyConfiguration && isDynamicGenerationEnabled()) {
         // Preserve existing compiled prompt and other data
         const existingData = window.dynamicGenerationData || {};
 
@@ -3802,12 +3842,7 @@ async function loadIntoManualForm(type = 'metadata', source, image = null) {
                 // Restore lock states from compiled prompt
                 const compiledPrompt = window.dynamicGenerationData.compiled_prompt;
                 if (compiledPrompt) {
-                    if (compiledPrompt.cache_locked !== undefined) {
-                        dynamicCarousel.setAttribute('data-state', compiledPrompt.cache_locked ? 'on' : 'off');
-                    }
-                    if (compiledPrompt.context_locked !== undefined) {
-                        dynamicCarousel.setAttribute('data-context-locked', compiledPrompt.context_locked ? 'true' : 'false');
-                    }
+                    applyDynamicGenerationLockStateFromCompiledPrompt(compiledPrompt);
                     // Only set chain_updates if it's explicitly true, otherwise leave undefined (defaults to false on client)
                     if (compiledPrompt.chain_updates === true) {
                         dynamicCarousel.setAttribute('data-chain-updates', 'true');
@@ -4423,13 +4458,7 @@ async function handleManualGeneration(e, options = {}) {
                     dynamicCarousel.setAttribute('data-has-cache', 'true');
                     dynamicCarousel.setAttribute('data-use-cache', 'true');
 
-                    // Restore lock states from compiled prompt
-                    if (compiled_prompt.cache_locked !== undefined) {
-                        dynamicCarousel.setAttribute('data-state', compiled_prompt.cache_locked ? 'on' : 'off');
-                    }
-                    if (compiled_prompt.context_locked !== undefined) {
-                        dynamicCarousel.setAttribute('data-context-locked', compiled_prompt.context_locked ? 'true' : 'false');
-                    }
+                    applyDynamicGenerationLockStateFromCompiledPrompt(compiled_prompt);
                 }
 
                 // Clear any stored request data

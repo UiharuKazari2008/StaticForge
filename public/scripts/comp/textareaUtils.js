@@ -3,6 +3,63 @@
  * Common functions for creating and managing editable textareas across the application
  */
 
+const textInputCompositionDepth = new WeakMap();
+
+function bindTextInputCompositionTracking(el) {
+    if (!el || el.dataset.compositionTracked === '1') return;
+    el.dataset.compositionTracked = '1';
+    el.addEventListener('compositionstart', () => {
+        textInputCompositionDepth.set(el, (textInputCompositionDepth.get(el) || 0) + 1);
+    });
+    el.addEventListener('compositionend', () => {
+        const depth = textInputCompositionDepth.get(el) || 0;
+        if (depth <= 1) {
+            textInputCompositionDepth.delete(el);
+        } else {
+            textInputCompositionDepth.set(el, depth - 1);
+        }
+    });
+}
+
+/** True while IME / on-device autocorrect composition is active — avoid programmatic edits. */
+function isTextInputComposing(el, e) {
+    if (e && e.isComposing) return true;
+    if (el && (textInputCompositionDepth.get(el) || 0) > 0) return true;
+    return false;
+}
+
+const textInputSideEffectRafIds = new WeakMap();
+
+/**
+ * Run a non-editing input side effect after the browser commits the keystroke.
+ * Coalesces multiple input events per textarea per frame. Does not stop propagation.
+ */
+function scheduleTextInputSideEffect(textarea, fn) {
+    if (!textarea || typeof fn !== 'function') return;
+    if (isTextInputComposing(textarea)) return;
+
+    const prevId = textInputSideEffectRafIds.get(textarea);
+    if (prevId) {
+        cancelAnimationFrame(prevId);
+    }
+
+    const rafId = requestAnimationFrame(() => {
+        textInputSideEffectRafIds.delete(textarea);
+        if (!textarea.isConnected) return;
+        if (isTextInputComposing(textarea)) return;
+        fn();
+    });
+    textInputSideEffectRafIds.set(textarea, rafId);
+}
+
+document.addEventListener('focusin', (e) => {
+    const el = e.target;
+    if (!el) return;
+    if (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'radio')) {
+        bindTextInputCompositionTracking(el);
+    }
+}, true);
+
 /**
  * Replace a textarea range without clearing the browser undo stack.
  * Use instead of building a new string and assigning textarea.value.
@@ -123,7 +180,9 @@ function wireManualStylePromptTextarea(textarea) {
             stopEmphasisHighlighting();
         }, 'emphasisBlur');
     }
-    if (typeof autoResizeTextarea === 'function') {
+    if (typeof scheduleAutoResizeTextarea === 'function') {
+        addSafeEventListener(textarea, 'input', () => scheduleAutoResizeTextarea(textarea), 'resize');
+    } else if (typeof autoResizeTextarea === 'function') {
         addSafeEventListener(textarea, 'input', () => autoResizeTextarea(textarea), 'resize');
     }
     // attachPromptTextareaContextMenu: public/scripts/comp/promptTextareaContextMenu.js

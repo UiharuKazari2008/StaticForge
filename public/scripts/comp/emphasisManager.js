@@ -1692,8 +1692,17 @@ function startEmphasisHighlighting(textarea) {
     emphasisHighlightingTarget = textarea;
 
     // Add event listeners for real-time highlighting using safe event listeners
-    addSafeEventListener(textarea, 'input', () => {
-        autoResizeTextarea(textarea);
+    addSafeEventListener(textarea, 'input', (e) => {
+        // isTextInputComposing: public/scripts/comp/textareaUtils.js
+        if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea, e)) {
+            return;
+        }
+        // scheduleAutoResizeTextarea: public/scripts/comp/utilities.js
+        if (typeof scheduleAutoResizeTextarea === 'function') {
+            scheduleAutoResizeTextarea(textarea);
+        } else {
+            autoResizeTextarea(textarea);
+        }
         throttledUpdateEmphasisHighlighting(textarea);
     }, 'emphasisHighlighting');
 
@@ -1763,6 +1772,11 @@ function handleNsfwTagDetection(textarea, currentValue) {
 
 function updateEmphasisHighlighting(textarea) {
     if (!textarea) return;
+
+    // isTextInputComposing: public/scripts/comp/textareaUtils.js
+    if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea)) {
+        return;
+    }
     
     // Skip emphasis highlighting for creative directive container (only use search highlighting)
     if (textarea.closest('.creative-directive-container')) return;

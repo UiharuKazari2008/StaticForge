@@ -19,6 +19,7 @@ class ServiceWorkerManager {
         this.pendingRequests = new Map();
         this.updateToastId = null;
         this.checkingToastId = null;
+        this.initUpdateModalActive = false;
         this.timeoutToastId = null;
         this.swReadyTimeout = null;
         this.initialCheckDone = false;
@@ -37,6 +38,61 @@ class ServiceWorkerManager {
 
     _isDesktopTrayMode() {
         return Boolean(window.isDesktop && document.body.classList.contains('desktop-mode'));
+    }
+
+    _isPreStartupUpdatePhase() {
+        // wsClient: public/scripts/websocket.js
+        return Boolean(
+            window.isDesktop &&
+            window.wsClient &&
+            !window.wsClient.preStartupHandoffCompleted
+        );
+    }
+
+    _showInitUpdateModal(message, progress = 0) {
+        if (!this._isPreStartupUpdatePhase() || !window.wsClient) return;
+        this.initUpdateModalActive = true;
+        window.wsClient.showWindowsUpdateModal(message, progress);
+    }
+
+    _updateInitUpdateModal(message, progress) {
+        if (!this.initUpdateModalActive || !window.wsClient) return;
+        window.wsClient.updateWindowsUpdateModal(message, progress);
+    }
+
+    _showInitUpdateRestartPrompt(message) {
+        if (!this.initUpdateModalActive || !window.wsClient) return;
+        window.wsClient.showWindowsUpdateRestartPrompt(message);
+    }
+
+    _hideInitUpdateModal() {
+        if (!window.wsClient) return;
+        this.initUpdateModalActive = false;
+        window.wsClient.hideWindowsUpdateModal();
+        window.wsClient.setUpdateModalCallbacks(null, null, null);
+    }
+
+    _waitForInitUpdateUserChoice() {
+        return new Promise((resolve) => {
+            if (!window.wsClient) {
+                resolve({ action: 'later', success: true });
+                return;
+            }
+            window.wsClient.setUpdateModalCallbacks(
+                null,
+                () => this.forceRestart(),
+                () => {
+                    this._hideInitUpdateModal();
+                    resolve({ action: 'later', success: true });
+                }
+            );
+        });
+    }
+
+    _setPreStartupUpdateStageMessage(message) {
+        if (!this._isPreStartupUpdatePhase() || !window.wsClient) return;
+        const ws = window.wsClient;
+        ws._setConnectionBeat(ws.connectionUi.beat || 'negotiation', { message });
     }
 
     _getServiceWorkerTrayAnchor() {
@@ -961,6 +1017,15 @@ class ServiceWorkerManager {
     updateProgressToast(progress) {
         this.updateProgress = progress;
 
+        if (this.initUpdateModalActive && window.wsClient) {
+            const { completed, total } = this.lastUpdateCounts;
+            const message = total > 0
+                ? `Downloading updates (${completed}/${total})...`
+                : 'Downloading updates...';
+            window.wsClient.updateWindowsUpdateModal(message, progress);
+            return;
+        }
+
         // Desktop mode: tray popup
         if (this._isDesktopTrayMode()) {
             if (this.updateToastId === 'service-worker-tray-popup') {
@@ -1241,6 +1306,10 @@ class ServiceWorkerManager {
                 if (filesCount > 0) {
                     this.trayPopup.dismissedUntilComplete = false;
                     this.trayPopup.filesTotal = filesCount;
+                    // Pre-startup init flow shows windowsUpdateModal and waits for user choice.
+                    if (this.initUpdateModalActive) {
+                        break;
+                    }
                     // Show completion message with restart button
                     setTimeout(() => {
                         this.showUpdateCompleteToast();
@@ -1268,8 +1337,8 @@ class ServiceWorkerManager {
                     this.updateProgress = progress;
                     this.updateProgressToast(progress);
                     
-                    // Show update toast if not already shown
-                    if (!this.updateToastId) {
+                    // Show update toast if not already shown (skip during pre-startup init modal)
+                    if (!this.updateToastId && !this.initUpdateModalActive) {
                         this.showUpdateToast([{url: '...', hash: '...'}]);
                     }
                     
@@ -1918,8 +1987,13 @@ class ServiceWorkerManager {
 
     // Initialization step: Check for and download updates as part of startup process
     async checkAndDownloadUpdatesForInit() {
+        const useInitModal = this._isPreStartupUpdatePhase();
         try {
             console.log('🔍 Checking for application updates during startup...');
+
+            if (useInitModal) {
+                this._setPreStartupUpdateStageMessage('Checking for updates...');
+            }
 
             // Make the actual request
             const response = await fetch('/', {
@@ -1949,17 +2023,22 @@ class ServiceWorkerManager {
 
             console.log(`📦 Found ${filesToUpdate.length} updates to download`);
 
+            if (useInitModal) {
+                this._showInitUpdateModal(`Downloading ${filesToUpdate.length} updates...`, 0);
+            }
+
             // Start downloading updates with integrated progress - AWAIT the result
             const downloadResult = await this.downloadUpdatesForInit(filesToUpdate);
             this.initialCheckDone = true;
             console.log('Update download process completed:', downloadResult);
 
-            // If user chose to skip, the download result will indicate this
-            // If updates were downloaded successfully, user will be prompted with Restart/Skip buttons
-            // In either case, we return here and let the initialization continue
+            // Pre-startup modal stays open until user responds (restart/later/skip) inside downloadUpdatesForInit
 
         } catch (error) {
             console.error('❌ Error during update check:', error);
+            if (useInitModal && this.initUpdateModalActive) {
+                this._hideInitUpdateModal();
+            }
             this.initialCheckDone = true;
             // Don't fail the startup process for update check errors - continue normally
         }
@@ -1967,10 +2046,19 @@ class ServiceWorkerManager {
 
     // Download updates with integrated progress for initialization
     async downloadUpdatesForInit(files) {
+        const useInitModal = this._isPreStartupUpdatePhase();
+
         return new Promise(async (resolve) => {
+            const finishInitDownload = (result) => {
+                if (useInitModal && result.userChoice !== 'restart') {
+                    this._hideInitUpdateModal();
+                }
+                resolve(result);
+            };
+
             if (!this.swRegistration || !this.swRegistration.active) {
                 console.warn('Service Worker not ready for updates');
-                resolve({ success: false, reason: 'Service Worker not ready' });
+                finishInitDownload({ success: false, reason: 'Service Worker not ready' });
                 return;
             }
             
@@ -1999,14 +2087,14 @@ class ServiceWorkerManager {
                 
                 await waitForCompletion();
                 // After waiting, check if we still need to download these files
-                resolve({ success: false, reason: 'Download was already in progress' });
+                finishInitDownload({ success: false, reason: 'Download was already in progress' });
                 return;
             }
             
             // Check if we're already updating
             if (this.isUpdating) {
                 console.warn('Update already in progress, skipping');
-                resolve({ success: false, reason: 'Update already in progress' });
+                finishInitDownload({ success: false, reason: 'Update already in progress' });
                 return;
             }
 
@@ -2014,6 +2102,15 @@ class ServiceWorkerManager {
             let hasErrors = false;
             let skipRequested = false;
             let downloadCompleted = false;
+
+            const handleSkipDuringDownload = () => {
+                if (skipRequested || downloadCompleted) return;
+                skipRequested = true;
+                downloadCompleted = true;
+                navigator.serviceWorker.removeEventListener('message', progressHandler);
+                this.isUpdating = false;
+                finishInitDownload({ success: false, userChoice: 'skip', reason: 'User skipped' });
+            };
 
             // Listen for progress updates
             const progressHandler = (event) => {
@@ -2023,7 +2120,17 @@ class ServiceWorkerManager {
                     // Download started
                     console.log('Download started in service worker');
                 } else if (event.data.type === 'STATIC_CACHE_PROGRESS') {
-                    // UI is handled by the service worker tray popup (desktop) or existing startup UI (mobile).
+                    const completed = event.data.completed || 0;
+                    const total = event.data.total || 0;
+                    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    this.updateProgress = progress;
+                    this.lastUpdateCounts = { completed, total };
+                    if (useInitModal) {
+                        this._updateInitUpdateModal(
+                            total > 0 ? `Downloading updates (${completed}/${total})...` : 'Downloading updates...',
+                            progress
+                        );
+                    }
                 } else if (event.data.type === 'STATIC_CACHE_COMPLETE') {
                     // Use files.length as fallback if total is 0 (handles race condition with fast downloads)
                     updatesDownloaded = event.data.total > 0 ? event.data.total : (event.data.files ? event.data.files.length : 0);
@@ -2045,11 +2152,24 @@ class ServiceWorkerManager {
                             const actualFilesCount = event.data.files ? event.data.files.length : updatesDownloaded;
                             updatesDownloaded = actualFilesCount;
 
-                            // The tray completion popup prompts restart/later. Continue init regardless.
-                            resolve({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'later' });
+                            if (useInitModal) {
+                                this._showInitUpdateRestartPrompt(
+                                    `Updates downloaded (${actualFilesCount} files). Restart to apply changes.`
+                                );
+                                this._waitForInitUpdateUserChoice().then((choice) => {
+                                    finishInitDownload({
+                                        success: true,
+                                        filesDownloaded: actualFilesCount,
+                                        userChoice: choice.action
+                                    });
+                                });
+                            } else {
+                                // Tray completion popup prompts restart/later; continue init regardless.
+                                finishInitDownload({ success: true, filesDownloaded: updatesDownloaded, userChoice: 'later' });
+                            }
                         } else {
                             // No files downloaded or had errors - resolve but don't show restart buttons
-                            resolve({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
+                            finishInitDownload({ success: false, filesDownloaded: updatesDownloaded, hasErrors });
                         }
                     }
                 } else if (event.data.type === 'STATIC_CACHE_ERROR') {
@@ -2061,10 +2181,18 @@ class ServiceWorkerManager {
 
             navigator.serviceWorker.addEventListener('message', progressHandler);
 
-            // Desktop mode: show tray popup immediately for init downloads.
-            if (this._isDesktopTrayMode()) {
+            if (useInitModal) {
+                window.wsClient.setUpdateModalCallbacks(
+                    handleSkipDuringDownload,
+                    () => this.forceRestart(),
+                    null
+                );
+            } else if (this._isDesktopTrayMode()) {
+                // Desktop mode: show tray popup for init downloads after pre-startup handoff.
                 this.showUpdateToast(files);
             }
+
+            this.isUpdating = true;
 
             // Start caching
             this.swRegistration.active.postMessage({
@@ -2077,8 +2205,9 @@ class ServiceWorkerManager {
                 if (!skipRequested && !downloadCompleted) {
                     navigator.serviceWorker.removeEventListener('message', progressHandler);
                     downloadCompleted = true;
+                    this.isUpdating = false;
                     console.log(`Update download timed out with ${updatesDownloaded} files downloaded${hasErrors ? ' (with errors)' : ''}`);
-                    resolve({
+                    finishInitDownload({
                         success: !hasErrors && updatesDownloaded > 0,
                         filesDownloaded: updatesDownloaded,
                         hasErrors,

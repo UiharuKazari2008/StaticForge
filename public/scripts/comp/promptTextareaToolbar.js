@@ -34,12 +34,19 @@ class PromptTextareaToolbar {
             }
         }, true); // Use capture phase for better performance
         
-        // Listen for input events on all textareas for token counting
+        // Bubble phase + rAF — passive observer; must not run before native input commits (capture blocked autocorrect).
         document.addEventListener('input', (e) => {
-            if (e.target.matches('.prompt-textarea, .character-prompt-textarea')) {
-                this.updateTokenCount(e.target);
+            const textarea = e.target;
+            if (!textarea || !textarea.matches('.prompt-textarea, .character-prompt-textarea')) {
+                return;
             }
-        }, true);
+            // scheduleTextInputSideEffect: public/scripts/comp/textareaUtils.js
+            if (typeof scheduleTextInputSideEffect === 'function') {
+                scheduleTextInputSideEffect(textarea, () => this.updateTokenCount(textarea));
+            } else {
+                this.updateTokenCount(textarea);
+            }
+        });
 
         // Listen for toolbar button clicks
         document.addEventListener('click', (e) => {
@@ -1902,6 +1909,8 @@ class PromptTextareaToolbar {
         const directEmphasisBeforeinputHandler = (e) => {
             const textarea = resolveTargetTextarea(e.target);
             if (!textarea) return;
+            // isTextInputComposing: public/scripts/comp/textareaUtils.js
+            if (typeof isTextInputComposing === 'function' && isTextInputComposing(textarea, e)) return;
             if (e.inputType !== 'insertText' || !e.data || e.data.length !== 1) return;
             const char = e.data;
             const isDigit = char >= '0' && char <= '9';

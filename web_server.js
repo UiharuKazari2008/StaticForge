@@ -30,6 +30,9 @@ const { runCacheDirExpiry, CLEANUP_INTERVAL_MS, FIRST_RUN_DELAY_MS } = require('
 const { handleGeneration, buildOptions, handleRerollGeneration, handleStagedGeneration } = require('./modules/imageGeneration');
 const UnixSocketCommunication = require('./modules/unixSocketCommunication');
 const { handleNaxImageRequest } = require('./modules/naxImageServer');
+const { isAdminUser } = require('./modules/auth');
+const { streamLogFile } = require('./modules/logStreamService');
+const pm2Service = require('./modules/pm2Service');
 
 // Server readiness tracking
 const serverReadiness = {
@@ -584,6 +587,14 @@ app.use(compression({
         if (req.headers['x-no-compression']) {
             return false;
         }
+        // SSE must not be compressed (buffers until connection closes)
+        const accept = req.headers.accept || '';
+        if (accept.includes('text/event-stream')) {
+            return false;
+        }
+        if (req.path && req.path.endsWith('/stream')) {
+            return false;
+        }
         // Use compression for all other requests
         return compression.filter(req, res);
     }
@@ -1057,6 +1068,10 @@ app.use((req, res, next) => {
     if (skippedPaths.some(path => req.path.startsWith(path))) {
         return next();
     }
+    const logViewerPrefix = `/${globalResources.getLogViewerPathUuid()}`;
+    if (req.path.startsWith(logViewerPrefix)) {
+        return next();
+    }
     
     const startTime = Date.now();
     const timestamp = new Date().toLocaleString('en-US', {
@@ -1352,7 +1367,12 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                 
                 req.session.authenticated = true;
                 req.session.userType = 'admin';
-                res.json({ success: true, message: 'Login successful', userType: 'admin' });
+                res.json({
+                    success: true,
+                    message: 'Login successful',
+                    userType: 'admin',
+                    logViewerPathUuid: globalResources.getLogViewerPathUuid()
+                });
             } else if (pin === config.readOnlyPin) {
                 // Clear any failed login attempts on successful login
                 globalResources.unblockIP(realIP);
@@ -1429,13 +1449,17 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             const isAuthenticated = req.session && req.session.authenticated;
             const userType = req.session && req.session.userType;
             
-            res.json({ 
+            const pingPayload = { 
                 success: true, 
                 message: 'Pong',
                 authenticated: isAuthenticated,
                 userType: userType || null,
                 redirect: isAuthenticated ? '/app' : null
-            });
+            };
+            if (isAuthenticated && isAdminUser(req)) {
+                pingPayload.logViewerPathUuid = globalResources.getLogViewerPathUuid();
+            }
+            res.json(pingPayload);
             break;
         
         default:
@@ -1457,6 +1481,9 @@ app.options('/app', authMiddleware, (req, res) => {
     if (config.enable_dev) {
         response.devPort = config.devPort || 65202;
         response.devHost = config.devHost || 'localhost';
+    }
+    if (isAdminUser(req)) {
+        response.logViewerPathUuid = globalResources.getLogViewerPathUuid();
     }
     res.json(response);
 });
@@ -1521,6 +1548,110 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
         res.status(500).json({ success: false, error: e.message });
     }
 });
+
+// Admin log viewer (UUID-prefixed paths — not guessable)
+(function registerLogViewerRoutes() {
+    const logPath = `/${globalResources.getLogViewerPathUuid()}`;
+
+    function adminOnlyMiddleware(req, res, next) {
+        if (!isAdminUser(req)) {
+            return res.status(403).json({ success: false, error: 'Admin access required' });
+        }
+        next();
+    }
+
+    app.get(`${logPath}/sources`, authMiddleware, adminOnlyMiddleware, (req, res) => {
+        try {
+            const listed = globalResources.getLogger().listLogSources();
+            res.setHeader('Cache-Control', 'no-store');
+            res.json({
+                success: true,
+                sources: listed.sources,
+                groups: listed.groups,
+                pm2Available: pm2Service.isPm2Available()
+            });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.get(`${logPath}/pm2/status`, authMiddleware, adminOnlyMiddleware, async (req, res) => {
+        try {
+            if (!pm2Service.isPm2Available()) {
+                return res.status(404).json({ success: false, error: 'PM2 not available' });
+            }
+            const status = await pm2Service.getProcessStatus();
+            res.json({ success: true, status });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post(`${logPath}/pm2/flush`, authMiddleware, adminOnlyMiddleware, async (req, res) => {
+        try {
+            if (!pm2Service.isPm2Available()) {
+                return res.status(404).json({ success: false, error: 'PM2 not available' });
+            }
+            const result = await pm2Service.flushLogs();
+            globalResources.getLogger().info(`PM2 logs flushed for ${result.processName} (admin log viewer)`);
+            res.json({ success: true, ...result });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.post(`${logPath}/pm2/restart`, authMiddleware, adminOnlyMiddleware, async (req, res) => {
+        try {
+            if (!pm2Service.isPm2Available()) {
+                return res.status(404).json({ success: false, error: 'PM2 not available' });
+            }
+            const result = await pm2Service.restartProcess();
+            res.json({ success: true, ...result });
+        } catch (e) {
+            res.status(500).json({ success: false, error: e.message });
+        }
+    });
+
+    app.get(`${logPath}/backlog`, authMiddleware, adminOnlyMiddleware, (req, res) => {
+        try {
+            const source = req.query.source;
+            if (!source) {
+                return res.status(400).json({ success: false, error: 'source is required' });
+            }
+            const lines = parseInt(req.query.lines, 10) || 500;
+            const data = globalResources.getLogger().readLogTail(source, lines);
+            res.setHeader('Cache-Control', 'no-store');
+            res.json({ success: true, ...data });
+        } catch (e) {
+            res.status(400).json({ success: false, error: e.message });
+        }
+    });
+
+    app.get(`${logPath}/stream`, authMiddleware, adminOnlyMiddleware, (req, res) => {
+        const source = req.query.source;
+        const logger = globalResources.getLogger();
+        const offset = logger.parseLogStreamOffset(source, req.query.offset);
+        if (!source || offset === null) {
+            return res.status(400).json({ success: false, error: 'source and offset are required' });
+        }
+        if (!logger.resolveLogSource(source)) {
+            return res.status(400).json({ success: false, error: 'Invalid log source' });
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-store');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders?.();
+
+        const statusInterval = parseInt(req.query.statusInterval, 10);
+        streamLogFile(res, globalResources.getLogger(), source, offset, {
+            pm2Service,
+            getHostMetrics: () => pm2Service.getHostMetrics(),
+            statusIntervalMs: Number.isFinite(statusInterval) ? statusInterval : undefined
+        });
+    });
+})();
 
 // Serve trace attachments
 app.use('/traces/files', authMiddleware, (req, res, next) => {

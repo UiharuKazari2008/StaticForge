@@ -169,6 +169,7 @@
     <link rel="stylesheet" href="/dist/photoswipe/photoswipe.css">
     <link rel="stylesheet" href="/css/blockContainer.css">
     <link rel="stylesheet" href="/css/image-loupe.css">
+    <link rel="stylesheet" href="/css/virtual-keyboard.css">
     <script src="/scripts/comp/tagSets.js"></script>
     <script src="/scripts/comp/blockContainer.js"></script>
     <script src="/scripts/utils/deviceUtils.js"></script>
@@ -754,7 +755,8 @@
     <!-- Run Applet (Application Finder) -->
     <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
         data-window-max-width="720" data-window-min-width="560" data-window-min-height="100"
-        data-window-max-height="520" data-window-content-anchor="top" data-window-position-mode="run-open">
+        data-window-max-height="520" data-window-content-anchor="top" data-window-position-mode="run-open"
+        data-window-restore-position="false" data-window-restore-size="false">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -2366,7 +2368,7 @@
 
     <!-- Genso Lock Modal -->
     <div id="textReplacementLockModal" class="modal hidden resizeable-window tool-window"
-        data-parent-modal-id="manualModal">
+        data-parent-modal-id="manualModal" data-window-restore-size="false">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -6638,6 +6640,138 @@ Examples:
         </div>
     </div>
 
+    <!-- Event Viewer Applet -->
+    <div id="logViewerModal" class="modal hidden resizeable-window"
+        data-window-identifier="eventViewer"
+        data-window-max-width="1800" data-window-max-height="1200"
+        data-window-min-width="680" data-window-min-height="420"
+        data-window-default-width="1000" data-window-default-height="700">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-wave-square icon-fa"></i>
+                <img src="/static_images/app_icons/event_viewer.png" alt="" class="icon-image" />
+                <span id="logViewerModalTitleLabel">Event Viewer</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" id="closeLogViewerBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content naxt-modal-content dark">
+            <div class="naxt-search-header">
+                <div class="naxt-search-controls">
+                    <div id="logViewerSourceDropdown" class="custom-dropdown dark naxt-toolbar-dataset">
+                        <button type="button" id="logViewerSourceDropdownBtn" class="btn-secondary btn-small" title="Log source">
+                            <span id="logViewerSourceSelected">System</span>
+                            <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
+                        </button>
+                        <div id="logViewerSourceDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                    </div>
+                    <div class="button-group">
+                        <button type="button" id="logViewerPauseBtn" class="btn-secondary btn-small" title="Pause">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                        <button type="button" id="logViewerScrollBottomBtn" class="btn-secondary btn-small" title="Scroll to bottom">
+                            <i class="fas fa-arrow-down"></i>
+                        </button>
+                    </div>
+                    <div class="log-viewer-toolbar-right">
+                        <div class="websocket-ticker log-viewer-ws-ticker expanded disconnected" id="logViewerWsTicker" title="WebSocket status — click for tasks">
+                            <div class="websocket-ticker-content">
+                                <i class="fas fa-plug websocket-ticker-icon"></i>
+                                <span class="websocket-ticker-text">Disconnected</span>
+                                <span class="websocket-ticker-badge hidden" data-count="0">0</span>
+                            </div>
+                        </div>
+                        <button type="button" id="logViewerTasksToggleBtn" class="btn-secondary btn-small toggle-btn log-viewer-tasks-toggle" data-state="off"
+                            title="Show tasks sidebar">
+                            <i class="fas fa-conveyor-belt-boxes"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="logViewerMainLayout" class="log-viewer-main-layout">
+                <div class="naxt-body form-section-scroll log-viewer-body-scroll" data-custom-scrollbar>
+                    <pre id="logViewerContent" class="log-viewer-pre selectable"></pre>
+                    <div id="logViewerReconnectBanner" class="log-viewer-reconnect-banner hidden" aria-live="polite">
+                        <i class="fas fa-plug-circle-exclamation"></i>
+                        <span id="logViewerReconnectText">Stream disconnected — reconnecting in 5s</span>
+                    </div>
+                </div>
+                <aside id="logViewerTasksSidebar" class="log-viewer-tasks-sidebar hidden">
+                    <div class="log-viewer-tasks-section">
+                        <h3 class="section-header"><i class="fas fa-spinner"></i><span>Active</span></h3>
+                        <div class="websocket-requests-list active-requests scrollbar-padding" data-custom-scrollbar>
+                            <div id="logViewerActiveRequestsList" class="websocket-requests-list-content">
+                                <div class="empty-state" id="logViewerActiveRequestsEmpty">No active requests</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="log-viewer-tasks-section previous-requests-section">
+                        <h3 class="section-header">
+                            <i class="fas fa-history"></i>
+                            <span>Previous</span>
+                            <span class="tag-wiki-result-category" id="logViewerPreviousRequestsCount">0</span>
+                        </h3>
+                        <div class="websocket-requests-list previous-requests scrollbar-padding" data-custom-scrollbar>
+                            <div id="logViewerPreviousRequestsList" class="websocket-requests-list-content">
+                                <div class="empty-state" id="logViewerPreviousRequestsEmpty">No previous requests</div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+            <footer id="logViewerStatus" class="naxt-status-bar log-viewer-status-bar" aria-live="polite">
+                <div class="log-viewer-status-primary">
+                    <div id="logViewerMetrics" class="log-viewer-metrics hidden">
+                        <div class="log-viewer-metric" title="CPU usage">
+                            <span class="log-viewer-metric-label">CPU</span>
+                            <div class="log-viewer-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                                <div id="logViewerCpuFill" class="log-viewer-metric-fill"></div>
+                            </div>
+                            <span id="logViewerCpuPct" class="log-viewer-metric-pct">0%</span>
+                        </div>
+                        <div class="log-viewer-metric" title="RAM usage">
+                            <span class="log-viewer-metric-label">RAM</span>
+                            <div class="log-viewer-metric-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+                                <div id="logViewerRamFill" class="log-viewer-metric-fill"></div>
+                            </div>
+                            <span id="logViewerRamPct" class="log-viewer-metric-pct">0%</span>
+                        </div>
+                    </div>
+                    <div id="logViewerSysInfo" class="log-viewer-sysinfo hidden">
+                        <span id="logViewerDisk" class="log-viewer-sysinfo-item" title="Host filesystem free space"></span>
+                        <button type="button" id="logViewerUptimeBtn" class="log-viewer-uptime-btn log-viewer-sysinfo-item log-viewer-clickable-text" title="Uptime details"></button>
+                    </div>
+                    <button type="button" id="logViewerLinesBtn" class="log-viewer-lines-btn" title="View settings">
+                        <span id="logViewerLiveBadge" class="log-viewer-live-badge hidden" aria-hidden="true"></span>
+                        <span id="logViewerLinesText" class="log-viewer-lines-text log-viewer-clickable-text">Ready</span>
+                    </button>
+                </div>
+                <div class="log-viewer-status-secondary">
+                    <button type="button" id="logViewerConnStats" class="log-viewer-conn-stats log-viewer-clickable-text" title="Connection details">
+                        <span class="log-viewer-conn-stat" title="Packets sent">
+                            <i id="logViewerStatOutArrow" class="fas fa-arrow-up websocket-arrow-up"></i><span id="logViewerStatOut">0</span>
+                        </span>
+                        <span class="log-viewer-conn-stat" title="Packets received">
+                            <i id="logViewerStatInArrow" class="fas fa-arrow-down websocket-arrow-down"></i><span id="logViewerStatIn">0</span>
+                        </span>
+                        <span class="log-viewer-conn-stat" title="Ping"><i class="fas fa-signal"></i><span id="logViewerStatPing">—</span></span>
+                        <span class="log-viewer-conn-stat" title="Ping variation"><i class="fas fa-chart-line"></i><span id="logViewerStatVar">—</span></span>
+                    </button>
+                </div>
+            </footer>
+        </div>
+    </div>
+
     <!-- Desktop Settings Modal -->
     <div id="desktopSettingsModal" class="modal hidden">
         <div class="modal-window-title">
@@ -6836,6 +6970,57 @@ Examples:
                                 <div class="desktop-settings-option-body">
                                     <span class="desktop-settings-option-label">Open workspace on startup</span>
                                     <p class="desktop-settings-hint">When off, loading continues in the tray and the workspace window stays closed until you open it from the start menu or taskbar.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Global: Notification Bridge (shown when AndroidNotification host is detected) -->
+                    <div id="desktopSettingsNotificationBridgeSection"
+                        class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-bell"></i> Notification Bridge</h3>
+                        <div class="desktop-settings-options-grid">
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsNotificationBridgeEnabledBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                    data-state="on"
+                                    title="Route toast notifications through the native Android notification bridge">
+                                    <i class="fa-regular fa-bell"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Enable Notification Bridge</span>
+                                    <p class="desktop-settings-hint">When on, most toasts use the native bridge. Taskbar popovers and tray popups are unchanged.</p>
+                                </div>
+                            </div>
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsBypassNotificationBridgeDesktopBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                    data-state="off"
+                                    title="Keep in-app glass toasts in desktop mode even when the bridge is enabled">
+                                    <i class="fa-regular fa-window-maximize"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Bypass Notification Bridge in Desktop Mode</span>
+                                    <p class="desktop-settings-hint">When on, desktop mode uses in-app glass toasts instead of the bridge. Taskbar popovers and tray popups are unchanged.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Global: Input -->
+                    <div class="settings-section hidden" data-desktop-settings-scope="global">
+                        <h3 class="section-header"><i class="fas fa-keyboard"></i> Input</h3>
+                        <div class="desktop-settings-options-grid">
+                            <div class="desktop-settings-option">
+                                <button type="button" id="desktopSettingsVirtualKeyboardBtn"
+                                    class="btn-secondary toggle-btn icon-only indicator desktop-settings-global-toggle"
+                                    data-state="off"
+                                    title="Show the built-in on-screen keyboard for text fields">
+                                    <i class="fa-regular fa-keyboard"></i>
+                                </button>
+                                <div class="desktop-settings-option-body">
+                                    <span class="desktop-settings-option-label">Virtual keyboard</span>
+                                    <p class="desktop-settings-hint">On touch devices, use this keyboard instead of the system one. Docked at the bottom on mobile; floating window on desktop.</p>
                                 </div>
                             </div>
                         </div>
@@ -7173,6 +7358,20 @@ Examples:
         </div>
     </div>
 
+    <!-- Virtual On-Screen Keyboard -->
+    <div id="virtualKeyboardModal" class="modal hidden transient tool-window on-top virtual-keyboard"
+        data-window-identifier="virtualKeyboard"
+        data-window-min-width="720" data-window-min-height="248"
+        data-window-max-width="1150" data-window-max-height="480">
+        <div class="modal-window-title virtual-keyboard-drag-header" title="Drag to move">
+            <span class="virtual-keyboard-drag-grip" aria-hidden="true"></span>
+            <span class="virtual-keyboard-drag-label">On-Screen Keyboard</span>
+        </div>
+        <div class="modal-content dark virtual-keyboard-content">
+            <div id="virtualKeyboardKeys" class="virtual-keyboard-keys" role="group" aria-label="On-screen keyboard"></div>
+        </div>
+    </div>
+
     <div class="modal-backdrop"></div>
 
     <script src="scripts/comp/toastManager.js"></script>
@@ -7207,6 +7406,7 @@ Examples:
     <script src="scripts/comp/configEditorApplet.js"></script>
     <script src="scripts/comp/characterSearchModal.js"></script>
     <script src="scripts/comp/websocketRequestsModal.js"></script>
+    <script src="scripts/comp/logViewerApplet.js"></script>
     <script src="scripts/comp/confirmationDialog.js"></script>
     <script src="scripts/comp/creditCostDialog.js"></script>
     <script src="scripts/comp/galleryToolbar.js"></script>
@@ -7215,6 +7415,7 @@ Examples:
     <script src="scripts/comp/runCommandIndex.js"></script>
     <script src="scripts/comp/runApplet.js"></script>
     <script src="scripts/comp/keyboardShortcuts.js"></script>
+    <script src="scripts/comp/virtualKeyboard.js"></script>
     <script src="scripts/comp/datasetTagToolbar.js"></script>
     <script src="scripts/comp/presetTokenCount.js"></script>
     <script src="scripts/comp/promptTextareaToolbar.js"></script>
@@ -7229,6 +7430,7 @@ Examples:
     <script src="scripts/comp/manualDropdownManager.js"></script>
     <script src="scripts/comp/bracketGenerationApplet.js"></script>
     <script src="scripts/comp/promptTextareaContextMenu.js"></script>
+    <script src="scripts/comp/dynamicGenerationLockState.js"></script>
     <script src="scripts/comp/manualModalManager.js"></script>
     <script src="protected/t5-tokenizer.js"></script>
     <script src="scripts/app.js"></script>

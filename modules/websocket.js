@@ -129,13 +129,17 @@ class WebSocketServer {
             });
 
             // Send welcome message
-            this.sendToClient(ws, {
+            const connectionPayload = {
                 type: 'connection',
                 status: 'connected',
                 message: 'WebSocket connection established',
                 authenticated: clientInfo.authenticated,
                 timestamp: new Date().toISOString()
-            });
+            };
+            if (clientInfo.authenticated && clientInfo.userType === 'admin') {
+                connectionPayload.logViewerPathUuid = this.globalResources.getLogViewerPathUuid();
+            }
+            this.sendToClient(ws, connectionPayload);
 
             // Restore session workspace for reconnection sync (only if authenticated)
             if (clientInfo.authenticated && clientInfo.sessionId) {
