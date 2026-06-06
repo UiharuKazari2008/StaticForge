@@ -48,8 +48,10 @@ class LoginPage {
                 if (this.rollingBuffer.length === 6) {
                     this.handleLogin();
                 }
-            } else if (e.key === 'Backspace') {
+            } else if (e.key === 'Backspace' || e.key === 'Delete') {
                 this.removeDigit();
+            } else if (e.key === 'Escape') {
+                this.clearPin();
             }
         });
     }
@@ -75,9 +77,16 @@ class LoginPage {
                 }
             });
         });
-        this.pinDisplay.addEventListener('click', () => {
+        const toggleMinimize = () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+        };
+        this.pinDisplay.addEventListener('click', toggleMinimize);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                toggleMinimize();
+            }
         });
     }
 
@@ -106,6 +115,9 @@ class LoginPage {
     }
 
     async clearCachesAndReload() {
+        if (!confirm('Are you sure you want to repair the application? This will clear all local caches and settings.')) {
+            return;
+        }
         try {
             this.showProgressBar();
             this.updateProgressStatus(0, 'Repairing...', '');
@@ -400,6 +412,7 @@ class LoginPage {
     async handleLogin() {
         if (this.isLoading) return;
         this.isLoading = true;
+        this.pinButtons.forEach(btn => btn.disabled = true);
         this.clearPinError();
         
         try {
@@ -453,6 +466,7 @@ class LoginPage {
             this.clearPin();
         } finally {
             this.isLoading = false;
+            this.pinButtons.forEach(btn => btn.disabled = false);
         }
     }
 

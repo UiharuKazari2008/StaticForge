@@ -142,6 +142,13 @@ body {
 .pin-display {
     display: flex;
     justify-content: center;
+    border-radius: 8px;
+    outline: none;
+    transition: box-shadow 0.2s ease;
+}
+
+.pin-display:focus-visible {
+    box-shadow: 0 0 0 3px #6366f1;
 }
 
 .pin-dots {
@@ -301,6 +308,18 @@ body {
     align-items: center;
     justify-content: center;
     border: 2px solid rgba(255, 255, 255, 0.25);
+    outline: none;
+}
+
+.pin-button:focus-visible {
+    box-shadow: 0 0 0 3px #6366f1, 0 0 10px rgba(99, 102, 241, 0.5);
+    border-color: #6366f1;
+}
+
+.pin-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    filter: grayscale(0.5);
 }
 
 .pin-button.danger {
