@@ -55,29 +55,24 @@ class LoginPage {
     }
 
     setupPinPadListener() {
-        this.pinButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                if (this.isLoading) return;
-                
-                const number = button.getAttribute('data-number');
-                const action = button.getAttribute('data-action');
-                
-                if (number) {
-                    this.addDigit(number);
-                } else if (action === 'clear') {
-                    this.clearPin();
-                } else if (action === 'backspace') {
-                    this.removeDigit();
-                } else if (action === 'cache-clear') {
-                    this.clearCachesAndReload();
-                } else if (action === 'update-static') {
-                    this.updateStaticData();
-                }
-            });
-        });
-        this.pinDisplay.addEventListener('click', () => {
+        const toggle = () => {
             this.loginContainer.classList.add('transition');
             this.loginContainer.classList.toggle('minimize');
+        };
+        this.pinButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this.isLoading) return;
+                const { number: num, action: act } = btn.dataset;
+                if (num) this.addDigit(num);
+                else if (act === 'clear') this.clearPin();
+                else if (act === 'backspace') this.removeDigit();
+                else if (act === 'cache-clear') this.clearCachesAndReload();
+                else if (act === 'update-static') this.updateStaticData();
+            });
+        });
+        this.pinDisplay.addEventListener('click', toggle);
+        this.pinDisplay.addEventListener('keydown', (e) => {
+            if (['Enter', ' '].includes(e.key)) { e.preventDefault(); toggle(); }
         });
     }
 
